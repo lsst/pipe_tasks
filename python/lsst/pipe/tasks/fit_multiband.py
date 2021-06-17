@@ -111,65 +111,77 @@ class MultibandFitConnections(
         storageClass="SourceCatalog"
     )
 
-    def adjustQuantum(self, datasetRefMap):
+    def adjustQuantum(self, inputs, outputs, label, data_id):
         """Validates the `lsst.daf.butler.DatasetRef` bands against the
         subtask's list of bands to fit and drops unnecessary bands.
 
         Parameters
         ----------
-        datasetRefMap : `NamedKeyDict`
-            Mapping from dataset type to a `set` of
-            `lsst.daf.butler.DatasetRef` objects
+        inputs : `dict`
+            Dictionary whose keys are an input (regular or prerequisite)
+            connection name and whose values are a tuple of the connection
+            instance and a collection of associated `DatasetRef` objects.
+            The exact type of the nested collections is unspecified; it can be
+            assumed to be multi-pass iterable and support `len` and ``in``, but
+            it should not be mutated in place.  In contrast, the outer
+            dictionaries are guaranteed to be temporary copies that are true
+            `dict` instances, and hence may be modified and even returned; this
+            is especially useful for delegating to `super` (see notes below).
+        outputs : `Mapping`
+            Mapping of output datasets, with the same structure as ``inputs``.
+        label : `str`
+            Label for this task in the pipeline (should be used in all
+            diagnostic messages).
+        data_id : `lsst.daf.butler.DataCoordinate`
+            Data ID for this quantum in the pipeline (should be used in all
+            diagnostic messages).
 
         Returns
         -------
-        datasetRefMap : `NamedKeyDict`
-            Modified mapping of input with possibly adjusted
-            `lsst.daf.butler.DatasetRef` objects.
+        adjusted_inputs : `Mapping`
+            Mapping of the same form as ``inputs`` with updated containers of
+            input `DatasetRef` objects.  All inputs involving the 'band'
+            dimension are adjusted to put them in consistent order and remove
+            unneeded bands.
+        adjusted_outputs : `Mapping`
+            Mapping of updated output datasets; always empty for this task.
 
         Raises
         ------
-        ValueError
-            Raised if any of the per-band datasets have an inconsistent band
-            set, or if the band set to fit is not a subset of the data bands.
-
+        lsst.pipe.base.NoWorkFound
+            Raised if there are not enough of the right bands to run the task
+            on this quantum.
         """
-        datasetRefMap = super().adjustQuantum(datasetRefMap)
         # Check which bands are going to be fit
         bands_fit, bands_read_only = self.config.get_band_sets()
         bands_needed = bands_fit.union(bands_read_only)
 
-        bands_data = None
-        bands_extra = set()
-
-        for type_d, ref_d in datasetRefMap.items():
+        adjusted_inputs = {}
+        for connection_name, (connection, dataset_refs) in inputs.items():
             # Datasets without bands in their dimensions should be fine
-            if 'band' in type_d.dimensions:
-                bands_set = {dref.dataId['band'] for dref in ref_d}
-                if bands_data is None:
-                    bands_data = bands_set
-                    if bands_needed != bands_data:
-                        if not bands_needed.issubset(bands_data):
-                            raise ValueError(
-                                f'Datarefs={ref_d} have data with bands in the set={bands_set},'
-                                f'which is not a subset of the required bands={bands_needed} defined by '
-                                f'{self.config.__class__}.fit_multiband='
-                                f'{self.config.fit_multiband._value.__class__}\'s attributes'
-                                f' bands_fit={bands_fit} and bands_read_only()={bands_read_only}.'
-                                f' Add the required bands={bands_needed.difference(bands_data)}.'
-                            )
-                        else:
-                            bands_extra = bands_data.difference(bands_needed)
-                elif bands_set != bands_data:
-                    raise ValueError(
-                        f'Datarefs={ref_d} have data with bands in the set={bands_set}'
-                        f' which differs from the previous={bands_data}); bandsets must be identical.'
+            if 'band' in connection.dimensions:
+                datasets_by_band = {dref.dataId['band']: dref for dref in dataset_refs}
+                if not bands_needed.issubset(datasets_by_band.keys()):
+                    raise pipeBase.NoWorkFound(
+                        f'DatasetRefs={dataset_refs} have data with bands in the'
+                        f' set={set(datasets_by_band.keys())},'
+                        f' which is not a superset of the required bands={bands_needed} defined by'
+                        f' {self.config.__class__}.fit_multiband='
+                        f'{self.config.fit_multiband._value.__class__}\'s attributes'
+                        f' bands_fit={bands_fit} and bands_read_only()={bands_read_only}.'
+                        f' Add the required bands={bands_needed.difference(datasets_by_band.keys())}.'
                     )
-                if bands_extra:
-                    for dref in ref_d:
-                        if dref.dataId['band'] in bands_extra:
-                            ref_d.remove(dref)
-        return datasetRefMap
+                # Adjust all datasets with band dimensions to include just
+                # the needed bands, in consistent order.
+                adjusted_inputs[connection_name] = (
+                    connection,
+                    [datasets_by_band[band] for band in bands_needed]
+                )
+
+        # Delegate to super for more checks.
+        inputs.update(adjusted_inputs)
+        super().adjustQuantum(inputs, outputs, label, data_id)
+        return adjusted_inputs, {}
 
 
 class MultibandFitSubConfig(pexConfig.Config):

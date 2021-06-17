@@ -468,8 +468,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         self.log.info("Found %d %s", len(inputs.tempExpRefList),
                       self.getTempExpDatasetName(self.warpType))
         if len(inputs.tempExpRefList) == 0:
-            self.log.warn("No coadd temporary exposures found")
-            return
+            raise pipeBase.NoWorkFound("No coadd temporary exposures found")
 
         supplementaryData = self.makeSupplementaryDataGen3(butlerQC, inputRefs, outputRefs)
         retStruct = self.run(inputData['skyInfo'], inputs.tempExpRefList, inputs.imageScalerList,
