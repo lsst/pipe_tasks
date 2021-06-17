@@ -19,8 +19,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Methods to match an input catalog to a set of fakes in AP.
-"""
 
 import numpy as np
 from scipy.spatial import cKDTree
@@ -31,19 +29,19 @@ from lsst.pipe.base import PipelineTask, PipelineTaskConnections, Struct
 import lsst.pipe.base.connectionTypes as connTypes
 from lsst.pipe.tasks.insertFakes import InsertFakesConfig
 
-__all__ = ["MatchApFakesTask",
-           "MatchApFakesConfig",
-           "MatchApFakesConnections"]
+__all__ = ["MatchFakesTask",
+           "MatchFakesConfig",
+           "MatchFakesConnections"]
 
 
-class MatchApFakesConnections(PipelineTaskConnections,
-                              defaultTemplates={"coaddName": "deep",
-                                                "fakesType": "fakes_"},
-                              dimensions=("tract",
-                                          "skymap",
-                                          "instrument",
-                                          "visit",
-                                          "detector")):
+class MatchFakesConnections(PipelineTaskConnections,
+                            defaultTemplates={"coaddName": "deep",
+                                              "fakesType": "fakes_"},
+                            dimensions=("tract",
+                                        "skymap",
+                                        "instrument",
+                                        "visit",
+                                        "detector")):
     fakeCat = connTypes.Input(
         doc="Catalog of fake sources to draw inputs from.",
         name="{fakesType}fakeSourceCat",
@@ -71,10 +69,10 @@ class MatchApFakesConnections(PipelineTaskConnections,
     )
 
 
-class MatchApFakesConfig(
+class MatchFakesConfig(
         InsertFakesConfig,
-        pipelineConnections=MatchApFakesConnections):
-    """Config for MatchApFakesTask.
+        pipelineConnections=MatchFakesConnections):
+    """Config for MatchFakesTask.
     """
     matchDistanceArcseconds = pexConfig.RangeField(
         doc="Distance in arcseconds to ",
@@ -85,15 +83,15 @@ class MatchApFakesConfig(
     )
 
 
-class MatchApFakesTask(PipelineTask):
-    """Create and store a set of spatially uniform star fakes over the sphere
-    for use in AP processing. Additionally assign random magnitudes to said
+class MatchFakesTask(PipelineTask):
+    """Create and store a set of spatially uniform star fakes over the sphere.
+    Additionally assign random magnitudes to said
     fakes and assign them to be inserted into either a visit exposure or
     template exposure.
     """
 
-    _DefaultName = "matchApFakes"
-    ConfigClass = MatchApFakesConfig
+    _DefaultName = "matchFakes"
+    ConfigClass = MatchFakesConfig
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)

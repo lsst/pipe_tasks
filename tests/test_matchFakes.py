@@ -36,10 +36,10 @@ from lsst.pipe.base import testUtils
 import lsst.skymap as skyMap
 import lsst.utils.tests
 
-from lsst.pipe.tasks.matchApFakes import MatchApFakesTask, MatchApFakesConfig
+from lsst.pipe.tasks.matchFakes import MatchFakesTask, MatchFakesConfig
 
 
-class TestMatchApFakes(lsst.utils.tests.TestCase):
+class TestMatchFakes(lsst.utils.tests.TestCase):
 
     def setUp(self):
         """Create fake data to use in the tests.
@@ -120,7 +120,7 @@ class TestMatchApFakes(lsst.utils.tests.TestCase):
                       "visit": [1234, 4321],
                       "detector": [25, 26]}
         testRepo = butlerTests.makeTestRepo(root, dimensions)
-        matchTask = MatchApFakesTask()
+        matchTask = MatchFakesTask()
         connections = matchTask.config.ConnectionsClass(
             config=matchTask.config)
 
@@ -182,9 +182,9 @@ class TestMatchApFakes(lsst.utils.tests.TestCase):
     def testRun(self):
         """Test the run method.
         """
-        matchFakesConfig = MatchApFakesConfig()
+        matchFakesConfig = MatchFakesConfig()
         matchFakesConfig.matchDistanceArcseconds = 0.1
-        matchFakes = MatchApFakesTask(config=matchFakesConfig)
+        matchFakes = MatchFakesTask(config=matchFakesConfig)
         result = matchFakes.run(self.fakeCat,
                                 self.exposure,
                                 self.sourceCat)
@@ -196,7 +196,7 @@ class TestMatchApFakes(lsst.utils.tests.TestCase):
     def testTrimCat(self):
         """Test that the correct number of sources are in the ccd area.
         """
-        matchTask = MatchApFakesTask()
+        matchTask = MatchFakesTask()
         result = matchTask._trimFakeCat(self.fakeCat, self.exposure)
         self.assertEqual(len(result), self.inExp.sum())
 
