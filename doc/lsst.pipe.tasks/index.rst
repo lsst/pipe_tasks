@@ -42,6 +42,14 @@ You can find Jira issues for this module under the `pipe_tasks <https://jira.lss
 Task reference
 ==============
 
+.. _lsst.pipe.tasks-pipeline-tasks:
+
+Pipeline tasks
+--------------
+
+.. lsst-pipelinetasks::
+   :root: lsst.pipe.tasks
+
 .. _lsst.pipe.tasks-command-line-tasks:
 
 Command-line tasks
@@ -75,3 +83,7 @@ Python API reference
 
 .. automodapi:: lsst.pipe.tasks.assembleCoadd
 .. automodapi:: lsst.pipe.tasks.dcrAssembleCoadd
+
+.. automodapi:: lsst.pipe.tasks.metrics
+   :no-main-docstr:
+   :no-inheritance-diagram:
