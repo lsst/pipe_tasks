@@ -187,8 +187,12 @@ contracts:
       assembleCoadd.doMaskBrightObjects
       and assembleCoadd.brightObjectMaskName in measure.measurement.plugins['base_PixelFlags'].masksFpCenter
       and assembleCoadd.brightObjectMaskName in measure.measurement.plugins['base_PixelFlags'].masksFpAnywhere
+      and assembleCoadd.brightObjectMaskName in forcedPhotCoadd.measurement.plugins['base_PixelFlags'].masksFpCenter
+      and assembleCoadd.brightObjectMaskName in forcedPhotCoadd.measurement.plugins['base_PixelFlags'].masksFpAnywhere
     ) or (
       not assembleCoadd.doMaskBrightObjects
       and assembleCoadd.brightObjectMaskName not in measure.measurement.plugins['base_PixelFlags'].masksFpCenter
       and assembleCoadd.brightObjectMaskName not in measure.measurement.plugins['base_PixelFlags'].masksFpAnywhere
+      and assembleCoadd.brightObjectMaskName not in forcedPhotCoadd.measurement.plugins['base_PixelFlags'].masksFpCenter
+      and assembleCoadd.brightObjectMaskName not in forcedPhotCoadd.measurement.plugins['base_PixelFlags'].masksFpAnywhere
     )
