@@ -182,3 +182,13 @@ contracts:
   - imageDifference.connections.subtractedExposure == forcedPhotDiffim.connections.exposure
   - transformDiaSourceCat.connections.diaSourceTable == consolidateDiaSourceTable.connections.inputCatalogs
   - transformDiaSourceCat.connections.diaSourceTable == drpAssociation.connections.diaSourceTables
+  - >
+    (
+      assembleCoadd.doMaskBrightObjects
+      and assembleCoadd.brightObjectMaskName in measure.measurement.plugins['base_PixelFlags'].masksFpCenter
+      and assembleCoadd.brightObjectMaskName in measure.measurement.plugins['base_PixelFlags'].masksFpAnywhere
+    ) or (
+      not assembleCoadd.doMaskBrightObjects
+      and assembleCoadd.brightObjectMaskName not in measure.measurement.plugins['base_PixelFlags'].masksFpCenter
+      and assembleCoadd.brightObjectMaskName not in measure.measurement.plugins['base_PixelFlags'].masksFpAnywhere
+    )
