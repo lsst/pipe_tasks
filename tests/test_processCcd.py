@@ -164,8 +164,8 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                         ("summary_decl", summary.decl, -9.800258687592303),
                         ("summary_zenithDistance", float('%.6f' % (summary.zenithDistance)), 42.361001),
                         ("summary_zeroPoint", summary.zeroPoint, 30.940228147639207),
-                        ("summary_skyBg", summary.skyBg, 191.4352211728692),
-                        ("summary_skyNoise", summary.skyNoise, 12.512330367008024),
+                        ("summary_skyBg", summary.skyBg, 191.37726892903447),
+                        ("summary_skyNoise", summary.skyNoise, 12.512272992606531),
                         ("summary_meanVar", summary.meanVar, 130.61335199119068)
                     ]:
                         self.assertAlmostEqual(var, val, places=expectedPlaces, msg=name)

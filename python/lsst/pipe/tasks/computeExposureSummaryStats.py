@@ -73,6 +73,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     - meanVar
     - raCorners
     - decCorners
+    - astromOffsetMean
+    - astromOffsetStd
     """
     ConfigClass = ComputeExposureSummaryStatsConfig
     _DefaultName = "computeExposureSummaryStats"
@@ -180,6 +182,14 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
                                          afwMath.MEANCLIP, statsCtrl)
         meanVar, _ = statObj.getResult(afwMath.MEANCLIP)
 
+        md = exposure.getMetadata()
+        if 'SFM_ASTROM_OFFSET_MEAN' in md:
+            astromOffsetMean = md['SFM_ASTROM_OFFSET_MEAN']
+            astromOffsetStd = md['SFM_ASTROM_OFFSET_STD']
+        else:
+            astromOffsetMean = np.nan
+            astromOffsetStd = np.nan
+
         summary = afwImage.ExposureSummaryStats(psfSigma=float(psfSigma),
                                                 psfArea=float(psfArea),
                                                 psfIxx=float(psfIxx),
@@ -193,6 +203,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
                                                 skyNoise=float(skyNoise),
                                                 meanVar=float(meanVar),
                                                 raCorners=raCorners,
-                                                decCorners=decCorners)
+                                                decCorners=decCorners,
+                                                astromOffsetMean=astromOffsetMean,
+                                                astromOffsetStd=astromOffsetStd)
 
         return summary
