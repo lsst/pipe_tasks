@@ -125,6 +125,7 @@ subsets:
     subset:
       - makeWarp
       - assembleCoadd
+      - healSparsePropertyMaps
     description: >
       A set of tasks to run when coadding images.
   multiband:
@@ -155,6 +156,7 @@ subsets:
     subset:
       - makeWarp
       - assembleCoadd
+      - healSparsePropertyMaps
       - detection
       - mergeDetections
       - deblend
