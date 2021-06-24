@@ -136,19 +136,19 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
             connections.fakeCat.storageClass)
         butlerTests.addDatasetType(
             testRepo,
-            connections.diffIm.name,
-            connections.diffIm.dimensions,
-            connections.diffIm.storageClass)
+            connections.image.name,
+            connections.image.dimensions,
+            connections.image.storageClass)
         butlerTests.addDatasetType(
             testRepo,
-            connections.associatedDiaSources.name,
-            connections.associatedDiaSources.dimensions,
-            connections.associatedDiaSources.storageClass)
+            connections.detectedSources.name,
+            connections.detectedSources.dimensions,
+            connections.detectedSources.storageClass)
         butlerTests.addDatasetType(
             testRepo,
-            connections.matchedDiaSources.name,
-            connections.matchedDiaSources.dimensions,
-            connections.matchedDiaSources.storageClass)
+            connections.matchedSources.name,
+            connections.matchedSources.dimensions,
+            connections.matchedSources.storageClass)
         butler = butlerTests.makeTestCollection(testRepo)
 
         butler.put(self.fakeCat,
@@ -156,12 +156,12 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
                    {"tract": fakesDataId["tract"],
                     "skymap": fakesDataId["skymap"]})
         butler.put(self.exposure,
-                   connections.diffIm.name,
+                   connections.image.name,
                    {"instrument": imgDataId["instrument"],
                     "visit": imgDataId["visit"],
                     "detector": imgDataId["detector"]})
         butler.put(self.sourceCat,
-                   connections.associatedDiaSources.name,
+                   connections.detectedSources.name,
                    {"instrument": imgDataId["instrument"],
                     "visit": imgDataId["visit"],
                     "detector": imgDataId["detector"]})
@@ -171,9 +171,9 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
         quantum = testUtils.makeQuantum(
             matchTask, butler, quantumDataId,
             {"fakeCat": fakesDataId,
-             "diffIm": imgDataId,
-             "associatedDiaSources": imgDataId,
-             "matchedDiaSources": imgDataId})
+             "image": imgDataId,
+             "detectedSources": imgDataId,
+             "matchedSources": imgDataId})
         run = testUtils.runTestQuantum(matchTask, butler, quantum)
         # Actual input dataset omitted for simplicity
         run.assert_called_once()
@@ -188,10 +188,10 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
         result = matchFakes.run(self.fakeCat,
                                 self.exposure,
                                 self.sourceCat)
-        self.assertEqual(self.inExp.sum(), len(result.matchedDiaSources))
+        self.assertEqual(self.inExp.sum(), len(result.matchedSources))
         self.assertEqual(
             len(self.sourceCat),
-            np.sum(np.isfinite(result.matchedDiaSources["extraColumn"])))
+            np.sum(np.isfinite(result.matchedSources["extraColumn"])))
 
     def testTrimCat(self):
         """Test that the correct number of sources are in the ccd area.

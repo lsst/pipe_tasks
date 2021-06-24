@@ -43,26 +43,28 @@ class MatchFakesConnections(PipelineTaskConnections,
                                         "visit",
                                         "detector")):
     fakeCat = connTypes.Input(
-        doc="Catalog of fake sources to draw inputs from.",
+        doc="Catalog of fake sources inserted into an image.",
         name="{fakesType}fakeSourceCat",
         storageClass="DataFrame",
         dimensions=("tract", "skymap")
     )
-    diffIm = connTypes.Input(
-        doc="Difference image on which the DiaSources were detected.",
+    image = connTypes.Input(
+        doc="Image on which the sources were detected.",
         name="{fakesType}{coaddName}Diff_differenceExp",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
     )
-    associatedDiaSources = connTypes.Input(
-        doc="Optional output storing the DiaSource catalog after matching and "
-            "SDMification.",
+    detectedSources = connTypes.Input(
+        doc="A source or DiaSource catalog to match against fakeCat. Assumed "
+            "to be SDMified.",
         name="{fakesType}{coaddName}Diff_assocDiaSrc",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector"),
     )
-    matchedDiaSources = connTypes.Output(
-        doc="",
+    matchedSources = connTypes.Output(
+        doc="A catalog of those fakeCat sources that have a match in "
+            "detectedSources. The schema is the union of the schemas for "
+            "``fakeCat`` and ``detectedSources``.",
         name="{fakesType}{coaddName}Diff_matchDiaSrc",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector"),
@@ -75,7 +77,7 @@ class MatchFakesConfig(
     """Config for MatchFakesTask.
     """
     matchDistanceArcseconds = pexConfig.RangeField(
-        doc="Distance in arcseconds to ",
+        doc="Distance in arcseconds to match within.",
         dtype=float,
         default=0.5,
         min=0,
@@ -84,10 +86,8 @@ class MatchFakesConfig(
 
 
 class MatchFakesTask(PipelineTask):
-    """Create and store a set of spatially uniform star fakes over the sphere.
-    Additionally assign random magnitudes to said
-    fakes and assign them to be inserted into either a visit exposure or
-    template exposure.
+    """Match a pre-existing catalog of fakes to a catalog of detections on
+    a direct or difference image.
     """
 
     _DefaultName = "matchFakes"
@@ -99,48 +99,48 @@ class MatchFakesTask(PipelineTask):
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, fakeCat, diffIm, associatedDiaSources):
-        """Match fakes to detected diaSources within a difference image bound.
+    def run(self, fakeCat, image, detectedSources):
+        """Match fakes to detected sources within an image bound.
 
         Parameters
         ----------
         fakeCat : `pandas.DataFrame`
-            Catalog of fakes to match to detected diaSources.
-        diffIm : `lsst.afw.image.Exposure`
-            Difference image where ``associatedDiaSources`` were detected in.
-        associatedDiaSources : `pandas.DataFrame`
-            Catalog of difference image sources detected in ``diffIm``.
+            Catalog of fakes to match to detected sources.
+        image : `lsst.afw.image.Exposure`
+            Difference image where ``detectedSources`` were detected.
+        detectedSources : `pandas.DataFrame`
+            Catalog of sources detected in ``image``.
 
         Returns
         -------
         result : `lsst.pipe.base.Struct`
             Results struct with components.
 
-            - ``matchedDiaSources`` : Fakes matched to input diaSources. Has
+            - ``matchedSources`` : Fakes matched to input sources. Has
               length of ``fakeCat``. (`pandas.DataFrame`)
         """
-        trimmedFakes = self._trimFakeCat(fakeCat, diffIm)
+        trimmedFakes = self._trimFakeCat(fakeCat, image)
         nPossibleFakes = len(trimmedFakes)
 
         fakeVects = self._getVectors(trimmedFakes[self.config.raColName],
                                      trimmedFakes[self.config.decColName])
-        diaSrcVects = self._getVectors(
-            np.radians(associatedDiaSources.loc[:, "ra"]),
-            np.radians(associatedDiaSources.loc[:, "decl"]))
+        srcVects = self._getVectors(
+            np.radians(detectedSources.loc[:, "ra"]),
+            np.radians(detectedSources.loc[:, "decl"]))
 
-        diaSrcTree = cKDTree(diaSrcVects)
-        dist, idxs = diaSrcTree.query(
+        srcTree = cKDTree(srcVects)
+        dist, idxs = srcTree.query(
             fakeVects,
             distance_upper_bound=np.radians(self.config.matchDistanceArcseconds / 3600))
         nFakesFound = np.isfinite(dist).sum()
 
         self.log.info("Found %d out of %d possible.", nFakesFound, nPossibleFakes)
-        diaSrcIds = associatedDiaSources.iloc[np.where(np.isfinite(dist), idxs, 0)]["diaSourceId"].to_numpy()
-        matchedFakes = trimmedFakes.assign(diaSourceId=np.where(np.isfinite(dist), diaSrcIds, 0))
+        srcIds = detectedSources.iloc[np.where(np.isfinite(dist), idxs, 0)]["diaSourceId"].to_numpy()
+        matchedFakes = trimmedFakes.assign(diaSourceId=np.where(np.isfinite(dist), srcIds, 0))
 
         return Struct(
-            matchedDiaSources=matchedFakes.merge(
-                associatedDiaSources.reset_index(drop=True), on="diaSourceId", how="left")
+            matchedSources=matchedFakes.merge(
+                detectedSources.reset_index(drop=True), on="diaSourceId", how="left")
         )
 
     def _trimFakeCat(self, fakeCat, image):
