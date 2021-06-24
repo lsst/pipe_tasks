@@ -43,7 +43,7 @@ class MatchFakesConnections(PipelineTaskConnections,
                                         "visit",
                                         "detector")):
     fakeCat = connTypes.Input(
-        doc="Catalog of fake sources to draw inputs from.",
+        doc="Catalog of fake sources inserted into an image.",
         name="{fakesType}fakeSourceCat",
         storageClass="DataFrame",
         dimensions=("tract", "skymap")
@@ -55,14 +55,16 @@ class MatchFakesConnections(PipelineTaskConnections,
         dimensions=("instrument", "visit", "detector"),
     )
     associatedDiaSources = connTypes.Input(
-        doc="Optional output storing the DiaSource catalog after matching and "
-            "SDMification.",
+        doc="A DiaSource catalog to match against fakeCat. Assumed "
+            "to be SDMified.",
         name="{fakesType}{coaddName}Diff_assocDiaSrc",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector"),
     )
     matchedDiaSources = connTypes.Output(
-        doc="",
+        doc="A catalog of those fakeCat sources that have a match in "
+            "associatedDiaSources. The schema is the union of the schemas for "
+            "``fakeCat`` and ``associatedDiaSources``.",
         name="{fakesType}{coaddName}Diff_matchDiaSrc",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector"),
@@ -75,7 +77,7 @@ class MatchFakesConfig(
     """Config for MatchFakesTask.
     """
     matchDistanceArcseconds = pexConfig.RangeField(
-        doc="Distance in arcseconds to ",
+        doc="Distance in arcseconds to match within.",
         dtype=float,
         default=0.5,
         min=0,
@@ -84,10 +86,8 @@ class MatchFakesConfig(
 
 
 class MatchFakesTask(PipelineTask):
-    """Create and store a set of spatially uniform star fakes over the sphere.
-    Additionally assign random magnitudes to said
-    fakes and assign them to be inserted into either a visit exposure or
-    template exposure.
+    """Match a pre-existing catalog of fakes to a catalog of detections on
+    a difference image.
     """
 
     _DefaultName = "matchFakes"
@@ -107,7 +107,7 @@ class MatchFakesTask(PipelineTask):
         fakeCat : `pandas.DataFrame`
             Catalog of fakes to match to detected diaSources.
         diffIm : `lsst.afw.image.Exposure`
-            Difference image where ``associatedDiaSources`` were detected in.
+            Difference image where ``associatedDiaSources`` were detected.
         associatedDiaSources : `pandas.DataFrame`
             Catalog of difference image sources detected in ``diffIm``.
 
