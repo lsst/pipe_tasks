@@ -787,8 +787,11 @@ class MakeWarpTask(MakeCoaddTempExpTask):
         else:
             externalPhotoCalibCatalog = None
 
-        self.prepareCalibratedExposures(**inputs, externalSkyWcsCatalog=externalSkyWcsCatalog,
-                                        externalPhotoCalibCatalog=externalPhotoCalibCatalog)
+        completeIndices = self.prepareCalibratedExposures(**inputs,
+                                                          externalSkyWcsCatalog=externalSkyWcsCatalog,
+                                                          externalPhotoCalibCatalog=externalPhotoCalibCatalog)
+        # Redo the input selection with inputs with complete wcs/photocalib info.
+        inputs = self.filterInputs(indices=completeIndices, inputs=inputs)
 
         results = self.run(**inputs, visitId=visitId,
                            ccdIdList=[ccdIdList[i] for i in goodIndices],
@@ -834,13 +837,21 @@ class MakeWarpTask(MakeCoaddTempExpTask):
             Exposure catalog with external photoCalib to be applied
             if config.doApplyExternalPhotoCalib=True.  Catalog uses the detector
             id for the catalog id, sorted on id for fast lookup.
+
+        Returns
+        -------
+        indices : `list` [`int`]
+            Indices of calExpList and friends that have valid photoCalib/skyWcs
         """
         backgroundList = len(calExpList)*[None] if backgroundList is None else backgroundList
         skyCorrList = len(calExpList)*[None] if skyCorrList is None else skyCorrList
 
         includeCalibVar = self.config.includeCalibVar
 
-        for calexp, background, skyCorr in zip(calExpList, backgroundList, skyCorrList):
+        indices = []
+        for index, (calexp, background, skyCorr) in enumerate(zip(calExpList,
+                                                                  backgroundList,
+                                                                  skyCorrList)):
             mi = calexp.maskedImage
             if not self.config.bgSubtracted:
                 mi += background.getImage()
@@ -852,26 +863,41 @@ class MakeWarpTask(MakeCoaddTempExpTask):
             if externalPhotoCalibCatalog is not None:
                 row = externalPhotoCalibCatalog.find(detectorId)
                 if row is None:
-                    raise RuntimeError(f"Detector id {detectorId} not found in "
-                                       f"externalPhotoCalibCatalog.")
+                    self.log.warn("Detector id %s not found in externalPhotoCalibCatalog "
+                                  "and will not be used in the warp.", detectorId)
+                    continue
                 photoCalib = row.getPhotoCalib()
                 if photoCalib is None:
-                    raise RuntimeError(f"Detector id {detectorId} has None for photoCalib "
-                                       f"in externalPhotoCalibCatalog.")
+                    self.log.warn("Detector id %s has None for photoCalib in externalPhotoCalibCatalog "
+                                  "and will not be used in the warp.", detectorId)
+                    continue
                 calexp.setPhotoCalib(photoCalib)
             else:
                 photoCalib = calexp.getPhotoCalib()
+                if photoCalib is None:
+                    self.log.warn("Detector id %s has None for photoCalib in the calexp "
+                                  "and will not be used in the warp.", detectorId)
+                    continue
 
             # Find and apply external skyWcs
             if externalSkyWcsCatalog is not None:
                 row = externalSkyWcsCatalog.find(detectorId)
                 if row is None:
-                    raise RuntimeError(f"Detector id {detectorId} not found in externalSkyWcsCatalog.")
+                    self.log.warn(("Detector id %s not found in externalSkyWcsCatalog "
+                                   "and will not be used in the warp."), detectorId)
+                    continue
                 skyWcs = row.getWcs()
                 if skyWcs is None:
-                    raise RuntimeError(f"Detector id {detectorId} has None for WCS "
-                                       f" in externalSkyWcsCatalog.")
+                    self.log.warn("Detector id %s has None for skyWcs in externalSkyWcsCatalog "
+                                  "and will not be used in the warp.", detectorId)
+                    continue
                 calexp.setWcs(skyWcs)
+            else:
+                skyWcs = calexp.getSkyWcs()
+                if skyWcs is None:
+                    self.log.warn("Detector id %s has None for skyWcs in the calexp "
+                                  "and will not be used in the warp.", detectorId)
+                    continue
 
             # Calibrate the image
             calexp.maskedImage = photoCalib.calibrateImage(calexp.maskedImage,
@@ -883,6 +909,10 @@ class MakeWarpTask(MakeCoaddTempExpTask):
             # Apply skycorr
             if self.config.doApplySkyCorr:
                 mi -= skyCorr.getImage()
+
+            indices.append(index)
+
+        return indices
 
 
 def reorderRefs(inputRefs, outputSortKeyOrder, dataIdKey):
