@@ -200,6 +200,31 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
         result = matchTask._trimFakeCat(self.fakeCat, self.exposure)
         self.assertEqual(len(result), self.inExp.sum())
 
+    def testNonstandardCat(self):
+        customCat = pd.DataFrame(
+            data={"ra2k": self.sourceCat["ra"],
+                  "de2k": self.sourceCat["decl"],
+                  "filterName": self.sourceCat["filterName"],
+                  "unsourceId": np.arange(1, len(self.sourceCat) + 1, dtype=int),
+                  "extraColumn": self.sourceCat["extraColumn"]})
+        customCat.set_index(["unsourceId", "filterName", "extraColumn"],
+                            drop=False,
+                            inplace=True)
+        matchFakesConfig = MatchFakesConfig()
+        matchFakesConfig.matchDistanceArcseconds = 0.1
+        matchFakesConfig.src_id_col = "unsourceId"
+        matchFakesConfig.src_ra_col = "ra2k"
+        matchFakesConfig.src_dec_col = "de2k"
+
+        matchFakes = MatchFakesTask(config=matchFakesConfig)
+        result = matchFakes.run(self.fakeCat,
+                                self.exposure,
+                                customCat)
+        self.assertEqual(self.inExp.sum(), len(result.matchedSources))
+        self.assertEqual(
+            len(self.sourceCat),
+            np.sum(np.isfinite(result.matchedSources["extraColumn"])))
+
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
     pass

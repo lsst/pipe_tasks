@@ -55,8 +55,7 @@ class MatchFakesConnections(PipelineTaskConnections,
         dimensions=("instrument", "visit", "detector"),
     )
     detectedSources = connTypes.Input(
-        doc="A source or DiaSource catalog to match against fakeCat. Assumed "
-            "to be SDMified.",
+        doc="A source or DiaSource catalog to match against fakeCat.",
         name="{fakesType}{coaddName}Diff_assocDiaSrc",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector"),
@@ -82,6 +81,21 @@ class MatchFakesConfig(
         default=0.5,
         min=0,
         max=10,
+    )
+    src_id_col = pexConfig.Field(
+        doc="Column in detectedSources containing the source ID.",
+        dtype=str,
+        default="diaSourceId",
+    )
+    src_ra_col = pexConfig.Field(
+        doc="Column in detectedSources containing the J2000 right ascension, in degrees.",
+        dtype=str,
+        default="ra",
+    )
+    src_dec_col = pexConfig.Field(
+        doc="Column in detectedSources containing the J2000 declination, in degrees.",
+        dtype=str,
+        default="decl",
     )
 
 
@@ -125,8 +139,8 @@ class MatchFakesTask(PipelineTask):
         fakeVects = self._getVectors(trimmedFakes[self.config.raColName],
                                      trimmedFakes[self.config.decColName])
         srcVects = self._getVectors(
-            np.radians(detectedSources.loc[:, "ra"]),
-            np.radians(detectedSources.loc[:, "decl"]))
+            np.radians(detectedSources.loc[:, self.config.src_ra_col]),
+            np.radians(detectedSources.loc[:, self.config.src_dec_col]))
 
         srcTree = cKDTree(srcVects)
         dist, idxs = srcTree.query(
@@ -135,12 +149,12 @@ class MatchFakesTask(PipelineTask):
         nFakesFound = np.isfinite(dist).sum()
 
         self.log.info("Found %d out of %d possible.", nFakesFound, nPossibleFakes)
-        srcIds = detectedSources.iloc[np.where(np.isfinite(dist), idxs, 0)]["diaSourceId"].to_numpy()
-        matchedFakes = trimmedFakes.assign(diaSourceId=np.where(np.isfinite(dist), srcIds, 0))
+        srcIds = detectedSources.iloc[np.where(np.isfinite(dist), idxs, 0)][self.config.src_id_col].to_numpy()
+        matchedFakes = trimmedFakes.assign(**{self.config.src_id_col: np.where(np.isfinite(dist), srcIds, 0)})
 
         return Struct(
             matchedSources=matchedFakes.merge(
-                detectedSources.reset_index(drop=True), on="diaSourceId", how="left")
+                detectedSources.reset_index(drop=True), on=self.config.src_id_col, how="left")
         )
 
     def _trimFakeCat(self, fakeCat, image):
