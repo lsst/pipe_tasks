@@ -15,7 +15,8 @@ class DataFrameAction(ConfigurableAction):
                       " only works on frozen actions",
                   dtype=bool, default=False)
     cacheArgs = ListField(doc="If cache is True, this is a list of argument keys that will be used to "
-                          "compute the cache key in addition to the DataFrameId", dtype=str)
+                              "compute the cache key in addition to the DataFrameId",
+                          dtype=str, optional=True)
 
     def __init_subclass__(cls, **kwargs) -> None:
         cls._actionCache = {}
