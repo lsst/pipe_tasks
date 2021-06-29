@@ -22,6 +22,7 @@
 import yaml
 import re
 from itertools import product
+import os.path
 
 import pandas as pd
 import numpy as np
@@ -528,6 +529,8 @@ class CompositeFunctor(Functor):
 
     @classmethod
     def from_file(cls, filename, **kwargs):
+        # Allow environment variables in the filename.
+        filename = os.path.expandvars(filename)
         with open(filename) as f:
             translationDefinition = yaml.safe_load(f)
 
