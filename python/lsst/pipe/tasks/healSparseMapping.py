@@ -544,6 +544,10 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
 
             valid_pixels, vpix_ra, vpix_dec = input_map.valid_pixels_pos(return_pixels=True)
 
+            # Check if there are no valid pixels for the inner (unique) patch region
+            if valid_pixels.size == 0:
+                continue
+
             # Initialize the value accumulators
             for property_map in self.property_maps:
                 property_map.initialize_values(valid_pixels.size)
