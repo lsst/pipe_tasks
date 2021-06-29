@@ -359,9 +359,13 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             - ``warpedStars``:
                   `list` [`afwImage.maskedImage.maskedImage.MaskedImage`] of
                   stamps of warped stars
-            - ``warpTransforms``: `list` [`afwGeom.TransformPoint2ToPoint2`] of
+            - ``warpTransforms``:
+                  `list` [`afwGeom.TransformPoint2ToPoint2`] of
                   the corresponding Transform from the initial star stamp to
                   the common model grid
+            - ``xy0s``:
+                  `list` [`geom.Point2I`] of coordinates of the bottom-left
+                  pixels of each stamp, before rotation
         """
         # warping control; only contains shiftingALg provided in config
         warpCont = afwMath.WarpingControl(self.config.warpingKernelName)
@@ -383,7 +387,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         nb90Rots = np.argmin(np.abs(possibleRots - float(yaw)))
 
         # apply transformation to each star
-        warpedStars, warpTransforms = [], []
+        warpedStars, warpTransforms, xy0s = [], [], []
         for star, cent in zip(stamps, pixCenters):
             # (re)create empty destination image
             destImage = afwImage.MaskedImageF(*self.modelStampSize)
@@ -393,8 +397,9 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             newBottomLeft.setY(newBottomLeft.getY() - bufferPix[1]/2)
             # Convert to int
             newBottomLeft = geom.Point2I(newBottomLeft)
-            # Set origin
+            # Set origin and save it
             destImage.setXY0(newBottomLeft)
+            xy0s.append(newBottomLeft)
 
             # Define linear shifting to recenter stamps
             newCenter = pixToTan.applyForward(cent)  # center of warped star
@@ -420,7 +425,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 destImage = afwMath.rotateImageBy90(destImage, nb90Rots)
             warpedStars.append(destImage.clone())
             warpTransforms.append(starWarper)
-        return pipeBase.Struct(warpedStars=warpedStars, warpTransforms=warpTransforms)
+        return pipeBase.Struct(warpedStars=warpedStars, warpTransforms=warpTransforms, xy0s=xy0s)
 
     @pipeBase.timeMethod
     def run(self, inputExposure, refObjLoader=None, dataId=None, skyCorr=None):
@@ -465,8 +470,10 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                       len(extractedStamps.starIms), dataId)
         warpOutputs = self.warpStamps(extractedStamps.starIms, extractedStamps.pixCenters)
         warpedStars = warpOutputs.warpedStars
+        xy0s = warpOutputs.xy0s
         brightStarList = [bSS.BrightStarStamp(stamp_im=warp,
                                               archive_element=transform,
+                                              position=xy0s[j],
                                               gaiaGMag=extractedStamps.GMags[j],
                                               gaiaId=extractedStamps.gaiaIds[j])
                           for j, (warp, transform) in
