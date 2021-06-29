@@ -495,6 +495,14 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
             Dictionary of input map references.  Keys are patch numbers.
         visit_summary_dict : `dict` [`int`: `lsst.afw.table.ExposureCatalog`]
             Dictionary of visit summary tables.  Keys are visit numbers.
+
+        Raises
+        ------
+        RepeatableQuantumError
+            If visit_summary_dict is missing any visits or detectors found in an
+            input map.  This leads to an inconsistency between what is in the coadd
+            (via the input map) and the visit summary tables which contain data
+            to compute the maps.
         """
         tract_info = sky_map[tract]
 
@@ -570,7 +578,13 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
                 total_inputs[inmap] += 1
 
                 # Retrieve the correct visitSummary row
+                if visit not in visit_summary_dict:
+                    msg = f"Visit {visit} not found in visit_summaries."
+                    raise pipeBase.RepeatableQuantumError(msg)
                 row = visit_summary_dict[visit].find(detector_id)
+                if row is None:
+                    msg = f"Visit {visit} / detector_id {detector_id} not found in visit_summaries."
+                    raise pipeBase.RepeatableQuantumError(msg)
 
                 # Accumulate the values
                 for property_map in self.property_maps:
