@@ -405,6 +405,10 @@ class LineProfile:
             chi2, b, A = self._lineChi2(line)
             if chi2 == 0:
                 break
+            if not np.isfinite(A).all():
+                # TODO: DM-30797 Add warning here.
+                fitFailure = True
+                break
             dChi2 = oldChi2 - chi2
             cholesky = scipy.linalg.cho_factor(A)
             dx = scipy.linalg.cho_solve(cholesky, b)
@@ -708,6 +712,8 @@ class MaskStreaksTask(pipeBase.Task):
         """
         data = maskedImage.image.array
         weights = maskedImage.variance.array**-1
+        # Mask out any pixels with non-finite weights
+        weights[~np.isfinite(weights) | ~np.isfinite(data)] = 0
 
         lineFits = LineCollection([], [])
         finalLineMasks = [np.zeros(data.shape, dtype=bool)]
