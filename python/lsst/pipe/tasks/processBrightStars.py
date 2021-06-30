@@ -366,6 +366,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             - ``xy0s``:
                   `list` [`geom.Point2I`] of coordinates of the bottom-left
                   pixels of each stamp, before rotation
+            - ``nb90Rots``: `int`, the number of 90 degrees rotations required
+                  to compensate for detector orientation
         """
         # warping control; only contains shiftingALg provided in config
         warpCont = afwMath.WarpingControl(self.config.warpingKernelName)
@@ -425,7 +427,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 destImage = afwMath.rotateImageBy90(destImage, nb90Rots)
             warpedStars.append(destImage.clone())
             warpTransforms.append(starWarper)
-        return pipeBase.Struct(warpedStars=warpedStars, warpTransforms=warpTransforms, xy0s=xy0s)
+        return pipeBase.Struct(warpedStars=warpedStars, warpTransforms=warpTransforms, xy0s=xy0s,
+                               nb90Rots=nb90Rots)
 
     @pipeBase.timeMethod
     def run(self, inputExposure, refObjLoader=None, dataId=None, skyCorr=None):
@@ -490,6 +493,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         brightStarStamps = bSS.BrightStarStamps.initAndNormalize(brightStarList,
                                                                  innerRadius=innerRadius,
                                                                  outerRadius=outerRadius,
+                                                                 nb90Rots=warpOutputs.nb90Rots,
                                                                  imCenter=self.modelCenter,
                                                                  use_archive=True,
                                                                  statsControl=statsControl,
