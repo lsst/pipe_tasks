@@ -893,7 +893,7 @@ class MakeWarpTask(MakeCoaddTempExpTask):
                     continue
                 calexp.setWcs(skyWcs)
             else:
-                skyWcs = calexp.getSkyWcs()
+                skyWcs = calexp.getWcs()
                 if skyWcs is None:
                     self.log.warn("Detector id %s has None for skyWcs in the calexp "
                                   "and will not be used in the warp.", detectorId)
