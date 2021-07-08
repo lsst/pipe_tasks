@@ -320,7 +320,7 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
     )
     doSkySources = pexConfig.Field(
         dtype=bool,
-        default=True,
+        default=False,
         doc="Generate sky sources?",
     )
     skySources = pexConfig.ConfigurableField(
@@ -367,6 +367,8 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
             raise ValueError("Cannot run source measurement without source detection.")
         if self.doMerge and not self.doDetection:
             raise ValueError("Cannot run source merging without source detection.")
+        if self.doSkySources and not self.doDetection:
+            raise ValueError("Cannot run sky source creation without source detection.")
         if self.doUseRegister and not self.doSelectSources:
             raise ValueError("doUseRegister=True and doSelectSources=False. "
                              "Cannot run RegisterTask without selecting sources.")
