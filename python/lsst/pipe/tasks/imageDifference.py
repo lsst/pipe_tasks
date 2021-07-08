@@ -32,7 +32,7 @@ import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryConfig, AstrometryTask
 from lsst.meas.base import ForcedMeasurementTask, ApplyApCorrTask
-from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
+from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask, SkyObjectsTask
 from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.pipe.tasks.scaleVariance import ScaleVarianceTask
 from lsst.meas.algorithms import SourceDetectionTask, SingleGaussianPsf, ObjectSizeStarSelectorTask
@@ -318,6 +318,15 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
         doc="Do not attempt to run task if template covers less than this fraction of pixels."
         "Setting to 0 will always attempt image subtraction"
     )
+    doSkySources = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Generate sky sources?",
+    )
+    skySources = pexConfig.ConfigurableField(
+        target=SkyObjectsTask,
+        doc="Generate sky sources",
+    )
 
     def setDefaults(self):
         # defaults are OK for catalog and diacatalog
@@ -358,6 +367,8 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
             raise ValueError("Cannot run source measurement without source detection.")
         if self.doMerge and not self.doDetection:
             raise ValueError("Cannot run source merging without source detection.")
+        if self.doSkySources and not self.doDetection:
+            raise ValueError("Cannot run sky source creation without source detection.")
         if self.doUseRegister and not self.doSelectSources:
             raise ValueError("doUseRegister=True and doSelectSources=False. "
                              "Cannot run RegisterTask without selecting sources.")
@@ -475,6 +486,9 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         if self.config.doMatchSources:
             self.schema.addField("refMatchId", "L", "unique id of reference catalog match")
             self.schema.addField("srcMatchId", "L", "unique id of source match")
+        if self.config.doSkySources:
+            self.makeSubtask("skySources")
+            self.skySourceKey = self.schema.addField("sky_source", type="Flag", doc="Sky objects.")
 
         # initialize InitOutputs
         self.outputSchema = afwTable.SourceCatalog(self.schema)
@@ -1002,6 +1016,16 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                 self.log.info("Merging detections into %d sources" % (len(diaSources)))
             else:
                 diaSources = results.sources
+            # Inject skySources before measurement.
+            if self.config.doSkySources:
+                skySourceFootprints = self.skySources.run(
+                    mask=detectionExposure.mask,
+                    seed=detectionExposure.getInfo().getVisitInfo().getExposureId())
+                if skySourceFootprints:
+                    for foot in skySourceFootprints:
+                        s = diaSources.addNew()
+                        s.setFootprint(foot)
+                        s.set(self.skySourceKey, True)
 
             if self.config.doMeasurement:
                 newDipoleFitting = self.config.doDipoleFitting
