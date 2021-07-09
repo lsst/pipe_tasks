@@ -22,6 +22,7 @@
 import os
 import unittest
 import numpy as np
+import logging
 
 from lsst.geom import Point2I, Box2I, Extent2I
 from lsst.skymap import TractInfo
@@ -29,7 +30,6 @@ from lsst.skymap.patchInfo import PatchInfo
 import lsst.afw.image as afwImage
 import lsst.utils.tests
 from lsst.utils import getPackageDir
-from lsst.log import Log
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
 from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 from lsst.meas.algorithms import SourceDetectionTask, SkyObjectsTask
@@ -160,7 +160,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         self.charImResults = charImTask.run(self.exposure)
 
         # set log level so that warnings do not display
-        Log.getLogger("calibrate").setLevel(Log.ERROR)
+        logging.getLogger("calibrate").setLevel(logging.ERROR)
 
     def tearDown(self):
         del self.exposure
