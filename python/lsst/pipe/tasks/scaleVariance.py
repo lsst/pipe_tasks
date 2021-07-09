@@ -184,7 +184,7 @@ class ScaleVarianceTask(Task):
                   & (maskedImage.variance.array > 0))
 
         nGood = np.sum(isGood)
-        self.log.debugf("Number of selected background pixels: {} of {}.", nGood, isGood.size)
+        self.log.debug("Number of selected background pixels: %d of %d.", nGood, isGood.size)
         if nGood < 2:
             # Not enough good data, np.percentile needs at least 2 points
             # to estimate a range
@@ -224,7 +224,7 @@ class ScaleVarianceTask(Task):
                   & np.isfinite(maskedImage.variance.array)
                   & (maskedImage.variance.array > 0))
         nGood = np.sum(isGood)
-        self.log.debugf("Number of selected background pixels: {} of {}.", nGood, isGood.size)
+        self.log.debug("Number of selected background pixels: %d of %d.", nGood, isGood.size)
         if nGood < 2:
             # Not enough good data, np.percentile needs at least 2 points
             # to estimate a range
