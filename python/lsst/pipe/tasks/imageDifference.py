@@ -523,7 +523,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                    inputRefs: pipeBase.InputQuantizedConnection,
                    outputRefs: pipeBase.OutputQuantizedConnection):
         inputs = butlerQC.get(inputRefs)
-        self.log.info(f"Processing {butlerQC.quantum.dataId}")
+        self.log.info("Processing %s", butlerQC.quantum.dataId)
         expId, expBits = butlerQC.quantum.dataId.pack("visit_detector",
                                                       returnMaxBits=True)
         idFactory = self.makeIdFactory(expId=expId, expBits=expBits)
@@ -583,7 +583,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         subtractedExposure = None
         selectSources = None
         calexpBackgroundExposure = None
-        self.log.info("Processing %s" % (sensorRef.dataId))
+        self.log.info("Processing %s", sensorRef.dataId)
 
         # We make one IdFactory that will be used by both icSrc and src datasets;
         # I don't know if this is the way we ultimately want to do things, but at least
@@ -715,7 +715,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                 self.log.info("Rescaling template variance")
                 templateVarFactor = self.scaleVariance.run(
                     templateExposure.getMaskedImage())
-                self.log.info("Template variance scaling factor: %.2f" % templateVarFactor)
+                self.log.info("Template variance scaling factor: %.2f", templateVarFactor)
                 self.metadata.add("scaleTemplateVarianceFactor", templateVarFactor)
 
             if self.config.subtract.name == 'zogy':
@@ -826,8 +826,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                         varSources = varSelector.selectStars(exposure, selectSources, matches=matches).starCat
                         controlSources.extend(varSources)
 
-                    self.log.info("Selected %d / %d sources for Psf matching (%d for control sample)"
-                                  % (len(kernelSources), len(selectSources), len(controlSources)))
+                    self.log.info("Selected %d / %d sources for Psf matching (%d for control sample)",
+                                  len(kernelSources), len(selectSources), len(controlSources))
 
                 allresids = {}
                 # TODO: DM-22762 This functional block should be moved into its own method
@@ -894,15 +894,15 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                             (numpy.percentile(dlong[idx3], 75) - numpy.percentile(dlong[idx3], 25)))
                         rms3Lat = IqrToSigma*(numpy.percentile(dlat[idx3], 75)
                                               - numpy.percentile(dlat[idx3], 25))
-                        self.log.info("Blue star offsets'': %.3f %.3f, %.3f %.3f" %
-                                      (numpy.median(dlong[idx1]), rms1Long,
-                                       numpy.median(dlat[idx1]), rms1Lat))
-                        self.log.info("Green star offsets'': %.3f %.3f, %.3f %.3f" %
-                                      (numpy.median(dlong[idx2]), rms2Long,
-                                       numpy.median(dlat[idx2]), rms2Lat))
-                        self.log.info("Red star offsets'': %.3f %.3f, %.3f %.3f" %
-                                      (numpy.median(dlong[idx3]), rms3Long,
-                                       numpy.median(dlat[idx3]), rms3Lat))
+                        self.log.info("Blue star offsets'': %.3f %.3f, %.3f %.3f",
+                                      numpy.median(dlong[idx1]), rms1Long,
+                                      numpy.median(dlat[idx1]), rms1Lat)
+                        self.log.info("Green star offsets'': %.3f %.3f, %.3f %.3f",
+                                      numpy.median(dlong[idx2]), rms2Long,
+                                      numpy.median(dlat[idx2]), rms2Lat)
+                        self.log.info("Red star offsets'': %.3f %.3f, %.3f %.3f",
+                                      numpy.median(dlong[idx3]), rms3Long,
+                                      numpy.median(dlat[idx3]), rms3Lat)
 
                         self.metadata.add("RegisterBlueLongOffsetMedian", numpy.median(dlong[idx1]))
                         self.metadata.add("RegisterGreenLongOffsetMedian", numpy.median(dlong[idx2]))
@@ -993,7 +993,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
             if self.config.doScaleDiffimVariance:
                 self.log.info("Rescaling diffim variance")
                 diffimVarFactor = self.scaleVariance.run(detectionExposure.getMaskedImage())
-                self.log.info("Diffim variance scaling factor: %.2f" % diffimVarFactor)
+                self.log.info("Diffim variance scaling factor: %.2f", diffimVarFactor)
                 self.metadata.add("scaleDiffimVarianceFactor", diffimVarFactor)
 
             # Erase existing detection mask planes
@@ -1014,7 +1014,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                             self.config.growFootprint, False)
                 diaSources = afwTable.SourceCatalog(table)
                 fpSet.makeSources(diaSources)
-                self.log.info("Merging detections into %d sources" % (len(diaSources)))
+                self.log.info("Merging detections into %d sources", len(diaSources))
             else:
                 diaSources = results.sources
             # Inject skySources before measurement.
@@ -1079,8 +1079,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                     srcMatches = afwTable.matchXy(selectSources, diaSources, matchRadPixel)
                     srcMatchDict = dict([(srcMatch.second.getId(), srcMatch.first.getId()) for
                                          srcMatch in srcMatches])
-                    self.log.info("Matched %d / %d diaSources to sources" % (len(srcMatchDict),
-                                                                             len(diaSources)))
+                    self.log.info("Matched %d / %d diaSources to sources",
+                                  len(srcMatchDict), len(diaSources))
                 else:
                     self.log.warning("Src product does not exist; cannot match with diaSources")
                     srcMatchDict = {}
@@ -1095,8 +1095,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                     self.log.warning("No diaSource matches with reference catalog")
                     refMatchDict = {}
                 else:
-                    self.log.info("Matched %d / %d diaSources to reference catalog" % (len(refMatches),
-                                                                                       len(diaSources)))
+                    self.log.info("Matched %d / %d diaSources to reference catalog",
+                                  len(refMatches), len(diaSources))
                     refMatchDict = dict([(refMatch.second.getId(), refMatch.first.getId()) for
                                          refMatch in refMatches])
 

@@ -501,7 +501,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         try:
             psfResults = self.measurePsf.run(coaddExposure, coaddSources)
         except Exception as e:
-            self.log.warning("Unable to calculate PSF, using default coadd PSF: %s" % e)
+            self.log.warning("Unable to calculate PSF, using default coadd PSF: %s", e)
         else:
             coaddExposure.setPsf(psfResults.psf)
 
@@ -567,7 +567,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         try:
             psf = self.selectCoaddPsf(templateCoadd, warpRefList)
         except Exception as e:
-            self.log.warning("Unable to calculate restricted PSF, using default coadd PSF: %s" % e)
+            self.log.warning("Unable to calculate restricted PSF, using default coadd PSF: %s", e)
         else:
             psf = templateCoadd.getPsf()
         dcrModels = DcrModel.fromImage(templateCoadd.maskedImage,

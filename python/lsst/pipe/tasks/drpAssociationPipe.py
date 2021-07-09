@@ -145,8 +145,8 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 Table of DiaObjects from matching DiaSources
                 (`pandas.DataFrame`).
         """
-        self.log.info("Running DPR Association on patch %i, tract %i..." %
-                      (patchId, tractId))
+        self.log.info("Running DPR Association on patch %i, tract %i...",
+                      patchId, tractId)
 
         skyInfo = makeSkyInfo(skyMap, tractId, patchId)
 
@@ -167,9 +167,9 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             self.log.info(
                 "Read DiaSource catalog of length %i from visit %i, "
                 "detector %i. Found %i sources within the patch/tract "
-                "footprint." %
-                (len(cat), catRef.dataId["visit"],
-                 catRef.dataId["detector"], nDiaSrc))
+                "footprint.",
+                len(cat), catRef.dataId["visit"],
+                catRef.dataId["detector"], nDiaSrc)
 
             if nDiaSrc <= 0:
                 diaSourceHistory.append(pd.DataFrame(columns=cat.columns))
@@ -179,14 +179,14 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             diaSourceHistory.append(cutCat)
 
         diaSourceHistoryCat = pd.concat(diaSourceHistory)
-        self.log.info("Found %i DiaSources overlapping patch %i, tract %i"
-                      % (len(diaSourceHistoryCat), patchId, tractId))
+        self.log.info("Found %i DiaSources overlapping patch %i, tract %i",
+                      len(diaSourceHistoryCat), patchId, tractId)
 
         assocResult = self.associator.run(diaSourceHistoryCat,
                                           tractPatchId,
                                           skymapBits)
 
-        self.log.info("Associated DiaSources into %i DiaObjects" %
+        self.log.info("Associated DiaSources into %i DiaObjects",
                       len(assocResult.diaObjects))
 
         return pipeBase.Struct(

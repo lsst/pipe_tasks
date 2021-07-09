@@ -288,4 +288,4 @@ class RepairTask(pipeBase.Task):
                     for cr in crs:
                         afwDisplay.utils.drawBBox(cr.getBBox(), borderWidth=0.55)
 
-        self.log.info("Identified %s cosmic rays." % (num,))
+        self.log.info("Identified %s cosmic rays.", num)

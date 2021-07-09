@@ -190,8 +190,8 @@ class WriteObjectTableTask(CmdLineTask, pipeBase.PipelineTask):
         catalogDict = {}
         for dataset in self.inputDatasets:
             catalog = patchRef.get(self.config.coaddName + "Coadd_" + dataset, immediate=True)
-            self.log.info("Read %d sources from %s for band %s: %s" %
-                          (len(catalog), dataset, band, patchRef.dataId))
+            self.log.info("Read %d sources from %s for band %s: %s",
+                          len(catalog), dataset, band, patchRef.dataId)
             catalogDict[dataset] = catalog
         return band, catalogDict
 
@@ -247,7 +247,7 @@ class WriteObjectTableTask(CmdLineTask, pipeBase.PipelineTask):
         # it's confusing to see it in the log message, even if the butler simply ignores it.
         mergeDataId = patchRef.dataId.copy()
         del mergeDataId["filter"]
-        self.log.info("Wrote merged catalog: %s" % (mergeDataId,))
+        self.log.info("Wrote merged catalog: %s", mergeDataId)
 
     def writeMetadata(self, dataRefList):
         """No metadata to write, and not sure how to write it for a list of dataRefs.
@@ -1064,8 +1064,8 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     def runDataRef(self, dataRefList):
         visit = dataRefList[0].dataId['visit']
 
-        self.log.debug("Concatenating metadata from %d per-detector calexps (visit %d)" %
-                       (len(dataRefList), visit))
+        self.log.debug("Concatenating metadata from %d per-detector calexps (visit %d)",
+                       len(dataRefList), visit)
 
         expCatalog = self._combineExposureMetadata(visit, dataRefList, isGen3=False)
 
@@ -1075,8 +1075,8 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         dataRefs = butlerQC.get(inputRefs.calexp)
         visit = dataRefs[0].dataId.byName()['visit']
 
-        self.log.debug("Concatenating metadata from %d per-detector calexps (visit %d)" %
-                       (len(dataRefs), visit))
+        self.log.debug("Concatenating metadata from %d per-detector calexps (visit %d)",
+                       len(dataRefs), visit)
 
         expCatalog = self._combineExposureMetadata(visit, dataRefs)
 

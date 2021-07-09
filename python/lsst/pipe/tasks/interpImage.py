@@ -110,8 +110,8 @@ class InterpImageTask(pipeBase.Task):
                              "negativeFallbackAllowed is False: setting fallbackValue to 0.0")
             fallbackValue = max(fallbackValue, 0.0)
 
-        self.log.info("fallbackValueType %s has been set to %.4f" %
-                      (self.config.fallbackValueType, fallbackValue))
+        self.log.info("fallbackValueType %s has been set to %.4f",
+                      self.config.fallbackValueType, fallbackValue)
 
         return fallbackValue
 
@@ -168,9 +168,9 @@ class InterpImageTask(pipeBase.Task):
             psf = image.getPsf()
             self.log.info("Setting psf for interpolation from image")
         except AttributeError:
-            self.log.info("Creating psf model for interpolation from fwhm(pixels) = %s" %
-                          (str(fwhmPixels) if fwhmPixels is not None else
-                           (str(self.config.modelPsf.defaultFwhm)) + " [default]"))
+            self.log.info("Creating psf model for interpolation from fwhm(pixels) = %s",
+                          str(fwhmPixels) if fwhmPixels is not None else
+                          (str(self.config.modelPsf.defaultFwhm)) + " [default]")
             psf = self.config.modelPsf.apply(fwhm=fwhmPixels)
 
         fallbackValue = 0.0  # interpolateOverDefects needs this to be a float, regardless if it is used
@@ -179,7 +179,7 @@ class InterpImageTask(pipeBase.Task):
 
         self.interpolateImage(maskedImage, psf, defectList, fallbackValue)
 
-        self.log.info("Interpolated over %d %s pixels." % (len(defectList), planeName))
+        self.log.info("Interpolated over %d %s pixels.", len(defectList), planeName)
 
     @contextmanager
     def transposeContext(self, maskedImage, defects):

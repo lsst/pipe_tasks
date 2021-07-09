@@ -377,7 +377,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             if self.config.doWrite:
                 for (warpType, exposure) in exps.items():  # compatible w/ Py3
                     if exposure is not None:
-                        self.log.info("Persisting %s" % self.getTempExpDatasetName(warpType))
+                        self.log.info("Persisting %s", self.getTempExpDatasetName(warpType))
                         tempExpRef.put(exposure, self.getTempExpDatasetName(warpType))
 
         return dataRefList

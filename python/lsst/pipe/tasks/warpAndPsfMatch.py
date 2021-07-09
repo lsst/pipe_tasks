@@ -114,7 +114,7 @@ class WarpAndPsfMatchTask(pipeBase.Task):
                 exposurePsfMatched = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
             except Exception as e:
                 exposurePsfMatched = None
-                self.log.info("Cannot PSF-Match: %s" % (e))
+                self.log.info("Cannot PSF-Match: %s", e)
 
         return pipeBase.Struct(
             direct=exposure if makeDirect else None,

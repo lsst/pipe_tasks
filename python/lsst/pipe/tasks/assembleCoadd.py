@@ -551,7 +551,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                 coaddDatasetName = "fakes_" + self.getCoaddDatasetName(self.warpType)
             else:
                 coaddDatasetName = self.getCoaddDatasetName(self.warpType)
-            self.log.info("Persisting %s" % coaddDatasetName)
+            self.log.info("Persisting %s", coaddDatasetName)
             dataRef.put(retStruct.coaddExposure, coaddDatasetName)
         if self.config.doNImage and retStruct.nImage is not None:
             dataRef.put(retStruct.nImage, self.getCoaddDatasetName(self.warpType) + '_nImage')
@@ -1152,7 +1152,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                 radius = int(rec["radius"].asArcseconds()/plateScale)   # convert to pixels
                 spans = afwGeom.SpanSet.fromShape(radius, offset=center)
             else:
-                self.log.warning("Unexpected region type %s at %s" % rec["type"], center)
+                self.log.warning("Unexpected region type %s at %s", rec["type"], center)
                 continue
             spans.clippedTo(mask.getBBox()).setMask(mask, self.brightObjectBitmask)
 
@@ -2487,7 +2487,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             try:
                 self.scaleWarpVariance.run(mi)
             except Exception as exc:
-                self.log.warning("Unable to rescale variance of warp (%s); leaving it as-is" % (exc,))
+                self.log.warning("Unable to rescale variance of warp (%s); leaving it as-is", exc)
         mi -= templateCoadd.getMaskedImage()
         return warp
 

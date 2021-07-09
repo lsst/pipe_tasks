@@ -128,7 +128,7 @@ class ScaleVarianceTask(Task):
                 if factor > self.config.limit:
                     raise RuntimeError("Variance rescaling factor (%f) exceeds configured limit (%f)" %
                                        (factor, self.config.limit))
-            self.log.info("Renormalizing variance by %f" % (factor,))
+            self.log.info("Renormalizing variance by %f", factor)
             maskedImage.variance *= factor
         return factor
 

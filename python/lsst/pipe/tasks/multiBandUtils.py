@@ -169,7 +169,7 @@ def readCatalog(task, patchRef):
     """
     band = patchRef.get(task.config.coaddName + "Coadd_filterLabel", immediate=True).bandLabel
     catalog = patchRef.get(task.config.coaddName + "Coadd_" + task.inputDataset, immediate=True)
-    task.log.info("Read %d sources for band %s: %s" % (len(catalog), band, patchRef.dataId))
+    task.log.info("Read %d sources for band %s: %s", len(catalog), band, patchRef.dataId)
     return band, catalog
 
 

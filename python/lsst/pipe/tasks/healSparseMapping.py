@@ -509,7 +509,8 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
         tract_maps_initialized = False
 
         for patch in input_map_dict.keys():
-            self.log.info(f"Making maps for band {band}, tract {tract}, patch {patch}.")
+            self.log.info("Making maps for band %s, tract %d, patch %d.",
+                          band, tract, patch)
 
             patch_info = tract_info[patch]
 

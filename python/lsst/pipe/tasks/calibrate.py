@@ -579,7 +579,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
               command-line task, False for running as a subtask
         @return same data as the calibrate method
         """
-        self.log.info("Processing %s" % (dataRef.dataId))
+        self.log.info("Processing %s", dataRef.dataId)
 
         if doUnpersist:
             if any(item is not None for item in (exposure, background,
@@ -742,7 +742,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 if self.config.requireAstrometry:
                     raise
                 self.log.warning("Unable to perform astrometric calibration "
-                                 "(%s): attempting to proceed" % e)
+                                 "(%s): attempting to proceed", e)
 
         # compute photometric calibration
         if self.config.doPhotoCal:
@@ -750,14 +750,14 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 photoRes = self.photoCal.run(exposure, sourceCat=sourceCat, expId=exposureIdInfo.expId)
                 exposure.setPhotoCalib(photoRes.photoCalib)
                 # TODO: reword this to phrase it in terms of the calibration factor?
-                self.log.info("Photometric zero-point: %f" %
+                self.log.info("Photometric zero-point: %f",
                               photoRes.photoCalib.instFluxToMagnitude(1.0))
                 self.setMetadata(exposure=exposure, photoRes=photoRes)
             except Exception as e:
                 if self.config.requirePhotoCal:
                     raise
                 self.log.warning("Unable to perform photometric calibration "
-                                 "(%s): attempting to proceed" % e)
+                                 "(%s): attempting to proceed", e)
                 self.setMetadata(exposure=exposure, photoRes=None)
 
         if self.config.doInsertFakes:
@@ -882,7 +882,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             metadata.set('COLORTERM2', 0.0)
             metadata.set('COLORTERM3', 0.0)
         except Exception as e:
-            self.log.warning("Could not set exposure metadata: %s" % (e,))
+            self.log.warning("Could not set exposure metadata: %s", e)
 
     def copyIcSourceFields(self, icSourceCat, sourceCat):
         """!Match sources in icSourceCat and sourceCat and copy the specified fields
@@ -933,11 +933,11 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         numMatches = len(matches)
         numUniqueSources = len(set(m[1].getId() for m in matches))
         if numUniqueSources != numMatches:
-            self.log.warning("{} icSourceCat sources matched only {} sourceCat "
-                             "sources".format(numMatches, numUniqueSources))
+            self.log.warning("%d icSourceCat sources matched only %d sourceCat "
+                             "sources", numMatches, numUniqueSources)
 
         self.log.info("Copying flags from icSourceCat to sourceCat for "
-                      "%s sources" % (numMatches,))
+                      "%d sources", numMatches)
 
         # For each match: set the calibSourceKey flag and copy the desired
         # fields

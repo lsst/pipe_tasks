@@ -64,7 +64,7 @@ class MakeSkyMapRunner(pipeBase.TaskRunner):
             try:
                 results = task.runDataRef(butler)
             except Exception as e:
-                task.log.fatal("Failed: %s" % e)
+                task.log.fatal("Failed: %s", e)
                 exitStatus = 1
                 if not isinstance(e, pipeBase.TaskError):
                     traceback.print_exc(file=sys.stderr)
@@ -114,7 +114,7 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
 
         @param[in] skyMap  sky map (an lsst.skyMap.SkyMap)
         """
-        self.log.info("sky map has %s tracts" % (len(skyMap),))
+        self.log.info("sky map has %s tracts", len(skyMap))
         for tractInfo in skyMap:
             wcs = tractInfo.getWcs()
             posBox = geom.Box2D(tractInfo.getBBox())
@@ -126,9 +126,9 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
             )
             skyPosList = [wcs.pixelToSky(pos).getPosition(geom.degrees) for pos in pixelPosList]
             posStrList = ["(%0.3f, %0.3f)" % tuple(skyPos) for skyPos in skyPosList]
-            self.log.info("tract %s has corners %s (RA, Dec deg) and %s x %s patches" %
-                          (tractInfo.getId(), ", ".join(posStrList),
-                           tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1]))
+            self.log.info("tract %s has corners %s (RA, Dec deg) and %s x %s patches",
+                          tractInfo.getId(), ", ".join(posStrList),
+                          tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1])
 
     @classmethod
     def _makeArgumentParser(cls):

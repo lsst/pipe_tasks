@@ -377,6 +377,6 @@ class LoadReferenceCatalogTask(pipeBase.Task):
                     fluxField = None
 
             if fluxField is None:
-                self.log.warning(f'No reference flux field for camera filter {filterName}')
+                self.log.warning('No reference flux field for camera filter %s', filterName)
 
             self._fluxFields.append(fluxField)

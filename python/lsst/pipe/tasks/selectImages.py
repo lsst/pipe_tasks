@@ -127,7 +127,7 @@ class BaseSelectImagesTask(pipeBase.Task):
                 if ccdVal in inValues:
                     newExposureInfoList.append(info)
                 else:
-                    self.log.info("De-selecting exposure %s: not in selectDataList" % info.dataId)
+                    self.log.info("De-selecting exposure %s: not in selectDataList", info.dataId)
             exposureInfoList = newExposureInfoList
 
         if makeDataRefList:
@@ -259,7 +259,7 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
 
         if patchPoly.intersects(imagePoly):
             # "intersects" also covers "contains" or "is contained by"
-            self.log.info("Selecting calexp %s" % dataId)
+            self.log.info("Selecting calexp %s", dataId)
             return imageCorners
 
 
@@ -431,16 +431,16 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
 
         valid = True
         if self.config.maxEllipResidual and medianE > self.config.maxEllipResidual:
-            self.log.info("Removing visit %s because median e residual too large: %f vs %f" %
-                          (dataId, medianE, self.config.maxEllipResidual))
+            self.log.info("Removing visit %s because median e residual too large: %f vs %f",
+                          dataId, medianE, self.config.maxEllipResidual)
             valid = False
         elif self.config.maxSizeScatter and scatterSize > self.config.maxSizeScatter:
-            self.log.info("Removing visit %s because size scatter is too large: %f vs %f" %
-                          (dataId, scatterSize, self.config.maxSizeScatter))
+            self.log.info("Removing visit %s because size scatter is too large: %f vs %f",
+                          dataId, scatterSize, self.config.maxSizeScatter)
             valid = False
         elif self.config.maxScaledSizeScatter and scaledScatterSize > self.config.maxScaledSizeScatter:
-            self.log.info("Removing visit %s because scaled size scatter is too large: %f vs %f" %
-                          (dataId, scaledScatterSize, self.config.maxScaledSizeScatter))
+            self.log.info("Removing visit %s because scaled size scatter is too large: %f vs %f",
+                          dataId, scaledScatterSize, self.config.maxScaledSizeScatter)
             valid = False
 
         return valid
@@ -527,15 +527,15 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
             sortedIndices = np.argsort(psfSizes)[:self.config.nImagesMax]
             filteredDataRefList = [dataRefList[i] for i in sortedIndices]
             filteredExposureInfoList = [exposureInfoList[i] for i in sortedIndices]
-            self.log.info(f"{len(sortedIndices)} images selected with FWHM "
-                          f"range of {psfSizes[sortedIndices[0]]}--{psfSizes[sortedIndices[-1]]} arcseconds")
+            self.log.info("%d images selected with FWHM range of %f--%f arcseconds",
+                          len(sortedIndices), psfSizes[sortedIndices[0]], psfSizes[sortedIndices[-1]])
 
         else:
             if len(psfSizes) == 0:
                 self.log.warning("0 images selected.")
             else:
-                self.log.debug(f"{len(psfSizes)} images selected with FWHM range "
-                               f"of {psfSizes[0]}--{psfSizes[-1]} arcseconds")
+                self.log.debug("%d images selected with FWHM range of %d--%d arcseconds",
+                               len(psfSizes), psfSizes[0], psfSizes[-1])
             filteredDataRefList = dataRefList
             filteredExposureInfoList = exposureInfoList
 
@@ -686,9 +686,8 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
 
         sortedVisits = [ind for (_, ind) in sorted(zip(fwhmSizes, visits))]
         output = sortedVisits[:self.config.nVisitsMax]
-        self.log.info(f"{len(output)} images selected with FWHM "
-                      f"range of {fwhmSizes[visits.index(output[0])]}"
-                      f"--{fwhmSizes[visits.index(output[-1])]} arcseconds")
+        self.log.info("%d images selected with FWHM range of %d--%d arcseconds",
+                      len(output), fwhmSizes[visits.index(output[0])], fwhmSizes[visits.index(output[-1])])
 
         # In order to store as a StructuredDataDict, convert list to dict
         goodVisits = {key: True for key in output}

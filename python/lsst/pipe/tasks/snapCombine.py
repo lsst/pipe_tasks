@@ -316,8 +316,8 @@ class SnapCombineTask(pipeBase.Task):
                 if doAvg:
                     combinedVal /= 2.0
             except Exception:
-                self.log.warning("Could not %s metadata %r: value %r and/or %r not numeric" %
-                                 (opStr, key, val0, val1))
+                self.log.warning("Could not %s metadata %r: value %r and/or %r not numeric",
+                                 opStr, key, val0, val1)
                 continue
 
             combinedMetadata.set(key, combinedVal)
@@ -337,7 +337,7 @@ class SnapCombineTask(pipeBase.Task):
 
         size = self.config.initialPsf.size
         model = self.config.initialPsf.model
-        self.log.info("installInitialPsf fwhm=%s pixels; size=%s pixels" % (fwhmPix, size))
+        self.log.info("installInitialPsf fwhm=%s pixels; size=%s pixels", fwhmPix, size)
         psfCls = getattr(measAlg, model + "Psf")
         psf = psfCls(size, size, fwhmPix/(2.0*num.sqrt(2*num.log(2.0))))
         return psf

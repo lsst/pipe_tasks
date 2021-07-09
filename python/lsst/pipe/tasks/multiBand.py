@@ -530,7 +530,7 @@ class DeblendCoaddSourcesTask(CmdLineTask):
         so we can measure in-place.
         """
         merged = dataRef.get(self.config.coaddName + "Coadd_mergeDet", immediate=True)
-        self.log.info("Read %d detections: %s" % (len(merged), dataRef.dataId))
+        self.log.info("Read %d detections: %s", len(merged), dataRef.dataId)
         idFactory = self.makeIdFactory(dataRef)
         for s in merged:
             idFactory.notify(s.getId())
@@ -555,7 +555,7 @@ class DeblendCoaddSourcesTask(CmdLineTask):
             as footprints.
         """
         dataRef.put(sources, self.config.coaddName + "Coadd_deblendedFlux")
-        self.log.info("Wrote %d sources: %s" % (len(sources), dataRef.dataId))
+        self.log.info("Wrote %d sources: %s", len(sources), dataRef.dataId)
 
     def writeMetadata(self, dataRefList):
         """Write the metadata produced from processing the data.
@@ -1126,7 +1126,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         so we can measure in-place.
         """
         merged = dataRef.get(self.config.coaddName + self.inputCatalog, immediate=True)
-        self.log.info("Read %d detections: %s" % (len(merged), dataRef.dataId))
+        self.log.info("Read %d detections: %s", len(merged), dataRef.dataId)
         idFactory = self.makeIdFactory(dataRef)
         for s in merged:
             idFactory.notify(s.getId())
@@ -1155,7 +1155,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         @param[in] sources: source catalog
         """
         dataRef.put(sources, self.config.coaddName + "Coadd_meas")
-        self.log.info("Wrote %d sources: %s" % (len(sources), dataRef.dataId))
+        self.log.info("Wrote %d sources: %s", len(sources), dataRef.dataId)
 
     def getExposureId(self, dataRef):
         return int(dataRef.get(self.config.coaddName + "CoaddId"))

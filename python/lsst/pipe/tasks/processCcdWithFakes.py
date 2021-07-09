@@ -268,13 +268,13 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
 
         calexp = dataRef.get("calexp")
         if self.config.doApplyExternalSkyWcs:
-            self.log.info("Using external wcs from " + self.config.externalSkyWcsName)
+            self.log.info("Using external wcs from %s", self.config.externalSkyWcsName)
             wcs = dataRef.get(self.config.externalSkyWcsName + "_wcs")
         else:
             wcs = calexp.getWcs()
 
         if self.config.doApplyExternalPhotoCalib:
-            self.log.info("Using external photocalib from " + self.config.externalPhotoCalibName)
+            self.log.info("Using external photocalib from %s", self.config.externalPhotoCalibName)
             photoCalib = dataRef.get(self.config.externalPhotoCalibName + "_photoCalib")
         else:
             photoCalib = calexp.getPhotoCalib()
