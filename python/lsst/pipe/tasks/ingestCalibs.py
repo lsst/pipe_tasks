@@ -167,7 +167,6 @@ class CalibsRegisterTask(RegisterTask):
                                               row in rows])
         except Exception:
             det = " ".join("%s=%s" % (k, v) for k, v in zip(self.config.detector, detectorData))
-            # Sqlite returns unicode strings, which cannot be passed through SWIG.
             self.log.warning("Skipped setting the validity overlaps for %s %s: missing calibration dates",
                              table, det)
             return
