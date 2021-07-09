@@ -319,7 +319,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
                 max25 = ap25
                 max25srcNum = srcNum
         if max70srcNum != max25srcNum:
-            self.log.warn("WARNING! Max apFlux70 for different object than with max apFlux25")
+            self.log.warning("WARNING! Max apFlux70 for different object than with max apFlux25")
 
         if max70srcNum >= 0:  # starts as -1, return None if nothing is acceptable
             return max70srcNum
@@ -488,7 +488,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
             result = self._run(exp=exp, donutDiameter=donutDiameter, doDisplay=doDisplay)
             return result
         except Exception as e:
-            self.log.warn(f"Failed to find main source centroid {e}")
+            self.log.warning(f"Failed to find main source centroid {e}")
             result = self._makeEmptyReturnStruct()
             return result
 

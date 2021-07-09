@@ -260,14 +260,14 @@ class MergeMeasurementsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             try:
                 self.pseudoFilterKeys.append(self.schema.find("merge_peak_%s" % filt).getKey())
             except Exception as e:
-                self.log.warn("merge_peak is not set for pseudo-filter %s: %s" % (filt, e))
+                self.log.warning("merge_peak is not set for pseudo-filter %s: %s" % (filt, e))
 
         self.badFlags = {}
         for flag in self.config.flags:
             try:
                 self.badFlags[flag] = self.schema.find(flag).getKey()
             except KeyError as exc:
-                self.log.warn("Can't find flag %s in schema: %s" % (flag, exc,))
+                self.log.warning("Can't find flag %s in schema: %s" % (flag, exc,))
         self.outputSchema = afwTable.SourceCatalog(self.schema)
 
     def runDataRef(self, patchRefList):

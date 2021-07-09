@@ -147,7 +147,7 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
         datasetName = self.config.coaddName + "Coadd_skyMap"
         for dataRef in dataRefList:
             if not dataRef.datasetExists("calexp"):
-                self.log.warn("CalExp for %s does not exist: ignoring" % (dataRef.dataId,))
+                self.log.warning("CalExp for %s does not exist: ignoring" % (dataRef.dataId,))
                 continue
             wcs_md_tuple_list.append((dataRef.get("calexp_wcs", immediate=True),
                                       dataRef.get("calexp_md", immediate=True)))

@@ -324,8 +324,8 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                         otherFootprints.append(fs)
                 nbMatchingFootprints = len(allFootprints) - len(otherFootprints)
                 if not nbMatchingFootprints == 1:
-                    self.log.warn("Failed to uniquely identify central DETECTION footprint for star "
-                                  f"{allIds[j]}; found {nbMatchingFootprints} footprints instead.")
+                    self.log.warning("Failed to uniquely identify central DETECTION footprint for star "
+                                     f"{allIds[j]}; found {nbMatchingFootprints} footprints instead.")
                 omask.setFootprints(otherFootprints)
                 omask.setMask(starIm.mask, "BAD")
             starIms.append(starIm)

@@ -571,7 +571,7 @@ class DeblendCoaddSourcesTask(CmdLineTask):
                 if metadataName is not None:
                     dataRef.put(self.getFullMetadata(), metadataName)
             except Exception as e:
-                self.log.warn("Could not persist metadata for dataId=%s: %s", dataRef.dataId, e)
+                self.log.warning("Could not persist metadata for dataId=%s: %s", dataRef.dataId, e)
 
     def getExposureId(self, dataRef):
         """Get the ExposureId from a data reference
@@ -1104,7 +1104,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
                 if matchResult.matches:
                     denormMatches = denormalizeMatches(matchResult.matches, matchResult.matchMeta)
                 else:
-                    self.log.warn("No matches, so generating dummy denormalized matches file")
+                    self.log.warning("No matches, so generating dummy denormalized matches file")
                     denormMatches = afwTable.BaseCatalog(afwTable.Schema())
                     denormMatches.setMetadata(PropertyList())
                     denormMatches.getMetadata().add("COMMENT",

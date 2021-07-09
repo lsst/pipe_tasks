@@ -308,7 +308,7 @@ class SnapCombineTask(pipeBase.Task):
                 val0 = metadata0.getScalar(key)
                 val1 = metadata1.getScalar(key)
             except Exception:
-                self.log.warn("Could not %s metadata %r: missing from one or both exposures" % (opStr, key,))
+                self.log.warning("Could not %s metadata %r: missing from one or both exposures", opStr, key)
                 continue
 
             try:
@@ -316,8 +316,8 @@ class SnapCombineTask(pipeBase.Task):
                 if doAvg:
                     combinedVal /= 2.0
             except Exception:
-                self.log.warn("Could not %s metadata %r: value %r and/or %r not numeric" %
-                              (opStr, key, val0, val1))
+                self.log.warning("Could not %s metadata %r: value %r and/or %r not numeric" %
+                                 (opStr, key, val0, val1))
                 continue
 
             combinedMetadata.set(key, combinedVal)

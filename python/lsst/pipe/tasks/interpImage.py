@@ -106,8 +106,8 @@ class InterpImageTask(pipeBase.Task):
                                       ("fallbackValueType", self.config.fallbackValueType))
 
         if not self.config.negativeFallbackAllowed and fallbackValue < 0.0:
-            self.log.warn("Negative interpolation edge fallback value computed but "
-                          "negativeFallbackAllowed is False: setting fallbackValue to 0.0")
+            self.log.warning("Negative interpolation edge fallback value computed but "
+                             "negativeFallbackAllowed is False: setting fallbackValue to 0.0")
             fallbackValue = max(fallbackValue, 0.0)
 
         self.log.info("fallbackValueType %s has been set to %.4f" %

@@ -759,7 +759,8 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                 # TODO: DM-22762 This functional block should be moved into its own method
                 if self.config.doSelectSources:
                     if selectSources is None:
-                        self.log.warn("Src product does not exist; running detection, measurement, selection")
+                        self.log.warning("Src product does not exist; running detection, measurement,"
+                                         " selection")
                         # Run own detection and measurement; necessary in nightly processing
                         selectSources = self.subtract.getSelectSources(
                             exposure,
@@ -1081,7 +1082,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                     self.log.info("Matched %d / %d diaSources to sources" % (len(srcMatchDict),
                                                                              len(diaSources)))
                 else:
-                    self.log.warn("Src product does not exist; cannot match with diaSources")
+                    self.log.warning("Src product does not exist; cannot match with diaSources")
                     srcMatchDict = {}
 
                 # Create key,val pair where key=diaSourceId and val=refId
@@ -1091,7 +1092,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                 astromRet = refAstrometer.run(exposure=exposure, sourceCat=diaSources)
                 refMatches = astromRet.matches
                 if refMatches is None:
-                    self.log.warn("No diaSource matches with reference catalog")
+                    self.log.warning("No diaSource matches with reference catalog")
                     refMatchDict = {}
                 else:
                     self.log.info("Matched %d / %d diaSources to reference catalog" % (len(refMatches),

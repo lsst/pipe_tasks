@@ -443,8 +443,8 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
         numMatches = len(matches)
         numUniqueSources = len(set(m[1].getId() for m in matches))
         if numUniqueSources != numMatches:
-            self.log.warn("%d calibCat sources matched only %d sourceCat sources", numMatches,
-                          numUniqueSources)
+            self.log.warning("%d calibCat sources matched only %d sourceCat sources", numMatches,
+                             numUniqueSources)
 
         self.log.info("Copying flags from calibCat to sourceCat for %s sources", numMatches)
 

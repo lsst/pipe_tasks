@@ -201,14 +201,14 @@ class ObjectMaskCatalog:
                             angle = convertToAngle(param3, param3Unit, "angle", fileName, lineNo)
 
                         if angle != 0.0:
-                            log.warn("Rotated boxes are not supported: \"%s\" at %s:%d" % (
+                            log.warning("Rotated boxes are not supported: \"%s\" at %s:%d" % (
                                 line, fileName, lineNo))
                             nFormatError += 1
                     elif _type == "circle":
                         radius = convertToAngle(param1, param1Unit, "radius", fileName, lineNo)
 
                         if not (param2 is None and param3 is None):
-                            log.warn("Extra parameters for circle: \"%s\" at %s:%d" % (
+                            log.warning("Extra parameters for circle: \"%s\" at %s:%d" % (
                                 line, fileName, lineNo))
                             nFormatError += 1
 
@@ -224,7 +224,7 @@ class ObjectMaskCatalog:
                     rec["width"] = width
                     rec["radius"] = radius
                 else:
-                    log.warn("Unexpected line \"%s\" at %s:%d" % (line, fileName, lineNo))
+                    log.warning("Unexpected line \"%s\" at %s:%d" % (line, fileName, lineNo))
                     nFormatError += 1
 
         if nFormatError > 0:

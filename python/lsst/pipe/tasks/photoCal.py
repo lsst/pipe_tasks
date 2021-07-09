@@ -303,7 +303,7 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
         srcInstFluxErrArr = np.array([m.second.get(sourceKeys.instFluxErr) for m in matches])
         if not np.all(np.isfinite(srcInstFluxErrArr)):
             # this is an unpleasant hack; see DM-2308 requesting a better solution
-            self.log.warn("Source catalog does not have flux uncertainties; using sqrt(flux).")
+            self.log.warning("Source catalog does not have flux uncertainties; using sqrt(flux).")
             srcInstFluxErrArr = np.sqrt(srcInstFluxArr)
 
         # convert source instFlux from DN to an estimate of nJy
@@ -357,8 +357,8 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
                 refFluxErrArr = np.array([m.first.get(fluxErrKey) for m in matches])
             except KeyError:
                 # Reference catalogue may not have flux uncertainties; HACK DM-2308
-                self.log.warn("Reference catalog does not have flux uncertainties for %s; using sqrt(flux).",
-                              fluxField)
+                self.log.warning("Reference catalog does not have flux uncertainties for %s;"
+                                 " using sqrt(flux).", fluxField)
                 refFluxErrArr = np.sqrt(refFluxArr)
 
             refMagArr = u.Quantity(refFluxArr, u.nJy).to_value(u.ABmag)
@@ -685,7 +685,7 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
                     center = np.average(dmag, weights=dmagErr)
                     msg += " on first iteration; using average of all calibration stars"
 
-                self.log.warn(msg)
+                self.log.warning(msg)
 
                 return pipeBase.Struct(
                     zp=center,

@@ -99,7 +99,7 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
             raise RuntimeError("At least one of config.makePsfMatched and config.makeDirect must be True")
         if self.doPsfMatch:
             # Backwards compatibility.
-            log.warn("Config doPsfMatch deprecated. Setting makePsfMatched=True and makeDirect=False")
+            log.warning("Config doPsfMatch deprecated. Setting makePsfMatched=True and makeDirect=False")
             self.makePsfMatched = True
             self.makeDirect = False
 
@@ -309,7 +309,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         calExpRefList = self.selectExposures(patchRef, skyInfo, selectDataList=selectDataList)
 
         if len(calExpRefList) == 0:
-            self.log.warn("No exposures to coadd for patch %s", patchRef.dataId)
+            self.log.warning("No exposures to coadd for patch %s", patchRef.dataId)
             return None
         self.log.info("Selected %d calexps for patch %s", len(calExpRefList), patchRef.dataId)
         calExpRefList = [calExpRef for calExpRef in calExpRefList if calExpRef.datasetExists(self.calexpType)]
@@ -357,7 +357,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                                                                       tract=skyInfo.tractInfo.getId())
                     calExp = self.getCalibratedExposure(calExpRef, bgSubtracted=self.config.bgSubtracted)
                 except Exception as e:
-                    self.log.warn("Calexp %s not found; skipping it: %s", calExpRef.dataId, e)
+                    self.log.warning("Calexp %s not found; skipping it: %s", calExpRef.dataId, e)
                     continue
 
                 if self.config.doApplySkyCorr:
@@ -372,7 +372,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
             if any(exps.values()):
                 dataRefList.append(tempExpRef)
             else:
-                self.log.warn("Warp %s could not be created", tempExpRef.dataId)
+                self.log.warning("Warp %s could not be created", tempExpRef.dataId)
 
             if self.config.doWrite:
                 for (warpType, exposure) in exps.items():  # compatible w/ Py3
@@ -427,7 +427,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                                                             makeDirect=self.config.makeDirect,
                                                             makePsfMatched=self.config.makePsfMatched)
             except Exception as e:
-                self.log.warn("WarpAndPsfMatch failed for calexp %s; skipping it: %s", dataId, e)
+                self.log.warning("WarpAndPsfMatch failed for calexp %s; skipping it: %s", dataId, e)
                 continue
             try:
                 numGoodPix = {warpType: 0 for warpType in warpTypeList}
@@ -459,7 +459,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                     inputRecorder[warpType].addCalExp(calExp, ccdId, numGoodPix[warpType])
 
             except Exception as e:
-                self.log.warn("Error processing calexp %s; skipping it: %s", dataId, e)
+                self.log.warning("Error processing calexp %s; skipping it: %s", dataId, e)
                 continue
 
         for warpType in warpTypeList:
@@ -863,40 +863,40 @@ class MakeWarpTask(MakeCoaddTempExpTask):
             if externalPhotoCalibCatalog is not None:
                 row = externalPhotoCalibCatalog.find(detectorId)
                 if row is None:
-                    self.log.warn("Detector id %s not found in externalPhotoCalibCatalog "
-                                  "and will not be used in the warp.", detectorId)
+                    self.log.warning("Detector id %s not found in externalPhotoCalibCatalog "
+                                     "and will not be used in the warp.", detectorId)
                     continue
                 photoCalib = row.getPhotoCalib()
                 if photoCalib is None:
-                    self.log.warn("Detector id %s has None for photoCalib in externalPhotoCalibCatalog "
-                                  "and will not be used in the warp.", detectorId)
+                    self.log.warning("Detector id %s has None for photoCalib in externalPhotoCalibCatalog "
+                                     "and will not be used in the warp.", detectorId)
                     continue
                 calexp.setPhotoCalib(photoCalib)
             else:
                 photoCalib = calexp.getPhotoCalib()
                 if photoCalib is None:
-                    self.log.warn("Detector id %s has None for photoCalib in the calexp "
-                                  "and will not be used in the warp.", detectorId)
+                    self.log.warning("Detector id %s has None for photoCalib in the calexp "
+                                     "and will not be used in the warp.", detectorId)
                     continue
 
             # Find and apply external skyWcs
             if externalSkyWcsCatalog is not None:
                 row = externalSkyWcsCatalog.find(detectorId)
                 if row is None:
-                    self.log.warn(("Detector id %s not found in externalSkyWcsCatalog "
-                                   "and will not be used in the warp."), detectorId)
+                    self.log.warning("Detector id %s not found in externalSkyWcsCatalog "
+                                     "and will not be used in the warp.", detectorId)
                     continue
                 skyWcs = row.getWcs()
                 if skyWcs is None:
-                    self.log.warn("Detector id %s has None for skyWcs in externalSkyWcsCatalog "
-                                  "and will not be used in the warp.", detectorId)
+                    self.log.warning("Detector id %s has None for skyWcs in externalSkyWcsCatalog "
+                                     "and will not be used in the warp.", detectorId)
                     continue
                 calexp.setWcs(skyWcs)
             else:
                 skyWcs = calexp.getWcs()
                 if skyWcs is None:
-                    self.log.warn("Detector id %s has None for skyWcs in the calexp "
-                                  "and will not be used in the warp.", detectorId)
+                    self.log.warning("Detector id %s has None for skyWcs in the calexp "
+                                     "and will not be used in the warp.", detectorId)
                     continue
 
             # Calibrate the image

@@ -630,7 +630,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 generator = self._generateGSObjectsFromImages(image, fakeCat)
             _add_fake_sources(image, generator, calibFluxRadius=self.config.calibFluxRadius, logger=self.log)
         elif len(fakeCat) == 0 and self.config.doProcessAllDataIds:
-            self.log.warn("No fakes found for this dataRef; processing anyway.")
+            self.log.warning("No fakes found for this dataRef; processing anyway.")
             image.mask.addMaskPlane("FAKE")
         else:
             raise RuntimeError("No fakes found for this dataRef.")

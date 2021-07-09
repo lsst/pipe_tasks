@@ -111,7 +111,7 @@ class ParseTask(Task):
                 md = readMetadata(filename, extnum)
                 fix_header(md, translator_class=self.translator_class)
             except Exception as e:
-                self.log.warn("Error reading %s extensions %s: %s" % (filename, extnames, e))
+                self.log.warning("Error reading %s extensions %s: %s" % (filename, extnames, e))
                 break
             ext = self.getExtensionName(md)
             if ext in extnames:
@@ -167,13 +167,13 @@ class ParseTask(Task):
             elif p in self.config.defaults:
                 info[p] = self.config.defaults[p]
             else:
-                self.log.warn("Unable to find value for %s (derived from %s)" % (p, h))
+                self.log.warning("Unable to find value for %s (derived from %s)" % (p, h))
         for p, t in self.config.translators.items():
             func = getattr(self, t)
             try:
                 value = func(md)
             except Exception as e:
-                self.log.warn("%s failed to translate %s: %s", t, p, e)
+                self.log.warning("%s failed to translate %s: %s", t, p, e)
                 value = None
             if value is not None:
                 info[p] = value
@@ -512,8 +512,8 @@ class IngestTask(Task):
                     if os.path.samefile(infile, outfile):
                         self.log.debug("Already linked %s to %s: ignoring" % (infile, outfile))
                     else:
-                        self.log.warn("%s already has a file at the target location (%s): ignoring "
-                                      "(set clobber=True to overwrite)" % (infile, outfile))
+                        self.log.warning("%s already has a file at the target location (%s): ignoring "
+                                         "(set clobber=True to overwrite)" % (infile, outfile))
                     return False
                 os.symlink(os.path.abspath(infile), outfile)
             elif mode == "move":
@@ -523,7 +523,7 @@ class IngestTask(Task):
                 raise AssertionError("Unknown mode: %s" % mode)
             self.log.info("%s --<%s>--> %s" % (infile, mode, outfile))
         except Exception as e:
-            self.log.warn("Failed to %s %s to %s: %s" % (mode, infile, outfile, e))
+            self.log.warning("Failed to %s %s to %s: %s" % (mode, infile, outfile, e))
             if not self.config.allowError:
                 raise RuntimeError(f"Failed to {mode} {infile} to {outfile}") from e
             return False
@@ -566,7 +566,7 @@ class IngestTask(Task):
             files = glob(globPattern)
 
             if not files:               # posix behaviour is to return pattern unchanged
-                self.log.warn("%s doesn't match any file" % globPattern)
+                self.log.warning("%s doesn't match any file" % globPattern)
                 continue
 
             filenameList.extend(files)
@@ -590,7 +590,7 @@ class IngestTask(Task):
         except Exception as e:
             if not self.config.allowError:
                 raise RuntimeError(f"Error parsing {infile}") from e
-            self.log.warn("Error parsing %s (%s); skipping" % (infile, e))
+            self.log.warning("Error parsing %s (%s); skipping" % (infile, e))
             return None
         if self.isBadId(fileInfo, args.badId.idList):
             self.log.info("Skipping declared bad file %s: %s" % (infile, fileInfo))
@@ -598,7 +598,7 @@ class IngestTask(Task):
         if registry is not None and self.register.check(registry, fileInfo):
             if args.ignoreIngested:
                 return None
-            self.log.warn("%s: already ingested: %s" % (infile, fileInfo))
+            self.log.warning("%s: already ingested: %s" % (infile, fileInfo))
         outfile = self.parse.getDestination(args.butler, fileInfo, infile)
         if not self.ingest(infile, outfile, mode=args.mode, dryrun=args.dryrun):
             return None
@@ -624,7 +624,7 @@ class IngestTask(Task):
                 try:
                     self.runFile(infile, registry, args, pos)
                 except Exception as exc:
-                    self.log.warn("Failed to ingest file %s: %s", infile, exc)
+                    self.log.warning("Failed to ingest file %s: %s", infile, exc)
                     if not self.config.allowError:
                         raise IngestError(f"Failed to ingest file {infile}", infile, pos) from exc
                     continue

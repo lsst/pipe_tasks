@@ -91,7 +91,7 @@ class WarpAndPsfMatchTask(pipeBase.Task):
             raise RuntimeError("makePsfMatched=True, but no model PSF was provided")
 
         if not makePsfMatched and not makeDirect:
-            self.log.warn("Neither makeDirect nor makePsfMatched requested")
+            self.log.warning("Neither makeDirect nor makePsfMatched requested")
 
         # Warp PSF before overwriting exposure
         xyTransform = afwGeom.makeWcsPairTransform(exposure.getWcs(), wcs)

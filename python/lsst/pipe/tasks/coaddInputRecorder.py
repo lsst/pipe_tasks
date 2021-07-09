@@ -104,8 +104,8 @@ class CoaddTempExpInputRecorder:
         try:
             record.setI(self.task.ccdCcdKey, calExp.getDetector().getId())
         except Exception as e:
-            self.task.log.warn("Error getting detector serial number in visit %d; using -1; error=%s"
-                               % (self.visitRecord.getId(), e))
+            self.task.log.warning("Error getting detector serial number in visit %d; using -1; error=%s"
+                                  % (self.visitRecord.getId(), e))
             record.setI(self.task.ccdCcdKey, -1)
         record.setI(self.task.ccdGoodPixKey, nGoodPix)
         if calExp is not None:
@@ -208,9 +208,9 @@ class CoaddInputRecorderTask(pipeBase.Task):
         """
         tempExpInputs = coaddTempExp.getInfo().getCoaddInputs()
         if len(tempExpInputs.visits) != 1:
-            self.log.warn("CoaddInputs for coaddTempExp should have exactly one record in visits table "
-                          "(found %d).  CoaddInputs for this visit will not be saved."
-                          % len(tempExpInputs.visits))
+            self.log.warning("CoaddInputs for coaddTempExp should have exactly one record in visits table "
+                             "(found %d).  CoaddInputs for this visit will not be saved."
+                             % len(tempExpInputs.visits))
             return None
         inputVisitRecord = tempExpInputs.visits[0]
         outputVisitRecord = coaddInputs.visits.addNew()
@@ -219,9 +219,9 @@ class CoaddInputRecorderTask(pipeBase.Task):
         outputVisitRecord.set(self.visitFilterKey, coaddTempExp.getFilterLabel().physicalLabel)
         for inputCcdRecord in tempExpInputs.ccds:
             if inputCcdRecord.getL(self.ccdVisitKey) != inputVisitRecord.getId():
-                self.log.warn("CoaddInputs for coaddTempExp with id %d contains CCDs with visit=%d. "
-                              "CoaddInputs may be unreliable."
-                              % (inputVisitRecord.getId(), inputCcdRecord.getL(self.ccdVisitKey)))
+                self.log.warning("CoaddInputs for coaddTempExp with id %d contains CCDs with visit=%d. "
+                                 "CoaddInputs may be unreliable."
+                                 % (inputVisitRecord.getId(), inputCcdRecord.getL(self.ccdVisitKey)))
             outputCcdRecord = coaddInputs.ccds.addNew()
             outputCcdRecord.assign(inputCcdRecord)
             if self.config.saveCcdWeights:

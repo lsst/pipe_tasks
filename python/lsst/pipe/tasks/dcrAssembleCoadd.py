@@ -364,7 +364,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         self.log.info("Found %d %s", len(inputs.tempExpRefList),
                       self.getTempExpDatasetName(self.warpType))
         if len(inputs.tempExpRefList) == 0:
-            self.log.warn("No coadd temporary exposures found")
+            self.log.warning("No coadd temporary exposures found")
             return
 
         supplementaryData = self.makeSupplementaryDataGen3(butlerQC, inputRefs, outputRefs)
@@ -422,7 +422,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         if warpRefList is None:
             calExpRefList = self.selectExposures(dataRef, skyInfo, selectDataList=selectDataList)
             if len(calExpRefList) == 0:
-                self.log.warn("No exposures to coadd")
+                self.log.warning("No exposures to coadd")
                 return
             self.log.info("Coadding %d exposures", len(calExpRefList))
 
@@ -432,7 +432,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         self.log.info("Found %d %s", len(inputData.tempExpRefList),
                       self.getTempExpDatasetName(self.warpType))
         if len(inputData.tempExpRefList) == 0:
-            self.log.warn("No coadd temporary exposures found")
+            self.log.warning("No coadd temporary exposures found")
             return
 
         supplementaryData = self.makeSupplementaryData(dataRef, warpRefList=inputData.tempExpRefList)
@@ -440,8 +440,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         results = self.run(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
                            inputData.weightList, supplementaryData=supplementaryData)
         if results is None:
-            self.log.warn("Could not construct DcrModel for patch %s: no data to coadd.",
-                          skyInfo.patchInfo.getIndex())
+            self.log.warning("Could not construct DcrModel for patch %s: no data to coadd.",
+                             skyInfo.patchInfo.getIndex())
             return
 
         if self.config.doCalculatePsf:
@@ -501,7 +501,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         try:
             psfResults = self.measurePsf.run(coaddExposure, coaddSources)
         except Exception as e:
-            self.log.warn("Unable to calculate PSF, using default coadd PSF: %s" % e)
+            self.log.warning("Unable to calculate PSF, using default coadd PSF: %s" % e)
         else:
             coaddExposure.setPsf(psfResults.psf)
 
@@ -567,7 +567,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         try:
             psf = self.selectCoaddPsf(templateCoadd, warpRefList)
         except Exception as e:
-            self.log.warn("Unable to calculate restricted PSF, using default coadd PSF: %s" % e)
+            self.log.warning("Unable to calculate restricted PSF, using default coadd PSF: %s" % e)
         else:
             psf = templateCoadd.getPsf()
         dcrModels = DcrModel.fromImage(templateCoadd.maskedImage,
@@ -693,26 +693,26 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                     convergenceMetric = self.calculateConvergence(dcrModels, subExposures, subBBox,
                                                                   warpRefList, weightList, stats.ctrl)
                     if convergenceMetric == 0:
-                        self.log.warn("Coadd patch %s subregion %s had convergence metric of 0.0 which is "
-                                      "most likely due to there being no valid data in the region.",
-                                      skyInfo.patchInfo.getIndex(), subIter)
+                        self.log.warning("Coadd patch %s subregion %s had convergence metric of 0.0 which is "
+                                         "most likely due to there being no valid data in the region.",
+                                         skyInfo.patchInfo.getIndex(), subIter)
                         break
                     convergenceCheck = (convergenceList[-1] - convergenceMetric)/convergenceMetric
                     if (convergenceCheck < 0) & (modelIter > minNumIter):
-                        self.log.warn("Coadd patch %s subregion %s diverged before reaching maximum "
-                                      "iterations or desired convergence improvement of %s."
-                                      " Divergence: %s",
-                                      skyInfo.patchInfo.getIndex(), subIter,
-                                      self.config.convergenceThreshold, convergenceCheck)
+                        self.log.warning("Coadd patch %s subregion %s diverged before reaching maximum "
+                                         "iterations or desired convergence improvement of %s."
+                                         " Divergence: %s",
+                                         skyInfo.patchInfo.getIndex(), subIter,
+                                         self.config.convergenceThreshold, convergenceCheck)
                         break
                     convergenceList.append(convergenceMetric)
                 if modelIter > maxNumIter:
                     if self.config.useConvergence:
-                        self.log.warn("Coadd patch %s subregion %s reached maximum iterations "
-                                      "before reaching desired convergence improvement of %s."
-                                      " Final convergence improvement: %s",
-                                      skyInfo.patchInfo.getIndex(), subIter,
-                                      self.config.convergenceThreshold, convergenceCheck)
+                        self.log.warning("Coadd patch %s subregion %s reached maximum iterations "
+                                         "before reaching desired convergence improvement of %s."
+                                         " Final convergence improvement: %s",
+                                         skyInfo.patchInfo.getIndex(), subIter,
+                                         self.config.convergenceThreshold, convergenceCheck)
                     break
 
                 if self.config.useConvergence:
