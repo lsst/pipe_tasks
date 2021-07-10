@@ -167,9 +167,8 @@ class CalibsRegisterTask(RegisterTask):
                                               row in rows])
         except Exception:
             det = " ".join("%s=%s" % (k, v) for k, v in zip(self.config.detector, detectorData))
-            # Sqlite returns unicode strings, which cannot be passed through SWIG.
-            self.log.warn(str("Skipped setting the validity overlaps for %s %s: missing calibration dates" %
-                              (table, det)))
+            self.log.warning("Skipped setting the validity overlaps for %s %s: missing calibration dates",
+                             table, det)
             return
         dates = list(valids.keys())
         if table in self.config.validityUntilSuperseded:
@@ -247,23 +246,23 @@ class IngestCalibsTask(IngestTask):
                 fileInfo, hduInfoList = self.parse.getInfo(infile)
                 calibType = self.parse.getCalibType(infile)
                 if calibType not in self.register.config.tables:
-                    self.log.warn(str("Skipped adding %s of observation type '%s' to registry "
-                                      "(must be one of %s)" %
-                                      (infile, calibType, ", ".join(self.register.config.tables))))
+                    self.log.warning("Skipped adding %s of observation type '%s' to registry "
+                                     "(must be one of %s)",
+                                     infile, calibType, ", ".join(self.register.config.tables))
                     continue
                 calibTypes.add(calibType)
                 if args.mode != 'skip':
                     outfile = self.parse.getDestination(args.butler, fileInfo, infile)
                     ingested = self.ingest(infile, outfile, mode=args.mode, dryrun=args.dryrun)
                     if not ingested:
-                        self.log.warn(str("Failed to ingest %s of observation type '%s'" %
-                                          (infile, calibType)))
+                        self.log.warning("Failed to ingest %s of observation type '%s'",
+                                         infile, calibType)
                         continue
                 if self.register.check(registry, fileInfo, table=calibType):
                     if args.ignoreIngested:
                         continue
 
-                    self.log.warn("%s: already ingested: %s" % (infile, fileInfo))
+                    self.log.warning("%s: already ingested: %s", infile, fileInfo)
                 for info in hduInfoList:
                     self.register.addRow(registry, info, dryrun=args.dryrun,
                                          create=args.create, table=calibType)

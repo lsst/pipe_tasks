@@ -115,7 +115,7 @@ def getPseudoSources(sources, pseudoFilterList, schema, log):
             pseudoFilterKey = schema.find("merge_peak_%s" % filt).getKey()
             isPseudo |= sources[pseudoFilterKey]
         except KeyError:
-            log.warn("merge_peak is not set for pseudo-filter %s" % filt)
+            log.warning("merge_peak is not set for pseudo-filter %s", filt)
     return isPseudo
 
 

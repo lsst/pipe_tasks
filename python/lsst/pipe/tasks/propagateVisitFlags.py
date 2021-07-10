@@ -208,7 +208,7 @@ task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
             visitKey = ccdInputs.schema.find("visit").key
             ccdKey = ccdInputs.schema.find("ccd").key
 
-            self.log.info("Propagating flags %s from inputs" % (flags,))
+            self.log.info("Propagating flags %s from inputs", flags)
 
             # Accumulate counts of flags being set
             for ccdRecord in ccdInputs:
@@ -224,4 +224,4 @@ task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
             for s, num in zip(coaddSources, counts[f]):
                 numOverlaps = len(ccdInputs.subsetContaining(s.getCentroid(), coaddWcs, True))
                 s.setFlag(key, bool(num > numOverlaps*self.config.flags[f]))
-            self.log.info("Propagated %d sources with flag %s" % (sum(s.get(key) for s in coaddSources), f))
+            self.log.info("Propagated %d sources with flag %s", sum(s.get(key) for s in coaddSources), f)

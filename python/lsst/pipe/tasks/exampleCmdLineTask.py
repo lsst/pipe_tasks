@@ -123,7 +123,7 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         - stdDev: standard deviation of image plane
         - stdDevErr: uncertainty in standard deviation
         """
-        self.log.info("Processing data ID %s" % (dataRef.dataId,))
+        self.log.info("Processing data ID %s", dataRef.dataId)
         if self.config.doFail:
             raise pipeBase.TaskError("Raising TaskError by request (config.doFail=True)")
 

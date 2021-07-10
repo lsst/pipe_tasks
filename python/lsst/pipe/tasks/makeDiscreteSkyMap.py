@@ -95,7 +95,7 @@ class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
             try:
                 result = task.runDataRef(butler, dataRefList)
             except Exception as e:
-                task.log.fatal("Failed: %s" % e)
+                task.log.fatal("Failed: %s", e)
                 exitStatus = 1
                 if not isinstance(e, pipeBase.TaskError):
                     traceback.print_exc(file=sys.stderr)
@@ -147,7 +147,7 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
         datasetName = self.config.coaddName + "Coadd_skyMap"
         for dataRef in dataRefList:
             if not dataRef.datasetExists("calexp"):
-                self.log.warn("CalExp for %s does not exist: ignoring" % (dataRef.dataId,))
+                self.log.warning("CalExp for %s does not exist: ignoring", dataRef.dataId)
                 continue
             wcs_md_tuple_list.append((dataRef.get("calexp_wcs", immediate=True),
                                       dataRef.get("calexp_md", immediate=True)))
@@ -178,7 +178,7 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
         struct : `lsst.pipe.base.Struct
            The returned struct has one attribute, ``skyMap``, which holds the returned SkyMap
         """
-        self.log.info("Extracting bounding boxes of %d images" % len(wcs_md_tuple_list))
+        self.log.info("Extracting bounding boxes of %d images", len(wcs_md_tuple_list))
         points = []
         for wcs, md in wcs_md_tuple_list:
             # nb: don't need to worry about xy0 because Exposure saves Wcs with CRPIX shifted by (-x0, -y0).
@@ -220,9 +220,9 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
             )
             skyPosList = [wcs.pixelToSky(pos).getPosition(geom.degrees) for pos in pixelPosList]
             posStrList = ["(%0.3f, %0.3f)" % tuple(skyPos) for skyPos in skyPosList]
-            self.log.info("tract %s has corners %s (RA, Dec deg) and %s x %s patches" %
-                          (tractInfo.getId(), ", ".join(posStrList),
-                           tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1]))
+            self.log.info("tract %s has corners %s (RA, Dec deg) and %s x %s patches",
+                          tractInfo.getId(), ", ".join(posStrList),
+                          tractInfo.getNumPatches()[0], tractInfo.getNumPatches()[1])
         return pipeBase.Struct(
             skyMap=skyMap
         )

@@ -27,7 +27,7 @@ from lsst.pipe.tasks.configurableActions import (ConfigurableActionStructField, 
 from lsst.pex.config import Config, Field, FieldValidationError
 
 
-class TestAction1(ConfigurableAction):
+class ActionTest1(ConfigurableAction):
     var = Field(doc="test field", dtype=int, default=0)
 
     def __call__(self):
@@ -37,7 +37,7 @@ class TestAction1(ConfigurableAction):
         assert(self.var is not None)
 
 
-class TestAction2(ConfigurableAction):
+class ActionTest2(ConfigurableAction):
     var = Field(doc="test field", dtype=int, default=1)
 
     def __call__(self):
@@ -47,7 +47,7 @@ class TestAction2(ConfigurableAction):
         assert(self.var is not None)
 
 
-class TestAction3(ConfigurableAction):
+class ActionTest3(ConfigurableAction):
     var = Field(doc="test field", dtype=int, default=3)
 
     def __call__(self):
@@ -72,7 +72,7 @@ class ConfigurableActionsTestCase(unittest.TestCase):
         self.assertTrue(hasattr(config, "singleAction"))
 
         # test again with default values
-        configClass = self._createConfig(default={"test1": TestAction1}, singleDefault=TestAction1)
+        configClass = self._createConfig(default={"test1": ActionTest1}, singleDefault=ActionTest1)
         config = configClass()
 
         # verify the defaults were created
@@ -86,31 +86,31 @@ class ConfigurableActionsTestCase(unittest.TestCase):
     def testAssignment(self):
         # Struct actions
         # Test that a new action can be added with assignment
-        configClass = self._createConfig(default={"test1": TestAction1})
+        configClass = self._createConfig(default={"test1": ActionTest1})
         config = configClass()
-        config.actions.test2 = TestAction2
+        config.actions.test2 = ActionTest2
 
         self.assertEqual(tuple(config.actions.fieldNames), ("test1", "test2"))
         self.assertEqual(config.actions.test2.var, 1)
 
         # verify the same as above, but assigning with instances
-        configClass = self._createConfig(default={"test1": TestAction1})
+        configClass = self._createConfig(default={"test1": ActionTest1})
         config = configClass()
-        config.actions.test3 = TestAction3()
+        config.actions.test3 = ActionTest3()
 
         self.assertEqual(tuple(config.actions.fieldNames), ("test1", "test3"))
         self.assertEqual(config.actions.test3.var, 3)
 
         # The following is designed to support pipeline config setting
         # Test assignment using the update accessor
-        configClass = self._createConfig(default={"test1": TestAction1})
+        configClass = self._createConfig(default={"test1": ActionTest1})
         config = configClass()
-        config.actions.update = {"test2": TestAction2, "test3": TestAction3}
+        config.actions.update = {"test2": ActionTest2, "test3": ActionTest3}
 
         self.assertEqual(tuple(config.actions.fieldNames), ("test1", "test2", "test3"))
 
-        configClass = self._createConfig(default={"test1": TestAction1})
-        configClass2 = self._createConfig(default={"test2": TestAction2, "test3": TestAction3})
+        configClass = self._createConfig(default={"test1": ActionTest1})
+        configClass2 = self._createConfig(default={"test2": ActionTest2, "test3": ActionTest3})
         config = configClass()
         config2 = configClass2()
         config.actions.update = config2.actions
@@ -118,44 +118,44 @@ class ConfigurableActionsTestCase(unittest.TestCase):
         self.assertEqual(tuple(config.actions.fieldNames), ("test1", "test2", "test3"))
 
         # Test remove "assignment" using the remove accessor
-        configClass = self._createConfig(default={"test1": TestAction1, "test2": TestAction2,
-                                                  "test3": TestAction3})
+        configClass = self._createConfig(default={"test1": ActionTest1, "test2": ActionTest2,
+                                                  "test3": ActionTest3})
         config = configClass()
         config.actions.remove = ("test1", "test2")
         self.assertEqual(tuple(config.actions.fieldNames), ("test3", ))
 
-        configClass = self._createConfig(default={"test1": TestAction1, "test2": TestAction2,
-                                                  "test3": TestAction3})
+        configClass = self._createConfig(default={"test1": ActionTest1, "test2": ActionTest2,
+                                                  "test3": ActionTest3})
         config = configClass()
         config.actions.remove = "test1"
         self.assertEqual(tuple(config.actions.fieldNames), ("test2", "test3"))
 
         # singleAction
         # Test that an action can be reassigned
-        configClass = self._createConfig(singleDefault=TestAction1)
+        configClass = self._createConfig(singleDefault=ActionTest1)
         config = configClass()
         self.assertEqual(config.singleAction(), 0)
 
-        config.singleAction = TestAction2
+        config.singleAction = ActionTest2
         self.assertEqual(config.singleAction(), 1)
 
-        config.singleAction = TestAction3()
+        config.singleAction = ActionTest3()
         self.assertEqual(config.singleAction(), 3)
 
     def testValidate(self):
-        configClass = self._createConfig(default={"test1": TestAction1, "test2": TestAction2,
-                                                  "test3": TestAction3}, singleDefault=TestAction1)
+        configClass = self._createConfig(default={"test1": ActionTest1, "test2": ActionTest2,
+                                                  "test3": ActionTest3}, singleDefault=ActionTest1)
         config = configClass()
         config.validate()
 
     def testFreeze(self):
-        configClass = self._createConfig(default={"test1": TestAction1, "test2": TestAction2},
-                                         singleDefault=TestAction1)
+        configClass = self._createConfig(default={"test1": ActionTest1, "test2": ActionTest2},
+                                         singleDefault=ActionTest1)
         config = configClass()
         config.freeze()
 
         with self.assertRaises(FieldValidationError):
-            config.actions.test3 = TestAction3
+            config.actions.test3 = ActionTest3
 
         with self.assertRaises(FieldValidationError):
             config.actions.test1.var = 2
@@ -164,14 +164,14 @@ class ConfigurableActionsTestCase(unittest.TestCase):
             config.actions.test2.var = 0
 
         with self.assertRaises(FieldValidationError):
-            config.singleAction = TestAction2
+            config.singleAction = ActionTest2
 
         with self.assertRaises(FieldValidationError):
             config.singleAction.var = 3
 
     def testCompare(self):
-        configClass = self._createConfig(default={"test1": TestAction1, "test2": TestAction2},
-                                         singleDefault=TestAction1)
+        configClass = self._createConfig(default={"test1": ActionTest1, "test2": ActionTest2},
+                                         singleDefault=ActionTest1)
         config = configClass()
         config2 = configClass()
 
@@ -191,8 +191,8 @@ class ConfigurableActionsTestCase(unittest.TestCase):
         # This method will also test rename, as it is part of the
         # implementation in pex_config
         ioObject = StringIO()
-        configClass = self._createConfig(default={"test1": TestAction1},
-                                         singleDefault=TestAction1)
+        configClass = self._createConfig(default={"test1": ActionTest1},
+                                         singleDefault=ActionTest1)
         config = configClass()
 
         config.saveToStream(ioObject)
@@ -205,8 +205,8 @@ class ConfigurableActionsTestCase(unittest.TestCase):
 
     def testToDict(self):
         """Test the toDict interface"""
-        configClass = self._createConfig(default={"test1": TestAction1},
-                                         singleDefault=TestAction1)
+        configClass = self._createConfig(default={"test1": ActionTest1},
+                                         singleDefault=ActionTest1)
         config = configClass()
         self.assertEqual(config.toDict(), {'actions': {'test1': {'var': 0}}, 'singleAction': {'var': 0}})
 

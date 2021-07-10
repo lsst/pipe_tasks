@@ -269,10 +269,10 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
         if self.doPsfMatch:
             # Backwards compatibility.
             # Configs do not have loggers
-            log.warn("Config doPsfMatch deprecated. Setting warpType='psfMatched'")
+            log.warning("Config doPsfMatch deprecated. Setting warpType='psfMatched'")
             self.warpType = 'psfMatched'
         if self.doSigmaClip and self.statistic != "MEANCLIP":
-            log.warn('doSigmaClip deprecated. To replicate behavior, setting statistic to "MEANCLIP"')
+            log.warning('doSigmaClip deprecated. To replicate behavior, setting statistic to "MEANCLIP"')
             self.statistic = "MEANCLIP"
         if self.doInterp and self.statistic not in ['MEAN', 'MEDIAN', 'MEANCLIP', 'VARIANCE', 'VARIANCECLIP']:
             raise ValueError("Must set doInterp=False for statistic=%s, which does not "
@@ -525,7 +525,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         if warpRefList is None:
             calExpRefList = self.selectExposures(dataRef, skyInfo, selectDataList=selectDataList)
             if len(calExpRefList) == 0:
-                self.log.warn("No exposures to coadd")
+                self.log.warning("No exposures to coadd")
                 return
             self.log.info("Coadding %d exposures", len(calExpRefList))
 
@@ -535,7 +535,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         self.log.info("Found %d %s", len(inputData.tempExpRefList),
                       self.getTempExpDatasetName(self.warpType))
         if len(inputData.tempExpRefList) == 0:
-            self.log.warn("No coadd temporary exposures found")
+            self.log.warning("No coadd temporary exposures found")
             return
 
         supplementaryData = self.makeSupplementaryData(dataRef, warpRefList=inputData.tempExpRefList)
@@ -551,7 +551,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                 coaddDatasetName = "fakes_" + self.getCoaddDatasetName(self.warpType)
             else:
                 coaddDatasetName = self.getCoaddDatasetName(self.warpType)
-            self.log.info("Persisting %s" % coaddDatasetName)
+            self.log.info("Persisting %s", coaddDatasetName)
             dataRef.put(retStruct.coaddExposure, coaddDatasetName)
         if self.config.doNImage and retStruct.nImage is not None:
             dataRef.put(retStruct.nImage, self.getCoaddDatasetName(self.warpType) + '_nImage')
@@ -684,7 +684,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             # therefore have no datasetExists() method
             if not isinstance(tempExpRef, DeferredDatasetHandle):
                 if not tempExpRef.datasetExists(tempExpName):
-                    self.log.warn("Could not find %s %s; skipping it", tempExpName, tempExpRef.dataId)
+                    self.log.warning("Could not find %s %s; skipping it", tempExpName, tempExpRef.dataId)
                     continue
 
             tempExp = tempExpRef.get(datasetType=tempExpName, immediate=True)
@@ -699,14 +699,14 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             try:
                 imageScaler.scaleMaskedImage(maskedImage)
             except Exception as e:
-                self.log.warn("Scaling failed for %s (skipping it): %s", tempExpRef.dataId, e)
+                self.log.warning("Scaling failed for %s (skipping it): %s", tempExpRef.dataId, e)
                 continue
             statObj = afwMath.makeStatistics(maskedImage.getVariance(), maskedImage.getMask(),
                                              afwMath.MEANCLIP, statsCtrl)
             meanVar, meanVarErr = statObj.getResult(afwMath.MEANCLIP)
             weight = 1.0 / float(meanVar)
             if not numpy.isfinite(weight):
-                self.log.warn("Non-finite weight for %s: skipping", tempExpRef.dataId)
+                self.log.warning("Non-finite weight for %s: skipping", tempExpRef.dataId)
                 continue
             self.log.info("Weight of %s %s = %0.3f", tempExpName, tempExpRef.dataId, weight)
 
@@ -1111,7 +1111,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         try:
             return dataRef.get(datasetType="brightObjectMask", immediate=True)
         except Exception as e:
-            self.log.warn("Unable to read brightObjectMask for %s: %s", dataRef.dataId, e)
+            self.log.warning("Unable to read brightObjectMask for %s: %s", dataRef.dataId, e)
             return None
 
     def setBrightObjectMasks(self, exposure, brightObjectMasks, dataId=None):
@@ -1128,7 +1128,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         """
 
         if brightObjectMasks is None:
-            self.log.warn("Unable to apply bright object mask: none supplied")
+            self.log.warning("Unable to apply bright object mask: none supplied")
             return
         self.log.info("Applying %d bright object masks to %s", len(brightObjectMasks), dataId)
         mask = exposure.getMaskedImage().getMask()
@@ -1152,7 +1152,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                 radius = int(rec["radius"].asArcseconds()/plateScale)   # convert to pixels
                 spans = afwGeom.SpanSet.fromShape(radius, offset=center)
             else:
-                self.log.warn("Unexpected region type %s at %s" % rec["type"], center)
+                self.log.warning("Unexpected region type %s at %s", rec["type"], center)
                 continue
             spans.clippedTo(mask.getBBox()).setMask(mask, self.brightObjectBitmask)
 
@@ -1366,8 +1366,8 @@ class SafeClipAssembleCoaddConfig(AssembleCoaddConfig, pipelineConnections=Assem
 
     def validate(self):
         if self.doSigmaClip:
-            log.warn("Additional Sigma-clipping not allowed in Safe-clipped Coadds. "
-                     "Ignoring doSigmaClip.")
+            log.warning("Additional Sigma-clipping not allowed in Safe-clipped Coadds. "
+                        "Ignoring doSigmaClip.")
             self.doSigmaClip = False
         if self.statistic != "MEAN":
             raise ValueError("Only MEAN statistic allowed for final stacking in SafeClipAssembleCoadd "
@@ -2477,7 +2477,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         warpName = self.getTempExpDatasetName('psfMatched')
         if not isinstance(warpRef, DeferredDatasetHandle):
             if not warpRef.datasetExists(warpName):
-                self.log.warn("Could not find %s %s; skipping it", warpName, warpRef.dataId)
+                self.log.warning("Could not find %s %s; skipping it", warpName, warpRef.dataId)
                 return None
         warp = warpRef.get(datasetType=warpName, immediate=True)
         # direct image scaler OK for PSF-matched Warp
@@ -2487,7 +2487,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             try:
                 self.scaleWarpVariance.run(mi)
             except Exception as exc:
-                self.log.warn("Unable to rescale variance of warp (%s); leaving it as-is" % (exc,))
+                self.log.warning("Unable to rescale variance of warp (%s); leaving it as-is", exc)
         mi -= templateCoadd.getMaskedImage()
         return warp
 

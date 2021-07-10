@@ -46,8 +46,8 @@ class IngestCuratedCalibsTask(IngestCalibsTask):
                 for s in calibs[d]:
                     file_name = f'{calib_type}_{d}_{s.isoformat()}.fits'
                     full_file_name = os.path.join(temp_dir, file_name)
-                    self.log.info('%s written for sensor: %s and calibDate: %s' %
-                                  (calib_type, d, s.isoformat()))
+                    self.log.info('%s written for sensor: %s and calibDate: %s',
+                                  calib_type, d, s.isoformat())
                     calibs[d][s].writeFits(full_file_name)
                     file_names.append(full_file_name)
             args.files = file_names

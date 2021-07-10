@@ -416,7 +416,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         @return same data as the characterize method
         """
         self._frame = self._initialFrame  # reset debug display frame
-        self.log.info("Processing %s" % (dataRef.dataId))
+        self.log.info("Processing %s", dataRef.dataId)
 
         if doUnpersist:
             if exposure is not None or background is not None:
@@ -474,7 +474,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         self._frame = self._initialFrame  # reset debug display frame
 
         if not self.config.doMeasurePsf and not exposure.hasPsf():
-            self.log.warn("Source catalog detected and measured with placeholder or default PSF")
+            self.log.warning("Source catalog detected and measured with placeholder or default PSF")
             self.installSimplePsf.run(exposure=exposure)
 
         if exposureIdInfo is None:
@@ -495,8 +495,8 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             psfSigma = psf.computeShape().getDeterminantRadius()
             psfDimensions = psf.computeImage().getDimensions()
             medBackground = np.median(dmeRes.background.getImage().getArray())
-            self.log.info("iter %s; PSF sigma=%0.2f, dimensions=%s; median background=%0.2f" %
-                          (i + 1, psfSigma, psfDimensions, medBackground))
+            self.log.info("iter %s; PSF sigma=%0.2f, dimensions=%s; median background=%0.2f",
+                          i + 1, psfSigma, psfDimensions, medBackground)
 
         self.display("psf", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 
@@ -558,7 +558,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         """
         # install a simple PSF model, if needed or wanted
         if not exposure.hasPsf() or (self.config.doMeasurePsf and self.config.useSimplePsf):
-            self.log.warn("Source catalog detected and measured with placeholder or default PSF")
+            self.log.warning("Source catalog detected and measured with placeholder or default PSF")
             self.installSimplePsf.run(exposure=exposure)
 
         # run repair, but do not interpolate over cosmic rays (do that elsewhere, with the final PSF model)
@@ -568,8 +568,8 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             try:
                 self.repair.run(exposure=exposure, keepCRs=True)
             except LengthError:
-                self.log.warn("Skipping cosmic ray detection: Too many CR pixels (max %0.f)" %
-                              self.config.repair.cosmicray.nCrPixelMax)
+                self.log.warning("Skipping cosmic ray detection: Too many CR pixels (max %0.f)",
+                                 self.config.repair.cosmicray.nCrPixelMax)
 
         self.display("repair_iter", exposure=exposure)
 

@@ -130,8 +130,8 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
                                          self._statsControl)
         mean, meanErr = statObj.getResult(afwMath.MEANCLIP)
         stdDev, stdDevErr = statObj.getResult(afwMath.STDEVCLIP)
-        self.log.info("clipped mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" %
-                      (mean, meanErr, stdDev, stdDevErr))
+        self.log.info("clipped mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f",
+                      mean, meanErr, stdDev, stdDevErr)
         return pipeBase.Struct(
             mean=mean,
             meanErr=meanErr,
@@ -204,8 +204,8 @@ class ExampleSimpleStatsTask(pipeBase.Task):
                                          self._statsControl)
         mean, meanErr = statObj.getResult(afwMath.MEAN)
         stdDev, stdDevErr = statObj.getResult(afwMath.STDEV)
-        self.log.info("simple mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f" %
-                      (mean, meanErr, stdDev, stdDevErr))
+        self.log.info("simple mean=%0.2f; meanErr=%0.2f; stdDev=%0.2f; stdDevErr=%0.2f",
+                      mean, meanErr, stdDev, stdDevErr)
 
         return pipeBase.Struct(
             mean=mean,

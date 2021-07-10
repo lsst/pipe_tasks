@@ -176,7 +176,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         - exposure: final exposure (an lsst.afw.image.ExposureF)
         - background: final background model (an lsst.afw.math.BackgroundList)
         """
-        self.log.info("Processing %s" % (sensorRef.dataId))
+        self.log.info("Processing %s", sensorRef.dataId)
 
         exposure = self.isr.runDataRef(sensorRef).exposure
 

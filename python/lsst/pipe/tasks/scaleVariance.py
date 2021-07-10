@@ -122,13 +122,13 @@ class ScaleVarianceTask(Task):
         with self.subtractedBackground(maskedImage):
             factor = self.pixelBased(maskedImage)
             if factor > self.config.limit:
-                self.log.warn("Pixel-based variance rescaling factor (%f) exceeds configured limit (%f); "
-                              "trying image-based method", factor, self.config.limit)
+                self.log.warning("Pixel-based variance rescaling factor (%f) exceeds configured limit (%f); "
+                                 "trying image-based method", factor, self.config.limit)
                 factor = self.imageBased(maskedImage)
                 if factor > self.config.limit:
                     raise RuntimeError("Variance rescaling factor (%f) exceeds configured limit (%f)" %
                                        (factor, self.config.limit))
-            self.log.info("Renormalizing variance by %f" % (factor,))
+            self.log.info("Renormalizing variance by %f", factor)
             maskedImage.variance *= factor
         return factor
 
@@ -184,7 +184,7 @@ class ScaleVarianceTask(Task):
                   & (maskedImage.variance.array > 0))
 
         nGood = np.sum(isGood)
-        self.log.debugf("Number of selected background pixels: {} of {}.", nGood, isGood.size)
+        self.log.debug("Number of selected background pixels: %d of %d.", nGood, isGood.size)
         if nGood < 2:
             # Not enough good data, np.percentile needs at least 2 points
             # to estimate a range
@@ -224,7 +224,7 @@ class ScaleVarianceTask(Task):
                   & np.isfinite(maskedImage.variance.array)
                   & (maskedImage.variance.array > 0))
         nGood = np.sum(isGood)
-        self.log.debugf("Number of selected background pixels: {} of {}.", nGood, isGood.size)
+        self.log.debug("Number of selected background pixels: %d of %d.", nGood, isGood.size)
         if nGood < 2:
             # Not enough good data, np.percentile needs at least 2 points
             # to estimate a range

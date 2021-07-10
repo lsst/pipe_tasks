@@ -347,10 +347,12 @@ class StackBrightStarsTask(pipeBase.CmdLineTask):
             logging purposes, when running over multiple such regions
             (typically from `MeasureExtendedPsfTask`)
         """
-        log_message = f'Building extended PSF from stamps extracted from {len(bss_ref_list)} detector images'
         if region_name:
-            log_message += f' for region "{region_name}".'
-        self.log.info(log_message)
+            region_message = f' for region "{region_name}".'
+        else:
+            region_message = ''
+        self.log.info('Building extended PSF from stamps extracted from %d detector images%s',
+                      len(bss_ref_list), region_message)
         # read in example set of full stamps
         example_bss = bss_ref_list[0].get(datasetType="brightStarStamps", immediate=True)
         example_stamp = example_bss[0].stamp_im
@@ -362,8 +364,8 @@ class StackBrightStarsTask(pipeBase.CmdLineTask):
         # compute approximate number of subregions
         n_subregions = int(ext_psf.getDimensions()[0]/subregion_size[0] + 1)*int(
             ext_psf.getDimensions()[1]/subregion_size[1] + 1)
-        self.log.info(f"Stacking will performed iteratively over approximately {n_subregions} "
-                      "smaller areas of the final model image.")
+        self.log.info("Stacking will performed iteratively over approximately %d "
+                      "smaller areas of the final model image.", n_subregions)
         # set up stacking statistic
         stats_control, stats_flags = self._set_up_stacking(example_stamp)
         # perform stacking
@@ -463,9 +465,9 @@ class MeasureExtendedPsfTask(pipeBase.CmdLineTask):
             try:
                 region_name = self.config.detectors_focal_plane_regions[det_id]
             except KeyError:
-                self.log.warn(f'Bright stars were available for detector {det_id}, but it was missing '
-                              'from the "detectors_focal_plane_regions" config field, so they will not '
-                              'be used to build any of the extended PSF models')
+                self.log.warning('Bright stars were available for detector %d, but it was missing '
+                                 'from the "detectors_focal_plane_regions" config field, so they will not '
+                                 'be used to build any of the extended PSF models', det_id)
                 self.regionless_dets.append(det_id)
                 continue
             region_ref_list[region_name].append(dataset_handle)
@@ -485,8 +487,8 @@ class MeasureExtendedPsfTask(pipeBase.CmdLineTask):
             for region_name, ref_list in region_ref_list.items():
                 if not ref_list:
                     # no valid references found
-                    self.log.warn(f'No valid brightStarStamps reference found for region "{region_name}"; '
-                                  'skipping it.')
+                    self.log.warning('No valid brightStarStamps reference found for region "%s"; '
+                                     'skipping it.', region_name)
                     continue
                 ext_psf = self.stack_bright_stars.run(ref_list, region_name)
                 output_e_psf.add_regional_extended_psf(ext_psf, region_name,

@@ -134,7 +134,7 @@ class MatchFakesTask(PipelineTask):
             distance_upper_bound=np.radians(self.config.matchDistanceArcseconds / 3600))
         nFakesFound = np.isfinite(dist).sum()
 
-        self.log.info(f"Found {nFakesFound} out of {nPossibleFakes} possible.")
+        self.log.info("Found %d out of %d possible.", nFakesFound, nPossibleFakes)
         diaSrcIds = associatedDiaSources.iloc[np.where(np.isfinite(dist), idxs, 0)]["diaSourceId"].to_numpy()
         matchedFakes = trimmedFakes.assign(diaSourceId=np.where(np.isfinite(dist), diaSrcIds, 0))
 

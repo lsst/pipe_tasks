@@ -399,7 +399,7 @@ class MergeDetectionsTask(PipelineTask, CmdLineTask):
         # Sort Peaks from brightest to faintest
         for record in mergedList:
             record.getFootprint().sortPeaks()
-        self.log.info("Merged to %d sources" % len(mergedList))
+        self.log.info("Merged to %d sources", len(mergedList))
         # Attempt to remove garbage peaks
         self.cullPeaks(mergedList)
         return Struct(outputCatalog=mergedList)
@@ -430,7 +430,7 @@ class MergeDetectionsTask(PipelineTask, CmdLineTask):
                     keptPeaks.append(peak)
                 else:
                     culledPeaks += 1
-        self.log.info("Culled %d of %d peaks" % (culledPeaks, totalPeaks))
+        self.log.info("Culled %d of %d peaks", culledPeaks, totalPeaks)
 
     def getSchemaCatalogs(self):
         """!
@@ -489,7 +489,7 @@ class MergeDetectionsTask(PipelineTask, CmdLineTask):
         # it's confusing to see it in the log message, even if the butler simply ignores it.
         mergeDataId = patchRef.dataId.copy()
         del mergeDataId["filter"]
-        self.log.info("Wrote merged catalog: %s" % (mergeDataId,))
+        self.log.info("Wrote merged catalog: %s", mergeDataId)
 
     def writeMetadata(self, dataRefList):
         """!

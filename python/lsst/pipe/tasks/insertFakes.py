@@ -524,10 +524,8 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 deepCoadd
         """
 
-        infoStr = "Adding fakes to: tract: %d, patch: %s, filter: %s" % (dataRef.dataId["tract"],
-                                                                         dataRef.dataId["patch"],
-                                                                         dataRef.dataId["filter"])
-        self.log.info(infoStr)
+        self.log.info("Adding fakes to: tract: %d, patch: %s, filter: %s",
+                      dataRef.dataId["tract"], dataRef.dataId["patch"], dataRef.dataId["filter"])
 
         # To do: should it warn when asked to insert variable sources into the coadd
 
@@ -630,7 +628,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 generator = self._generateGSObjectsFromImages(image, fakeCat)
             _add_fake_sources(image, generator, calibFluxRadius=self.config.calibFluxRadius, logger=self.log)
         elif len(fakeCat) == 0 and self.config.doProcessAllDataIds:
-            self.log.warn("No fakes found for this dataRef; processing anyway.")
+            self.log.warning("No fakes found for this dataRef; processing anyway.")
             image.mask.addMaskPlane("FAKE")
         else:
             raise RuntimeError("No fakes found for this dataRef.")
@@ -760,7 +758,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         wcs = exposure.getWcs()
         photoCalib = exposure.getPhotoCalib()
 
-        self.log.info(f"Making {len(fakeCat)} objects for insertion")
+        self.log.info("Making %d objects for insertion", len(fakeCat))
 
         for (index, row) in fakeCat.iterrows():
             ra = row['ra']
@@ -814,7 +812,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         wcs = exposure.getWcs()
         photoCalib = exposure.getPhotoCalib()
 
-        self.log.info(f"Processing {len(fakeCat)} fake images")
+        self.log.info("Processing %d fake images", len(fakeCat))
 
         for (index, row) in fakeCat.iterrows():
             ra = row['ra']
@@ -889,7 +887,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         galImages = []
         starImages = []
 
-        self.log.info("Processing %d fake images" % len(fakeCat))
+        self.log.info("Processing %d fake images", len(fakeCat))
 
         for (imFile, sourceType, mag, x, y) in zip(fakeCat[band + "imFilename"].array,
                                                    fakeCat["sourceType"].array,
@@ -908,7 +906,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 psfKernel /= correctedFlux
 
             except InvalidParameterError:
-                self.log.info("%s at %0.4f, %0.4f outside of image" % (sourceType, x, y))
+                self.log.info("%s at %0.4f, %0.4f outside of image", sourceType, x, y)
                 continue
 
             psfIm = galsim.InterpolatedImage(galsim.Image(psfKernel), scale=pixelScale)
@@ -1024,7 +1022,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         See mkFakeStars doc string for an explanation of calibration to instrumental flux.
         """
 
-        self.log.info("Making %d fake galaxy images" % len(fakeCat))
+        self.log.info("Making %d fake galaxy images", len(fakeCat))
 
         for (index, row) in fakeCat.iterrows():
             xy = geom.Point2D(row["x"], row["y"])
@@ -1037,7 +1035,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 psfKernel /= correctedFlux
 
             except InvalidParameterError:
-                self.log.info("Galaxy at %0.4f, %0.4f outside of image" % (row["x"], row["y"]))
+                self.log.info("Galaxy at %0.4f, %0.4f outside of image", row["x"], row["y"])
                 continue
 
             try:
@@ -1097,7 +1095,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         the PSF model to the correct instrumental flux within calibFluxRadius.
         """
 
-        self.log.info("Making %d fake star images" % len(fakeCat))
+        self.log.info("Making %d fake star images", len(fakeCat))
 
         for (index, row) in fakeCat.iterrows():
             xy = geom.Point2D(row["x"], row["y"])
@@ -1110,7 +1108,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 starIm /= correctedFlux
 
             except InvalidParameterError:
-                self.log.info("Star at %0.4f, %0.4f outside of image" % (row["x"], row["y"]))
+                self.log.info("Star at %0.4f, %0.4f outside of image", row["x"], row["y"])
                 continue
 
             try:
@@ -1142,7 +1140,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         rowsToKeep = (((fakeCat['bulge_semimajor'] != 0.0) & (fakeCat['disk_semimajor'] != 0.0))
                       | (fakeCat[self.config.sourceType] == starCheckVal))
         numRowsNotUsed = len(fakeCat) - len(np.where(rowsToKeep)[0])
-        self.log.info("Removing %d rows with HLR = 0 for either the bulge or disk" % numRowsNotUsed)
+        self.log.info("Removing %d rows with HLR = 0 for either the bulge or disk", numRowsNotUsed)
         fakeCat = fakeCat[rowsToKeep]
 
         minN = galsim.Sersic._minimum_n
@@ -1151,13 +1149,13 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                               & (fakeCat['disk_n'] >= minN) & (fakeCat['disk_n'] <= maxN))
                               | (fakeCat[self.config.sourceType] == starCheckVal))
         numRowsNotUsed = len(fakeCat) - len(np.where(rowsWithGoodSersic)[0])
-        self.log.info("Removing %d rows of galaxies with nBulge or nDisk outside of %0.2f <= n <= %0.2f" %
-                      (numRowsNotUsed, minN, maxN))
+        self.log.info("Removing %d rows of galaxies with nBulge or nDisk outside of %0.2f <= n <= %0.2f",
+                      numRowsNotUsed, minN, maxN)
         fakeCat = fakeCat[rowsWithGoodSersic]
 
         if self.config.doSubSelectSources:
             numRowsNotUsed = len(fakeCat) - len(fakeCat['select'])
-            self.log.info("Removing %d rows which were not designated as template sources" % numRowsNotUsed)
+            self.log.info("Removing %d rows which were not designated as template sources", numRowsNotUsed)
             fakeCat = fakeCat[fakeCat['select']]
 
         return fakeCat
@@ -1191,7 +1189,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         for (fakeImage, xy) in fakeImages:
             X0 = xy.getX() - fakeImage.getWidth()/2 + 0.5
             Y0 = xy.getY() - fakeImage.getHeight()/2 + 0.5
-            self.log.debug("Adding fake source at %d, %d" % (xy.getX(), xy.getY()))
+            self.log.debug("Adding fake source at %d, %d", xy.getX(), xy.getY())
             if sourceType == "galaxy":
                 interpFakeImage = afwMath.offsetImage(fakeImage, X0, Y0, "lanczos3")
             else:

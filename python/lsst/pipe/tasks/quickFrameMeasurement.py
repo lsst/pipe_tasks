@@ -319,7 +319,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
                 max25 = ap25
                 max25srcNum = srcNum
         if max70srcNum != max25srcNum:
-            self.log.warn("WARNING! Max apFlux70 for different object than with max apFlux25")
+            self.log.warning("WARNING! Max apFlux70 for different object than with max apFlux25")
 
         if max70srcNum >= 0:  # starts as -1, return None if nothing is acceptable
             return max70srcNum
@@ -488,7 +488,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
             result = self._run(exp=exp, donutDiameter=donutDiameter, doDisplay=doDisplay)
             return result
         except Exception as e:
-            self.log.warn(f"Failed to find main source centroid {e}")
+            self.log.warning("Failed to find main source centroid %s", e)
             result = self._makeEmptyReturnStruct()
             return result
 
@@ -513,7 +513,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
             self.display.mtv(exp)
 
         fpSet = sources.getFootprints()
-        self.log.info(f"Found {len(fpSet)} sources in exposure")
+        self.log.info("Found %d sources in exposure", len(fpSet))
 
         objData = {}
         nMeasured = 0
@@ -527,12 +527,12 @@ class QuickFrameMeasurementTask(pipeBase.Task):
                     # gets shape and centroid from footprint
                     result = self._getDataFromFootprintOnly(fp, exp)
                 except MeasurementError as e:
-                    self.log.info(f"Skipped measuring source {srcNum}: {e}")
+                    self.log.info("Skipped measuring source %s: %s", srcNum, e)
                     continue
             objData[srcNum] = self._measurementResultToDict(result)
             nMeasured += 1
 
-        self.log.info(f"Measured {nMeasured} of {len(fpSet)} sources in exposure")
+        self.log.info("Measured %d of %d sources in exposure", nMeasured, len(fpSet))
 
         medianXxYy = self._calcMedianXxYy(objData)
 

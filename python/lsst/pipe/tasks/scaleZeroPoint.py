@@ -269,8 +269,8 @@ class SpatialScaleZeroPointTask(ScaleZeroPointTask):
             yList.append(ctr.getY())
             scaleList.append(self.scaleFromFluxMag0(fluxMagInfo.fluxMag0).scale)
 
-        self.log.info("Found %d flux scales for interpolation: %s" % (len(scaleList),
-                                                                      ["%0.4f"%(s) for s in scaleList]))
+        self.log.info("Found %d flux scales for interpolation: %s",
+                      len(scaleList), [f"{s:%0.4f}" for s in scaleList])
         return SpatialImageScaler(
             interpStyle=self.config.interpStyle,
             xList=xList,
