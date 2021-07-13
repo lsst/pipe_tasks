@@ -266,7 +266,8 @@ class WriteSourceTableConnections(pipeBase.PipelineTaskConnections,
         dimensions=("instrument", "visit", "detector")
     )
     outputCatalog = connectionTypes.Output(
-        doc="Catalog of sources, `src` in Parquet format",
+        doc="Catalog of sources, `src` in Parquet format. The 'id' column is "
+            "replaced with an index; all other columns are unchanged.",
         name="{catalogType}source",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector")

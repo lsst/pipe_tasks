@@ -4,8 +4,8 @@
 WriteSourceTableTask
 ####################
 
-``WriteSourceTableTask`` converts table of sources measured on a calexp (dataset `src`) to a
-parquet file. All data is copied without transformation, and column names are unchanged.
+``WriteSourceTableTask`` converts table of sources measured on a calexp (dataset `src`) to a parquet file.
+All data is copied without transformation, and column names are unchanged, except for the ``"id"`` column, which is replaced by a `~pandas.DataFrame` index.
 
 It is the first of three postprocessing tasks to convert a `src` table to a
 per-visit Source Table that conforms to the standard data model. The second is
