@@ -225,6 +225,34 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
             len(self.sourceCat),
             np.sum(np.isfinite(result.matchedSources["extraColumn"])))
 
+    def testNoIdCat(self):
+        cat = self.sourceCat.set_index("diaObjectId", drop=True)
+        matchFakesConfig = MatchFakesConfig()
+        matchFakesConfig.matchDistanceArcseconds = 0.1
+        matchFakesConfig.src_id_col = None
+
+        matchFakes = MatchFakesTask(config=matchFakesConfig)
+        result = matchFakes.run(self.fakeCat,
+                                self.exposure,
+                                cat)
+        self.assertEqual(self.inExp.sum(), len(result.matchedSources))
+        self.assertEqual(
+            len(self.sourceCat),
+            np.sum(np.isfinite(result.matchedSources["extraColumn"])))
+
+    def testMultiIndexCat(self):
+        cat = self.sourceCat.set_index(["diaObjectId", "filterName", "extraColumn"],
+                                       drop=True)
+        matchFakesConfig = MatchFakesConfig()
+        matchFakesConfig.matchDistanceArcseconds = 0.1
+        matchFakesConfig.src_id_col = None
+
+        matchFakes = MatchFakesTask(config=matchFakesConfig)
+        with self.assertRaises(ValueError):
+            matchFakes.run(self.fakeCat,
+                           self.exposure,
+                           cat)
+
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
     pass

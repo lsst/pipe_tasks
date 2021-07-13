@@ -63,7 +63,8 @@ class MatchFakesConnections(PipelineTaskConnections,
     matchedSources = connTypes.Output(
         doc="A catalog of those fakeCat sources that have a match in "
             "detectedSources. The schema is the union of the schemas for "
-            "``fakeCat`` and ``detectedSources``.",
+            "``fakeCat`` and ``detectedSources``; if ``config.src_id_col`` is "
+            "`None`, this schema also includes a ``matchedSourceId`` column.",
         name="{fakesType}{coaddName}Diff_matchDiaSrc",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector"),
@@ -83,9 +84,12 @@ class MatchFakesConfig(
         max=10,
     )
     src_id_col = pexConfig.Field(
-        doc="Column in detectedSources containing the source ID.",
+        doc="Column in detectedSources containing the source ID. If None, "
+            "detectedSources's index will be used as the ID instead (and must "
+            "be 1 column)",
         dtype=str,
         default="diaSourceId",
+        optional=True,
     )
     src_ra_col = pexConfig.Field(
         doc="Column in detectedSources containing the J2000 right ascension, in degrees.",
@@ -132,6 +136,12 @@ class MatchFakesTask(PipelineTask):
 
             - ``matchedSources`` : Fakes matched to input sources. Has
               length of ``fakeCat``. (`pandas.DataFrame`)
+
+        Raises
+        ------
+        ValueError:
+            Raised if this task is configured to use the index as the
+            source IDs, but ``detectedSources`` has a multi-column index.
         """
         trimmedFakes = self._trimFakeCat(fakeCat, image)
         nPossibleFakes = len(trimmedFakes)
@@ -149,13 +159,25 @@ class MatchFakesTask(PipelineTask):
         nFakesFound = np.isfinite(dist).sum()
 
         self.log.info("Found %d out of %d possible.", nFakesFound, nPossibleFakes)
-        srcIds = detectedSources.iloc[np.where(np.isfinite(dist), idxs, 0)][self.config.src_id_col].to_numpy()
-        matchedFakes = trimmedFakes.assign(**{self.config.src_id_col: np.where(np.isfinite(dist), srcIds, 0)})
-
-        return Struct(
-            matchedSources=matchedFakes.merge(
+        rows = detectedSources.iloc[np.where(np.isfinite(dist), idxs, 0)]
+        if self.config.src_id_col is not None:
+            srcIds = rows[self.config.src_id_col].to_numpy()
+            matchedFakes = trimmedFakes.assign(**{
+                self.config.src_id_col: np.where(np.isfinite(dist), srcIds, 0)
+            })
+            matchedSources = matchedFakes.merge(
                 detectedSources.reset_index(drop=True), on=self.config.src_id_col, how="left")
-        )
+        else:
+            if rows.index.nlevels != 1:
+                raise ValueError(f"Expected 1-column index, got {rows.index.names}.")
+            srcIds = rows.index.to_numpy()
+            matchedFakes = trimmedFakes.assign(**{"matchedSourceId": np.where(np.isfinite(dist), srcIds, 0)})
+            matchedSources = matchedFakes.merge(
+                detectedSources, how="left",
+                left_on="matchedSourceId", right_index=True)
+            matchedSources.reset_index(drop=True, inplace=True)
+
+        return Struct(matchedSources=matchedSources)
 
     def _trimFakeCat(self, fakeCat, image):
         """Trim the fake cat to about the size of the input image.
