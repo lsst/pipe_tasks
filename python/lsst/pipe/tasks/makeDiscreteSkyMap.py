@@ -24,7 +24,6 @@ import traceback
 import lsst.sphgeom
 
 import lsst.geom as geom
-import lsst.afw.image as afwImage
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.skymap import DiscreteSkyMap, BaseSkyMap
@@ -142,15 +141,15 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
         struct : `lsst.pipe.base.Struct`
            The returned struct has one attribute, ``skyMap``, which holds the returned SkyMap
         """
-        wcs_md_tuple_list = []
+        wcs_bbox_tuple_list = []
         oldSkyMap = None
         datasetName = self.config.coaddName + "Coadd_skyMap"
         for dataRef in dataRefList:
             if not dataRef.datasetExists("calexp"):
                 self.log.warning("CalExp for %s does not exist: ignoring", dataRef.dataId)
                 continue
-            wcs_md_tuple_list.append((dataRef.get("calexp_wcs", immediate=True),
-                                      dataRef.get("calexp_md", immediate=True)))
+            wcs_bbox_tuple_list.append((dataRef.get("calexp_wcs", immediate=True),
+                                        dataRef.get("calexp_bbox", immediate=True)))
         if self.config.doAppend and butler.datasetExists(datasetName):
             oldSkyMap = butler.get(datasetName, immediate=True)
             if not isinstance(oldSkyMap.config, DiscreteSkyMap.ConfigClass):
@@ -158,19 +157,19 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
             compareLog = []
             if not self.config.skyMap.compare(oldSkyMap.config, output=compareLog.append):
                 raise ValueError("Cannot append to existing skymap - configurations differ:", *compareLog)
-        result = self.run(wcs_md_tuple_list, oldSkyMap)
+        result = self.run(wcs_bbox_tuple_list, oldSkyMap)
         if self.config.doWrite:
             butler.put(result.skyMap, datasetName)
         return result
 
     @pipeBase.timeMethod
-    def run(self, wcs_md_tuple_list, oldSkyMap=None):
+    def run(self, wcs_bbox_tuple_list, oldSkyMap=None):
         """Make a SkyMap from the bounds of the given set of calexp metadata.
 
         Parameters
         ----------
-        wcs_md_tuple_list : iterable
-           A list of tuples with each element expected to be a (Wcs, PropertySet) pair
+        wcs_bbox_tuple_list : iterable
+           A list of tuples with each element expected to be a (Wcs, Box2I) pair
         oldSkyMap : `lsst.skymap.DiscreteSkyMap`, option
            The SkyMap to extend if appending
         Returns
@@ -178,11 +177,9 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
         struct : `lsst.pipe.base.Struct
            The returned struct has one attribute, ``skyMap``, which holds the returned SkyMap
         """
-        self.log.info("Extracting bounding boxes of %d images", len(wcs_md_tuple_list))
+        self.log.info("Extracting bounding boxes of %d images", len(wcs_bbox_tuple_list))
         points = []
-        for wcs, md in wcs_md_tuple_list:
-            # nb: don't need to worry about xy0 because Exposure saves Wcs with CRPIX shifted by (-x0, -y0).
-            boxI = afwImage.bboxFromMetadata(md)
+        for wcs, boxI in wcs_bbox_tuple_list:
             boxD = geom.Box2D(boxI)
             points.extend(wcs.pixelToSky(corner).getVector() for corner in boxD.getCorners())
         if len(points) == 0:
