@@ -81,5 +81,3 @@ def makeDiscreteSkyMap(repo, config_file, collections, instrument,
     task = MakeDiscreteSkyMapTask(config=config)
     result = task.run(wcs_bbox_tuple_list, oldSkyMap)
     result.skyMap.register(skymap_id, butler)
-    butler.put(result.skyMap, BaseSkyMap.SKYMAP_DATASET_TYPE_NAME, dataId={'skymap': skymap_id},
-               run=BaseSkyMap.SKYMAP_RUN_COLLECTION_NAME)
