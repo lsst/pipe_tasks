@@ -45,7 +45,7 @@ from .coaddHelpers import groupPatchExposures, getGroupDataRef
 from .scaleVariance import ScaleVarianceTask
 from .maskStreaks import MaskStreaksTask
 from .healSparseMapping import HealSparseInputMapTask
-from lsst.meas.algorithms import SourceDetectionTask
+from lsst.meas.algorithms import SourceDetectionTask, AccumulatorMeanStack
 from lsst.daf.butler import DeferredDatasetHandle
 
 __all__ = ["AssembleCoaddTask", "AssembleCoaddConnections", "AssembleCoaddConfig",
@@ -169,6 +169,11 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
         dtype=str,
         doc="Main stacking statistic for aggregating over the epochs.",
         default="MEANCLIP",
+    )
+    doOnlineForMean = pexConfig.Field(
+        dtype=bool,
+        doc="Perform online coaddition when statistic=\"MEAN\" to save memory?",
+        default=False,
     )
     doSigmaClip = pexConfig.Field(
         dtype=bool,
@@ -828,13 +833,21 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                                                  skyInfo.wcs,
                                                  coaddExposure.getInfo().getCoaddInputs().ccds)
 
-        for subBBox in self._subBBoxIter(skyInfo.bbox, subregionSize):
+        if self.config.doOnlineForMean and self.config.statistic == "MEAN":
             try:
-                self.assembleSubregion(coaddExposure, subBBox, tempExpRefList, imageScalerList,
-                                       weightList, altMaskList, stats.flags, stats.ctrl,
-                                       nImage=nImage)
+                self.assembleOnlineMeanCoadd(coaddExposure, tempExpRefList, imageScalerList,
+                                             weightList, altMaskList, stats.ctrl,
+                                             nImage=nImage)
             except Exception as e:
-                self.log.fatal("Cannot compute coadd %s: %s", subBBox, e)
+                self.log.fatal("Cannot compute online coadd %s", e)
+        else:
+            for subBBox in self._subBBoxIter(skyInfo.bbox, subregionSize):
+                try:
+                    self.assembleSubregion(coaddExposure, subBBox, tempExpRefList, imageScalerList,
+                                           weightList, altMaskList, stats.flags, stats.ctrl,
+                                           nImage=nImage)
+                except Exception as e:
+                    self.log.fatal("Cannot compute coadd %s: %s", subBBox, e)
 
         # If inputMap is requested, we must finalize the map after the accumulation.
         if self.config.doInputMap:
@@ -994,6 +1007,82 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         coaddExposure.maskedImage.assign(coaddSubregion, bbox)
         if nImage is not None:
             nImage.assign(subNImage, bbox)
+
+    def assembleOnlineMeanCoadd(self, coaddExposure, tempExpRefList, imageScalerList, weightList,
+                                altMaskList, statsCtrl, nImage=None):
+        """Assemble the coadd using the "online" method.
+
+        This method takes a running sum of images and weights to save memory.
+        It only works for MEAN statistics.
+
+        Parameters
+        ----------
+        coaddExposure : `lsst.afw.image.Exposure`
+            The target exposure for the coadd.
+        tempExpRefList : `list`
+            List of data reference to tempExp.
+        imageScalerList : `list`
+            List of image scalers.
+        weightList : `list`
+            List of weights.
+        altMaskList : `list`
+            List of alternate masks to use rather than those stored with
+            tempExp, or None.  Each element is dict with keys = mask plane
+            name to which to add the spans.
+        statsCtrl : `lsst.afw.math.StatisticsControl`
+            Statistics control object for coadd
+        nImage : `lsst.afw.image.ImageU`, optional
+            Keeps track of exposure count for each pixel.
+        """
+        self.log.debug("Computing online coadd.")
+        tempExpName = self.getTempExpDatasetName(self.warpType)
+        coaddExposure.mask.addMaskPlane("REJECTED")
+        coaddExposure.mask.addMaskPlane("CLIPPED")
+        coaddExposure.mask.addMaskPlane("SENSOR_EDGE")
+        maskMap = self.setRejectedMaskMapping(statsCtrl)
+        thresholdDict = AccumulatorMeanStack.stats_ctrl_to_threshold_dict(statsCtrl)
+
+        bbox = coaddExposure.maskedImage.getBBox()
+
+        stacker = AccumulatorMeanStack(
+            coaddExposure.image.array.shape,
+            statsCtrl.getAndMask(),
+            mask_threshold_dict=thresholdDict,
+            mask_map=maskMap,
+            no_good_pixels_mask=statsCtrl.getNoGoodPixelsMask(),
+            calc_error_from_input_variance=self.config.calcErrorFromInputVariance,
+            compute_n_image=(nImage is not None)
+        )
+
+        for tempExpRef, imageScaler, altMask, weight in zip(tempExpRefList,
+                                                            imageScalerList,
+                                                            altMaskList,
+                                                            weightList):
+            if isinstance(tempExpRef, DeferredDatasetHandle):
+                # Gen 3 API
+                exposure = tempExpRef.get()
+            else:
+                # Gen 2 API. Delete this when Gen 2 retired
+                exposure = tempExpRef.get(tempExpName)
+
+            maskedImage = exposure.getMaskedImage()
+            mask = maskedImage.getMask()
+            if altMask is not None:
+                self.applyAltMaskPlanes(mask, altMask)
+            imageScaler.scaleMaskedImage(maskedImage)
+            if self.config.removeMaskPlanes:
+                self.removeMaskPlanes(maskedImage)
+
+            stacker.add_masked_image(maskedImage, weight=weight)
+
+            if self.config.doInputMap:
+                visit = exposure.getInfo().getCoaddInputs().visits[0].getId()
+                self.inputMapper.mask_warp_bbox(bbox, visit, mask, statsCtrl.getAndMask())
+
+        stacker.fill_stacked_masked_image(coaddExposure.maskedImage)
+
+        if nImage is not None:
+            nImage.array[:, :] = stacker.n_image
 
     def removeMaskPlanes(self, maskedImage):
         """Unset the mask of an image for mask planes specified in the config.
