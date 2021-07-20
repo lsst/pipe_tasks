@@ -91,13 +91,23 @@ class MatchFakesConfig(
         default="diaSourceId",
         optional=True,
     )
+    src_radec_units = pexConfig.ChoiceField(
+        doc="The units for src_ra_col and src_dec_col.",
+        dtype=str,
+        allowed={
+            "degrees": "Assume detectedSources gives coordinates in degrees.",
+            "radians": "Assume detectedSources gives coordinates in radians.",
+        },
+        default="degrees",
+        optional=False,
+    )
     src_ra_col = pexConfig.Field(
-        doc="Column in detectedSources containing the J2000 right ascension, in degrees.",
+        doc="Column in detectedSources containing the J2000 right ascension.",
         dtype=str,
         default="ra",
     )
     src_dec_col = pexConfig.Field(
-        doc="Column in detectedSources containing the J2000 declination, in degrees.",
+        doc="Column in detectedSources containing the J2000 declination.",
         dtype=str,
         default="decl",
     )
@@ -148,9 +158,14 @@ class MatchFakesTask(PipelineTask):
 
         fakeVects = self._getVectors(trimmedFakes[self.config.raColName],
                                      trimmedFakes[self.config.decColName])
-        srcVects = self._getVectors(
-            np.radians(detectedSources.loc[:, self.config.src_ra_col]),
-            np.radians(detectedSources.loc[:, self.config.src_dec_col]))
+        if self.config.src_radec_units == "degrees":
+            srcVects = self._getVectors(
+                np.radians(detectedSources.loc[:, self.config.src_ra_col]),
+                np.radians(detectedSources.loc[:, self.config.src_dec_col]))
+        else:
+            srcVects = self._getVectors(
+                detectedSources.loc[:, self.config.src_ra_col],
+                detectedSources.loc[:, self.config.src_dec_col])
 
         srcTree = cKDTree(srcVects)
         dist, idxs = srcTree.query(

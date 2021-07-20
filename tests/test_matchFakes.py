@@ -204,8 +204,8 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
 
     def testNonstandardCat(self):
         customCat = pd.DataFrame(
-            data={"ra2k": self.sourceCat["ra"],
-                  "de2k": self.sourceCat["decl"],
+            data={"ra2k": np.radians(self.sourceCat["ra"]),
+                  "de2k": np.radians(self.sourceCat["decl"]),
                   "filterName": self.sourceCat["filterName"],
                   "unsourceId": np.arange(1, len(self.sourceCat) + 1, dtype=int),
                   "extraColumn": self.sourceCat["extraColumn"]})
@@ -217,6 +217,7 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
         matchFakesConfig.src_id_col = "unsourceId"
         matchFakesConfig.src_ra_col = "ra2k"
         matchFakesConfig.src_dec_col = "de2k"
+        matchFakesConfig.src_radec_units = "radians"
         matchFakesConfig.validate()
 
         matchFakes = MatchFakesTask(config=matchFakesConfig)
