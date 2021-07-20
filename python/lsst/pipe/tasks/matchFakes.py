@@ -23,7 +23,7 @@
 import numpy as np
 from scipy.spatial import cKDTree
 
-from lsst.geom import Box2D, radians, SpherePoint
+import lsst.geom as lsstGeom
 import lsst.pex.config as pexConfig
 from lsst.pipe.base import PipelineTask, PipelineTaskConnections, Struct
 import lsst.pipe.base.connectionTypes as connTypes
@@ -211,12 +211,12 @@ class MatchFakesTask(PipelineTask):
         """
         wcs = image.getWcs()
 
-        bbox = Box2D(image.getBBox())
+        bbox = lsstGeom.Box2D(image.getBBox())
 
         def trim(row):
-            coord = SpherePoint(row[self.config.raColName],
-                                row[self.config.decColName],
-                                radians)
+            coord = lsstGeom.SpherePoint(row[self.config.raColName],
+                                         row[self.config.decColName],
+                                         lsstGeom.radians)
             cent = wcs.skyToPixel(coord)
             return bbox.contains(cent)
 
