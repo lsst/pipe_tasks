@@ -53,6 +53,7 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
         simpleMapConfig.raList = [dataset.exposure.getWcs().getSkyOrigin().getRa().asDegrees()]
         simpleMapConfig.decList = [dataset.exposure.getWcs().getSkyOrigin().getDec().asDegrees()]
         simpleMapConfig.radiusList = [0.1]
+        simpleMapConfig.validate()
 
         self.simpleMap = skyMap.DiscreteSkyMap(simpleMapConfig)
         self.tractId = 0
@@ -184,6 +185,7 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
         """
         matchFakesConfig = MatchFakesConfig()
         matchFakesConfig.matchDistanceArcseconds = 0.1
+        matchFakesConfig.validate()
         matchFakes = MatchFakesTask(config=matchFakesConfig)
         result = matchFakes.run(self.fakeCat,
                                 self.exposure,
@@ -215,6 +217,7 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
         matchFakesConfig.src_id_col = "unsourceId"
         matchFakesConfig.src_ra_col = "ra2k"
         matchFakesConfig.src_dec_col = "de2k"
+        matchFakesConfig.validate()
 
         matchFakes = MatchFakesTask(config=matchFakesConfig)
         result = matchFakes.run(self.fakeCat,
@@ -230,6 +233,7 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
         matchFakesConfig = MatchFakesConfig()
         matchFakesConfig.matchDistanceArcseconds = 0.1
         matchFakesConfig.src_id_col = None
+        matchFakesConfig.validate()
 
         matchFakes = MatchFakesTask(config=matchFakesConfig)
         result = matchFakes.run(self.fakeCat,
@@ -246,6 +250,7 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
         matchFakesConfig = MatchFakesConfig()
         matchFakesConfig.matchDistanceArcseconds = 0.1
         matchFakesConfig.src_id_col = None
+        matchFakesConfig.validate()
 
         matchFakes = MatchFakesTask(config=matchFakesConfig)
         with self.assertRaises(ValueError):
