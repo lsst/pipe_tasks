@@ -543,20 +543,15 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
             inputs['exposure'], butlerQC, inputRefs.skyMap, templateExposures
         )
 
-        if templateStruct.area/inputs['exposure'].getBBox().getArea() < self.config.requiredTemplateFraction:
-            message = ("Insufficient Template Coverage. (%.1f%% < %.1f%%) Not attempting subtraction. "
-                       "To force subtraction, set config requiredTemplateFraction=0." % (
-                           100*templateStruct.area/inputs['exposure'].getBBox().getArea(),
-                           100*self.config.requiredTemplateFraction))
-            raise pipeBase.NoWorkFound(message)
-        else:
-            outputs = self.run(exposure=inputs['exposure'],
-                               templateExposure=templateStruct.exposure,
-                               idFactory=idFactory)
-            # Consistency with runDataref gen2 handling
-            if outputs.diaSources is None:
-                del outputs.diaSources
-            butlerQC.put(outputs, outputRefs)
+        self.checkTemplateIsSufficient(templateStruct.exposure)
+
+        outputs = self.run(exposure=inputs['exposure'],
+                           templateExposure=templateStruct.exposure,
+                           idFactory=idFactory)
+        # Consistency with runDataref gen2 handling
+        if outputs.diaSources is None:
+            del outputs.diaSources
+        butlerQC.put(outputs, outputRefs)
 
     @pipeBase.timeMethod
     def runDataRef(self, sensorRef, templateIdList=None):
@@ -1251,6 +1246,35 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                                             frame=lsstDebug.frame)
             lsstDebug.frame += 1
 
+    def checkTemplateIsSufficient(self, templateExposure):
+        """Raise NoWorkFound if template coverage < requiredTemplateFraction
+
+        Parameters
+        ----------
+        templateExposure : `lsst.afw.image.ExposureF`
+            The template exposure to check
+
+        Raises
+        ------
+        NoWorkFound
+            Raised if fraction of good pixels, defined as not having NO_DATA
+            set, is less then the configured requiredTemplateFraction
+        """
+        # Count the number of pixels with the NO_DATA mask bit set
+        # counting NaN pixels is insufficient because pixels without data are often intepolated over)
+        pixNoData = numpy.count_nonzero(templateExposure.mask.array
+                                        & templateExposure.mask.getPlaneBitMask('NO_DATA'))
+        pixGood = templateExposure.getBBox().getArea() - pixNoData
+        self.log.info("template has %d good pixels (%.1f%%)", pixGood,
+                      100*pixGood/templateExposure.getBBox().getArea())
+
+        if pixGood/templateExposure.getBBox().getArea() < self.config.requiredTemplateFraction:
+            message = ("Insufficient Template Coverage. (%.1f%% < %.1f%%) Not attempting subtraction. "
+                       "To force subtraction, set config requiredTemplateFraction=0." % (
+                           100*pixGood/templateExposure.getBBox().getArea(),
+                           100*self.config.requiredTemplateFraction))
+            raise pipeBase.NoWorkFound(message)
+
     def _getConfigName(self):
         """Return the name of the config dataset
         """
@@ -1275,6 +1299,54 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                                help="Template data ID in case of calexp template,"
                                " e.g. --templateId visit=6789")
         return parser
+
+
+class ImageDifferenceFromTemplateConnections(ImageDifferenceTaskConnections,
+                                             defaultTemplates={"coaddName": "goodSeeing"}
+                                             ):
+    inputTemplate = pipeBase.connectionTypes.Input(
+        doc=("Warped template produced by GetMultiTractCoaddTemplate"),
+        dimensions=("instrument", "visit", "detector"),
+        storageClass="ExposureF",
+        name="{fakesType}{coaddName}Diff_templateExp{warpTypeSuffix}",
+    )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        # ImageDifferenceConnections will have removed one of these.
+        # Make sure they're both gone, because no coadds are needed.
+        if "coaddExposures" in self.inputs:
+            self.inputs.remove("coaddExposures")
+        if "dcrCoadds" in self.inputs:
+            self.inputs.remove("dcrCoadds")
+
+
+class ImageDifferenceFromTemplateConfig(ImageDifferenceConfig,
+                                        pipelineConnections=ImageDifferenceFromTemplateConnections):
+    pass
+
+
+class ImageDifferenceFromTemplateTask(ImageDifferenceTask):
+    ConfigClass = ImageDifferenceFromTemplateConfig
+    _DefaultName = "imageDifference"
+
+    @lsst.utils.inheritDoc(pipeBase.PipelineTask)
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        self.log.info("Processing %s", butlerQC.quantum.dataId)
+        self.checkTemplateIsSufficient(inputs['inputTemplate'])
+        expId, expBits = butlerQC.quantum.dataId.pack("visit_detector",
+                                                      returnMaxBits=True)
+        idFactory = self.makeIdFactory(expId=expId, expBits=expBits)
+
+        outputs = self.run(exposure=inputs['exposure'],
+                           templateExposure=inputs['inputTemplate'],
+                           idFactory=idFactory)
+
+        # Consistency with runDataref gen2 handling
+        if outputs.diaSources is None:
+            del outputs.diaSources
+        butlerQC.put(outputs, outputRefs)
 
 
 class Winter2013ImageDifferenceConfig(ImageDifferenceConfig):
