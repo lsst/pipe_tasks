@@ -476,6 +476,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                 if not self.config.doWriteEmptyWarps:
                     # No good pixels. Exposure still empty
                     coaddTempExps[warpType] = None
+                    # NoWorkFound is unnecessary as the downstream tasks will
+                    # adjust the quantum accordingly, and it prevents gen2
+                    # MakeCoaddTempExp from continuing to loop over visits.
 
         result = pipeBase.Struct(exposures=coaddTempExps)
         return result
