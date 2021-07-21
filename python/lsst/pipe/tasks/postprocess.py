@@ -455,12 +455,13 @@ class PostprocessAnalysis(object):
     _defaultFuncs = (('coord_ra', RAColumn()),
                      ('coord_dec', DecColumn()))
 
-    def __init__(self, parq, functors, filt=None, flags=None, refFlags=None):
+    def __init__(self, parq, functors, filt=None, flags=None, refFlags=None, forcedFlags=None):
         self.parq = parq
         self.functors = functors
 
         self.filt = filt
         self.flags = list(flags) if flags is not None else []
+        self.forcedFlags = list(forcedFlags) if forcedFlags is not None else []
         self.refFlags = list(self._defaultRefFlags)
         if refFlags is not None:
             self.refFlags += list(refFlags)
@@ -475,6 +476,7 @@ class PostprocessAnalysis(object):
     @property
     def func(self):
         additionalFuncs = self.defaultFuncs
+        additionalFuncs.update({flag: Column(flag, dataset='forced_src') for flag in self.forcedFlags})
         additionalFuncs.update({flag: Column(flag, dataset='ref') for flag in self.refFlags})
         additionalFuncs.update({flag: Column(flag, dataset='meas') for flag in self.flags})
 
