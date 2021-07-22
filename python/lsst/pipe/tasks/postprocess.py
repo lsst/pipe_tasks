@@ -445,22 +445,28 @@ class PostprocessAnalysis(object):
 
     flags : `list` (optional)
         List of flags (per-band) to include in output table.
+        Taken from the `meas` dataset if applied to a multilevel Object Table.
 
     refFlags : `list` (optional)
         List of refFlags (only reference band) to include in output table.
 
-
+    forcedFlags : `list` (optional)
+        List of flags (per-band) to include in output table.
+        Taken from the ``forced_src`` dataset if applied to a
+        multilevel Object Table. Intended for flags from measurement plugins
+        only run during multi-band forced-photometry.
     """
     _defaultRefFlags = []
     _defaultFuncs = (('coord_ra', RAColumn()),
                      ('coord_dec', DecColumn()))
 
-    def __init__(self, parq, functors, filt=None, flags=None, refFlags=None):
+    def __init__(self, parq, functors, filt=None, flags=None, refFlags=None, forcedFlags=None):
         self.parq = parq
         self.functors = functors
 
         self.filt = filt
         self.flags = list(flags) if flags is not None else []
+        self.forcedFlags = list(forcedFlags) if forcedFlags is not None else []
         self.refFlags = list(self._defaultRefFlags)
         if refFlags is not None:
             self.refFlags += list(refFlags)
@@ -475,6 +481,7 @@ class PostprocessAnalysis(object):
     @property
     def func(self):
         additionalFuncs = self.defaultFuncs
+        additionalFuncs.update({flag: Column(flag, dataset='forced_src') for flag in self.forcedFlags})
         additionalFuncs.update({flag: Column(flag, dataset='ref') for flag in self.refFlags})
         additionalFuncs.update({flag: Column(flag, dataset='meas') for flag in self.flags})
 
@@ -597,10 +604,21 @@ class TransformCatalogBaseTask(CmdLineTask, pipeBase.PipelineTask):
     and any additional entries for each column other than "functor" or "args" (e.g., `'filt'`,
     `'dataset'`) are treated as keyword arguments to be passed to the functor initialization.
 
-    The "refFlags" entry is shortcut for a bunch of `Column` functors with the original column and
-    taken from the `'ref'` dataset.
+    The "flags" entry is the default shortcut for `Column` functors.
+    All columns listed under "flags" will be copied to the output table
+    untransformed. They can be of any datatype.
+    In the special case of transforming a multi-level oject table with
+    band and dataset indices (deepCoadd_obj), these will be taked from the
+    `meas` dataset and exploded out per band.
 
-    The "flags" entry will be expanded out per band.
+    There are two special shortcuts that only apply when transforming
+    multi-level Object (deepCoadd_obj) tables:
+     -  The "refFlags" entry is shortcut for `Column` functor
+        taken from the `'ref'` dataset if transforming an ObjectTable.
+     -  The "forcedFlags" entry is shortcut for `Column` functors.
+        taken from the ``forced_src`` dataset if transforming an ObjectTable.
+        These are expanded out per band.
+
 
     This task uses the `lsst.pipe.tasks.postprocess.PostprocessAnalysis` object
     to organize and excecute the calculations.
