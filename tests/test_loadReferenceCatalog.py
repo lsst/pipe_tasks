@@ -6,7 +6,9 @@ import astropy.units as u
 import lsst.utils.tests
 import lsst.afw.geom
 import lsst.pipe.base as pipeBase
-from lsst.meas.algorithms import LoadReferenceObjectsTask, getRefFluxField, ReferenceObjectLoader
+from lsst.meas.algorithms import (LoadReferenceObjectsTask,
+                                  getRefFluxField,
+                                  ReferenceObjectLoader)
 from lsst.pipe.tasks.loadReferenceCatalog import LoadReferenceCatalogConfig, LoadReferenceCatalogTask
 from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary
 
