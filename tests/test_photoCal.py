@@ -35,7 +35,7 @@ import lsst.utils.tests
 from lsst.utils import getPackageDir
 from lsst.pipe.tasks.photoCal import PhotoCalTask, PhotoCalConfig
 from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary
-from lsst.pipe.base.task_logging import LOG_TRACE
+from lsst.pipe.base.task_logging import TRACE
 
 RefCatDir = os.path.join(getPackageDir("pipe_tasks"), "tests", "data", "sdssrefcat")
 
@@ -86,9 +86,8 @@ class PhotoCalTest(unittest.TestCase):
         # Make a reference loader
         butler = Butler(RefCatDir)
         self.refObjLoader = LoadIndexedReferenceObjectsTask(butler=butler)
-        logLevel = LOG_TRACE
         self.log = logging.getLogger('testPhotoCal')
-        self.log.setLevel(logLevel)
+        self.log.setLevel(TRACE)
 
         self.config = PhotoCalConfig()
         self.config.match.matchRadius = 0.5
