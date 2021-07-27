@@ -34,7 +34,7 @@ from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask, ReferenceSourc
 from lsst.meas.algorithms import getRefFluxField
 from lsst.pipe.tasks.colorterms import ColortermLibrary
 from lsst.afw.image import abMagErrFromFluxErr
-from lsst.meas.algorithms import ReferenceObjectLoader
+from lsst.meas.algorithms import ReferenceObjectLoader, LoadReferenceObjectsConfig
 
 import lsst.geom
 
@@ -100,10 +100,10 @@ class LoadReferenceCatalogTask(pipeBase.Task):
                                                       config=refConfig,
                                                       log=self.log)
         elif butler is not None:
-            self.makeSubtask('refObjLoader', butler=butler)
+            raise RuntimeError("LoadReferenceCatalogTask does not support Gen2 Butlers.")
         else:
             raise RuntimeError("Must instantiate LoadReferenceCatalogTask with "
-                               "dataIds/refCats (Gen3) or butler (Gen2)")
+                               "dataIds and refCats (Gen3)")
 
         if self.config.doReferenceSelection:
             self.makeSubtask('referenceSelector')
@@ -323,10 +323,20 @@ class LoadReferenceCatalogTask(pipeBase.Task):
         # Search for a good filter to use to load the reference catalog
         # via the refObjLoader task which requires a valid filterName
         foundReferenceFilter = False
-        # Temporarily turn off proper motion because we do not need it to
-        # check the filter/flux names.
-        _requireProperMotion = self.refObjLoader.config.requireProperMotion
-        self.refObjLoader.config.requireProperMotion = False
+
+        # Store the original config
+        _config = self.refObjLoader.config
+
+        configTemp = LoadReferenceObjectsConfig()
+        configIntersection = {k: getattr(self.refObjLoader.config, k)
+                              for k, v in self.refObjLoader.config.toDict().items()
+                              if (k in configTemp.keys() and k != "connections")}
+        # We must turn off the proper motion checking to find the refFilter.
+        configIntersection['requireProperMotion'] = False
+        configTemp.update(**configIntersection)
+
+        self.refObjLoader.config = configTemp
+
         for filterName in filterList:
             if self.config.refObjLoader.anyFilterMapsToThis is not None:
                 refFilterName = self.config.refObjLoader.anyFilterMapsToThis
@@ -350,7 +360,8 @@ class LoadReferenceCatalogTask(pipeBase.Task):
                     pass
                 else:
                     raise err
-        self.refObjLoader.config.requireProperMotion = _requireProperMotion
+
+        self.refObjLoader.config = _config
 
         if not foundReferenceFilter:
             raise RuntimeError("Could not find any valid flux field(s) %s" %

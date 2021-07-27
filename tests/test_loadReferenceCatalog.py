@@ -6,7 +6,9 @@ import astropy.units as u
 import lsst.utils.tests
 import lsst.afw.geom
 import lsst.pipe.base as pipeBase
-from lsst.meas.algorithms import LoadReferenceObjectsTask, getRefFluxField, ReferenceObjectLoader
+from lsst.meas.algorithms import (LoadReferenceObjectsTask,
+                                  getRefFluxField,
+                                  ReferenceObjectLoader)
 from lsst.pipe.tasks.loadReferenceCatalog import LoadReferenceCatalogConfig, LoadReferenceCatalogTask
 from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary
 
@@ -33,6 +35,9 @@ class TrivialLoader(ReferenceObjectLoader):
         """Make a synthetic reference catalog."""
         filters = ["ref1", "ref2", "ref3"]
         schema = LoadReferenceObjectsTask.makeMinimalSchema(filters)
+        schema.addField('pm_ra', 'D')
+        schema.addField('pm_dec', 'D')
+
         catalog = lsst.afw.table.SimpleCatalog(schema)
         record = catalog.addNew()
         record.setCoord(center)
@@ -42,6 +47,8 @@ class TrivialLoader(ReferenceObjectLoader):
         record[filters[1] + '_fluxErr'] = flux*10*0.1
         record[filters[2] + '_flux'] = flux*100
         record[filters[2] + '_fluxErr'] = flux*100*0.1
+        record['pm_ra'] = 0.0
+        record['pm_dec'] = 0.0
 
         return catalog
 
@@ -85,6 +92,7 @@ class LoadReferenceCatalogTestCase(lsst.utils.tests.TestCase):
     def testGetReferenceCatalogCircle(self):
         """Get a reference catalog skycircle."""
         config = copy.copy(self.config)
+        config.freeze()
 
         loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[])
         # Monkey-patch our testing trivial loader to bypass the butler
@@ -102,6 +110,7 @@ class LoadReferenceCatalogTestCase(lsst.utils.tests.TestCase):
     def testGetReferenceCatalogBox(self):
         """Get a reference catalog box."""
         config = copy.copy(self.config)
+        config.freeze()
 
         loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[])
         # Monkey-patch our testing trivial loader to bypass the butler
@@ -127,6 +136,7 @@ class LoadReferenceCatalogTestCase(lsst.utils.tests.TestCase):
         """Get a reference catalog circle, with color terms applied."""
         config = copy.copy(self.config)
         config.doApplyColorTerms = True
+        config.freeze()
 
         loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[])
         # Monkey-patch our testing trivial loader to bypass the butler
@@ -145,6 +155,7 @@ class LoadReferenceCatalogTestCase(lsst.utils.tests.TestCase):
         """Get a reference catalog circle, apply selection."""
         config = copy.copy(self.config)
         config.doReferenceSelection = True
+        config.freeze()
 
         loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[])
         # Monkey-patch our testing trivial loader to bypass the butler
@@ -160,6 +171,7 @@ class LoadReferenceCatalogTestCase(lsst.utils.tests.TestCase):
     def testGetReferenceCatalogCircleSingleFilter(self):
         """Get a reference catalog circle, single filter."""
         config = copy.copy(self.config)
+        config.freeze()
 
         loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[])
         # Monkey-patch our testing trivial loader to bypass the butler
@@ -181,6 +193,7 @@ class LoadReferenceCatalogTestCase(lsst.utils.tests.TestCase):
 
         config.doApplyColorTerms = False
         config.doReferenceSelection = False
+        config.freeze()
 
         loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[])
         # Monkey-patch our testing trivial loader to bypass the butler
@@ -192,6 +205,25 @@ class LoadReferenceCatalogTestCase(lsst.utils.tests.TestCase):
 
         self.assertFloatsAlmostEqual(cat['refMag'][0, 0], self.synthMag1, rtol=1e-7)
         self.assertFloatsAlmostEqual(cat['refMag'][0, 1], self.synthMag1, rtol=1e-7)
+
+    def testGetReferenceCatalogRequirePm(self):
+        """Get a reference catalog circle, requiring proper motion."""
+        config = copy.copy(self.config)
+        config.refObjLoader.requireProperMotion = True
+        config.freeze()
+
+        loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[])
+        # Monkey-patch our testing trivial loader to bypass the butler
+        trivialLoader2 = TrivialLoader(dataIds=[], refCats=[], config=config.refObjLoader)
+        loaderTask.refObjLoader = trivialLoader2
+
+        cat = loaderTask.getSkyCircleCatalog(_synthCenter,
+                                             1.0*lsst.geom.degrees,
+                                             ['filter1'])
+
+        self.assertAlmostEqual(cat['ra'], _synthCenter.getRa().asDegrees())
+        self.assertAlmostEqual(cat['dec'], _synthCenter.getDec().asDegrees())
+        self.assertFloatsAlmostEqual(cat['refMag'][0, 0], self.synthMag1, rtol=1e-7)
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
