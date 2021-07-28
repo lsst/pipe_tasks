@@ -299,7 +299,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
             if nonRoundness > self.config.maxNonRoundness:
                 skip = True
 
-            if self.log.isDebugEnabled():
+            if self.log.isEnabledFor(self.log.DEBUG):
                 text = f"src {srcNum}: {objData[srcNum]['xCentroid']:.0f}, {objData[srcNum]['yCentroid']:.0f}"
                 text += f" - xx={xx:.1f}, yy={yy:.1f}, nonRound={nonRoundness:.1f}"
                 text += f" - ap70={objData[srcNum]['apFlux70']:,.0f}"

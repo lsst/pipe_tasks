@@ -21,6 +21,7 @@
 #
 import os
 import unittest
+import logging
 
 import numpy as np
 import astropy.units as u
@@ -32,14 +33,14 @@ import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.utils.tests
 from lsst.utils import getPackageDir
-from lsst.log import Log
 from lsst.pipe.tasks.photoCal import PhotoCalTask, PhotoCalConfig
 from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary
+from lsst.pipe.base.task_logging import TRACE
 
 RefCatDir = os.path.join(getPackageDir("pipe_tasks"), "tests", "data", "sdssrefcat")
 
 # Quiet down meas_astrom logging, so we can see PhotoCal logs better
-Log.getLogger("LoadIndexedReferenceObjectsTask").setLevel(Log.WARN)
+logging.getLogger("LoadIndexedReferenceObjectsTask").setLevel(logging.WARN)
 
 testColorterms = ColortermLibrary(data={
     "test*": ColortermDict(data={
@@ -85,9 +86,8 @@ class PhotoCalTest(unittest.TestCase):
         # Make a reference loader
         butler = Butler(RefCatDir)
         self.refObjLoader = LoadIndexedReferenceObjectsTask(butler=butler)
-        logLevel = Log.TRACE
-        self.log = Log.getLogger('testPhotoCal')
-        self.log.setLevel(logLevel)
+        self.log = logging.getLogger('testPhotoCal')
+        self.log.setLevel(TRACE)
 
         self.config = PhotoCalConfig()
         self.config.match.matchRadius = 0.5

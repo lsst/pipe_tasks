@@ -20,6 +20,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import numpy
+import logging
 
 import lsst.pex.config as pexConfig
 import lsst.daf.persistence as dafPersist
@@ -27,7 +28,6 @@ import lsst.afw.image as afwImage
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as connectionTypes
-import lsst.log as log
 import lsst.utils as utils
 import lsst.geom
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
@@ -38,6 +38,8 @@ from .coaddHelpers import groupPatchExposures, getGroupDataRef
 from collections.abc import Iterable
 
 __all__ = ["MakeCoaddTempExpTask", "MakeWarpTask", "MakeWarpConfig"]
+
+log = logging.getLogger(__name__.partition(".")[2])
 
 
 class MissingExposureError(Exception):

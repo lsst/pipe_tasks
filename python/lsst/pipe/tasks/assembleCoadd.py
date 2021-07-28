@@ -23,6 +23,7 @@ import os
 import copy
 import numpy
 import warnings
+import logging
 import lsst.pex.config as pexConfig
 import lsst.pex.exceptions as pexExceptions
 import lsst.geom as geom
@@ -34,7 +35,6 @@ import lsst.afw.detection as afwDet
 import lsst.coadd.utils as coaddUtils
 import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
-import lsst.log as log
 import lsstDebug
 import lsst.utils as utils
 from lsst.skymap import BaseSkyMap
@@ -51,6 +51,8 @@ from lsst.daf.butler import DeferredDatasetHandle
 __all__ = ["AssembleCoaddTask", "AssembleCoaddConnections", "AssembleCoaddConfig",
            "SafeClipAssembleCoaddTask", "SafeClipAssembleCoaddConfig",
            "CompareWarpAssembleCoaddTask", "CompareWarpAssembleCoaddConfig"]
+
+log = logging.getLogger(__name__.partition(".")[2])
 
 
 class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,

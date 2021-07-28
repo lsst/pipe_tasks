@@ -21,11 +21,11 @@
 
 import re
 import os.path
+import logging
 import lsst.daf.base as dafBase
 import lsst.geom as geom
 import lsst.afw.table as afwTable
 from lsst.daf.butler.formatters.file import FileFormatter
-from lsst.log import Log
 
 
 class ObjectMaskCatalog:
@@ -118,7 +118,7 @@ class ObjectMaskCatalog:
         region definitions.
         """
 
-        log = Log.getLogger("ObjectMaskCatalog")
+        log = logging.getLogger("ObjectMaskCatalog")
 
         brightObjects = ObjectMaskCatalog()
         checkedWcsIsFk5 = False
