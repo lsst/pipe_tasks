@@ -31,7 +31,9 @@ from lsst.pipe.tasks.insertFakes import InsertFakesConfig
 
 __all__ = ["MatchFakesTask",
            "MatchFakesConfig",
-           "MatchFakesConnections"]
+           "MatchFakesConnections",
+           "MatchVariableFakesConfig",
+           "MatchVariableFakesTask"]
 
 
 class MatchFakesConnections(PipelineTaskConnections,
@@ -196,16 +198,16 @@ class MatchFakesTask(PipelineTask):
 
 
 class MatchVariableFakesConnections(MatchFakesConnections):
-    scatteredFakeMagnitudes = connTypes.Output(
+    ccdVisitFakeMagnitudes = connTypes.Input(
         doc="Catalog of fakes with magnitudes scatted for this ccdVisit.",
-        name="{fakesType}scatteredFakeMagnitudes",
+        name="{fakesType}ccdVisitFakeMagnitudes",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector"),
     )
 
 
 class MatchVariableFakesConfig(MatchFakesConfig,
-                               pipelineConnections=MatchFakesConnections):
+                               pipelineConnections=MatchVariableFakesConnections):
     """Config for MatchFakesTask.
     """
     pass
@@ -218,13 +220,17 @@ class MatchVariableFakesTask(MatchFakesTask):
     fakes and assign them to be inserted into either a visit exposure or
     template exposure.
     """
+    _DefaultName = "matchVariableFakes"
+    ConfigClass = MatchVariableFakesConfig
+
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
+        inputs["band"] = butlerQC.quantum.dataId["band"]
 
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, fakeCat, scatteredFakeMagnitudes, diffIm, associatedDiaSources, band):
+    def run(self, fakeCat, ccdVisitFakeMagnitudes, diffIm, associatedDiaSources, band):
         """Match fakes to detected diaSources within a difference image bound.
 
         Parameters
@@ -244,37 +250,15 @@ class MatchVariableFakesTask(MatchFakesTask):
             - ``matchedDiaSources`` : Fakes matched to input diaSources. Has
               length of ``fakeCat``. (`pandas.DataFrame`)
         """
-        self.computeExpectedDiffMag(fakeCat, visitFakeMagnitudes, band)
-        trimmedFakes = self._trimFakeCat(fakeCat, diffIm)
-        nPossibleFakes = len(trimmedFakes)
+        self.computeExpectedDiffMag(fakeCat, ccdVisitFakeMagnitudes, band)
+        return super().run(fakeCat, diffIm, associatedDiaSources)
 
-        fakeVects = self._getVectors(trimmedFakes[self.config.raColName],
-                                     trimmedFakes[self.config.decColName])
-        diaSrcVects = self._getVectors(
-            np.radians(associatedDiaSources.loc[:, "ra"]),
-            np.radians(associatedDiaSources.loc[:, "decl"]))
-
-        diaSrcTree = cKDTree(diaSrcVects)
-        dist, idxs = diaSrcTree.query(
-            fakeVects,
-            distance_upper_bound=np.radians(self.config.matchDistanceArcseconds / 3600))
-        nFakesFound = np.isfinite(dist).sum()
-
-        self.log.info("Found %d out of %d possible.", nFakesFound, nPossibleFakes)
-        diaSrcIds = associatedDiaSources.iloc[np.where(np.isfinite(dist), idxs, 0)]["diaSourceId"].to_numpy()
-        matchedFakes = trimmedFakes.assign(diaSourceId=np.where(np.isfinite(dist), diaSrcIds, 0))
-
-        return Struct(
-            matchedDiaSources=matchedFakes.merge(
-                associatedDiaSources.reset_index(drop=True), on="diaSourceId", how="left")
-        )
-
-    def computeExpectedDiffMag(self, fakeCat, scatteredFakeMagnitudes, band):
+    def computeExpectedDiffMag(self, fakeCat, ccdVisitFakeMagnitudes, band):
         """
         """
-        magName = self.config.mag_col%band
+        magName = self.config.mag_col % band
         magnitudes = fakeCat[magName].to_numpy()
-        visitMags = scatteredFakeMagnitudes["visitMag"].to_numpy()
+        visitMags = ccdVisitFakeMagnitudes["variableMag"].to_numpy()
         diffFlux = (visitMags * u.ABmag).to_value(u.nJy) - (magnitudes * u.ABmag).to_value(u.nJy)
         diffMag = np.where(diffFlux > 0,
                            (diffFlux * u.nJy).to_value(u.ABmag),
@@ -283,8 +267,8 @@ class MatchVariableFakesTask(MatchFakesTask):
         noVisit = ~fakeCat["isVisitSource"]
         noTemplate = ~fakeCat["isTemplateSource"]
         both = np.logical_and(fakeCat["isVisitSource"],
-                                  fakeCat["isTemplateSource"])
+                              fakeCat["isTemplateSource"])
 
         fakeCat.loc[noVisit, magName] = -magnitudes[noVisit]
-        fakeCat.loc[noTemplate, magName] = scatteredFakeMagnitudes[noTemplate]
+        fakeCat.loc[noTemplate, magName] = visitMags[noTemplate]
         fakeCat.loc[both, magName] = diffMag[both]

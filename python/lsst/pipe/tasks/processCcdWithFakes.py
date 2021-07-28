@@ -469,10 +469,11 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
 
         return newCat
 
+
 class ProcessCcdWithVariableFakesConnections(ProcessCcdWithFakesConnections):
-    visitFakeMagnitudes = cT.Output(
+    ccdVisitFakeMagnitudes = cT.Output(
         doc="Catalog of fakes with magnitudes scatted for this ccdVisit.",
-        name="{fakesType}scatteredFakeMagnitudes",
+        name="{fakesType}ccdVisitFakeMagnitudes",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector"),
     )
@@ -549,7 +550,7 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
             exposureIdInfo = ExposureIdInfo()
 
         band = exposure.getFilterLabel().bandLabel
-        visitMagnitudes = self.addVariablity(fakeCat, band, exposure, photoCalib, exposureIdInfo)
+        ccdVisitMagnitudes = self.addVariablity(fakeCat, band, exposure, photoCalib, exposureIdInfo)
 
         self.insertFakes.run(fakeCat, exposure, wcs, photoCalib)
 
@@ -561,7 +562,7 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
 
         resultStruct = pipeBase.Struct(outputExposure=exposure,
                                        outputCat=sourceCat,
-                                       visitFakeMagnitudes=visitMagnitudes)
+                                       ccdVisitFakeMagnitudes=ccdVisitMagnitudes)
         return resultStruct
 
     def addVariablity(self, fakeCat, band, exposure, photoCalib, exposureIdInfo):
@@ -575,4 +576,4 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
                                 size=len(magScatter))
         visitMagnitudes = fakeCat[self.insertFakes.config.mag_col % band] + magScatter
         fakeCat.loc[:, self.insertFakes.config.mag_col % band] = visitMagnitudes
-        return pd.DataFrame(data={"visitMag": visitMagnitudes})
+        return pd.DataFrame(data={"variableMag": visitMagnitudes})
