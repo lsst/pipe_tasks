@@ -492,6 +492,11 @@ class ProcessCcdWithVariableFakesConfig(ProcessCcdWithFakesConfig,
 
 
 class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
+    """As ProcessCcdWithFakes except add variablity to the fakes catalog
+    magnitude in the observed band for this ccdVisit.
+
+    Additionally, write out the modified magnitudes to the Butler.
+    """
 
     _DefaultName = "processCcdWithVariableFakes"
     ConfigClass = ProcessCcdWithVariableFakesConfig
@@ -566,7 +571,30 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
         return resultStruct
 
     def addVariablity(self, fakeCat, band, exposure, photoCalib, exposureIdInfo):
-        """
+        """Add scatter to the fake catalog visit magnitudes.
+
+        Currently just adds a simple Gaussian scatter around the static fake
+        magnitude. This function could be modified to return any number of
+        fake variability.
+
+        Parameters
+        ----------
+        fakeCat : `pandas.DataFrame`
+            Catalog of fakes to modify magnitudes of.
+        band : `str`
+            Current observing band to modify.
+        exposure : `lsst.afw.image.ExposureF`
+            Exposure fakes will be added to.
+        photoCalib : `lsst.afw.image.PhotoCalib`
+            Photometric calibration object of ``exposure``.
+        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`
+            Exposure id information and metadata.
+
+        Returns
+        -------
+        dataFrame : `pandas.DataFrame`
+            DataFrame containing the values of the magnitudes to that will
+            be inserted into this ccdVisit.
         """
         expId = exposureIdInfo.expId
         rng = np.random.default_rng(expId)
