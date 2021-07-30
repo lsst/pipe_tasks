@@ -90,6 +90,10 @@ class MatchFakesConfig(
 class MatchFakesTask(PipelineTask):
     """Match a pre-existing catalog of fakes to a catalog of detections on
     a difference image.
+
+    This task is generally for injected sources that cannot be easily
+    identified by their footprints such as in the case of detector sources
+    post image differencing.
     """
 
     _DefaultName = "matchFakes"
@@ -214,11 +218,13 @@ class MatchVariableFakesConfig(MatchFakesConfig,
 
 
 class MatchVariableFakesTask(MatchFakesTask):
-    """Create and store a set of spatially uniform star fakes over the sphere.
+    """Match injected fakes to their detected sources in the catalog and
+    compute their expected brightness in a difference image assuming perfect
+    subtraction.
 
-    Additionally assign random magnitudes to said
-    fakes and assign them to be inserted into either a visit exposure or
-    template exposure.
+    This task is generally for injected sources that cannot be easily
+    identified by their footprints such as in the case of detector sources
+    post image differencing.
     """
     _DefaultName = "matchVariableFakes"
     ConfigClass = MatchVariableFakesConfig
@@ -254,7 +260,20 @@ class MatchVariableFakesTask(MatchFakesTask):
         return super().run(fakeCat, diffIm, associatedDiaSources)
 
     def computeExpectedDiffMag(self, fakeCat, ccdVisitFakeMagnitudes, band):
-        """
+        """Compute the magnitude expected in the difference image for this
+        detector/visit. Modify fakeCat in place.
+
+        Negative magnitudes indicate that the source should be detected as
+        a negative source.
+
+        Parameters
+        ----------
+        fakeCat : `pandas.DataFrame`
+            Catalog of fake sources.
+        ccdVisitFakeMagnitudes : `pandas.DataFrame`
+            Magnitudes for variable sources in this specific ccdVisit.
+        band : `str`
+            Band that this ccdVisit was observed in.
         """
         magName = self.config.mag_col % band
         magnitudes = fakeCat[magName].to_numpy()
