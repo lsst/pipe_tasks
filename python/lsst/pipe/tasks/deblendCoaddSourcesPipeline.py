@@ -202,7 +202,10 @@ class DeblendCoaddSourcesMultiTask(DeblendCoaddSourcesBaseTask):
         sortedTemplateCatalogs = []
         for outRef in outputRefs.templateCatalogs:
             band = outRef.dataId['band']
-            sortedTemplateCatalogs.append(outputs.templateCatalogs[band])
+            # use the .get method because if the key does not exist, it will return
+            # None, putting None is the same as not putting something, and down-stream
+            # tasks can use that as a signal the dataset was not processed
+            sortedTemplateCatalogs.append(outputs.templateCatalogs.get(band))
         outputs.templateCatalogs = sortedTemplateCatalogs
         butlerQC.put(outputs, outputRefs)
 
