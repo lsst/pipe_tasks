@@ -46,8 +46,12 @@ tasks:
         # Setting template 'outputCoaddName' to goodSeeing is not sufficient to
         # convince contract checker that coaddExposure == goodSeeingCoadd
         connections.coaddExposure: goodSeeingCoadd
+  getTemplate:
+    class: lsst.ip.diffim.getTemplate.GetMultiTractCoaddTemplateTask
+    config:
+      connections.coaddExposures: goodSeeingCoadd
   imageDifference:
-    class: lsst.pipe.tasks.imageDifference.ImageDifferenceTask
+    class: lsst.pipe.tasks.imageDifference.ImageDifferenceFromTemplateTask
     config:
         coaddName: goodSeeing
         getTemplate.coaddName: goodSeeing
@@ -187,7 +191,7 @@ subsets:
 
 contracts:
   - selectGoodSeeingVisits.connections.goodVisits == templateGen.connections.selectedVisits
-  - templateGen.connections.coaddExposure == imageDifference.connections.coaddExposures
+  - templateGen.connections.coaddExposure == getTemplate.connections.coaddExposures
   - imageDifference.connections.subtractedExposure == transformDiaSourceCat.connections.diffIm
   - imageDifference.connections.subtractedExposure == forcedPhotDiffim.connections.exposure
   - transformDiaSourceCat.connections.diaSourceTable == consolidateDiaSourceTable.connections.inputCatalogs
