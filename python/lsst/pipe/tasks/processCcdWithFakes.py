@@ -472,7 +472,7 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
 
 class ProcessCcdWithVariableFakesConnections(ProcessCcdWithFakesConnections):
     ccdVisitFakeMagnitudes = cT.Output(
-        doc="Catalog of fakes with magnitudes scatted for this ccdVisit.",
+        doc="Catalog of fakes with magnitudes scattered for this ccdVisit.",
         name="{fakesType}ccdVisitFakeMagnitudes",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector"),
@@ -526,8 +526,14 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
         Returns
         -------
         resultStruct : `lsst.pipe.base.struct.Struct`
-            contains : outputExposure : `lsst.afw.image.exposure.exposure.ExposureF`
-                       outputCat : `lsst.afw.table.source.source.SourceCatalog`
+            Results Strcut containing:
+
+            - outputExposure : Exposure with added fakes
+              (`lsst.afw.image.exposure.exposure.ExposureF`)
+            - outputCat : Catalog with detected fakes
+              (`lsst.afw.table.source.source.SourceCatalog`)
+            - ccdVisitFakeMagnitudes : Magnitudes that these fakes were
+              inserted with after being scattered (`pandas.DataFrame`)
 
         Notes
         -----
@@ -598,10 +604,9 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
         """
         expId = exposureIdInfo.expId
         rng = np.random.default_rng(expId)
-        magScatter = np.zeros(len(fakeCat))
         magScatter = rng.normal(loc=0,
                                 scale=self.config.scatterSize,
-                                size=len(magScatter))
+                                size=len(fakeCat))
         visitMagnitudes = fakeCat[self.insertFakes.config.mag_col % band] + magScatter
         fakeCat.loc[:, self.insertFakes.config.mag_col % band] = visitMagnitudes
         return pd.DataFrame(data={"variableMag": visitMagnitudes})

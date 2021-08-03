@@ -31,7 +31,6 @@ from lsst.pipe.tasks.insertFakes import InsertFakesConfig
 
 __all__ = ["MatchFakesTask",
            "MatchFakesConfig",
-           "MatchFakesConnections",
            "MatchVariableFakesConfig",
            "MatchVariableFakesTask"]
 
@@ -203,7 +202,7 @@ class MatchFakesTask(PipelineTask):
 
 class MatchVariableFakesConnections(MatchFakesConnections):
     ccdVisitFakeMagnitudes = connTypes.Input(
-        doc="Catalog of fakes with magnitudes scatted for this ccdVisit.",
+        doc="Catalog of fakes with magnitudes scattered for this ccdVisit.",
         name="{fakesType}ccdVisitFakeMagnitudes",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector"),
