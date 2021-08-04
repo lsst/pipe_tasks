@@ -23,6 +23,8 @@
 Insert fake sources into calexps
 """
 from astropy.table import Table
+import numpy as np
+import pandas as pd
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -36,7 +38,8 @@ import lsst.pipe.base.connectionTypes as cT
 import lsst.afw.table as afwTable
 from lsst.pipe.tasks.calibrate import CalibrateTask
 
-__all__ = ["ProcessCcdWithFakesConfig", "ProcessCcdWithFakesTask"]
+__all__ = ["ProcessCcdWithFakesConfig", "ProcessCcdWithFakesTask",
+           "ProcessCcdWithVariableFakesConfig", "ProcessCcdWithVariableFakesTask"]
 
 
 class ProcessCcdWithFakesConnections(PipelineTaskConnections,
@@ -465,3 +468,145 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
                 calibSrc.setFootprint(calibSrcFootprint)
 
         return newCat
+
+
+class ProcessCcdWithVariableFakesConnections(ProcessCcdWithFakesConnections):
+    ccdVisitFakeMagnitudes = cT.Output(
+        doc="Catalog of fakes with magnitudes scattered for this ccdVisit.",
+        name="{fakesType}ccdVisitFakeMagnitudes",
+        storageClass="DataFrame",
+        dimensions=("instrument", "visit", "detector"),
+    )
+
+
+class ProcessCcdWithVariableFakesConfig(ProcessCcdWithFakesConfig,
+                                        pipelineConnections=ProcessCcdWithVariableFakesConnections):
+    scatterSize = pexConfig.RangeField(
+        dtype=float,
+        default=0.4,
+        min=0,
+        max=100,
+        doc="Amount of scatter to add to the visit magnitude for variable "
+            "sources."
+    )
+
+
+class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
+    """As ProcessCcdWithFakes except add variablity to the fakes catalog
+    magnitude in the observed band for this ccdVisit.
+
+    Additionally, write out the modified magnitudes to the Butler.
+    """
+
+    _DefaultName = "processCcdWithVariableFakes"
+    ConfigClass = ProcessCcdWithVariableFakesConfig
+
+    def run(self, fakeCat, exposure, wcs=None, photoCalib=None, exposureIdInfo=None, icSourceCat=None,
+            sfdSourceCat=None):
+        """Add fake sources to a calexp and then run detection, deblending and measurement.
+
+        Parameters
+        ----------
+        fakeCat : `pandas.core.frame.DataFrame`
+                    The catalog of fake sources to add to the exposure
+        exposure : `lsst.afw.image.exposure.exposure.ExposureF`
+                    The exposure to add the fake sources to
+        wcs : `lsst.afw.geom.SkyWcs`
+                    WCS to use to add fake sources
+        photoCalib : `lsst.afw.image.photoCalib.PhotoCalib`
+                    Photometric calibration to be used to calibrate the fake sources
+        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`
+        icSourceCat : `lsst.afw.table.SourceCatalog`
+                    Default : None
+                    Catalog to take the information about which sources were used for calibration from.
+        sfdSourceCat : `lsst.afw.table.SourceCatalog`
+                    Default : None
+                    Catalog produced by singleFrameDriver, needed to copy some calibration flags from.
+
+        Returns
+        -------
+        resultStruct : `lsst.pipe.base.struct.Struct`
+            Results Strcut containing:
+
+            - outputExposure : Exposure with added fakes
+              (`lsst.afw.image.exposure.exposure.ExposureF`)
+            - outputCat : Catalog with detected fakes
+              (`lsst.afw.table.source.source.SourceCatalog`)
+            - ccdVisitFakeMagnitudes : Magnitudes that these fakes were
+              inserted with after being scattered (`pandas.DataFrame`)
+
+        Notes
+        -----
+        Adds pixel coordinates for each source to the fakeCat and removes objects with bulge or disk half
+        light radius = 0 (if ``config.cleanCat = True``). These columns are called ``x`` and ``y`` and are in
+        pixels.
+
+        Adds the ``Fake`` mask plane to the exposure which is then set by `addFakeSources` to mark where fake
+        sources have been added. Uses the information in the ``fakeCat`` to make fake galaxies (using galsim)
+        and fake stars, using the PSF models from the PSF information for the calexp. These are then added to
+        the calexp and the calexp with fakes included returned.
+
+        The galsim galaxies are made using a double sersic profile, one for the bulge and one for the disk,
+        this is then convolved with the PSF at that point.
+
+        If exposureIdInfo is not provided then the SourceCatalog IDs will not be globally unique.
+        """
+        if wcs is None:
+            wcs = exposure.getWcs()
+
+        if photoCalib is None:
+            photoCalib = exposure.getPhotoCalib()
+
+        if exposureIdInfo is None:
+            exposureIdInfo = ExposureIdInfo()
+
+        band = exposure.getFilterLabel().bandLabel
+        ccdVisitMagnitudes = self.addVariablity(fakeCat, band, exposure, photoCalib, exposureIdInfo)
+
+        self.insertFakes.run(fakeCat, exposure, wcs, photoCalib)
+
+        # detect, deblend and measure sources
+        returnedStruct = self.calibrate.run(exposure, exposureIdInfo=exposureIdInfo)
+        sourceCat = returnedStruct.sourceCat
+
+        sourceCat = self.copyCalibrationFields(sfdSourceCat, sourceCat, self.config.srcFieldsToCopy)
+
+        resultStruct = pipeBase.Struct(outputExposure=exposure,
+                                       outputCat=sourceCat,
+                                       ccdVisitFakeMagnitudes=ccdVisitMagnitudes)
+        return resultStruct
+
+    def addVariablity(self, fakeCat, band, exposure, photoCalib, exposureIdInfo):
+        """Add scatter to the fake catalog visit magnitudes.
+
+        Currently just adds a simple Gaussian scatter around the static fake
+        magnitude. This function could be modified to return any number of
+        fake variability.
+
+        Parameters
+        ----------
+        fakeCat : `pandas.DataFrame`
+            Catalog of fakes to modify magnitudes of.
+        band : `str`
+            Current observing band to modify.
+        exposure : `lsst.afw.image.ExposureF`
+            Exposure fakes will be added to.
+        photoCalib : `lsst.afw.image.PhotoCalib`
+            Photometric calibration object of ``exposure``.
+        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`
+            Exposure id information and metadata.
+
+        Returns
+        -------
+        dataFrame : `pandas.DataFrame`
+            DataFrame containing the values of the magnitudes to that will
+            be inserted into this ccdVisit.
+        """
+        expId = exposureIdInfo.expId
+        rng = np.random.default_rng(expId)
+        magScatter = rng.normal(loc=0,
+                                scale=self.config.scatterSize,
+                                size=len(fakeCat))
+        visitMagnitudes = fakeCat[self.insertFakes.config.mag_col % band] + magScatter
+        fakeCat.loc[:, self.insertFakes.config.mag_col % band] = visitMagnitudes
+        return pd.DataFrame(data={"variableMag": visitMagnitudes})

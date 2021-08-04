@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-
+import astropy.units as u
 import numpy as np
 from scipy.spatial import cKDTree
 
@@ -31,7 +31,8 @@ from lsst.pipe.tasks.insertFakes import InsertFakesConfig
 
 __all__ = ["MatchFakesTask",
            "MatchFakesConfig",
-           "MatchFakesConnections"]
+           "MatchVariableFakesConfig",
+           "MatchVariableFakesTask"]
 
 
 class MatchFakesConnections(PipelineTaskConnections,
@@ -88,6 +89,10 @@ class MatchFakesConfig(
 class MatchFakesTask(PipelineTask):
     """Match a pre-existing catalog of fakes to a catalog of detections on
     a difference image.
+
+    This task is generally for injected sources that cannot be easily
+    identified by their footprints such as in the case of detector sources
+    post image differencing.
     """
 
     _DefaultName = "matchFakes"
@@ -193,3 +198,95 @@ class MatchFakesTask(PipelineTask):
         vectors[:, 1] = np.cos(decs) * np.sin(ras)
 
         return vectors
+
+
+class MatchVariableFakesConnections(MatchFakesConnections):
+    ccdVisitFakeMagnitudes = connTypes.Input(
+        doc="Catalog of fakes with magnitudes scattered for this ccdVisit.",
+        name="{fakesType}ccdVisitFakeMagnitudes",
+        storageClass="DataFrame",
+        dimensions=("instrument", "visit", "detector"),
+    )
+
+
+class MatchVariableFakesConfig(MatchFakesConfig,
+                               pipelineConnections=MatchVariableFakesConnections):
+    """Config for MatchFakesTask.
+    """
+    pass
+
+
+class MatchVariableFakesTask(MatchFakesTask):
+    """Match injected fakes to their detected sources in the catalog and
+    compute their expected brightness in a difference image assuming perfect
+    subtraction.
+
+    This task is generally for injected sources that cannot be easily
+    identified by their footprints such as in the case of detector sources
+    post image differencing.
+    """
+    _DefaultName = "matchVariableFakes"
+    ConfigClass = MatchVariableFakesConfig
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        inputs["band"] = butlerQC.quantum.dataId["band"]
+
+        outputs = self.run(**inputs)
+        butlerQC.put(outputs, outputRefs)
+
+    def run(self, fakeCat, ccdVisitFakeMagnitudes, diffIm, associatedDiaSources, band):
+        """Match fakes to detected diaSources within a difference image bound.
+
+        Parameters
+        ----------
+        fakeCat : `pandas.DataFrame`
+            Catalog of fakes to match to detected diaSources.
+        diffIm : `lsst.afw.image.Exposure`
+            Difference image where ``associatedDiaSources`` were detected in.
+        associatedDiaSources : `pandas.DataFrame`
+            Catalog of difference image sources detected in ``diffIm``.
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            Results struct with components.
+
+            - ``matchedDiaSources`` : Fakes matched to input diaSources. Has
+              length of ``fakeCat``. (`pandas.DataFrame`)
+        """
+        self.computeExpectedDiffMag(fakeCat, ccdVisitFakeMagnitudes, band)
+        return super().run(fakeCat, diffIm, associatedDiaSources)
+
+    def computeExpectedDiffMag(self, fakeCat, ccdVisitFakeMagnitudes, band):
+        """Compute the magnitude expected in the difference image for this
+        detector/visit. Modify fakeCat in place.
+
+        Negative magnitudes indicate that the source should be detected as
+        a negative source.
+
+        Parameters
+        ----------
+        fakeCat : `pandas.DataFrame`
+            Catalog of fake sources.
+        ccdVisitFakeMagnitudes : `pandas.DataFrame`
+            Magnitudes for variable sources in this specific ccdVisit.
+        band : `str`
+            Band that this ccdVisit was observed in.
+        """
+        magName = self.config.mag_col % band
+        magnitudes = fakeCat[magName].to_numpy()
+        visitMags = ccdVisitFakeMagnitudes["variableMag"].to_numpy()
+        diffFlux = (visitMags * u.ABmag).to_value(u.nJy) - (magnitudes * u.ABmag).to_value(u.nJy)
+        diffMag = np.where(diffFlux > 0,
+                           (diffFlux * u.nJy).to_value(u.ABmag),
+                           -(-diffFlux * u.nJy).to_value(u.ABmag))
+
+        noVisit = ~fakeCat["isVisitSource"]
+        noTemplate = ~fakeCat["isTemplateSource"]
+        both = np.logical_and(fakeCat["isVisitSource"],
+                              fakeCat["isTemplateSource"])
+
+        fakeCat.loc[noVisit, magName] = -magnitudes[noVisit]
+        fakeCat.loc[noTemplate, magName] = visitMags[noTemplate]
+        fakeCat.loc[both, magName] = diffMag[both]
