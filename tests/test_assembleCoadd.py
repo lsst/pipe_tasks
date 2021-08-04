@@ -284,6 +284,31 @@ class AssembleCoaddTestCase(lsst.utils.tests.TestCase):
         assembleTask = MockDcrAssembleCoaddTask(config=config)
         self.checkGen2Gen3Compatibility(assembleTask)
 
+    def testOnlineCoaddGen3(self):
+        config = MockInputMapAssembleCoaddConfig()
+        config.statistic = "MEAN"
+        config.validate()
+        assembleTask = MockInputMapAssembleCoaddTask(config=config)
+
+        dataRefList = self.dataRefList
+        results = assembleTask.runQuantum(self.skyInfo, dataRefList)
+        coadd = results.coaddExposure
+
+        configOnline = MockInputMapAssembleCoaddConfig()
+        configOnline.statistic = "MEAN"
+        configOnline.doOnlineForMean = True
+        configOnline.validate()
+        assembleTaskOnline = MockInputMapAssembleCoaddTask(config=configOnline)
+
+        resultsOnline = assembleTaskOnline.runQuantum(self.skyInfo, dataRefList)
+        coaddOnline = resultsOnline.coaddExposure
+
+        self.assertFloatsAlmostEqual(coaddOnline.image.array,
+                                     coadd.image.array, rtol=1e-3)
+        self.assertFloatsAlmostEqual(coaddOnline.variance.array,
+                                     coadd.variance.array, rtol=1e-6)
+        self.assertMasksEqual(coaddOnline.mask, coadd.mask)
+
     def testInputMapGen3(self):
         config = MockInputMapAssembleCoaddConfig()
         config.validate()
