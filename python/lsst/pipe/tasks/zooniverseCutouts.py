@@ -105,13 +105,13 @@ class ZooniverseCutoutsTask(lsst.pipe.base.Task):
 
         def make_url(source):
             """Return a URL for this source."""
-            return f"{self.config.urlRoot.rstrip('/')}/{source['diaSourceId']}.png"
+            return f"{self.config.urlRoot.rstrip('/')}/images/{source['diaSourceId']}.png"
 
         output['location:1'] = data.apply(make_url, axis=1)
         output['metadata:diaSourceId'] = data['diaSourceId']
         return output
 
-    def generate_images(self, data, butler):
+    def generate_images(self, data, butler, collections):
         """Make the 3-part cutout images for each requested source.
 
         Creates a `images/` subdirectory in `self.config.outputPath` if one
@@ -123,9 +123,11 @@ class ZooniverseCutoutsTask(lsst.pipe.base.Task):
             The DiaSources to extract cutouts for.
         butler : `lsst.daf.butler.Butler`
             The butler connection to use to load the data.
+        collections : `str` or `list`
+           Gen3 collection or collections from which to load the exposures.
         """
         @functools.lru_cache(maxsize=16)
-        def get_exposures(detector, visit):
+        def get_exposures(instrument, detector, visit, collections):
             """Return science, template, difference exposures, and use a small
             cache so we don't have to re-read files as often.
 
@@ -133,10 +135,11 @@ class ZooniverseCutoutsTask(lsst.pipe.base.Task):
             systems, or get good butler-side cacheing, we should remove the
             lru_cache above.
             """
-            dataId = {'ccd': detector, 'visit': visit}
-            return (butler.get('calexp', dataId),
-                    butler.get('deepDiff_warpedExp', dataId),
-                    butler.get('deepDiff_differenceExp', dataId))
+            dataId = {'detector': detector, 'visit': visit, 'instrument': instrument}
+            return (butler.get('calexp', dataId, collections=collections),
+                    # goodSeeing vs. deep vs. fakes_ needs to be configurable...
+                    butler.get('fakes_goodSeeingDiff_warpedExp', dataId, collections=collections),
+                    butler.get('fakes_goodSeeingDiff_differenceExp', dataId, collections=collections))
 
         # subdirectory for the images
         image_path = os.path.join(self.config.outputPath, "images")
@@ -144,7 +147,7 @@ class ZooniverseCutoutsTask(lsst.pipe.base.Task):
 
         for index, source in data.iterrows():
             center = lsst.geom.SpherePoint(source['ra'], source['decl'], lsst.geom.degrees)
-            science, template, difference = get_exposures(int(source['ccd']), int(source['visit']))
+            science, template, difference = get_exposures(source['instrument'], int(source['ccd']), int(source['visit']), collections)
             image = self.generate_image(science, template, difference, center)
             filename = os.path.join(image_path, f"{int(source['diaSourceId'])}.png")
             with open(filename, "wb") as outfile:
