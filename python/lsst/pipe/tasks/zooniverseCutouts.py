@@ -34,8 +34,8 @@ __all__ = ["ZooniverseCutoutsConfig", "ZooniverseCutoutsTask"]
 
 class ZooniverseCutoutsConfig(pexConfig.Config):
     size = pexConfig.Field(
-        doc=("Size of cutout to extract for image from science, template, and difference exposures."
-             " TODO: should we have an option to use the source footprints as the cutout size instead?"),
+        doc="Size of cutout to extract for image from science, template, and difference exposures."
+            " TODO: should we have an option to use the source footprints as the cutout size instead?",
         dtype=int,
         default=30
     )
@@ -58,8 +58,8 @@ class ZooniverseCutoutsConfig(pexConfig.Config):
     #     dtype=str
     # )
     outputPath = pexConfig.Field(
-        doc=("The full path to write the files to; images will go in `outputPath/images/`, "
-             "while the manifest file will go in `outputPath/`"),
+        doc="The full path to write the files to; images will go in `outputPath/images/`, "
+            "while the manifest file will go in `outputPath/`",
         default=None,
         dtype=str
     )
@@ -79,7 +79,7 @@ class ZooniverseCutoutsTask(lsst.pipe.base.Task):
         select_sources and how we want the butler to be passed in.
         """
         data = self.select_sources()
-        self.generate_images(data, butler)
+        self.write_images(data, butler)
 
         manifest = self.make_manifest(data)
         manifest.to_csv(os.path.join(self.config.outputPath, "manifest.csv"), index=False)
@@ -90,37 +90,64 @@ class ZooniverseCutoutsTask(lsst.pipe.base.Task):
         This method is entirely TODO until we have a way to make where queries
         on apdb.
         """
-        return None
+        raise NotImplementedError
+
+    @staticmethod
+    def _make_path(source, base_path):
+        """Return a URL or file path for this source.
+
+        Parameters
+        ----------
+        source : `pandas.DataFrame`
+            DataFrame containing at least a ``diaSourceId`` field.
+        base_path : `str`
+            Base URL or directory path, with no ending ``/``.
+
+        Returns
+        -------
+        path : `str`
+            Formatted URL or path.
+        """
+        return f"{base_path}/images/{int(source.loc['diaSourceId'])}.png"
 
     def make_manifest(self, data):
         """Return a Zooniverse manifest attaching image URLs to source ids.
-        """
-        output = pd.DataFrame([])
-        output['external_id'] = data['diaSourceId']
-
-        def make_url(source):
-            """Return a URL for this source."""
-            return f"{self.config.urlRoot.rstrip('/')}/{source['diaSourceId']}.png"
-
-        output['location:1'] = data.apply(make_url, axis=1)
-        output['metadata:diaSourceId'] = data['diaSourceId']
-        return output
-
-    def generate_images(self, data, butler):
-        """Make the 3-part cutout images for each requested source.
-
-        Creates a `images/` subdirectory in `self.config.outputPath` if one
-        does not already exist.
 
         Parameters
         ----------
         data : `pandas.DataFrame`
-            The DiaSources to extract cutouts for.
+            DataFrame retrieved from APDB, conntaining at least a
+            ``diaSourceId`` column.
+
+        Returns
+        -------
+        manifest : `pandas.DataFrame`
+            The formatted URL manifest for upload to Zooniverse.
+        """
+        manifest = pd.DataFrame()
+        manifest['external_id'] = data['diaSourceId']
+        manifest['location:1'] = data.apply(self._make_path, axis=1, args=(self.config.urlRoot.rstrip('/'),))
+        manifest['metadata:diaSourceId'] = data['diaSourceId']
+        return manifest
+
+    def write_images(self, data, butler):
+        """Make the 3-part cutout images for each requested source and write
+        them to disk.
+
+        Creates a `images/` subdirectory in `self.config.outputPath` if one
+        does not already exist; images are written there as PNG files.
+
+        Parameters
+        ----------
+        data : `pandas.DataFrame`
+            The DiaSources to extract cutouts for. Must contain at least these
+            fields: ``ra, dec, diaSourceId, ccd, visit, instrument``.
         butler : `lsst.daf.butler.Butler`
-            The butler connection to use to load the data.
+            The butler connection to use to load the data; create it with the
+            collections you wish to load images from.
         """
         @functools.lru_cache(maxsize=16)
-        def get_exposures(detector, visit):
+        def get_exposures(instrument, detector, visit):
             """Return science, template, difference exposures, and use a small
             cache so we don't have to re-read files as often.
 
@@ -128,21 +155,19 @@ class ZooniverseCutoutsTask(lsst.pipe.base.Task):
             systems, or get good butler-side cacheing, we should remove the
             lru_cache above.
             """
-            dataId = {'ccd': detector, 'visit': visit}
+            dataId = {'instrument': instrument, 'detector': detector, 'visit': visit}
             return (butler.get('calexp', dataId),
                     butler.get('deepDiff_warpedExp', dataId),
                     butler.get('deepDiff_differenceExp', dataId))
 
-        # subdirectory for the images
-        image_path = os.path.join(self.config.outputPath, "images")
-        pathlib.Path(image_path).mkdir(exist_ok=True)
+        # Create a subdirectory for the images.
+        pathlib.Path(os.path.join(self.config.outputPath, "images")).mkdir(exist_ok=True)
 
         for index, source in data.iterrows():
             center = lsst.geom.SpherePoint(source['ra'], source['decl'], lsst.geom.degrees)
             science, template, difference = get_exposures(int(source['ccd']), int(source['visit']))
             image = self.generate_image(science, template, difference, center)
-            filename = os.path.join(image_path, f"{int(source['diaSourceId'])}.png")
-            with open(filename, "wb") as outfile:
+            with open(self._make_path(source, self.config.outputPath), "wb") as outfile:
                 outfile.write(image.getbuffer())
 
     def generate_image(self, science, template, difference, center):
@@ -155,7 +180,7 @@ class ZooniverseCutoutsTask(lsst.pipe.base.Task):
         template : `lsst.afw.image.ExposureF`
             Matched template exposure to include in the cutout.
         difference : `lsst.afw.image.ExposureF`
-             Matched science - template exposure to include in the cutout.
+             Matched science minus template exposure to include in the cutout.
         center : `lsst.geom.SpherePoint`
             Center of the source to be cut out of each image.
 
@@ -180,7 +205,7 @@ class ZooniverseCutoutsTask(lsst.pipe.base.Task):
         template : `lsst.afw.image.ExposureF`
             Cutout template exposure to include in the image.
         difference : `lsst.afw.image.ExposureF`
-             Cutout science - template exposure to include in the image.
+             Cutout science minus template exposure to include in the image.
 
         Returns
         -------
@@ -194,7 +219,7 @@ class ZooniverseCutoutsTask(lsst.pipe.base.Task):
 
         # TODO: how do we color masked pixels (including edges)?
 
-        def do_one(ax, data, name):
+        def plot_one_image(ax, data, name):
             """Plot a normalized image on an axis."""
             if name == 'Difference':
                 norm = aviz.ImageNormalize(data, interval=aviz.ZScaleInterval(),
@@ -206,10 +231,10 @@ class ZooniverseCutoutsTask(lsst.pipe.base.Task):
             ax.axis('off')
             ax.set_title(name)
 
-        f, (ax1, ax2, ax3) = plt.subplots(1, 3)
-        do_one(ax1, template.image.array, "Template")
-        do_one(ax2, science.image.array, "Science")
-        do_one(ax3, difference.image.array, "Difference")
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
+        plot_one_image(ax1, template.image.array, "Template")
+        plot_one_image(ax2, science.image.array, "Science")
+        plot_one_image(ax3, difference.image.array, "Difference")
         plt.tight_layout()
 
         output = io.BytesIO()

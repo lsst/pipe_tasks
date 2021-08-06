@@ -47,7 +47,7 @@ class TestZooniverseCutouts(lsst.utils.tests.TestCase):
         self.template, self.templateCat = dataset.realize(noise=5.0, schema=dataset.makeMinimalSchema())
         # A simple and incorrect image difference to have something to plot.
         self.difference = lsst.afw.image.ExposureF(self.science, deep=True)
-        self.difference.image.array -= self.template.image.array
+        self.difference.image -= self.template.image
 
     def test_generate_image(self):
         """Test that we get some kind of image out.
@@ -61,11 +61,15 @@ class TestZooniverseCutouts(lsst.utils.tests.TestCase):
         im = PIL.Image.open(cutout)
         # NOTE: uncomment this to show the resulting image.
         # im.show()
+        # NOTE: the dimensions here are determined by the matplotlib figure
+        # size (in inches) and the dpi (default=100), plus borders.
         self.assertEqual(im.height, 233)
         self.assertEqual(im.width, 630)
 
-        # A different cutout size: the resulting cutout image is the same
-        # size but shows more pixels.
+    def test_generate_image_larger_cutout(self):
+        """A different cutout size: the resulting cutout image is the same
+        size but shows more pixels.
+        """
         config = ZooniverseCutoutsTask.ConfigClass()
         config.size = 100
         zooniverseCutouts = ZooniverseCutoutsTask(config=config)
@@ -74,10 +78,12 @@ class TestZooniverseCutouts(lsst.utils.tests.TestCase):
         im = PIL.Image.open(cutout)
         # NOTE: uncomment this to show the resulting image.
         # im.show()
+        # NOTE: the dimensions here are determined by the matplotlib figure
+        # size (in inches) and the dpi (default=100), plus borders.
         self.assertEqual(im.height, 233)
         self.assertEqual(im.width, 630)
 
-    def test_generate_images(self):
+    def test_write_images(self):
         """Test that images get written to a temporary directory."""
         data = pd.DataFrame(data={"diaSourceId": [5, 10],
                                   "ra": [45.001, 45.002],
@@ -93,13 +99,14 @@ class TestZooniverseCutouts(lsst.utils.tests.TestCase):
             config = ZooniverseCutoutsTask.ConfigClass()
             config.outputPath = path
             zooniverseCutouts = ZooniverseCutoutsTask(config)
-            zooniverseCutouts.generate_images(data, butler)
-            image = PIL.Image.open(os.path.join(path, "images/5.png"))
-            self.assertEqual(image.format, "PNG")
-            PIL.Image.open(os.path.join(path, "images/10.png"))
-            self.assertEqual(image.format, "PNG")
+            zooniverseCutouts.write_images(data, butler)
+            for file in ("images/5.png", "images/10.png"):
+                filename = os.path.join(path, file)
+                self.assertTrue(os.path.exists(filename))
+                image = PIL.Image.open(filename)
+                self.assertEqual(image.format, "PNG")
 
-    def check_make_manifest(self, url_root):
+    def check_make_manifest(self, url_root, url_list):
         """Check that make_manifest returns an appropriate DataFrame.
         """
         data = pd.DataFrame(data={"diaSourceId": [5, 10, 20], "otherField": [3, 2, 1]})
@@ -109,21 +116,19 @@ class TestZooniverseCutouts(lsst.utils.tests.TestCase):
         manifest = zooniverseCutouts.make_manifest(data)
         self.assertEqual(manifest['metadata:diaSourceId'].to_list(),
                          [5, 10, 20])
-        return manifest
+        self.assertEqual(manifest['location:1'].to_list(), url_list)
 
     def test_make_manifest(self):
-        # check with an ending slash
-        root = "http://example.org/zooniverse"
-        manifest = self.check_make_manifest(root)
-        self.assertEqual(manifest['location:1'].to_list(),
-                         [f"{root}/5.png",
-                          f"{root}/10.png",
-                          f"{root}/20.png"])
-
         # check without an ending slash
+        root = "http://example.org/zooniverse"
+        url_list = [f"{root}/images/5.png",
+                    f"{root}/images/10.png",
+                    f"{root}/images/20.png"]
+        self.check_make_manifest(root, url_list)
+
+        # check with an ending slash
         root = "http://example.org/zooniverse/"
-        manifest = self.check_make_manifest(root)
-        self.assertEqual(manifest['location:1'].to_list(),
-                         [f"{root}5.png",
-                          f"{root}10.png",
-                          f"{root}20.png"])
+        url_list = [f"{root}images/5.png",
+                    f"{root}images/10.png",
+                    f"{root}images/20.png"]
+        self.check_make_manifest(root, url_list)
