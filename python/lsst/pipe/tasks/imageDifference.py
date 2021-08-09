@@ -397,6 +397,10 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
                     "useGaussianForPreConvolution=True This is an AL subtraction only option.")
         else:
             # AL only consistency checks
+            if self.useScoreImageDetection and not self.convolveTemplate:
+                raise ValueError(
+                    "convolveTemplate=False and useScoreImageDetection=True "
+                    "Pre-convolution and matching of the science image is not a supported operation.")
             if self.doWriteSubtractedExp and self.useScoreImageDetection:
                 raise ValueError(
                     "doWriteSubtractedExp=True and useScoreImageDetection=True "
@@ -409,10 +413,6 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
                     "AL subtraction calculates either the regular difference image or the score image.")
             if self.doAddMetrics and not self.doSubtract:
                 raise ValueError("Subtraction must be enabled for kernel metrics calculation.")
-            if self.useScoreImageDetection and self.doDecorrelation:
-                raise NotImplementedError(
-                    "doDecorrelation=True and useScoreImageDetection=True "
-                    "The decorrelation afterburner for AL likelihood images is not implemented.")
             if self.useGaussianForPreConvolution and not self.useScoreImageDetection:
                 raise ValueError(
                     "useGaussianForPreConvolution=True and useScoreImageDetection=False "
@@ -962,19 +962,27 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                 # doSubtract is False.
 
                 # NOTE: At this point doSubtract == True
-                # useScoreImageDetection=True and doDecorrelation=True is not allowed in the config
                 if self.config.doDecorrelation and self.config.doSubtract:
                     preConvKernel = None
-                    if preConvPsf is not None:
+                    if self.config.useGaussianForPreConvolution:
                         preConvKernel = preConvPsf.getLocalKernel()
-                    decorrResult = self.decorrelate.run(exposureOrig, subtractRes.warpedExposure,
-                                                        subtractedExposure,
-                                                        subtractRes.psfMatchingKernel,
-                                                        spatiallyVarying=self.config.doSpatiallyVarying,
-                                                        preConvKernel=preConvKernel,
-                                                        templateMatched=self.config.convolveTemplate)
-                    subtractedExposure = decorrResult.correctedExposure
-
+                    if self.config.useScoreImageDetection:
+                        scoreExposure = self.decorrelate.run(exposureOrig, subtractRes.warpedExposure,
+                                                             scoreExposure,
+                                                             subtractRes.psfMatchingKernel,
+                                                             spatiallyVarying=self.config.doSpatiallyVarying,
+                                                             preConvKernel=preConvKernel,
+                                                             templateMatched=True,
+                                                             preConvMode=True).correctedExposure
+                    # Note that the subtracted exposure is always decorrelated,
+                    # even if the score image is used for detection
+                    subtractedExposure = self.decorrelate.run(exposureOrig, subtractRes.warpedExposure,
+                                                              subtractedExposure,
+                                                              subtractRes.psfMatchingKernel,
+                                                              spatiallyVarying=self.config.doSpatiallyVarying,
+                                                              preConvKernel=None,
+                                                              templateMatched=self.config.convolveTemplate,
+                                                              preConvMode=False).correctedExposure
             # END (if subtractAlgorithm == 'AL')
         # END (if self.config.doSubtract)
         if self.config.doDetection:
