@@ -415,7 +415,7 @@ class LineProfile:
 
             factor, fmin, _, _ = scipy.optimize.brent(line_search, args=(dx,), full_output=True, tol=0.05)
             x -= factor * dx
-            if (x[0] > 1.5 * self._rhoMax) or (iter > maxIter):
+            if (abs(x[0]) > 1.5 * self._rhoMax) or (iter > maxIter):
                 fitFailure = True
                 break
             oldChi2 = chi2
