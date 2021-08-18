@@ -1332,7 +1332,8 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         inputWarpDict = {inputRef.ref.dataId['visit']: inputRef for inputRef in inputs}
         filteredInputs = []
         for visit in goodVisits.keys():
-            filteredInputs.append(inputWarpDict[visit])
+            if visit in inputWarpDict:
+                filteredInputs.append(inputWarpDict[visit])
         return filteredInputs
 
 
