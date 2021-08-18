@@ -227,7 +227,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         """Return the median ixx and iyy for object in the image.
         """
         medianXx = np.nanmedian([element['xx'] for element in objData.values()])
-        medianYy = np.nanmedian([element['xx'] for element in objData.values()])
+        medianYy = np.nanmedian([element['yy'] for element in objData.values()])
         return medianXx, medianYy
 
     @staticmethod
