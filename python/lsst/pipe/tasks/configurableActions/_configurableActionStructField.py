@@ -30,6 +30,8 @@ from lsst.pex.config.callStack import StackFrame, getCallStack, getStackFrame
 
 from . import ConfigurableAction
 
+import weakref
+
 
 class ConfigurableActionStructUpdater:
     """This descriptor exists to abstract the logic of using a dictionary to
@@ -126,7 +128,7 @@ class ConfigurableActionStruct:
 
     def __init__(self, config: Config, field: ConfigurableActionStructField,
                  value: Mapping[str, ConfigurableAction], at: Any, label: str):
-        object.__setattr__(self, '_config', config)
+        object.__setattr__(self, '_config_', weakref.ref(config))
         object.__setattr__(self, '_attrs', {})
         object.__setattr__(self, '_field', field)
         object.__setattr__(self, '_history', [])
@@ -136,6 +138,13 @@ class ConfigurableActionStruct:
         if value is not None:
             for k, v in value.items():
                 setattr(self, k, v)
+
+    @property
+    def _config(self) -> Config:
+        # Config Fields should never outlive their config class instance
+        # assert that as such here
+        assert(self._config_() is not None)
+        return self._config_()
 
     @property
     def history(self) -> List[tuple]:
