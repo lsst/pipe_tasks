@@ -93,7 +93,8 @@ tasks:
       connections.measCat: forced_diff
       connections.outputSchema:  forced_diff_schema
       connections.exposure: goodSeeingDiff_differenceExp
-
+  forcedPhotDiffimOnDiaObject:
+    class: lsst.pipe.tasks.ForcedPhotCcdOnParquet
 subsets:
   processCcd:
     subset:
