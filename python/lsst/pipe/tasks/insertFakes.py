@@ -263,6 +263,26 @@ class InsertFakesConfig(PipelineTaskConfig,
         default="sourceType",
     )
 
+    fits_alignment = pexConfig.ChoiceField(
+        doc="How should injections from FITS files be aligned?",
+        dtype=str,
+        allowed={
+            "wcs": (
+                "Input image will be transformed such that the local WCS in "
+                "the FITS header matches the local WCS in the target image. "
+                "I.e., North, East, and angular distances in the input image "
+                "will match North, East, and angular distances in the target "
+                "image."
+            ),
+            "pixel": (
+                "Input image will _not_ be transformed.  Up, right, and pixel "
+                "distances in the input image will match up, right and pixel "
+                "distances in the target image."
+            )
+        },
+        default="pixel"
+    )
+
     # New source catalog config variables
 
     ra_col = pexConfig.Field(
@@ -845,15 +865,28 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
             imFile = imFile.strip()
             im = galsim.fits.read(imFile, read_header=True)
 
-            # GalSim will always attach a WCS to the image read in as above.  If
-            # it can't find a WCS in the header, then it defaults to scale = 1.0
-            # arcsec / pix.  So if that's the scale, then we need to check if it
-            # was explicitly set or if it's just the default.  If it's just the
-            # default then we should override with the pixel scale of the target
-            # image.
-            if _isWCSGalsimDefault(im.wcs, im.header):
-                im.wcs = galsim.PixelScale(
-                    wcs.getPixelScale().asArcseconds()
+            if self.config.fits_alignment == "wcs":
+                # galsim.fits.read will always attach a WCS to its output. If it
+                # can't find a WCS in the FITS header, then it defaults to
+                # scale = 1.0 arcsec / pix.  So if that's the scale, then we
+                # need to check if it was explicitly set or if it's just the
+                # default.  If it's just the default then we should raise an
+                # exception.
+                if _isWCSGalsimDefault(im.wcs, im.header):
+                    raise RuntimeError(
+                        f"Cannot find WCS in input FITS file {imFile}"
+                    )
+            elif self.config.fits_alignment == "pixel":
+                # Here we need to set im.wcs to the local WCS at the target
+                # position.
+                linWcs = wcs.linearizePixelToSky(skyCoord, geom.arcseconds)
+                mat = linWcs.getMatrix()
+                im.wcs = galsim.JacobianWCS(
+                    mat[0, 0], mat[0, 1], mat[1, 0], mat[1, 1]
+                )
+            else:
+                raise ValueError(
+                    f"Unknown fits_alignment type {self.config.fits_alignment}"
                 )
 
             obj = galsim.InterpolatedImage(im)
