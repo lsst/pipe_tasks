@@ -889,7 +889,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                     f"Unknown fits_alignment type {self.config.fits_alignment}"
                 )
 
-            obj = galsim.InterpolatedImage(im)
+            obj = galsim.InterpolatedImage(im, calculate_stepk=False)
             obj = obj.withFlux(flux)
             yield skyCoord, obj
 
