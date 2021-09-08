@@ -181,6 +181,7 @@ subsets:
     subset:
       - selectGoodSeeingVisits
       - templateGen
+      - getTemplate
       - imageDifference
       - transformDiaSourceCat
       - consolidateDiaSourceTable
