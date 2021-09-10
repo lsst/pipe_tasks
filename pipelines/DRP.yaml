@@ -93,7 +93,14 @@ tasks:
       connections.measCat: forced_diff
       connections.outputSchema:  forced_diff_schema
       connections.exposure: goodSeeingDiff_differenceExp
-
+  forcedPhotCcdOnDiaObjects:
+    class: lsst.meas.base.ForcedPhotCcdFromDataFrameTask
+  forcedPhotDiffOnDiaObjects:
+    class: lsst.meas.base.ForcedPhotCcdFromDataFrameTask
+    config:
+      connections.measCat: forced_diff_diaObject
+      connections.outputSchema:  forced_diff_diaObject_schema
+      connections.exposure: goodSeeingDiff_differenceExp
 subsets:
   processCcd:
     subset:
@@ -188,6 +195,8 @@ subsets:
       - drpAssociation
       - drpDiaCalculation
       - forcedPhotDiffim
+      - forcedPhotCcdOnDiaObjects
+      - forcedPhotDiffOnDiaObjects
     description: Subset for running image differencing branch of the DRP pipeline
 
 contracts:
