@@ -30,6 +30,9 @@ import astropy.units as u
 
 from lsst.daf.persistence import doImport
 from lsst.daf.butler import DeferredDatasetHandle
+import lsst.geom as geom
+import lsst.sphgeom as sphgeom
+
 from .parquetTable import ParquetTable, MultilevelParquetTable
 
 
@@ -704,6 +707,28 @@ class DecColumn(CoordColumn):
 
     def __call__(self, catalog, **kwargs):
         return super().__call__(catalog, **kwargs)
+
+
+class HtmIndex20(Functor):
+    """Compute the level 20 HtmIndex for the catalog.
+    """
+    columns = ['coord_ra', 'coord_dec']
+    name = "Htm20"
+    htmLevel = 20
+
+    def __init__(self, **kwargs):
+        self.pixelator = sphgeom.HtmPixelization(self.htmLevel)
+        super().__init__(**kwargs)
+
+    def _func(self, df):
+
+        def computePixel(row):
+            sphPoint = geom.SpherePoint(row["coord_ra"],
+                                        row["coord_dec"],
+                                        geom.radians)
+            return self.pixelator.index(sphPoint.getVector())
+
+        return df.apply(computePixel, axis=1)
 
 
 def fluxName(col):
