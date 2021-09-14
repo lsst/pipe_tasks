@@ -103,18 +103,18 @@ class Functor(object):
     is anything other than `'ref'`, then an error will be raised when trying to
     perform the calculation.
 
-    As currently implemented, `Functor` is only set up to expect a
-    dataset of the format of the `deepCoadd_obj` dataset; that is, a
-    dataframe with a multi-level column index,
-     with the levels of the column index being `band`,
-    `dataset`, and `column`. This is defined in the `_columnLevels` attribute,
-    as well as being implicit in the role of the `filt` and `dataset` attributes
-    defined at initialization.  In addition, the `_get_data` method that reads
+    Originally, `Functor` was set up to expect
+    datasets formatted like the `deepCoadd_obj` dataset; that is, a
+    dataframe with a multi-level column index, with the levels of the
+    column index being `band`, `dataset`, and `column`.
+    It has since been generalized to apply to dataframes without mutli-level
+    indices and multi-level indices with just `dataset` and `column` levels.
+    In addition, the `_get_data` method that reads
     the dataframe from the `ParquetTable` will return a dataframe with column
     index levels defined by the `_dfLevels` attribute; by default, this is
     `column`.
 
-    The `_columnLevels` and `_dfLevels` attributes should generally not need to
+    The `_dfLevels` attributes should generally not need to
     be changed, unless `_func` needs columns from multiple filters or datasets
     to do the calculation.
     An example of this is the `lsst.pipe.tasks.functors.Color` functor, for
@@ -133,7 +133,6 @@ class Functor(object):
     """
 
     _defaultDataset = 'ref'
-    _columnLevels = ('band', 'dataset', 'column')
     _dfLevels = ('column',)
     _defaultNoDup = False
 
@@ -249,12 +248,6 @@ class Functor(object):
 
         # Confirm that the dataset has the column levels the functor is expecting it to have.
         columnLevels = self._get_data_columnLevels(data, columnIndex)
-
-        if not set(columnLevels) == set(self._columnLevels):
-            raise ValueError(
-                "ParquetTable does not have the expected column levels. "
-                f"Got {columnLevels}; expected {self._columnLevels}."
-            )
 
         columnDict = {'column': self.columns,
                       'dataset': self.dataset}

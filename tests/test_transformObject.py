@@ -62,8 +62,6 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         funcs = {'Fwhm': HsmFwhm(dataset='meas')}
         df = task.run(self.parq, funcs=funcs, dataId=self.dataId)
         self.assertIsInstance(df, pd.DataFrame)
-        for column in ('coord_ra', 'coord_dec'):
-            self.assertIn(column, df.columns)
 
         for filt in config.outputBands:
             self.assertIn(filt + 'Fwhm', df.columns)

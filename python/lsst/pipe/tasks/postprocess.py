@@ -37,7 +37,7 @@ from lsst.daf.butler import DeferredDatasetHandle, DataCoordinate
 
 from .parquetTable import ParquetTable
 from .multiBandUtils import makeMergeArgumentParser, MergeSourcesRunner
-from .functors import CompositeFunctor, RAColumn, DecColumn, Column
+from .functors import CompositeFunctor, Column
 
 
 def flattenFilters(df, noDupCols=['coord_ra', 'coord_dec'], camelCase=False, inputBands=None):
@@ -458,8 +458,7 @@ class PostprocessAnalysis(object):
         only run during multi-band forced-photometry.
     """
     _defaultRefFlags = []
-    _defaultFuncs = (('coord_ra', RAColumn()),
-                     ('coord_dec', DecColumn()))
+    _defaultFuncs = ()
 
     def __init__(self, parq, functors, filt=None, flags=None, refFlags=None, forcedFlags=None):
         self.parq = parq
