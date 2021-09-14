@@ -540,6 +540,10 @@ class CompositeFunctor(Functor):
         else:
             renameRules = None
 
+        if 'calexpFlags' in translationDefinition:
+            for flag in translationDefinition['calexpFlags']:
+                funcs[cls.renameCol(flag, renameRules)] = Column(flag, dataset='calexp')
+
         if 'refFlags' in translationDefinition:
             for flag in translationDefinition['refFlags']:
                 funcs[cls.renameCol(flag, renameRules)] = Column(flag, dataset='ref')
