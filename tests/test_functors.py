@@ -769,7 +769,7 @@ class FunctorTestCase(unittest.TestCase):
         """Test that HtmIndxes are created as expected.
         """
         parq = self.simulateMultiParquet(self.dataDict)
-        func = HtmIndex20()
+        func = HtmIndex20("coord_ra", "coord_dec")
 
         val = self._funcVal(func, parq)
         # Test that the HtmIds come out as the ra/dec in dataDict.

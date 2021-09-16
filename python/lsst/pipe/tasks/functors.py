@@ -712,20 +712,28 @@ class DecColumn(CoordColumn):
 class HtmIndex20(Functor):
     """Compute the level 20 HtmIndex for the catalog.
     """
-    columns = ['coord_ra', 'coord_dec']
     name = "Htm20"
     htmLevel = 20
+    _radians = True
 
-    def __init__(self, **kwargs):
+    def __init__(self, ra, decl, **kwargs):
         self.pixelator = sphgeom.HtmPixelization(self.htmLevel)
+        self.ra = ra
+        self.decl = decl
+        self._columns = [self.ra, self.decl]
         super().__init__(**kwargs)
 
     def _func(self, df):
 
         def computePixel(row):
-            sphPoint = geom.SpherePoint(row["coord_ra"],
-                                        row["coord_dec"],
-                                        geom.radians)
+            if self._radians:
+                sphPoint = geom.SpherePoint(row[self.ra],
+                                            row[self.decl],
+                                            geom.radians)
+            else:
+                sphPoint = geom.SpherePoint(row[self.ra],
+                                            row[self.decl],
+                                            geom.degrees)
             return self.pixelator.index(sphPoint.getVector())
 
         return df.apply(computePixel, axis=1)
