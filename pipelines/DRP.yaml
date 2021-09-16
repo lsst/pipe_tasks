@@ -93,6 +93,9 @@ tasks:
       connections.measCat: forced_diff
       connections.outputSchema:  forced_diff_schema
       connections.exposure: goodSeeingDiff_differenceExp
+  writeForcedSourceTable: lsst.pipe.tasks.postprocess.WriteForcedSourceTableTask
+  transformForcedSourceTable: lsst.pipe.tasks.postprocess.TransformForcedSourceTableTask
+  consolidateForcedSourceTable: lsst.pipe.tasks.postprocess.ConsolidateForcedSourceTableTask
   forcedPhotCcdOnDiaObjects:
     class: lsst.meas.base.ForcedPhotCcdFromDataFrameTask
   forcedPhotDiffOnDiaObjects:
@@ -208,3 +211,4 @@ contracts:
   - transformDiaSourceCat.connections.diaSourceTable == drpAssociation.connections.diaSourceTables
   - drpAssociation.connections.assocDiaSourceTable == drpDiaCalculation.connections.assocDiaSourceTable
   - drpAssociation.connections.diaObjectTable == drpDiaCalculation.connections.diaObjectTable
+  - forcedPhotDiffim.connections.refCat == forcedPhotCcd.connections.refCat
