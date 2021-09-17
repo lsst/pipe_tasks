@@ -46,7 +46,7 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
                                       LocalDipoleMeanFlux, LocalDipoleMeanFluxErr,
                                       LocalDipoleDiffFlux, LocalDipoleDiffFluxErr,
                                       LocalWcs, ComputePixelScale, ConvertPixelToArcseconds,
-                                      ConvertPixelSqToArcsecondsSq, Ratio)
+                                      ConvertPixelSqToArcsecondsSq, Ratio, HtmIndex20)
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
@@ -764,6 +764,19 @@ class FunctorTestCase(unittest.TestCase):
                                     val.values,
                                     atol=1e-16,
                                     rtol=1e-16))
+
+    def testHtm(self):
+        """Test that HtmIndxes are created as expected.
+        """
+        parq = self.simulateMultiParquet(self.dataDict)
+        func = HtmIndex20("coord_ra", "coord_dec")
+
+        val = self._funcVal(func, parq)
+        # Test that the HtmIds come out as the ra/dec in dataDict.
+        self.assertTrue(np.all(np.equal(
+            val.values,
+            [14924528684992, 14924528689697, 14924528501716, 14924526434259,
+             14924526433879])))
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
