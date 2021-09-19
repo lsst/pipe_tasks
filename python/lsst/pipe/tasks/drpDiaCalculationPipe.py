@@ -134,6 +134,6 @@ class DrpDiaCalculationPipeTask(pipeBase.PipelineTask):
         result = self.diaCalculation.run(
             diaObjectTable,
             assocDiaSourceTable,
-            diaObjectTable["diaObjectId"].to_numpy(),
+            diaObjectTable.index.to_numpy(),
             self.config.filterNames)
         return pipeBase.Struct(fullDiaObjectTable=result.updatedDiaObjects)

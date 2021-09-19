@@ -1377,17 +1377,19 @@ class MakeCcdVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
 
             ccdEntry = {}
             summaryTable = visitSummary.asAstropy()
-            selectColumns = ['id', 'visit', 'physical_filter', 'ra', 'decl', 'zenithDistance', 'zeroPoint',
+            selectColumns = ['id', 'visit', 'physical_filter', 'band', 'ra', 'decl', 'zenithDistance', 'zeroPoint',
                              'psfSigma', 'skyBg', 'skyNoise']
             ccdEntry = summaryTable[selectColumns].to_pandas().set_index('id')
-            ccdEntry = ccdEntry.rename(columns={"physical_filter": "filterName", "visit": "visitId"})
-
+            # 'visit' is the human readible visit number
+            # 'visitId' is the key to the visitId table. They are the same
+            # Technically you should join to get the visit from the visit table
+            ccdEntry = ccdEntry.rename(columns={"visit": "visitId"})
             dataIds = [DataCoordinate.standardize(visitSummaryRef.dataId, detector=id) for id in
                        summaryTable['id']]
             packer = visitSummaryRef.dataId.universe.makePacker('visit_detector', visitSummaryRef.dataId)
             ccdVisitIds = [packer.pack(dataId) for dataId in dataIds]
             ccdEntry['ccdVisitId'] = ccdVisitIds
-
+            ccdEntry['detector'] = summaryTable['id']
             pixToArcseconds = np.array([vR.getWcs().getPixelScale().asArcseconds() for vR in visitSummary])
             ccdEntry["seeing"] = visitSummary['psfSigma'] * np.sqrt(8 * np.log(2)) * pixToArcseconds
 
@@ -1412,6 +1414,7 @@ class MakeCcdVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
             ccdEntries.append(ccdEntry)
 
         outputCatalog = pd.concat(ccdEntries)
+        outputCatalog.set_index('ccdVisitId', inplace=True, verify_integrity=True)
         return pipeBase.Struct(outputCatalog=outputCatalog)
 
 
@@ -1467,7 +1470,9 @@ class MakeVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
 
             visitEntry = {}
             visitEntry["visitId"] = visitRow['visit']
-            visitEntry["filterName"] = visitRow['physical_filter']
+            visitEntry["visit"] = visitRow['visit']
+            visitEntry["physical_filter"] = visitRow['physical_filter']
+            visitEntry["band"] = visitRow['band']
             raDec = visitInfo.getBoresightRaDec()
             visitEntry["ra"] = raDec.getRa().asDegrees()
             visitEntry["decl"] = raDec.getDec().asDegrees()
@@ -1484,6 +1489,7 @@ class MakeVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
             # mirror3Temp, domeTemp, externalTemp, dimmSeeing, pwvGPS, pwvMW, flags, nExposures
 
         outputCatalog = pd.DataFrame(data=visitEntries)
+        outputCatalog.set_index('visitId', inplace=True, verify_integrity=True)
         return pipeBase.Struct(outputCatalog=outputCatalog)
 
 
