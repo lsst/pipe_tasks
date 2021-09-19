@@ -540,7 +540,15 @@ class TransformCatalogBaseConfig(pipeBase.PipelineTaskConfig,
                                  pipelineConnections=TransformCatalogBaseConnections):
     functorFile = pexConfig.Field(
         dtype=str,
-        doc='Path to YAML file specifying functors to be computed',
+        doc="Path to YAML file specifying Science Data Model functors to use "
+            "when copying columns and computing calibrated values.",
+        default=None,
+        optional=True
+    )
+    primaryKey = pexConfig.Field(
+        dtype=str,
+        doc="Name of column to be set as the DataFrame index. If None, the index"
+            "will be named `id`",
         default=None,
         optional=True
     )
@@ -713,6 +721,11 @@ class TransformCatalogBaseTask(CmdLineTask, pipeBase.PipelineTask):
             for key, value in dataId.items():
                 df[str(key)] = value
 
+        if self.config.primaryKey:
+            if df.index.name != self.config.primaryKey and self.config.primaryKey in df:
+                df.reset_index(inplace=True, drop=True)
+                df.set_index(self.config.primaryKey, inplace=True)
+
         return pipeBase.Struct(
             df=df,
             analysis=analysis
@@ -786,6 +799,10 @@ class TransformObjectCatalogConfig(TransformCatalogBaseConfig,
              "and name-munged (False).")
     )
 
+    def setDefaults(self):
+        super().setDefaults()
+        self.primaryKey = 'objectId'
+
 
 class TransformObjectCatalogTask(TransformCatalogBaseTask):
     """Produce a flattened Object Table to match the format specified in
@@ -850,12 +867,15 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
 
         if not self.config.multilevelOutput:
             noDupCols = list(set.union(*[set(v.noDupCols) for v in analysisDict.values()]))
+            if self.config.primaryKey in noDupCols:
+                noDupCols.remove(self.config.primaryKey)
             if dataId is not None:
                 noDupCols += list(dataId.keys())
             df = flattenFilters(df, noDupCols=noDupCols, camelCase=self.config.camelCase,
                                 inputBands=inputBands)
 
         self.log.info("Made a table of %d columns and %d rows", len(df.columns), len(df))
+
         return df
 
 
@@ -982,7 +1002,10 @@ class TransformSourceTableConnections(pipeBase.PipelineTaskConnections,
 
 class TransformSourceTableConfig(TransformCatalogBaseConfig,
                                  pipelineConnections=TransformSourceTableConnections):
-    pass
+
+    def setDefaults(self):
+        super().setDefaults()
+        self.primaryKey = 'sourceId'
 
 
 class TransformSourceTableTask(TransformCatalogBaseTask):
@@ -1339,7 +1362,7 @@ class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
     )
     outputCatalog = connectionTypes.Output(
         doc="CCD and Visit metadata table",
-        name="CcdVisitTable",
+        name="ccdVisitTable",
         storageClass="DataFrame",
         dimensions=("instrument",)
     )
@@ -1377,8 +1400,8 @@ class MakeCcdVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
 
             ccdEntry = {}
             summaryTable = visitSummary.asAstropy()
-            selectColumns = ['id', 'visit', 'physical_filter', 'band', 'ra', 'decl', 'zenithDistance', 'zeroPoint',
-                             'psfSigma', 'skyBg', 'skyNoise']
+            selectColumns = ['id', 'visit', 'physical_filter', 'band', 'ra', 'decl', 'zenithDistance',
+                             'zeroPoint', 'psfSigma', 'skyBg', 'skyNoise']
             ccdEntry = summaryTable[selectColumns].to_pandas().set_index('id')
             # 'visit' is the human readible visit number
             # 'visitId' is the key to the visitId table. They are the same
@@ -1594,6 +1617,16 @@ class TransformForcedSourceTableConfig(TransformCatalogBaseConfig,
         optional=True,
         doc="Columns to pull from reference catalog",
     )
+    keyRef = lsst.pex.config.Field(
+        doc="Column on which to join the two input tables on and make the primary key of the output",
+        dtype=str,
+        default="objectId",
+    )
+    key = lsst.pex.config.Field(
+        doc="Rename the output DataFrame index to this name",
+        dtype=str,
+        default="forcedSourceId",
+    )
 
 
 class TransformForcedSourceTableTask(TransformCatalogBaseTask):
@@ -1633,9 +1666,20 @@ class TransformForcedSourceTableTask(TransformCatalogBaseTask):
         for handle in inputCatalogs:
             result = self.transform(None, handle, funcs, dataId)
             # Filter for only rows that were detected on (overlap) the patch
-            dfs.append(ref.join(result.df, how='inner'))
+            dfs.append(result.df.join(ref, how='inner'))
 
         outputCatalog = pd.concat(dfs)
+
+        # Now that we are done joining on config.keyRef
+        # Change index to config.key by
+        outputCatalog.index.rename(self.config.keyRef, inplace=True)
+        # Add config.keyRef to the column list
+        outputCatalog.reset_index(inplace=True)
+        # set the forcedSourceId to the index. This is specified in the ForcedSource.yaml
+        outputCatalog.set_index("forcedSourceId", inplace=True, verify_integrity=True)
+        # Rename it to the config.key
+        outputCatalog.index.rename(self.config.key, inplace=True)
+
         self.log.info("Made a table of %d columns and %d rows",
                       len(outputCatalog.columns), len(outputCatalog))
         return pipeBase.Struct(outputCatalog=outputCatalog)

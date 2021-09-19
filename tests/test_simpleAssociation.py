@@ -115,9 +115,10 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
         # Test the number of expected DiaObjects are created.
         self.assertEqual(len(result.diaObjects),
                          self.nDiaObjects + self.nNewDiaSources)
+
         # Test that DiaSources are assigned the correct ``diaObjectId``
-        assocDiaObjects = result.diaObjects.set_index(["diaObjectId"])
-        assocDiaSources = result.assocDiaSources.set_index(["diaObjectId", "diaSourceId"])
+        assocDiaObjects = result.diaObjects
+        assocDiaSources = result.assocDiaSources.reset_index().set_index(["diaObjectId", "diaSourceId"])
         for idx, (diaObjId, diaObj) in enumerate(assocDiaObjects.iterrows()):
             if idx < 10:
                 self.assertEqual(len(assocDiaSources.loc[diaObjId]), 2)

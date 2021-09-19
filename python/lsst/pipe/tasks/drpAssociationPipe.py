@@ -195,7 +195,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         self.log.info("Associated DiaSources into %i DiaObjects",
                       len(assocResult.diaObjects))
 
-        if self.config.doAddDiaObjectCoords:
+        if self.config.doAddDiaObjectCoords and not assocResult.diaObjects.empty:
             assocResult.assocDiaSources = self._addDiaObjectCoords(assocResult.diaObjects,
                                                                    assocResult.assocDiaSources)
 

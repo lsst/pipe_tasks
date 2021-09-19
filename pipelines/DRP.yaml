@@ -116,6 +116,8 @@ tasks:
     class: lsst.pipe.tasks.postprocess.TransformForcedSourceTableTask
     config:
       referenceColumns: []
+      keyRef: diaObjectId
+      key: forcedSourceOnDiaObjectId
       connections.inputCatalogs: forcedSourceOnDiaObject
       connections.outputCatalog: forcedSourceOnDiaObjectTable
       connections.referenceCatalog: goodSeeingDiff_fullDiaObjTable
