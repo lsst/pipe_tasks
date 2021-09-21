@@ -1514,7 +1514,11 @@ class WriteForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
 
 class WriteForcedSourceTableConfig(WriteSourceTableConfig,
                                    pipelineConnections=WriteForcedSourceTableConnections):
-    pass
+    key = lsst.pex.config.Field(
+        doc="Column on which to join the two input tables on and make the primary key of the output",
+        dtype=str,
+        default="objectId",
+    )
 
 
 class WriteForcedSourceTableTask(pipeBase.PipelineTask):
@@ -1528,14 +1532,13 @@ class WriteForcedSourceTableTask(pipeBase.PipelineTask):
         # Add ccdVisitId to allow joining with CcdVisitTable
         inputs['ccdVisitId'] = butlerQC.quantum.dataId.pack("visit_detector")
         inputs['band'] = butlerQC.quantum.dataId.full['band']
-
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
     def run(self, inputCatalog, inputCatalogDiff, ccdVisitId=None, band=None):
         dfs = []
         for table, dataset, in zip((inputCatalog, inputCatalogDiff), ('calexp', 'diff')):
-            df = table.asAstropy().to_pandas().set_index('objectId', drop=False)
+            df = table.asAstropy().to_pandas().set_index(self.config.key, drop=False)
             df = df.reindex(sorted(df.columns), axis=1)
             df['ccdVisitId'] = ccdVisitId if ccdVisitId else pd.NA
             df['band'] = band if band else pd.NA
@@ -1579,7 +1582,12 @@ class TransformForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
 
 class TransformForcedSourceTableConfig(TransformCatalogBaseConfig,
                                        pipelineConnections=TransformForcedSourceTableConnections):
-    pass
+    referenceColumns = pexConfig.ListField(
+        dtype=str,
+        default=["detect_isPrimary", "detect_isTractInner", "detect_isPatchInner"],
+        optional=True,
+        doc="Columns to pull from reference catalog",
+    )
 
 
 class TransformForcedSourceTableTask(TransformCatalogBaseTask):
@@ -1614,8 +1622,7 @@ class TransformForcedSourceTableTask(TransformCatalogBaseTask):
 
     def run(self, inputCatalogs, referenceCatalog, funcs=None, dataId=None, band=None):
         dfs = []
-        ref = referenceCatalog.get(parameters={"columns": ['detect_isPrimary', 'detect_isTractInner',
-                                                           'detect_isPatchInner']})
+        ref = referenceCatalog.get(parameters={"columns": self.config.referenceColumns})
         self.log.info("Aggregating %s input catalogs" % (len(inputCatalogs)))
         for handle in inputCatalogs:
             result = self.transform(None, handle, funcs, dataId)

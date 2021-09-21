@@ -104,6 +104,25 @@ tasks:
       connections.measCat: forced_diff_diaObject
       connections.outputSchema:  forced_diff_diaObject_schema
       connections.exposure: goodSeeingDiff_differenceExp
+  writeForcedSourceOnDiaObjectTable:
+    class: lsst.pipe.tasks.postprocess.WriteForcedSourceTableTask
+    config:
+      key: diaObjectId
+      connections.inputCatalogDiff: forced_diff_diaObject
+      connections.inputCatalog: forced_src_diaObject
+      connections.outputCatalog: forcedSourceOnDiaObject
+  transformForcedSourceOnDiaObjectTable:
+    class: lsst.pipe.tasks.postprocess.TransformForcedSourceTableTask
+    config:
+      referenceColumns: []
+      connections.inputCatalogs: forcedSourceOnDiaObject
+      connections.outputCatalog: forcedSourceOnDiaObjectTable
+      connections.referenceCatalog: goodSeeingDiff_fullDiaObjTable
+  consolidateForcedSourceOnDiaObjectTable:
+    class: lsst.pipe.tasks.postprocess.ConsolidateForcedSourceTableTask
+    config:
+      connections.inputCatalogs: forcedSourceOnDiaObjectTable
+      connections.outputCatalog: forcedSourceOnDiaObjectTable_tract
 subsets:
   processCcd:
     subset:
