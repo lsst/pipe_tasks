@@ -788,7 +788,7 @@ class TransformObjectCatalogConfig(TransformCatalogBaseConfig,
     )
     camelCase = pexConfig.Field(
         dtype=bool,
-        default=True,
+        default=False,
         doc=("Write per-band columns names with camelCase, else underscore "
              "For example: gPsFlux instead of g_PsFlux.")
     )

@@ -55,6 +55,7 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         exist in the input data.
         """
         config = TransformObjectCatalogConfig()
+        config.camelCase = True
         # Want y band columns despite the input data do not have them
         # Exclude g band columns despite the input data have them
         config.outputBands = ["r", "i", "y"]
