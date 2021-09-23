@@ -311,7 +311,8 @@ class HealSparseInputMapTask(pipeBase.Task):
 
 class HealSparsePropertyMapConnections(pipeBase.PipelineTaskConnections,
                                        dimensions=("tract", "band", "skymap",),
-                                       defaultTemplates={"coaddName": "deep"}):
+                                       defaultTemplates={"coaddName": "deep",
+                                                         "calexpType": ""}):
     input_maps = pipeBase.connectionTypes.Input(
         doc="Healsparse bit-wise coadd input maps",
         name="{coaddName}Coadd_inputMap",
@@ -330,7 +331,7 @@ class HealSparsePropertyMapConnections(pipeBase.PipelineTaskConnections,
     )
     visit_summaries = pipeBase.connectionTypes.Input(
         doc="Visit summary tables with aggregated statistics",
-        name="visitSummary",
+        name="{calexpType}visitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
         multiple=True,
