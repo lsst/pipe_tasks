@@ -70,11 +70,27 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
         dimensions=("tract", "skymap", "instrument", "visit", "detector")
     )
 
+    externalSkyWcsCatalog = cT.Input(
+        doc=("Per-tract, per-visit wcs calibrations. These catalogs use the detector "
+             "id for the catalog id, sorted on id for fast lookup."),
+        name="{wcsName}SkyWcsCatalog",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit", "tract"),
+    )
+
     photoCalib = cT.Input(
         doc="Calib information for the input exposure.",
         name="{photoCalibName}_photoCalib",
         storageClass="PhotoCalib",
-        dimensions=("tract", "skymap", "instrument", "visit", "detector")
+        dimensions=("instrument", "visit", "detector")
+    )
+
+    externalPhotoCalibCatalog = cT.Input(
+        doc=("Per-tract, per-visit photometric calibrations. These catalogs use the "
+             "detector id for the catalog id, sorted on id for fast lookup."),
+        name="{photoCalibName}PhotoCalibCatalog",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit"),
     )
 
     icSourceCat = cT.Input(
@@ -295,6 +311,8 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
+        detectorId = inputs["exposure"].getInfo().getDetector().getId()
+
         if 'exposureIdInfo' not in inputs.keys():
             expId, expBits = butlerQC.quantum.dataId.pack("visit_detector", returnMaxBits=True)
             inputs['exposureIdInfo'] = ExposureIdInfo(expId, expBits)
@@ -302,8 +320,18 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
         if not self.config.doApplyExternalSkyWcs:
             inputs["wcs"] = inputs["exposure"].getWcs()
 
+        else:
+            externalSkyWcsCatalog = inputs["externalSkyWcsCatalog"]
+            row = externalSkyWcsCatalog.find(detectorId)
+            inputs["wcs"] = row.getWcs()
+
         if not self.config.doApplyExternalPhotoCalib:
             inputs["photoCalib"] = inputs["exposure"].getPhotoCalib()
+
+        else:
+            externalPhotoCalibCatalog = inputs["externalPhotoCalibCatalog"]
+            row = externalPhotoCalibCatalog.find(detectorId)
+            inputs["photoCalib"] = row.getPhotoCalib()
 
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
@@ -317,7 +345,7 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
         return parser
 
     def run(self, fakeCat, exposure, wcs=None, photoCalib=None, exposureIdInfo=None, icSourceCat=None,
-            sfdSourceCat=None):
+            sfdSourceCat=None, externalSkyWcsCatalog=None, externalPhotoCalibCatalog=None):
         """Add fake sources to a calexp and then run detection, deblending and measurement.
 
         Parameters

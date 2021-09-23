@@ -1394,10 +1394,10 @@ class ConsolidateSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
 
 class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
                                    dimensions=("instrument",),
-                                   defaultTemplates={}):
+                                   defaultTemplates={"calexpType": ""}):
     visitSummaryRefs = connectionTypes.Input(
         doc="Data references for per-visit consolidated exposure metadata from ConsolidateVisitSummaryTask",
-        name="visitSummary",
+        name="{calexpType}visitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
         multiple=True,
@@ -1486,10 +1486,10 @@ class MakeCcdVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
 
 class MakeVisitTableConnections(pipeBase.PipelineTaskConnections,
                                 dimensions=("instrument",),
-                                defaultTemplates={}):
+                                defaultTemplates={"calexpType": ""}):
     visitSummaries = connectionTypes.Input(
         doc="Per-visit consolidated exposure metadata from ConsolidateVisitSummaryTask",
-        name="visitSummary",
+        name="{calexpType}visitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit",),
         multiple=True,
