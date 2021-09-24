@@ -37,7 +37,10 @@ from .healSparseMappingProperties import (BasePropertyMap, BasePropertyMapConfig
 
 __all__ = ["HealSparseInputMapTask", "HealSparseInputMapConfig",
            "HealSparseMapFormatter", "HealSparsePropertyMapConnections",
-           "HealSparsePropertyMapConfig", "HealSparsePropertyMapTask"]
+           "HealSparsePropertyMapConfig", "HealSparsePropertyMapTask",
+           "ConsolidateHealSparsePropertyMapConnections",
+           "ConsolidateHealSparsePropertyMapConfig",
+           "ConsolidateHealSparsePropertyMapTask"]
 
 
 class HealSparseMapFormatter(Formatter):
@@ -340,7 +343,10 @@ class HealSparsePropertyMapConnections(pipeBase.PipelineTaskConnections,
     )
 
     # Create output connections for all possible maps defined in the
-    # registry.
+    # registry.  The vars() trick used here allows us to set class attributes
+    # programatically.  Taken from
+    # https://stackoverflow.com/questions/2519807/
+    # setting-a-class-attribute-with-a-given-name-in-python-while-defining-the-class
     for name in BasePropertyMap.registry:
         vars()[f"{name}_map_min"] = pipeBase.connectionTypes.Output(
             doc=f"Minimum-value map of {name}",
@@ -376,7 +382,8 @@ class HealSparsePropertyMapConnections(pipeBase.PipelineTaskConnections,
     def __init__(self, *, config=None):
         super().__init__(config=config)
 
-        # Remove connections from those that are not configured
+        # Not all possible maps in the registry will be configured to run.
+        # Here we remove the unused connections.
         for name in BasePropertyMap.registry:
             if name not in config.property_maps:
                 prop_config = BasePropertyMapConfig()
@@ -434,7 +441,12 @@ class HealSparsePropertyMapConfig(pipeBase.PipelineTaskConfig,
 
 
 class HealSparsePropertyMapTask(pipeBase.PipelineTask):
-    """Task to compute Healsparse property maps."""
+    """Task to compute Healsparse property maps.
+
+    This task will compute individual property maps (per tract, per
+    map type, per band).  These maps cover the full coadd tract, and
+    are not truncated to the inner tract region.
+    """
     ConfigClass = HealSparsePropertyMapConfig
     _DefaultName = "healSparsePropertyMapTask"
 
@@ -684,3 +696,242 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
         nside_coverage_tract = int(np.clip(nside_coverage_tract/2, 32, None))
 
         return nside_coverage_tract
+
+
+class ConsolidateHealSparsePropertyMapConnections(pipeBase.PipelineTaskConnections,
+                                                  dimensions=("band", "skymap",),
+                                                  defaultTemplates={"coaddName": "deep"}):
+    sky_map = pipeBase.connectionTypes.Input(
+        doc="Input definition of geometry/bbox and projection/wcs for coadded exposures",
+        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
+        storageClass="SkyMap",
+        dimensions=("skymap",),
+    )
+
+    # Create output connections for all possible maps defined in the
+    # registry.  The vars() trick used here allows us to set class attributes
+    # programatically.  Taken from
+    # https://stackoverflow.com/questions/2519807/
+    # setting-a-class-attribute-with-a-given-name-in-python-while-defining-the-class
+    for name in BasePropertyMap.registry:
+        vars()[f"{name}_map_min"] = pipeBase.connectionTypes.Input(
+            doc=f"Minimum-value map of {name}",
+            name=f"{{coaddName}}Coadd_{name}_map_min",
+            storageClass="HealSparseMap",
+            dimensions=("tract", "skymap", "band"),
+            multiple=True,
+            deferLoad=True,
+        )
+        vars()[f"{name}_consolidated_map_min"] = pipeBase.connectionTypes.Output(
+            doc=f"Minumum-value map of {name}",
+            name=f"{{coaddName}}Coadd_{name}_consolidated_map_min",
+            storageClass="HealSparseMap",
+            dimensions=("skymap", "band"),
+        )
+        vars()[f"{name}_map_max"] = pipeBase.connectionTypes.Input(
+            doc=f"Maximum-value map of {name}",
+            name=f"{{coaddName}}Coadd_{name}_map_max",
+            storageClass="HealSparseMap",
+            dimensions=("tract", "skymap", "band"),
+            multiple=True,
+            deferLoad=True,
+        )
+        vars()[f"{name}_consolidated_map_max"] = pipeBase.connectionTypes.Output(
+            doc=f"Minumum-value map of {name}",
+            name=f"{{coaddName}}Coadd_{name}_consolidated_map_max",
+            storageClass="HealSparseMap",
+            dimensions=("skymap", "band"),
+        )
+        vars()[f"{name}_map_mean"] = pipeBase.connectionTypes.Input(
+            doc=f"Mean-value map of {name}",
+            name=f"{{coaddName}}Coadd_{name}_map_mean",
+            storageClass="HealSparseMap",
+            dimensions=("tract", "skymap", "band"),
+            multiple=True,
+            deferLoad=True,
+        )
+        vars()[f"{name}_consolidated_map_mean"] = pipeBase.connectionTypes.Output(
+            doc=f"Minumum-value map of {name}",
+            name=f"{{coaddName}}Coadd_{name}_consolidated_map_mean",
+            storageClass="HealSparseMap",
+            dimensions=("skymap", "band"),
+        )
+        vars()[f"{name}_map_weighted_mean"] = pipeBase.connectionTypes.Input(
+            doc=f"Weighted mean-value map of {name}",
+            name=f"{{coaddName}}Coadd_{name}_map_weighted_mean",
+            storageClass="HealSparseMap",
+            dimensions=("tract", "skymap", "band"),
+            multiple=True,
+            deferLoad=True,
+        )
+        vars()[f"{name}_consolidated_map_weighted_mean"] = pipeBase.connectionTypes.Output(
+            doc=f"Minumum-value map of {name}",
+            name=f"{{coaddName}}Coadd_{name}_consolidated_map_weighted_mean",
+            storageClass="HealSparseMap",
+            dimensions=("skymap", "band"),
+        )
+        vars()[f"{name}_map_sum"] = pipeBase.connectionTypes.Input(
+            doc=f"Sum-value map of {name}",
+            name=f"{{coaddName}}Coadd_{name}_map_sum",
+            storageClass="HealSparseMap",
+            dimensions=("tract", "skymap", "band"),
+            multiple=True,
+            deferLoad=True,
+        )
+        vars()[f"{name}_consolidated_map_sum"] = pipeBase.connectionTypes.Output(
+            doc=f"Minumum-value map of {name}",
+            name=f"{{coaddName}}Coadd_{name}_consolidated_map_sum",
+            storageClass="HealSparseMap",
+            dimensions=("skymap", "band"),
+        )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+
+        # Not all possible maps in the registry will be configured to run.
+        # Here we remove the unused connections.
+        for name in BasePropertyMap.registry:
+            if name not in config.property_maps:
+                prop_config = BasePropertyMapConfig()
+                prop_config.do_min = False
+                prop_config.do_max = False
+                prop_config.do_mean = False
+                prop_config.do_weighted_mean = False
+                prop_config.do_sum = False
+            else:
+                prop_config = config.property_maps[name]
+
+            if not prop_config.do_min:
+                self.inputs.remove(f"{name}_map_min")
+                self.outputs.remove(f"{name}_consolidated_map_min")
+            if not prop_config.do_max:
+                self.inputs.remove(f"{name}_map_max")
+                self.outputs.remove(f"{name}_consolidated_map_max")
+            if not prop_config.do_mean:
+                self.inputs.remove(f"{name}_map_mean")
+                self.outputs.remove(f"{name}_consolidated_map_mean")
+            if not prop_config.do_weighted_mean:
+                self.inputs.remove(f"{name}_map_weighted_mean")
+                self.outputs.remove(f"{name}_consolidated_map_weighted_mean")
+            if not prop_config.do_sum:
+                self.inputs.remove(f"{name}_map_sum")
+                self.outputs.remove(f"{name}_consolidated_map_sum")
+
+
+class ConsolidateHealSparsePropertyMapConfig(pipeBase.PipelineTaskConfig,
+                                             pipelineConnections=ConsolidateHealSparsePropertyMapConnections):
+    """Configuration parameters for ConsolidateHealSparsePropertyMapTask"""
+    property_maps = BasePropertyMap.registry.makeField(
+        multi=True,
+        default=["exposure_time",
+                 "psf_size",
+                 "psf_e1",
+                 "psf_e2",
+                 "psf_maglim",
+                 "sky_noise",
+                 "sky_background",
+                 "dcr_dra",
+                 "dcr_ddec",
+                 "dcr_e1",
+                 "dcr_e2"],
+        doc="Property map computation objects",
+    )
+
+    def setDefaults(self):
+        self.property_maps["exposure_time"].do_sum = True
+        self.property_maps["psf_size"].do_weighted_mean = True
+        self.property_maps["psf_e1"].do_weighted_mean = True
+        self.property_maps["psf_e2"].do_weighted_mean = True
+        self.property_maps["psf_maglim"].do_weighted_mean = True
+        self.property_maps["sky_noise"].do_weighted_mean = True
+        self.property_maps["sky_background"].do_weighted_mean = True
+        self.property_maps["dcr_dra"].do_weighted_mean = True
+        self.property_maps["dcr_ddec"].do_weighted_mean = True
+        self.property_maps["dcr_e1"].do_weighted_mean = True
+        self.property_maps["dcr_e2"].do_weighted_mean = True
+
+
+class ConsolidateHealSparsePropertyMapTask(pipeBase.PipelineTask):
+    """Task to consolidate HealSparse property maps.
+
+    This task will take all the individual tract-based maps (per map type,
+    per band) and consolidate them into one survey-wide map (per map type,
+    per band).  Each tract map is truncated to its inner region before
+    consolidation.
+    """
+    ConfigClass = ConsolidateHealSparsePropertyMapConfig
+    _DefaultName = "consolidateHealSparsePropertyMapTask"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.property_maps = PropertyMapMap()
+        for name, config, PropertyMapClass in self.config.property_maps.apply():
+            self.property_maps[name] = PropertyMapClass(config, name)
+
+    @pipeBase.timeMethod
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+
+        sky_map = inputs.pop("sky_map")
+
+        # These need to be consolidated one at a time to conserve memory.
+        for name in self.config.property_maps.names:
+            for type_ in ['min', 'max', 'mean', 'weighted_mean', 'sum']:
+                map_type = f"{name}_map_{type_}"
+                if map_type in inputs:
+                    input_refs = {ref.dataId['tract']: ref
+                                  for ref in inputs[map_type]}
+                    consolidated_map = self.consolidate_map(sky_map, input_refs)
+                    butlerQC.put(consolidated_map,
+                                 getattr(outputRefs, f"{name}_consolidated_map_{type_}"))
+
+    def consolidate_map(self, sky_map, input_refs):
+        """Consolidate the healsparse property maps.
+
+        Parameters
+        ----------
+        sky_map : Sky map object
+        input_refs : `dict` [`int`: `lsst.daf.butler.DeferredDatasetHandle`]
+            Dictionary of tract_id mapping to dataref.
+
+        Returns
+        -------
+        consolidated_map : `healsparse.HealSparseMap`
+            Consolidated HealSparse map.
+        """
+        # First, we read in the coverage maps to know how much memory
+        # to allocate
+        cov_mask = None
+        for tract_id in input_refs:
+            cov = input_refs[tract_id].get(component='coverage')
+            if cov_mask is None:
+                cov_mask = cov.coverage_mask
+            else:
+                cov_mask |= cov.coverage_mask
+
+        cov_pix, = np.where(cov_mask)
+
+        # Now read in each tract map and build the consolidated map.
+        consolidated_map = None
+        for tract_id in input_refs:
+            input_map = input_refs[tract_id].get()
+            if consolidated_map is None:
+                dtype = input_map.dtype
+                sentinel = input_map._sentinel
+                nside_coverage = input_map.nside_coverage
+                nside_sparse = input_map.nside_sparse
+                consolidated_map = hsp.HealSparseMap.make_empty(nside_coverage,
+                                                                nside_sparse,
+                                                                dtype,
+                                                                sentinel=sentinel)
+                consolidated_map._reserve_cov_pix(cov_pix)
+
+            # Only use pixels that are properly inside the tract.
+            vpix, ra, dec = input_map.valid_pixels_pos(return_pixels=True)
+            vpix_tract_ids = sky_map.findTractIdArray(ra, dec, degrees=True)
+
+            in_tract = (vpix_tract_ids == tract_id)
+
+            consolidated_map[vpix[in_tract]] = input_map[vpix[in_tract]]
+
+        return consolidated_map
