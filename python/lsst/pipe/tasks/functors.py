@@ -487,8 +487,11 @@ class CompositeFunctor(Functor):
                         df[f.multilevelColumns(data, returnTuple=True, columnIndex=columnIndex)]
                     )
                     valDict[k] = f._func(subdf)
-                except Exception:
-                    valDict[k] = f.fail(subdf)
+                except Exception as e:
+                    try:
+                        valDict[k] = f.fail(subdf)
+                    except NameError:
+                        raise e
 
         else:
             if isinstance(data, DeferredDatasetHandle):
