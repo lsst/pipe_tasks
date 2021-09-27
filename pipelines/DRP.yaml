@@ -64,6 +64,7 @@ tasks:
   transformDiaSourceCat:
     class: lsst.ap.association.TransformDiaSourceCatalogTask
     config:
+      doPackFlags: false
       connections.coaddName: goodSeeing
       connections.diaSourceSchema: goodSeeingDiff_diaSrc_schema
       connections.diaSourceCat: goodSeeingDiff_diaSrc
