@@ -31,6 +31,7 @@ import lsst.afw.table as afwTable
 import lsst.geom as geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+from lsst.obs.base import ExposureIdInfo
 
 from .associationUtils import query_disc, eq2xyz, toIndex
 
@@ -102,8 +103,8 @@ class SimpleAssociationTask(pipeBase.Task):
         healPixIndices = []
 
         # Create Id factory and catalog for creating DiaObjectIds.
-        idFactory = afwTable.IdFactory.makeSource(tractPatchId,
-                                                  64 - skymapBits)
+        exposureIdInfo = ExposureIdInfo(tractPatchId, skymapBits)
+        idFactory = exposureIdInfo.makeSourceIdFactory()
         idCat = afwTable.SourceCatalog(
             afwTable.SourceTable.make(afwTable.SourceTable.makeMinimalSchema(),
                                       idFactory))
