@@ -1603,7 +1603,7 @@ class TransformForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
     outputCatalog = connectionTypes.Output(
         doc="Narrower, temporally-aggregated, per-patch ForcedSource Table transformed and converted per a "
             "specified set of functors",
-        name="ForcedSourceTable",
+        name="forcedSourceTable",
         storageClass="DataFrame",
         dimensions=("tract", "patch", "skymap")
     )
@@ -1685,11 +1685,11 @@ class TransformForcedSourceTableTask(TransformCatalogBaseTask):
         return pipeBase.Struct(outputCatalog=outputCatalog)
 
 
-class ConsolidateForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
-                                              defaultTemplates={"catalogType": ""},
-                                              dimensions=("instrument", "tract")):
+class ConsolidateTractConnections(pipeBase.PipelineTaskConnections,
+                                  defaultTemplates={"catalogType": ""},
+                                  dimensions=("instrument", "tract")):
     inputCatalogs = connectionTypes.Input(
-        doc="Input per-patch ForcedSource Tables",
+        doc="Input per-patch DataFrame Tables to be concatenated",
         name="{catalogType}ForcedSourceTable",
         storageClass="DataFrame",
         dimensions=("tract", "patch", "skymap"),
@@ -1697,28 +1697,30 @@ class ConsolidateForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
     )
 
     outputCatalog = connectionTypes.Output(
-        doc="Output per-tract concatenation of ForcedSource Tables",
+        doc="Output per-tract concatenation of DataFrame Tables",
         name="{catalogType}ForcedSourceTable_tract",
         storageClass="DataFrame",
         dimensions=("tract", "skymap"),
     )
 
 
-class ConsolidateForcedSourceTableConfig(pipeBase.PipelineTaskConfig,
-                                         pipelineConnections=ConsolidateForcedSourceTableConnections):
+class ConsolidateTractConfig(pipeBase.PipelineTaskConfig,
+                             pipelineConnections=ConsolidateTractConnections):
     pass
 
 
-class ConsolidateForcedSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
-    """Concatenate a per-patch `ForcedSourceTable` list into a single
-       per-tract `forcedSourceTable_tract`
+class ConsolidateTractTask(CmdLineTask, pipeBase.PipelineTask):
+    """Concatenate any per-patch, dataframe list into a single
+       per-tract DataFrame
     """
-    _DefaultName = 'consolidateForcedSourceTable'
-    ConfigClass = ConsolidateForcedSourceTableConfig
+    _DefaultName = 'ConsolidateTract'
+    ConfigClass = ConsolidateTractConfig
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        self.log.info("Concatenating %s per-patch ForcedSource Tables",
-                      len(inputs['inputCatalogs']))
+        # Not checking at least one inputCatalog exists because that'd be an empty QG
+        self.log.info("Concatenating %s per-patch %s Tables",
+                      len(inputs['inputCatalogs']),
+                      inputRefs.inputCatalogs[0].datasetType.name)
         df = pd.concat(inputs['inputCatalogs'])
         butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
