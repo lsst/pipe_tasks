@@ -1,4 +1,5 @@
 setupRequired(afw)
+setupRequired(coadd_utils)
 setupRequired(daf_persistence)
 setupRequired(daf_butler)
 setupRequired(meas_base)
@@ -15,7 +16,6 @@ setupOptional(meas_astrom)
 setupOptional(meas_deblender)
 setupOptional(ip_isr)
 setupOptional(ip_diffim)
-setupOptional(coadd_utils)
 setupOptional(skymap)
 setupOptional(sphgeom)
 
