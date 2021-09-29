@@ -15,6 +15,9 @@ Maps can do computations with any values that are available via the visit summar
 Each map type can be configured to compute the minimum value at each position (``do_min``, dataset type ``{name}_map_min``); the maximum value (``do_max``, dataset type ``{name}_map_max``); the mean value (``do_mean``, dataset type ``{name}_map_mean``); the weighted mean, using the coadd weights (``do_weighted_mean``, dataset type ``{name}_map_weighted_mean``); and the sum (``do_sum``, dataset type ``{name}_map_sum``).
 In each case ``{name}`` refers to the registered name of the map.
 
+Note that the output maps cover the full coadd tract, and are not truncated to the inner tract region.
+Truncation to the inner region is performed when tract maps are consoldated in :doc:`lsst.pipe.tasks.healSparseMapping.ConsolidateHealSparsePropertyMapTask`.
+
 Supported Map Types
 ===================
 The following map types are supported, and it is possible to add more by subclassing ``lsst.pipe.tasks.healSparseMappingProperties.BasePropertyMap``.

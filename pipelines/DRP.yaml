@@ -22,6 +22,7 @@ tasks:
     config:
       doInputMap: true
   healSparsePropertyMaps: lsst.pipe.tasks.healSparseMapping.HealSparsePropertyMapTask
+  consolidateHealSparsePropertyMaps: lsst.pipe.tasks.healSparseMapping.ConsolidateHealSparsePropertyMapTask
   detection: lsst.pipe.tasks.multiBand.DetectCoaddSourcesTask
   mergeDetections: lsst.pipe.tasks.mergeDetections.MergeDetectionsTask
   deblend: lsst.pipe.tasks.deblendCoaddSourcesPipeline.DeblendCoaddSourcesMultiTask
@@ -231,3 +232,5 @@ contracts:
   - drpAssociation.connections.assocDiaSourceTable == drpDiaCalculation.connections.assocDiaSourceTable
   - drpAssociation.connections.diaObjectTable == drpDiaCalculation.connections.diaObjectTable
   - forcedPhotDiffim.connections.refCat == forcedPhotCcd.connections.refCat
+  - consolidateHealSparsePropertyMaps.property_maps == healSparsePropertyMaps.property_maps
+
