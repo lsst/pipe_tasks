@@ -159,8 +159,7 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
         ccdVisit = diaSrc["ccdVisitId"]
         diaSourceId = diaSrc["diaSourceId"]
         self.diaSources.set_index(["ccdVisitId", "diaSourceId"], inplace=True)
-        idFactory = afwTable.IdFactory.makeSource(1234,
-                                                  64 - 16)
+        idFactory = afwTable.IdFactory.makeSource(1234, afwTable.IdFactory.computeReservedFromMaxBits(16))
         idCat = afwTable.SourceCatalog(
             afwTable.SourceTable.make(afwTable.SourceTable.makeMinimalSchema(),
                                       idFactory))
