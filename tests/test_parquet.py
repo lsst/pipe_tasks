@@ -64,7 +64,7 @@ class ParquetTableTestCase(unittest.TestCase):
         self.df = self.simulateDF()
         with lsst.utils.tests.getTempFilePath('*.parq') as filename:
             table = pa.Table.from_pandas(self.df)
-            pq.write_table(table, filename, compression='none')
+            pq.write_table(table, filename)
             self.parq, self.dfParq = self.getParq(filename, self.df)
 
     def tearDown(self):
