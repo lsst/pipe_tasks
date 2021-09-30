@@ -540,7 +540,15 @@ class TransformCatalogBaseConfig(pipeBase.PipelineTaskConfig,
                                  pipelineConnections=TransformCatalogBaseConnections):
     functorFile = pexConfig.Field(
         dtype=str,
-        doc='Path to YAML file specifying functors to be computed',
+        doc="Path to YAML file specifying Science Data Model functors to use "
+            "when copying columns and computing calibrated values.",
+        default=None,
+        optional=True
+    )
+    primaryKey = pexConfig.Field(
+        dtype=str,
+        doc="Name of column to be set as the DataFrame index. If None, the index"
+            "will be named `id`",
         default=None,
         optional=True
     )
@@ -713,6 +721,11 @@ class TransformCatalogBaseTask(CmdLineTask, pipeBase.PipelineTask):
             for key, value in dataId.items():
                 df[str(key)] = value
 
+        if self.config.primaryKey:
+            if df.index.name != self.config.primaryKey and self.config.primaryKey in df:
+                df.reset_index(inplace=True, drop=True)
+                df.set_index(self.config.primaryKey, inplace=True)
+
         return pipeBase.Struct(
             df=df,
             analysis=analysis
@@ -775,7 +788,7 @@ class TransformObjectCatalogConfig(TransformCatalogBaseConfig,
     )
     camelCase = pexConfig.Field(
         dtype=bool,
-        default=True,
+        default=False,
         doc=("Write per-band columns names with camelCase, else underscore "
              "For example: gPsFlux instead of g_PsFlux.")
     )
@@ -785,6 +798,10 @@ class TransformObjectCatalogConfig(TransformCatalogBaseConfig,
         doc=("Whether results dataframe should have a multilevel column index (True) or be flat "
              "and name-munged (False).")
     )
+
+    def setDefaults(self):
+        super().setDefaults()
+        self.primaryKey = 'objectId'
 
 
 class TransformObjectCatalogTask(TransformCatalogBaseTask):
@@ -850,12 +867,15 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
 
         if not self.config.multilevelOutput:
             noDupCols = list(set.union(*[set(v.noDupCols) for v in analysisDict.values()]))
+            if self.config.primaryKey in noDupCols:
+                noDupCols.remove(self.config.primaryKey)
             if dataId is not None:
                 noDupCols += list(dataId.keys())
             df = flattenFilters(df, noDupCols=noDupCols, camelCase=self.config.camelCase,
                                 inputBands=inputBands)
 
         self.log.info("Made a table of %d columns and %d rows", len(df.columns), len(df))
+
         return df
 
 
@@ -982,7 +1002,10 @@ class TransformSourceTableConnections(pipeBase.PipelineTaskConnections,
 
 class TransformSourceTableConfig(TransformCatalogBaseConfig,
                                  pipelineConnections=TransformSourceTableConnections):
-    pass
+
+    def setDefaults(self):
+        super().setDefaults()
+        self.primaryKey = 'sourceId'
 
 
 class TransformSourceTableTask(TransformCatalogBaseTask):
@@ -1339,7 +1362,7 @@ class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
     )
     outputCatalog = connectionTypes.Output(
         doc="CCD and Visit metadata table",
-        name="CcdVisitTable",
+        name="ccdVisitTable",
         storageClass="DataFrame",
         dimensions=("instrument",)
     )
@@ -1377,17 +1400,19 @@ class MakeCcdVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
 
             ccdEntry = {}
             summaryTable = visitSummary.asAstropy()
-            selectColumns = ['id', 'visit', 'physical_filter', 'ra', 'decl', 'zenithDistance', 'zeroPoint',
-                             'psfSigma', 'skyBg', 'skyNoise']
+            selectColumns = ['id', 'visit', 'physical_filter', 'band', 'ra', 'decl', 'zenithDistance',
+                             'zeroPoint', 'psfSigma', 'skyBg', 'skyNoise']
             ccdEntry = summaryTable[selectColumns].to_pandas().set_index('id')
-            ccdEntry = ccdEntry.rename(columns={"physical_filter": "filterName", "visit": "visitId"})
-
+            # 'visit' is the human readible visit number
+            # 'visitId' is the key to the visitId table. They are the same
+            # Technically you should join to get the visit from the visit table
+            ccdEntry = ccdEntry.rename(columns={"visit": "visitId"})
             dataIds = [DataCoordinate.standardize(visitSummaryRef.dataId, detector=id) for id in
                        summaryTable['id']]
             packer = visitSummaryRef.dataId.universe.makePacker('visit_detector', visitSummaryRef.dataId)
             ccdVisitIds = [packer.pack(dataId) for dataId in dataIds]
             ccdEntry['ccdVisitId'] = ccdVisitIds
-
+            ccdEntry['detector'] = summaryTable['id']
             pixToArcseconds = np.array([vR.getWcs().getPixelScale().asArcseconds() for vR in visitSummary])
             ccdEntry["seeing"] = visitSummary['psfSigma'] * np.sqrt(8 * np.log(2)) * pixToArcseconds
 
@@ -1412,6 +1437,7 @@ class MakeCcdVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
             ccdEntries.append(ccdEntry)
 
         outputCatalog = pd.concat(ccdEntries)
+        outputCatalog.set_index('ccdVisitId', inplace=True, verify_integrity=True)
         return pipeBase.Struct(outputCatalog=outputCatalog)
 
 
@@ -1467,7 +1493,9 @@ class MakeVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
 
             visitEntry = {}
             visitEntry["visitId"] = visitRow['visit']
-            visitEntry["filterName"] = visitRow['physical_filter']
+            visitEntry["visit"] = visitRow['visit']
+            visitEntry["physical_filter"] = visitRow['physical_filter']
+            visitEntry["band"] = visitRow['band']
             raDec = visitInfo.getBoresightRaDec()
             visitEntry["ra"] = raDec.getRa().asDegrees()
             visitEntry["decl"] = raDec.getDec().asDegrees()
@@ -1484,6 +1512,7 @@ class MakeVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
             # mirror3Temp, domeTemp, externalTemp, dimmSeeing, pwvGPS, pwvMW, flags, nExposures
 
         outputCatalog = pd.DataFrame(data=visitEntries)
+        outputCatalog.set_index('visitId', inplace=True, verify_integrity=True)
         return pipeBase.Struct(outputCatalog=outputCatalog)
 
 
@@ -1574,7 +1603,7 @@ class TransformForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
     outputCatalog = connectionTypes.Output(
         doc="Narrower, temporally-aggregated, per-patch ForcedSource Table transformed and converted per a "
             "specified set of functors",
-        name="ForcedSourceTable",
+        name="forcedSourceTable",
         storageClass="DataFrame",
         dimensions=("tract", "patch", "skymap")
     )
@@ -1587,6 +1616,16 @@ class TransformForcedSourceTableConfig(TransformCatalogBaseConfig,
         default=["detect_isPrimary", "detect_isTractInner", "detect_isPatchInner"],
         optional=True,
         doc="Columns to pull from reference catalog",
+    )
+    keyRef = lsst.pex.config.Field(
+        doc="Column on which to join the two input tables on and make the primary key of the output",
+        dtype=str,
+        default="objectId",
+    )
+    key = lsst.pex.config.Field(
+        doc="Rename the output DataFrame index to this name",
+        dtype=str,
+        default="forcedSourceId",
     )
 
 
@@ -1627,19 +1666,30 @@ class TransformForcedSourceTableTask(TransformCatalogBaseTask):
         for handle in inputCatalogs:
             result = self.transform(None, handle, funcs, dataId)
             # Filter for only rows that were detected on (overlap) the patch
-            dfs.append(ref.join(result.df, how='inner'))
+            dfs.append(result.df.join(ref, how='inner'))
 
         outputCatalog = pd.concat(dfs)
+
+        # Now that we are done joining on config.keyRef
+        # Change index to config.key by
+        outputCatalog.index.rename(self.config.keyRef, inplace=True)
+        # Add config.keyRef to the column list
+        outputCatalog.reset_index(inplace=True)
+        # set the forcedSourceId to the index. This is specified in the ForcedSource.yaml
+        outputCatalog.set_index("forcedSourceId", inplace=True, verify_integrity=True)
+        # Rename it to the config.key
+        outputCatalog.index.rename(self.config.key, inplace=True)
+
         self.log.info("Made a table of %d columns and %d rows",
                       len(outputCatalog.columns), len(outputCatalog))
         return pipeBase.Struct(outputCatalog=outputCatalog)
 
 
-class ConsolidateForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
-                                              defaultTemplates={"catalogType": ""},
-                                              dimensions=("instrument", "tract")):
+class ConsolidateTractConnections(pipeBase.PipelineTaskConnections,
+                                  defaultTemplates={"catalogType": ""},
+                                  dimensions=("instrument", "tract")):
     inputCatalogs = connectionTypes.Input(
-        doc="Input per-patch ForcedSource Tables",
+        doc="Input per-patch DataFrame Tables to be concatenated",
         name="{catalogType}ForcedSourceTable",
         storageClass="DataFrame",
         dimensions=("tract", "patch", "skymap"),
@@ -1647,28 +1697,30 @@ class ConsolidateForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
     )
 
     outputCatalog = connectionTypes.Output(
-        doc="Output per-tract concatenation of ForcedSource Tables",
+        doc="Output per-tract concatenation of DataFrame Tables",
         name="{catalogType}ForcedSourceTable_tract",
         storageClass="DataFrame",
         dimensions=("tract", "skymap"),
     )
 
 
-class ConsolidateForcedSourceTableConfig(pipeBase.PipelineTaskConfig,
-                                         pipelineConnections=ConsolidateForcedSourceTableConnections):
+class ConsolidateTractConfig(pipeBase.PipelineTaskConfig,
+                             pipelineConnections=ConsolidateTractConnections):
     pass
 
 
-class ConsolidateForcedSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
-    """Concatenate a per-patch `ForcedSourceTable` list into a single
-       per-tract `forcedSourceTable_tract`
+class ConsolidateTractTask(CmdLineTask, pipeBase.PipelineTask):
+    """Concatenate any per-patch, dataframe list into a single
+       per-tract DataFrame
     """
-    _DefaultName = 'consolidateForcedSourceTable'
-    ConfigClass = ConsolidateForcedSourceTableConfig
+    _DefaultName = 'ConsolidateTract'
+    ConfigClass = ConsolidateTractConfig
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        self.log.info("Concatenating %s per-patch ForcedSource Tables",
-                      len(inputs['inputCatalogs']))
+        # Not checking at least one inputCatalog exists because that'd be an empty QG
+        self.log.info("Concatenating %s per-patch %s Tables",
+                      len(inputs['inputCatalogs']),
+                      inputRefs.inputCatalogs[0].datasetType.name)
         df = pd.concat(inputs['inputCatalogs'])
         butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)

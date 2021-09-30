@@ -64,6 +64,7 @@ tasks:
   transformDiaSourceCat:
     class: lsst.ap.association.TransformDiaSourceCatalogTask
     config:
+      doPackFlags: false
       connections.coaddName: goodSeeing
       connections.diaSourceSchema: goodSeeingDiff_diaSrc_schema
       connections.diaSourceCat: goodSeeingDiff_diaSrc
@@ -88,6 +89,16 @@ tasks:
       connections.assocDiaSourceTable: goodSeeingDiff_assocDiaSrcTable
       connections.diaObjectTable: goodSeeingDiff_diaObjTable
       connections.fullDiaObjectTable: goodSeeingDiff_fullDiaObjTable
+  consolidateAssocDiaSourceTable:
+    class: lsst.pipe.tasks.postprocess.ConsolidateTractTask
+    config:
+      connections.inputCatalogs: goodSeeingDiff_assocDiaSrcTable
+      connections.outputCatalog: diaSourceTable_tract
+  consolidateFullDiaObjectTable:
+    class: lsst.pipe.tasks.postprocess.ConsolidateTractTask
+    config:
+      connections.inputCatalogs: goodSeeingDiff_fullDiaObjTable
+      connections.outputCatalog: diaObjectTable_tract
   forcedPhotDiffim:
     class: lsst.meas.base.ForcedPhotCcdTask
     config:
@@ -96,7 +107,11 @@ tasks:
       connections.exposure: goodSeeingDiff_differenceExp
   writeForcedSourceTable: lsst.pipe.tasks.postprocess.WriteForcedSourceTableTask
   transformForcedSourceTable: lsst.pipe.tasks.postprocess.TransformForcedSourceTableTask
-  consolidateForcedSourceTable: lsst.pipe.tasks.postprocess.ConsolidateForcedSourceTableTask
+  consolidateForcedSourceTable:
+    class: lsst.pipe.tasks.postprocess.ConsolidateTractTask
+    config:
+      connections.inputCatalogs: forcedSourceTable
+      connections.outputCatalog: forcedSourceTable_tract
   forcedPhotCcdOnDiaObjects:
     class: lsst.meas.base.ForcedPhotCcdFromDataFrameTask
   forcedPhotDiffOnDiaObjects:
@@ -116,11 +131,13 @@ tasks:
     class: lsst.pipe.tasks.postprocess.TransformForcedSourceTableTask
     config:
       referenceColumns: []
+      keyRef: diaObjectId
+      key: forcedSourceOnDiaObjectId
       connections.inputCatalogs: forcedSourceOnDiaObject
       connections.outputCatalog: forcedSourceOnDiaObjectTable
       connections.referenceCatalog: goodSeeingDiff_fullDiaObjTable
   consolidateForcedSourceOnDiaObjectTable:
-    class: lsst.pipe.tasks.postprocess.ConsolidateForcedSourceTableTask
+    class: lsst.pipe.tasks.postprocess.ConsolidateTractTask
     config:
       connections.inputCatalogs: forcedSourceOnDiaObjectTable
       connections.outputCatalog: forcedSourceOnDiaObjectTable_tract

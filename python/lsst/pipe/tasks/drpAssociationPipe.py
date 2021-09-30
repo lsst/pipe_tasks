@@ -82,6 +82,12 @@ class DrpAssociationPipeConfig(
         target=SimpleAssociationTask,
         doc="Task used to associate DiaSources with DiaObjects.",
     )
+    doAddDiaObjectCoords = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Do pull diaObject's average coordinate as coord_ra and coord_dec"
+            "Duplicates information, but needed for bulk ingest into qserv."
+    )
 
 
 class DrpAssociationPipeTask(pipeBase.PipelineTask):
@@ -189,9 +195,18 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         self.log.info("Associated DiaSources into %i DiaObjects",
                       len(assocResult.diaObjects))
 
+        if self.config.doAddDiaObjectCoords and not assocResult.diaObjects.empty:
+            assocResult.assocDiaSources = self._addDiaObjectCoords(assocResult.diaObjects,
+                                                                   assocResult.assocDiaSources)
+
         return pipeBase.Struct(
             diaObjectTable=assocResult.diaObjects,
             assocDiaSourceTable=assocResult.assocDiaSources)
+
+    def _addDiaObjectCoords(self, objects, sources):
+        obj = objects[['ra', 'decl']].rename(columns={"ra": "coord_ra", "decl": "coord_dec"})
+        df = pd.merge(sources, obj, left_on='diaObjectId', right_index=True, how='inner')
+        return df
 
     def _trimToPatch(self, cat, innerPatchBox, wcs):
         """Create generator testing if a set of DiaSources are in the
