@@ -45,7 +45,7 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
                          header=[0, 1, 2], index_col=0)
         with lsst.utils.tests.getTempFilePath('*.parq') as filename:
             table = pa.Table.from_pandas(df)
-            pq.write_table(table, filename, compression='none')
+            pq.write_table(table, filename)
             self.parq = MultilevelParquetTable(filename)
 
         self.dataId = {"tract": 9615, "patch": "4,4"}

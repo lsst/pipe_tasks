@@ -77,7 +77,7 @@ class ParquetTable(object):
         if self._df is None:
             raise ValueError("df property must be defined to write.")
         table = pyarrow.Table.from_pandas(self._df)
-        pyarrow.parquet.write_table(table, filename, compression="none")
+        pyarrow.parquet.write_table(table, filename)
 
     @property
     def pandasMd(self):
