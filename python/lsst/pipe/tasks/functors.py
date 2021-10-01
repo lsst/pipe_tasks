@@ -1374,6 +1374,94 @@ class ConvertPixelSqToArcsecondsSq(ComputePixelScale):
         return df[self.col] * pixScale * pixScale
 
 
+class ConvertPixelToRa(LocalWcs):
+    """Compute Ra, in degrees, from pixel coodinates.
+    """
+
+    def __init__(self,
+                 col_x,
+                 col_y,
+                 colCD_1_1,
+                 colCD_1_2,
+                 colCD_2_1,
+                 colCD_2_2,
+                 **kwargs):
+        self.col_x = col_x
+        self.col_y = col_y
+        super().__init__(colCD_1_1,
+                         colCD_1_2,
+                         colCD_2_1,
+                         colCD_2_2,
+                         **kwargs)
+
+    @property
+    def name(self):
+        return f"{self.col_x}_toRa"
+
+    @property
+    def columns(self):
+        return [self.col_x,
+                self.col_y,
+                self.colCD_1_1,
+                self.colCD_1_2,
+                self.colCD_2_1,
+                self.colCD_2_2]
+
+    def _func(self, df):
+        x = df[self.col_x]
+        y = df[self.col_y]
+        cd11 = df[self.colCD_1_1]
+        cd12 = df[self.colCD_1_2]
+        cd21 = df[self.colCD_2_1]
+        cd22 = df[self.colCD_2_2]
+        ra, _ = self.computeDeltaRaDec(x, y, cd11, cd12, cd21, cd22)
+        return ra
+
+
+class ConvertPixelToDec(LocalWcs):
+    """Compute declination, in degrees, from pixel coordinates.
+    """
+
+    def __init__(self,
+                 col_x,
+                 col_y,
+                 colCD_1_1,
+                 colCD_1_2,
+                 colCD_2_1,
+                 colCD_2_2,
+                 **kwargs):
+        self.col_x = col_x
+        self.col_y = col_y
+        super().__init__(colCD_1_1,
+                         colCD_1_2,
+                         colCD_2_1,
+                         colCD_2_2,
+                         **kwargs)
+
+    @property
+    def name(self):
+        return f"{self.col_y}_toDec"
+
+    @property
+    def columns(self):
+        return [self.col_x,
+                self.col_y,
+                self.colCD_1_1,
+                self.colCD_1_2,
+                self.colCD_2_1,
+                self.colCD_2_2]
+
+    def _func(self, df):
+        x = df[self.col_x]
+        y = df[self.col_y]
+        cd11 = df[self.colCD_1_1]
+        cd12 = df[self.colCD_1_2]
+        cd21 = df[self.colCD_2_1]
+        cd22 = df[self.colCD_2_2]
+        _, dec = self.computeDeltaRaDec(x, y, cd11, cd12, cd21, cd22)
+        return dec
+
+
 class ReferenceBand(Functor):
     name = 'Reference Band'
     shortname = 'refBand'
