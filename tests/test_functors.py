@@ -46,7 +46,8 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
                                       LocalDipoleMeanFlux, LocalDipoleMeanFluxErr,
                                       LocalDipoleDiffFlux, LocalDipoleDiffFluxErr,
                                       LocalWcs, ComputePixelScale, ConvertPixelToArcseconds,
-                                      ConvertPixelSqToArcsecondsSq, Ratio, HtmIndex20)
+                                      ConvertPixelSqToArcsecondsSq, ConvertPixelToRa, ConvertPixelToDec,
+                                      Ratio, HtmIndex20)
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
@@ -714,6 +715,33 @@ class FunctorTestCase(unittest.TestCase):
                                                     "base_LocalWcs_CDMatrix_2_2")
                 val = self._funcVal(func, parq)
                 self.assertTrue(np.allclose(pixelScale.values ** 2 * dipoleSep,
+                                            val.values,
+                                            atol=1e-16,
+                                            rtol=1e-16))
+
+                # Test pixel coords to Ra/Dec conversion.
+                func = ConvertPixelToRa("slot_centroid_x",
+                                        "slot_centroid_y",
+                                        "base_LocalWcs_CDMatrix_1_1",
+                                        "base_LocalWcs_CDMatrix_1_2",
+                                        "base_LocalWcs_CDMatrix_2_1",
+                                        "base_LocalWcs_CDMatrix_2_2")
+
+                val = self._funcVal(func, parq)
+                self.assertTrue(np.allclose(float(skyOrigin.getRa()),
+                                            val.values,
+                                            atol=1e-16,
+                                            rtol=1e-16))
+
+                func = ConvertPixelToDec("slot_centroid_x",
+                                         "slot_centroid_y",
+                                         "base_LocalWcs_CDMatrix_1_1",
+                                         "base_LocalWcs_CDMatrix_1_2",
+                                         "base_LocalWcs_CDMatrix_2_1",
+                                         "base_LocalWcs_CDMatrix_2_2")
+
+                val = self._funcVal(func, parq)
+                self.assertTrue(np.allclose(float(skyOrigin.getDec()),
                                             val.values,
                                             atol=1e-16,
                                             rtol=1e-16))
