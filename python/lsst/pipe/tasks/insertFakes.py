@@ -263,6 +263,26 @@ class InsertFakesConfig(PipelineTaskConfig,
         default="sourceType",
     )
 
+    fits_alignment = pexConfig.ChoiceField(
+        doc="How should injections from FITS files be aligned?",
+        dtype=str,
+        allowed={
+            "wcs": (
+                "Input image will be transformed such that the local WCS in "
+                "the FITS header matches the local WCS in the target image. "
+                "I.e., North, East, and angular distances in the input image "
+                "will match North, East, and angular distances in the target "
+                "image."
+            ),
+            "pixel": (
+                "Input image will _not_ be transformed.  Up, right, and pixel "
+                "distances in the input image will match up, right and pixel "
+                "distances in the target image."
+            )
+        },
+        default="pixel"
+    )
+
     # New source catalog config variables
 
     ra_col = pexConfig.Field(
@@ -607,19 +627,20 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         fakeCat = self.trimFakeCat(fakeCat, image)
 
         if len(fakeCat) > 0:
-            if isinstance(fakeCat[self.config.sourceType].iloc[0], str):
-                galCheckVal = "galaxy"
-                starCheckVal = "star"
-            elif isinstance(fakeCat[self.config.sourceType].iloc[0], bytes):
-                galCheckVal = b"galaxy"
-                starCheckVal = b"star"
-            elif isinstance(fakeCat[self.config.sourceType].iloc[0], (int, float)):
-                galCheckVal = 1
-                starCheckVal = 0
-            else:
-                raise TypeError("sourceType column does not have required type, should be str, bytes or int")
-
             if not self.config.insertImages:
+                if isinstance(fakeCat[self.config.sourceType].iloc[0], str):
+                    galCheckVal = "galaxy"
+                    starCheckVal = "star"
+                elif isinstance(fakeCat[self.config.sourceType].iloc[0], bytes):
+                    galCheckVal = b"galaxy"
+                    starCheckVal = b"star"
+                elif isinstance(fakeCat[self.config.sourceType].iloc[0], (int, float)):
+                    galCheckVal = 1
+                    starCheckVal = 0
+                else:
+                    raise TypeError(
+                        "sourceType column does not have required type, should be str, bytes or int"
+                    )
                 if self.config.doCleanCat:
                     fakeCat = self.cleanCat(fakeCat, starCheckVal)
 
@@ -660,79 +681,90 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         cfg = self.config
         replace_dict = {}
 
-        # Prefer new config variables over deprecated config variables.
-        # The following are fairly simple to handle as they're just column name
-        # changes.
-        for new_name, depr_name, std_name in [
-            (cfg.ra_col, cfg.raColName, 'ra'),
-            (cfg.dec_col, cfg.decColName, 'dec'),
-            (cfg.bulge_n_col, cfg.nBulge, 'bulge_n'),
-            (cfg.bulge_pa_col, cfg.paBulge, 'bulge_pa'),
-            (cfg.disk_n_col, cfg.nDisk, 'disk_n'),
-            (cfg.disk_pa_col, cfg.paDisk, 'disk_pa'),
-            (cfg.mag_col%band, cfg.magVar%band, 'mag'),
-            (cfg.select_col, cfg.sourceSelectionColName, 'select')
-        ]:
-            # Only standardize "select" column if doSubSelectSources is True
-            if not cfg.doSubSelectSources and std_name == 'select':
-                continue
+        def add_to_replace_dict(new_name, depr_name, std_name):
             if new_name in fakeCat.columns:
                 replace_dict[new_name] = std_name
             elif depr_name in fakeCat.columns:
                 replace_dict[depr_name] = std_name
             else:
                 raise ValueError(f"Could not determine column for {std_name}.")
+
+        # Prefer new config variables over deprecated config variables.
+        # RA, dec, and mag are always required.  Do these first
+        for new_name, depr_name, std_name in [
+            (cfg.ra_col, cfg.raColName, 'ra'),
+            (cfg.dec_col, cfg.decColName, 'dec'),
+            (cfg.mag_col%band, cfg.magVar%band, 'mag')
+        ]:
+            add_to_replace_dict(new_name, depr_name, std_name)
+        # Only handle bulge/disk params if not injecting images
+        if not cfg.insertImages:
+            for new_name, depr_name, std_name in [
+                (cfg.bulge_n_col, cfg.nBulge, 'bulge_n'),
+                (cfg.bulge_pa_col, cfg.paBulge, 'bulge_pa'),
+                (cfg.disk_n_col, cfg.nDisk, 'disk_n'),
+                (cfg.disk_pa_col, cfg.paDisk, 'disk_pa'),
+            ]:
+                add_to_replace_dict(new_name, depr_name, std_name)
+
+        if cfg.doSubSelectSources:
+            add_to_replace_dict(
+                cfg.select_col,
+                cfg.sourceSelectionColName,
+                'select'
+            )
         fakeCat = fakeCat.rename(columns=replace_dict, copy=False)
 
         # Handling the half-light radius and axis-ratio are trickier, since we
         # moved from expecting (HLR, a, b) to expecting (semimajor, axis_ratio).
         # Just handle these manually.
-        if (
-            cfg.bulge_semimajor_col in fakeCat.columns
-            and cfg.bulge_axis_ratio_col in fakeCat.columns
-        ):
-            fakeCat = fakeCat.rename(
-                columns={
-                    cfg.bulge_semimajor_col: 'bulge_semimajor',
-                    cfg.bulge_axis_ratio_col: 'bulge_axis_ratio',
-                    cfg.disk_semimajor_col: 'disk_semimajor',
-                    cfg.disk_axis_ratio_col: 'disk_axis_ratio',
-                },
-                copy=False
-            )
-        elif (
-            cfg.bulgeHLR in fakeCat.columns
-            and cfg.aBulge in fakeCat.columns
-            and cfg.bBulge in fakeCat.columns
-        ):
-            fakeCat['bulge_axis_ratio'] = (
-                fakeCat[cfg.bBulge]/fakeCat[cfg.aBulge]
-            )
-            fakeCat['bulge_semimajor'] = (
-                fakeCat[cfg.bulgeHLR]/np.sqrt(fakeCat['bulge_axis_ratio'])
-            )
-            fakeCat['disk_axis_ratio'] = (
-                fakeCat[cfg.bDisk]/fakeCat[cfg.aDisk]
-            )
-            fakeCat['disk_semimajor'] = (
-                fakeCat[cfg.diskHLR]/np.sqrt(fakeCat['disk_axis_ratio'])
-            )
-        else:
-            raise ValueError(
-                "Could not determine columns for half-light radius and axis "
-                "ratio."
-            )
+        if not cfg.insertImages:
+            if (
+                cfg.bulge_semimajor_col in fakeCat.columns
+                and cfg.bulge_axis_ratio_col in fakeCat.columns
+            ):
+                fakeCat = fakeCat.rename(
+                    columns={
+                        cfg.bulge_semimajor_col: 'bulge_semimajor',
+                        cfg.bulge_axis_ratio_col: 'bulge_axis_ratio',
+                        cfg.disk_semimajor_col: 'disk_semimajor',
+                        cfg.disk_axis_ratio_col: 'disk_axis_ratio',
+                    },
+                    copy=False
+                )
+            elif (
+                cfg.bulgeHLR in fakeCat.columns
+                and cfg.aBulge in fakeCat.columns
+                and cfg.bBulge in fakeCat.columns
+            ):
+                fakeCat['bulge_axis_ratio'] = (
+                    fakeCat[cfg.bBulge]/fakeCat[cfg.aBulge]
+                )
+                fakeCat['bulge_semimajor'] = (
+                    fakeCat[cfg.bulgeHLR]/np.sqrt(fakeCat['bulge_axis_ratio'])
+                )
+                fakeCat['disk_axis_ratio'] = (
+                    fakeCat[cfg.bDisk]/fakeCat[cfg.aDisk]
+                )
+                fakeCat['disk_semimajor'] = (
+                    fakeCat[cfg.diskHLR]/np.sqrt(fakeCat['disk_axis_ratio'])
+                )
+            else:
+                raise ValueError(
+                    "Could not determine columns for half-light radius and "
+                    "axis ratio."
+                )
 
-        # Process the bulge/disk flux ratio if possible.
-        if cfg.bulge_disk_flux_ratio_col in fakeCat.columns:
-            fakeCat = fakeCat.rename(
-                columns={
-                    cfg.bulge_disk_flux_ratio_col: 'bulge_disk_flux_ratio'
-                },
-                copy=False
-            )
-        else:
-            fakeCat['bulge_disk_flux_ratio'] = 1.0
+            # Process the bulge/disk flux ratio if possible.
+            if cfg.bulge_disk_flux_ratio_col in fakeCat.columns:
+                fakeCat = fakeCat.rename(
+                    columns={
+                        cfg.bulge_disk_flux_ratio_col: 'bulge_disk_flux_ratio'
+                    },
+                    copy=False
+                )
+            else:
+                fakeCat['bulge_disk_flux_ratio'] = 1.0
 
         return fakeCat
 
@@ -833,18 +865,31 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
             imFile = imFile.strip()
             im = galsim.fits.read(imFile, read_header=True)
 
-            # GalSim will always attach a WCS to the image read in as above.  If
-            # it can't find a WCS in the header, then it defaults to scale = 1.0
-            # arcsec / pix.  So if that's the scale, then we need to check if it
-            # was explicitly set or if it's just the default.  If it's just the
-            # default then we should override with the pixel scale of the target
-            # image.
-            if _isWCSGalsimDefault(im.wcs, im.header):
-                im.wcs = galsim.PixelScale(
-                    wcs.getPixelScale().asArcseconds()
+            if self.config.fits_alignment == "wcs":
+                # galsim.fits.read will always attach a WCS to its output. If it
+                # can't find a WCS in the FITS header, then it defaults to
+                # scale = 1.0 arcsec / pix.  So if that's the scale, then we
+                # need to check if it was explicitly set or if it's just the
+                # default.  If it's just the default then we should raise an
+                # exception.
+                if _isWCSGalsimDefault(im.wcs, im.header):
+                    raise RuntimeError(
+                        f"Cannot find WCS in input FITS file {imFile}"
+                    )
+            elif self.config.fits_alignment == "pixel":
+                # Here we need to set im.wcs to the local WCS at the target
+                # position.
+                linWcs = wcs.linearizePixelToSky(skyCoord, geom.arcseconds)
+                mat = linWcs.getMatrix()
+                im.wcs = galsim.JacobianWCS(
+                    mat[0, 0], mat[0, 1], mat[1, 0], mat[1, 1]
+                )
+            else:
+                raise ValueError(
+                    f"Unknown fits_alignment type {self.config.fits_alignment}"
                 )
 
-            obj = galsim.InterpolatedImage(im)
+            obj = galsim.InterpolatedImage(im, calculate_stepk=False)
             obj = obj.withFlux(flux)
             yield skyCoord, obj
 
