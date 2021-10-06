@@ -22,13 +22,14 @@
 import os
 import unittest
 import pandas as pd
+import numpy as np
 
 import lsst.utils.tests
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 from lsst.pipe.tasks.parquetTable import MultilevelParquetTable
-from lsst.pipe.tasks.functors import HsmFwhm
+from lsst.pipe.tasks.functors import HsmFwhm, Column
 from lsst.pipe.tasks.postprocess import TransformObjectCatalogTask, TransformObjectCatalogConfig
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
@@ -59,17 +60,43 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         # Want y band columns despite the input data do not have them
         # Exclude g band columns despite the input data have them
         config.outputBands = ["r", "i", "y"]
+        # Arbitrarily choose a boolean flag column to be "good"
+        config.goodFlags = ['GoodFlagColumn']
         task = TransformObjectCatalogTask(config=config)
-        funcs = {'Fwhm': HsmFwhm(dataset='meas')}
+        # Add in a float column, an integer column, a good flag, and
+        # a bad flag.  It does not matter which columns we choose, just
+        # that they have the appropriate type.
+        funcs = {'FloatColumn': HsmFwhm(dataset='meas'),
+                 'IntColumn': Column('base_InputCount_value', dataset='meas'),
+                 'GoodFlagColumn': Column('slot_GaussianFlux_flag', dataset='meas'),
+                 'BadFlagColumn': Column('slot_Centroid_flag', dataset='meas')}
         df = task.run(self.parq, funcs=funcs, dataId=self.dataId)
         self.assertIsInstance(df, pd.DataFrame)
 
         for filt in config.outputBands:
-            self.assertIn(filt + 'Fwhm', df.columns)
+            self.assertIn(filt + 'FloatColumn', df.columns)
+            self.assertIn(filt + 'IntColumn', df.columns)
+            self.assertIn(filt + 'BadFlagColumn', df.columns)
+            self.assertIn(filt + 'GoodFlagColumn', df.columns)
 
-        self.assertNotIn('gFwhm', df.columns)
-        self.assertTrue(df['yFwhm'].isnull().all())
-        self.assertTrue(df['iFwhm'].notnull().all())
+        # Check that the default filling has worked.
+        self.assertNotIn('gFloatColumn', df.columns)
+        self.assertTrue(df['yFloatColumn'].isnull().all())
+        self.assertTrue(df['iFloatColumn'].notnull().all())
+        self.assertTrue(np.all(df['iIntColumn'].values >= 0))
+        self.assertTrue(np.all(df['yIntColumn'].values < 0))
+        self.assertTrue(np.all(~df['yGoodFlagColumn'].values))
+        self.assertTrue(np.all(df['yBadFlagColumn'].values))
+
+        # Check that the datatypes are preserved.
+        self.assertEqual(df['iFloatColumn'].dtype, np.dtype(np.float64))
+        self.assertEqual(df['yFloatColumn'].dtype, np.dtype(np.float64))
+        self.assertEqual(df['iIntColumn'].dtype, np.dtype(np.int64))
+        self.assertEqual(df['yIntColumn'].dtype, np.dtype(np.int64))
+        self.assertEqual(df['iGoodFlagColumn'].dtype, np.dtype(np.bool_))
+        self.assertEqual(df['yGoodFlagColumn'].dtype, np.dtype(np.bool_))
+        self.assertEqual(df['iBadFlagColumn'].dtype, np.dtype(np.bool_))
+        self.assertEqual(df['yBadFlagColumn'].dtype, np.dtype(np.bool_))
 
     def testUnderscoreColumnFormat(self):
         """Test the per-filter column format with an underscore"""
@@ -110,3 +137,8 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         for filt in ['g', 'r', 'i']:
             self.assertIsInstance(df[filt], pd.DataFrame)
             self.assertIn('Fwhm', df[filt].columns)
+
+
+if __name__ == "__main__":
+    lsst.utils.tests.init()
+    unittest.main()
