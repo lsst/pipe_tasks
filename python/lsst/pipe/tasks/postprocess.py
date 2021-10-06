@@ -23,6 +23,7 @@ import functools
 import pandas as pd
 from collections import defaultdict
 import numpy as np
+import numbers
 
 import lsst.geom
 import lsst.pex.config as pexConfig
@@ -798,10 +799,37 @@ class TransformObjectCatalogConfig(TransformCatalogBaseConfig,
         doc=("Whether results dataframe should have a multilevel column index (True) or be flat "
              "and name-munged (False).")
     )
+    goodFlags = pexConfig.ListField(
+        dtype=str,
+        default=[],
+        doc=("List of 'good' flags that should be set False when filling empty tables. "
+             "All other flags are considered to be 'bad' flags and will be set to True.")
+    )
+    floatFillValue = pexConfig.Field(
+        dtype=float,
+        default=np.nan,
+        doc="Fill value for float fields when filling empty tables."
+    )
+    integerFillValue = pexConfig.Field(
+        dtype=int,
+        default=-1,
+        doc="Fill value for integer fields when filling empty tables."
+    )
+    unsignedIntegerFillValue = pexConfig.Field(
+        dtype=int,
+        min=0,
+        default=0,
+        doc="Fill value for unsigned integer fields when filling empty tables."
+    )
 
     def setDefaults(self):
         super().setDefaults()
         self.primaryKey = 'objectId'
+        self.goodFlags = ['calib_astrometry_used',
+                          'calib_photometry_reserved',
+                          'calib_photometry_used',
+                          'calib_psf_candidate',
+                          'calib_psf_used']
 
 
 class TransformObjectCatalogTask(TransformCatalogBaseTask):
@@ -856,11 +884,28 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
             if templateDf.empty:
                 templateDf = result.df
 
-        # Fill NaNs in columns of other wanted bands
+        # Put filler values in columns of other wanted bands
         for filt in outputBands:
             if filt not in dfDict:
                 self.log.info("Adding empty columns for band %s", filt)
-                dfDict[filt] = pd.DataFrame().reindex_like(templateDf)
+                dfTemp = templateDf.copy()
+                for col in dfTemp.columns:
+                    testValue = dfTemp[col].values[0]
+                    if isinstance(testValue, numbers.Real):
+                        fillValue = self.config.floatFillValue
+                    elif isinstance(testValue, (np.bool_, pd.BooleanDtype)):
+                        # Boolean flag type, check if it is a "good" flag
+                        if col in self.config.goodFlags:
+                            fillValue = False
+                        else:
+                            fillValue = True
+                    elif isinstance(testValue, numbers.Integral):
+                        # Integer type; check if unsigned.
+                        if isinstance(testValue, (np.uint8, np.uint16, np.uint32, np.uint64)):
+                            fillValue = self.config.unsignedIntegerFillValue
+                        else:
+                            fillValue = self.config.integerFillValue
+                    dfTemp[col].values[:] = fillValue
 
         # This makes a multilevel column index, with band as first level
         df = pd.concat(dfDict, axis=1, names=['band', 'column'])
