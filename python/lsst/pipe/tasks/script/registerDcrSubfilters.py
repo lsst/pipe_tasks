@@ -27,7 +27,7 @@ from sqlalchemy.exc import IntegrityError
 from lsst.daf.butler import Butler
 
 
-_log = logging.getLogger(__name__.partition(".")[2])
+_log = logging.getLogger(__name__)
 
 
 registeredMsg = "Registered subfilters {subfilters} for filter band \"{band}\"."

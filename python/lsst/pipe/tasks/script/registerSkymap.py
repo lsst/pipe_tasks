@@ -26,7 +26,7 @@ import lsst.pex.config as pexConfig
 from lsst.skymap import skyMapRegistry
 
 
-_log = logging.getLogger(__name__.partition(".")[2])
+_log = logging.getLogger(__name__)
 
 
 class MakeSkyMapConfig(pexConfig.Config):

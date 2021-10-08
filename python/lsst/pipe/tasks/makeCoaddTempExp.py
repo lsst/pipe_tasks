@@ -40,7 +40,7 @@ from collections.abc import Iterable
 
 __all__ = ["MakeCoaddTempExpTask", "MakeWarpTask", "MakeWarpConfig"]
 
-log = logging.getLogger(__name__.partition(".")[2])
+log = logging.getLogger(__name__)
 
 
 class MissingExposureError(Exception):
