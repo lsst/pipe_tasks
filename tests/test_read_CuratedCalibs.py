@@ -33,12 +33,16 @@ from lsst.pipe.tasks.read_curated_calibs import read_all
 import lsst.daf.persistence as dafPersist
 
 ROOT = os.path.join(getPackageDir('obs_base'), 'tests')
+if not os.path.exists(ROOT):
+    ROOT = None
+ROOTSkipMsg = "Cannot locate obs_base tests directory, skipping."
 
 
 def setup_module(module):
     lsst.utils.tests.init()
 
 
+@unittest.skipIf(ROOT is None, ROOTSkipMsg)
 class ReadDefectsTestCase(unittest.TestCase):
     """A test case for the defect reader."""
 
@@ -61,6 +65,7 @@ class ReadDefectsTestCase(unittest.TestCase):
                 self.assertEqual(len(defects[s][d]), 4)  # Four defects
 
 
+@unittest.skipIf(ROOT is None, ROOTSkipMsg)
 class ReadQeTestCase(unittest.TestCase):
     """A test case for the qe_curve reader"""
 
