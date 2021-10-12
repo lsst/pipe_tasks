@@ -714,6 +714,13 @@ class DecColumn(CoordColumn):
 
 class HtmIndex20(Functor):
     """Compute the level 20 HtmIndex for the catalog.
+
+    Notes
+    -----
+    This functor was implemented to satisfy requirements of old APDB interface
+    which required ``pixelId`` column in DiaObject with HTM20 index. APDB
+    interface had migrated to not need that information, but we keep this
+    class in case it may be useful for something else.
     """
     name = "Htm20"
     htmLevel = 20
