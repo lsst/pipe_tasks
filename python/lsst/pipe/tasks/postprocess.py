@@ -1535,9 +1535,9 @@ class WriteForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
     )
     outputCatalog = connectionTypes.Output(
         doc="InputCatalogs horizonatally joined on `objectId` in Parquet format",
-        name="forcedSource",
+        name="mergedForcedSource",
         storageClass="DataFrame",
-        dimensions=("instrument", "visit", "detector")
+        dimensions=("instrument", "visit", "detector", "skymap", "tract")
     )
 
 
@@ -1552,6 +1552,14 @@ class WriteForcedSourceTableConfig(WriteSourceTableConfig,
 
 class WriteForcedSourceTableTask(pipeBase.PipelineTask):
     """Merge and convert per-detector forced source catalogs to parquet
+
+    Because the predecessor ForcedPhotCcdTask operates per-detector,
+    per-tract, (i.e., it has tract in its dimensions), detectors
+    on the tract boundary may have multiple forced source catalogs.
+
+    The successor task TransformForcedSourceTable runs per-patch
+    and temporally-aggregates overlapping mergedForcedSource catalogs from all
+    available multiple epochs.
     """
     _DefaultName = "writeForcedSourceTable"
     ConfigClass = WriteForcedSourceTableConfig
@@ -1585,9 +1593,9 @@ class TransformForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
 
     inputCatalogs = connectionTypes.Input(
         doc="Parquet table of merged ForcedSources produced by WriteForcedSourceTableTask",
-        name="forcedSource",
+        name="mergedForcedSource",
         storageClass="DataFrame",
-        dimensions=("instrument", "visit", "detector"),
+        dimensions=("instrument", "visit", "detector", "skymap", "tract"),
         multiple=True,
         deferLoad=True
     )
