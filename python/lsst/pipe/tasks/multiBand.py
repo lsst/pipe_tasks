@@ -498,6 +498,10 @@ class DeblendCoaddSourcesTask(CmdLineTask):
                 filter = patchRef.get(coaddType + "Coadd_filterLabel", immediate=True)
                 filters.append(filter.bandLabel)
                 exposures.append(exposure)
+            # Sort inputs by band to match Gen3 order of inputs
+            exposures = [exposure for _, exposure in sorted(zip(filters, exposures))]
+            patchRefList = [patchRef for _, patchRef in sorted(zip(filters, patchRefList))]
+            filters.sort()
             # The input sources are the same for all bands, since it is a merged catalog
             sources = self.readSources(patchRef)
             exposure = afwImage.MultibandExposure.fromExposures(filters, exposures)
