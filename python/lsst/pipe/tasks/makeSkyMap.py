@@ -26,6 +26,7 @@ import lsst.geom as geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.skymap import skyMapRegistry
+from lsst.utils.timer import timeMethod
 
 
 class MakeSkyMapConfig(pexConfig.Config):
@@ -93,7 +94,7 @@ class MakeSkyMapTask(pipeBase.CmdLineTask):
     def __init__(self, **kwargs):
         pipeBase.CmdLineTask.__init__(self, **kwargs)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runDataRef(self, butler):
         """!Make a skymap, persist it (optionally) and log some information about it
 

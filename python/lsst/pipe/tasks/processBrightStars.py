@@ -41,6 +41,7 @@ from lsst.pex.exceptions import InvalidParameterError
 from lsst.meas.algorithms.loadIndexedReferenceObjects import LoadIndexedReferenceObjectsTask
 from lsst.meas.algorithms import ReferenceObjectLoader
 from lsst.meas.algorithms import brightStarStamps as bSS
+from lsst.utils.timer import timeMethod
 
 
 class ProcessBrightStarsConnections(pipeBase.PipelineTaskConnections,
@@ -431,7 +432,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         return pipeBase.Struct(warpedStars=warpedStars, warpTransforms=warpTransforms, xy0s=xy0s,
                                nb90Rots=nb90Rots)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, inputExposure, refObjLoader=None, dataId=None, skyCorr=None):
         """Identify bright stars within an exposure using a reference catalog,
         extract stamps around each, then preprocess them. The preprocessing

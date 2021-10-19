@@ -30,6 +30,7 @@ import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
 import lsst.geom
+from lsst.utils.timer import timeMethod
 
 
 __all__ = ("ComputeExposureSummaryStatsTask", "ComputeExposureSummaryStatsConfig")
@@ -79,7 +80,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     ConfigClass = ComputeExposureSummaryStatsConfig
     _DefaultName = "computeExposureSummaryStats"
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, exposure, sources, background):
         """Measure exposure statistics from the exposure, sources, and background.
 

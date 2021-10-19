@@ -28,6 +28,7 @@ import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.selectImages import WcsSelectImagesTask
+from lsst.utils.timer import timeMethod
 
 __all__ = ["ReportImagesInPatchTask", ]
 
@@ -56,7 +57,7 @@ class ReportImagesInPatchTask(pipeBase.CmdLineTask):
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
         self.makeSubtask("select")
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runDataRef(self, patchRef):
         """Select images for a region and report how many are in each tract and patch
 

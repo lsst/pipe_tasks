@@ -22,6 +22,7 @@
 import lsst.afw.display as afwDisplay
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+from lsst.utils.timer import timeMethod
 from .exampleStatsTasks import ExampleSigmaClippedStatsTask
 
 __all__ = ["ExampleCmdLineConfig", "ExampleCmdLineTask"]
@@ -112,7 +113,7 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
         self.makeSubtask("stats")
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runDataRef(self, dataRef):
         """!Compute a few statistics on the image plane of an exposure
 

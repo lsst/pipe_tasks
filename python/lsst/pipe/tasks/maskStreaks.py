@@ -25,6 +25,7 @@ __all__ = ["MaskStreaksConfig", "MaskStreaksTask", "setDetectionMask"]
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.kht
+from lsst.utils.timer import timeMethod
 
 import numpy as np
 import scipy
@@ -525,7 +526,7 @@ class MaskStreaksTask(pipeBase.Task):
     ConfigClass = MaskStreaksConfig
     _DefaultName = "maskStreaks"
 
-    @pipeBase.timeMethod
+    @timeMethod
     def find(self, maskedImage):
         """Find streaks in a masked image
 
@@ -568,7 +569,7 @@ class MaskStreaksTask(pipeBase.Task):
             mask=outputMask,
         )
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, maskedImage):
         """Find and mask streaks in a masked image.
 

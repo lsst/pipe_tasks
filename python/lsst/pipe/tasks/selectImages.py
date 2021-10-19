@@ -28,6 +28,7 @@ import lsst.geom as geom
 import lsst.pipe.base as pipeBase
 from lsst.skymap import BaseSkyMap
 from lsst.daf.base import DateTime
+from lsst.utils.timer import timeMethod
 
 __all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "PsfWcsSelectImagesTask",
            "DatabaseSelectImagesConfig", "BestSeeingWcsSelectImagesTask", "BestSeeingSelectVisitsTask",
@@ -76,7 +77,7 @@ class BaseSelectImagesTask(pipeBase.Task):
     ConfigClass = pexConfig.Config
     _DefaultName = "selectImages"
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, coordList):
         """Select images suitable for coaddition in a particular region
 

@@ -25,6 +25,7 @@ import lsst.geom as geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsstDebug
+from lsst.utils.timer import timeMethod
 
 
 class MatchBackgroundsConfig(pexConfig.Config):
@@ -146,7 +147,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         self.sctrl.setAndMask(afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes))
         self.sctrl.setNanSafe(True)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, expRefList, expDatasetType, imageScalerList=None, refExpDataRef=None, refImageScaler=None):
         """Match the backgrounds of a list of coadd temp exposures to a reference coadd temp exposure.
 
@@ -263,7 +264,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         return pipeBase.Struct(
             backgroundInfoList=backgroundInfoList)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def selectRefExposure(self, expRefList, imageScalerList, expDatasetType):
         """Find best exposure to use as the reference exposure
 
@@ -327,7 +328,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         costFunctionArr += self.config.bestRefWeightCoverage * coverageArr
         return numpy.nanargmin(costFunctionArr)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def matchBackgrounds(self, refExposure, sciExposure):
         """
         Match science exposure's background level to that of reference exposure.

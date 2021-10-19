@@ -23,6 +23,7 @@ import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+from lsst.utils.timer import timeMethod
 
 __all__ = ["ExampleSigmaClippedStatsConfig", "ExampleSigmaClippedStatsTask", "ExampleSimpleStatsTask"]
 
@@ -115,7 +116,7 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
         self._statsControl.setNumIter(self.config.numIter)
         self._statsControl.setAndMask(self._badPixelMask)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, maskedImage):
         """!Compute and return statistics for a masked image
 
@@ -184,11 +185,11 @@ class ExampleSimpleStatsTask(pipeBase.Task):
     # be run by a parent task at the same time).
     _DefaultName = "exampleSimpleStats"
 
-    # The `lsst.pipe.timeMethod` decorator measures how long a task method takes to run,
+    # The `lsst.utils.timer.timeMethod` decorator measures how long a task method takes to run,
     # and the resources needed to run it. The information is recorded in the task's `metadata` field.
     # Most command-line tasks (not including the example below) save metadata for the task
     # and all of its subtasks whenver the task is run.
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, maskedImage):
         """!Compute and return statistics for a masked image
 

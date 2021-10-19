@@ -46,6 +46,7 @@ import lsst.ip.diffim.utils as diUtils
 import lsst.afw.display as afwDisplay
 from lsst.skymap import BaseSkyMap
 from lsst.obs.base import ExposureIdInfo
+from lsst.utils.timer import timeMethod
 
 __all__ = ["ImageDifferenceConfig", "ImageDifferenceTask"]
 FwhmPerSigma = 2*math.sqrt(2*math.log(2))
@@ -555,7 +556,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
             del outputs.diaSources
         butlerQC.put(outputs, outputRefs)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runDataRef(self, sensorRef, templateIdList=None):
         """Subtract an image from a template coadd and measure the result.
 
@@ -636,7 +637,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
             sensorRef.put(results.scoreExposure, self.config.coaddName + "Diff_scoreExp")
         return results
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, exposure=None, selectSources=None, templateExposure=None, templateSources=None,
             idFactory=None, calexpBackgroundExposure=None, subtractedExposure=None):
         """PSF matches, subtract two images and perform detection on the difference image.

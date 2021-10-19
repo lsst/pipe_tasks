@@ -30,6 +30,7 @@
 import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
+from lsst.utils.timer import timeMethod
 
 __all__ = ["ReportPatchesTask", ]
 
@@ -58,7 +59,7 @@ class ReportPatchesTask(pipeBase.CmdLineTask):
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runDataRef(self, dataRef):
         """Report tracts and patches that are within a given region of a skymap
 

@@ -27,6 +27,7 @@ import lsst.pipe.base as pipeBase
 from lsstDebug import getDebugFrame
 import lsst.afw.display as afwDisplay
 from lsst.pipe.tasks.interpImage import InterpImageTask
+from lsst.utils.timer import timeMethod
 
 
 class RepairConfig(pexConfig.Config):
@@ -178,7 +179,7 @@ class RepairTask(pipeBase.Task):
         if self.config.doInterpolate:
             self.makeSubtask("interp")
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, exposure, defects=None, keepCRs=None):
         """!Repair an Exposure's defects and cosmic rays
 
