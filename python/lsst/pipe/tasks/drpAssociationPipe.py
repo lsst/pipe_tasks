@@ -178,7 +178,6 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 catRef.dataId["detector"], nDiaSrc)
 
             if nDiaSrc <= 0:
-                diaSourceHistory.append(pd.DataFrame(columns=cat.columns))
                 continue
 
             cutCat = cat[isInTractPatch]
