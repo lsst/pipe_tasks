@@ -30,6 +30,7 @@ import lsst.daf.base as dafBase
 import lsst.geom as geom
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
+import lsst.meas.extensions.trailedSources  # noqa: F401
 from lsst.meas.astrom import AstrometryConfig, AstrometryTask
 from lsst.meas.base import ForcedMeasurementTask, ApplyApCorrTask
 from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask, SkyObjectsTask
@@ -348,7 +349,8 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
         # To change that you must modify algorithms.names in the task's applyOverrides method,
         # after the user has set doPreConvolve.
         self.measurement.algorithms.names.add('base_PeakLikelihoodFlux')
-        self.measurement.plugins.names |= ['base_LocalPhotoCalib',
+        self.measurement.plugins.names |= ['ext_trailedSources_Naive',
+                                           'base_LocalPhotoCalib',
                                            'base_LocalWcs']
 
         self.forcedMeasurement.plugins = ["base_TransformedCentroid", "base_PsfFlux"]
