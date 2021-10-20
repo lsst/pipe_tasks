@@ -35,6 +35,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.utils as utils
 from lsst.skymap import BaseSkyMap
+from lsst.utils.timer import timeMethod
 from .assembleCoadd import (AssembleCoaddTask,
                             CompareWarpAssembleCoaddConfig,
                             CompareWarpAssembleCoaddTask)
@@ -381,7 +382,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             butlerQC.put(retStruct, outputRefs)
         return retStruct
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runDataRef(self, dataRef, selectDataList=None, warpRefList=None):
         """Assemble a coadd from a set of warps.
 
@@ -578,7 +579,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                        psf=psf)
         return dcrModels
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, skyInfo, warpRefList, imageScalerList, weightList,
             supplementaryData=None):
         """Assemble the coadd.

@@ -22,6 +22,7 @@
 from lsst.ip.isr import IsrTask
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+from lsst.utils.timer import timeMethod
 from .calibrate import CalibrateTask
 from .characterizeImage import CharacterizeImageTask
 
@@ -157,7 +158,7 @@ class ProcessCcdTask(pipeBase.CmdLineTask):
         self.makeSubtask("calibrate", butler=butler, icSourceSchema=self.charImage.schema,
                          astromRefObjLoader=astromRefObjLoader, photoRefObjLoader=photoRefObjLoader)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runDataRef(self, sensorRef):
         """Process one CCD
 

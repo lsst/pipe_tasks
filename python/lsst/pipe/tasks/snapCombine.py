@@ -32,6 +32,7 @@ from lsst.ip.diffim import SnapPsfMatchTask
 from lsst.meas.algorithms import SourceDetectionTask
 from lsst.meas.base import SingleFrameMeasurementTask
 import lsst.meas.algorithms as measAlg
+from lsst.utils.timer import timeMethod
 
 from .repair import RepairTask
 
@@ -175,7 +176,7 @@ class SnapCombineTask(pipeBase.Task):
         if self.config.doMeasurement:
             self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, snap0, snap1, defects=None):
         """Combine two snaps
 

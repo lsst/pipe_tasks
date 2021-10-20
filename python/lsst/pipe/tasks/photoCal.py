@@ -33,6 +33,7 @@ import lsst.afw.table as afwTable
 from lsst.meas.astrom import DirectMatchTask, DirectMatchConfigWithoutLoader
 import lsst.afw.display as afwDisplay
 from lsst.meas.algorithms import getRefFluxField, ReserveSourcesTask
+from lsst.utils.timer import timeMethod
 from .colorterms import ColortermLibrary
 
 __all__ = ["PhotoCalTask", "PhotoCalConfig"]
@@ -282,7 +283,7 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
         instFluxErr = schema.find(self.config.fluxField + "Err").key
         return pipeBase.Struct(instFlux=instFlux, instFluxErr=instFluxErr)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def extractMagArrays(self, matches, filterLabel, sourceKeys):
         """!Extract magnitude and magnitude error arrays from the given matches.
 
@@ -387,7 +388,7 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
             refFluxFieldList=fluxFieldList,
         )
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, exposure, sourceCat, expId=0):
         """!Do photometric calibration - select matches to use and (possibly iteratively) compute
         the zero point.

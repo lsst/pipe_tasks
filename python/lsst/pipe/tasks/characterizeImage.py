@@ -40,6 +40,7 @@ from .measurePsf import MeasurePsfTask
 from .repair import RepairTask
 from .computeExposureSummaryStats import ComputeExposureSummaryStatsTask
 from lsst.pex.exceptions import LengthError
+from lsst.utils.timer import timeMethod
 
 __all__ = ["CharacterizeImageConfig", "CharacterizeImageTask"]
 
@@ -389,7 +390,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         outputCatSchema.getTable().setMetadata(self.algMetadata)
         return {'outputSchema': outputCatSchema}
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runDataRef(self, dataRef, exposure=None, background=None, doUnpersist=True):
         """!Characterize a science image and, if wanted, persist the results
 
@@ -441,7 +442,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
         return charRes
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, exposure, exposureIdInfo=None, background=None):
         """!Characterize a science image
 
@@ -526,7 +527,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             backgroundModel=dmeRes.background
         )
 
-    @pipeBase.timeMethod
+    @timeMethod
     def detectMeasureAndEstimatePsf(self, exposure, exposureIdInfo, background):
         """!Perform one iteration of detect, measure and estimate PSF
 

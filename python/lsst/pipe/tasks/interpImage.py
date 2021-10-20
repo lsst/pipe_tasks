@@ -27,6 +27,7 @@ import lsst.afw.math as afwMath
 import lsst.ip.isr as ipIsr
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
+from lsst.utils.timer import timeMethod
 
 __all__ = ["InterpImageConfig", "InterpImageTask"]
 
@@ -115,7 +116,7 @@ class InterpImageTask(pipeBase.Task):
 
         return fallbackValue
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, image, planeName=None, fwhmPixels=None, defects=None):
         """!Interpolate in place over pixels in a maskedImage marked as bad
 

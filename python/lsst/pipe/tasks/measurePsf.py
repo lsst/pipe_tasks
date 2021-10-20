@@ -26,6 +26,7 @@ import lsst.meas.algorithms.utils as maUtils
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.meas.extensions.psfex.psfexPsfDeterminer  # noqa: F401
+from lsst.utils.timer import timeMethod
 
 
 class MeasurePsfConfig(pexConfig.Config):
@@ -237,7 +238,7 @@ into your debug.py file and run measurePsfTask.py with the @c --debug flag.
         self.makeSubtask("reserve", columnName="calib_psf", schema=schema,
                          doc="set if source was reserved from PSF determination")
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, exposure, sources, expId=0, matches=None):
         """!Measure the PSF
 

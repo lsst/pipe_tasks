@@ -28,6 +28,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.skymap import DiscreteSkyMap, BaseSkyMap
 from lsst.pipe.base import ArgumentParser
+from lsst.utils.timer import timeMethod
 
 
 class MakeDiscreteSkyMapConfig(pexConfig.Config):
@@ -162,7 +163,7 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
             butler.put(result.skyMap, datasetName)
         return result
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, wcs_bbox_tuple_list, oldSkyMap=None):
         """Make a SkyMap from the bounds of the given set of calexp metadata.
 

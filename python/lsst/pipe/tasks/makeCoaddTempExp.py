@@ -32,6 +32,7 @@ import lsst.utils as utils
 import lsst.geom
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
 from lsst.skymap import BaseSkyMap
+from lsst.utils.timer import timeMethod
 from .coaddBase import CoaddBaseTask, makeSkyInfo, reorderAndPadList
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
@@ -284,7 +285,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
         else:
             self.calexpType = "calexp"
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runDataRef(self, patchRef, selectDataList=[]):
         """!Produce <coaddName>Coadd_<warpType>Warp images by warping and optionally PSF-matching.
 
@@ -384,7 +385,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
         return dataRefList
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, calExpList, ccdIdList, skyInfo, visitId=0, dataIdList=None, **kwargs):
         """Create a Warp from inputs
 

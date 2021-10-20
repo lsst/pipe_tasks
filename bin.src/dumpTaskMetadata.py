@@ -25,6 +25,7 @@
 import lsst.daf.base as dafBase
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+from lsst.utils.timer import timeMethod
 
 __all__ = ["DumpTaskMetadataTask", ]
 
@@ -42,7 +43,7 @@ class DumpTaskMetadataTask(pipeBase.CmdLineTask):
     ConfigClass = DumpTaskMetadataConfig
     _DefaultName = "DumpTaskMetadata"
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runDataRef(self, dataRef):
         """Report task metadata
         """

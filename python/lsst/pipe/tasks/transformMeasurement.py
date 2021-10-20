@@ -25,6 +25,7 @@ Tasks for transforming raw measurement outputs to calibrated quantities.
 import lsst.afw.table as afwTable
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+from lsst.utils.timer import timeMethod
 
 
 def makeContiguous(catalog):
@@ -128,7 +129,7 @@ class TransformTask(pipeBase.Task):
         transformedSrc = afwTable.BaseCatalog(self.mapper.getOutputSchema())
         return {self.outputDataset: transformedSrc}
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, inputCat, wcs, photoCalib):
         """!Transform raw source measurements to calibrated quantities.
 
@@ -244,7 +245,7 @@ class RunTransformTaskBase(pipeBase.CmdLineTask):
                          inputSchema=self.butler.get(self.inputSchemaType).schema,
                          outputDataset=self.outputDataset)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runDataRef(self, dataRef):
         """!Transform the source catalog referred to by dataRef.
 

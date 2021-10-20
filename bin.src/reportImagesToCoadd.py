@@ -28,6 +28,7 @@ import lsst.pex.config as pexConfig
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.selectImages import WcsSelectImagesTask
+from lsst.utils.timer import timeMethod
 
 __all__ = ["ReportImagesToCoaddTask", ]
 
@@ -67,7 +68,7 @@ class ReportImagesToCoaddTask(pipeBase.CmdLineTask):
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
         self.makeSubtask("select")
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runDataRef(self, dataRef):
         """Select images across the sky and report how many are in each tract and patch
 

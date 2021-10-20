@@ -31,6 +31,7 @@ import lsst.geom
 import lsst.afw.geom as afwGeom
 from lsst.daf.butler import Formatter
 from lsst.skymap import BaseSkyMap
+from lsst.utils.timer import timeMethod
 from .healSparseMappingProperties import (BasePropertyMap, BasePropertyMapConfig,
                                           PropertyMapMap, compute_approx_psf_size_and_shape)
 
@@ -456,7 +457,7 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
         for name, config, PropertyMapClass in self.config.property_maps.apply():
             self.property_maps[name] = PropertyMapClass(config, name)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
 
@@ -868,7 +869,7 @@ class ConsolidateHealSparsePropertyMapTask(pipeBase.PipelineTask):
         for name, config, PropertyMapClass in self.config.property_maps.apply():
             self.property_maps[name] = PropertyMapClass(config, name)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
 

@@ -37,6 +37,7 @@ from lsst.meas.base import (SingleFrameMeasurementTask,
                             ApplyApCorrTask,
                             CatalogCalculationTask)
 from lsst.meas.deblender import SourceDeblendTask
+from lsst.utils.timer import timeMethod
 from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
 from .fakes import BaseFakeSourcesTask
 from .photoCal import PhotoCalTask
@@ -549,7 +550,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         sourceCatSchema.getTable().setMetadata(self.algMetadata)
         self.outputSchema = sourceCatSchema
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runDataRef(self, dataRef, exposure=None, background=None, icSourceCat=None,
                    doUnpersist=True):
         """!Calibrate an exposure, optionally unpersisting inputs and
@@ -643,7 +644,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             outputs.matches = normalizedMatches
         butlerQC.put(outputs, outputRefs)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, exposure, exposureIdInfo=None, background=None,
             icSourceCat=None):
         """!Calibrate an exposure (science image or coadd)

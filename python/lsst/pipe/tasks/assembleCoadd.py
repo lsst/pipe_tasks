@@ -47,6 +47,7 @@ from .maskStreaks import MaskStreaksTask
 from .healSparseMapping import HealSparseInputMapTask
 from lsst.meas.algorithms import SourceDetectionTask, AccumulatorMeanStack
 from lsst.daf.butler import DeferredDatasetHandle
+from lsst.utils.timer import timeMethod
 
 __all__ = ["AssembleCoaddTask", "AssembleCoaddConnections", "AssembleCoaddConfig",
            "SafeClipAssembleCoaddTask", "SafeClipAssembleCoaddConfig",
@@ -488,7 +489,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             butlerQC.put(retStruct, outputRefs)
         return retStruct
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runDataRef(self, dataRef, selectDataList=None, warpRefList=None):
         """Assemble a coadd from a set of Warps.
 
@@ -759,7 +760,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         statsFlags = afwMath.stringToStatisticsProperty(self.config.statistic)
         return pipeBase.Struct(ctrl=statsCtrl, flags=statsFlags)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
             altMaskList=None, mask=None, supplementaryData=None):
         """Assemble a coadd from input warps
@@ -1586,7 +1587,7 @@ class SafeClipAssembleCoaddTask(AssembleCoaddTask):
         self.makeSubtask("clipDetection", schema=schema)
 
     @utils.inheritDoc(AssembleCoaddTask)
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, skyInfo, tempExpRefList, imageScalerList, weightList, *args, **kwargs):
         """Assemble the coadd for a region.
 
@@ -2274,7 +2275,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
         return message
 
     @utils.inheritDoc(AssembleCoaddTask)
-    @pipeBase.timeMethod
+    @timeMethod
     def run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
             supplementaryData, *args, **kwargs):
         """Assemble the coadd.

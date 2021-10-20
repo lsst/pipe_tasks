@@ -30,6 +30,7 @@ import numpy
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.getRepositoryData import DataRefListRunner
+from lsst.utils.timer import timeMethod
 
 
 class ReportTaskTimingConfig(pexConfig.Config):
@@ -144,7 +145,7 @@ class ReportTaskTimingTask(pipeBase.CmdLineTask):
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runDataRef(self, dataRefList):
         """Report timing statistics for a collection of task metadata
 

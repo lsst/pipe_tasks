@@ -25,6 +25,7 @@ Use this as a base task for creating graphs and reports for a set of data.
 """
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+from lsst.utils.timer import timeMethod
 
 __all__ = ["DataRefListRunner", "GetRepositoryDataTask"]
 
@@ -74,7 +75,7 @@ class GetRepositoryDataTask(pipeBase.CmdLineTask):
     def __init__(self, *args, **kwargs):
         pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
 
-    @pipeBase.timeMethod
+    @timeMethod
     def runDataRef(self, dataRefList):
         """Get data from a repository for a collection of data references
 
