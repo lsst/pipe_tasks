@@ -451,6 +451,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
                                    dataId, numGoodPix[warpType],
                                    100.0*numGoodPix[warpType]/skyInfo.bbox.getArea(), warpType)
                     if numGoodPix[warpType] > 0 and not didSetMetadata[warpType]:
+                        coaddTempExp.info.id = exposure.info.id
                         coaddTempExp.setPhotoCalib(exposure.getPhotoCalib())
                         coaddTempExp.setFilterLabel(exposure.getFilterLabel())
                         coaddTempExp.getInfo().setVisitInfo(exposure.getInfo().getVisitInfo())

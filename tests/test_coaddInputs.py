@@ -95,6 +95,7 @@ class MockExposure:
         exp.setDetector(detector)
 
         expInfo = exp.getInfo()
+        expInfo.id = 10313423
         scale = 5.1e-5*lsst.geom.degrees
         cdMatrix = lsst.afw.geom.makeCdMatrix(scale=scale)
         wcs = lsst.afw.geom.makeSkyWcs(
