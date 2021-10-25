@@ -1391,7 +1391,8 @@ class ReferenceBand(Functor):
                 "merge_measurement_r",
                 "merge_measurement_z",
                 "merge_measurement_y",
-                "merge_measurement_g"]
+                "merge_measurement_g",
+                "merge_measurement_u"]
 
     def _func(self, df):
         def getFilterAliasName(row):
