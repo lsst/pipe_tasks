@@ -126,14 +126,14 @@ tasks:
       key: diaObjectId
       connections.inputCatalogDiff: forced_diff_diaObject
       connections.inputCatalog: forced_src_diaObject
-      connections.outputCatalog: forcedSourceOnDiaObject
+      connections.outputCatalog: mergedForcedSourceOnDiaObject
   transformForcedSourceOnDiaObjectTable:
     class: lsst.pipe.tasks.postprocess.TransformForcedSourceTableTask
     config:
       referenceColumns: []
       keyRef: diaObjectId
       key: forcedSourceOnDiaObjectId
-      connections.inputCatalogs: forcedSourceOnDiaObject
+      connections.inputCatalogs: mergedForcedSourceOnDiaObject
       connections.outputCatalog: forcedSourceOnDiaObjectTable
       connections.referenceCatalog: goodSeeingDiff_fullDiaObjTable
   consolidateForcedSourceOnDiaObjectTable:
