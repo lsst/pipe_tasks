@@ -73,7 +73,7 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
 
     externalSkyWcsGlobalCatalog = cT.Input(
         doc=("Per-visit wcs calibrations computed globally (with no tract information). "
-             "These catalogs use the detector id for the catalog id, sorted on is for "
+             "These catalogs use the detector id for the catalog id, sorted on id for "
              "fast lookup."),
         name="{wcsName}SkyWcsCatalog",
         storageClass="ExposureCatalog",
