@@ -93,9 +93,14 @@ class SimpleAssociationTask(pipeBase.Task):
                 (`pandas.DataFrame`).
 
         """
+
+        # Expected indexes include diaSourceId or meaningless range index
+        # If meaningless range index, drop it, else keep it.
+        doDropIndex = diaSources.index.names[0] is None
+        diaSources.reset_index(inplace=True, drop=doDropIndex)
+
         # Sort by ccdVisit and diaSourceId to get a reproducible ordering for
         # the association.
-        diaSources.reset_index(inplace=True)
         diaSources.set_index(["ccdVisitId", "diaSourceId"], inplace=True)
 
         # Empty lists to store matching and location data.
@@ -190,8 +195,12 @@ class SimpleAssociationTask(pipeBase.Task):
         diaSources.reset_index(inplace=True)
         diaSources.set_index("diaSourceId", inplace=True, verify_integrity=True)
 
-        diaObjects = pd.DataFrame(data=diaObjectCat)
-        diaSources.reset_index(inplace=True)
+        objs = diaObjectCat if diaObjectCat else np.array([], dtype=[('diaObjectId', 'int64'),
+                                                                     ('ra', 'float64'),
+                                                                     ('decl', 'float64'),
+                                                                     ('nDiaSources', 'int64')])
+        diaObjects = pd.DataFrame(data=objs)
+
         if "diaObjectId" in diaObjects.columns:
             diaObjects.set_index("diaObjectId", inplace=True, verify_integrity=True)
 
