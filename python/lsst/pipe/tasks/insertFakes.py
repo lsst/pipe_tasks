@@ -71,6 +71,8 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
     fullBounds = galsim.BoundsI(bbox.minX, bbox.maxX, bbox.minY, bbox.maxY)
     gsImg = galsim.Image(exposure.image.array, bounds=fullBounds)
 
+    pixScale = wcs.getPixelScale().asArcseconds()
+
     for spt, gsObj in objects:
         pt = wcs.skyToPixel(spt)
         posd = galsim.PositionD(pt.x, pt.y)
@@ -80,6 +82,13 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
 
         mat = wcs.linearizePixelToSky(spt, geom.arcseconds).getMatrix()
         gsWCS = galsim.JacobianWCS(mat[0, 0], mat[0, 1], mat[1, 0], mat[1, 1])
+
+        # This check is here because sometimes the WCS
+        # is multivalued and objects that should not be
+        # were being included.
+        gsPixScale = np.sqrt(gsWCS.pixelArea())
+        if gsPixScale < pixScale/2 or gsPixScale > pixScale*2:
+            continue
 
         try:
             psfArr = psf.computeKernelImage(pt).array
@@ -106,6 +115,7 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
                         pt
                     )
                 continue
+
         apCorr = psf.computeApertureFlux(calibFluxRadius)
         psfArr /= apCorr
         gsPSF = galsim.InterpolatedImage(galsim.Image(psfArr), wcs=gsWCS)
@@ -121,6 +131,7 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
             # Note, for calexp injection, pixel is already part of the PSF and
             # for coadd injection, it's incorrect to include the output pixel.
             # So for both cases, we draw using method='no_pixel'.
+
             conv.drawImage(
                 subImg,
                 add_to_image=True,

@@ -70,11 +70,44 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
         dimensions=("tract", "skymap", "instrument", "visit", "detector")
     )
 
+    externalSkyWcsTractCatalog = cT.Input(
+        doc=("Per-tract, per-visit wcs calibrations. These catalogs use the detector "
+             "id for the catalog id, sorted on id for fast lookup."),
+        name="{wcsName}SkyWcsCatalog",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit", "tract", "skymap"),
+    )
+
+    externalSkyWcsGlobalCatalog = cT.Input(
+        doc=("Per-visit wcs calibrations computed globally (with no tract information). "
+             "These catalogs use the detector id for the catalog id, sorted on is for "
+             "fast lookup."),
+        name="{wcsName}SkyWcsCatalog",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit"),
+    )
+
     photoCalib = cT.Input(
         doc="Calib information for the input exposure.",
         name="{photoCalibName}_photoCalib",
         storageClass="PhotoCalib",
-        dimensions=("tract", "skymap", "instrument", "visit", "detector")
+        dimensions=("instrument", "visit", "detector", "tract", "skymap")
+    )
+
+    externalPhotoCalibTractCatalog = cT.Input(
+        doc=("Per-tract, per-visit photometric calibrations. These catalogs use the "
+             "detector id for the catalog id, sorted on id for fast lookup."),
+        name="{photoCalibName}PhotoCalibCatalog",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit", "tract"),
+    )
+
+    externalPhotoCalibGlobalCatalog = cT.Input(
+        doc=("Per-visit photometric calibrations. These catalogs use the "
+             "detector id for the catalog id, sorted on id for fast lookup."),
+        name="{photoCalibName}PhotoCalibCatalog",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit"),
     )
 
     icSourceCat = cT.Input(
@@ -108,10 +141,20 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
     def __init__(self, *, config=None):
         super().__init__(config=config)
 
-        if config.doApplyExternalSkyWcs is False:
+        if config.doApplyExternalGlobalSkyWcs or config.doApplyExternalTractSkyWcs:
             self.inputs.remove("wcs")
-        if config.doApplyExternalPhotoCalib is False:
+        if config.doApplyExternalGlobalPhotoCalib or config.doApplyExternalTractPhotoCalib:
             self.inputs.remove("photoCalib")
+
+        if not config.doApplyExternalGlobalPhotoCalib:
+            self.inputs.remove("externalPhotoCalibGlobalCatalog")
+        if not config.doApplyExternalTractPhotoCalib:
+            self.inputs.remove("externalPhotoCalibTractCatalog")
+
+        if not config.doApplyExternalGlobalSkyWcs:
+            self.inputs.remove("externalSkyWcsGlobalCatalog")
+        if not config.doApplyExternalTractSkyWcs:
+            self.inputs.remove("externalSkyWcsTractCatalog")
 
 
 class ProcessCcdWithFakesConfig(PipelineTaskConfig,
@@ -123,13 +166,22 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig,
     The default column names are those from the UW sims database.
     """
 
-    doApplyExternalPhotoCalib = pexConfig.Field(
+    doApplyExternalGlobalPhotoCalib = pexConfig.Field(
         dtype=bool,
         default=False,
         doc="Whether to apply an external photometric calibration via an "
             "`lsst.afw.image.PhotoCalib` object. Uses the "
             "`externalPhotoCalibName` config option to determine which "
-            "calibration to use."
+            "calibration to use. Uses a global calibration."
+    )
+
+    doApplyExternalTractPhotoCalib = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Whether to apply an external photometric calibration via an "
+            "`lsst.afw.image.PhotoCalib` object. Uses the "
+            "`externalPhotoCalibName` config option to determine which "
+            "calibration to use. Uses a per tract calibration."
     )
 
     externalPhotoCalibName = pexConfig.ChoiceField(
@@ -141,13 +193,22 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig,
                  "fgcm_tract": "Use fgcm_tract_photoCalib"}
     )
 
-    doApplyExternalSkyWcs = pexConfig.Field(
+    doApplyExternalGlobalSkyWcs = pexConfig.Field(
         dtype=bool,
         default=False,
         doc="Whether to apply an external astrometric calibration via an "
             "`lsst.afw.geom.SkyWcs` object. Uses the "
             "`externalSkyWcsName` config option to determine which "
-            "calibration to use."
+            "calibration to use. Uses a global calibration."
+    )
+
+    doApplyExternalTractSkyWcs = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Whether to apply an external astrometric calibration via an "
+            "`lsst.afw.geom.SkyWcs` object. Uses the "
+            "`externalSkyWcsName` config option to determine which "
+            "calibration to use. Uses a per tract calibration."
     )
 
     externalSkyWcsName = pexConfig.ChoiceField(
@@ -270,13 +331,13 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
             fakeCat = Table.read(self.config.insertFakes.fakeType).to_pandas()
 
         calexp = dataRef.get("calexp")
-        if self.config.doApplyExternalSkyWcs:
+        if self.config.doApplyExternalGlobalSkyWcs or self.config.doApplyExternalTractSkyWcs:
             self.log.info("Using external wcs from %s", self.config.externalSkyWcsName)
             wcs = dataRef.get(self.config.externalSkyWcsName + "_wcs")
         else:
             wcs = calexp.getWcs()
 
-        if self.config.doApplyExternalPhotoCalib:
+        if self.config.doApplyExternalGlobalPhotoCalib or self.config.doApplyExternalTractPhotoCalib:
             self.log.info("Using external photocalib from %s", self.config.externalPhotoCalibName)
             photoCalib = dataRef.get(self.config.externalPhotoCalibName + "_photoCalib")
         else:
@@ -295,15 +356,37 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
+        detectorId = inputs["exposure"].getInfo().getDetector().getId()
+
         if 'exposureIdInfo' not in inputs.keys():
             expId, expBits = butlerQC.quantum.dataId.pack("visit_detector", returnMaxBits=True)
             inputs['exposureIdInfo'] = ExposureIdInfo(expId, expBits)
 
-        if not self.config.doApplyExternalSkyWcs:
+        if not self.config.doApplyExternalGlobalSkyWcs and not self.config.doApplyExternalTractSkyWcs:
             inputs["wcs"] = inputs["exposure"].getWcs()
 
-        if not self.config.doApplyExternalPhotoCalib:
+        elif self.config.doApplyExternalGlobalSkyWcs:
+            externalSkyWcsCatalog = inputs["externalSkyWcsGobalCatalog"]
+            row = externalSkyWcsCatalog.find(detectorId)
+            inputs["wcs"] = row.getWcs()
+
+        elif self.config.doApplyExternalTractSkyWcs:
+            externalSkyWcsCatalog = inputs["externalSkyWcsTractCatalog"]
+            row = externalSkyWcsCatalog.find(detectorId)
+            inputs["wcs"] = row.getWcs()
+
+        if not self.config.doApplyExternalGlobalPhotoCalib and not self.config.doApplyExternalTractPhotoCalib:
             inputs["photoCalib"] = inputs["exposure"].getPhotoCalib()
+
+        elif self.config.doApplyExternalGlobalPhotoCalib:
+            externalPhotoCalibCatalog = inputs["externalPhotoCalibGlobalCatalog"]
+            row = externalPhotoCalibCatalog.find(detectorId)
+            inputs["photoCalib"] = row.getPhotoCalib()
+
+        elif self.config.doApplyExternalTractPhotoCalib:
+            externalPhotoCalibCatalog = inputs["externalPhotoCalibTractCatalog"]
+            row = externalPhotoCalibCatalog.find(detectorId)
+            inputs["photoCalib"] = row.getPhotoCalib()
 
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
@@ -317,7 +400,8 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
         return parser
 
     def run(self, fakeCat, exposure, wcs=None, photoCalib=None, exposureIdInfo=None, icSourceCat=None,
-            sfdSourceCat=None):
+            sfdSourceCat=None, externalSkyWcsGlobalCatalog=None, externalSkyWcsTractCatalog=None,
+            externalPhotoCalibGlobalCatalog=None, externalPhotoCalibTractCatalog=None):
         """Add fake sources to a calexp and then run detection, deblending and measurement.
 
         Parameters
