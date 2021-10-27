@@ -745,7 +745,7 @@ class HtmIndex20(Functor):
                                             geom.degrees)
             return self.pixelator.index(sphPoint.getVector())
 
-        return df.apply(computePixel, axis=1)
+        return df.apply(computePixel, axis=1, result_type='reduce').astype('int64')
 
 
 def fluxName(col):
