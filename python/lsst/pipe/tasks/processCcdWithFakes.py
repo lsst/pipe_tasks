@@ -63,13 +63,6 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
         dimensions=("tract", "skymap")
     )
 
-    wcs = cT.Input(
-        doc="WCS information for the input exposure.",
-        name="{wcsName}_wcs",
-        storageClass="Wcs",
-        dimensions=("tract", "skymap", "instrument", "visit", "detector")
-    )
-
     externalSkyWcsTractCatalog = cT.Input(
         doc=("Per-tract, per-visit wcs calibrations. These catalogs use the detector "
              "id for the catalog id, sorted on id for fast lookup."),
@@ -85,13 +78,6 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
         name="{wcsName}SkyWcsCatalog",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
-    )
-
-    photoCalib = cT.Input(
-        doc="Calib information for the input exposure.",
-        name="{photoCalibName}_photoCalib",
-        storageClass="PhotoCalib",
-        dimensions=("instrument", "visit", "detector", "tract", "skymap")
     )
 
     externalPhotoCalibTractCatalog = cT.Input(
@@ -140,11 +126,6 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
-
-        if config.doApplyExternalGlobalSkyWcs or config.doApplyExternalTractSkyWcs:
-            self.inputs.remove("wcs")
-        if config.doApplyExternalGlobalPhotoCalib or config.doApplyExternalTractPhotoCalib:
-            self.inputs.remove("photoCalib")
 
         if not config.doApplyExternalGlobalPhotoCalib:
             self.inputs.remove("externalPhotoCalibGlobalCatalog")
@@ -366,7 +347,7 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
             inputs["wcs"] = inputs["exposure"].getWcs()
 
         elif self.config.doApplyExternalGlobalSkyWcs:
-            externalSkyWcsCatalog = inputs["externalSkyWcsGobalCatalog"]
+            externalSkyWcsCatalog = inputs["externalSkyWcsGlobalCatalog"]
             row = externalSkyWcsCatalog.find(detectorId)
             inputs["wcs"] = row.getWcs()
 
