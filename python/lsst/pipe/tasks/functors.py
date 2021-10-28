@@ -506,6 +506,12 @@ class CompositeFunctor(Functor):
 
             valDict = {k: f._func(df) for k, f in self.funcDict.items()}
 
+            # Check that output columns are actually columns
+            for name, colVal in valDict.items():
+                if len(colVal.shape) != 1:
+                    raise RuntimeError("Transformed column '%s' is not the shape of a column. "
+                                       "It is shaped %s and type %s." % (name, colVal.shape, type(colVal)))
+
         try:
             valDf = pd.concat(valDict, axis=1)
         except TypeError:
@@ -746,7 +752,7 @@ class HtmIndex20(Functor):
                                             geom.degrees)
             return self.pixelator.index(sphPoint.getVector())
 
-        return df.apply(computePixel, axis=1)
+        return df.apply(computePixel, axis=1, result_type='reduce').astype('int64')
 
 
 def fluxName(col):

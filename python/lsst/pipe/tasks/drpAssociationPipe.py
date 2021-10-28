@@ -88,6 +88,12 @@ class DrpAssociationPipeConfig(
         doc="Do pull diaObject's average coordinate as coord_ra and coord_dec"
             "Duplicates information, but needed for bulk ingest into qserv."
     )
+    doWriteEmptyTables = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="If True, construct and write out empty diaSource and diaObject "
+            "tables. If False, raise NoWorkFound"
+    )
 
 
 class DrpAssociationPipeTask(pipeBase.PipelineTask):
@@ -178,13 +184,22 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 catRef.dataId["detector"], nDiaSrc)
 
             if nDiaSrc <= 0:
-                diaSourceHistory.append(pd.DataFrame(columns=cat.columns))
                 continue
 
             cutCat = cat[isInTractPatch]
             diaSourceHistory.append(cutCat)
 
-        diaSourceHistoryCat = pd.concat(diaSourceHistory)
+        if diaSourceHistory:
+            diaSourceHistoryCat = pd.concat(diaSourceHistory)
+        else:
+            # No rows to associate
+            if self.config.doWriteEmptyTables:
+                self.log.info("Constructing empty table")
+                # Construct empty table using last table and dropping all the rows
+                diaSourceHistoryCat = cat.drop(cat.index)
+            else:
+                raise pipeBase.NoWorkFound("Found no overlapping DIASources to associate.")
+
         self.log.info("Found %i DiaSources overlapping patch %i, tract %i",
                       len(diaSourceHistoryCat), patchId, tractId)
 
@@ -195,7 +210,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         self.log.info("Associated DiaSources into %i DiaObjects",
                       len(assocResult.diaObjects))
 
-        if self.config.doAddDiaObjectCoords and not assocResult.diaObjects.empty:
+        if self.config.doAddDiaObjectCoords:
             assocResult.assocDiaSources = self._addDiaObjectCoords(assocResult.diaObjects,
                                                                    assocResult.assocDiaSources)
 
@@ -205,7 +220,8 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
 
     def _addDiaObjectCoords(self, objects, sources):
         obj = objects[['ra', 'decl']].rename(columns={"ra": "coord_ra", "decl": "coord_dec"})
-        df = pd.merge(sources, obj, left_on='diaObjectId', right_index=True, how='inner')
+        df = pd.merge(sources.reset_index(), obj, left_on='diaObjectId', right_index=True,
+                      how='inner').set_index('diaSourceId')
         return df
 
     def _trimToPatch(self, cat, innerPatchBox, wcs):
