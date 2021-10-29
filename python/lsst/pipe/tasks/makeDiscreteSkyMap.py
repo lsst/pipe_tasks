@@ -199,7 +199,10 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
             skyMapConfig.raList.extend(oldSkyMap.config.raList)
             skyMapConfig.decList.extend(oldSkyMap.config.decList)
             skyMapConfig.radiusList.extend(oldSkyMap.config.radiusList)
-        skyMapConfig.update(**self.config.skyMap.toDict())
+        configIntersection = {k: getattr(self.config.skyMap, k)
+                              for k in self.config.skyMap.toDict()
+                              if k in skyMapConfig}
+        skyMapConfig.update(**configIntersection)
         circleCenter = lsst.sphgeom.LonLat(circle.getCenter())
         skyMapConfig.raList.append(circleCenter[0].asDegrees())
         skyMapConfig.decList.append(circleCenter[1].asDegrees())
