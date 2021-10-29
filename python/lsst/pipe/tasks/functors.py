@@ -1384,15 +1384,18 @@ class ReferenceBand(Functor):
                 "merge_measurement_r",
                 "merge_measurement_z",
                 "merge_measurement_y",
-                "merge_measurement_g"]
+                "merge_measurement_g",
+                "merge_measurement_u"]
 
-    def _func(self, df):
+    def _func(self, df: pd.DataFrame) -> pd.Series:
         def getFilterAliasName(row):
             # get column name with the max value (True > False)
             colName = row.idxmax()
             return colName.replace('merge_measurement_', '')
 
-        return df[self.columns].apply(getFilterAliasName, axis=1)
+        # Makes a Series of dtype object if df is empty
+        return df[self.columns].apply(getFilterAliasName, axis=1,
+                                      result_type='reduce').astype('object')
 
 
 class Photometry(Functor):
