@@ -51,6 +51,8 @@ class CalibsParseTask(ParseTask):
             obstype = "crosstalk"
         elif "BFK" in obstype:
             obstype = "bfk"
+        elif "photodiode" in obstype:
+            obstype = 'photodiode'
         return obstype
 
     def getDestination(self, butler, info, filename):
@@ -77,14 +79,15 @@ class CalibsParseTask(ParseTask):
 class CalibsRegisterConfig(RegisterConfig):
     """Configuration for the CalibsRegisterTask"""
     tables = ListField(dtype=str, default=["bias", "dark", "flat", "fringe", "sky", "defects", "qe_curve",
-                                           "linearizer", "crosstalk", "bfk"], doc="Names of tables")
+                                           "linearizer", "crosstalk", "bfk", "photodiode"],
+                       doc="Names of tables")
     calibDate = Field(dtype=str, default="calibDate", doc="Name of column for calibration date")
     validStart = Field(dtype=str, default="validStart", doc="Name of column for validity start")
     validEnd = Field(dtype=str, default="validEnd", doc="Name of column for validity stop")
     detector = ListField(dtype=str, default=["filter", "ccd"],
                          doc="Columns that identify individual detectors")
     validityUntilSuperseded = ListField(dtype=str, default=["defects", "qe_curve", "linearizer", "crosstalk",
-                                                            "bfk"],
+                                                            "bfk", "photodiode"],
                                         doc="Tables for which to set validity for a calib from when it is "
                                         "taken until it is superseded by the next; validity in other tables "
                                         "is calculated by applying the validity range.")
