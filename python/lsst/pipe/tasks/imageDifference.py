@@ -1038,7 +1038,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
             if self.config.doSkySources:
                 skySourceFootprints = self.skySources.run(
                     mask=detectionExposure.mask,
-                    seed=detectionExposure.getInfo().getVisitInfo().getExposureId())
+                    seed=detectionExposure.info.id)
                 if skySourceFootprints:
                     for foot in skySourceFootprints:
                         s = diaSources.addNew()
