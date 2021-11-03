@@ -8,8 +8,8 @@ TransformSourceTableTask
 ``TransformSourceTableTask`` transforms the full-width source table
 (a ``source`` dataset) to a narrower Source Table (a ``sourceTable`` dataset)
 as specified by the Data Products Definition Document (`DPDD <https://lse-163.lsst.io>`).
-It extracts, transforms, and renames columns per a yaml specification, by default the
-`Source.yaml` in obs_package/policy.   Inputs and outpus are both per-detector.
+It extracts, transforms, and renames columns per a yaml specification, by default the `schemas/Source.yaml` in this package.
+Inputs and outpus are both per-detector.
 The input is typically a wide table and output a narrow table appropriate for
 concatenating into a per-visit table by ConsolidateSourceTableTask.
 

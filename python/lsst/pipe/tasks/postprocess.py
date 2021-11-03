@@ -24,6 +24,7 @@ import pandas as pd
 from collections import defaultdict
 import numpy as np
 import numbers
+import os
 
 import lsst.geom
 import lsst.pex.config as pexConfig
@@ -818,6 +819,7 @@ class TransformObjectCatalogConfig(TransformCatalogBaseConfig,
 
     def setDefaults(self):
         super().setDefaults()
+        self.functorFile = os.path.join('$PIPE_TASKS_DIR', 'schemas', 'Object.yaml')
         self.primaryKey = 'objectId'
         self.goodFlags = ['calib_astrometry_used',
                           'calib_photometry_reserved',
@@ -1048,6 +1050,7 @@ class TransformSourceTableConfig(TransformCatalogBaseConfig,
 
     def setDefaults(self):
         super().setDefaults()
+        self.functorFile = os.path.join('$PIPE_TASKS_DIR', 'schemas', 'Source.yaml')
         self.primaryKey = 'sourceId'
 
 
@@ -1701,6 +1704,10 @@ class TransformForcedSourceTableConfig(TransformCatalogBaseConfig,
         dtype=str,
         default="forcedSourceId",
     )
+
+    def setDefaults(self):
+        super().setDefaults()
+        self.functorFile = os.path.join('$PIPE_TASKS_DIR', 'schemas', 'ForcedSource.yaml')
 
 
 class TransformForcedSourceTableTask(TransformCatalogBaseTask):
