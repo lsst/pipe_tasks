@@ -72,11 +72,11 @@ class MockTractInfo:
         self.name = name
         self.bbox = bbox
         self.wcs = wcs
-        self.numPatchs = numPatches
-        assert bbox.getWidth()%numPatches == 0
-        assert bbox.getHeight()%numPatches == 0
-        self.patchWidth = bbox.getWidth()//numPatches
-        self.patchHeight = bbox.getHeight()//numPatches
+        self._numPatches = numPatches
+        assert bbox.getWidth()%numPatches[0] == 0
+        assert bbox.getHeight()%numPatches[1] == 0
+        self.patchWidth = bbox.getWidth()//numPatches[0]
+        self.patchHeight = bbox.getHeight()//numPatches[1]
 
     def contains(self, coord):
         pixel = self.wcs.skyToPixel(coord)
@@ -98,10 +98,15 @@ class MockTractInfo:
 
         bbox = Box2I(Point2I(x, y), Extent2I(width, height))
 
+        nx, ny = self._numPatches
+        sequentialIndex = nx*y + x
+
         patchInfo = PatchInfo(
             index=index,
             innerBBox=bbox,
             outerBBox=bbox,
+            sequentialIndex=sequentialIndex,
+            tractWcs=self.wcs
         )
         return patchInfo
 
@@ -196,7 +201,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         # subdivided into 3x3 patches
         wcs = self.exposure.getWcs()
         tractBBox = Box2I(Point2I(100, 100), Extent2I(900, 900))
-        skyMap = MockSkyMap([tractBBox], wcs, 3)
+        skyMap = MockSkyMap([tractBBox], wcs, (3, 3))
         tractInfo = skyMap[0]
         patchInfo = tractInfo[0, 0]
         patchBBox = patchInfo.getInnerBBox()

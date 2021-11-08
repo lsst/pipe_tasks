@@ -25,7 +25,8 @@ import unittest
 
 from lsst.utils import getPackageDir
 import lsst.utils.tests
-from lsst.geom import Extent2I, Box2D
+from lsst.geom import Box2D
+from lsst.skymap import Index2D
 from lsst.daf.persistence import Butler
 from lsst.pipe.tasks.makeDiscreteSkyMap import MakeDiscreteSkyMapTask, DiscreteSkyMap
 
@@ -75,7 +76,7 @@ class MakeDiscreteSkyMapTestCase(unittest.TestCase):
         self.assertEqual(len(skyMap), 1)
         tractInfo = skyMap[0]
         self.assertEqual(tractInfo.getId(), 0)
-        self.assertEqual(tractInfo.getNumPatches(), Extent2I(3, 3))
+        self.assertEqual(tractInfo.getNumPatches(), Index2D(x=3, y=3))
         tractWcs = tractInfo.getWcs()
         tractBoxD = Box2D(tractInfo.getBBox())
         for skyPoint in coordList:
