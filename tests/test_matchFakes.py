@@ -23,16 +23,12 @@
 
 import numpy as np
 import pandas as pd
-import shutil
-import tempfile
 import unittest
 import uuid
 
-import lsst.daf.butler.tests as butlerTests
 import lsst.sphgeom as sphgeom
 import lsst.geom as geom
 import lsst.meas.base.tests as measTests
-from lsst.pipe.base import testUtils
 import lsst.skymap as skyMap
 import lsst.utils.tests
 
@@ -110,84 +106,15 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
                                  drop=False,
                                  inplace=True)
 
-    def testRunQuantum(self):
-        """Test the run quantum method with a gen3 butler.
-        """
-        root = tempfile.mkdtemp()
-        dimensions = {"instrument": ["notACam"],
-                      "skymap": ["deepCoadd_skyMap"],
-                      "tract": [0, 42],
-                      "visit": [1234, 4321],
-                      "detector": [25, 26]}
-        testRepo = butlerTests.makeTestRepo(root, dimensions)
-        matchTask = MatchFakesTask()
-        connections = matchTask.config.ConnectionsClass(
-            config=matchTask.config)
-
-        fakesDataId = {"skymap": "deepCoadd_skyMap",
-                       "tract": 0}
-        imgDataId = {"instrument": "notACam",
-                     "visit": 1234,
-                     "detector": 25}
-        butlerTests.addDatasetType(
-            testRepo,
-            connections.fakeCat.name,
-            connections.fakeCat.dimensions,
-            connections.fakeCat.storageClass)
-        butlerTests.addDatasetType(
-            testRepo,
-            connections.diffIm.name,
-            connections.diffIm.dimensions,
-            connections.diffIm.storageClass)
-        butlerTests.addDatasetType(
-            testRepo,
-            connections.associatedDiaSources.name,
-            connections.associatedDiaSources.dimensions,
-            connections.associatedDiaSources.storageClass)
-        butlerTests.addDatasetType(
-            testRepo,
-            connections.matchedDiaSources.name,
-            connections.matchedDiaSources.dimensions,
-            connections.matchedDiaSources.storageClass)
-        butler = butlerTests.makeTestCollection(testRepo)
-
-        butler.put(self.fakeCat,
-                   connections.fakeCat.name,
-                   {"tract": fakesDataId["tract"],
-                    "skymap": fakesDataId["skymap"]})
-        butler.put(self.exposure,
-                   connections.diffIm.name,
-                   {"instrument": imgDataId["instrument"],
-                    "visit": imgDataId["visit"],
-                    "detector": imgDataId["detector"]})
-        butler.put(self.sourceCat,
-                   connections.associatedDiaSources.name,
-                   {"instrument": imgDataId["instrument"],
-                    "visit": imgDataId["visit"],
-                    "detector": imgDataId["detector"]})
-
-        quantumDataId = imgDataId.copy()
-        quantumDataId.update(fakesDataId)
-        quantum = testUtils.makeQuantum(
-            matchTask, butler, quantumDataId,
-            {"fakeCat": fakesDataId,
-             "diffIm": imgDataId,
-             "associatedDiaSources": imgDataId,
-             "matchedDiaSources": imgDataId})
-        run = testUtils.runTestQuantum(matchTask, butler, quantum)
-        # Actual input dataset omitted for simplicity
-        run.assert_called_once()
-        shutil.rmtree(root, ignore_errors=True)
-
-    def testRun(self):
+    def testProcessFakes(self):
         """Test the run method.
         """
         matchFakesConfig = MatchFakesConfig()
         matchFakesConfig.matchDistanceArcseconds = 0.1
         matchFakes = MatchFakesTask(config=matchFakesConfig)
-        result = matchFakes.run(self.fakeCat,
-                                self.exposure,
-                                self.sourceCat)
+        result = matchFakes._processFakes(self.fakeCat,
+                                          self.exposure,
+                                          self.sourceCat)
         self.assertEqual(self.inExp.sum(), len(result.matchedDiaSources))
         self.assertEqual(
             len(self.sourceCat),
@@ -197,7 +124,8 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
         """Test that the correct number of sources are in the ccd area.
         """
         matchTask = MatchFakesTask()
-        result = matchTask._trimFakeCat(self.fakeCat, self.exposure)
+        result = matchTask._trimFakeCat(
+            self.fakeCat, self.exposure)
         self.assertEqual(len(result), self.inExp.sum())
 
 
