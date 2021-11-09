@@ -34,9 +34,9 @@ from lsst.meas.base import SingleFrameMeasurementTask
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.utils as utils
-from lsst.skymap import BaseSkyMap
 from lsst.utils.timer import timeMethod
-from .assembleCoadd import (AssembleCoaddTask,
+from .assembleCoadd import (AssembleCoaddConnections,
+                            AssembleCoaddTask,
                             CompareWarpAssembleCoaddConfig,
                             CompareWarpAssembleCoaddTask)
 from .coaddBase import makeSkyInfo
@@ -45,34 +45,23 @@ from .measurePsf import MeasurePsfTask
 __all__ = ["DcrAssembleCoaddConnections", "DcrAssembleCoaddTask", "DcrAssembleCoaddConfig"]
 
 
-class DcrAssembleCoaddConnections(pipeBase.PipelineTaskConnections,
+class DcrAssembleCoaddConnections(AssembleCoaddConnections,
                                   dimensions=("tract", "patch", "band", "skymap"),
-                                  defaultTemplates={"inputCoaddName": "deep",
+                                  defaultTemplates={"inputWarpName": "deep",
+                                                    "inputCoaddName": "deep",
                                                     "outputCoaddName": "dcr",
                                                     "warpType": "direct",
                                                     "warpTypeSuffix": "",
                                                     "fakesType": ""}):
     inputWarps = pipeBase.connectionTypes.Input(
         doc=("Input list of warps to be assembled i.e. stacked."
+             "Note that this will often be different than the inputCoaddName."
              "WarpType (e.g. direct, psfMatched) is controlled by the warpType config parameter"),
-        name="{inputCoaddName}Coadd_{warpType}Warp",
+        name="{inputWarpName}Coadd_{warpType}Warp",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "visit", "instrument"),
         deferLoad=True,
         multiple=True
-    )
-    skyMap = pipeBase.connectionTypes.Input(
-        doc="Input definition of geometry/bbox and projection/wcs for coadded exposures",
-        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
-        storageClass="SkyMap",
-        dimensions=("skymap", ),
-    )
-    brightObjectMask = pipeBase.connectionTypes.PrerequisiteInput(
-        doc=("Input Bright Object Mask mask produced with external catalogs to be applied to the mask plane"
-             " BRIGHT_OBJECT."),
-        name="brightObjectMask",
-        storageClass="ObjectMaskCatalog",
-        dimensions=("tract", "patch", "skymap", "band"),
     )
     templateExposure = pipeBase.connectionTypes.Input(
         doc="Input coadded exposure, produced by previous call to AssembleCoadd",
@@ -99,6 +88,11 @@ class DcrAssembleCoaddConnections(pipeBase.PipelineTaskConnections,
         super().__init__(config=config)
         if not config.doWrite:
             self.outputs.remove("dcrCoadds")
+        if not config.doNImage:
+            self.outputs.remove("dcrNImages")
+        # Remove outputs inherited from ``AssembleCoaddConnections`` that are not used
+        self.outputs.remove("coaddExposure")
+        self.outputs.remove("nImage")
 
 
 class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig,
