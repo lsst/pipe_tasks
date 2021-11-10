@@ -735,8 +735,13 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
 
             elif self.config.subtract.name == 'al':
                 # compute scienceSigmaOrig: sigma of PSF of science image before pre-convolution
-                scienceSigmaOrig = sciencePsf.computeShape().getDeterminantRadius()
-                templateSigma = templateExposure.getPsf().computeShape().getDeterminantRadius()
+                # Just need a rough estimate; average positions are fine
+                sciAvgPos = sciencePsf.getAveragePosition()
+                scienceSigmaOrig = sciencePsf.computeShape(sciAvgPos).getDeterminantRadius()
+
+                templatePsf = templateExposure.getPsf()
+                templateAvgPos = templatePsf.getAveragePosition()
+                templateSigma = templatePsf.computeShape(templateAvgPos).getDeterminantRadius()
 
                 # if requested, convolve the science exposure with its PSF
                 # (properly, this should be a cross-correlation, but our code does not yet support that)
@@ -852,7 +857,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                         # Run detection on the template, which is
                         # temporarily background-subtracted
                         # sigma of PSF of template image before warping
-                        templateSigma = templateExposure.getPsf().computeShape().getDeterminantRadius()
                         templateSources = self.subtract.getSelectSources(
                             templateExposure,
                             sigma=templateSigma,
