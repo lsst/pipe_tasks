@@ -195,7 +195,7 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig,
     imageInterpOrder = pexConfig.Field(
         dtype=int,
         doc="The order of the spline interpolation used to shift the image plane.",
-        default=3,
+        default=1,
     )
     accelerateModel = pexConfig.Field(
         dtype=float,
