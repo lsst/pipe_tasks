@@ -37,7 +37,7 @@ class SkySourcesTestCase(lsst.utils.tests.TestCase):
         expPath = os.path.join(getPackageDir("pipe_tasks"), "tests", "data", "v695833-e0-c000-a00.sci.fits")
         self.exposure = afwImage.ExposureF(expPath)
         # set log level so that warnings do not display
-        logging.getLogger("calibrate").setLevel(logging.ERROR)
+        logging.getLogger("lsst.calibrate").setLevel(logging.ERROR)
 
     def tearDown(self):
         del self.exposure

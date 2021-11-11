@@ -53,7 +53,7 @@ __all__ = ["AssembleCoaddTask", "AssembleCoaddConnections", "AssembleCoaddConfig
            "SafeClipAssembleCoaddTask", "SafeClipAssembleCoaddConfig",
            "CompareWarpAssembleCoaddTask", "CompareWarpAssembleCoaddConfig"]
 
-log = logging.getLogger(__name__.partition(".")[2])
+log = logging.getLogger(__name__)
 
 
 class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,

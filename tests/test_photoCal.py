@@ -40,7 +40,7 @@ from lsst.pipe.base.task_logging import TRACE
 RefCatDir = os.path.join(getPackageDir("pipe_tasks"), "tests", "data", "sdssrefcat")
 
 # Quiet down meas_astrom logging, so we can see PhotoCal logs better
-logging.getLogger("LoadIndexedReferenceObjectsTask").setLevel(logging.WARN)
+logging.getLogger("lsst.LoadIndexedReferenceObjectsTask").setLevel(logging.WARN)
 
 testColorterms = ColortermLibrary(data={
     "test*": ColortermDict(data={
@@ -86,7 +86,7 @@ class PhotoCalTest(unittest.TestCase):
         # Make a reference loader
         butler = Butler(RefCatDir)
         self.refObjLoader = LoadIndexedReferenceObjectsTask(butler=butler)
-        self.log = logging.getLogger('testPhotoCal')
+        self.log = logging.getLogger('lsst.testPhotoCal')
         self.log.setLevel(TRACE)
 
         self.config = PhotoCalConfig()

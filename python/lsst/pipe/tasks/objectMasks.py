@@ -118,7 +118,7 @@ class ObjectMaskCatalog:
         region definitions.
         """
 
-        log = logging.getLogger("ObjectMaskCatalog")
+        log = logging.getLogger("lsst.ObjectMaskCatalog")
 
         brightObjects = ObjectMaskCatalog()
         checkedWcsIsFk5 = False

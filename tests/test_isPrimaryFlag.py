@@ -165,7 +165,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         self.charImResults = charImTask.run(self.exposure)
 
         # set log level so that warnings do not display
-        logging.getLogger("calibrate").setLevel(logging.ERROR)
+        logging.getLogger("lsst.calibrate").setLevel(logging.ERROR)
 
     def tearDown(self):
         del self.exposure
