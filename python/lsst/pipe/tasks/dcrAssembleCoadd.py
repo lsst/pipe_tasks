@@ -543,7 +543,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 visitInfo = warpExpRef.get(tempExpName + "_visitInfo")
                 psf = warpExpRef.get(tempExpName).getPsf()
             visit = warpExpRef.dataId["visit"]
-            psfSize = psf.computeShape().getDeterminantRadius()*sigma2fwhm
+            # Just need a rough estimate; average positions are fine
+            psfAvgPos = psf.getAveragePosition()
+            psfSize = psf.computeShape(psfAvgPos).getDeterminantRadius()*sigma2fwhm
             airmass = visitInfo.getBoresightAirmass()
             parallacticAngle = visitInfo.getBoresightParAngle().asDegrees()
             airmassDict[visit] = airmass
@@ -1319,7 +1321,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         # Note: ``ccds`` is a `lsst.afw.table.ExposureCatalog` with one entry per ccd and per visit
         # If there are multiple ccds, it will have that many times more elements than ``warpExpRef``
         ccds = templateCoadd.getInfo().getCoaddInputs().ccds
-        psfRefSize = templateCoadd.getPsf().computeShape().getDeterminantRadius()*sigma2fwhm
+        templatePsf = templateCoadd.getPsf()
+        # Just need a rough estimate; average positions are fine
+        templateAvgPos = templatePsf.getAveragePosition()
+        psfRefSize = templatePsf.computeShape(templateAvgPos).getDeterminantRadius()*sigma2fwhm
         psfSizes = np.zeros(len(ccds))
         ccdVisits = np.array(ccds["visit"])
         for warpExpRef in warpRefList:
@@ -1330,7 +1335,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                 # Gen 2 API. Delete this when Gen 2 retired
                 psf = warpExpRef.get(tempExpName).getPsf()
             visit = warpExpRef.dataId["visit"]
-            psfSize = psf.computeShape().getDeterminantRadius()*sigma2fwhm
+            psfAvgPos = psf.getAveragePosition()
+            psfSize = psf.computeShape(psfAvgPos).getDeterminantRadius()*sigma2fwhm
             psfSizes[ccdVisits == visit] = psfSize
         # Note that the input PSFs include DCR, which should be absent from the DcrCoadd
         # The selected PSFs are those that have a FWHM less than or equal to the smaller

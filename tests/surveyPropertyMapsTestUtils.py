@@ -169,7 +169,8 @@ def makeMockVisitSummary(visit,
         # Generate a PSF and set values accordingly
         psf = GaussianPsf(15, 15, psf_sigma)
         row.setPsf(psf)
-        shape = psf.computeShape()
+        psfAvgPos = psf.getAveragePosition()
+        shape = psf.computeShape(psfAvgPos)
         row['psfSigma'] = psf.getSigma()
         row['psfIxx'] = shape.getIxx()
         row['psfIyy'] = shape.getIyy()
