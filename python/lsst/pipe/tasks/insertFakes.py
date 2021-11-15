@@ -36,115 +36,10 @@ from lsst.pipe.base import CmdLineTask, PipelineTask, PipelineTaskConfig, Pipeli
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.exceptions import LogicError, InvalidParameterError
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
-from lsst.geom import SpherePoint, radians, Box2D, Point2D
+from lsst.geom import SpherePoint, radians, Box2D
+from lsst.source_injection import inject_sources
 
 __all__ = ["InsertFakesConfig", "InsertFakesTask"]
-
-
-def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
-    """Add fake sources to the given exposure
-
-    Parameters
-    ----------
-    exposure : `lsst.afw.image.exposure.exposure.ExposureF`
-        The exposure into which the fake sources should be added
-    objects : `typing.Iterator` [`tuple` ['lsst.geom.SpherePoint`, `galsim.GSObject`]]
-        An iterator of tuples that contains (or generates) locations and object
-        surface brightness profiles to inject.
-    calibFluxRadius : `float`, optional
-        Aperture radius (in pixels) used to define the calibration for this
-        exposure+catalog.  This is used to produce the correct instrumental fluxes
-        within the radius.  The value should match that of the field defined in
-        slot_CalibFlux_instFlux.
-    logger : `lsst.log.log.log.Log` or `logging.Logger`, optional
-        Logger.
-    """
-    exposure.mask.addMaskPlane("FAKE")
-    bitmask = exposure.mask.getPlaneBitMask("FAKE")
-    if logger:
-        logger.info(f"Adding mask plane with bitmask {bitmask}")
-
-    wcs = exposure.getWcs()
-    psf = exposure.getPsf()
-
-    bbox = exposure.getBBox()
-    fullBounds = galsim.BoundsI(bbox.minX, bbox.maxX, bbox.minY, bbox.maxY)
-    gsImg = galsim.Image(exposure.image.array, bounds=fullBounds)
-
-    pixScale = wcs.getPixelScale().asArcseconds()
-
-    for spt, gsObj in objects:
-        pt = wcs.skyToPixel(spt)
-        posd = galsim.PositionD(pt.x, pt.y)
-        posi = galsim.PositionI(pt.x//1, pt.y//1)
-        if logger:
-            logger.debug(f"Adding fake source at {pt}")
-
-        mat = wcs.linearizePixelToSky(spt, geom.arcseconds).getMatrix()
-        gsWCS = galsim.JacobianWCS(mat[0, 0], mat[0, 1], mat[1, 0], mat[1, 1])
-
-        # This check is here because sometimes the WCS
-        # is multivalued and objects that should not be
-        # were being included.
-        gsPixScale = np.sqrt(gsWCS.pixelArea())
-        if gsPixScale < pixScale/2 or gsPixScale > pixScale*2:
-            continue
-
-        try:
-            psfArr = psf.computeKernelImage(pt).array
-        except InvalidParameterError:
-            # Try mapping to nearest point contained in bbox.
-            contained_pt = Point2D(
-                np.clip(pt.x, bbox.minX, bbox.maxX),
-                np.clip(pt.y, bbox.minY, bbox.maxY)
-            )
-            if pt == contained_pt:  # no difference, so skip immediately
-                if logger:
-                    logger.infof(
-                        "Cannot compute Psf for object at {}; skipping",
-                        pt
-                    )
-                continue
-            # otherwise, try again with new point
-            try:
-                psfArr = psf.computeKernelImage(contained_pt).array
-            except InvalidParameterError:
-                if logger:
-                    logger.infof(
-                        "Cannot compute Psf for object at {}; skipping",
-                        pt
-                    )
-                continue
-
-        apCorr = psf.computeApertureFlux(calibFluxRadius)
-        psfArr /= apCorr
-        gsPSF = galsim.InterpolatedImage(galsim.Image(psfArr), wcs=gsWCS)
-
-        conv = galsim.Convolve(gsObj, gsPSF)
-        stampSize = conv.getGoodImageSize(gsWCS.minLinearScale())
-        subBounds = galsim.BoundsI(posi).withBorder(stampSize//2)
-        subBounds &= fullBounds
-
-        if subBounds.area() > 0:
-            subImg = gsImg[subBounds]
-            offset = posd - subBounds.true_center
-            # Note, for calexp injection, pixel is already part of the PSF and
-            # for coadd injection, it's incorrect to include the output pixel.
-            # So for both cases, we draw using method='no_pixel'.
-
-            conv.drawImage(
-                subImg,
-                add_to_image=True,
-                offset=offset,
-                wcs=gsWCS,
-                method='no_pixel'
-            )
-
-            subBox = geom.Box2I(
-                geom.Point2I(subBounds.xmin, subBounds.ymin),
-                geom.Point2I(subBounds.xmax, subBounds.ymax)
-            )
-            exposure[subBox].mask.array |= bitmask
 
 
 def _isWCSGalsimDefault(wcs, hdr):
@@ -658,7 +553,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 generator = self._generateGSObjectsFromCatalog(image, fakeCat, galCheckVal, starCheckVal)
             else:
                 generator = self._generateGSObjectsFromImages(image, fakeCat)
-            _add_fake_sources(image, generator, calibFluxRadius=self.config.calibFluxRadius, logger=self.log)
+            inject_sources(image, generator, calibFluxRadius=self.config.calibFluxRadius, logger=self.log)
         elif len(fakeCat) == 0 and self.config.doProcessAllDataIds:
             self.log.warning("No fakes found for this dataRef; processing anyway.")
             image.mask.addMaskPlane("FAKE")

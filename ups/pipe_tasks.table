@@ -18,6 +18,7 @@ setupOptional(ip_diffim)
 setupOptional(coadd_utils)
 setupOptional(skymap)
 setupOptional(sphgeom)
+setupOptional(source_injection)
 
 setupOptional(obs_test) # for unit tests
 
