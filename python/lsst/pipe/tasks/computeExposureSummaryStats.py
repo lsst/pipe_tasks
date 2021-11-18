@@ -20,6 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import warnings
 import numpy as np
+from scipy.stats import median_abs_deviation as sigmaMad
 import astropy.units as units
 from astropy.time import Time
 from astropy.coordinates import AltAz, SkyCoord, EarthLocation
@@ -52,6 +53,21 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         doc="Mask planes that, if set, the associated pixel should not be included sky noise calculation.",
         default=("NO_DATA", "SUSPECT"),
     )
+    starSelection = pexConfig.Field(
+        doc="Field to select sources to be used in the PSF statistics computation.",
+        dtype=str,
+        default="calib_psf_used"
+    )
+    starShape = pexConfig.Field(
+        doc="Base name of columns to use for the source shape in the PSF statistics computation.",
+        dtype=str,
+        default="base_SdssShape"
+    )
+    psfShape = pexConfig.Field(
+        doc="Base name of columns to use for the PSF shape in the PSF statistics computation.",
+        dtype=str,
+        default="base_SdssShape_psf"
+    )
 
 
 class ComputeExposureSummaryStatsTask(pipeBase.Task):
@@ -75,6 +91,15 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     - decCorners
     - astromOffsetMean
     - astromOffsetStd
+
+    These additional quantities are computed from the stars in the detector:
+    - psfStarDeltaE1Median
+    - psfStarDeltaE2Median
+    - psfStarDeltaE1Scatter
+    - psfStarDeltaE2Scatter
+    - psfStarDeltaSizeMedian
+    - psfStarDeltaSizeScatter
+    - psfStarScaledDeltaSizeScatter
     """
     ConfigClass = ComputeExposureSummaryStatsConfig
     _DefaultName = "computeExposureSummaryStats"
@@ -190,21 +215,113 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             astromOffsetMean = np.nan
             astromOffsetStd = np.nan
 
-        summary = afwImage.ExposureSummaryStats(psfSigma=float(psfSigma),
-                                                psfArea=float(psfArea),
-                                                psfIxx=float(psfIxx),
-                                                psfIyy=float(psfIyy),
-                                                psfIxy=float(psfIxy),
-                                                ra=float(ra),
-                                                decl=float(decl),
-                                                zenithDistance=float(zenithDistance),
-                                                zeroPoint=float(zeroPoint),
-                                                skyBg=float(skyBg),
-                                                skyNoise=float(skyNoise),
-                                                meanVar=float(meanVar),
-                                                raCorners=raCorners,
-                                                decCorners=decCorners,
-                                                astromOffsetMean=astromOffsetMean,
-                                                astromOffsetStd=astromOffsetStd)
+        psfStats = self._computePsfStats(sources)
+
+        # Note that all numpy values have to be explicitly converted to
+        # python floats for yaml serialization.
+        summary = afwImage.ExposureSummaryStats(
+            psfSigma=float(psfSigma),
+            psfArea=float(psfArea),
+            psfIxx=float(psfIxx),
+            psfIyy=float(psfIyy),
+            psfIxy=float(psfIxy),
+            ra=float(ra),
+            decl=float(decl),
+            zenithDistance=float(zenithDistance),
+            zeroPoint=float(zeroPoint),
+            skyBg=float(skyBg),
+            skyNoise=float(skyNoise),
+            meanVar=float(meanVar),
+            raCorners=raCorners,
+            decCorners=decCorners,
+            astromOffsetMean=astromOffsetMean,
+            astromOffsetStd=astromOffsetStd,
+            nPsfStar=psfStats.nPsfStar,
+            psfStarDeltaE1Median=psfStats.psfStarDeltaE1Median,
+            psfStarDeltaE2Median=psfStats.psfStarDeltaE2Median,
+            psfStarDeltaE1Scatter=psfStats.psfStarDeltaE1Scatter,
+            psfStarDeltaE2Scatter=psfStats.psfStarDeltaE2Scatter,
+            psfStarDeltaSizeMedian=psfStats.psfStarDeltaSizeMedian,
+            psfStarDeltaSizeScatter=psfStats.psfStarDeltaSizeScatter,
+            psfStarScaledDeltaSizeScatter=psfStats.psfStarScaledDeltaSizeScatter
+        )
 
         return summary
+
+    def _computePsfStats(self, sources):
+        """Compute psf residual statistics.
+
+        All residuals are computed using median statistics on the difference
+        between the sources and the models.
+
+        Parameters
+        ----------
+        sources : `lsst.afw.table.SourceCatalog`
+            Source catalog on which to measure the PSF statistics.
+
+        Returns
+        -------
+        psfStats : `lsst.pipe.base.Struct`
+            Struct with various psf stats.
+        """
+        psfStats = pipeBase.Struct(nPsfStar=0,
+                                   psfStarDeltaE1Median=float(np.nan),
+                                   psfStarDeltaE2Median=float(np.nan),
+                                   psfStarDeltaE1Scatter=float(np.nan),
+                                   psfStarDeltaE2Scatter=float(np.nan),
+                                   psfStarDeltaSizeMedian=float(np.nan),
+                                   psfStarDeltaSizeScatter=float(np.nan),
+                                   psfStarScaledDeltaSizeScatter=float(np.nan))
+
+        if sources is None:
+            # No sources are available (as in some tests)
+            return psfStats
+
+        names = sources.schema.getNames()
+        if self.config.starSelection not in names or self.config.starShape + '_flag' not in names:
+            # The source catalog does not have the necessary fields (as in some tests)
+            return psfStats
+
+        mask = sources[self.config.starSelection] & (~sources[self.config.starShape + '_flag'])
+        nPsfStar = mask.sum()
+
+        if nPsfStar == 0:
+            # No stars to measure statistics, so we must return the defaults
+            # of 0 stars and NaN values.
+            return psfStats
+
+        starXX = sources[self.config.starShape + '_xx'][mask]
+        starYY = sources[self.config.starShape + '_yy'][mask]
+        starXY = sources[self.config.starShape + '_xy'][mask]
+        psfXX = sources[self.config.psfShape + '_xx'][mask]
+        psfYY = sources[self.config.psfShape + '_yy'][mask]
+        psfXY = sources[self.config.psfShape + '_xy'][mask]
+
+        starSize = (starXX*starYY - starXY**2.)**0.25
+        starE1 = (starXX - starYY)/(starXX + starYY)
+        starE2 = 2*starXY/(starXX + starYY)
+        starSizeMedian = np.median(starSize)
+
+        psfSize = (psfXX*psfYY - psfXY**2)**0.25
+        psfE1 = (psfXX - psfYY)/(psfXX + psfYY)
+        psfE2 = 2*psfXY/(psfXX + psfYY)
+
+        psfStarDeltaE1Median = np.median(starE1 - psfE1)
+        psfStarDeltaE1Scatter = sigmaMad(starE1 - psfE1, scale='normal')
+        psfStarDeltaE2Median = np.median(starE2 - psfE2)
+        psfStarDeltaE2Scatter = sigmaMad(starE2 - psfE2, scale='normal')
+
+        psfStarDeltaSizeMedian = np.median(starSize - psfSize)
+        psfStarDeltaSizeScatter = sigmaMad(starSize - psfSize, scale='normal')
+        psfStarScaledDeltaSizeScatter = psfStarDeltaSizeScatter/starSizeMedian**2.
+
+        psfStats.nPsfStar = int(nPsfStar)
+        psfStats.psfStarDeltaE1Median = float(psfStarDeltaE1Median)
+        psfStats.psfStarDeltaE2Median = float(psfStarDeltaE2Median)
+        psfStats.psfStarDeltaE1Scatter = float(psfStarDeltaE1Scatter)
+        psfStats.psfStarDeltaE2Scatter = float(psfStarDeltaE2Scatter)
+        psfStats.psfStarDeltaSizeMedian = float(psfStarDeltaSizeMedian)
+        psfStats.psfStarDeltaSizeScatter = float(psfStarDeltaSizeScatter)
+        psfStats.psfStarScaledDeltaSizeScatter = float(psfStarScaledDeltaSizeScatter)
+
+        return psfStats
