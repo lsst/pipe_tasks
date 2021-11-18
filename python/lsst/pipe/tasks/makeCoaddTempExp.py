@@ -678,13 +678,6 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         dimensions=("instrument", "visit", "detector"),
         multiple=True,
     )
-    psfList = connectionTypes.Input(
-        doc="PSF models used by BestSeeingWcsSelectImages subtask to futher select on seeing",
-        name="{calexpType}calexp.psf",
-        storageClass="Psf",
-        dimensions=("instrument", "visit", "detector"),
-        multiple=True,
-    )
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
@@ -716,8 +709,6 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         # instead of removing if not PsfWcsSelectImagesTask here:
         if config.select.target != lsst.pipe.tasks.selectImages.PsfWcsSelectImagesTask:
             self.inputs.remove("srcList")
-        if config.select.target != lsst.pipe.tasks.selectImages.BestSeeingWcsSelectImagesTask:
-            self.inputs.remove("psfList")
 
 
 class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig,
