@@ -673,12 +673,11 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         dimensions=("instrument", "visit", "detector"),
         multiple=True,
     )
-    srcList = connectionTypes.Input(
-        doc="src catalogs used by PsfWcsSelectImages subtask to further select on PSF stability",
-        name="src",
-        storageClass="SourceCatalog",
-        dimensions=("instrument", "visit", "detector"),
-        multiple=True,
+    visitSummary = connectionTypes.Input(
+        doc="Consolidated exposure metadata from ConsolidateVisitSummaryTask",
+        name="visitSummary",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit",),
     )
 
     def __init__(self, *, config=None):
@@ -708,9 +707,8 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         if not config.makePsfMatched:
             self.outputs.remove("psfMatched")
         # TODO DM-28769: add connection per selectImages connections
-        # instead of removing if not PsfWcsSelectImagesTask here:
         if config.select.target != lsst.pipe.tasks.selectImages.PsfWcsSelectImagesTask:
-            self.inputs.remove("srcList")
+            self.inputs.remove("visitSummary")
 
 
 class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig,
