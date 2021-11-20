@@ -750,22 +750,22 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                 # TODO: DM-22762 This functional block should be moved into its own method
                 preConvPsf = None
                 if self.config.useScoreImageDetection:
-                    self.log.warn("AL likelihood image: pre-convolution of PSF is not implemented.")
+                    self.log.warning("AL likelihood image: pre-convolution of PSF is not implemented.")
                     convControl = afwMath.ConvolutionControl()
                     # cannot convolve in place, so need a new image anyway
                     srcMI = exposure.maskedImage
                     exposure = exposure.clone()  # New deep copy
                     srcPsf = sciencePsf
                     if self.config.useGaussianForPreConvolution:
-                        self.log.infof(
-                            "AL likelihood image: Using Gaussian (sigma={:.2f}) PSF estimation "
+                        self.log.info(
+                            "AL likelihood image: Using Gaussian (sigma=%.2f) PSF estimation "
                             "for science image pre-convolution", scienceSigmaOrig)
                         # convolve with a simplified PSF model: a double Gaussian
                         kWidth, kHeight = sciencePsf.getLocalKernel().getDimensions()
                         preConvPsf = SingleGaussianPsf(kWidth, kHeight, scienceSigmaOrig)
                     else:
                         # convolve with science exposure's PSF model
-                        self.log.infof(
+                        self.log.info(
                             "AL likelihood image: Using the science image PSF for pre-convolution.")
                         preConvPsf = srcPsf
                     afwMath.convolve(exposure.maskedImage, srcMI, preConvPsf.getLocalKernel(), convControl)
