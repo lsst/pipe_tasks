@@ -675,7 +675,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
     )
     visitSummary = connectionTypes.Input(
         doc="Consolidated exposure metadata from ConsolidateVisitSummaryTask",
-        name="visitSummary",
+        name="{calexpType}visitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit",),
     )
