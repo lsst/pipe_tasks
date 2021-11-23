@@ -297,17 +297,23 @@ class PsfWcsSelectImagesConfig(pipeBase.PipelineTaskConfig,
     starSelection = pexConfig.Field(
         doc="select star with this field",
         dtype=str,
-        default='calib_psf_used'
+        default='calib_psf_used',
+        deprecated=('This field has been moved to ComputeExposureSummaryStatsTask and '
+                    'will be removed after v24.')
     )
     starShape = pexConfig.Field(
         doc="name of star shape",
         dtype=str,
-        default='base_SdssShape'
+        default='base_SdssShape',
+        deprecated=('This field has been moved to ComputeExposureSummaryStatsTask and '
+                    'will be removed after v24.')
     )
     psfShape = pexConfig.Field(
         doc="name of psf shape",
         dtype=str,
-        default='base_SdssShape_psf'
+        default='base_SdssShape_psf',
+        deprecated=('This field has been moved to ComputeExposureSummaryStatsTask and '
+                    'will be removed after v24.')
     )
 
 
@@ -346,7 +352,7 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         for dataRef, exposureInfo in zip(result.dataRefList, result.exposureInfoList):
             butler = dataRef.butlerSubset.butler
             srcCatalog = butler.get('src', dataRef.dataId)
-            valid = self.isValid(srcCatalog, dataRef.dataId)
+            valid = self.isValidGen2(srcCatalog, dataRef.dataId)
             if valid is False:
                 continue
 
@@ -358,7 +364,7 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
             exposureInfoList=exposureInfoList,
         )
 
-    def run(self, wcsList, bboxList, coordList, srcList, dataIds=None, **kwargs):
+    def run(self, wcsList, bboxList, coordList, visitSummary, dataIds=None, **kwargs):
         """Return indices of provided lists that meet the selection criteria
 
         Parameters:
@@ -369,7 +375,7 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
             specifying the bounding boxes of the input ccds to be selected
         coordList : `list` of `lsst.geom.SpherePoint`
             ICRS coordinates specifying boundary of the patch.
-        srcList : `list` of `lsst.afw.table.SourceCatalog`
+        visitSummary : `list` of `lsst.afw.table.ExposureCatalog`
             containing the PSF shape information for the input ccds to be selected
 
         Returns:
@@ -381,18 +387,61 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
                                                           coordList=coordList, dataIds=dataIds)
 
         goodPsf = []
-        if dataIds is None:
-            dataIds = [None] * len(srcList)
-        for i, (srcCatalog, dataId) in enumerate(zip(srcList, dataIds)):
+
+        for i, dataId in enumerate(dataIds):
             if i not in goodWcs:
                 continue
-            if self.isValid(srcCatalog, dataId):
+            if self.isValid(visitSummary, dataId['detector']):
                 goodPsf.append(i)
 
         return goodPsf
 
-    def isValid(self, srcCatalog, dataId=None):
-        """Should this ccd be selected based on its PSF shape information
+    def isValid(self, visitSummary, detectorId):
+        """Should this ccd be selected based on its PSF shape information.
+
+        Parameters
+        ----------
+        visitSummary : `lsst.afw.table.ExposureCatalog`
+        detectorId : `int`
+            Detector identifier.
+
+        Returns
+        -------
+        valid : `bool`
+            True if selected.
+        """
+        row = visitSummary.find(detectorId)
+        if row is None:
+            # This is not listed, so it must be bad.
+            self.log.warning("Removing visit %d detector %d because summary stats not available.",
+                             row["visit"], detectorId)
+            return False
+
+        medianE = np.sqrt(row["psfStarDeltaE1Median"]**2. + row["psfStarDeltaE2Median"]**2.)
+        scatterSize = row["psfStarDeltaSizeScatter"]
+        scaledScatterSize = row["psfStarScaledDeltaSizeScatter"]
+
+        valid = True
+        if self.config.maxEllipResidual and medianE > self.config.maxEllipResidual:
+            self.log.info("Removing visit %d detector %d because median e residual too large: %f vs %f",
+                          row["visit"], detectorId, medianE, self.config.maxEllipResidual)
+            valid = False
+        elif self.config.maxSizeScatter and scatterSize > self.config.maxSizeScatter:
+            self.log.info("Removing visit %d detector %d because size scatter too large: %f vs %f",
+                          row["visit"], detectorId, scatterSize, self.config.maxSizeScatter)
+            valid = False
+        elif self.config.maxScaledSizeScatter and scaledScatterSize > self.config.maxScaledSizeScatter:
+            self.log.info("Removing visit %d detector %d because scaled size scatter too large: %f vs %f",
+                          row["visit"], detectorId, scaledScatterSize, self.config.maxScaledSizeScatter)
+            valid = False
+
+        return valid
+
+    def isValidGen2(self, srcCatalog, dataId=None):
+        """Should this ccd be selected based on its PSF shape information.
+
+        This routine is only used in Gen2 processing, and can be
+        removed when Gen2 is retired.
 
         Parameters
         ----------
