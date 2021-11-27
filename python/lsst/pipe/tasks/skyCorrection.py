@@ -201,8 +201,13 @@ class SkyCorrectionTask(pipeBase.PipelineTask, BatchPoolTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
 
-        # reorder skyCalibs and calBkgArray per calExpArray
+        # Reorder the skyCalibs, calBkgArray, and calExpArray inputRefs and the
+        # skyCorr outputRef sorted by detector id to ensure reproducibility.
         detectorOrder = [ref.dataId['detector'] for ref in inputRefs.calExpArray]
+        detectorOrder.sort()
+        inputRefs.calExpArray = reorderAndPadList(inputRefs.calExpArray,
+                                                  [ref.dataId['detector'] for ref in inputRefs.calExpArray],
+                                                  detectorOrder)
         inputRefs.skyCalibs = reorderAndPadList(inputRefs.skyCalibs,
                                                 [ref.dataId['detector'] for ref in inputRefs.skyCalibs],
                                                 detectorOrder)
@@ -286,6 +291,9 @@ class SkyCorrectionTask(pipeBase.PipelineTask, BatchPoolTask):
 
             dataIdList = [ccdRef.dataId for ccdRef in expRef.subItems("ccd") if
                           ccdRef.datasetExists(self.config.calexpType)]
+            ccdList = [dataId["ccd"] for dataId in dataIdList]
+            # Order inputs sorted by detector id to ensure reproducibility
+            dataIdList = [dataId for _, dataId in sorted(zip(ccdList, dataIdList))]
 
             exposures = pool.map(self.loadImage, dataIdList)
             if DEBUG:
