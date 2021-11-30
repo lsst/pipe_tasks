@@ -20,6 +20,7 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 from collections import defaultdict
+import warnings
 import numbers
 import numpy as np
 import healpy as hp
@@ -151,10 +152,16 @@ class HealSparseInputMapTask(pipeBase.Task):
         ccds : `lsst.afw.table.ExposureCatalog`
             Exposure catalog with ccd data from coadd inputs.
         """
-        self.ccd_input_map = hsp.HealSparseMap.make_empty(nside_coverage=self.config.nside_coverage,
-                                                          nside_sparse=self.config.nside,
-                                                          dtype=hsp.WIDE_MASK,
-                                                          wide_mask_maxbits=len(ccds))
+        with warnings.catch_warnings():
+            # Healsparse will emit a warning if nside coverage is greater than
+            # 128.  In the case of generating patch input maps, and not global
+            # maps, high nside coverage works fine, so we can suppress this
+            # warning.
+            warnings.simplefilter("ignore")
+            self.ccd_input_map = hsp.HealSparseMap.make_empty(nside_coverage=self.config.nside_coverage,
+                                                              nside_sparse=self.config.nside,
+                                                              dtype=hsp.WIDE_MASK,
+                                                              wide_mask_maxbits=len(ccds))
         self._wcs = wcs
         self._bbox = bbox
         self._ccds = ccds
@@ -202,12 +209,18 @@ class HealSparseInputMapTask(pipeBase.Task):
 
         dtype = [(f"v{visit}", "i4") for visit in self._bits_per_visit.keys()]
 
-        cov = self.config.nside_coverage
-        ns = self.config.nside
-        self._ccd_input_bad_count_map = hsp.HealSparseMap.make_empty(nside_coverage=cov,
-                                                                     nside_sparse=ns,
-                                                                     dtype=dtype,
-                                                                     primary=dtype[0][0])
+        with warnings.catch_warnings():
+            # Healsparse will emit a warning if nside coverage is greater than
+            # 128.  In the case of generating patch input maps, and not global
+            # maps, high nside coverage works fine, so we can suppress this
+            # warning.
+            warnings.simplefilter("ignore")
+            self._ccd_input_bad_count_map = hsp.HealSparseMap.make_empty(
+                nside_coverage=self.config.nside_coverage,
+                nside_sparse=self.config.nside,
+                dtype=dtype,
+                primary=dtype[0][0])
+
         # Don't set input bad map if there are no ccds which overlap the bbox.
         if len(self._ccd_input_pixels) > 0:
             self._ccd_input_bad_count_map[self._ccd_input_pixels] = np.zeros(1, dtype=dtype)
