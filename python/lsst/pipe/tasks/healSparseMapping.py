@@ -852,6 +852,12 @@ class ConsolidateHealSparsePropertyMapConfig(pipeBase.PipelineTaskConfig,
                  "dcr_e2"],
         doc="Property map computation objects",
     )
+    nside_coverage = pexConfig.Field(
+        doc="Consolidated HealSparse coverage map nside.  Must be power of 2.",
+        dtype=int,
+        default=32,
+        check=_is_power_of_two,
+    )
 
     def setDefaults(self):
         self.property_maps["exposure_time"].do_sum = True
@@ -918,29 +924,44 @@ class ConsolidateHealSparsePropertyMapTask(pipeBase.PipelineTask):
         # First, we read in the coverage maps to know how much memory
         # to allocate
         cov_mask = None
+        nside_coverage_inputs = None
         for tract_id in input_refs:
             cov = input_refs[tract_id].get(component='coverage')
             if cov_mask is None:
                 cov_mask = cov.coverage_mask
+                nside_coverage_inputs = cov.nside_coverage
             else:
                 cov_mask |= cov.coverage_mask
 
-        cov_pix, = np.where(cov_mask)
+        cov_pix_inputs, = np.where(cov_mask)
+
+        # Compute the coverage pixels for the desired nside_coverage
+        if nside_coverage_inputs == self.config.nside_coverage:
+            cov_pix = cov_pix_inputs
+        elif nside_coverage_inputs > self.config.nside_coverage:
+            # Converting from higher resolution coverage to lower
+            # resolution coverage.
+            bit_shift = hsp.utils._compute_bitshift(self.config.nside_coverage,
+                                                    nside_coverage_inputs)
+            cov_pix = np.right_shift(cov_pix_inputs, bit_shift)
+        else:
+            # Converting from lower resolution coverage to higher
+            # resolution coverage.
+            bit_shift = hsp.utils._compute_bitshift(nside_coverage_inputs,
+                                                    self.config.nside_coverage)
+            cov_pix = np.left_shift(cov_pix_inputs, bit_shift)
 
         # Now read in each tract map and build the consolidated map.
         consolidated_map = None
         for tract_id in input_refs:
             input_map = input_refs[tract_id].get()
             if consolidated_map is None:
-                dtype = input_map.dtype
-                sentinel = input_map._sentinel
-                nside_coverage = input_map.nside_coverage
-                nside_sparse = input_map.nside_sparse
-                consolidated_map = hsp.HealSparseMap.make_empty(nside_coverage,
-                                                                nside_sparse,
-                                                                dtype,
-                                                                sentinel=sentinel)
-                consolidated_map._reserve_cov_pix(cov_pix)
+                consolidated_map = hsp.HealSparseMap.make_empty(
+                    self.config.nside_coverage,
+                    input_map.nside_sparse,
+                    input_map.dtype,
+                    sentinel=input_map._sentinel,
+                    cov_pixels=cov_pix)
 
             # Only use pixels that are properly inside the tract.
             vpix, ra, dec = input_map.valid_pixels_pos(return_pixels=True)
