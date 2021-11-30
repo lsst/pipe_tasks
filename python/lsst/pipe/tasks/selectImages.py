@@ -400,10 +400,16 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         goodPsf = []
 
         if not self.config.doLegacyStarSelectionComputation:
+            # Check for old inputs, and give a helpful error message if so.
+            if 'nPsfStar' not in visitSummary[0].schema.getNames():
+                raise RuntimeError("Old calexps detected. "
+                                   "Please set config.doLegacyStarSelectionComputation=True for "
+                                   "backwards compatibility.")
+
             for i, dataId in enumerate(dataIds):
                 if i not in goodWcs:
                     continue
-                if self.isValid(visitSummary, dataId['detector']):
+                if self.isValid(visitSummary, dataId["detector"]):
                     goodPsf.append(i)
         else:
             if dataIds is None:
