@@ -707,8 +707,9 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
         nside_coverage_tract = 32
         while hp.nside2pixarea(nside_coverage_tract, degrees=True) > tract_area:
             nside_coverage_tract = 2*nside_coverage_tract
-        # Step back one, but don't go bigger pixels than nside=32
-        nside_coverage_tract = int(np.clip(nside_coverage_tract/2, 32, None))
+        # Step back one, but don't go bigger pixels than nside=32 or smaller
+        # than 128 (recommended by healsparse).
+        nside_coverage_tract = int(np.clip(nside_coverage_tract/2, 32, 128))
 
         return nside_coverage_tract
 
