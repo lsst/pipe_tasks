@@ -315,6 +315,13 @@ class PsfWcsSelectImagesConfig(pipeBase.PipelineTaskConfig,
         deprecated=('This field has been moved to ComputeExposureSummaryStatsTask and '
                     'will be removed after v24.')
     )
+    doLegacyStarSelectionComputation = pexConfig.Field(
+        doc="Perform the legacy star selection computations (for backwards compatibility)",
+        dtype=bool,
+        default=False,
+        deprecated=("This field is here for backwards compatibility and will be "
+                    "removed after v24.")
+    )
 
 
 class PsfWcsSelectImagesTask(WcsSelectImagesTask):
@@ -352,7 +359,7 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         for dataRef, exposureInfo in zip(result.dataRefList, result.exposureInfoList):
             butler = dataRef.butlerSubset.butler
             srcCatalog = butler.get('src', dataRef.dataId)
-            valid = self.isValidGen2(srcCatalog, dataRef.dataId)
+            valid = self.isValidLegacy(srcCatalog, dataRef.dataId)
             if valid is False:
                 continue
 
@@ -364,7 +371,7 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
             exposureInfoList=exposureInfoList,
         )
 
-    def run(self, wcsList, bboxList, coordList, visitSummary, dataIds=None, **kwargs):
+    def run(self, wcsList, bboxList, coordList, visitSummary, dataIds=None, srcList=None, **kwargs):
         """Return indices of provided lists that meet the selection criteria
 
         Parameters:
@@ -376,7 +383,11 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         coordList : `list` of `lsst.geom.SpherePoint`
             ICRS coordinates specifying boundary of the patch.
         visitSummary : `list` of `lsst.afw.table.ExposureCatalog`
-            containing the PSF shape information for the input ccds to be selected
+            containing the PSF shape information for the input ccds to be selected.
+        srcList : `list` of `lsst.afw.table.SourceCatalog`, optional
+            containing the PSF shape information for the input ccds to be selected.
+            This is only used if ``config.doLegacyStarSelectionComputation`` is
+            True.
 
         Returns:
         --------
@@ -388,11 +399,26 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
 
         goodPsf = []
 
-        for i, dataId in enumerate(dataIds):
-            if i not in goodWcs:
-                continue
-            if self.isValid(visitSummary, dataId['detector']):
-                goodPsf.append(i)
+        if not self.config.doLegacyStarSelectionComputation:
+            # Check for old inputs, and give a helpful error message if so.
+            if 'nPsfStar' not in visitSummary[0].schema.getNames():
+                raise RuntimeError("Old calexps detected. "
+                                   "Please set config.doLegacyStarSelectionComputation=True for "
+                                   "backwards compatibility.")
+
+            for i, dataId in enumerate(dataIds):
+                if i not in goodWcs:
+                    continue
+                if self.isValid(visitSummary, dataId["detector"]):
+                    goodPsf.append(i)
+        else:
+            if dataIds is None:
+                dataIds = [None] * len(srcList)
+            for i, (srcCatalog, dataId) in enumerate(zip(srcList, dataIds)):
+                if i not in goodWcs:
+                    continue
+                if self.isValidLegacy(srcCatalog, dataId):
+                    goodPsf.append(i)
 
         return goodPsf
 
@@ -437,11 +463,11 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
 
         return valid
 
-    def isValidGen2(self, srcCatalog, dataId=None):
+    def isValidLegacy(self, srcCatalog, dataId=None):
         """Should this ccd be selected based on its PSF shape information.
 
-        This routine is only used in Gen2 processing, and can be
-        removed when Gen2 is retired.
+        This routine is only used in legacy processing (gen2 and
+        backwards compatible old calexps) and should be removed after v24.
 
         Parameters
         ----------
