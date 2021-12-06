@@ -636,8 +636,6 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         band = image.getFilterLabel().bandLabel
         fakeCat = self._standardizeColumns(fakeCat, band)
-
-        fakeCat = self.addPixCoords(fakeCat, image)
         fakeCat = self.trimFakeCat(fakeCat, image)
 
         if len(fakeCat) > 0:
@@ -948,6 +946,9 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         self.log.info("Processing %d fake images", len(fakeCat))
 
+        if 'x' not in fakeCat.columns:
+            fakeCat = self.addPixCoords(fakeCat, wcs=wcs)
+
         for (imFile, sourceType, mag, x, y) in zip(fakeCat[band + "imFilename"].array,
                                                    fakeCat["sourceType"].array,
                                                    fakeCat['mag'].array,
@@ -994,7 +995,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         return galImages, starImages
 
-    def addPixCoords(self, fakeCat, image):
+    def addPixCoords(self, fakeCat, image=None, wcs=None):
 
         """Add pixel coordinates to the catalog of fakes.
 
@@ -1002,14 +1003,17 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         ----------
         fakeCat : `pandas.core.frame.DataFrame`
                     The catalog of fake sources to be input
-        image : `lsst.afw.image.exposure.exposure.ExposureF`
+        image : `lsst.afw.image.exposure.exposure.ExposureF`, optional
                     The image into which the fake sources should be added
+        wcs : `lsst.afw.geom.SkyWcs`, optional
+                    WCS to use to add fake sources
 
         Returns
         -------
         fakeCat : `pandas.core.frame.DataFrame`
         """
-        wcs = image.getWcs()
+        if wcs is None:
+            wcs = image.getWcs()
         ras = fakeCat['ra'].values
         decs = fakeCat['dec'].values
         xs, ys = wcs.skyToPixelArray(ras, decs)
@@ -1086,6 +1090,9 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         self.log.info("Making %d fake galaxy images", len(fakeCat))
 
+        if 'x' not in fakeCat.columns:
+            fakeCat = self.addPixCoords(fakeCat, image)
+
         for (index, row) in fakeCat.iterrows():
             xy = geom.Point2D(row["x"], row["y"])
 
@@ -1158,6 +1165,9 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         """
 
         self.log.info("Making %d fake star images", len(fakeCat))
+
+        if 'x' not in fakeCat.columns:
+            fakeCat = self.addPixCoords(fakeCat, image)
 
         for (index, row) in fakeCat.iterrows():
             xy = geom.Point2D(row["x"], row["y"])
