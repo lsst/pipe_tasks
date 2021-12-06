@@ -31,6 +31,7 @@ import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+import lsst.sphgeom as sphgeom
 
 from lsst.pipe.base import CmdLineTask, PipelineTask, PipelineTaskConfig, PipelineTaskConnections
 import lsst.pipe.base.connectionTypes as cT
@@ -1020,8 +1021,6 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
     def trimFakeCat(self, fakeCat, image):
         """Trim the fake cat to about the size of the input image.
 
-        `fakeCat` must be processed with addPixCoords before using this method.
-
         Parameters
         ----------
         fakeCat : `pandas.core.frame.DataFrame`
@@ -1034,15 +1033,20 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         fakeCat : `pandas.core.frame.DataFrame`
                     The original fakeCat trimmed to the area of the image
         """
-
         bbox = Box2D(image.getBBox()).dilatedBy(self.config.trimBuffer)
-        xs = fakeCat["x"].values
-        ys = fakeCat["y"].values
-
-        isContained = xs >= bbox.minX
-        isContained &= xs <= bbox.maxX
-        isContained &= ys >= bbox.minY
-        isContained &= ys <= bbox.maxY
+        sphgeomCorners = []
+        for corner in bbox.getCorners():
+            spt = image.wcs.pixelToSky(corner)
+            sphgeomCorners.append(
+                sphgeom.UnitVector3d(
+                    sphgeom.NormalizedAngle.fromRadians(spt[0].asRadians()),
+                    sphgeom.Angle.fromRadians(spt[1].asRadians())
+                )
+            )
+        poly = sphgeom.ConvexPolygon(sphgeomCorners)
+        isContained = poly.contains(
+            fakeCat['ra'], fakeCat['dec']
+        )
 
         return fakeCat[isContained]
 
