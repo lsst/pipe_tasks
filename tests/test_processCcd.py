@@ -117,7 +117,9 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
 
                 summary = exposure.getInfo().getSummaryStats()
 
-                psfShape = exposure.getPsf().computeShape()
+                psf = exposure.getPsf()
+                psfAvgPos = psf.getAveragePosition()
+                psfShape = psf.computeShape(psfAvgPos)
                 psfIxx = psfShape.getIxx()
                 psfIyy = psfShape.getIyy()
                 psfIxy = psfShape.getIxy()

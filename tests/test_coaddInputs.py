@@ -199,8 +199,8 @@ class CoaddInputsTestCase(lsst.utils.tests.TestCase):
         del self.exposures
 
     def assertPsfsAlmostEqual(self, psf1, psf2):
-        im1 = psf1.computeImage()
-        im2 = psf2.computeImage()
+        im1 = psf1.computeImage(psf1.getAveragePosition())
+        im2 = psf2.computeImage(psf2.getAveragePosition())
         self.assertImagesAlmostEqual(im1, im2)
 
     def getCoaddPath(self, version):

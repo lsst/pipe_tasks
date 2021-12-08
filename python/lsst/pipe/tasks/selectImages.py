@@ -589,7 +589,9 @@ class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
 
             # if min/max PSF values are defined, remove images out of bounds
             pixToArcseconds = cal.getWcs().getPixelScale().asArcseconds()
-            psfSize = cal.getPsf().computeShape().getDeterminantRadius()*pixToArcseconds
+            # Just need a rough estimate; average positions are fine
+            psfAvgPos = cal.getPsf().getAveragePosition()
+            psfSize = cal.getPsf().computeShape(psfAvgPos).getDeterminantRadius()*pixToArcseconds
             sizeFwhm = psfSize * np.sqrt(8.*np.log(2.))
             if self.config.maxPsfFwhm and sizeFwhm > self.config.maxPsfFwhm:
                 continue

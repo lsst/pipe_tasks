@@ -493,8 +493,10 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             )
 
             psf = dmeRes.exposure.getPsf()
-            psfSigma = psf.computeShape().getDeterminantRadius()
-            psfDimensions = psf.computeImage().getDimensions()
+            # Just need a rough estimate; average positions are fine
+            psfAvgPos = psf.getAveragePosition()
+            psfSigma = psf.computeShape(psfAvgPos).getDeterminantRadius()
+            psfDimensions = psf.computeImage(psfAvgPos).getDimensions()
             medBackground = np.median(dmeRes.background.getImage().getArray())
             self.log.info("iter %s; PSF sigma=%0.2f, dimensions=%s; median background=%0.2f",
                           i + 1, psfSigma, psfDimensions, medBackground)
