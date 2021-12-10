@@ -857,9 +857,8 @@ class MakeWarpTask(MakeCoaddTempExpTask):
         for index, (calexp, background, skyCorr) in enumerate(zip(calExpList,
                                                                   backgroundList,
                                                                   skyCorrList)):
-            mi = calexp.maskedImage
             if not self.config.bgSubtracted:
-                mi += background.getImage()
+                calexp.maskedImage += background.getImage()
 
             if externalSkyWcsCatalog is not None or externalPhotoCalibCatalog is not None:
                 detectorId = calexp.getInfo().getDetector().getId()
@@ -913,7 +912,7 @@ class MakeWarpTask(MakeCoaddTempExpTask):
 
             # Apply skycorr
             if self.config.doApplySkyCorr:
-                mi -= skyCorr.getImage()
+                calexp.maskedImage -= skyCorr.getImage()
 
             indices.append(index)
 
