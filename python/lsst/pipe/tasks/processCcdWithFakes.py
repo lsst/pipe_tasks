@@ -370,11 +370,18 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
             inputs["wcs"] = row.getWcs()
         elif self.config.doApplyExternalTractSkyWcs:
             externalSkyWcsCatalogList = inputs["externalSkyWcsTractCatalog"]
+            externalSkyWcsCatalog = None
             for externalSkyWcsCatalogRef in externalSkyWcsCatalogList:
                 if externalSkyWcsCatalogRef.dataId["tract"] == tractId:
                     externalSkyWcsCatalog = externalSkyWcsCatalogRef.get(
                         datasetType=self.config.connections.externalSkyWcsTractCatalog)
                     break
+            if externalSkyWcsCatalog is None:
+                usedTract = externalSkyWcsCatalogList[-1].dataId["tract"]
+                self.log.warn(f"Warning, PhotoCalib for tract {tractId} not "
+                               "found. Using tract {usedTract} instead.")
+                externalSkyWcsCatalog = externalSkyWcsCatalogList[-1].get(
+                    datasetType=self.config.connections.externalSkyWcsTractCatalog)
             row = externalSkyWcsCatalog.find(detectorId)
             inputs["wcs"] = row.getWcs()
 
@@ -386,11 +393,18 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
             inputs["photoCalib"] = row.getPhotoCalib()
         elif self.config.doApplyExternalTractPhotoCalib:
             externalPhotoCalibCatalogList = inputs["externalPhotoCalibTractCatalog"]
+            externalPhotoCalibCatalog = None
             for externalPhotoCalibCatalogRef in externalPhotoCalibCatalogList:
                 if externalPhotoCalibCatalogRef.dataId["tract"] == tractId:
                     externalPhotoCalibCatalog = externalPhotoCalibCatalogRef.get(
                         datasetType=self.config.connections.externalPhotoCalibCatalog)
                     break
+            if externalPhotoCalibCatalog is None:
+                usedTract = externalPhotoCalibCatalogList[-1].dataId["tract"]
+                self.log.warn(f"Warning, PhotoCalib for tract {tractId} not "
+                               "found. Using tract {usedTract} instead.")
+                externalPhotoCalibCatalog = externalPhotoCalibCatalogList[-1].get(
+                    datasetType=self.config.connections.externalPhotoCalibCatalog)
             row = externalPhotoCalibCatalog.find(detectorId)
             inputs["photoCalib"] = row.getPhotoCalib()
 
