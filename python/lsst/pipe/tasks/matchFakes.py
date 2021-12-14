@@ -204,8 +204,8 @@ class MatchFakesTask(PipelineTask):
             tractId = fakeCatRef.dataId["tract"]
             # Make sure all data is within the inner part of the tract.
             outputCat.append(cat[
-                skyMap.findTractIdArray(cat[self.config.raColName],
-                                        cat[self.config.decColName],
+                skyMap.findTractIdArray(cat[self.config.ra_col],
+                                        cat[self.config.dec_col],
                                         degrees=False)
                 == tractId])
 
