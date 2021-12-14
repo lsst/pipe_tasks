@@ -378,7 +378,7 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
                     break
             if externalSkyWcsCatalog is None:
                 usedTract = externalSkyWcsCatalogList[-1].dataId["tract"]
-                self.log.warn(f"Warning, PhotoCalib for tract {tractId} not "
+                self.log.warn(f"Warning, SkyWcs for tract {tractId} not "
                                "found. Using tract {usedTract} instead.")
                 externalSkyWcsCatalog = externalSkyWcsCatalogList[-1].get(
                     datasetType=self.config.connections.externalSkyWcsTractCatalog)
