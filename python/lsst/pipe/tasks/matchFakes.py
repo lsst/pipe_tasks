@@ -233,8 +233,8 @@ class MatchFakesTask(PipelineTask):
         bbox = Box2D(image.getBBox())
 
         def trim(row):
-            coord = SpherePoint(row[self.config.raColName],
-                                row[self.config.decColName],
+            coord = SpherePoint(row[self.config.ra_col],
+                                row[self.config.dec_col],
                                 radians)
             cent = wcs.skyToPixel(coord)
             return bbox.contains(cent)
