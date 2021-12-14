@@ -124,8 +124,7 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
         """Test that the correct number of sources are in the ccd area.
         """
         matchTask = MatchFakesTask()
-        result = matchTask._trimFakeCat(
-            self.fakeCat, self.exposure)
+        result = matchTask._trimFakeCat(self.fakeCat, self.exposure)
         self.assertEqual(len(result), self.inExp.sum())
 
 

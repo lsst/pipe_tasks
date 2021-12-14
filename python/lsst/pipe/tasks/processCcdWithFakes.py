@@ -65,9 +65,9 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
     )
 
     fakeCats = cT.Input(
-        doc="Set of catalogs of fake sources to draw inputs from. We will "
-            "from one of these that fully contains our exposure or the is "
-            "closest the visit boresight.",
+        doc="Set of catalogs of fake sources to draw inputs from. We "
+            "concatenate the tract catalogs for detectorVisits that cover "
+            "multiple tracts.",
         name="{fakesType}fakeSourceCat",
         storageClass="DataFrame",
         dimensions=("tract", "skymap"),
@@ -389,7 +389,7 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
             for externalPhotoCalibCatalogRef in externalPhotoCalibCatalogList:
                 if externalPhotoCalibCatalogRef.dataId["tract"] == tractId:
                     externalPhotoCalibCatalog = externalPhotoCalibCatalogRef.get(
-                        datasetType=self.config.connections.externalSkyWcsTractCatalog)
+                        datasetType=self.config.connections.externalPhotoCalibCatalog)
                     break
             row = externalPhotoCalibCatalog.find(detectorId)
             inputs["photoCalib"] = row.getPhotoCalib()
@@ -413,8 +413,9 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
 
         Parameters
         ----------
-        fakeCat : `pandas.core.frame.DataFrame`
-                    The catalog of fake sources to add to the exposure
+        fakeCats : `list` of `lsst.daf.butler.DeferredDatasetHandle`
+                    Set of tract level fake catalogs that potentially cover
+                    this detectorVisit.
         exposure : `lsst.afw.image.exposure.exposure.ExposureF`
                     The exposure to add the fake sources to
         skyMap : `lsst.skymap.SkyMap`
@@ -500,8 +501,8 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
             tractId = fakeCatRef.dataId["tract"]
             # Make sure all data is within the inner part of the tract.
             outputCat.append(cat[
-                skyMap.findTractIdArray(cat[self.config.insertFakes.raColName],
-                                        cat[self.config.insertFakes.decColName],
+                skyMap.findTractIdArray(cat[self.config.insertFakes.ra_col],
+                                        cat[self.config.insertFakes.dec_col],
                                         degrees=False)
                 == tractId])
 

@@ -157,8 +157,8 @@ class MatchFakesTask(PipelineTask):
         trimmedFakes = self._trimFakeCat(fakeCat, diffIm)
         nPossibleFakes = len(trimmedFakes)
 
-        fakeVects = self._getVectors(trimmedFakes[self.config.raColName],
-                                     trimmedFakes[self.config.decColName])
+        fakeVects = self._getVectors(trimmedFakes[self.config.ra_col],
+                                     trimmedFakes[self.config.dec_col])
         diaSrcVects = self._getVectors(
             np.radians(associatedDiaSources.loc[:, "ra"]),
             np.radians(associatedDiaSources.loc[:, "decl"]))
