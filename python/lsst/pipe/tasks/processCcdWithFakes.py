@@ -398,7 +398,7 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
             for externalPhotoCalibCatalogRef in externalPhotoCalibCatalogList:
                 if externalPhotoCalibCatalogRef.dataId["tract"] == tractId:
                     externalPhotoCalibCatalog = externalPhotoCalibCatalogRef.get(
-                        datasetType=self.config.connections.externalPhotoCalibCatalog)
+                        datasetType=self.config.connections.externalPhotoCalibTractCatalog)
                     break
             if externalPhotoCalibCatalog is None:
                 usedTract = externalPhotoCalibCatalogList[-1].dataId["tract"]
@@ -406,7 +406,7 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
                     f"Warning, external PhotoCalib for tract {tractId} not found. Using tract {usedTract} "
                     "instead.")
                 externalPhotoCalibCatalog = externalPhotoCalibCatalogList[-1].get(
-                    datasetType=self.config.connections.externalPhotoCalibCatalog)
+                    datasetType=self.config.connections.externalPhotoCalibTractCatalog)
             row = externalPhotoCalibCatalog.find(detectorId)
             inputs["photoCalib"] = row.getPhotoCalib()
 
