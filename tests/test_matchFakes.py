@@ -23,16 +23,12 @@
 
 import numpy as np
 import pandas as pd
-import shutil
-import tempfile
 import unittest
 import uuid
 
-import lsst.daf.butler.tests as butlerTests
 import lsst.sphgeom as sphgeom
 import lsst.geom as geom
 import lsst.meas.base.tests as measTests
-from lsst.pipe.base import testUtils
 import lsst.skymap as skyMap
 import lsst.utils.tests
 
@@ -67,8 +63,8 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
         self.fakeCat = pd.DataFrame({
             "fakeId": [uuid.uuid4().int & (1 << 64) - 1 for n in range(targetSources)],
             # Quick-and-dirty values for testing
-            "raJ2000": bCenter.getLon().asRadians() + bRadius * (2.0 * self.rng.random(targetSources) - 1.0),
-            "decJ2000": bCenter.getLat().asRadians() + bRadius * (2.0 * self.rng.random(targetSources) - 1.0),
+            "ra": bCenter.getLon().asRadians() + bRadius * (2.0 * self.rng.random(targetSources) - 1.0),
+            "dec": bCenter.getLat().asRadians() + bRadius * (2.0 * self.rng.random(targetSources) - 1.0),
             "isVisitSource": np.concatenate([np.ones(targetSources//2, dtype="bool"),
                                              np.zeros(targetSources - targetSources//2, dtype="bool")]),
             "isTemplateSource": np.concatenate([np.zeros(targetSources//2, dtype="bool"),
@@ -91,8 +87,8 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
         self.inExp = np.zeros(len(self.fakeCat), dtype=bool)
         bbox = geom.Box2D(self.exposure.getBBox())
         for idx, row in self.fakeCat.iterrows():
-            coord = geom.SpherePoint(row["raJ2000"],
-                                     row["decJ2000"],
+            coord = geom.SpherePoint(row["ra"],
+                                     row["dec"],
                                      geom.radians)
             cent = self.exposure.getWcs().skyToPixel(coord)
             self.inExp[idx] = bbox.contains(cent)
@@ -100,8 +96,8 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
         tmpCat = self.fakeCat[self.inExp].iloc[:int(self.inExp.sum() / 2)]
         extraColumnData = self.rng.integers(0, 100, size=len(tmpCat))
         self.sourceCat = pd.DataFrame(
-            data={"ra": np.degrees(tmpCat["raJ2000"]),
-                  "decl": np.degrees(tmpCat["decJ2000"]),
+            data={"ra": np.degrees(tmpCat["ra"]),
+                  "decl": np.degrees(tmpCat["dec"]),
                   "diaObjectId": np.arange(1, len(tmpCat) + 1, dtype=int),
                   "filterName": "g",
                   "diaSourceId": np.arange(1, len(tmpCat) + 1, dtype=int),
@@ -110,84 +106,15 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
                                  drop=False,
                                  inplace=True)
 
-    def testRunQuantum(self):
-        """Test the run quantum method with a gen3 butler.
-        """
-        root = tempfile.mkdtemp()
-        dimensions = {"instrument": ["notACam"],
-                      "skymap": ["deepCoadd_skyMap"],
-                      "tract": [0, 42],
-                      "visit": [1234, 4321],
-                      "detector": [25, 26]}
-        testRepo = butlerTests.makeTestRepo(root, dimensions)
-        matchTask = MatchFakesTask()
-        connections = matchTask.config.ConnectionsClass(
-            config=matchTask.config)
-
-        fakesDataId = {"skymap": "deepCoadd_skyMap",
-                       "tract": 0}
-        imgDataId = {"instrument": "notACam",
-                     "visit": 1234,
-                     "detector": 25}
-        butlerTests.addDatasetType(
-            testRepo,
-            connections.fakeCat.name,
-            connections.fakeCat.dimensions,
-            connections.fakeCat.storageClass)
-        butlerTests.addDatasetType(
-            testRepo,
-            connections.diffIm.name,
-            connections.diffIm.dimensions,
-            connections.diffIm.storageClass)
-        butlerTests.addDatasetType(
-            testRepo,
-            connections.associatedDiaSources.name,
-            connections.associatedDiaSources.dimensions,
-            connections.associatedDiaSources.storageClass)
-        butlerTests.addDatasetType(
-            testRepo,
-            connections.matchedDiaSources.name,
-            connections.matchedDiaSources.dimensions,
-            connections.matchedDiaSources.storageClass)
-        butler = butlerTests.makeTestCollection(testRepo)
-
-        butler.put(self.fakeCat,
-                   connections.fakeCat.name,
-                   {"tract": fakesDataId["tract"],
-                    "skymap": fakesDataId["skymap"]})
-        butler.put(self.exposure,
-                   connections.diffIm.name,
-                   {"instrument": imgDataId["instrument"],
-                    "visit": imgDataId["visit"],
-                    "detector": imgDataId["detector"]})
-        butler.put(self.sourceCat,
-                   connections.associatedDiaSources.name,
-                   {"instrument": imgDataId["instrument"],
-                    "visit": imgDataId["visit"],
-                    "detector": imgDataId["detector"]})
-
-        quantumDataId = imgDataId.copy()
-        quantumDataId.update(fakesDataId)
-        quantum = testUtils.makeQuantum(
-            matchTask, butler, quantumDataId,
-            {"fakeCat": fakesDataId,
-             "diffIm": imgDataId,
-             "associatedDiaSources": imgDataId,
-             "matchedDiaSources": imgDataId})
-        run = testUtils.runTestQuantum(matchTask, butler, quantum)
-        # Actual input dataset omitted for simplicity
-        run.assert_called_once()
-        shutil.rmtree(root, ignore_errors=True)
-
-    def testRun(self):
+    def testProcessFakes(self):
         """Test the run method.
         """
         matchFakesConfig = MatchFakesConfig()
         matchFakesConfig.matchDistanceArcseconds = 0.1
         matchFakes = MatchFakesTask(config=matchFakesConfig)
-        result = matchFakes.run(self.fakeCat,
-                                self.exposure,
-                                self.sourceCat)
+        result = matchFakes._processFakes(self.fakeCat,
+                                          self.exposure,
+                                          self.sourceCat)
         self.assertEqual(self.inExp.sum(), len(result.matchedDiaSources))
         self.assertEqual(
             len(self.sourceCat),

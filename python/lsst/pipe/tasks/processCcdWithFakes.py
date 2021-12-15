@@ -36,6 +36,7 @@ from lsst.obs.base import ExposureIdInfo
 from lsst.pipe.base import PipelineTask, PipelineTaskConfig, CmdLineTask, PipelineTaskConnections
 import lsst.pipe.base.connectionTypes as cT
 import lsst.afw.table as afwTable
+from lsst.skymap import BaseSkyMap
 from lsst.pipe.tasks.calibrate import CalibrateTask
 
 __all__ = ["ProcessCcdWithFakesConfig", "ProcessCcdWithFakesTask",
@@ -43,11 +44,18 @@ __all__ = ["ProcessCcdWithFakesConfig", "ProcessCcdWithFakesTask",
 
 
 class ProcessCcdWithFakesConnections(PipelineTaskConnections,
-                                     dimensions=("skymap", "tract", "instrument", "visit", "detector"),
+                                     dimensions=("instrument", "visit", "detector"),
                                      defaultTemplates={"coaddName": "deep",
                                                        "wcsName": "jointcal",
                                                        "photoCalibName": "jointcal",
                                                        "fakesType": "fakes_"}):
+    skyMap = cT.Input(
+        doc="Input definition of geometry/bbox and projection/wcs for "
+        "template exposures. Needed to test which tract to generate ",
+        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
+        dimensions=("skymap",),
+        storageClass="SkyMap",
+    )
 
     exposure = cT.Input(
         doc="Exposure into which fakes are to be added.",
@@ -56,11 +64,15 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
         dimensions=("instrument", "visit", "detector")
     )
 
-    fakeCat = cT.Input(
-        doc="Catalog of fake sources to draw inputs from.",
+    fakeCats = cT.Input(
+        doc="Set of catalogs of fake sources to draw inputs from. We "
+            "concatenate the tract catalogs for detectorVisits that cover "
+            "multiple tracts.",
         name="{fakesType}fakeSourceCat",
         storageClass="DataFrame",
-        dimensions=("tract", "skymap")
+        dimensions=("tract", "skymap"),
+        deferLoad=True,
+        multiple=True,
     )
 
     externalSkyWcsTractCatalog = cT.Input(
@@ -69,6 +81,8 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
         name="{wcsName}SkyWcsCatalog",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit", "tract", "skymap"),
+        deferLoad=True,
+        multiple=True,
     )
 
     externalSkyWcsGlobalCatalog = cT.Input(
@@ -86,6 +100,8 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
         name="{photoCalibName}PhotoCalibCatalog",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit", "tract"),
+        deferLoad=True,
+        multiple=True,
     )
 
     externalPhotoCalibGlobalCatalog = cT.Input(
@@ -343,29 +359,54 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
             expId, expBits = butlerQC.quantum.dataId.pack("visit_detector", returnMaxBits=True)
             inputs['exposureIdInfo'] = ExposureIdInfo(expId, expBits)
 
+        expWcs = inputs["exposure"].getWcs()
+        tractId = inputs["skyMap"].findTract(
+            expWcs.pixelToSky(inputs["exposure"].getBBox().getCenter())).tract_id
         if not self.config.doApplyExternalGlobalSkyWcs and not self.config.doApplyExternalTractSkyWcs:
-            inputs["wcs"] = inputs["exposure"].getWcs()
-
+            inputs["wcs"] = expWcs
         elif self.config.doApplyExternalGlobalSkyWcs:
             externalSkyWcsCatalog = inputs["externalSkyWcsGlobalCatalog"]
             row = externalSkyWcsCatalog.find(detectorId)
             inputs["wcs"] = row.getWcs()
-
         elif self.config.doApplyExternalTractSkyWcs:
-            externalSkyWcsCatalog = inputs["externalSkyWcsTractCatalog"]
+            externalSkyWcsCatalogList = inputs["externalSkyWcsTractCatalog"]
+            externalSkyWcsCatalog = None
+            for externalSkyWcsCatalogRef in externalSkyWcsCatalogList:
+                if externalSkyWcsCatalogRef.dataId["tract"] == tractId:
+                    externalSkyWcsCatalog = externalSkyWcsCatalogRef.get(
+                        datasetType=self.config.connections.externalSkyWcsTractCatalog)
+                    break
+            if externalSkyWcsCatalog is None:
+                usedTract = externalSkyWcsCatalogList[-1].dataId["tract"]
+                self.log.warn(
+                    f"Warning, external SkyWcs for tract {tractId} not found. Using tract {usedTract} "
+                    "instead.")
+                externalSkyWcsCatalog = externalSkyWcsCatalogList[-1].get(
+                    datasetType=self.config.connections.externalSkyWcsTractCatalog)
             row = externalSkyWcsCatalog.find(detectorId)
             inputs["wcs"] = row.getWcs()
 
         if not self.config.doApplyExternalGlobalPhotoCalib and not self.config.doApplyExternalTractPhotoCalib:
             inputs["photoCalib"] = inputs["exposure"].getPhotoCalib()
-
         elif self.config.doApplyExternalGlobalPhotoCalib:
             externalPhotoCalibCatalog = inputs["externalPhotoCalibGlobalCatalog"]
             row = externalPhotoCalibCatalog.find(detectorId)
             inputs["photoCalib"] = row.getPhotoCalib()
-
         elif self.config.doApplyExternalTractPhotoCalib:
-            externalPhotoCalibCatalog = inputs["externalPhotoCalibTractCatalog"]
+            externalPhotoCalibCatalogList = inputs["externalPhotoCalibTractCatalog"]
+            externalPhotoCalibCatalog = None
+            for externalPhotoCalibCatalogRef in externalPhotoCalibCatalogList:
+                if externalPhotoCalibCatalogRef.dataId["tract"] == tractId:
+                    externalPhotoCalibCatalog = externalPhotoCalibCatalogRef.get(
+                        datasetType=self.config.connections.externalPhotoCalibTractCatalog)
+                    break
+            if externalPhotoCalibCatalog is None:
+                usedTract = externalPhotoCalibCatalogList[-1].dataId["tract"]
+                self.log.warn(
+                    f"Warning, external PhotoCalib for tract {tractId} not found. Using tract {usedTract} "
+                    "instead.")
+                externalPhotoCalibCatalog = externalPhotoCalibCatalogList[-1].get(
+                    datasetType=self.config.connections.externalPhotoCalibTractCatalog)
             row = externalPhotoCalibCatalog.find(detectorId)
             inputs["photoCalib"] = row.getPhotoCalib()
 
@@ -380,17 +421,21 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
                                ContainerClass=PerTractCcdDataIdContainer)
         return parser
 
-    def run(self, fakeCat, exposure, wcs=None, photoCalib=None, exposureIdInfo=None, icSourceCat=None,
-            sfdSourceCat=None, externalSkyWcsGlobalCatalog=None, externalSkyWcsTractCatalog=None,
-            externalPhotoCalibGlobalCatalog=None, externalPhotoCalibTractCatalog=None):
+    def run(self, fakeCats, exposure, skyMap, wcs=None, photoCalib=None, exposureIdInfo=None,
+            icSourceCat=None, sfdSourceCat=None, externalSkyWcsGlobalCatalog=None,
+            externalSkyWcsTractCatalog=None, externalPhotoCalibGlobalCatalog=None,
+            externalPhotoCalibTractCatalog=None):
         """Add fake sources to a calexp and then run detection, deblending and measurement.
 
         Parameters
         ----------
-        fakeCat : `pandas.core.frame.DataFrame`
-                    The catalog of fake sources to add to the exposure
+        fakeCats : `list` of `lsst.daf.butler.DeferredDatasetHandle`
+                    Set of tract level fake catalogs that potentially cover
+                    this detectorVisit.
         exposure : `lsst.afw.image.exposure.exposure.ExposureF`
                     The exposure to add the fake sources to
+        skyMap : `lsst.skymap.SkyMap`
+            SkyMap defining the tracts and patches the fakes are stored over.
         wcs : `lsst.afw.geom.SkyWcs`
                     WCS to use to add fake sources
         photoCalib : `lsst.afw.image.photoCalib.PhotoCalib`
@@ -425,6 +470,7 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
 
         If exposureIdInfo is not provided then the SourceCatalog IDs will not be globally unique.
         """
+        fakeCat = self.composeFakeCat(fakeCats, skyMap)
 
         if wcs is None:
             wcs = exposure.getWcs()
@@ -444,6 +490,39 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
 
         resultStruct = pipeBase.Struct(outputExposure=exposure, outputCat=sourceCat)
         return resultStruct
+
+    def composeFakeCat(self, fakeCats, skyMap):
+        """Concatenate the fakeCats from tracts that may cover the exposure.
+
+        Parameters
+        ----------
+        fakeCats : `list` of `lst.daf.butler.DeferredDatasetHandle`
+            Set of fake cats to concatenate.
+        skyMap : `lsst.skymap.SkyMap`
+            SkyMap defining the geometry of the tracts and patches.
+
+        Returns
+        -------
+        combinedFakeCat : `pandas.DataFrame`
+            All fakes that cover the inner polygon of the tracts in this
+            quantum.
+        """
+        if len(fakeCats) == 1:
+            return fakeCats[0].get(
+                datasetType=self.config.connections.fakeCats)
+        outputCat = []
+        for fakeCatRef in fakeCats:
+            cat = fakeCatRef.get(
+                datasetType=self.config.connections.fakeCats)
+            tractId = fakeCatRef.dataId["tract"]
+            # Make sure all data is within the inner part of the tract.
+            outputCat.append(cat[
+                skyMap.findTractIdArray(cat[self.config.insertFakes.ra_col],
+                                        cat[self.config.insertFakes.dec_col],
+                                        degrees=False)
+                == tractId])
+
+        return pd.concat(outputCat)
 
     def copyCalibrationFields(self, calibCat, sourceCat, fieldsToCopy):
         """Match sources in calibCat and sourceCat and copy the specified fields
@@ -566,8 +645,8 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
     _DefaultName = "processCcdWithVariableFakes"
     ConfigClass = ProcessCcdWithVariableFakesConfig
 
-    def run(self, fakeCat, exposure, wcs=None, photoCalib=None, exposureIdInfo=None, icSourceCat=None,
-            sfdSourceCat=None):
+    def run(self, fakeCats, exposure, skyMap, wcs=None, photoCalib=None, exposureIdInfo=None,
+            icSourceCat=None, sfdSourceCat=None):
         """Add fake sources to a calexp and then run detection, deblending and measurement.
 
         Parameters
@@ -576,6 +655,8 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
                     The catalog of fake sources to add to the exposure
         exposure : `lsst.afw.image.exposure.exposure.ExposureF`
                     The exposure to add the fake sources to
+        skyMap : `lsst.skymap.SkyMap`
+            SkyMap defining the tracts and patches the fakes are stored over.
         wcs : `lsst.afw.geom.SkyWcs`
                     WCS to use to add fake sources
         photoCalib : `lsst.afw.image.photoCalib.PhotoCalib`
@@ -616,6 +697,8 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
 
         If exposureIdInfo is not provided then the SourceCatalog IDs will not be globally unique.
         """
+        fakeCat = self.composeFakeCat(fakeCats, skyMap)
+
         if wcs is None:
             wcs = exposure.getWcs()
 
