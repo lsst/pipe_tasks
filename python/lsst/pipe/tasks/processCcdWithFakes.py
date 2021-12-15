@@ -378,8 +378,9 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
                     break
             if externalSkyWcsCatalog is None:
                 usedTract = externalSkyWcsCatalogList[-1].dataId["tract"]
-                self.log.warn(f"Warning, external SkyWcs for tract {tractId} not "
-                               "found. Using tract {usedTract} instead.")
+                self.log.warn(
+                    f"Warning, external SkyWcs for tract {tractId} not found. Using tract {usedTract} "
+                    "instead.")
                 externalSkyWcsCatalog = externalSkyWcsCatalogList[-1].get(
                     datasetType=self.config.connections.externalSkyWcsTractCatalog)
             row = externalSkyWcsCatalog.find(detectorId)
@@ -401,8 +402,9 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
                     break
             if externalPhotoCalibCatalog is None:
                 usedTract = externalPhotoCalibCatalogList[-1].dataId["tract"]
-                self.log.warn(f"Warning, external PhotoCalib for tract {tractId} not "
-                               "found. Using tract {usedTract} instead.")
+                self.log.warn(
+                    f"Warning, external PhotoCalib for tract {tractId} not found. Using tract {usedTract} "
+                    "instead.")
                 externalPhotoCalibCatalog = externalPhotoCalibCatalogList[-1].get(
                     datasetType=self.config.connections.externalPhotoCalibCatalog)
             row = externalPhotoCalibCatalog.find(detectorId)
