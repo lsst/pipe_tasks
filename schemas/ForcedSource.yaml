@@ -1,3 +1,7 @@
+# This file defines the mapping between the columns in a forced source table 
+# and their respective DPDD-style column names, as used by
+# `lsst.pipe.tasks.postprocess.TransformForcedSourceTableTask`.
+# See the DPDD for more information about the output: https://lse-163.lsst.io
 funcs:
     forcedSourceId:
         functor: Column

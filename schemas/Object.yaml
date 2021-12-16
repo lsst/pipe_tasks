@@ -1,3 +1,7 @@
+# This file defines the mapping between the columns in an object table with
+# multiple filters and their respective DPDD-style column names, as used by
+# `lsst.pipe.tasks.postprocess.TransformObjectCatalogTask`.
+# See the DPDD for more information about the output: https://lse-163.lsst.io
 funcs:
     objectId: # the index of deepCoadd_obj IS the objectId
         functor: Index
