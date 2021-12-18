@@ -447,7 +447,7 @@ class InsertFakesConfig(PipelineTaskConfig,
         doc="The column name for the sersic index of the disk component used in the fake source catalog.",
         dtype=str,
         default="disk_n",
-        deprecated="Use `disk_n` instead."
+        deprecated="Use `disk_n_col` instead."
     )
 
     bulgeHLR = pexConfig.Field(
@@ -495,7 +495,7 @@ class InsertFakesConfig(PipelineTaskConfig,
         doc="The column name for the sersic index of the bulge component used in the fake source catalog.",
         dtype=str,
         default="bulge_n",
-        deprecated="Use `bulge_n` instead."
+        deprecated="Use `bulge_n_col` instead."
     )
 
     magVar = pexConfig.Field(
