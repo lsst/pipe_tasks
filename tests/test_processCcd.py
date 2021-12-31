@@ -156,7 +156,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                         ("psfIxx", psfIxx, 2.843329671276296, 6),
                         ("psfIyy", psfIyy, 2.2249941554078156,7 ),
                         ("psfIxy", psfIxy, 0.16073332780683286, 7),
-                        ("summary_psfSigma", summary.psfSigma, 1.581520120798809, 7),
+                        ("summary_psfSigma", summary.psfSigma, 1.581520120798809, 6),
                         ("summary_psfIxx", summary.psfIxx, 2.8524883317493583, 7),
                         ("summary_psfIyy", summary.psfIyy, 2.2028393759764615, 7),
                         ("summary_psfIxy", summary.psfIxy, 0.16595993509518148,7 ),
