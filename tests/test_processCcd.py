@@ -145,30 +145,29 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                     # #dm-science-pipelines as to whether the changes are
                     # reasonable, and then replace the failing values by
                     # running the test to determine the updated values.
-                    expectedPlaces = 6  # Tolerance for numerical comparisons
-                    for name, var, val in [
-                        ("bgMean", bgMean, 191.48623786891795),
-                        ("bgStdDev", bgStdDev, 0.23994185672586282),
-                        ("numGoodPix", numGoodPix, 1966606),
-                        ("imMean", imMean, 1.1242456954648634),
-                        ("imStdDev", imStdDev, 85.8129750182329),
-                        ("varMean", varMean, 131.24003624152013),
-                        ("varStdDev", varStdDev, 55.98012493452948),
-                        ("psfIxx", psfIxx, 2.843329671276296),
-                        ("psfIyy", psfIyy, 2.2249941554078156),
-                        ("psfIxy", psfIxy, 0.16073332780683286),
-                        ("summary_psfSigma", summary.psfSigma, 1.581520120798809),
-                        ("summary_psfIxx", summary.psfIxx, 2.8524883317493583),
-                        ("summary_psfIyy", summary.psfIyy, 2.2028393759764615),
-                        ("summary_psfIxy", summary.psfIxy, 0.16595993509518148),
-                        ("summary_psfArea", summary.psfArea, 38.63468352371086),
-                        ("summary_ra", summary.ra, 78.85551507080474),
-                        ("summary_decl", summary.decl, -9.800258687592303),
-                        ("summary_zenithDistance", float('%.6f' % (summary.zenithDistance)), 42.361001),
-                        ("summary_zeroPoint", summary.zeroPoint, 30.940228147639207),
-                        ("summary_skyBg", summary.skyBg, 191.37726892903447),
-                        ("summary_skyNoise", summary.skyNoise, 12.512272992606531),
-                        ("summary_meanVar", summary.meanVar, 130.61335199119068)
+                    for name, var, val, expectedPlaces in [
+                        ("bgMean", bgMean, 191.48623786891795, 7),
+                        ("bgStdDev", bgStdDev, 0.23994185672586282, 7),
+                        ("numGoodPix", numGoodPix, 1966606, 7),
+                        ("imMean", imMean, 1.1242456954648634, 7),
+                        ("imStdDev", imStdDev, 85.8129750182329, 7),
+                        ("varMean", varMean, 131.24003624152013, 7),
+                        ("varStdDev", varStdDev, 55.98012493452948, 7),
+                        ("psfIxx", psfIxx, 2.843329671276296, 7),
+                        ("psfIyy", psfIyy, 2.2249941554078156,7 ),
+                        ("psfIxy", psfIxy, 0.16073332780683286, 7),
+                        ("summary_psfSigma", summary.psfSigma, 1.581520120798809, 7),
+                        ("summary_psfIxx", summary.psfIxx, 2.8524883317493583, 7),
+                        ("summary_psfIyy", summary.psfIyy, 2.2028393759764615, 7),
+                        ("summary_psfIxy", summary.psfIxy, 0.16595993509518148,7 ),
+                        ("summary_psfArea", summary.psfArea, 38.63468352371086, 7),
+                        ("summary_ra", summary.ra, 78.85551507080474, 7),
+                        ("summary_decl", summary.decl, -9.800258687592303, 7),
+                        ("summary_zenithDistance", float('%.6f' % (summary.zenithDistance)), 42.361001, 7),
+                        ("summary_zeroPoint", summary.zeroPoint, 30.940228147639207, 7),
+                        ("summary_skyBg", summary.skyBg, 191.37726892903447, 7),
+                        ("summary_skyNoise", summary.skyNoise, 12.512272992606531, 7),
+                        ("summary_meanVar", summary.meanVar, 130.61335199119068, 7)
                     ]:
                         self.assertAlmostEqual(var, val, places=expectedPlaces, msg=name)
 
