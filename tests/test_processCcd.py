@@ -154,7 +154,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                         ("varMean", varMean, 131.24003624152013, 7),
                         ("varStdDev", varStdDev, 55.98012493452948, 7),
                         ("psfIxx", psfIxx, 2.843329671276296, 6),
-                        ("psfIyy", psfIyy, 2.2249941554078156,7 ),
+                        ("psfIyy", psfIyy, 2.2249941554078156, 7),
                         ("psfIxy", psfIxy, 0.16073332780683286, 7),
                         ("summary_psfSigma", summary.psfSigma, 1.581520120798809, 6),
                         ("summary_psfIxx", summary.psfIxx, 2.8524883317493583, 6),
