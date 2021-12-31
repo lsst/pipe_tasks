@@ -145,7 +145,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                     # #dm-science-pipelines as to whether the changes are
                     # reasonable, and then replace the failing values by
                     # running the test to determine the updated values.
-                    expectedPlaces = 7  # Tolerance for numerical comparisons
+                    expectedPlaces = 6  # Tolerance for numerical comparisons
                     for name, var, val in [
                         ("bgMean", bgMean, 191.48623786891795),
                         ("bgStdDev", bgStdDev, 0.23994185672586282),
