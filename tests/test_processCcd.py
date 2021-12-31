@@ -160,7 +160,7 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                         ("summary_psfIxx", summary.psfIxx, 2.8524883317493583, 6),
                         ("summary_psfIyy", summary.psfIyy, 2.2028393759764615, 6),
                         ("summary_psfIxy", summary.psfIxy, 0.16595993509518148,6 ),
-                        ("summary_psfArea", summary.psfArea, 38.63468352371086, 7),
+                        ("summary_psfArea", summary.psfArea, 38.63468352371086, 6),
                         ("summary_ra", summary.ra, 78.85551507080474, 7),
                         ("summary_decl", summary.decl, -9.800258687592303, 7),
                         ("summary_zenithDistance", float('%.6f' % (summary.zenithDistance)), 42.361001, 7),
