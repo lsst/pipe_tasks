@@ -71,7 +71,7 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
     fullBounds = galsim.BoundsI(bbox.minX, bbox.maxX, bbox.minY, bbox.maxY)
     gsImg = galsim.Image(exposure.image.array, bounds=fullBounds)
 
-    pixScale = wcs.getPixelScale().asArcseconds()
+    pixScale = wcs.getPixelScale(bbox.getCenter()).asArcseconds()
 
     for spt, gsObj in objects:
         pt = wcs.skyToPixel(spt)
@@ -251,6 +251,12 @@ class InsertFakesConfig(PipelineTaskConfig,
 
     insertImages = pexConfig.Field(
         doc="Insert images directly? True or False.",
+        dtype=bool,
+        default=False,
+    )
+
+    insertOnlyStars = pexConfig.Field(
+        doc="Insert only stars? True or False.",
         dtype=bool,
         default=False,
     )
@@ -709,7 +715,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         ]:
             add_to_replace_dict(new_name, depr_name, std_name)
         # Only handle bulge/disk params if not injecting images
-        if not cfg.insertImages:
+        if not cfg.insertImages and not cfg.insertOnlyStars:
             for new_name, depr_name, std_name in [
                 (cfg.bulge_n_col, cfg.nBulge, 'bulge_n'),
                 (cfg.bulge_pa_col, cfg.paBulge, 'bulge_pa'),
@@ -729,7 +735,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         # Handling the half-light radius and axis-ratio are trickier, since we
         # moved from expecting (HLR, a, b) to expecting (semimajor, axis_ratio).
         # Just handle these manually.
-        if not cfg.insertImages:
+        if not cfg.insertImages and not cfg.insertOnlyStars:
             if (
                 cfg.bulge_semimajor_col in fakeCat.columns
                 and cfg.bulge_axis_ratio_col in fakeCat.columns

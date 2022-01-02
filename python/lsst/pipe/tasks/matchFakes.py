@@ -95,6 +95,12 @@ class MatchFakesConfig(
         max=10,
     )
 
+    doMatchVisit = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Match visit to trim the fakeCat"
+    )
+
 
 class MatchFakesTask(PipelineTask):
     """Match a pre-existing catalog of fakes to a catalog of detections on
@@ -132,6 +138,10 @@ class MatchFakesTask(PipelineTask):
               length of ``fakeCat``. (`pandas.DataFrame`)
         """
         fakeCat = self.composeFakeCat(fakeCats, skyMap)
+
+        if self.config.doMatchVisit:
+            fakeCat = self.getVisitMatchedFakeCat(fakeCat, diffIm)
+
         return self._processFakes(fakeCat, diffIm, associatedDiaSources)
 
     def _processFakes(self, fakeCat, diffIm, associatedDiaSources):
@@ -210,6 +220,25 @@ class MatchFakesTask(PipelineTask):
                 == tractId])
 
         return pd.concat(outputCat)
+
+    def getVisitMatchedFakeCat(self, fakeCat, exposure):
+        """Trim the fakeCat to select particular visit
+
+        Parameters
+        ----------
+        fakeCat : `pandas.core.frame.DataFrame`
+                    The catalog of fake sources to add to the exposure
+        exposure : `lsst.afw.image.exposure.exposure.ExposureF`
+                    The exposure to add the fake sources to
+
+        Returns
+        -------
+        movingFakeCat : `pandas.DataFrame`
+            All fakes that belong to the visit
+        """
+        selected = exposure.getInfo().getVisitInfo().getId() == fakeCat["visit"]
+
+        return fakeCat[selected]
 
     def _trimFakeCat(self, fakeCat, image):
         """Trim the fake cat to about the size of the input image.
