@@ -236,6 +236,12 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig,
         doc=("Match radius for matching icSourceCat objects to sourceCat objects (pixels)"),
     )
 
+    doMatchVisit = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Match visit to trim the fakeCat"
+    )
+
     calibrate = pexConfig.ConfigurableField(target=CalibrateTask,
                                             doc="The calibration task to use.")
 
@@ -478,6 +484,9 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
         if photoCalib is None:
             photoCalib = exposure.getPhotoCalib()
 
+        if self.config.doMatchVisit:
+            fakeCat = self.getVisitMatchedFakeCat(fakeCat, exposure)
+
         self.insertFakes.run(fakeCat, exposure, wcs, photoCalib)
 
         # detect, deblend and measure sources
@@ -523,6 +532,25 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
                 == tractId])
 
         return pd.concat(outputCat)
+
+    def getVisitMatchedFakeCat(self, fakeCat, exposure):
+        """Trim the fakeCat to select particular visit
+
+        Parameters
+        ----------
+        fakeCat : `pandas.core.frame.DataFrame`
+                    The catalog of fake sources to add to the exposure
+        exposure : `lsst.afw.image.exposure.exposure.ExposureF`
+                    The exposure to add the fake sources to
+
+        Returns
+        -------
+        movingFakeCat : `pandas.DataFrame`
+            All fakes that belong to the visit
+        """
+        selected = exposure.getInfo().getVisitInfo().getId() == fakeCat["visit"]
+
+        return fakeCat[selected]
 
     def copyCalibrationFields(self, calibCat, sourceCat, fieldsToCopy):
         """Match sources in calibCat and sourceCat and copy the specified fields
