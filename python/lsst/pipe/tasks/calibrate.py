@@ -322,6 +322,8 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         for key in self.postCalibrationMeasurement.slots:
             setattr(self.postCalibrationMeasurement.slots, key, None)
         self.astromRefObjLoader.anyFilterMapsToThis = "phot_g_mean"
+        # The photoRefCat connection is the name to use for the colorterms.
+        self.photoCal.photoCatName = self.connections.photoRefCat
 
     def validate(self):
         super().validate()
