@@ -162,6 +162,8 @@ class CalibrateTaskTestCaseWithButler(lsst.utils.tests.TestCase):
         config.doWriteMatches = False  # no real output to write
         config.doAstrometry = doAstrometry
         config.doPhotoCal = doPhotoCal
+        config.connections.photoRefCat = "cal_ref_cat"
+        config.connections.astromRefCat = "cal_ref_cat"
         task = CalibrateTask(config=config)
         quantumId = ids["exposure"]
 
