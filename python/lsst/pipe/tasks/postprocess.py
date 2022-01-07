@@ -1387,6 +1387,11 @@ class ConsolidateSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
     outputDataset = 'sourceTable_visit'
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        from .makeCoaddTempExp import reorderRefs
+
+        detectorOrder = [ref.dataId['detector'] for ref in inputRefs.inputCatalogs]
+        detectorOrder.sort()
+        inputRefs = reorderRefs(inputRefs, detectorOrder, dataIdKey='detector')
         inputs = butlerQC.get(inputRefs)
         self.log.info("Concatenating %s per-detector Source Tables",
                       len(inputs['inputCatalogs']))
