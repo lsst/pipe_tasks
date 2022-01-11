@@ -278,6 +278,7 @@ class SimpleMapper(lsst.daf.persistence.Mapper, metaclass=MapperMeta):
         ccdExposureId_bits=SimpleMapping(BypassPersistenceType),
         deepCoaddId=SkyMapping(BypassPersistenceType),
         deepCoaddId_bits=SimpleMapping(BypassPersistenceType),
+        deepCoadd_band=SimpleMapping(BypassPersistenceType),
         deepMergedCoaddId=SkyMapping(BypassPersistenceType),
         deepMergedCoaddId_bits=SimpleMapping(BypassPersistenceType),
         deepCoadd_skyMap=SimpleMapping(SkyMapPersistenceType, template="{dataset}{ext}", keys={}),
@@ -422,6 +423,9 @@ class SimpleMapper(lsst.daf.persistence.Mapper, metaclass=MapperMeta):
 
     def bypass_deepCoaddId_bits(self, datasetType, pythonType, location, dataId):
         return 1 + 7 + 13*2 + 3
+
+    def bypass_deepCoadd_band(self, datasetType, pythonType, location, dataId):
+        return self.filterLabel.bandLabel
 
     def bypass_deepMergedCoaddId(self, datasetType, pythonType, location, dataId):
         return self._computeCoaddId(dataId)

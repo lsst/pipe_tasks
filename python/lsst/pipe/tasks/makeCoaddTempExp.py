@@ -745,9 +745,11 @@ class MakeWarpTask(MakeCoaddTempExpTask):
         PipelineTask (Gen3) entry point to warp and optionally PSF-match
         calexps. This method is analogous to `runDataRef`.
         """
-
-        # Ensure all input lists are in same detector order as the calExpList
+        # Obtain the list of input detectors from calExpList.  Sort them by
+        # detector order (to ensure reproducibility).  Then ensure all input
+        # lists are in the same sorted detector order.
         detectorOrder = [ref.datasetRef.dataId['detector'] for ref in inputRefs.calExpList]
+        detectorOrder.sort()
         inputRefs = reorderRefs(inputRefs, detectorOrder, dataIdKey='detector')
 
         # Read in all inputs.

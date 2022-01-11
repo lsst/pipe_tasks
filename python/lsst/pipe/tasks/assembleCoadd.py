@@ -909,6 +909,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             self.shrinkValidPolygons(coaddInputs)
 
         coaddInputs.visits.sort()
+        coaddInputs.ccds.sort()
         if self.warpType == "psfMatched":
             # The modelPsf BBox for a psfMatchedWarp/coaddTempExp was dynamically defined by
             # ModelPsfMatchTask as the square box bounding its spatially-variable, pre-matched WarpedPsf.

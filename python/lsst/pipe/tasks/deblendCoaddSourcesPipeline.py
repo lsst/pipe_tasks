@@ -32,6 +32,8 @@ from lsst.obs.base import ExposureIdInfo
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 
+from .makeCoaddTempExp import reorderRefs
+
 __all__ = ("DeblendCoaddSourcesSingleConfig", "DeblendCoaddSourcesSingleTask",
            "DeblendCoaddSourcesMultiConfig", "DeblendCoaddSourcesMultiTask")
 
@@ -194,6 +196,11 @@ class DeblendCoaddSourcesMultiTask(DeblendCoaddSourcesBaseTask):
         self.outputSchema = afwTable.SourceCatalog(self.schema)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        # Obtain the list of bands, sort them (alphabetically), then reorder
+        # all input lists to match this band order.
+        bandOrder = [dRef.dataId["band"] for dRef in inputRefs.coadds]
+        bandOrder.sort()
+        inputRefs = reorderRefs(inputRefs, bandOrder, dataIdKey="band")
         inputs = butlerQC.get(inputRefs)
         exposureIdInfo = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "tract_patch")
         inputs["idFactory"] = exposureIdInfo.makeSourceIdFactory()

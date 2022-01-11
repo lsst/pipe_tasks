@@ -20,7 +20,10 @@
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
+import numpy as np
+
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
+from lsst.coadd.utils.getGen3CoaddExposureId import getGen3CoaddExposureId
 from lsst.pipe.base import (CmdLineTask, Struct, ArgumentParser, ButlerInitializedTaskRunner,
                             PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
 import lsst.pipe.base.connectionTypes as cT
@@ -282,7 +285,7 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
             exposure = patchRef.get("fakes_" + self.config.coaddName + "Coadd", immediate=True)
         else:
             exposure = patchRef.get(self.config.coaddName + "Coadd", immediate=True)
-        expId = int(patchRef.get(self.config.coaddName + "CoaddId"))
+        expId = getGen3CoaddExposureId(patchRef, coaddName=self.config.coaddName, log=self.log)
         results = self.run(exposure, self.makeIdFactory(patchRef), expId=expId)
         self.write(results, patchRef)
         return results
@@ -426,7 +429,7 @@ class DeblendCoaddSourcesTask(CmdLineTask):
     ConfigClass = DeblendCoaddSourcesConfig
     RunnerClass = DeblendCoaddSourcesRunner
     _DefaultName = "deblendCoaddSources"
-    makeIdFactory = _makeMakeIdFactory("MergedCoaddId")
+    makeIdFactory = _makeMakeIdFactory("MergedCoaddId", includeBand=False)
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -495,6 +498,10 @@ class DeblendCoaddSourcesTask(CmdLineTask):
                 filter = patchRef.get(coaddType + "Coadd_filterLabel", immediate=True)
                 filters.append(filter.bandLabel)
                 exposures.append(exposure)
+            # Sort inputs by band to match Gen3 order of inputs
+            exposures = [exposure for _, exposure in sorted(zip(filters, exposures))]
+            patchRefList = [patchRef for _, patchRef in sorted(zip(filters, patchRefList))]
+            filters.sort()
             # The input sources are the same for all bands, since it is a merged catalog
             sources = self.readSources(patchRef)
             exposure = afwImage.MultibandExposure.fromExposures(filters, exposures)
@@ -532,8 +539,11 @@ class DeblendCoaddSourcesTask(CmdLineTask):
         merged = dataRef.get(self.config.coaddName + "Coadd_mergeDet", immediate=True)
         self.log.info("Read %d detections: %s", len(merged), dataRef.dataId)
         idFactory = self.makeIdFactory(dataRef)
-        for s in merged:
-            idFactory.notify(s.getId())
+        # There may be gaps in the mergeDet catalog, which will cause the
+        # source ids to be inconsistent. So we update the id factory
+        # with the largest id already in the catalog.
+        maxId = np.max(merged["id"])
+        idFactory.notify(maxId)
         table = afwTable.SourceTable.make(self.schema, idFactory)
         sources = afwTable.SourceCatalog(table)
         sources.extend(merged, self.schemaMapper)
@@ -572,11 +582,6 @@ class DeblendCoaddSourcesTask(CmdLineTask):
                     dataRef.put(self.getFullMetadata(), metadataName)
             except Exception as e:
                 self.log.warning("Could not persist metadata for dataId=%s: %s", dataRef.dataId, e)
-
-    def getExposureId(self, dataRef):
-        """Get the ExposureId from a data reference
-        """
-        return int(dataRef.get(self.config.coaddName + "CoaddId"))
 
 
 class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
@@ -877,7 +882,8 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
     ConfigClass = MeasureMergedCoaddSourcesConfig
     RunnerClass = MeasureMergedCoaddSourcesRunner
     getSchemaCatalogs = _makeGetSchemaCatalogs("meas")
-    makeIdFactory = _makeMakeIdFactory("MergedCoaddId")  # The IDs we already have are of this type
+    # The IDs we already have are of this type
+    makeIdFactory = _makeMakeIdFactory("MergedCoaddId", includeBand=False)
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -1022,10 +1028,10 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         else:
             ccdInputs = None
 
-        results = self.run(exposure=exposure, sources=sources,
-                           ccdInputs=ccdInputs,
-                           skyInfo=skyInfo, butler=patchRef.getButler(),
-                           exposureId=self.getExposureId(patchRef))
+        expId = getGen3CoaddExposureId(patchRef, coaddName=self.config.coaddName, includeBand=False,
+                                       log=self.log)
+        results = self.run(exposure=exposure, sources=sources, skyInfo=skyInfo, exposureId=expId,
+                           ccdInputs=ccdInputs, butler=patchRef.getButler())
 
         if self.config.doMatchSources:
             self.writeMatches(patchRef, results)
@@ -1156,6 +1162,3 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         """
         dataRef.put(sources, self.config.coaddName + "Coadd_meas")
         self.log.info("Wrote %d sources: %s", len(sources), dataRef.dataId)
-
-    def getExposureId(self, dataRef):
-        return int(dataRef.get(self.config.coaddName + "CoaddId"))

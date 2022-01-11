@@ -21,6 +21,7 @@
 import lsst.afw.table as afwTable
 
 from lsst.coadd.utils import ExistingCoaddDataIdContainer
+from lsst.coadd.utils.getGen3CoaddExposureId import getGen3CoaddExposureId
 from lsst.pipe.base import TaskRunner, ArgumentParser
 from lsst.pex.config import Config, RangeField
 from lsst.obs.base import ExposureIdInfo
@@ -208,7 +209,7 @@ class CullPeaksConfig(Config):
                                                " also match the rankConsidered condition."))
 
 
-def _makeMakeIdFactory(datasetName):
+def _makeMakeIdFactory(datasetName, includeBand=True):
     """Construct a makeIdFactory instance method
 
     These are identical for all the classes here, so this consolidates
@@ -223,9 +224,8 @@ def _makeMakeIdFactory(datasetName):
         The actual parameters used in the IdFactory are provided by
         the butler (through the provided data reference.
         """
-        info = ExposureIdInfo(
-            int(dataRef.get(self.config.coaddName + datasetName)),
-            dataRef.get(self.config.coaddName + datasetName + "_bits")
-        )
+        expId = getGen3CoaddExposureId(dataRef, coaddName=self.config.coaddName, includeBand=includeBand,
+                                       log=self.log)
+        info = ExposureIdInfo(expId, dataRef.get(self.config.coaddName + datasetName + "_bits"))
         return info.makeSourceIdFactory()
     return makeIdFactory
