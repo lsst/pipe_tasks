@@ -33,6 +33,7 @@ import lsst.geom
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
 from lsst.skymap import BaseSkyMap
 from .coaddBase import CoaddBaseTask, makeSkyInfo, reorderAndPadList
+from .selectImages import PsfWcsSelectImagesTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 from collections.abc import Iterable
@@ -108,6 +109,7 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
     def setDefaults(self):
         CoaddBaseTask.ConfigClass.setDefaults(self)
         self.warpAndPsfMatch.psfMatch.kernel.active.kernelSize = self.matchingKernelSize
+        self.select.retarget(PsfWcsSelectImagesTask)
 
 ## \addtogroup LSST_task_documentation
 ## \{
