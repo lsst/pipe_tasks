@@ -67,6 +67,13 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
         name="{fakesType}calexp"
     )
 
+    calexpBackgroundExposure = pipeBase.connectionTypes.Input(
+        doc="Input science exposure to subtract from.",
+        dimensions=("instrument", "visit", "detector"),
+        storageClass="Background",
+        name="calexpBackground"
+    )
+
     # TODO DM-22953
     # kernelSources = pipeBase.connectionTypes.Input(
     #     doc="Source catalog produced in calibrate task for kernel candidate sources",
@@ -101,6 +108,12 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
         doc="Schema (as an example catalog) for output DIASource catalog.",
         storageClass="SourceCatalog",
         name="{fakesType}{coaddName}Diff_diaSrc_schema",
+    )
+    inputSubtractedExposure = pipeBase.connectionTypes.Input(
+        doc="Input AL difference or Zogy proper difference image",
+        dimensions=("instrument", "visit", "detector"),
+        storageClass="ExposureF",
+        name="{fakesType}{coaddName}Diff_differenceExp",
     )
     subtractedExposure = pipeBase.connectionTypes.Output(
         doc="Output AL difference or Zogy proper difference image",
@@ -149,6 +162,10 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
             self.outputs.remove("matchedExposure")
         if not config.doWriteSources:
             self.outputs.remove("diaSources")
+        if not config.doAddCalexpBackground:
+            self.inputs.remove("calexpBackgroundExposure")
+        if config.doSubtract:
+            self.inputs.remove("inputSubtractedExposure")
 
     # TODO DM-22953: Add support for refObjLoader (kernelSourcesFromRef)
     # Make kernelSources optional
@@ -548,9 +565,20 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
 
         self.checkTemplateIsSufficient(templateStruct.exposure)
 
+        calexpBackgroundExposure = None
+        if self.config.doAddCalexpBackground:
+            calexpBackgroundExposure = inputs["calexpBackgroundExposure"]
+
+        subtractedExposure = None
+        if not self.config.doSubtract and self.config.doDetection:
+            # If we don't do subtraction, we need the subtracted exposure from the repo
+            subtractedExposure = inputs["inputSubtractedExposure"]
+
         outputs = self.run(exposure=inputs['exposure'],
                            templateExposure=templateStruct.exposure,
-                           idFactory=idFactory)
+                           calexpBackgroundExposure=calexpBackgroundExposure,
+                           idFactory=idFactory,
+                           subtractedExposure=subtractedExposure)
         # Consistency with runDataref gen2 handling
         if outputs.diaSources is None:
             del outputs.diaSources
@@ -1354,9 +1382,20 @@ class ImageDifferenceFromTemplateTask(ImageDifferenceTask):
                                                       returnMaxBits=True)
         idFactory = self.makeIdFactory(expId=expId, expBits=expBits)
 
+        calexpBackgroundExposure = None
+        if self.config.doAddCalexpBackground:
+            calexpBackgroundExposure = inputs["calexpBackgroundExposure"]
+
+        subtractedExposure = None
+        if not self.config.doSubtract and self.config.doDetection:
+            # If we don't do subtraction, we need the subtracted exposure from the repo
+            subtractedExposure = inputs["inputSubtractedExposure"]
+
         outputs = self.run(exposure=inputs['exposure'],
                            templateExposure=inputs['inputTemplate'],
-                           idFactory=idFactory)
+                           calexpBackgroundExposure=calexpBackgroundExposure,
+                           idFactory=idFactory,
+                           subtractedExposure=subtractedExposure)
 
         # Consistency with runDataref gen2 handling
         if outputs.diaSources is None:
