@@ -38,8 +38,31 @@ import lsst.daf.persistence
 import lsst.afw.cameraGeom
 import lsst.afw.geom
 import lsst.afw.image as afwImage
+from lsst.daf.base import PropertySet
 
 __all__ = ("SimpleMapper", "makeSimpleCamera", "makeDataRepo")
+
+
+# None of the values aside from the "NONE"s matter, but
+# writing explicit meaningless values for all of them to appease
+# afw is the price we pay for trying to write a non-CameraMapper
+# Mapper. It'll all get better with Gen3 (TM).
+# Cache the values in a PropertySet since this code is called thousands
+# of times.
+_write_options = PropertySet.from_mapping({
+    "compression.algorithm": "NONE",
+    "compression.columns": 0,
+    "compression.rows": 0,
+    "compression.quantizeLevel": 0.0,
+    "scaling.algorithm": "NONE",
+    "scaling.bzero": 0.0,
+    "scaling.bscale": 0.0,
+    "scaling.bitpix": 0,
+    "scaling.quantizeLevel": 0.0,
+    "scaling.quantizePad": 0.0,
+    "scaling.fuzz": False,
+    "scaling.seed": 0,
+})
 
 
 class PersistenceType:
@@ -96,27 +119,9 @@ class ExposurePersistenceType(PersistenceType):
             loc = super(ExposurePersistenceType, cls).makeButlerLocation(path, dataId, mapper, suffix=None,
                                                                          storage=storage)
             # Write options are never applicable for _sub, since that's only
-            # for read.  None of the values aside from the "NONE"s matter, but
-            # writing explicit meaningless values for all of them to appease
-            # afw is the price we pay for trying to write a non-CameraMapper
-            # Mapper. It'll all get better with Gen3 (TM).
-            options = {
-                "compression.algorithm": "NONE",
-                "compression.columns": 0,
-                "compression.rows": 0,
-                "compression.quantizeLevel": 0.0,
-                "scaling.algorithm": "NONE",
-                "scaling.bzero": 0.0,
-                "scaling.bscale": 0.0,
-                "scaling.bitpix": 0,
-                "scaling.quantizeLevel": 0.0,
-                "scaling.quantizePad": 0.0,
-                "scaling.fuzz": False,
-                "scaling.seed": 0,
-            }
+            # for read.
             for prefix in ("image", "mask", "variance"):
-                for k, v in options.items():
-                    loc.additionalData.set("{}.{}".format(prefix, k), v)
+                loc.additionalData.setPropertySet(prefix, _write_options)
         elif suffix == "_sub":
             subId = dataId.copy()
             bbox = subId.pop('bbox')
