@@ -136,6 +136,15 @@ class IsolatedStarAssociationConfig(pipeBase.PipelineTaskConfig,
         super().setDefaults()
 
         source_selector = self.source_selector['science']
+        source_selector.setDefaults()
+
+        source_selector.doFlags = True
+        source_selector.doUnresolved = True
+        source_selector.doSignalToNoise = True
+        source_selector.doIsolated = True
+
+        source_selector.signalToNoise.minimum = 10.0
+        source_selector.signalToNoise.maximum = 1000.0
 
         flux_flag_name = self.inst_flux_field[0: -len('instFlux')] + 'flag'
 
@@ -155,14 +164,22 @@ class IsolatedStarAssociationConfig(pipeBase.PipelineTaskConfig,
         source_selector.isolated.parentName = 'parentSourceId'
         source_selector.isolated.nChildName = 'deblend_nChild'
 
+        source_selector.unresolved.maximum = 0.5
         source_selector.unresolved.name = 'extendedness'
 
 
-class IsolatedStarAssociationTask:
+class IsolatedStarAssociationTask(pipeBase.PipelineTask):
     """Match isolated stars and suchlike.
     """
     ConfigClass = IsolatedStarAssociationConfig
     _DefaultName = 'isolatedStarAssociation'
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.makeSubtask('source_selector')
+        # Only log warning and fatal errors from the source_selector
+        self.source_selector.log.setLevel(self.source_selector.log.WARN)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         input_ref_dict = butlerQC.get(inputRefs)
@@ -232,14 +249,14 @@ class IsolatedStarAssociationTask:
         # option in testing for relatively narrow tables.
         # (have not tested wide tables)
         all_columns, persist_columns = self._get_source_table_visit_columns()
-        poly = tract_info.getOuterSkyPolygon()
+        poly = tract_info.outer_sky_polygon
 
         tables = []
         for visit in source_table_ref_dict:
             source_table_ref = source_table_ref_dict[visit]
             df = source_table_ref.get(parameters={'columns': all_columns})
 
-            goodSrc = self.sourceSelector.selectSources(df)
+            goodSrc = self.source_selector.selectSources(df)
 
             table = df[persist_columns][goodSrc.selected].to_records()
 
@@ -279,7 +296,7 @@ class IsolatedStarAssociationTask:
 
         Returns
         -------
-        star_obs_cat : `np.ndarray`
+        star_obs_cat_sorted : `np.ndarray`
             Sorted and cropped star observation catalog.
         star_cat : `np.ndarray`
             Catalog of stars and indexes.
@@ -292,6 +309,8 @@ class IsolatedStarAssociationTask:
         primary_star_cat = self._match_primary_stars(primary_bands, star_obs_cat)
 
         primary_star_cat = self._remove_neighbors(primary_star_cat)
+
+        # What should the action be if all the stars are removed?
 
         # Crop to the inner tract.
         inner_tract_ids = skymap.findTractIdArray(primary_star_cat[self.config.ra_column],
@@ -498,8 +517,8 @@ class IsolatedStarAssociationTask:
 
         Returns
         -------
-        star_obs_cat_cut : `np.ndarray`
-            Cropped and sorted array of star observations.
+        star_obs_cat_sorted : `np.ndarray`
+            Sorted and cropped array of star observations.
         primary_star_cat : `np.ndarray`
             Catalog of isolated stars, with indexes to star_obs_cat_cut.
         """
