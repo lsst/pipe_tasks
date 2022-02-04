@@ -97,8 +97,27 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         skymap_config.pixelScale = 0.168
         return lsst.skymap.ringsSkyMap.RingsSkyMap(skymap_config)
 
-    def _make_simdata(self, tract):
-        """Make simulated data tables and references."""
+    def _make_simdata(self,
+                      tract,
+                      only_neighbors=False,
+                      only_out_of_tract=False,
+                      only_out_of_inner_tract=False):
+        """Make simulated data tables and references.
+
+        Parameters
+        ----------
+        only_neighbors : `bool`, optional
+            Only put in neighbors.
+        only_out_of_tract : `bool`, optional
+            All stars are out of the tract.
+        only_out_of_inner_tract : `bool`, optional
+            All stars are out of the inner tract.
+
+        Returns
+        -------
+        data_refs : `list` [`MockSourceTableReference`]
+            List of mock references.
+        """
         np.random.seed(12345)
 
         n_visit_per_band = 5
@@ -149,8 +168,23 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                 ra_just = ra_just_i
                 dec_just = dec_just_i
 
-            star_ra = np.concatenate((ra_both, ra_neighbor, ra_just))
-            star_dec = np.concatenate((dec_both, dec_neighbor, dec_just))
+            if only_neighbors:
+                star_ra = np.concatenate(([ra_both[n_star_both//2]], ra_neighbor))
+                star_dec = np.concatenate(([dec_both[n_star_both//2]], dec_neighbor))
+            else:
+                star_ra = np.concatenate((ra_both, ra_neighbor, ra_just))
+                star_dec = np.concatenate((dec_both, dec_neighbor, dec_just))
+
+            if only_out_of_tract:
+                poly = self.skymap[self.tract].outer_sky_polygon
+                use = ~poly.contains(np.deg2rad(star_ra), np.deg2rad(star_dec))
+                star_ra = star_ra[use]
+                star_dec = star_dec[use]
+            elif only_out_of_inner_tract:
+                inner_tract_ids = self.skymap.findTractIdArray(star_ra, star_dec, degrees=True)
+                use = (inner_tract_ids != self.tract)
+                star_ra = star_ra[use]
+                star_dec = star_dec[use]
 
             nstar = len(star_ra)
 
@@ -182,8 +216,12 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         self.n_visit_per_band = n_visit_per_band
         self.n_star_both = n_star_both
         self.n_star_just_one = n_star_just_one
-        self.star_ras = np.concatenate((ra_both, ra_just_r, ra_just_i, ra_neighbor))
-        self.star_decs = np.concatenate((dec_both, dec_just_r, dec_just_i, dec_neighbor))
+        if only_neighbors:
+            self.star_ras = np.concatenate(([ra_both[n_star_both//2]], ra_neighbor))
+            self.star_decs = np.concatenate(([dec_both[n_star_both//2]], dec_neighbor))
+        else:
+            self.star_ras = np.concatenate((ra_both, ra_just_r, ra_just_i, ra_neighbor))
+            self.star_decs = np.concatenate((dec_both, dec_just_r, dec_just_i, dec_neighbor))
 
         return data_refs
 
@@ -240,7 +278,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
 
     def test_get_source_table_visit_columns(self):
         """Test making of source table visit columns."""
-        all_columns, persist_columns = self.isolatedStarAssociationTask._get_source_table_visit_columns()
+        all_columns, persist_columns = self.isolatedStarAssociationTask._get_source_table_visit_column_names()
 
         # Make sure all persisted columns are in all columns.
         for col in persist_columns:
@@ -249,7 +287,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         # And make sure extendedness is not in persisted columns.
         self.assertTrue('extendedness' not in persist_columns)
 
-    def test_match_obsservations(self):
+    def test_match_observations(self):
         """Test _match_observations observation to primary matching."""
         # Stack all the observations; we do not want any cutting here.
         tables = []
@@ -295,7 +333,6 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
 
     def test_run_isolated_star_association_task(self):
         """Test running the full task."""
-
         struct = self.isolatedStarAssociationTask.run(self.skymap,
                                                       self.tract,
                                                       self.data_ref_dict)
@@ -342,6 +379,57 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                                                band_obs_star['decl'],
                                                1./3600.)
                 self.assertEqual(len(idx[0]), star_cat[f'nobs_{band}'][i])
+
+    def test_run_task_all_neighbors(self):
+        """Test running the task when all the stars are rejected as neighbors."""
+        data_refs = self._make_simdata(self.tract, only_neighbors=True)
+        data_ref_dict = {visit: data_ref for visit, data_ref in zip(self.visits,
+                                                                    data_refs)}
+
+        struct = self.isolatedStarAssociationTask.run(self.skymap,
+                                                      self.tract,
+                                                      data_ref_dict)
+
+        # These should ber zero length.
+        self.assertEqual(len(struct.star_obs_cat), 0)
+        self.assertEqual(len(struct.star_cat), 0)
+        # And spot-check a couple of expected fields to make sure they have the right type.
+        self.assertTrue('physical_filter' in struct.star_obs_cat.dtype.names)
+        self.assertTrue('nobs_i' in struct.star_cat.dtype.names)
+
+    def test_run_task_all_out_of_tract(self):
+        """Test running the task when all the observations are out of the tract."""
+        data_refs = self._make_simdata(self.tract, only_out_of_tract=True)
+        data_ref_dict = {visit: data_ref for visit, data_ref in zip(self.visits,
+                                                                    data_refs)}
+
+        struct = self.isolatedStarAssociationTask.run(self.skymap,
+                                                      self.tract,
+                                                      data_ref_dict)
+
+        # These should ber zero length.
+        self.assertEqual(len(struct.star_obs_cat), 0)
+        self.assertEqual(len(struct.star_cat), 0)
+        # And spot-check a couple of expected fields to make sure they have the right type.
+        self.assertTrue('physical_filter' in struct.star_obs_cat.dtype.names)
+        self.assertTrue('nobs_i' in struct.star_cat.dtype.names)
+
+    def test_run_task_all_out_of_inner_tract(self):
+        """Test running the task when all the observations are out of the inner tract."""
+        data_refs = self._make_simdata(self.tract, only_out_of_inner_tract=True)
+        data_ref_dict = {visit: data_ref for visit, data_ref in zip(self.visits,
+                                                                    data_refs)}
+
+        struct = self.isolatedStarAssociationTask.run(self.skymap,
+                                                      self.tract,
+                                                      data_ref_dict)
+
+        # These should ber zero length.
+        self.assertEqual(len(struct.star_obs_cat), 0)
+        self.assertEqual(len(struct.star_cat), 0)
+        # And spot-check a couple of expected fields to make sure they have the right type.
+        self.assertTrue('physical_filter' in struct.star_obs_cat.dtype.names)
+        self.assertTrue('nobs_i' in struct.star_cat.dtype.names)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):

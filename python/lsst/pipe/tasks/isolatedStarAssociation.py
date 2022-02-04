@@ -1,6 +1,6 @@
 #
 # LSST Data Management System
-# Copyright 2008-2021 AURA/LSST.
+# Copyright 2008-2022 AURA/LSST.
 #
 # This product includes software developed by the
 # LSST Project (http://www.lsst.org/).
@@ -52,13 +52,13 @@ class IsolatedStarAssociationConnections(pipeBase.PipelineTaskConnections,
         dimensions=("skymap",),
     )
     isolated_star_observations = pipeBase.connectionTypes.Output(
-        doc='Catalog of isolated star observations',
+        doc='Catalog of individual observations of isolated stars',
         name='isolated_star_observations',
         storageClass='DataFrame',
         dimensions=('instrument', 'tract'),
     )
     isolated_star_cat = pipeBase.connectionTypes.Output(
-        doc='Catalog of isolated stars',
+        doc='Catalog of isolated star positions',
         name='isolated_star_cat',
         storageClass='DataFrame',
         dimensions=('instrument', 'tract'),
@@ -71,7 +71,8 @@ class IsolatedStarAssociationConfig(pipeBase.PipelineTaskConfig,
 
     inst_flux_field = pexConfig.Field(
         doc=('Full name of instFlux field to use for s/n selection and persistence. '
-             'The associated flag will be implicity included in bad_flags.'),
+             'The associated flag will be implicity included in bad_flags. '
+             'Note that this is expected to end in ``instFlux``.'),
         dtype=str,
         default='apFlux_12_0_instFlux',
     )
@@ -81,7 +82,9 @@ class IsolatedStarAssociationConfig(pipeBase.PipelineTaskConfig,
         default=1.0,
     )
     isolation_radius = pexConfig.Field(
-        doc='Isolation radius (arcseconds).  Should be at least 2x match_radius.',
+        doc=('Isolation radius (arcseconds).  Any stars with average centroids '
+             'within this radius of another star will be rejected from the final '
+             'catalog.  This radius should be at least 2x match_radius.'),
         dtype=float,
         default=2.0,
     )
@@ -128,7 +131,7 @@ class IsolatedStarAssociationConfig(pipeBase.PipelineTaskConfig,
                  'localBackground_flag']
     )
     source_selector = sourceSelectorRegistry.makeField(
-        doc='How to select sources',
+        doc='How to select sources.  Under normal usage this should not be changed.',
         default='science'
     )
 
@@ -146,7 +149,7 @@ class IsolatedStarAssociationConfig(pipeBase.PipelineTaskConfig,
         source_selector.signalToNoise.minimum = 10.0
         source_selector.signalToNoise.maximum = 1000.0
 
-        flux_flag_name = self.inst_flux_field[0: -len('instFlux')] + 'flag'
+        flux_flag_name = self.inst_flux_field.replace("instFlux", "flag")
 
         source_selector.flags.bad = ['pixelFlags_edge',
                                      'pixelFlags_interpolatedCenter',
@@ -200,7 +203,8 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
                 self.log.warning('Input data has data from band %s but that band is not '
                                  'configured for matching', band)
 
-        # Need to sort by visit
+        # TODO: Sort by visit until DM-31701 is done and we have deterministic
+        # dataset ordering.
         source_table_ref_dict = {visit: source_table_ref_dict_temp[visit] for
                                  visit in sorted(source_table_ref_dict_temp.keys())}
 
@@ -235,8 +239,16 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
         # Do primary matching
         primary_star_cat = self._match_primary_stars(primary_bands, star_obs_cat)
 
+        if len(primary_star_cat) == 0:
+            return pipeBase.Struct(star_obs_cat=np.zeros(0, star_obs_cat.dtype),
+                                   star_cat=np.zeros(0, primary_star_cat.dtype))
+
         # Remove neighbors
         primary_star_cat = self._remove_neighbors(primary_star_cat)
+
+        if len(primary_star_cat) == 0:
+            return pipeBase.Struct(star_obs_cat=np.zeros(0, star_obs_cat.dtype),
+                                   star_cat=np.zeros(0, primary_star_cat.dtype))
 
         # Crop to inner tract region
         inner_tract_ids = skymap.findTractIdArray(primary_star_cat[self.config.ra_column],
@@ -246,6 +258,10 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
         self.log.info('Total of %d isolated stars in inner tract.', use.sum())
 
         primary_star_cat = primary_star_cat[use]
+
+        if len(primary_star_cat) == 0:
+            return pipeBase.Struct(star_obs_cat=np.zeros(0, star_obs_cat.dtype),
+                                   star_cat=np.zeros(0, primary_star_cat.dtype))
 
         # Set the unique ids.
         primary_star_cat['isolated_star_id'] = self._compute_unique_ids(skymap,
@@ -280,7 +296,7 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
         # Internally, we use a numpy recarray, they are by far the fastest
         # option in testing for relatively narrow tables.
         # (have not tested wide tables)
-        all_columns, persist_columns = self._get_source_table_visit_columns()
+        all_columns, persist_columns = self._get_source_table_visit_column_names()
         poly = tract_info.outer_sky_polygon
 
         tables = []
@@ -314,7 +330,7 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
 
         return star_obs_cat
 
-    def _get_source_table_visit_columns(self):
+    def _get_source_table_visit_column_names(self):
         """Get the list of sourceTable_visit columns from the config.
 
         Returns
@@ -381,21 +397,24 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
             band_cat = np.zeros(count, dtype=dtype)
             band_cat['primary_band'] = primary_band
 
-            # rotate if necessary
-            rotated = False
+            # If the tract cross ra=0 (that is, it has both low ra and high ra)
+            # then we need to remap all ra values from [0, 360) to [-180, 180)
+            # before doing any position averaging.
+            remapped = False
             if ra.min() < 60.0 and ra.max() > 300.0:
                 ra_temp = (ra + 180.0) % 360. - 180.
-                rotated = True
+                remapped = True
             else:
                 ra_temp = ra
 
             # Compute mean position for each primary star
             for i, row in enumerate(idx):
                 row = np.array(row)
-                band_cat[ra_col][i] = np.sum(ra_temp[row])/len(row)
-                band_cat[dec_col][i] = np.sum(dec[row])/len(row)
+                band_cat[ra_col][i] = np.mean(ra_temp[row])
+                band_cat[dec_col][i] = np.mean(dec[row])
 
-            if rotated:
+            if remapped:
+                # Remap ra back to [0, 360)
                 band_cat[ra_col] %= 360.0
 
             # Match to previous band catalog(s), and remove duplicates.
@@ -412,6 +431,10 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
 
                 primary_star_cat = np.append(primary_star_cat, band_cat)
             self.log.info('Found %d primary stars in %s band.', len(band_cat), primary_band)
+
+        # If everything was cut, we still want the correct datatype.
+        if primary_star_cat is None:
+            primary_star_cat = np.zeros(0, dtype=dtype)
 
         return primary_star_cat
 
@@ -436,9 +459,10 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
             # will not be recorded.
             idx = matcher.query_self(self.config.isolation_radius/3600., min_match=2)
 
-        neighbor_indices = []
-        for row in idx:
-            neighbor_indices.extend(row)
+        try:
+            neighbor_indices = np.concatenate(idx)
+        except ValueError:
+            neighbor_indices = np.zeros(0, dtype=int)
 
         if len(neighbor_indices) > 0:
             neighbored = np.unique(neighbor_indices)
@@ -517,11 +541,8 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
                 primary_star_cat[f'obs_cat_index_{band}'] = (primary_star_cat['obs_cat_index']
                                                              + obs_cat_index_band_offset[b - 1, :])
 
-        # Reset all indices to illegal value -1
-        star_obs_cat['obj_index'] = -1
-        star_obs_cat['obj_index'][obs_index] = obj_index
-
         star_obs_cat = star_obs_cat[obs_index]
+        star_obs_cat['obj_index'] = obj_index
 
         return star_obs_cat, primary_star_cat
 
