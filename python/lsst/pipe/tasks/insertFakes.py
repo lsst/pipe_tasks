@@ -25,6 +25,7 @@ Insert fakes into deepCoadds
 import galsim
 from astropy.table import Table
 import numpy as np
+from astropy import units as u
 
 import lsst.geom as geom
 import lsst.afw.image as afwImage
@@ -1022,7 +1023,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         return fakeCat
 
     def trimFakeCat(self, fakeCat, image):
-        """Trim the fake cat to about the size of the input image.
+        """Trim the fake cat to the size of the input image plus trimBuffer padding.
 
         `fakeCat` must be processed with addPixCoords before using this method.
 
@@ -1038,17 +1039,25 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         fakeCat : `pandas.core.frame.DataFrame`
                     The original fakeCat trimmed to the area of the image
         """
+        wideBbox = Box2D(image.getBBox()).dilatedBy(self.config.trimBuffer)
 
-        bbox = Box2D(image.getBBox()).dilatedBy(self.config.trimBuffer)
+        # prefilter in ra/dec to avoid cases where the wcs incorrectly maps
+        # input fakes which are really off the chip onto it.
+        ras = fakeCat[self.config.ra_col].values * u.rad
+        decs = fakeCat[self.config.dec_col].values * u.rad
+
+        isContainedRaDec = image.containsSkyCoords(ras, decs, padding=self.config.trimBuffer)
+
+        # also filter on the image BBox in pixel space
         xs = fakeCat["x"].values
         ys = fakeCat["y"].values
 
-        isContained = xs >= bbox.minX
-        isContained &= xs <= bbox.maxX
-        isContained &= ys >= bbox.minY
-        isContained &= ys <= bbox.maxY
+        isContainedXy = xs >= wideBbox.minX
+        isContainedXy &= xs <= wideBbox.maxX
+        isContainedXy &= ys >= wideBbox.minY
+        isContainedXy &= ys <= wideBbox.maxY
 
-        return fakeCat[isContained]
+        return fakeCat[isContainedRaDec & isContainedXy]
 
     def mkFakeGalsimGalaxies(self, fakeCat, band, photoCalib, pixelScale, psf, image):
         """Make images of fake galaxies using GalSim.
