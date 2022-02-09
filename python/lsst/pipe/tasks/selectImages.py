@@ -439,8 +439,7 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         row = visitSummary.find(detectorId)
         if row is None:
             # This is not listed, so it must be bad.
-            self.log.warning("Removing visit %d detector %d because summary stats not available.",
-                             row["visit"], detectorId)
+            self.log.warning("Removing detector %d because summary stats not available.", detectorId)
             return False
 
         medianE = np.sqrt(row["psfStarDeltaE1Median"]**2. + row["psfStarDeltaE2Median"]**2.)
