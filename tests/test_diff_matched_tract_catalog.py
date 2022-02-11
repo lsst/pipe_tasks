@@ -1,4 +1,4 @@
-# This file is part of meas_astrom.
+# This file is part of pipe_tasks.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -30,6 +30,7 @@ from lsst.pipe.tasks.diff_matched_tract_catalog import (
 )
 
 import numpy as np
+import os
 import pandas as pd
 
 
@@ -106,6 +107,10 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             'match_row': np.arange(len(ra))[::-1],
         })
 
+        self.diff_matched = np.loadtxt(
+            os.path.join(os.path.dirname(__file__), "data", "test_diff_matched.txt")
+        )
+
         columns_flux_configs = {
             band: MatchedCatalogFluxesConfig(
                 column_ref_flux=columns_flux[idx],
@@ -118,6 +123,7 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
         self.task = DiffMatchedTractCatalogTask(config=DiffMatchedTractCatalogConfig(
             columns_target_coord_err=[column_ra_target_err, column_dec_target_err],
             columns_flux=columns_flux_configs,
+            mag_num_bins=1,
         ))
         self.wcs = afwGeom.makeSkyWcs(crpix=lsst.geom.Point2D(9000, 9000),
                                       crval=lsst.geom.SpherePoint(180., 0., lsst.geom.degrees),
@@ -128,6 +134,7 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
         del self.catalog_target
         del self.catalog_match_ref
         del self.catalog_match_target
+        del self.diff_matched
         del self.task
         del self.wcs
 
@@ -146,6 +153,9 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
         columns_expect.append(f'{prefix}index')
         columns_expect.extend((f'{prefix}{col}' for col in columns_ref))
         self.assertEqual(columns_expect, list(result.cat_matched.columns))
+        row = result.diff_matched.iloc[0].values
+        self.assertEqual(len(row), len(self.diff_matched))
+        self.assertEqual(np.sum(row.astype(float) != self.diff_matched), 0)
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
