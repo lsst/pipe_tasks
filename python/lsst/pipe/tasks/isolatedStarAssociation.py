@@ -86,8 +86,8 @@ class IsolatedStarAssociationConfig(pipeBase.PipelineTaskConfig,
         default=2.0,
     )
     band_order = pexConfig.ListField(
-        doc=('Order of bands to do "primary" matching.  Any bands not specified '
-             'will be used alphabetically.'),
+        doc=(('Ordered list of bands to use for matching/storage. '
+              'Any bands not listed will not be matched.')),
         dtype=str,
         default=['i', 'z', 'r', 'g', 'y', 'u'],
     )
@@ -194,11 +194,16 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
         source_table_ref_dict_temp = {source_table_ref.dataId['visit']: source_table_ref for
                                       source_table_ref in source_table_refs}
 
+        bands = {source_table_ref.dataId['band'] for source_table_ref in source_table_refs}
+        for band in bands:
+            if band not in self.config.band_order:
+                self.log.warning('Input data has data from band %s but that band is not '
+                                 'configured for matching', band)
+
         # Need to sort by visit
         source_table_ref_dict = {visit: source_table_ref_dict_temp[visit] for
                                  visit in sorted(source_table_ref_dict_temp.keys())}
 
-        # struct = self.run(tract_info, source_table_ref_dict)
         struct = self.run(input_ref_dict['skymap'], tract, source_table_ref_dict)
 
         butlerQC.put(pd.DataFrame(struct.star_obs_cat),
@@ -223,14 +228,41 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
         struct : `lsst.pipe.base.struct`
             Struct with outputs for persistence.
         """
-        star_obs_cat = self.make_all_star_obs(skymap[tract], source_table_ref_dict)
+        star_obs_cat = self._make_all_star_obs(skymap[tract], source_table_ref_dict)
 
-        star_obs_cat, star_cat = self.match_star_obs(star_obs_cat)
+        primary_bands = self.config.band_order
+
+        # Do primary matching
+        primary_star_cat = self._match_primary_stars(primary_bands, star_obs_cat)
+
+        # Remove neighbors
+        primary_star_cat = self._remove_neighbors(primary_star_cat)
+
+        # Crop to inner tract region
+        inner_tract_ids = skymap.findTractIdArray(primary_star_cat[self.config.ra_column],
+                                                  primary_star_cat[self.config.dec_column],
+                                                  degrees=True)
+        use = (inner_tract_ids == tract)
+        self.log.info('Total of %d isolated stars in inner tract.', use.sum())
+
+        primary_star_cat = primary_star_cat[use]
+
+        # Set the unique ids.
+        primary_star_cat['isolated_star_id'] = self._compute_unique_ids(skymap,
+                                                                        tract,
+                                                                        len(primary_star_cat))
+
+        # Match to observations.
+        star_obs_cat, primary_star_cat = self._match_observations(primary_bands,
+                                                                  star_obs_cat,
+                                                                  primary_star_cat)
+
+        # star_obs_cat, star_cat = self.match_star_obs(star_obs_cat)
 
         return pipeBase.Struct(star_obs_cat=star_obs_cat,
-                               star_cat=star_cat)
+                               star_cat=primary_star_cat)
 
-    def make_all_star_obs(self, tract_info, source_table_ref_dict):
+    def _make_all_star_obs(self, tract_info, source_table_ref_dict):
         """Make a catalog of all the star observations.
 
         Parameters
@@ -282,52 +314,6 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
 
         return star_obs_cat
 
-    def match_star_obs(self, skymap, tract, star_obs_cat):
-        """Match the star observations.
-
-        Parameters
-        ----------
-        skymap : `lsst.skymap.SkyMap`
-            Skymap object.
-        tract : `int`
-            Tract number.
-        star_obs_cat : `np.ndarray`
-            Star observation catalog.
-
-        Returns
-        -------
-        star_obs_cat_sorted : `np.ndarray`
-            Sorted and cropped star observation catalog.
-        star_cat : `np.ndarray`
-            Catalog of stars and indexes.
-        """
-        # Figure out band order.
-        bands = np.sort(np.unique(star_obs_cat['band']))
-        primary_bands = self._primary_band_order(self.config.band_order, bands)
-
-        # Do primary matching
-        primary_star_cat = self._match_primary_stars(primary_bands, star_obs_cat)
-
-        primary_star_cat = self._remove_neighbors(primary_star_cat)
-
-        # What should the action be if all the stars are removed?
-
-        # Crop to the inner tract.
-        inner_tract_ids = skymap.findTractIdArray(primary_star_cat[self.config.ra_column],
-                                                  primary_star_cat[self.config.dec_column],
-                                                  degrees=True)
-        use = (inner_tract_ids == tract)
-        self.log.info('Total of %d isolated stars in inner tract.', use.sum())
-
-        primary_star_cat = primary_star_cat[use]
-
-        # Set the unique ids here.
-        primary_star_cat['isolated_star_id'] = self._compute_unique_ids(skymap,
-                                                                        tract,
-                                                                        len(primary_star_cat))
-
-        star_obs_cat, primary_star_cat = self._match_observations(bands, star_obs_cat, primary_star_cat)
-
     def _get_source_table_visit_columns(self):
         """Get the list of sourceTable_visit columns from the config.
 
@@ -356,37 +342,6 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
 
         return all_columns, columns
 
-    @staticmethod
-    def _primary_band_order(band_order, bands):
-        """Compute order of primary bands.
-
-        This will return ordered list of bands according to band_order,
-        with extra bands left in input order (typically alphabetically).
-
-        Parameters
-        ----------
-        band_order : `list` [`str`]
-            Preferred order of bands.
-        bands : `list` [`str`]
-            List of unique bands to put in order.
-
-        Returns
-        -------
-        primary_band_order : `list` [`str`]
-            Ordered list of bands.
-        """
-        primary_bands = []
-        # Put bands in the configured band order
-        for band in band_order:
-            if band in bands:
-                primary_bands.append(band)
-        # For any remaining bands not configured, leave in order.
-        for band in bands:
-            if band not in primary_bands:
-                primary_bands.append(band)
-
-        return primary_bands
-
     def _match_primary_stars(self, primary_bands, star_obs_cat):
         """Match primary stars.
 
@@ -405,18 +360,7 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
         ra_col = self.config.ra_column
         dec_col = self.config.dec_column
 
-        max_len = max([len(primary_band) for primary_band in primary_bands])
-
-        dtype = [('isolated_star_id', 'i8'),
-                 (ra_col, 'f8'),
-                 (dec_col, 'f8'),
-                 ('primary_band', f'U{max_len}'),
-                 ('obs_cat_index', 'i4'),
-                 ('nobs', 'i4')]
-
-        for band in primary_bands:
-            dtype.append((f'obs_cat_index_{band}', 'i4'))
-            dtype.append((f'nobs_{band}', 'i4'))
+        dtype = self._get_primary_dtype(primary_bands)
 
         primary_star_cat = None
         for primary_band in primary_bands:
@@ -431,7 +375,7 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
             count = len(idx)
 
             if count == 0:
-                self.log.info('Found 0 primary stars in %s band.', band)
+                self.log.info('Found 0 primary stars in %s band.', primary_band)
                 continue
 
             band_cat = np.zeros(count, dtype=dtype)
@@ -605,3 +549,31 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
         mult = 10**(int(np.log10(len(skymap))) + 1)
 
         return (np.arange(nstar) + 1)*mult + tract
+
+    def _get_primary_dtype(self, primary_bands):
+        """Get the numpy datatype for the primary star catalog.
+
+        Parameters
+        ----------
+        primary_bands : `list` [`str`]
+            List of primary bands.
+
+        Returns
+        -------
+        dtype : `numpy.dtype`
+            Datatype of the primary catalog.
+        """
+        max_len = max([len(primary_band) for primary_band in primary_bands])
+
+        dtype = [('isolated_star_id', 'i8'),
+                 (self.config.ra_column, 'f8'),
+                 (self.config.dec_column, 'f8'),
+                 ('primary_band', f'U{max_len}'),
+                 ('obs_cat_index', 'i4'),
+                 ('nobs', 'i4')]
+
+        for band in primary_bands:
+            dtype.append((f'obs_cat_index_{band}', 'i4'))
+            dtype.append((f'nobs_{band}', 'i4'))
+
+        return dtype
