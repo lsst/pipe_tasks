@@ -1,8 +1,4 @@
-description: Visualize full visit/focal plane with binned and mosaic images.
-tasks:
-  binning:
-    class: lsst.pipe.tasks.visualizeVisit.VisualizeBinExpTask
-  mosaic:
-    class: lsst.pipe.tasks.visualizeVisit.VisualizeMosaicExpTask
-contracts:
-  - binning.binning == mosaic.binning
+description: >
+  This pipeline is a backwards-compatibility stub.
+imports:
+  location: $DRP_PIPE_DIR/pipelines/VisualizeVisit.yaml
