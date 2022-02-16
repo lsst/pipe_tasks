@@ -31,6 +31,7 @@ import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+import lsst.sphgeom as sphgeom
 
 from lsst.pipe.base import CmdLineTask, PipelineTask, PipelineTaskConfig, PipelineTaskConnections
 import lsst.pipe.base.connectionTypes as cT
@@ -71,8 +72,6 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
     fullBounds = galsim.BoundsI(bbox.minX, bbox.maxX, bbox.minY, bbox.maxY)
     gsImg = galsim.Image(exposure.image.array, bounds=fullBounds)
 
-    pixScale = wcs.getPixelScale().asArcseconds()
-
     for spt, gsObj in objects:
         pt = wcs.skyToPixel(spt)
         posd = galsim.PositionD(pt.x, pt.y)
@@ -83,15 +82,10 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
         mat = wcs.linearizePixelToSky(spt, geom.arcseconds).getMatrix()
         gsWCS = galsim.JacobianWCS(mat[0, 0], mat[0, 1], mat[1, 0], mat[1, 1])
 
-        # This check is here because sometimes the WCS
-        # is multivalued and objects that should not be
-        # were being included.
-        gsPixScale = np.sqrt(gsWCS.pixelArea())
-        if gsPixScale < pixScale/2 or gsPixScale > pixScale*2:
-            continue
-
         try:
             psfArr = psf.computeKernelImage(pt).array
+            apCorr = psf.computeApertureFlux(calibFluxRadius, pt)
+            psfArr /= apCorr
         except InvalidParameterError:
             # Try mapping to nearest point contained in bbox.
             contained_pt = Point2D(
@@ -108,6 +102,8 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
             # otherwise, try again with new point
             try:
                 psfArr = psf.computeKernelImage(contained_pt).array
+                apCorr = psf.computeApertureFlux(calibFluxRadius, contained_pt)
+                psfArr /= apCorr
             except InvalidParameterError:
                 if logger:
                     logger.infof(
@@ -116,8 +112,6 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
                     )
                 continue
 
-        apCorr = psf.computeApertureFlux(calibFluxRadius)
-        psfArr /= apCorr
         gsPSF = galsim.InterpolatedImage(galsim.Image(psfArr), wcs=gsWCS)
 
         conv = galsim.Convolve(gsObj, gsPSF)
@@ -633,8 +627,6 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         band = image.getFilterLabel().bandLabel
         fakeCat = self._standardizeColumns(fakeCat, band)
-
-        fakeCat = self.addPixCoords(fakeCat, image)
         fakeCat = self.trimFakeCat(fakeCat, image)
 
         if len(fakeCat) > 0:
@@ -945,6 +937,9 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         self.log.info("Processing %d fake images", len(fakeCat))
 
+        if 'x' not in fakeCat.columns:
+            fakeCat = self.addPixCoords(fakeCat, wcs=wcs)
+
         for (imFile, sourceType, mag, x, y) in zip(fakeCat[band + "imFilename"].array,
                                                    fakeCat["sourceType"].array,
                                                    fakeCat['mag'].array,
@@ -991,7 +986,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         return galImages, starImages
 
-    def addPixCoords(self, fakeCat, image):
+    def addPixCoords(self, fakeCat, image=None, wcs=None):
 
         """Add pixel coordinates to the catalog of fakes.
 
@@ -999,14 +994,17 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         ----------
         fakeCat : `pandas.core.frame.DataFrame`
                     The catalog of fake sources to be input
-        image : `lsst.afw.image.exposure.exposure.ExposureF`
+        image : `lsst.afw.image.exposure.exposure.ExposureF`, optional
                     The image into which the fake sources should be added
+        wcs : `lsst.afw.geom.SkyWcs`, optional
+                    WCS to use to add fake sources
 
         Returns
         -------
         fakeCat : `pandas.core.frame.DataFrame`
         """
-        wcs = image.getWcs()
+        if wcs is None:
+            wcs = image.getWcs()
         ras = fakeCat['ra'].values
         decs = fakeCat['dec'].values
         xs, ys = wcs.skyToPixelArray(ras, decs)
@@ -1017,8 +1015,6 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
     def trimFakeCat(self, fakeCat, image):
         """Trim the fake cat to about the size of the input image.
-
-        `fakeCat` must be processed with addPixCoords before using this method.
 
         Parameters
         ----------
@@ -1032,15 +1028,20 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         fakeCat : `pandas.core.frame.DataFrame`
                     The original fakeCat trimmed to the area of the image
         """
-
         bbox = Box2D(image.getBBox()).dilatedBy(self.config.trimBuffer)
-        xs = fakeCat["x"].values
-        ys = fakeCat["y"].values
-
-        isContained = xs >= bbox.minX
-        isContained &= xs <= bbox.maxX
-        isContained &= ys >= bbox.minY
-        isContained &= ys <= bbox.maxY
+        sphgeomCorners = []
+        for corner in bbox.getCorners():
+            spt = image.wcs.pixelToSky(corner)
+            sphgeomCorners.append(
+                sphgeom.UnitVector3d(
+                    sphgeom.NormalizedAngle.fromRadians(spt[0].asRadians()),
+                    sphgeom.Angle.fromRadians(spt[1].asRadians())
+                )
+            )
+        poly = sphgeom.ConvexPolygon(sphgeomCorners)
+        isContained = poly.contains(
+            fakeCat['ra'], fakeCat['dec']
+        )
 
         return fakeCat[isContained]
 
@@ -1079,6 +1080,9 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         """
 
         self.log.info("Making %d fake galaxy images", len(fakeCat))
+
+        if 'x' not in fakeCat.columns:
+            fakeCat = self.addPixCoords(fakeCat, image)
 
         for (index, row) in fakeCat.iterrows():
             xy = geom.Point2D(row["x"], row["y"])
@@ -1152,6 +1156,9 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         """
 
         self.log.info("Making %d fake star images", len(fakeCat))
+
+        if 'x' not in fakeCat.columns:
+            fakeCat = self.addPixCoords(fakeCat, image)
 
         for (index, row) in fakeCat.iterrows():
             xy = geom.Point2D(row["x"], row["y"])
