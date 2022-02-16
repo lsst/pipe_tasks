@@ -1,0 +1,96 @@
+# This file defines the mapping between the columns in a forced source table 
+# and their respective DPDD-style column names, as used by
+# `lsst.pipe.tasks.postprocess.TransformForcedSourceTableTask`.
+# See the DPDD for more information about the output: https://lse-163.lsst.io
+funcs:
+    forcedSourceId:
+        functor: Column
+        args: id
+        dataset: calexp
+    parentObjectId:
+        functor: Column
+        args: parent
+        dataset: calexp
+    coord_ra:
+        # reference position required by database. Not in DPDD
+        functor: CoordColumn
+        dataset: calexp
+        args: coord_ra
+    coord_dec:
+        # reference position required by database. Not in DPDD
+        functor: CoordColumn
+        dataset: calexp
+        args: coord_dec
+    ccdVisitId:
+        functor: Column
+        dataset: calexp
+        args: ccdVisitId
+    band:
+        functor: Column
+        dataset: calexp
+        args: band
+    psfFlux:
+        functor: LocalNanojansky
+        dataset: calexp
+        args:
+            - base_PsfFlux_instFlux
+            - base_PsfFlux_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    psfFluxErr:
+        functor: LocalNanojanskyErr
+        dataset: calexp
+        args:
+            - base_PsfFlux_instFlux
+            - base_PsfFlux_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    psfFlux_flag:
+        functor: Column
+        dataset: calexp
+        args: base_PsfFlux_flag
+    psfDiffFlux:
+        functor: LocalNanojansky
+        dataset: diff
+        args:
+            - base_PsfFlux_instFlux
+            - base_PsfFlux_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    psfDiffFluxErr:
+        functor: LocalNanojanskyErr
+        dataset: diff
+        args:
+            - base_PsfFlux_instFlux
+            - base_PsfFlux_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    psfDiffFlux_flag:
+        functor: Column
+        dataset: diff
+        args: base_PsfFlux_flag
+# PixelFlags exist in forced_src and forced_diff dataset, but they're all False
+calexpFlags:
+    - base_LocalPhotoCalib
+    - base_LocalPhotoCalib_flag
+    - base_LocalPhotoCalibErr
+    - base_LocalWcs_flag
+    - base_LocalWcs_CDMatrix_2_1
+    - base_LocalWcs_CDMatrix_1_1
+    - base_LocalWcs_CDMatrix_1_2
+    - base_LocalWcs_CDMatrix_2_2
+    - base_LocalBackground_instFlux
+    - base_LocalBackground_instFluxErr
+    - base_PixelFlags_flag_edge
+    - base_PixelFlags_flag_interpolated
+    - base_PixelFlags_flag_saturated
+    - base_PixelFlags_flag_cr
+    - base_PixelFlags_flag_bad
+    - base_PixelFlags_flag_suspect
+    - base_PixelFlags_flag_interpolatedCenter
+    - base_PixelFlags_flag_saturatedCenter
+    - base_PixelFlags_flag_crCenter
+    - base_PixelFlags_flag_suspectCenter
+flag_rename_rules:
+    - ['base_PixelFlags_flag', 'pixelFlags']
+    - ['base_Local', 'local']

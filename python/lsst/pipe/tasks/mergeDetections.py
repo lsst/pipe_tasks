@@ -32,6 +32,7 @@ import lsst.afw.detection as afwDetect
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 
+from lsst.coadd.utils.getGen3CoaddExposureId import getGen3CoaddExposureId
 from lsst.meas.algorithms import SkyObjectsTask
 from lsst.skymap import BaseSkyMap
 from lsst.pex.config import Config, Field, ListField, ConfigurableField, ConfigField
@@ -287,7 +288,7 @@ class MergeDetectionsTask(PipelineTask, CmdLineTask):
     _DefaultName = "mergeCoaddDetections"
     inputDataset = "det"
     outputDataset = "mergeDet"
-    makeIdFactory = _makeMakeIdFactory("MergedCoaddId")
+    makeIdFactory = _makeMakeIdFactory("MergedCoaddId", includeBand=False)
 
     @classmethod
     def _makeArgumentParser(cls):
@@ -329,7 +330,8 @@ class MergeDetectionsTask(PipelineTask, CmdLineTask):
         catalogs = dict(readCatalog(self, patchRef) for patchRef in patchRefList)
         skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRefList[0])
         idFactory = self.makeIdFactory(patchRefList[0])
-        skySeed = patchRefList[0].get(self.config.coaddName + "MergedCoaddId")
+        skySeed = getGen3CoaddExposureId(patchRefList[0], coaddName=self.config.coaddName, includeBand=False,
+                                         log=self.log)
         mergeCatalogStruct = self.run(catalogs, skyInfo, idFactory, skySeed)
         self.write(patchRefList[0], mergeCatalogStruct.outputCatalog)
 

@@ -44,7 +44,8 @@ class VisualizeBinExpConnections(pipeBase.PipelineTaskConnections,
         name="camera",
         doc="Input camera to use for mosaic geometry.",
         storageClass="Camera",
-        dimensions=("instrument", "calibration_label"),
+        dimensions=("instrument",),
+        isCalibration=True,
     )
 
     outputExp = cT.Output(
@@ -129,7 +130,8 @@ class VisualizeMosaicExpConnections(pipeBase.PipelineTaskConnections,
         name="camera",
         doc="Input camera to use for mosaic geometry.",
         storageClass="Camera",
-        dimensions=("instrument", "calibration_label"),
+        dimensions=("instrument",),
+        isCalibration=True,
     )
 
     outputData = cT.Output(

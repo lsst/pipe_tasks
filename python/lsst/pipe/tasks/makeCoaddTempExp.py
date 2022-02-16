@@ -34,6 +34,7 @@ from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
 from lsst.skymap import BaseSkyMap
 from lsst.utils.timer import timeMethod
 from .coaddBase import CoaddBaseTask, makeSkyInfo, reorderAndPadList
+from .selectImages import PsfWcsSelectImagesTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
 from collections.abc import Iterable
@@ -109,6 +110,7 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
     def setDefaults(self):
         CoaddBaseTask.ConfigClass.setDefaults(self)
         self.warpAndPsfMatch.psfMatch.kernel.active.kernelSize = self.matchingKernelSize
+        self.select.retarget(PsfWcsSelectImagesTask)
 
 ## \addtogroup LSST_task_documentation
 ## \{
@@ -679,6 +681,13 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit",),
     )
+    srcList = connectionTypes.Input(
+        doc="Source catalogs used by PsfWcsSelectImages subtask to further select on PSF stability",
+        name="src",
+        storageClass="SourceCatalog",
+        dimensions=("instrument", "visit", "detector"),
+        multiple=True,
+    )
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
@@ -709,6 +718,10 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         # TODO DM-28769: add connection per selectImages connections
         if config.select.target != lsst.pipe.tasks.selectImages.PsfWcsSelectImagesTask:
             self.inputs.remove("visitSummary")
+            self.inputs.remove("srcList")
+        elif not config.select.doLegacyStarSelectionComputation:
+            # Remove backwards-compatibility connections.
+            self.inputs.remove("srcList")
 
 
 class MakeWarpConfig(pipeBase.PipelineTaskConfig, MakeCoaddTempExpConfig,
@@ -734,9 +747,11 @@ class MakeWarpTask(MakeCoaddTempExpTask):
         PipelineTask (Gen3) entry point to warp and optionally PSF-match
         calexps. This method is analogous to `runDataRef`.
         """
-
-        # Ensure all input lists are in same detector order as the calExpList
+        # Obtain the list of input detectors from calExpList.  Sort them by
+        # detector order (to ensure reproducibility).  Then ensure all input
+        # lists are in the same sorted detector order.
         detectorOrder = [ref.datasetRef.dataId['detector'] for ref in inputRefs.calExpList]
+        detectorOrder.sort()
         inputRefs = reorderRefs(inputRefs, detectorOrder, dataIdKey='detector')
 
         # Read in all inputs.
@@ -848,9 +863,8 @@ class MakeWarpTask(MakeCoaddTempExpTask):
         for index, (calexp, background, skyCorr) in enumerate(zip(calExpList,
                                                                   backgroundList,
                                                                   skyCorrList)):
-            mi = calexp.maskedImage
             if not self.config.bgSubtracted:
-                mi += background.getImage()
+                calexp.maskedImage += background.getImage()
 
             if externalSkyWcsCatalog is not None or externalPhotoCalibCatalog is not None:
                 detectorId = calexp.getInfo().getDetector().getId()
@@ -904,7 +918,7 @@ class MakeWarpTask(MakeCoaddTempExpTask):
 
             # Apply skycorr
             if self.config.doApplySkyCorr:
-                mi -= skyCorr.getImage()
+                calexp.maskedImage -= skyCorr.getImage()
 
             indices.append(index)
 

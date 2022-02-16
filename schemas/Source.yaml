@@ -1,0 +1,414 @@
+# This file defines the mapping between the columns in a single visit+detector
+# source table and their respective DPDD-style column names, as used by
+# `lsst.pipe.tasks.postprocess.TransformSourceTableTask`.
+# See the DPDD for more information about the output: https://lse-163.lsst.io
+funcs:
+    sourceId:
+        functor: Index
+    coord_ra:
+        # reference position required by db. Not in DPDD
+        functor: CoordColumn
+        args: coord_ra
+    coord_dec:
+        # Reference position required by db. Not in DPDD
+        functor: CoordColumn
+        args: coord_dec
+    ccdVisitId:
+        functor: Column
+        args: ccdVisitId
+    # objectId: not avaliable
+    # ssObjectId: not avaliable
+    parentSourceId:
+        functor: Column
+        args: parent
+    # htmId20: not avaliable
+    x:
+        functor: Column
+        args: slot_Centroid_x
+    y:
+        functor: Column
+        args: slot_Centroid_y
+    xErr:
+        functor: Column
+        args: slot_Centroid_xErr
+    yErr:
+        functor: Column
+        args: slot_Centroid_yErr
+    # x_y_Cov: not available
+    ra:
+        functor: RAColumn
+    # raErr: not available yet DM-15180
+    decl:
+        functor: DecColumn
+    # declErr: not available yet DM-15180
+    # ra_decl_Cov: not available yet
+    # One calibrated Calib flux is important:
+    calibFlux:
+        functor: LocalNanojansky
+        args:
+            - slot_CalibFlux_instFlux
+            - slot_CalibFlux_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    calibFluxErr:
+        functor: LocalNanojanskyErr
+        args:
+            - slot_CalibFlux_instFlux
+            - slot_CalibFlux_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+   # Not in DPDD. Used for QA
+    ap03Flux:
+        functor: LocalNanojansky
+        args:
+            - base_CircularApertureFlux_3_0_instFlux
+            - base_CircularApertureFlux_3_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap03FluxErr:
+        functor: LocalNanojanskyErr
+        args:
+            - base_CircularApertureFlux_3_0_instFlux
+            - base_CircularApertureFlux_3_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap03Flux_flag:
+        functor: Column
+        args: base_CircularApertureFlux_3_0_flag
+    # if we need to add decimal apertures call them e.g. ap04p5Flux
+    ap06Flux:
+        functor: LocalNanojansky
+        args:
+            - base_CircularApertureFlux_6_0_instFlux
+            - base_CircularApertureFlux_6_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap06FluxErr:
+        functor: LocalNanojanskyErr
+        args:
+            - base_CircularApertureFlux_6_0_instFlux
+            - base_CircularApertureFlux_6_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap06Flux_flag:
+        functor: Column
+        args: base_CircularApertureFlux_6_0_flag
+    ap09Flux:
+        functor: LocalNanojansky
+        args:
+            - base_CircularApertureFlux_9_0_instFlux
+            - base_CircularApertureFlux_9_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap09FluxErr:
+        functor: LocalNanojanskyErr
+        args:
+            - base_CircularApertureFlux_9_0_instFlux
+            - base_CircularApertureFlux_9_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap09Flux_flag:
+        functor: Column
+        args: base_CircularApertureFlux_9_0_flag
+    ap12Flux:
+        functor: LocalNanojansky
+        args:
+            - base_CircularApertureFlux_12_0_instFlux
+            - base_CircularApertureFlux_12_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap12FluxErr:
+        functor: LocalNanojanskyErr
+        args:
+            - base_CircularApertureFlux_12_0_instFlux
+            - base_CircularApertureFlux_12_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap12Flux_flag:
+        functor: Column
+        args: base_CircularApertureFlux_12_0_flag
+    ap17Flux:
+        functor: LocalNanojansky
+        args:
+            - base_CircularApertureFlux_17_0_instFlux
+            - base_CircularApertureFlux_17_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap17FluxErr:
+        functor: LocalNanojanskyErr
+        args:
+            - base_CircularApertureFlux_17_0_instFlux
+            - base_CircularApertureFlux_17_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap17Flux_flag:
+        functor: Column
+        args: base_CircularApertureFlux_17_0_flag
+    ap25Flux:
+        functor: LocalNanojansky
+        args:
+            - base_CircularApertureFlux_25_0_instFlux
+            - base_CircularApertureFlux_25_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap25FluxErr:
+        functor: LocalNanojanskyErr
+        args:
+            - base_CircularApertureFlux_25_0_instFlux
+            - base_CircularApertureFlux_25_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap25Flux_flag:
+        functor: Column
+        args: base_CircularApertureFlux_25_0_flag
+    ap35Flux:
+        functor: LocalNanojansky
+        args:
+            - base_CircularApertureFlux_35_0_instFlux
+            - base_CircularApertureFlux_35_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap35FluxErr:
+        functor: LocalNanojanskyErr
+        args:
+            - base_CircularApertureFlux_35_0_instFlux
+            - base_CircularApertureFlux_35_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap35Flux_flag:
+        functor: Column
+        args: base_CircularApertureFlux_35_0_flag
+    ap50Flux:
+        functor: LocalNanojansky
+        args:
+            - base_CircularApertureFlux_50_0_instFlux
+            - base_CircularApertureFlux_50_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap50FluxErr:
+        functor: LocalNanojanskyErr
+        args:
+            - base_CircularApertureFlux_50_0_instFlux
+            - base_CircularApertureFlux_50_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap50Flux_flag:
+        functor: Column
+        args: base_CircularApertureFlux_50_0_flag
+    ap70Flux:
+        functor: LocalNanojansky
+        args:
+            - base_CircularApertureFlux_70_0_instFlux
+            - base_CircularApertureFlux_70_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap70FluxErr:
+        functor: LocalNanojanskyErr
+        args:
+            - base_CircularApertureFlux_70_0_instFlux
+            - base_CircularApertureFlux_70_0_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    ap70Flux_flag:
+        functor: Column
+        args: base_CircularApertureFlux_70_0_flag
+    # TODO: When DM-25019 is complete, these should be
+    # changed to use the local value of the background
+    # model, rather than the residual of the background
+    sky:
+        functor: LocalNanojansky
+        args:
+            - base_LocalBackground_instFlux
+            - base_LocalBackground_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    skyErr:
+        functor: LocalNanojanskyErr
+        args:
+            - base_LocalBackground_instFlux
+            - base_LocalBackground_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    psfFlux:
+        functor: LocalNanojansky
+        args:
+            - slot_PsfFlux_instFlux
+            - slot_PsfFlux_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    psfFluxErr:
+        functor: LocalNanojanskyErr
+        args:
+            - slot_PsfFlux_instFlux
+            - slot_PsfFlux_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+
+    # These PS columns do not make sense anymore as named
+    # psX
+    # psXSigma
+    # psY
+    # psYSigma
+    # psFlux_psX_Cov
+    # psFlux_psY_Cov
+    # psX_Y_Cov
+    # psLnL
+    # psChi2
+    # psN
+    # psRa
+    # psRaSigma
+    # psDecl
+    # psDeclSigma
+    # psFlux_psRa_Cov
+    # psFlux_psDecl_Cov
+
+    ixx:
+        functor: Column
+        args: slot_Shape_xx
+    iyy:
+        functor: Column
+        args: slot_Shape_yy
+    ixy:
+        functor: Column
+        args: slot_Shape_xy
+    # DPDD should include Psf Shape
+    ixxPSF:
+        functor: Column
+        args: slot_PsfShape_xx
+    iyyPSF:
+        functor: Column
+        args: slot_PsfShape_yy
+    ixyPSF:
+        functor: Column
+        args: slot_PsfShape_xy
+    # apNann: Replaced by raw Aperture instFluxes in flags section below
+    # apMeanSb: Replaced by raw Aperture instFluxes in flags section below
+    # apMeanSbErr: Replaced by raw Aperture instFluxes in flags section below
+
+    # DPDD does not include gaussianFluxes, however they are used for
+    # the single frame extendedness column which is used for QA.
+    gaussianFlux:
+        functor: LocalNanojansky
+        args:
+            - base_GaussianFlux_instFlux
+            - base_GaussianFlux_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    gaussianFluxErr:
+        functor: LocalNanojanskyErr
+        args:
+            - base_GaussianFlux_instFlux
+            - base_GaussianFlux_instFluxErr
+            - base_LocalPhotoCalib
+            - base_LocalPhotoCalibErr
+    extendedness:
+        functor: Column
+        args: base_ClassificationExtendedness_value
+flags:
+   - base_LocalPhotoCalib
+   - base_LocalPhotoCalib_flag
+   - base_LocalPhotoCalibErr
+   - base_LocalWcs_flag
+   - base_LocalWcs_CDMatrix_2_1
+   - base_LocalWcs_CDMatrix_1_1
+   - base_LocalWcs_CDMatrix_1_2
+   - base_LocalWcs_CDMatrix_2_2
+   - base_Blendedness_abs
+   - base_Blendedness_flag
+   - base_Blendedness_flag_noCentroid
+   - base_Blendedness_flag_noShape
+   - base_CircularApertureFlux_12_0_flag
+   - base_CircularApertureFlux_12_0_flag_apertureTruncated
+   - base_CircularApertureFlux_12_0_flag_sincCoeffsTruncated
+   - base_CircularApertureFlux_12_0_instFlux
+   - base_CircularApertureFlux_12_0_instFluxErr
+   - base_CircularApertureFlux_17_0_flag
+   - base_CircularApertureFlux_17_0_instFlux
+   - base_CircularApertureFlux_17_0_instFluxErr
+   - base_ClassificationExtendedness_flag
+   - base_FootprintArea_value
+   - base_Jacobian_flag
+   - base_Jacobian_value
+   - base_LocalBackground_instFlux
+   - base_LocalBackground_instFluxErr
+   - base_LocalBackground_flag
+   - base_LocalBackground_flag_noGoodPixels
+   - base_LocalBackground_flag_noPsf
+   - base_PixelFlags_flag_bad
+   - base_PixelFlags_flag_cr
+   - base_PixelFlags_flag_crCenter
+   - base_PixelFlags_flag_edge
+   - base_PixelFlags_flag_interpolated
+   - base_PixelFlags_flag_interpolatedCenter
+   - base_PixelFlags_flag_offimage
+   - base_PixelFlags_flag_saturated
+   - base_PixelFlags_flag_saturatedCenter
+   - base_PixelFlags_flag_suspect
+   - base_PixelFlags_flag_suspectCenter
+   - base_PsfFlux_apCorr
+   - base_PsfFlux_apCorrErr
+   - base_PsfFlux_area
+   - base_PsfFlux_flag
+   - base_PsfFlux_flag_apCorr
+   - base_PsfFlux_flag_edge
+   - base_PsfFlux_flag_noGoodPixels
+   - base_GaussianFlux_flag
+   - base_SdssCentroid_flag
+   - base_SdssCentroid_flag_almostNoSecondDerivative
+   - base_SdssCentroid_flag_badError
+   - base_SdssCentroid_flag_edge
+   - base_SdssCentroid_flag_noSecondDerivative
+   - base_SdssCentroid_flag_notAtMaximum
+   - base_SdssCentroid_flag_resetToPeak
+   - base_Variance_flag
+   - base_Variance_flag_emptyFootprint
+   - base_Variance_value
+   - calib_astrometry_used
+   - calib_detected
+   - calib_photometry_reserved
+   - calib_photometry_used
+   - calib_psf_candidate
+   - calib_psf_reserved
+   - calib_psf_used
+   - deblend_deblendedAsPsf
+   - deblend_hasStrayFlux
+   - deblend_masked
+   - deblend_nChild
+   - deblend_parentTooBig
+   - deblend_patchedTemplate
+   - deblend_rampedTemplate
+   - deblend_skipped
+   - deblend_tooManyPeaks
+   - ext_shapeHSM_HsmPsfMoments_flag
+   - ext_shapeHSM_HsmPsfMoments_flag_no_pixels
+   - ext_shapeHSM_HsmPsfMoments_flag_not_contained
+   - ext_shapeHSM_HsmPsfMoments_flag_parent_source
+   - ext_shapeHSM_HsmShapeRegauss_flag
+   - ext_shapeHSM_HsmShapeRegauss_flag_galsim
+   - ext_shapeHSM_HsmShapeRegauss_flag_no_pixels
+   - ext_shapeHSM_HsmShapeRegauss_flag_not_contained
+   - ext_shapeHSM_HsmShapeRegauss_flag_parent_source
+   - sky_source
+   - detect_isPrimary
+
+flag_rename_rules:
+    # Taken from db-meas-forced
+    - ['ext_photometryKron_', '']
+    - ['base_Blendedness', 'base_blendedness']
+    - ['base_Local', 'local']
+    - ['base_PixelFlags_flag', 'pixelFlags']
+    - ['base_ClassificationE', 'e']
+    - ['base_SdssCentroid', 'centroid']
+    - ['base_Variance', 'variance']
+    - ['base_Psf', 'psf']
+    - ['base_GaussianFlux', 'gaussianFlux']
+    - ['base_CircularApertureFlux', 'apFlux']
+    - ['base_FootprintArea', 'footprintArea']
+    - ['base_Jacobian', 'jacobian']
+    - ['ext_shapeHSM_Hsm', 'hsm']
+    - ['ext_convolved_', '']
+    - ['undeblended_base', 'undeblended']
+    - ['undeblended_ext_photometryKron', 'undeblended']
+    - ['ext_photometryKron_', '']
+    - ['base_', '']
+    - ['slot_', '']

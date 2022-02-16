@@ -1137,7 +1137,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                 # Create key,val pair where key=diaSourceId and val=refId
                 refAstromConfig = AstrometryConfig()
                 refAstromConfig.matcher.maxMatchDistArcSec = matchRadAsec
-                refAstrometer = AstrometryTask(refAstromConfig)
+                refAstrometer = AstrometryTask(self.refObjLoader, config=refAstromConfig)
                 astromRet = refAstrometer.run(exposure=exposure, sourceCat=diaSources)
                 refMatches = astromRet.matches
                 if refMatches is None:

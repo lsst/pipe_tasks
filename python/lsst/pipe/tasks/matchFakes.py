@@ -21,12 +21,15 @@
 
 import astropy.units as u
 import numpy as np
+import pandas as pd
 from scipy.spatial import cKDTree
 
 from lsst.geom import Box2D, radians, SpherePoint
 import lsst.pex.config as pexConfig
 from lsst.pipe.base import PipelineTask, PipelineTaskConnections, Struct
 import lsst.pipe.base.connectionTypes as connTypes
+from lsst.skymap import BaseSkyMap
+
 from lsst.pipe.tasks.insertFakes import InsertFakesConfig
 
 __all__ = ["MatchFakesTask",
@@ -38,16 +41,23 @@ __all__ = ["MatchFakesTask",
 class MatchFakesConnections(PipelineTaskConnections,
                             defaultTemplates={"coaddName": "deep",
                                               "fakesType": "fakes_"},
-                            dimensions=("tract",
-                                        "skymap",
-                                        "instrument",
+                            dimensions=("instrument",
                                         "visit",
                                         "detector")):
-    fakeCat = connTypes.Input(
+    skyMap = connTypes.Input(
+        doc="Input definition of geometry/bbox and projection/wcs for "
+        "template exposures. Needed to test which tract to generate ",
+        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
+        dimensions=("skymap",),
+        storageClass="SkyMap",
+    )
+    fakeCats = connTypes.Input(
         doc="Catalog of fake sources inserted into an image.",
         name="{fakesType}fakeSourceCat",
         storageClass="DataFrame",
-        dimensions=("tract", "skymap")
+        dimensions=("tract", "skymap"),
+        deferLoad=True,
+        multiple=True
     )
     diffIm = connTypes.Input(
         doc="Difference image on which the DiaSources were detected.",
@@ -98,13 +108,33 @@ class MatchFakesTask(PipelineTask):
     _DefaultName = "matchFakes"
     ConfigClass = MatchFakesConfig
 
-    def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        inputs = butlerQC.get(inputRefs)
+    def run(self, fakeCats, skyMap, diffIm, associatedDiaSources):
+        """Compose fakes into a single catalog and match fakes to detected
+        diaSources within a difference image bound.
 
-        outputs = self.run(**inputs)
-        butlerQC.put(outputs, outputRefs)
+        Parameters
+        ----------
+        fakeCats : `pandas.DataFrame`
+            List of catalog of fakes to match to detected diaSources.
+        skyMap : `lsst.skymap.SkyMap`
+            SkyMap defining the tracts and patches the fakes are stored over.
+        diffIm : `lsst.afw.image.Exposure`
+            Difference image where ``associatedDiaSources`` were detected.
+        associatedDiaSources : `pandas.DataFrame`
+            Catalog of difference image sources detected in ``diffIm``.
 
-    def run(self, fakeCat, diffIm, associatedDiaSources):
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            Results struct with components.
+
+            - ``matchedDiaSources`` : Fakes matched to input diaSources. Has
+              length of ``fakeCat``. (`pandas.DataFrame`)
+        """
+        fakeCat = self.composeFakeCat(fakeCats, skyMap)
+        return self._processFakes(fakeCat, diffIm, associatedDiaSources)
+
+    def _processFakes(self, fakeCat, diffIm, associatedDiaSources):
         """Match fakes to detected diaSources within a difference image bound.
 
         Parameters
@@ -127,8 +157,8 @@ class MatchFakesTask(PipelineTask):
         trimmedFakes = self._trimFakeCat(fakeCat, diffIm)
         nPossibleFakes = len(trimmedFakes)
 
-        fakeVects = self._getVectors(trimmedFakes[self.config.raColName],
-                                     trimmedFakes[self.config.decColName])
+        fakeVects = self._getVectors(trimmedFakes[self.config.ra_col],
+                                     trimmedFakes[self.config.dec_col])
         diaSrcVects = self._getVectors(
             np.radians(associatedDiaSources.loc[:, "ra"]),
             np.radians(associatedDiaSources.loc[:, "decl"]))
@@ -148,6 +178,39 @@ class MatchFakesTask(PipelineTask):
                 associatedDiaSources.reset_index(drop=True), on="diaSourceId", how="left")
         )
 
+    def composeFakeCat(self, fakeCats, skyMap):
+        """Concatenate the fakeCats from tracts that may cover the exposure.
+
+        Parameters
+        ----------
+        fakeCats : `list` of `lst.daf.butler.DeferredDatasetHandle`
+            Set of fake cats to concatenate.
+        skyMap : `lsst.skymap.SkyMap`
+            SkyMap defining the geometry of the tracts and patches.
+
+        Returns
+        -------
+        combinedFakeCat : `pandas.DataFrame`
+            All fakes that cover the inner polygon of the tracts in this
+            quantum.
+        """
+        if len(fakeCats) == 1:
+            return fakeCats[0].get(
+                datasetType=self.config.connections.fakeCats)
+        outputCat = []
+        for fakeCatRef in fakeCats:
+            cat = fakeCatRef.get(
+                datasetType=self.config.connections.fakeCats)
+            tractId = fakeCatRef.dataId["tract"]
+            # Make sure all data is within the inner part of the tract.
+            outputCat.append(cat[
+                skyMap.findTractIdArray(cat[self.config.ra_col],
+                                        cat[self.config.dec_col],
+                                        degrees=False)
+                == tractId])
+
+        return pd.concat(outputCat)
+
     def _trimFakeCat(self, fakeCat, image):
         """Trim the fake cat to about the size of the input image.
 
@@ -157,10 +220,12 @@ class MatchFakesTask(PipelineTask):
             The catalog of fake sources to be input
         image : `lsst.afw.image.exposure.exposure.ExposureF`
             The image into which the fake sources should be added
+        skyMap : `lsst.skymap.SkyMap`
+            SkyMap defining the tracts and patches the fakes are stored over.
 
         Returns
         -------
-        fakeCat : `pandas.core.frame.DataFrame`
+        fakeCats : `pandas.core.frame.DataFrame`
             The original fakeCat trimmed to the area of the image
         """
         wcs = image.getWcs()
@@ -168,8 +233,8 @@ class MatchFakesTask(PipelineTask):
         bbox = Box2D(image.getBBox())
 
         def trim(row):
-            coord = SpherePoint(row[self.config.raColName],
-                                row[self.config.decColName],
+            coord = SpherePoint(row[self.config.ra_col],
+                                row[self.config.dec_col],
                                 radians)
             cent = wcs.skyToPixel(coord)
             return bbox.contains(cent)
@@ -235,7 +300,7 @@ class MatchVariableFakesTask(MatchFakesTask):
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, fakeCat, ccdVisitFakeMagnitudes, diffIm, associatedDiaSources, band):
+    def run(self, fakeCats, ccdVisitFakeMagnitudes, skyMap, diffIm, associatedDiaSources, band):
         """Match fakes to detected diaSources within a difference image bound.
 
         Parameters
@@ -255,8 +320,9 @@ class MatchVariableFakesTask(MatchFakesTask):
             - ``matchedDiaSources`` : Fakes matched to input diaSources. Has
               length of ``fakeCat``. (`pandas.DataFrame`)
         """
+        fakeCat = self.composeFakeCat(fakeCats, skyMap)
         self.computeExpectedDiffMag(fakeCat, ccdVisitFakeMagnitudes, band)
-        return super().run(fakeCat, diffIm, associatedDiaSources)
+        return self._processFakes(fakeCat, diffIm, associatedDiaSources)
 
     def computeExpectedDiffMag(self, fakeCat, ccdVisitFakeMagnitudes, band):
         """Compute the magnitude expected in the difference image for this
