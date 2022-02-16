@@ -505,9 +505,11 @@ class DeblendCoaddSourcesTask(CmdLineTask):
             # The input sources are the same for all bands, since it is a merged catalog
             sources = self.readSources(patchRef)
             exposure = afwImage.MultibandExposure.fromExposures(filters, exposures)
-            templateCatalogs = self.multiBandDeblend.run(exposure, sources)
+            templateCatalogs, fluxCatalogs = self.multiBandDeblend.run(exposure, sources)
             for n in range(len(patchRefList)):
-                self.write(patchRefList[n], templateCatalogs[filters[n]])
+                self.write(patchRefList[n], templateCatalogs[filters[n]], "Model")
+                if filters[n] in fluxCatalogs:
+                    self.write(patchRefList[n], fluxCatalogs[filters[n]], "Flux")
         else:
             # Use the singeband deblender to deblend each band separately
             for patchRef in patchRefList:
@@ -549,7 +551,7 @@ class DeblendCoaddSourcesTask(CmdLineTask):
         sources.extend(merged, self.schemaMapper)
         return sources
 
-    def write(self, dataRef, sources):
+    def write(self, dataRef, sources, catalogType):
         """Write the source catalog(s)
 
         Parameters
@@ -564,7 +566,7 @@ class DeblendCoaddSourcesTask(CmdLineTask):
             Source catalog using the multiband template models
             as footprints.
         """
-        dataRef.put(sources, self.config.coaddName + "Coadd_deblendedFlux")
+        dataRef.put(sources, self.config.coaddName + f"Coadd_deblended{catalogType}")
         self.log.info("Wrote %d sources: %s", len(sources), dataRef.dataId)
 
     def writeMetadata(self, dataRefList):

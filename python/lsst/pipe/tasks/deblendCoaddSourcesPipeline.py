@@ -122,9 +122,16 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
         name="{outputCoaddName}Coadd_deblendedFlux_schema",
         storageClass="SourceCatalog"
     )
+    fluxCatalogs = cT.Output(
+        doc="Flux weighted catalogs produced by multiband deblending",
+        name="{outputCoaddName}Coadd_deblendedFlux",
+        storageClass="SourceCatalog",
+        dimensions=("tract", "patch", "band", "skymap"),
+        multiple=True
+    )
     templateCatalogs = cT.Output(
         doc="Template catalogs produced by multiband deblending",
-        name="{outputCoaddName}Coadd_deblendedFlux",
+        name="{outputCoaddName}Coadd_deblendedModel",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "band", "skymap"),
         multiple=True
@@ -211,9 +218,14 @@ class DeblendCoaddSourcesMultiTask(DeblendCoaddSourcesBaseTask):
             if (catalog := outputs.templateCatalogs.get(band)) is not None:
                 butlerQC.put(catalog, outRef)
 
+        for outRef in outputRefs.fluxCatalogs:
+            band = outRef.dataId['band']
+            if (catalog := outputs.fluxCatalogs.get(band)) is not None:
+                butlerQC.put(catalog, outRef)
+
     def run(self, coadds, filters, mergedDetections, idFactory):
         sources = self._makeSourceCatalog(mergedDetections, idFactory)
         multiExposure = afwImage.MultibandExposure.fromExposures(filters, coadds)
-        templateCatalogs = self.multibandDeblend.run(multiExposure, sources)
-        retStruct = Struct(templateCatalogs=templateCatalogs)
+        templateCatalogs, fluxCatalogs = self.multibandDeblend.run(multiExposure, sources)
+        retStruct = Struct(templateCatalogs=templateCatalogs, fluxCatalogs=fluxCatalogs)
         return retStruct
