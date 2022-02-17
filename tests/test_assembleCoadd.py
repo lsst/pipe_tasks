@@ -209,32 +209,27 @@ class AssembleCoaddTestCase(lsst.utils.tests.TestCase):
 
     def testAssembleBasic(self):
         config = MockAssembleCoaddConfig()
-        config.validate()
         assembleTask = MockAssembleCoaddTask(config=config)
         self.checkRun(assembleTask)
 
     def testAssemblePsfMatched(self):
         config = MockAssembleCoaddConfig(warpType="psfMatched")
-        config.validate()
         assembleTask = MockAssembleCoaddTask(config=config)
         self.checkRun(assembleTask, warpType="psfMatched")
 
     def testAssembleCompareWarp(self):
         config = MockCompareWarpAssembleCoaddConfig()
-        config.validate()
         assembleTask = MockCompareWarpAssembleCoaddTask(config=config)
         self.checkRun(assembleTask)
 
     def testAssembleDCR(self):
         config = MockDcrAssembleCoaddConfig()
-        config.validate()
         assembleTask = MockDcrAssembleCoaddTask(config=config)
         self.checkRun(assembleTask)
 
     def testOnlineCoadd(self):
         config = MockInputMapAssembleCoaddConfig()
         config.statistic = "MEAN"
-        config.validate()
         assembleTask = MockInputMapAssembleCoaddTask(config=config)
 
         dataRefList = self.dataRefList
@@ -258,7 +253,6 @@ class AssembleCoaddTestCase(lsst.utils.tests.TestCase):
 
     def testInputMap(self):
         config = MockInputMapAssembleCoaddConfig()
-        config.validate()
         assembleTask = MockInputMapAssembleCoaddTask(config=config)
 
         # Make exposures where one of them has a bad region.
