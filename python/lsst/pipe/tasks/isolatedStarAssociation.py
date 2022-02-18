@@ -51,9 +51,9 @@ class IsolatedStarAssociationConnections(pipeBase.PipelineTaskConnections,
         storageClass="SkyMap",
         dimensions=("skymap",),
     )
-    isolated_star_observations = pipeBase.connectionTypes.Output(
-        doc='Catalog of individual observations of isolated stars',
-        name='isolated_star_observations',
+    isolated_star_sources = pipeBase.connectionTypes.Output(
+        doc='Catalog of individual sources for the isolated stars',
+        name='isolated_star_sources',
         storageClass='DataFrame',
         dimensions=('instrument', 'tract'),
     )
@@ -210,8 +210,8 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
 
         struct = self.run(input_ref_dict['skymap'], tract, source_table_ref_dict)
 
-        butlerQC.put(pd.DataFrame(struct.star_obs_cat),
-                     outputRefs.isolated_star_observations)
+        butlerQC.put(pd.DataFrame(struct.star_source_cat),
+                     outputRefs.isolated_star_sources)
         butlerQC.put(pd.DataFrame(struct.star_cat),
                      outputRefs.isolated_star_cat)
 
@@ -232,22 +232,22 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
         struct : `lsst.pipe.base.struct`
             Struct with outputs for persistence.
         """
-        star_obs_cat = self._make_all_star_obs(skymap[tract], source_table_ref_dict)
+        star_source_cat = self._make_all_star_sources(skymap[tract], source_table_ref_dict)
 
         primary_bands = self.config.band_order
 
         # Do primary matching
-        primary_star_cat = self._match_primary_stars(primary_bands, star_obs_cat)
+        primary_star_cat = self._match_primary_stars(primary_bands, star_source_cat)
 
         if len(primary_star_cat) == 0:
-            return pipeBase.Struct(star_obs_cat=np.zeros(0, star_obs_cat.dtype),
+            return pipeBase.Struct(star_source_cat=np.zeros(0, star_source_cat.dtype),
                                    star_cat=np.zeros(0, primary_star_cat.dtype))
 
         # Remove neighbors
         primary_star_cat = self._remove_neighbors(primary_star_cat)
 
         if len(primary_star_cat) == 0:
-            return pipeBase.Struct(star_obs_cat=np.zeros(0, star_obs_cat.dtype),
+            return pipeBase.Struct(star_source_cat=np.zeros(0, star_source_cat.dtype),
                                    star_cat=np.zeros(0, primary_star_cat.dtype))
 
         # Crop to inner tract region
@@ -260,7 +260,7 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
         primary_star_cat = primary_star_cat[use]
 
         if len(primary_star_cat) == 0:
-            return pipeBase.Struct(star_obs_cat=np.zeros(0, star_obs_cat.dtype),
+            return pipeBase.Struct(star_source_cat=np.zeros(0, star_source_cat.dtype),
                                    star_cat=np.zeros(0, primary_star_cat.dtype))
 
         # Set the unique ids.
@@ -268,18 +268,16 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
                                                                         tract,
                                                                         len(primary_star_cat))
 
-        # Match to observations.
-        star_obs_cat, primary_star_cat = self._match_observations(primary_bands,
-                                                                  star_obs_cat,
-                                                                  primary_star_cat)
+        # Match to sources.
+        star_source_cat, primary_star_cat = self._match_sources(primary_bands,
+                                                                star_source_cat,
+                                                                primary_star_cat)
 
-        # star_obs_cat, star_cat = self.match_star_obs(star_obs_cat)
-
-        return pipeBase.Struct(star_obs_cat=star_obs_cat,
+        return pipeBase.Struct(star_source_cat=star_source_cat,
                                star_cat=primary_star_cat)
 
-    def _make_all_star_obs(self, tract_info, source_table_ref_dict):
-        """Make a catalog of all the star observations.
+    def _make_all_star_sources(self, tract_info, source_table_ref_dict):
+        """Make a catalog of all the star sources.
 
         Parameters
         ----------
@@ -290,8 +288,8 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
 
         Returns
         -------
-        star_obs_cat : `np.ndarray`
-            Catalog of star observations.
+        star_source_cat : `np.ndarray`
+            Catalog of star sources.
         """
         # Internally, we use a numpy recarray, they are by far the fastest
         # option in testing for relatively narrow tables.
@@ -303,6 +301,7 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
         for visit in source_table_ref_dict:
             source_table_ref = source_table_ref_dict[visit]
             df = source_table_ref.get(parameters={'columns': all_columns})
+            df.reset_index(inplace=True)
 
             goodSrc = self.source_selector.selectSources(df)
 
@@ -326,9 +325,9 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
             tables.append(table[tract_use])
 
         # Combine tables
-        star_obs_cat = np.concatenate(tables)
+        star_source_cat = np.concatenate(tables)
 
-        return star_obs_cat
+        return star_source_cat
 
     def _get_source_table_visit_column_names(self):
         """Get the list of sourceTable_visit columns from the config.
@@ -358,15 +357,15 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
 
         return all_columns, columns
 
-    def _match_primary_stars(self, primary_bands, star_obs_cat):
+    def _match_primary_stars(self, primary_bands, star_source_cat):
         """Match primary stars.
 
         Parameters
         ----------
         primary_bands : `list` [`str`]
             Ordered list of primary bands.
-        star_obs_cat : `np.ndarray`
-            Catalog of star observations.
+        star_source_cat : `np.ndarray`
+            Catalog of star sources.
 
         Returns
         -------
@@ -380,10 +379,10 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
 
         primary_star_cat = None
         for primary_band in primary_bands:
-            use = (star_obs_cat['band'] == primary_band)
+            use = (star_source_cat['band'] == primary_band)
 
-            ra = star_obs_cat[ra_col][use]
-            dec = star_obs_cat[dec_col][use]
+            ra = star_source_cat[ra_col][use]
+            dec = star_source_cat[dec_col][use]
 
             with Matcher(ra, dec) as matcher:
                 idx = matcher.query_self(self.config.match_radius/3600., min_match=1)
@@ -471,80 +470,80 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
 
         return primary_star_cat
 
-    def _match_observations(self, bands, star_obs_cat, primary_star_cat):
-        """Match observations to primary stars.
+    def _match_sources(self, bands, star_source_cat, primary_star_cat):
+        """Match individual sources to primary stars.
 
         Parameters
         ----------
         bands : `list` [`str`]
             List of bands.
-        star_obs_cat : `np.ndarray`
-            Array of star observations.
+        star_source_cat : `np.ndarray`
+            Array of star sources.
         primary_star_cat : `np.ndarray`
             Array of primary stars.
 
         Returns
         -------
-        star_obs_cat_sorted : `np.ndarray`
-            Sorted and cropped array of star observations.
+        star_source_cat_sorted : `np.ndarray`
+            Sorted and cropped array of star sources.
         primary_star_cat : `np.ndarray`
-            Catalog of isolated stars, with indexes to star_obs_cat_cut.
+            Catalog of isolated stars, with indexes to star_source_cat_cut.
         """
         ra_col = self.config.ra_column
         dec_col = self.config.dec_column
 
-        # We match observations per-band because it allows us to have sorted
-        # observations for easy retrieval of per-band matches.
-        n_obs_per_band_per_obj = np.zeros((len(bands),
-                                           len(primary_star_cat)),
-                                          dtype=np.int32)
+        # We match sources per-band because it allows us to have sorted
+        # sources for easy retrieval of per-band matches.
+        n_source_per_band_per_obj = np.zeros((len(bands),
+                                              len(primary_star_cat)),
+                                             dtype=np.int32)
         band_uses = []
         idxs = []
         with Matcher(primary_star_cat[ra_col], primary_star_cat[dec_col]) as matcher:
             for b, band in enumerate(bands):
-                band_use, = np.where(star_obs_cat['band'] == band)
+                band_use, = np.where(star_source_cat['band'] == band)
 
-                idx = matcher.query_radius(star_obs_cat[ra_col][band_use],
-                                           star_obs_cat[dec_col][band_use],
+                idx = matcher.query_radius(star_source_cat[ra_col][band_use],
+                                           star_source_cat[dec_col][band_use],
                                            self.config.match_radius/3600.)
-                n_obs_per_band_per_obj[b, :] = np.array([len(row) for row in idx])
+                n_source_per_band_per_obj[b, :] = np.array([len(row) for row in idx])
                 idxs.append(idx)
                 band_uses.append(band_use)
 
-        n_obs_per_obj = np.sum(n_obs_per_band_per_obj, axis=0)
+        n_source_per_obj = np.sum(n_source_per_band_per_obj, axis=0)
 
-        primary_star_cat['nobs'] = n_obs_per_obj
-        primary_star_cat['obs_cat_index'][1:] = np.cumsum(n_obs_per_obj)[:-1]
+        primary_star_cat['nsource'] = n_source_per_obj
+        primary_star_cat['source_cat_index'][1:] = np.cumsum(n_source_per_obj)[:-1]
 
-        n_tot_obs = primary_star_cat['obs_cat_index'][-1] + primary_star_cat['nobs'][-1]
+        n_tot_source = primary_star_cat['source_cat_index'][-1] + primary_star_cat['nsource'][-1]
 
-        # Temporary arrays until we crop/sort the observation catalog
-        obs_index = np.zeros(n_tot_obs, dtype=np.int32)
-        obj_index = np.zeros(n_tot_obs, dtype=np.int32)
+        # Temporary arrays until we crop/sort the source catalog
+        source_index = np.zeros(n_tot_source, dtype=np.int32)
+        obj_index = np.zeros(n_tot_source, dtype=np.int32)
 
         ctr = 0
         for i in range(len(primary_star_cat)):
-            obj_index[ctr: ctr + n_obs_per_obj[i]] = i
+            obj_index[ctr: ctr + n_source_per_obj[i]] = i
             for b in range(len(bands)):
-                obs_index[ctr: ctr + n_obs_per_band_per_obj[b, i]] = band_uses[b][idxs[b][i]]
-                ctr += n_obs_per_band_per_obj[b, i]
+                source_index[ctr: ctr + n_source_per_band_per_obj[b, i]] = band_uses[b][idxs[b][i]]
+                ctr += n_source_per_band_per_obj[b, i]
 
-        obs_cat_index_band_offset = np.cumsum(n_obs_per_band_per_obj, axis=0)
+        source_cat_index_band_offset = np.cumsum(n_source_per_band_per_obj, axis=0)
 
         for b, band in enumerate(bands):
-            primary_star_cat[f'nobs_{band}'] = n_obs_per_band_per_obj[b, :]
+            primary_star_cat[f'nsource_{band}'] = n_source_per_band_per_obj[b, :]
             if b == 0:
                 # The first band listed is the same as the overall star
-                primary_star_cat[f'obs_cat_index_{band}'] = primary_star_cat['obs_cat_index']
+                primary_star_cat[f'source_cat_index_{band}'] = primary_star_cat['source_cat_index']
             else:
                 # Other band indices are offset from the previous band
-                primary_star_cat[f'obs_cat_index_{band}'] = (primary_star_cat['obs_cat_index']
-                                                             + obs_cat_index_band_offset[b - 1, :])
+                primary_star_cat[f'source_cat_index_{band}'] = (primary_star_cat['source_cat_index']
+                                                                + source_cat_index_band_offset[b - 1, :])
 
-        star_obs_cat = star_obs_cat[obs_index]
-        star_obs_cat['obj_index'] = obj_index
+        star_source_cat = star_source_cat[source_index]
+        star_source_cat['obj_index'] = obj_index
 
-        return star_obs_cat, primary_star_cat
+        return star_source_cat, primary_star_cat
 
     def _compute_unique_ids(self, skymap, tract, nstar):
         """Compute unique star ids.
@@ -590,11 +589,11 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
                  (self.config.ra_column, 'f8'),
                  (self.config.dec_column, 'f8'),
                  ('primary_band', f'U{max_len}'),
-                 ('obs_cat_index', 'i4'),
-                 ('nobs', 'i4')]
+                 ('source_cat_index', 'i4'),
+                 ('nsource', 'i4')]
 
         for band in primary_bands:
-            dtype.append((f'obs_cat_index_{band}', 'i4'))
-            dtype.append((f'nobs_{band}', 'i4'))
+            dtype.append((f'source_cat_index_{band}', 'i4'))
+            dtype.append((f'nsource_{band}', 'i4'))
 
         return dtype

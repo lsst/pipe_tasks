@@ -60,7 +60,12 @@ class MockSourceTableReference(lsst.daf.butler.DeferredDatasetHandle):
             dataframe, cut to the specified columns.
         """
         if 'columns' in parameters:
-            return self.source_table[parameters['columns']]
+            _columns = parameters['columns']
+            if 'sourceId' in parameters['columns']:
+                # Treat the index separately
+                _columns.remove('sourceId')
+
+            return self.source_table[_columns]
         else:
             return self.source_table.copy()
 
@@ -208,7 +213,9 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                     # Make one star have low s/n
                     table['apFlux_12_0_instFlux'][0] = 1.0
 
-                data_refs.append(MockSourceTableReference(pd.DataFrame(table)))
+                df = pd.DataFrame(table)
+                df.set_index('sourceId', inplace=True)
+                data_refs.append(MockSourceTableReference(df))
 
                 id_counter += nstar
                 visit_counter += 1
@@ -252,15 +259,15 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
 
     def test_match_primary_stars(self):
         """Test matching primary stars."""
-        # Stack all the observations; we do not want any cutting here.
+        # Stack all the sources; we do not want any cutting here.
         tables = []
         for data_ref in self.data_refs:
             df = data_ref.get()
             tables.append(df.to_records())
-        obs_cat = np.concatenate(tables)
+        source_cat = np.concatenate(tables)
 
         primary_star_cat = self.isolatedStarAssociationTask._match_primary_stars(['i', 'r'],
-                                                                                 obs_cat)
+                                                                                 source_cat)
 
         # Ensure we found the right number of stars in each p
         test_i = (primary_star_cat['primary_band'] == 'i')
@@ -287,20 +294,20 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         # And make sure extendedness is not in persisted columns.
         self.assertTrue('extendedness' not in persist_columns)
 
-    def test_match_observations(self):
-        """Test _match_observations observation to primary matching."""
-        # Stack all the observations; we do not want any cutting here.
+    def test_match_sources(self):
+        """Test _match_sources source to primary matching."""
+        # Stack all the sources; we do not want any cutting here.
         tables = []
         for data_ref in self.data_refs:
             df = data_ref.get()
             tables.append(df.to_records())
-        obs_cat = np.concatenate(tables)
+        source_cat = np.concatenate(tables)
 
-        obs_cat = np.lib.recfunctions.append_fields(obs_cat,
-                                                    ['obj_index'],
-                                                    [np.zeros(obs_cat.size, dtype=np.int32)],
-                                                    dtypes=['i4'],
-                                                    usemask=False)
+        source_cat = np.lib.recfunctions.append_fields(source_cat,
+                                                       ['obj_index'],
+                                                       [np.zeros(source_cat.size, dtype=np.int32)],
+                                                       dtypes=['i4'],
+                                                       usemask=False)
 
         primary_bands = ['i', 'r']
 
@@ -309,27 +316,27 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         primary_cat['ra'] = self.star_ras
         primary_cat['decl'] = self.star_decs
 
-        obs_cat_sorted, primary_star_cat = self.isolatedStarAssociationTask._match_observations(['i', 'r'],
-                                                                                                obs_cat,
-                                                                                                primary_cat)
-        # All the star observations should be matched
-        self.assertEqual(obs_cat_sorted.size, obs_cat.size)
+        source_cat_sorted, primary_star_cat = self.isolatedStarAssociationTask._match_sources(['i', 'r'],
+                                                                                              source_cat,
+                                                                                              primary_cat)
+        # All the star sources should be matched
+        self.assertEqual(source_cat_sorted.size, source_cat.size)
 
         # Full index tests are performed in test_run_isolated_star_association_task
 
-    def test_make_all_star_obs(self):
-        """Test appending all the star observations."""
-        obs_cat = self.isolatedStarAssociationTask._make_all_star_obs(self.skymap[self.tract],
-                                                                      self.data_ref_dict)
+    def test_make_all_star_sources(self):
+        """Test appending all the star sources."""
+        source_cat = self.isolatedStarAssociationTask._make_all_star_sources(self.skymap[self.tract],
+                                                                             self.data_ref_dict)
 
-        # Make sure we don't have any low s/n observations.
-        sn_min = np.min(obs_cat['apFlux_12_0_instFlux']/obs_cat['apFlux_12_0_instFluxErr'])
+        # Make sure we don't have any low s/n sources.
+        sn_min = np.min(source_cat['apFlux_12_0_instFlux']/source_cat['apFlux_12_0_instFluxErr'])
         self.assertGreater(sn_min, 10.0)
 
         # And make sure they are all within the tract outer boundary.
         poly = self.skymap[self.tract].outer_sky_polygon
-        use = poly.contains(np.deg2rad(obs_cat['ra']), np.deg2rad(obs_cat['decl']))
-        self.assertEqual(use.sum(), len(obs_cat))
+        use = poly.contains(np.deg2rad(source_cat['ra']), np.deg2rad(source_cat['decl']))
+        self.assertEqual(use.sum(), len(source_cat))
 
     def test_run_isolated_star_association_task(self):
         """Test running the full task."""
@@ -337,11 +344,11 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                                                       self.tract,
                                                       self.data_ref_dict)
 
-        star_obs_cat = struct.star_obs_cat
+        star_source_cat = struct.star_source_cat
         star_cat = struct.star_cat
 
-        # Check that observations are all unique ids
-        self.assertEqual(np.unique(star_obs_cat['sourceId']).size, star_obs_cat.size)
+        # Check that sources are all unique ids
+        self.assertEqual(np.unique(star_source_cat['sourceId']).size, star_source_cat.size)
 
         inner_tract_ids = self.skymap.findTractIdArray(self.star_ras,
                                                        self.star_decs,
@@ -354,31 +361,31 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
 
         # Check the star indices
         for i in range(len(star_cat)):
-            all_obs_star = star_obs_cat[star_cat['obs_cat_index'][i]:
-                                        star_cat['obs_cat_index'][i] + star_cat['nobs'][i]]
+            all_source_star = star_source_cat[star_cat['source_cat_index'][i]:
+                                              star_cat['source_cat_index'][i] + star_cat['nsource'][i]]
 
             # Check that these all point to the correct object
-            np.testing.assert_array_equal(all_obs_star['obj_index'], i)
+            np.testing.assert_array_equal(all_source_star['obj_index'], i)
 
             # Check these are all pointing to the same star position
             with Matcher(np.atleast_1d(star_cat['ra'][i]),
                          np.atleast_1d(star_cat['decl'][i])) as matcher:
-                idx = matcher.query_radius(all_obs_star['ra'],
-                                           all_obs_star['decl'],
+                idx = matcher.query_radius(all_source_star['ra'],
+                                           all_source_star['decl'],
                                            1./3600.)
-            self.assertEqual(len(idx[0]), star_cat['nobs'][i])
+            self.assertEqual(len(idx[0]), star_cat['nsource'][i])
 
             # Check per band indices
             for band in ['r', 'i']:
-                band_obs_star = star_obs_cat[star_cat[f'obs_cat_index_{band}'][i]:
-                                             star_cat[f'obs_cat_index_{band}'][i]
-                                             + star_cat[f'nobs_{band}'][i]]
+                band_source_star = star_source_cat[star_cat[f'source_cat_index_{band}'][i]:
+                                                   star_cat[f'source_cat_index_{band}'][i]
+                                                   + star_cat[f'nsource_{band}'][i]]
                 with Matcher(np.atleast_1d(star_cat['ra'][i]),
                              np.atleast_1d(star_cat['decl'][i])) as matcher:
-                    idx = matcher.query_radius(band_obs_star['ra'],
-                                               band_obs_star['decl'],
+                    idx = matcher.query_radius(band_source_star['ra'],
+                                               band_source_star['decl'],
                                                1./3600.)
-                self.assertEqual(len(idx[0]), star_cat[f'nobs_{band}'][i])
+                self.assertEqual(len(idx[0]), star_cat[f'nsource_{band}'][i])
 
     def test_run_task_all_neighbors(self):
         """Test running the task when all the stars are rejected as neighbors."""
@@ -391,14 +398,14 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                                                       data_ref_dict)
 
         # These should ber zero length.
-        self.assertEqual(len(struct.star_obs_cat), 0)
+        self.assertEqual(len(struct.star_source_cat), 0)
         self.assertEqual(len(struct.star_cat), 0)
         # And spot-check a couple of expected fields to make sure they have the right type.
-        self.assertTrue('physical_filter' in struct.star_obs_cat.dtype.names)
-        self.assertTrue('nobs_i' in struct.star_cat.dtype.names)
+        self.assertTrue('physical_filter' in struct.star_source_cat.dtype.names)
+        self.assertTrue('nsource_i' in struct.star_cat.dtype.names)
 
     def test_run_task_all_out_of_tract(self):
-        """Test running the task when all the observations are out of the tract."""
+        """Test running the task when all the sources are out of the tract."""
         data_refs = self._make_simdata(self.tract, only_out_of_tract=True)
         data_ref_dict = {visit: data_ref for visit, data_ref in zip(self.visits,
                                                                     data_refs)}
@@ -408,14 +415,14 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                                                       data_ref_dict)
 
         # These should ber zero length.
-        self.assertEqual(len(struct.star_obs_cat), 0)
+        self.assertEqual(len(struct.star_source_cat), 0)
         self.assertEqual(len(struct.star_cat), 0)
         # And spot-check a couple of expected fields to make sure they have the right type.
-        self.assertTrue('physical_filter' in struct.star_obs_cat.dtype.names)
-        self.assertTrue('nobs_i' in struct.star_cat.dtype.names)
+        self.assertTrue('physical_filter' in struct.star_source_cat.dtype.names)
+        self.assertTrue('nsource_i' in struct.star_cat.dtype.names)
 
     def test_run_task_all_out_of_inner_tract(self):
-        """Test running the task when all the observations are out of the inner tract."""
+        """Test running the task when all the sources are out of the inner tract."""
         data_refs = self._make_simdata(self.tract, only_out_of_inner_tract=True)
         data_ref_dict = {visit: data_ref for visit, data_ref in zip(self.visits,
                                                                     data_refs)}
@@ -425,11 +432,11 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                                                       data_ref_dict)
 
         # These should ber zero length.
-        self.assertEqual(len(struct.star_obs_cat), 0)
+        self.assertEqual(len(struct.star_source_cat), 0)
         self.assertEqual(len(struct.star_cat), 0)
         # And spot-check a couple of expected fields to make sure they have the right type.
-        self.assertTrue('physical_filter' in struct.star_obs_cat.dtype.names)
-        self.assertTrue('nobs_i' in struct.star_cat.dtype.names)
+        self.assertTrue('physical_filter' in struct.star_source_cat.dtype.names)
+        self.assertTrue('nsource_i' in struct.star_cat.dtype.names)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
