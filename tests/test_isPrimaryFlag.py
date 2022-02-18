@@ -247,7 +247,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
             src.setFootprint(foot)
             src.set("merge_peak_sky", True)
         # deblend
-        result = deblendTask.run(coadds, catalog)
+        result, fluxResult = deblendTask.run(coadds, catalog)
         # measure
         measureTask.run(result["test"], self.exposure)
         outputCat = result["test"]
