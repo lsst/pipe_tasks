@@ -189,9 +189,9 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
 
         tract = butlerQC.quantum.dataId['tract']
 
-        source_table_refs = input_ref_dict['sourceTable_visit']
+        source_table_refs = input_ref_dict['source_table_visit']
 
-        self.log.info('Running with %d sourceTable_visit dataRefs',
+        self.log.info('Running with %d source_table_visit dataRefs',
                       len(source_table_refs))
 
         source_table_ref_dict_temp = {source_table_ref.dataId['visit']: source_table_ref for
