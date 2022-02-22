@@ -35,7 +35,7 @@ __all__ = ['IsolatedStarAssociationConnections',
 
 
 class IsolatedStarAssociationConnections(pipeBase.PipelineTaskConnections,
-                                         dimensions=('instrument', 'tract',),
+                                         dimensions=('instrument', 'tract', 'skymap',),
                                          defaultTemplates={}):
     source_table_visit = pipeBase.connectionTypes.Input(
         doc='Source table in parquet format, per visit',
@@ -48,20 +48,20 @@ class IsolatedStarAssociationConnections(pipeBase.PipelineTaskConnections,
     skymap = pipeBase.connectionTypes.Input(
         doc="Input definition of geometry/bbox and projection/wcs for warped exposures",
         name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
-        storageClass="SkyMap",
-        dimensions=("skymap",),
+        storageClass='SkyMap',
+        dimensions=('skymap',),
     )
     isolated_star_sources = pipeBase.connectionTypes.Output(
         doc='Catalog of individual sources for the isolated stars',
         name='isolated_star_sources',
         storageClass='DataFrame',
-        dimensions=('instrument', 'tract'),
+        dimensions=('instrument', 'tract', 'skymap'),
     )
     isolated_star_cat = pipeBase.connectionTypes.Output(
         doc='Catalog of isolated star positions',
         name='isolated_star_cat',
         storageClass='DataFrame',
-        dimensions=('instrument', 'tract'),
+        dimensions=('instrument', 'tract', 'skymap'),
     )
 
 
