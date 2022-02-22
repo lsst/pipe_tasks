@@ -172,7 +172,7 @@ class IsolatedStarAssociationConfig(pipeBase.PipelineTaskConfig,
 
 
 class IsolatedStarAssociationTask(pipeBase.PipelineTask):
-    """Match isolated stars and suchlike.
+    """Associate sources into isolated star catalogs.
     """
     ConfigClass = IsolatedStarAssociationConfig
     _DefaultName = 'isolatedStarAssociation'
