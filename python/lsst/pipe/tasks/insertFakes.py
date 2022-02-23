@@ -74,7 +74,7 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
 
     pixScale = wcs.getPixelScale(bbox.getCenter()).asArcseconds()
 
-    for spt, gsObj in objects:
+    for spt, gsObj, srcType in objects:
         pt = wcs.skyToPixel(spt)
         posd = galsim.PositionD(pt.x, pt.y)
         posi = galsim.PositionI(pt.x//1, pt.y//1)
@@ -90,6 +90,16 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
         gsPixScale = np.sqrt(gsWCS.pixelArea())
         if gsPixScale < pixScale/2 or gsPixScale > pixScale*2:
             continue
+
+        # Check if trailed source
+        # Transform to sky-coordinates first, then rotate
+        if srcType == "trail":
+            # Rotate trail by Jacobian rotation component so the trail
+            # is rotated by the correct angle in image coordinates
+            jacScale, jacShear, jacTheta, doFlip = gsWCS.getDecomposition()  # (scale, shear, theta, flip)
+            if doFlip:
+                gsObj = gsObj.transform(0.0, 1.0, 1.0, 0.0)  # Perform a reflection first, if needed
+            gsObj = gsObj.rotate(jacTheta).shear(jacShear).expand(jacScale)
 
         try:
             psfArr = psf.computeKernelImage(pt).array
@@ -393,6 +403,18 @@ class InsertFakesConfig(PipelineTaskConfig,
         default="select",
     )
 
+    length_col = pexConfig.Field(
+        doc="Source catalog column name for trail length (in pixels).",
+        dtype=str,
+        default="trail_length",
+    )
+
+    angle_col = pexConfig.Field(
+        doc="Source catalog column name for trail angle (in radians).",
+        dtype=str,
+        default="trail_angle",
+    )
+
     # Deprecated config variables
 
     raColName = pexConfig.Field(
@@ -649,12 +671,15 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 if isinstance(fakeCat[self.config.sourceType].iloc[0], str):
                     galCheckVal = "galaxy"
                     starCheckVal = "star"
+                    trailCheckVal = "trail"
                 elif isinstance(fakeCat[self.config.sourceType].iloc[0], bytes):
                     galCheckVal = b"galaxy"
                     starCheckVal = b"star"
+                    trailCheckVal = b"trail"
                 elif isinstance(fakeCat[self.config.sourceType].iloc[0], (int, float)):
                     galCheckVal = 1
                     starCheckVal = 0
+                    trailCheckVal = 2
                 else:
                     raise TypeError(
                         "sourceType column does not have required type, should be str, bytes or int"
@@ -662,7 +687,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 if self.config.doCleanCat:
                     fakeCat = self.cleanCat(fakeCat, starCheckVal)
 
-                generator = self._generateGSObjectsFromCatalog(image, fakeCat, galCheckVal, starCheckVal)
+                generator = self._generateGSObjectsFromCatalog(image, fakeCat, galCheckVal, starCheckVal, trailCheckVal)
             else:
                 generator = self._generateGSObjectsFromImages(image, fakeCat)
             _add_fake_sources(image, generator, calibFluxRadius=self.config.calibFluxRadius, logger=self.log)
@@ -786,7 +811,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         return fakeCat
 
-    def _generateGSObjectsFromCatalog(self, exposure, fakeCat, galCheckVal, starCheckVal):
+    def _generateGSObjectsFromCatalog(self, exposure, fakeCat, galCheckVal, starCheckVal, trailCheckVal):
         """Process catalog to generate `galsim.GSObject` s.
 
         Parameters
@@ -835,11 +860,23 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 gal = bulge*row['bulge_disk_flux_ratio'] + disk
                 gal = gal.withFlux(flux)
 
-                yield skyCoord, gal
+                yield skyCoord, gal, "gal"
             elif sourceType == starCheckVal:
                 star = galsim.DeltaFunction()
                 star = star.withFlux(flux)
-                yield skyCoord, star
+                yield skyCoord, star, "star"
+            elif sourceType == trailCheckVal:
+                length = row['trail_length']
+                angle = row['trail_angle']
+
+                # Make a 'thin' box profile for a trailed source
+                thickness = 1e-6
+                theta = galsim.Angle(angle * galsim.radians)
+                trail = galsim.Box(length, thickness)
+                trail = trail.rotate(theta)
+                trail = trail.withFlux(flux*length)
+
+                yield skyCoord, trail, "trail"
             else:
                 raise TypeError(f"Unknown sourceType {sourceType}")
 
