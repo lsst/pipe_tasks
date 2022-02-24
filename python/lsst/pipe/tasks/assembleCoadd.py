@@ -840,7 +840,8 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                                              weightList, altMaskList, stats.ctrl,
                                              nImage=nImage)
             except Exception as e:
-                self.log.fatal("Cannot compute online coadd %s", e)
+                self.log.exception("Cannot compute online coadd %s", e)
+                raise
         else:
             for subBBox in self._subBBoxIter(skyInfo.bbox, subregionSize):
                 try:
@@ -848,7 +849,8 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                                            weightList, altMaskList, stats.flags, stats.ctrl,
                                            nImage=nImage)
                 except Exception as e:
-                    self.log.fatal("Cannot compute coadd %s: %s", subBBox, e)
+                    self.log.exception("Cannot compute coadd %s: %s", subBBox, e)
+                    raise
 
         # If inputMap is requested, we must finalize the map after the accumulation.
         if self.config.doInputMap:
