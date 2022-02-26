@@ -571,6 +571,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                        self.config.dcrNumSubfilters,
                                        effectiveWavelength=self.config.effectiveWavelength,
                                        bandwidth=self.config.bandwidth,
+                                       wcs=templateCoadd.getWcs(),
                                        filterLabel=filterLabel,
                                        psf=psf)
         return dcrModels
@@ -852,6 +853,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             visitInfo = exposure.getInfo().getVisitInfo()
             wcs = exposure.getInfo().getWcs()
             templateImage = dcrModels.buildMatchedTemplate(exposure=exposure,
+                                                           bbox=exposure.getBBox(),
                                                            order=self.config.imageInterpOrder,
                                                            splitSubfilters=self.config.splitSubfilters,
                                                            splitThreshold=self.config.splitThreshold,
@@ -1023,6 +1025,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         convergeMask = exposure.mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
         templateImage = dcrModels.buildMatchedTemplate(exposure=exposure,
+                                                       bbox=exposure.getBBox(),
                                                        order=self.config.imageInterpOrder,
                                                        splitSubfilters=self.config.splitSubfilters,
                                                        splitThreshold=self.config.splitThreshold,
