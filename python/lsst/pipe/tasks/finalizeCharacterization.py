@@ -259,7 +259,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         struct : `lsst.pipe.base.struct`
             Struct with outputs for persistence.
         """
-        isolated_source_table, isolated_reserved = self._concat_isolated_star_cats(
+        # We do not need the isolated star table at this time.
+        _, isolated_source_table = self._concat_isolated_star_cats(
             band,
             isolated_star_cat_dict,
             isolated_star_source_dict
@@ -284,8 +285,7 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             psf, ap_corr_map = self._compute_psf_and_ap_corr_map(
                 exposure,
                 src,
-                isolated_source_table,
-                isolated_reserved
+                isolated_source_table
             )
 
             # And now we package it together...
@@ -380,50 +380,76 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
 
         Returns
         -------
-        isolated_source_table : `np.ndarray` (N,)
+        isolated_table : `np.ndarray` (N,)
+            Table of isolated stars, with indexes to isolated sources.
+        isolated_source_table : `np.ndarray` (M,)
             Table of isolated sources, with indexes to isolated stars.
-        isolated_reserved : `np.ndarray` (M,)
-            bool array of flags for reserved stars.
         """
+        isolated_tables = []
         isolated_sources = []
-        isolated_reserves = []
         merge_cat_counter = 0
         merge_source_counter = 0
+
         for tract in isolated_star_cat_dict:
             df_cat = isolated_star_cat_dict[tract].get()
             table_cat = df_cat.to_records()
 
             df_source = isolated_star_source_dict[tract].get(
                 parameters={'columns': [self.config.id_column,
+                                        'ra', 'decl',
                                         'obj_index']}
             )
             table_source = df_source.to_records()
 
             # Cut isolated star table to those observed in this band, and adjust indices
             use_band, = np.where(table_cat[f'nsource_{band}'] > 0)
-            # Update obj_index, include any offsets due to merging tracts
-            a, b = esutil.numpy_util.match(use_band, table_source['obj_index'])
-            table_source['obj_index'][b] = a + merge_cat_counter
-            # Cut to observed
+
+            # With the following matching:
+            #   table_source[b] <-> table_cat[use_band[a]]
+            obj_index = table_source['obj_index'][:]
+            a, b = esutil.numpy_util.match(use_band, obj_index)
+
+            # Update indexes and cut to band-selected stars/sources
+            table_source['obj_index'][b] = a
+            table_cat[f'source_cat_index_{band}'][use_band[a]] = np.arange(b.size)
+
+            table_source = table_source[b]
             table_cat = table_cat[use_band]
-            # Update source index accounting for sources
-            table_cat[f'source_cat_index_{band}'] += merge_source_counter
+
+            # Add reserved flag column to tables
+            table_cat = np.lib.recfunctions.append_fields(
+                table_cat,
+                'reserved',
+                np.zeros(table_cat.size, dtype=bool),
+                usemask=False
+            )
+            table_source = np.lib.recfunctions.append_fields(
+                table_source,
+                'reserved',
+                np.zeros(table_source.size, dtype=bool),
+                usemask=False
+            )
 
             # Get reserve star flags
-            reserved = self.reserve_selection.run(tract, len(table_cat))
+            table_cat['reserved'][:] = self.reserve_selection.run(tract, len(table_cat))
+            table_source['reserved'][:] = table_cat['reserved'][table_source['obj_index']]
 
-            isolated_reserves.append(reserved)
+            # Offset indices to account for tract merging
+            table_cat[f'source_cat_index_{band}'] += merge_source_counter
+            table_source['obj_index'] += merge_cat_counter
+
+            isolated_tables.append(table_cat)
             isolated_sources.append(table_source)
 
             merge_cat_counter += len(table_cat)
             merge_source_counter += len(table_source)
 
+        isolated_table = np.concatenate(isolated_tables)
         isolated_source_table = np.concatenate(isolated_sources)
-        isolated_reserved = np.concatenate(isolated_reserves)
 
-        return isolated_source_table, isolated_reserved
+        return isolated_table, isolated_source_table
 
-    def _compute_psf_and_ap_corr_map(self, exposure, src, isolated_source_table, isolated_reserved):
+    def _compute_psf_and_ap_corr_map(self, exposure, src, isolated_source_table):
         """Compute psf model and aperture correction map for a single exposure.
 
         Parameters
@@ -431,7 +457,6 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         exposure : `lsst.afw.image.ExposureF`
         src : `lsst.afw.table.SourceCatalog`
         isolated_source_table : `np.ndarray`
-        isolated_reserved : NO
 
         Returns
         -------
@@ -447,16 +472,18 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         src_narrow.reserve(good_src.selected.sum())
         src_narrow.extend(src[good_src.selected], mapper=self.schema_mapper)
 
-        matched_src, b = esutil.numpy_util.match(src_narrow['id'],
-                                                 isolated_source_table[self.config.id_column])
-        matched_isolated_obj = isolated_source_table['obj_index'][b]
+        matched_src, matched_iso = esutil.numpy_util.match(
+            src_narrow['id'],
+            isolated_source_table[self.config.id_column]
+        )
 
+        # We need to make a full array for the flag setting to work.
         matched_arr = np.zeros(len(src_narrow), dtype=bool)
         matched_arr[matched_src] = True
         src_narrow['final_psf_candidate'] = matched_arr
 
         reserved_arr = np.zeros(len(src_narrow), dtype=bool)
-        reserved_arr[matched_src] = isolated_reserved[matched_isolated_obj]
+        reserved_arr[matched_src] = isolated_source_table['reserved'][matched_iso]
         src_narrow['final_psf_reserved'] = reserved_arr
 
         src_narrow = src_narrow[src_narrow['final_psf_candidate']].copy(deep=True)
