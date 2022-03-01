@@ -571,6 +571,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                        self.config.dcrNumSubfilters,
                                        effectiveWavelength=self.config.effectiveWavelength,
                                        bandwidth=self.config.bandwidth,
+                                       wcs=templateCoadd.getWcs(),
                                        filterLabel=filterLabel,
                                        psf=psf)
         return dcrModels
@@ -852,6 +853,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             visitInfo = exposure.getInfo().getVisitInfo()
             wcs = exposure.getInfo().getWcs()
             templateImage = dcrModels.buildMatchedTemplate(exposure=exposure,
+                                                           bbox=exposure.getBBox(),
                                                            order=self.config.imageInterpOrder,
                                                            splitSubfilters=self.config.splitSubfilters,
                                                            splitThreshold=self.config.splitThreshold,
@@ -891,9 +893,13 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         residualImage : `numpy.ndarray`
             The residual image for the next subfilter, shifted for DCR.
         """
-        # Pre-calculate the spline-filtered residual image, so that step can be
-        # skipped in the shift calculation in `applyDcr`.
-        filteredResidual = ndimage.spline_filter(residual, order=self.config.imageInterpOrder)
+        if self.config.imageInterpOrder > 1:
+            # Pre-calculate the spline-filtered residual image, so that step can be
+            # skipped in the shift calculation in `applyDcr`.
+            filteredResidual = ndimage.spline_filter(residual, order=self.config.imageInterpOrder)
+        else:
+            # No need to prefilter if order=1 (it will also raise an error)
+            filteredResidual = residual
         # Note that `splitSubfilters` is always turned off in the reverse direction.
         # This option introduces additional blurring if applied to the residuals.
         dcrShift = calculateDcr(visitInfo, wcs, effectiveWavelength, bandwidth, self.config.dcrNumSubfilters,
@@ -1023,6 +1029,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         convergeMask = exposure.mask.getPlaneBitMask(self.config.convergenceMaskPlanes)
         templateImage = dcrModels.buildMatchedTemplate(exposure=exposure,
+                                                       bbox=exposure.getBBox(),
                                                        order=self.config.imageInterpOrder,
                                                        splitSubfilters=self.config.splitSubfilters,
                                                        splitThreshold=self.config.splitThreshold,
