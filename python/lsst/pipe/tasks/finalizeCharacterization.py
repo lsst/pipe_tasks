@@ -168,6 +168,11 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
 
         self.measure_ap_corr.sourceSelector['flagged'].field = 'final_psf_used'
 
+        # Turn off slot setting for measurement for centroid and shape
+        # (for which we use the input src catalog measurements)
+        self.measurement.slots.centroid = None
+        self.measurement.slots.shape = None
+
 
 class FinalizeCharacterizationTask(pipeBase.PipelineTask):
     """Run final characterization on exposures."""
@@ -186,14 +191,6 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         self.makeSubtask('measurement', schema=self.schema)
         self.makeSubtask('measure_ap_corr', schema=self.schema)
         self.makeSubtask('apply_ap_corr', schema=self.schema)
-
-        # Reset alias map to those that are in the input src_schema.
-        alias_map = self.schema.getAliasMap()
-        alias_map_input = initInputs['src_schema'].schema.getAliasMap()
-        alias_map.set('slot_Centroid', alias_map_input.get('slot_Centroid'))
-        alias_map.set('slot_Shape', alias_map_input.get('slot_Shape'))
-        alias_map.erase('slot_PsfShape')
-        self.schema.setAliasMap(alias_map)
 
         # Only log warning and fatal errors from the source_selector
         self.source_selector.log.setLevel(self.source_selector.log.WARN)
