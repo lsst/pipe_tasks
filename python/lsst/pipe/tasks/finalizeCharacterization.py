@@ -109,6 +109,11 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
         doc="How to select sources",
         default="science"
     )
+    id_column = pexConfig.Field(
+        doc='Name of column in isolated_star_sources with source id.',
+        dtype=str,
+        default='sourceId',
+    )
     reserve_selection = pexConfig.ConfigurableField(
         target=ReserveIsolatedStarsTask,
         doc='Task to select reserved stars',
@@ -134,14 +139,13 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
         doc="Subtask to apply aperture corrections"
     )
 
-    # Do I need all the doStuff configs?
-
     def setDefaults(self):
         source_selector = self.source_selector['science']
         source_selector.setDefaults()
 
-        # Isolated, unresolved sources are handled by matches
-        # to the isolated star catalog.
+        # We use the source selector only to select out flagged objects
+        # and signal-to-noise.  Isolated, unresolved sources are handled
+        # by the isolated star catalog.
 
         source_selector.doFlags = True
         source_selector.doSignalToNoise = True
@@ -233,47 +237,33 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
 
     def run(self, visit, band, isolated_star_cat_dict, isolated_star_source_dict, src_dict, calexp_dict):
         """
+        Run the FinalizeCharacterizationTask.
+
+        Parameters
+        ----------
+        visit : `int`
+            Visit number.  Used in the output catalogs.
+        band : `str`
+            Band name.  Used to select reserved stars.
+        isolated_star_cat_dict : `dict`
+            Per-tract dict of isolated star catalog references.
+        isolated_star_source_dict : `dict`
+            Per-tract dict of isolated star source catalog references.
+        src_dict : `dict`
+            Per-detector dict of src catalog references.
+        calexp_dict : `dict`
+            Per-detector dict of calibrated exposure references.
+
+        Returns
+        -------
+        struct : `lsst.pipe.base.struct`
+            Struct with outputs for persistence.
         """
-        # FIXME: put this in a sub-function.
-
-        # Read in the isolated star catalogs, and flag reserves ...
-        isolated_sources = []
-        isolated_reserves = []
-        merge_cat_counter = 0
-        merge_source_counter = 0
-        for tract in isolated_star_cat_dict:
-            df_cat = isolated_star_cat_dict[tract].get()
-            table_cat = df_cat.to_records()
-
-            # FIXME: sourceId may need to be configurable.
-            df_source = isolated_star_source_dict[tract].get(parameters={'columns': ['sourceId',
-                                                                                     'obj_index']})
-            table_source = df_source.to_records()
-
-            # Cut isolated star table to those observed in this band, and adjust indices
-            use_band, = np.where(table_cat[f'nsource_{band}'] > 0)
-            # Update obj_index, include any offsets due to merging tracts
-            a, b = esutil.numpy_util.match(use_band, table_source['obj_index'])
-            table_source['obj_index'][b] = a + merge_cat_counter
-            # Cut to observed
-            table_cat = table_cat[use_band]
-            # Update source index accounting for sources
-            table_cat[f'source_cat_index_{band}'] += merge_source_counter
-
-            # Get reserve star flags
-            reserved = self.reserve_selection.run(tract, len(table_cat))
-
-            isolated_reserves.append(reserved)
-            isolated_sources.append(table_source)
-
-            merge_cat_counter += len(table_cat)
-            merge_source_counter += len(table_source)
-
-        isolated_source_table = np.concatenate(isolated_sources)
-        isolated_reserved = np.concatenate(isolated_reserves)
-
-        isolated_sources = None
-        isolated_reserves = None
+        isolated_source_table, isolated_reserved = self._concat_isolated_star_cats(
+            band,
+            isolated_star_cat_dict,
+            isolated_star_source_dict
+        )
 
         psf_used_key = self.schema['final_psf_used'].asKey()
 
@@ -300,7 +290,7 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             src_narrow.extend(src[good_src.selected], mapper=self.schema_mapper)
 
             matched_src, b = esutil.numpy_util.match(src_narrow['id'],
-                                                     isolated_source_table['sourceId'])
+                                                     isolated_source_table[self.config.id_column])
             matched_isolated_obj = isolated_source_table['obj_index'][b]
 
             matched_arr = np.zeros(len(src_narrow), dtype=bool)
@@ -415,3 +405,60 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         output_schema.setAliasMap(alias_map_output)
 
         return mapper, output_schema
+
+    def _concat_isolated_star_cats(self, band, isolated_star_cat_dict, isolated_star_source_dict):
+        """
+        Concatenate isolated star catalogs and make reserve selection.
+
+        Parameters
+        ----------
+        band : `str`
+            Band name.  Used to select reserved stars.
+        isolated_star_cat_dict : `dict`
+            Per-tract dict of isolated star catalog references.
+        isolated_star_source_dict : `dict`
+            Per-tract dict of isolated star source catalog references.
+
+        Returns
+        -------
+        isolated_source_table : `np.ndarray` (N,)
+            Table of isolated sources, with indexes to isolated stars.
+        isolated_reserved : `np.ndarray` (M,)
+            bool array of flags for reserved stars.
+        """
+        isolated_sources = []
+        isolated_reserves = []
+        merge_cat_counter = 0
+        merge_source_counter = 0
+        for tract in isolated_star_cat_dict:
+            df_cat = isolated_star_cat_dict[tract].get()
+            table_cat = df_cat.to_records()
+
+            # FIXME: sourceId may need to be configurable.
+            df_source = isolated_star_source_dict[tract].get(parameters={'columns': ['sourceId',
+                                                                                     'obj_index']})
+            table_source = df_source.to_records()
+
+            # Cut isolated star table to those observed in this band, and adjust indices
+            use_band, = np.where(table_cat[f'nsource_{band}'] > 0)
+            # Update obj_index, include any offsets due to merging tracts
+            a, b = esutil.numpy_util.match(use_band, table_source['obj_index'])
+            table_source['obj_index'][b] = a + merge_cat_counter
+            # Cut to observed
+            table_cat = table_cat[use_band]
+            # Update source index accounting for sources
+            table_cat[f'source_cat_index_{band}'] += merge_source_counter
+
+            # Get reserve star flags
+            reserved = self.reserve_selection.run(tract, len(table_cat))
+
+            isolated_reserves.append(reserved)
+            isolated_sources.append(table_source)
+
+            merge_cat_counter += len(table_cat)
+            merge_source_counter += len(table_source)
+
+        isolated_source_table = np.concatenate(isolated_sources)
+        isolated_reserved = np.concatenate(isolated_reserves)
+
+        return isolated_source_table, isolated_reserved
