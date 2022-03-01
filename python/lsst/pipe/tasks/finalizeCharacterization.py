@@ -396,7 +396,6 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
 
             df_source = isolated_star_source_dict[tract].get(
                 parameters={'columns': [self.config.id_column,
-                                        'ra', 'decl',
                                         'obj_index']}
             )
             table_source = df_source.to_records()
