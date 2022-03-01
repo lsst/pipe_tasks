@@ -172,6 +172,8 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
         # (for which we use the input src catalog measurements)
         self.measurement.slots.centroid = None
         self.measurement.slots.shape = None
+        self.measurement.slots.apFlux = None
+        self.measurement.slots.calibFlux = None
 
 
 class FinalizeCharacterizationTask(pipeBase.PipelineTask):
@@ -327,6 +329,15 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         for field, item in aper_fields.items():
             mapper.addMapping(item.key)
 
+        # The following two may be redundant, but then the mapping is a no-op.
+        apflux_fields = input_schema.extract('slot_ApFlux_*')
+        for field, item in apflux_fields.items():
+            mapper.addMapping(item.key)
+
+        calibflux_fields = input_schema.extract('slot_CalibFlux_*')
+        for field, item in calibflux_fields.items():
+            mapper.addMapping(item.key)
+
         mapper.addMapping(
             input_schema[self.config.source_selector.active.signalToNoise.fluxField].asKey(),
             'final_psf_selection_flux')
@@ -357,6 +368,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         alias_map_output = afwTable.AliasMap()
         alias_map_output.set('slot_Centroid', alias_map.get('slot_Centroid'))
         alias_map_output.set('slot_Shape', alias_map.get('slot_Shape'))
+        alias_map_output.set('slot_ApFlux', alias_map.get('slot_ApFlux'))
+        alias_map_output.set('slot_CalibFlux', alias_map.get('slot_CalibFlux'))
         output_schema = mapper.getOutputSchema()
         output_schema.setAliasMap(alias_map_output)
 
