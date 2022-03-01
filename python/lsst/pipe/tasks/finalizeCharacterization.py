@@ -265,8 +265,6 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             isolated_star_source_dict
         )
 
-        psf_used_key = self.schema['final_psf_used'].asKey()
-
         exposure_cat_schema = afwTable.ExposureTable.makeMinimalSchema()
         exposure_cat_schema.addField('visit', type='I', doc='Visit number')
 
@@ -281,53 +279,14 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
 
         for detector in src_dict:
             src = src_dict[detector].get()
-
-            # Apply source selector (s/n, flags, etc.)
-            good_src = self.source_selector.selectSources(src)
-
-            src_narrow = afwTable.SourceCatalog(self.schema)
-            src_narrow.reserve(good_src.selected.sum())
-            src_narrow.extend(src[good_src.selected], mapper=self.schema_mapper)
-
-            matched_src, b = esutil.numpy_util.match(src_narrow['id'],
-                                                     isolated_source_table[self.config.id_column])
-            matched_isolated_obj = isolated_source_table['obj_index'][b]
-
-            matched_arr = np.zeros(len(src_narrow), dtype=bool)
-            matched_arr[matched_src] = True
-            src_narrow['final_psf_candidate'] = matched_arr
-
-            reserved_arr = np.zeros(len(src_narrow), dtype=bool)
-            reserved_arr[matched_src] = isolated_reserved[matched_isolated_obj]
-            src_narrow['final_psf_reserved'] = reserved_arr
-
-            src_narrow = src_narrow[src_narrow['final_psf_candidate']].copy(deep=True)
-
-            # Now we can make the psfs, etc.
             exposure = calexp_dict[detector].get()
 
-            selection_result = self.make_psf_candidates.run(src_narrow, exposure=exposure)
-
-            psf_cand_cat = selection_result.goodStarCat
-
-            # Make list of psf candidates to send to the determiner (omitting those marked as reserved)
-            psf_determiner_list = [cand for cand, use
-                                   in zip(selection_result.psfCandidates,
-                                          ~psf_cand_cat['final_psf_reserved']) if use]
-
-            psf, cell_set = self.psf_determiner.determinePsf(exposure,
-                                                             psf_determiner_list,
-                                                             self.metadata,
-                                                             flagKey=psf_used_key)
-
-            # Next, we do the measurement on the psf stars ...
-            self.measurement.run(measCat=src_narrow, exposure=exposure)
-
-            # And finally the ap corr map.
-            ap_corr_map = self.measure_ap_corr.run(exposure=exposure,
-                                                   catalog=src_narrow).apCorrMap
-
-            self.apply_ap_corr.run(catalog=src_narrow, apCorrMap=ap_corr_map)
+            psf, ap_corr_map = self._compute_psf_and_ap_corr_map(
+                exposure,
+                src,
+                isolated_source_table,
+                isolated_reserved
+            )
 
             # And now we package it together...
             psf_record = psf_cat.addNew()
@@ -434,9 +393,10 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             df_cat = isolated_star_cat_dict[tract].get()
             table_cat = df_cat.to_records()
 
-            # FIXME: sourceId may need to be configurable.
-            df_source = isolated_star_source_dict[tract].get(parameters={'columns': ['sourceId',
-                                                                                     'obj_index']})
+            df_source = isolated_star_source_dict[tract].get(
+                parameters={'columns': [self.config.id_column,
+                                        'obj_index']}
+            )
             table_source = df_source.to_records()
 
             # Cut isolated star table to those observed in this band, and adjust indices
@@ -462,3 +422,67 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         isolated_reserved = np.concatenate(isolated_reserves)
 
         return isolated_source_table, isolated_reserved
+
+    def _compute_psf_and_ap_corr_map(self, exposure, src, isolated_source_table, isolated_reserved):
+        """Compute psf model and aperture correction map for a single exposure.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.ExposureF`
+        src : `lsst.afw.table.SourceCatalog`
+        isolated_source_table : `np.ndarray`
+        isolated_reserved : NO
+
+        Returns
+        -------
+        psf : `lsst.meas.algorithms.ImagePsf`
+            PSF Model
+        ap_corr_map : `lsst.afw.image.ApCorrMap`
+            Aperture correction map.
+        """
+        # Apply source selector (s/n, flags, etc.)
+        good_src = self.source_selector.selectSources(src)
+
+        src_narrow = afwTable.SourceCatalog(self.schema)
+        src_narrow.reserve(good_src.selected.sum())
+        src_narrow.extend(src[good_src.selected], mapper=self.schema_mapper)
+
+        matched_src, b = esutil.numpy_util.match(src_narrow['id'],
+                                                 isolated_source_table[self.config.id_column])
+        matched_isolated_obj = isolated_source_table['obj_index'][b]
+
+        matched_arr = np.zeros(len(src_narrow), dtype=bool)
+        matched_arr[matched_src] = True
+        src_narrow['final_psf_candidate'] = matched_arr
+
+        reserved_arr = np.zeros(len(src_narrow), dtype=bool)
+        reserved_arr[matched_src] = isolated_reserved[matched_isolated_obj]
+        src_narrow['final_psf_reserved'] = reserved_arr
+
+        src_narrow = src_narrow[src_narrow['final_psf_candidate']].copy(deep=True)
+
+        # Now we can make the psfs, etc.
+        selection_result = self.make_psf_candidates.run(src_narrow, exposure=exposure)
+
+        psf_cand_cat = selection_result.goodStarCat
+
+        # Make list of psf candidates to send to the determiner (omitting those marked as reserved)
+        psf_determiner_list = [cand for cand, use
+                               in zip(selection_result.psfCandidates,
+                                      ~psf_cand_cat['final_psf_reserved']) if use]
+
+        psf, cell_set = self.psf_determiner.determinePsf(exposure,
+                                                         psf_determiner_list,
+                                                         self.metadata,
+                                                         flagKey=self.schema['final_psf_used'].asKey())
+
+        # Next, we do the measurement on the psf stars ...
+        self.measurement.run(measCat=src_narrow, exposure=exposure)
+
+        # And finally the ap corr map.
+        ap_corr_map = self.measure_ap_corr.run(exposure=exposure,
+                                               catalog=src_narrow).apCorrMap
+
+        self.apply_ap_corr.run(catalog=src_narrow, apCorrMap=ap_corr_map)
+
+        return psf, ap_corr_map
