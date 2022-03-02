@@ -26,7 +26,7 @@ import logging
 import lsst.afw.image as afwImage
 import lsst.utils.tests
 from lsst.utils import getPackageDir
-from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask
+from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
 
 
 class PsfFlagTestCase(lsst.utils.tests.TestCase):
@@ -44,7 +44,10 @@ class PsfFlagTestCase(lsst.utils.tests.TestCase):
     def testFlags(self):
         # Test that all of the flags are defined and there is no reservation by default
         # also test that used sources are a subset of candidate sources
-        task = CharacterizeImageTask()
+        config = CharacterizeImageConfig()
+        config.measurePsf.psfDeterminer = 'piff'
+        config.measurePsf.psfDeterminer['piff'].spatialOrder = 0
+        task = CharacterizeImageTask(config=config)
         results = task.run(self.exposure)
         used = 0
         reserved = 0
