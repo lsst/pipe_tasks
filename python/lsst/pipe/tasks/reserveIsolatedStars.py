@@ -24,6 +24,7 @@ __all__ = ['ReserveIsolatedStarsConfig',
            'ReserveIsolatedStarsTask']
 
 import numpy as np
+import hashlib
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -52,13 +53,13 @@ class ReserveIsolatedStarsTask(pipeBase.Task):
     ConfigClass = ReserveIsolatedStarsConfig
     _DefaultName = 'reserve_isolated_stars'
 
-    def run(self, tract, nstar):
+    def run(self, extra, nstar):
         """Retrieve a selection of reserved stars.
 
         Parameters
         ----------
-        tract : `int`
-            Tract number (used in creation of random seed).
+        extra : `int` or `str`
+            Extra name to appended to reserve_name, often tract or pixel.
         nstar : `int`
             Number of stars to select from.
 
@@ -73,9 +74,11 @@ class ReserveIsolatedStarsTask(pipeBase.Task):
             return selection
 
         # Full name combines the configured reserve name and the tract.
-        name = self.config.reserve_name + '_' + str(tract)
+        name = self.config.reserve_name + '_' + str(extra)
         # Random seed is the lower 32 bits of the hashed name.
-        seed = hash(name) & 0xFFFFFFFF
+        # We use hashlib.sha256 for guaranteed repeatability.
+        hex_hash = hashlib.sha256(name.encode('UTF-8')).hexdigest()
+        seed = int('0x' + hex_hash, 0) & 0xFFFFFFFF
 
         rng = np.random.default_rng(seed)
 
