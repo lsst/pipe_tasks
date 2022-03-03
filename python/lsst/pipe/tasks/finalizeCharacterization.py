@@ -21,6 +21,7 @@
 #
 import numpy as np
 import esutil
+import pandas as pd
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -94,9 +95,9 @@ class FinalizeCharacterizationConnections(pipeBase.PipelineTaskConnections,
         storageClass='ExposureCatalog',
         dimensions=('instrument', 'visit'),
     )
-    finalizedSomethingCat = pipeBase.connectionTypes.Output(
+    finalized_src_table = pipeBase.connectionTypes.Output(
         doc=('Per-visit catalog of measurements for psf/flag/etc.'),
-        name='finalized_something_catalog',
+        name='finalized_src_table',
         storageClass='DataFrame',
         dimensions=('instrument', 'visit'),
     )
@@ -233,6 +234,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
                      outputRefs.finalized_psf_cat)
         butlerQC.put(struct.ap_corr_map_cat,
                      outputRefs.finalized_ap_corr_map_cat)
+        butlerQC.put(pd.DataFrame(struct.output_table),
+                     outputRefs.finalized_src_table)
 
     def run(self, visit, band, isolated_star_cat_dict, isolated_star_source_dict, src_dict, calexp_dict):
         """
@@ -277,11 +280,15 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         ap_corr_cat = afwTable.ExposureCatalog(exposure_cat_schema)
         ap_corr_cat.setMetadata(metadata)
 
+        src2_tables = []
+
         for detector in src_dict:
             src = src_dict[detector].get()
             exposure = calexp_dict[detector].get()
 
-            psf, ap_corr_map = self._compute_psf_and_ap_corr_map(
+            psf, ap_corr_map, src2 = self._compute_psf_and_ap_corr_map(
+                visit,
+                detector,
                 exposure,
                 src,
                 isolated_source_table
@@ -291,15 +298,25 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             psf_record = psf_cat.addNew()
             psf_record['id'] = int(detector)
             psf_record['visit'] = visit
-            psf_record.setPsf(psf)
+            if psf is not None:
+                psf_record.setPsf(psf)
 
             ap_corr_record = ap_corr_cat.addNew()
             ap_corr_record['id'] = int(detector)
             ap_corr_record['visit'] = visit
-            ap_corr_record.setApCorrMap(ap_corr_map)
+            if ap_corr_map is not None:
+                ap_corr_record.setApCorrMap(ap_corr_map)
+
+            src2['visit'][:] = visit
+            src2['detector'][:] = detector
+
+            src2_tables.append(src2.asAstropy().as_array())
+
+        src2_table = np.concatenate(src2_tables)
 
         return pipeBase.Struct(psf_cat=psf_cat,
-                               ap_corr_map_cat=ap_corr_cat)
+                               ap_corr_map_cat=ap_corr_cat,
+                               output_table=src2_table)
 
     def _make_schema_mapper(self, input_schema):
         """Make the schema mapper from the input schema.
@@ -362,6 +379,16 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             type='Flag',
             doc=('set if source was used in the PSF determination by '
                  'FinalizeCharacterizationTask.'),
+        )
+        mapper.editOutputSchema().addField(
+            'visit',
+            type=np.int32,
+            doc='Visit number for the sources.',
+        )
+        mapper.editOutputSchema().addField(
+            'detector',
+            type=np.int32,
+            doc='Detector number for the sources.',
         )
 
         alias_map = input_schema.getAliasMap()
@@ -458,11 +485,15 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
 
         return isolated_table, isolated_source_table
 
-    def _compute_psf_and_ap_corr_map(self, exposure, src, isolated_source_table):
+    def _compute_psf_and_ap_corr_map(self, visit, detector, exposure, src, isolated_source_table):
         """Compute psf model and aperture correction map for a single exposure.
 
         Parameters
         ----------
+        visit : `int`
+            Visit number (for logging).
+        detector : `int`
+            Detector number (for logging).
         exposure : `lsst.afw.image.ExposureF`
         src : `lsst.afw.table.SourceCatalog`
         isolated_source_table : `np.ndarray`
@@ -473,32 +504,39 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             PSF Model
         ap_corr_map : `lsst.afw.image.ApCorrMap`
             Aperture correction map.
+        src2 : `lsst.afw.table.SourceCatalog`
+            Updated source catalog with flags and aperture corrections.
         """
         # Apply source selector (s/n, flags, etc.)
         good_src = self.source_selector.selectSources(src)
 
-        src_narrow = afwTable.SourceCatalog(self.schema)
-        src_narrow.reserve(good_src.selected.sum())
-        src_narrow.extend(src[good_src.selected], mapper=self.schema_mapper)
+        src2 = afwTable.SourceCatalog(self.schema)
+        src2.reserve(good_src.selected.sum())
+        src2.extend(src[good_src.selected], mapper=self.schema_mapper)
 
         matched_src, matched_iso = esutil.numpy_util.match(
-            src_narrow['id'],
+            src2['id'],
             isolated_source_table[self.config.id_column]
         )
 
         # We need to make a full array for the flag setting to work.
-        matched_arr = np.zeros(len(src_narrow), dtype=bool)
+        matched_arr = np.zeros(len(src2), dtype=bool)
         matched_arr[matched_src] = True
-        src_narrow['final_psf_candidate'] = matched_arr
+        src2['final_psf_candidate'] = matched_arr
 
-        reserved_arr = np.zeros(len(src_narrow), dtype=bool)
+        reserved_arr = np.zeros(len(src2), dtype=bool)
         reserved_arr[matched_src] = isolated_source_table['reserved'][matched_iso]
-        src_narrow['final_psf_reserved'] = reserved_arr
+        src2['final_psf_reserved'] = reserved_arr
 
-        src_narrow = src_narrow[src_narrow['final_psf_candidate']].copy(deep=True)
+        src2 = src2[src2['final_psf_candidate']].copy(deep=True)
 
         # Now we can make the psfs, etc.
-        selection_result = self.make_psf_candidates.run(src_narrow, exposure=exposure)
+        try:
+            selection_result = self.make_psf_candidates.run(src2, exposure=exposure)
+        except Exception as e:
+            self.log.warn('Failed to make psf candidates for visit %d, detector %d: %s',
+                          visit, detector, e)
+            return None, None, src2
 
         psf_cand_cat = selection_result.goodStarCat
 
@@ -507,18 +545,39 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
                                in zip(selection_result.psfCandidates,
                                       ~psf_cand_cat['final_psf_reserved']) if use]
 
-        psf, cell_set = self.psf_determiner.determinePsf(exposure,
-                                                         psf_determiner_list,
-                                                         self.metadata,
-                                                         flagKey=self.schema['final_psf_used'].asKey())
+        try:
+            psf, cell_set = self.psf_determiner.determinePsf(exposure,
+                                                             psf_determiner_list,
+                                                             self.metadata,
+                                                             flagKey=self.schema['final_psf_used'].asKey())
+        except Exception as e:
+            self.log.warn('Failed to determine psf for visit %d, detector %d: %s',
+                          visit, detector, e)
+            return None, None, src2
 
         # Next, we do the measurement on the psf stars ...
-        self.measurement.run(measCat=src_narrow, exposure=exposure)
+        try:
+            self.measurement.run(measCat=src2, exposure=exposure)
+        except Exception as e:
+            self.log.warn('Failed to make measurements for visit %d, detector %d: %s',
+                          visit, detector, e)
+            return psf, None, src2
 
         # And finally the ap corr map.
-        ap_corr_map = self.measure_ap_corr.run(exposure=exposure,
-                                               catalog=src_narrow).apCorrMap
+        try:
+            ap_corr_map = self.measure_ap_corr.run(exposure=exposure,
+                                                   catalog=src2).apCorrMap
+        except Exception as e:
+            self.log.warn('Failed to compute aperture corrections for visit %d, detector %d: %s',
+                          visit, detector, e)
+            return psf, None, src2
 
-        self.apply_ap_corr.run(catalog=src_narrow, apCorrMap=ap_corr_map)
+        try:
+            self.apply_ap_corr.run(catalog=src2, apCorrMap=ap_corr_map)
+        except Exception as e:
+            self.log.warn('Failed to apply aperture corrections for visit %d, detector %d: %s',
+                          visit, detector, e)
+            # Assume aperture correction map is bad, so return None.
+            return psf, None, src2
 
-        return psf, ap_corr_map
+        return psf, ap_corr_map, src2
