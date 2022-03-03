@@ -589,7 +589,8 @@ class DeblendCoaddSourcesTask(CmdLineTask):
 class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
                                            dimensions=("tract", "patch", "band", "skymap"),
                                            defaultTemplates={"inputCoaddName": "deep",
-                                                             "outputCoaddName": "deep"}):
+                                                             "outputCoaddName": "deep",
+                                                             "deblendedCatalog": "deblendedFlux"}):
     inputSchema = cT.InitInput(
         doc="Input schema for measure merged task produced by a deblender or detection task",
         name="{inputCoaddName}Coadd_deblendedFlux_schema",
@@ -636,7 +637,7 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
              "or deblendedFlux if the multiband deblender was configured to output "
              "deblended flux catalogs. If no deblending was performed this should "
              "be 'mergeDet'"),
-        name="{inputCoaddName}Coadd_deblendedFlux",
+        name="{inputCoaddName}Coadd_{deblendedCatalog}",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "band", "skymap"),
     )
