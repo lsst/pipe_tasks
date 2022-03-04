@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
 
-from lsst.geom import Box2D, radians, SpherePoint
+from lsst.geom import Box2D
 import lsst.pex.config as pexConfig
 from lsst.pipe.base import PipelineTask, PipelineTaskConnections, Struct
 import lsst.pipe.base.connectionTypes as connTypes
@@ -99,6 +99,13 @@ class MatchFakesConfig(
         dtype=bool,
         default=False,
         doc="Match visit to trim the fakeCat"
+    )
+
+    trimBuffer = pexConfig.Field(
+        doc="Size of the pixel buffer surrounding the image. Only those fake sources with a centroid"
+        "falling within the image+buffer region will be considered matches.",
+        dtype=int,
+        default=100,
     )
 
 
@@ -240,8 +247,9 @@ class MatchFakesTask(PipelineTask):
 
         return fakeCat[selected]
 
-    def _trimFakeCat(self, fakeCat, image):
-        """Trim the fake cat to about the size of the input image.
+    def _addPixCoords(self, fakeCat, image):
+
+        """Add pixel coordinates to the catalog of fakes.
 
         Parameters
         ----------
@@ -249,26 +257,56 @@ class MatchFakesTask(PipelineTask):
             The catalog of fake sources to be input
         image : `lsst.afw.image.exposure.exposure.ExposureF`
             The image into which the fake sources should be added
-        skyMap : `lsst.skymap.SkyMap`
-            SkyMap defining the tracts and patches the fakes are stored over.
-
         Returns
         -------
-        fakeCats : `pandas.core.frame.DataFrame`
-            The original fakeCat trimmed to the area of the image
+        fakeCat : `pandas.core.frame.DataFrame`
         """
         wcs = image.getWcs()
+        ras = fakeCat[self.config.ra_col].values
+        decs = fakeCat[self.config.dec_col].values
+        xs, ys = wcs.skyToPixelArray(ras, decs)
+        fakeCat["x"] = xs
+        fakeCat["y"] = ys
+
+        return fakeCat
+
+    def _trimFakeCat(self, fakeCat, image):
+        """Trim the fake cat to the exact size of the input image.
+
+        Parameters
+        ----------
+        fakeCat : `pandas.core.frame.DataFrame`
+            The catalog of fake sources that was input
+        image : `lsst.afw.image.exposure.exposure.ExposureF`
+            The image into which the fake sources were added
+        Returns
+        -------
+        fakeCat : `pandas.core.frame.DataFrame`
+            The original fakeCat trimmed to the area of the image
+        """
+
+        # fakeCat must be processed with _addPixCoords before trimming
+        if ('x' not in fakeCat.columns) or ('y' not in fakeCat.columns):
+            fakeCat = self._addPixCoords(fakeCat, image)
+
+        # Prefilter in ra/dec to avoid cases where the wcs incorrectly maps
+        # input fakes which are really off the chip onto it.
+        ras = fakeCat[self.config.ra_col].values * u.rad
+        decs = fakeCat[self.config.dec_col].values * u.rad
+
+        isContainedRaDec = image.containsSkyCoords(ras, decs, padding=0)
+
+        # now use the exact pixel BBox to filter to only fakes that were inserted
+        xs = fakeCat["x"].values
+        ys = fakeCat["y"].values
 
         bbox = Box2D(image.getBBox())
+        isContainedXy = xs >= bbox.minX
+        isContainedXy &= xs <= bbox.maxX
+        isContainedXy &= ys >= bbox.minY
+        isContainedXy &= ys <= bbox.maxY
 
-        def trim(row):
-            coord = SpherePoint(row[self.config.ra_col],
-                                row[self.config.dec_col],
-                                radians)
-            cent = wcs.skyToPixel(coord)
-            return bbox.contains(cent)
-
-        return fakeCat[fakeCat.apply(trim, axis=1)]
+        return fakeCat[isContainedRaDec & isContainedXy]
 
     def _getVectors(self, ras, decs):
         """Convert ra dec to unit vectors on the sphere.
