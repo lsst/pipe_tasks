@@ -172,7 +172,6 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
         # Turn off slot setting for measurement for centroid and shape
         # (for which we use the input src catalog measurements)
         self.measurement.slots.centroid = None
-        self.measurement.slots.shape = None
         self.measurement.slots.apFlux = None
         self.measurement.slots.calibFlux = None
 
@@ -185,7 +184,9 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
     def __init__(self, initInputs=None, **kwargs):
         super().__init__(initInputs=initInputs, **kwargs)
 
-        self.schema_mapper, self.schema = self._make_schema_mapper(initInputs['src_schema'].schema)
+        self.schema_mapper, self.schema = self._make_output_schema_mapper(
+            initInputs['src_schema'].schema
+        )
 
         self.makeSubtask('reserve_selection')
         self.makeSubtask('source_selector')
@@ -280,13 +281,13 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         ap_corr_cat = afwTable.ExposureCatalog(exposure_cat_schema)
         ap_corr_cat.setMetadata(metadata)
 
-        src2_tables = []
+        measured_src_tables = []
 
         for detector in src_dict:
             src = src_dict[detector].get()
             exposure = calexp_dict[detector].get()
 
-            psf, ap_corr_map, src2 = self._compute_psf_and_ap_corr_map(
+            psf, ap_corr_map, measured_src = self._compute_psf_and_ap_corr_map(
                 visit,
                 detector,
                 exposure,
@@ -307,19 +308,19 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             if ap_corr_map is not None:
                 ap_corr_record.setApCorrMap(ap_corr_map)
 
-            src2['visit'][:] = visit
-            src2['detector'][:] = detector
+            measured_src['visit'][:] = visit
+            measured_src['detector'][:] = detector
 
-            src2_tables.append(src2.asAstropy().as_array())
+            measured_src_tables.append(measured_src.asAstropy().as_array())
 
-        src2_table = np.concatenate(src2_tables)
+        measured_src_table = np.concatenate(measured_src_tables)
 
         return pipeBase.Struct(psf_cat=psf_cat,
                                ap_corr_map_cat=ap_corr_cat,
-                               output_table=src2_table)
+                               output_table=measured_src_table)
 
-    def _make_schema_mapper(self, input_schema):
-        """Make the schema mapper from the input schema.
+    def _make_output_schema_mapper(self, input_schema):
+        """Make the schema mapper from the input schema to the output schema.
 
         Parameters
         ----------
@@ -337,10 +338,6 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         mapper.addMinimalSchema(afwTable.SourceTable.makeMinimalSchema())
         mapper.addMapping(input_schema['slot_Centroid_x'].asKey())
         mapper.addMapping(input_schema['slot_Centroid_y'].asKey())
-
-        shape_fields = input_schema.extract('slot_Shape_*')
-        for field, item in shape_fields.items():
-            mapper.addMapping(item.key)
 
         aper_fields = input_schema.extract('base_CircularApertureFlux_*')
         for field, item in aper_fields.items():
@@ -394,13 +391,56 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         alias_map = input_schema.getAliasMap()
         alias_map_output = afwTable.AliasMap()
         alias_map_output.set('slot_Centroid', alias_map.get('slot_Centroid'))
-        alias_map_output.set('slot_Shape', alias_map.get('slot_Shape'))
         alias_map_output.set('slot_ApFlux', alias_map.get('slot_ApFlux'))
         alias_map_output.set('slot_CalibFlux', alias_map.get('slot_CalibFlux'))
         output_schema = mapper.getOutputSchema()
         output_schema.setAliasMap(alias_map_output)
 
         return mapper, output_schema
+
+    def _make_selection_schema_mapper(self, input_schema):
+        """Make the schema mapper from the input schema to the selection schema.
+
+        Parameters
+        ----------
+        input_schema : `lsst.afw.table.Schema`
+            Input schema.
+
+        Returns
+        -------
+        mapper : `lsst.afw.table.SchemaMapper`
+            Schema mapper
+        selection_schema : `lsst.afw.table.Schema`
+            Selection schema (with alias map)
+        """
+        mapper = afwTable.SchemaMapper(input_schema)
+        fields = input_schema.extract('*')
+        for field, item in fields.items():
+            mapper.addMapping(item.key)
+
+        mapper.editOutputSchema().addField(
+            'final_psf_candidate',
+            type='Flag',
+            doc=('set if the source was a candidate for PSF determination, '
+                 'as determined from FinalizeCharacterizationTask.'),
+        )
+        mapper.editOutputSchema().addField(
+            'final_psf_reserved',
+            type='Flag',
+            doc=('set if source was reserved from PSF determination by '
+                 'FinalizeCharacterizationTask.'),
+        )
+        mapper.editOutputSchema().addField(
+            'final_psf_used',
+            type='Flag',
+            doc=('set if source was used in the PSF determination by '
+                 'FinalizeCharacterizationTask.'),
+        )
+
+        selection_schema = mapper.getOutputSchema()
+        selection_schema.setAliasMap(input_schema.getAliasMap())
+
+        return mapper, selection_schema
 
     def _concat_isolated_star_cats(self, band, isolated_star_cat_dict, isolated_star_source_dict):
         """
@@ -504,80 +544,103 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             PSF Model
         ap_corr_map : `lsst.afw.image.ApCorrMap`
             Aperture correction map.
-        src2 : `lsst.afw.table.SourceCatalog`
-            Updated source catalog with flags and aperture corrections.
+        measured_src : `lsst.afw.table.SourceCatalog`
+            Updated source catalog with measurements, flags and aperture corrections.
         """
         # Apply source selector (s/n, flags, etc.)
         good_src = self.source_selector.selectSources(src)
 
-        src2 = afwTable.SourceCatalog(self.schema)
-        src2.reserve(good_src.selected.sum())
-        src2.extend(src[good_src.selected], mapper=self.schema_mapper)
+        # Cut down input src to the selected sources
+        selection_mapper, selection_schema = self._make_selection_schema_mapper(src.schema)
 
+        selected_src = afwTable.SourceCatalog(selection_schema)
+        selected_src.reserve(good_src.selected.sum())
+        selected_src.extend(src[good_src.selected], mapper=selection_mapper)
+
+        # Find the isolated sources and set flags
         matched_src, matched_iso = esutil.numpy_util.match(
-            src2['id'],
+            selected_src['id'],
             isolated_source_table[self.config.id_column]
         )
 
-        # We need to make a full array for the flag setting to work.
-        matched_arr = np.zeros(len(src2), dtype=bool)
+        matched_arr = np.zeros(len(selected_src), dtype=bool)
         matched_arr[matched_src] = True
-        src2['final_psf_candidate'] = matched_arr
+        selected_src['final_psf_candidate'] = matched_arr
 
-        reserved_arr = np.zeros(len(src2), dtype=bool)
+        reserved_arr = np.zeros(len(selected_src), dtype=bool)
         reserved_arr[matched_src] = isolated_source_table['reserved'][matched_iso]
-        src2['final_psf_reserved'] = reserved_arr
+        selected_src['final_psf_reserved'] = reserved_arr
 
-        src2 = src2[src2['final_psf_candidate']].copy(deep=True)
+        selected_src = selected_src[selected_src['final_psf_candidate']].copy(deep=True)
 
-        # Now we can make the psfs, etc.
+        # Make the measured source catalog as well, based on the selected catalog.
+        measured_src = afwTable.SourceCatalog(self.schema)
+        measured_src.reserve(len(selected_src))
+        measured_src.extend(selected_src, mapper=self.schema_mapper)
+
+        # We need to copy over the final_psf flags because they were not in the mapper
+        measured_src['final_psf_candidate'] = selected_src['final_psf_candidate']
+        measured_src['final_psf_reserved'] = selected_src['final_psf_reserved']
+
+        # Select the psf candidates from the selection catalog
         try:
-            selection_result = self.make_psf_candidates.run(src2, exposure=exposure)
+            psf_selection_result = self.make_psf_candidates.run(selected_src, exposure=exposure)
         except Exception as e:
             self.log.warn('Failed to make psf candidates for visit %d, detector %d: %s',
                           visit, detector, e)
-            return None, None, src2
+            return None, None, measured_src
 
-        psf_cand_cat = selection_result.goodStarCat
+        psf_cand_cat = psf_selection_result.goodStarCat
 
-        # Make list of psf candidates to send to the determiner (omitting those marked as reserved)
+        # Make list of psf candidates to send to the determiner
+        # (omitting those marked as reserved)
         psf_determiner_list = [cand for cand, use
-                               in zip(selection_result.psfCandidates,
+                               in zip(psf_selection_result.psfCandidates,
                                       ~psf_cand_cat['final_psf_reserved']) if use]
-
+        flag_key = psf_cand_cat.schema['final_psf_used'].asKey()
         try:
             psf, cell_set = self.psf_determiner.determinePsf(exposure,
                                                              psf_determiner_list,
                                                              self.metadata,
-                                                             flagKey=self.schema['final_psf_used'].asKey())
+                                                             flagKey=flag_key)
         except Exception as e:
             self.log.warn('Failed to determine psf for visit %d, detector %d: %s',
                           visit, detector, e)
-            return None, None, src2
+            return None, None, measured_src
+
+        # At this point, we need to transfer the psf used flag from the selection
+        # catalog to the measurement catalog.
+        matched_selected, matched_measured = esutil.numpy_util.match(
+            selected_src['id'],
+            measured_src['id']
+        )
+        measured_used = np.zeros(len(measured_src), dtype=bool)
+        measured_used[matched_measured] = selected_src['final_psf_used'][matched_selected]
+        measured_src['final_psf_used'] = measured_used
 
         # Next, we do the measurement on the psf stars ...
         try:
-            self.measurement.run(measCat=src2, exposure=exposure)
+            self.measurement.run(measCat=measured_src, exposure=exposure)
         except Exception as e:
             self.log.warn('Failed to make measurements for visit %d, detector %d: %s',
                           visit, detector, e)
-            return psf, None, src2
+            return psf, None, measured_src
 
         # And finally the ap corr map.
         try:
             ap_corr_map = self.measure_ap_corr.run(exposure=exposure,
-                                                   catalog=src2).apCorrMap
+                                                   catalog=measured_src).apCorrMap
         except Exception as e:
             self.log.warn('Failed to compute aperture corrections for visit %d, detector %d: %s',
                           visit, detector, e)
-            return psf, None, src2
+            return psf, None, measured_src
 
         try:
-            self.apply_ap_corr.run(catalog=src2, apCorrMap=ap_corr_map)
+            self.apply_ap_corr.run(catalog=measured_src, apCorrMap=ap_corr_map)
         except Exception as e:
             self.log.warn('Failed to apply aperture corrections for visit %d, detector %d: %s',
                           visit, detector, e)
             # Assume aperture correction map is bad, so return None.
-            return psf, None, src2
+            return psf, None, measured_src
 
-        return psf, ap_corr_map, src2
+        return psf, ap_corr_map, measured_src
