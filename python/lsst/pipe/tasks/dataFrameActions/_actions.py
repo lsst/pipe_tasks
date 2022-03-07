@@ -121,7 +121,7 @@ MultiplyColumns = makeColumnExpressionAction("MultiplyColumns", "colA*colB",
                                                            "colB": SingleColumnAction},
                                              docstring=_docs)
 
-_docs = """This is a `MultiColumnAction` that is designed to multiply two columns
+_docs = """This is a `MultiColumnAction` that is designed to divide two columns
 together and return the result.
 """
 DivideColumns = makeColumnExpressionAction("DivideColumns", "colA/colB",
