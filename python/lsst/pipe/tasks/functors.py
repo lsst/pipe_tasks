@@ -27,6 +27,8 @@ import os.path
 import pandas as pd
 import numpy as np
 import astropy.units as u
+from dustmaps.sfd import SFDQuery
+from astropy.coordinates import SkyCoord
 
 from lsst.daf.persistence import doImport
 from lsst.daf.butler import DeferredDatasetHandle
@@ -1899,3 +1901,23 @@ class Ratio(Functor):
             np.warnings.filterwarnings('ignore', r'invalid value encountered')
             np.warnings.filterwarnings('ignore', r'divide by zero')
             return df[self.numerator] / df[self.denominator]
+
+
+class Ebv(Functor):
+    """Compute E(B-V) from dustmaps.sfd
+    """
+    _defaultDataset = 'ref'
+    name = "E(B-V)"
+    shortname = "ebv"
+
+    def __init__(self, **kwargs):
+        self._columns = ['coord_ra', 'coord_dec']
+        self.sfd = SFDQuery()
+        super().__init__(**kwargs)
+
+    def _func(self, df):
+        coords = SkyCoord(df['coord_ra']*u.rad, df['coord_dec']*u.rad)
+        ebv = self.sfd(coords)
+        # Double precision unnecessary scientifically
+        # but currently needed for ingest to qserv
+        return pd.Series(ebv, index=df.index).astype('float64')

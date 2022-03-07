@@ -593,6 +593,8 @@ funcs:
         functor: Column
         args: merge_peak_sky
         dataset: ref
+    ebv:
+        functor: Ebv
     # DM-22247: Add Star/Galaxy sep columns
     #     - Morphological Star Galaxy Classifier (Names? float 0-1)]
     #     - Morphological + Color (SED-based) Star Galaxy Classifier (Names? float 0-1)]
