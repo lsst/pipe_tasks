@@ -487,7 +487,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
 
             # Update indexes and cut to band-selected stars/sources
             table_source['obj_index'][b] = a
-            table_cat[f'source_cat_index_{band}'][use_band[a]] = np.arange(b.size)
+            _, index_new = np.unique(a, return_index=True)
+            table_cat[f'source_cat_index_{band}'][use_band] = index_new
 
             table_source = table_source[b]
             table_cat = table_cat[use_band]
@@ -507,7 +508,10 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             )
 
             # Get reserve star flags
-            table_cat['reserved'][:] = self.reserve_selection.run(tract, len(table_cat))
+            table_cat['reserved'][:] = self.reserve_selection.run(
+                f'{band}_{tract}',
+                len(table_cat)
+            )
             table_source['reserved'][:] = table_cat['reserved'][table_source['obj_index']]
 
             # Offset indices to account for tract merging
