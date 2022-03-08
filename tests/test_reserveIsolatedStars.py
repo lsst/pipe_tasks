@@ -39,16 +39,16 @@ class ReserveIsolatedStarsTestCase(lsst.utils.tests.TestCase):
 
         # Check we get the correct number of reserved stars.
         nstar = 1000
-        reserved = reserve_task.run('r_100', nstar)
+        reserved = reserve_task.run(nstar, extra='r_100')
         self.assertEqual(reserved.sum(),
                          int(config.reserve_fraction*nstar))
 
         # Confirm we get the same list with the same run.
-        reserved2 = reserve_task.run('r_100', nstar)
+        reserved2 = reserve_task.run(nstar, extra='r_100')
         np.testing.assert_array_equal(reserved2, reserved)
 
         # Confirm we get a different list with a different run.
-        reserved3 = reserve_task.run('r_101', nstar)
+        reserved3 = reserve_task.run(nstar, extra='r_101')
         self.assertFalse(np.all(reserved3 == reserved))
 
     def test_reserve_none(self):
@@ -59,7 +59,7 @@ class ReserveIsolatedStarsTestCase(lsst.utils.tests.TestCase):
 
         # Check we get the correct number of reserved stars.
         nstar = 1000
-        reserved = reserve_task.run('r_100', nstar)
+        reserved = reserve_task.run(nstar)
         self.assertEqual(reserved.sum(), 0)
 
 

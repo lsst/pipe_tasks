@@ -55,16 +55,16 @@ class ReserveIsolatedStarsTask(pipeBase.Task):
     ConfigClass = ReserveIsolatedStarsConfig
     _DefaultName = 'reserve_isolated_stars'
 
-    def run(self, extra, nstar):
+    def run(self, nstar, extra=''):
         """Retrieve a selection of reserved stars.
 
         Parameters
         ----------
-        extra : `str`
-            Extra name to appended to reserve_name, often tract or pixel,
-            and may be combined with band name.
         nstar : `int`
             Number of stars to select from.
+        extra : `str`, optional
+            Extra name to appended to reserve_name, often tract or pixel,
+            and may be combined with band name.
 
         Returns
         -------

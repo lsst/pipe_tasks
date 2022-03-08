@@ -511,8 +511,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
 
             # Get reserve star flags
             table_cat['reserved'][:] = self.reserve_selection.run(
-                f'{band}_{tract}',
-                len(table_cat)
+                len(table_cat),
+                extra=f'{band}_{tract}',
             )
             table_source['reserved'][:] = table_cat['reserved'][table_source['obj_index']]
 
