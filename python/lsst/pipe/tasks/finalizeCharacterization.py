@@ -19,6 +19,8 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+"""Task to run a finalized image characterization, using additional data.
+"""
 import numpy as np
 import esutil
 import pandas as pd
