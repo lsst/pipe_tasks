@@ -225,8 +225,9 @@ class Functor(object):
                 new_colDict[lev] = columnIndex.levels[i]
 
         levelCols = [new_colDict[lev] for lev in columnLevels]
-        cols = product(*levelCols)
-        return list(cols)
+        cols = list(product(*levelCols))
+        colsAvailable = [col for col in cols if col in columnIndex]
+        return colsAvailable
 
     def multilevelColumns(self, data, columnIndex=None, returnTuple=False):
         """Returns columns needed by functor from multilevel dataset
@@ -1408,9 +1409,12 @@ class ReferenceBand(Functor):
             colName = row.idxmax()
             return colName.replace('merge_measurement_', '')
 
+        # Skip columns that are unavailable, because this functor requests the
+        # superset of bands that could be included in the object table
+        columns = [col for col in self.columns if col in df.columns]
         # Makes a Series of dtype object if df is empty
-        return df[self.columns].apply(getFilterAliasName, axis=1,
-                                      result_type='reduce').astype('object')
+        return df[columns].apply(getFilterAliasName, axis=1,
+                                 result_type='reduce').astype('object')
 
 
 class Photometry(Functor):
