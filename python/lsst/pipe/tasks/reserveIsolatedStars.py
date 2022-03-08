@@ -19,6 +19,8 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+"""Task to make a flexible and repeatable selection of reserve stars.
+"""
 
 __all__ = ['ReserveIsolatedStarsConfig',
            'ReserveIsolatedStarsTask']
@@ -58,8 +60,9 @@ class ReserveIsolatedStarsTask(pipeBase.Task):
 
         Parameters
         ----------
-        extra : `int` or `str`
-            Extra name to appended to reserve_name, often tract or pixel.
+        extra : `str`
+            Extra name to appended to reserve_name, often tract or pixel,
+            and may be combined with band name.
         nstar : `int`
             Number of stars to select from.
 
@@ -74,7 +77,7 @@ class ReserveIsolatedStarsTask(pipeBase.Task):
             return selection
 
         # Full name combines the configured reserve name and the tract.
-        name = self.config.reserve_name + '_' + str(extra)
+        name = self.config.reserve_name + '_' + extra
         # Random seed is the lower 32 bits of the hashed name.
         # We use hashlib.sha256 for guaranteed repeatability.
         hex_hash = hashlib.sha256(name.encode('UTF-8')).hexdigest()
