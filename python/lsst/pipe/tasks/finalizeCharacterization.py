@@ -143,6 +143,8 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
     )
 
     def setDefaults(self):
+        super().setDefaults()
+
         source_selector = self.source_selector['science']
         source_selector.setDefaults()
 
@@ -171,11 +173,50 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
 
         self.measure_ap_corr.sourceSelector['flagged'].field = 'final_psf_used'
 
+        import lsst.meas.modelfit  # noqa: F401
+        import lsst.meas.extensions.photometryKron  # noqa: F401
+        import lsst.meas.extensions.convolved  # noqa: F401
+        import lsst.meas.extensions.gaap  # noqa: F401
+        import lsst.meas.extensions.shapeHSM  # noqa: F401
+
+        # Set up measurement defaults
+        self.measurement.plugins.names = [
+            'base_PsfFlux',
+            'base_GaussianFlux',
+            'modelfit_DoubleShapeletPsfApprox',
+            'modelfit_CModel',
+            'ext_photometryKron_KronFlux',
+            'ext_convolved_ConvolvedFlux',
+            'ext_gaap_GaapFlux',
+            'ext_shapeHSM_HsmShapeRegauss',
+            'ext_shapeHSM_HsmSourceMoments',
+            'ext_shapeHSM_HsmPsfMoments',
+            'ext_shapeHSM_HsmSourceMomentsRound',
+        ]
+        self.measurement.slots.modelFlux = 'modelfit_CModel'
+        self.measurement.plugins['ext_convolved_ConvolvedFlux'].seeing.append(8.0)
+        self.measurement.plugins['ext_gaap_GaapFlux'].sigmas = [
+            0.5,
+            0.7,
+            1.0,
+            1.5,
+            2.5,
+            3.0
+        ]
+        self.measurement.plugins['ext_gaap_GaapFlux'].doPsfPhotometry = True
+        self.measurement.slots.shape = 'ext_shapeHSM_HsmSourceMoments'
+        self.measurement.slots.psfShape = 'exp_shapeHSM_HsmPsfMoments'
+        self.measurement.plugins['ext_shapeHSM_HsmShapeRegauss'].deblendNChild = ""
         # Turn off slot setting for measurement for centroid and shape
         # (for which we use the input src catalog measurements)
         self.measurement.slots.centroid = None
         self.measurement.slots.apFlux = None
         self.measurement.slots.calibFlux = None
+
+        names = self.measurement.plugins['ext_convolved_ConvolvedFlux'].getAllResultNames()
+        self.measure_ap_corr.allowFailure += names
+        names = self.measurement.plugins["ext_gaap_GaapFlux"].getAllGaapResultNames()
+        self.measure_ap_corr.allowFailure += names
 
 
 class FinalizeCharacterizationTask(pipeBase.PipelineTask):
