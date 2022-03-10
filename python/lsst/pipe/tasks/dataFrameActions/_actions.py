@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 __all__ = ("SingleColumnAction", "MultiColumnAction", "CoordColumn", "MagColumnDN", "SumColumns", "AddColumn",
-           "DivideColumns", "SubtractColumns", "MultiplyColumns", "MagColumnNanoJansky",)
+           "DivideColumns", "SubtractColumns", "MultiplyColumns", "FractionalResidualColumns",
+           "MagColumnNanoJansky",)
 
 from typing import Iterable
 
@@ -121,13 +122,21 @@ MultiplyColumns = makeColumnExpressionAction("MultiplyColumns", "colA*colB",
                                                            "colB": SingleColumnAction},
                                              docstring=_docs)
 
-_docs = """This is a `MultiColumnAction` that is designed to multiply two columns
+_docs = """This is a `MultiColumnAction` that is designed to divide two columns
 together and return the result.
 """
 DivideColumns = makeColumnExpressionAction("DivideColumns", "colA/colB",
                                            exprDefaults={"colA": SingleColumnAction,
                                                          "colB": SingleColumnAction},
                                            docstring=_docs)
+
+_docs = """This is a `MultiColumnAction` that is designed to divide two columns
+together, subtract one and return the result.
+"""
+FractionalResidualColumns = makeColumnExpressionAction("FractionalResidualColumns", "(colA-colB)/colB",
+                                                       exprDefaults={"colA": SingleColumnAction,
+                                                                     "colB": SingleColumnAction},
+                                                       docstring=_docs)
 
 
 class AddColumn(DataFrameAction):
