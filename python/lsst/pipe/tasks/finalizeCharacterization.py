@@ -67,7 +67,8 @@ class FinalizeCharacterizationConnections(pipeBase.PipelineTaskConnections,
         multiple=True,
     )
     isolated_star_cats = pipeBase.connectionTypes.Input(
-        doc='Catalog of isolated stars',
+        doc=('Catalog of isolated stars with average positions, number of associated '
+             'sources, and indexes to the isolated_star_sources catalogs.'),
         name='isolated_star_cat',
         storageClass='DataFrame',
         dimensions=('instrument', 'tract', 'skymap'),
@@ -75,25 +76,19 @@ class FinalizeCharacterizationConnections(pipeBase.PipelineTaskConnections,
         multiple=True,
     )
     isolated_star_sources = pipeBase.connectionTypes.Input(
-        doc='Catalog of isolated star sources',
+        doc=('Catalog of isolated star sources with sourceIds, and indexes to the '
+             'isolated_star_cats catalogs.'),
         name='isolated_star_sources',
         storageClass='DataFrame',
         dimensions=('instrument', 'tract', 'skymap'),
         deferLoad=True,
         multiple=True,
     )
-    finalized_psf_cat = pipeBase.connectionTypes.Output(
-        doc=('Per-visit finalized psf models.  These catalogs use detector id '
-             'for the id and are sorted for fast lookups of a detector.'),
-        name='finalized_psf_catalog',
-        storageClass='ExposureCatalog',
-        dimensions=('instrument', 'visit'),
-    )
-    finalized_ap_corr_map_cat = pipeBase.connectionTypes.Output(
-        doc=('Per-visit finalized aperture correction maps.  These catalogs '
-             'use detector id for the id and are sorted for fast lookups '
-             'of a detector.'),
-        name='finalized_ap_corr_map_catalog',
+    finalized_psf_ap_corr_cat = pipeBase.connectionTypes.Output(
+        doc=('Per-visit finalized psf models and aperture corrections.  This '
+             'catalog uses detector id for the id and are sorted for fast '
+             'lookups of a detector.'),
+        name='finalized_psf_ap_corr_catalog',
         storageClass='ExposureCatalog',
         dimensions=('instrument', 'visit'),
     )
@@ -154,6 +149,9 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
 
         source_selector.doFlags = True
         source_selector.doSignalToNoise = True
+        source_selector.doFluxLimit = False
+        source_selector.doUnresolved = False
+        source_selector.doIsolated = False
 
         source_selector.signalToNoise.minimum = 20.0
         source_selector.signalToNoise.maximum = 1000.0
@@ -243,19 +241,19 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         self.source_selector.log.setLevel(self.source_selector.log.WARN)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        input_ref_dict = butlerQC.get(inputRefs)
+        input_handle_dict = butlerQC.get(inputRefs)
 
         band = butlerQC.quantum.dataId['band']
         visit = butlerQC.quantum.dataId['visit']
 
-        src_dict_temp = {ref.dataId['detector']: ref
-                         for ref in input_ref_dict['srcs']}
-        calexp_dict_temp = {ref.dataId['detector']: ref
-                            for ref in input_ref_dict['calexps']}
-        isolated_star_cat_dict_temp = {ref.dataId['tract']: ref
-                                       for ref in input_ref_dict['isolated_star_cats']}
-        isolated_star_source_dict_temp = {ref.dataId['tract']: ref
-                                          for ref in input_ref_dict['isolated_star_sources']}
+        src_dict_temp = {handle.dataId['detector']: handle
+                         for handle in input_handle_dict['srcs']}
+        calexp_dict_temp = {handle.dataId['detector']: handle
+                            for handle in input_handle_dict['calexps']}
+        isolated_star_cat_dict_temp = {handle.dataId['tract']: handle
+                                       for handle in input_handle_dict['isolated_star_cats']}
+        isolated_star_source_dict_temp = {handle.dataId['tract']: handle
+                                          for handle in input_handle_dict['isolated_star_sources']}
         # TODO: Sort until DM-31701 is done and we have deterministic
         # dataset ordering.
         src_dict = {detector: src_dict_temp[detector] for
@@ -274,10 +272,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
                           src_dict,
                           calexp_dict)
 
-        butlerQC.put(struct.psf_cat,
-                     outputRefs.finalized_psf_cat)
-        butlerQC.put(struct.ap_corr_map_cat,
-                     outputRefs.finalized_ap_corr_map_cat)
+        butlerQC.put(struct.psf_ap_corr_cat,
+                     outputRefs.finalized_psf_ap_corr_cat)
         butlerQC.put(pd.DataFrame(struct.output_table),
                      outputRefs.finalized_src_table)
 
@@ -292,21 +288,22 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         band : `str`
             Band name.  Used to select reserved stars.
         isolated_star_cat_dict : `dict`
-            Per-tract dict of isolated star catalog references.
+            Per-tract dict of isolated star catalog handles.
         isolated_star_source_dict : `dict`
-            Per-tract dict of isolated star source catalog references.
+            Per-tract dict of isolated star source catalog handles.
         src_dict : `dict`
-            Per-detector dict of src catalog references.
+            Per-detector dict of src catalog handles.
         calexp_dict : `dict`
-            Per-detector dict of calibrated exposure references.
+            Per-detector dict of calibrated exposure handles.
 
         Returns
         -------
         struct : `lsst.pipe.base.struct`
             Struct with outputs for persistence.
         """
-        # We do not need the isolated star table at this time.
-        _, isolated_source_table = self._concat_isolated_star_cats(
+        # We do not need the isolated star table in this task.
+        # However, it is used in tests to confirm consistency of indexes.
+        _, isolated_source_table = self.concat_isolated_star_cats(
             band,
             isolated_star_cat_dict,
             isolated_star_source_dict
@@ -319,10 +316,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         metadata.add("COMMENT", "Catalog id is detector id, sorted.")
         metadata.add("COMMENT", "Only detectors with data have entries.")
 
-        psf_cat = afwTable.ExposureCatalog(exposure_cat_schema)
-        psf_cat.setMetadata(metadata)
-        ap_corr_cat = afwTable.ExposureCatalog(exposure_cat_schema)
-        ap_corr_cat.setMetadata(metadata)
+        psf_ap_corr_cat = afwTable.ExposureCatalog(exposure_cat_schema)
+        psf_ap_corr_cat.setMetadata(metadata)
 
         measured_src_tables = []
 
@@ -330,7 +325,7 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             src = src_dict[detector].get()
             exposure = calexp_dict[detector].get()
 
-            psf, ap_corr_map, measured_src = self._compute_psf_and_ap_corr_map(
+            psf, ap_corr_map, measured_src = self.compute_psf_and_ap_corr_map(
                 visit,
                 detector,
                 exposure,
@@ -339,17 +334,13 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             )
 
             # And now we package it together...
-            psf_record = psf_cat.addNew()
-            psf_record['id'] = int(detector)
-            psf_record['visit'] = visit
+            record = psf_ap_corr_cat.addNew()
+            record['id'] = int(detector)
+            record['visit'] = visit
             if psf is not None:
-                psf_record.setPsf(psf)
-
-            ap_corr_record = ap_corr_cat.addNew()
-            ap_corr_record['id'] = int(detector)
-            ap_corr_record['visit'] = visit
+                record.setPsf(psf)
             if ap_corr_map is not None:
-                ap_corr_record.setApCorrMap(ap_corr_map)
+                record.setApCorrMap(ap_corr_map)
 
             measured_src['visit'][:] = visit
             measured_src['detector'][:] = detector
@@ -358,8 +349,7 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
 
         measured_src_table = np.concatenate(measured_src_tables)
 
-        return pipeBase.Struct(psf_cat=psf_cat,
-                               ap_corr_map_cat=ap_corr_cat,
+        return pipeBase.Struct(psf_ap_corr_cat=psf_ap_corr_cat,
                                output_table=measured_src_table)
 
     def _make_output_schema_mapper(self, input_schema):
@@ -382,6 +372,7 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         mapper.addMapping(input_schema['slot_Centroid_x'].asKey())
         mapper.addMapping(input_schema['slot_Centroid_y'].asKey())
 
+        # The aperture fields may be used by the psf determiner.
         aper_fields = input_schema.extract('base_CircularApertureFlux_*')
         for field, item in aper_fields.items():
             mapper.addMapping(item.key)
@@ -402,30 +393,32 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             input_schema[self.config.source_selector.active.signalToNoise.errField].asKey(),
             'final_psf_selection_flux_err')
 
-        mapper.editOutputSchema().addField(
+        output_schema = mapper.getOutputSchema()
+
+        output_schema.addField(
             'final_psf_candidate',
             type='Flag',
             doc=('set if the source was a candidate for PSF determination, '
                  'as determined from FinalizeCharacterizationTask.'),
         )
-        mapper.editOutputSchema().addField(
+        output_schema.addField(
             'final_psf_reserved',
             type='Flag',
             doc=('set if source was reserved from PSF determination by '
                  'FinalizeCharacterizationTask.'),
         )
-        mapper.editOutputSchema().addField(
+        output_schema.addField(
             'final_psf_used',
             type='Flag',
             doc=('set if source was used in the PSF determination by '
                  'FinalizeCharacterizationTask.'),
         )
-        mapper.editOutputSchema().addField(
+        output_schema.addField(
             'visit',
             type=np.int32,
             doc='Visit number for the sources.',
         )
-        mapper.editOutputSchema().addField(
+        output_schema.addField(
             'detector',
             type=np.int32,
             doc='Detector number for the sources.',
@@ -436,7 +429,7 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         alias_map_output.set('slot_Centroid', alias_map.get('slot_Centroid'))
         alias_map_output.set('slot_ApFlux', alias_map.get('slot_ApFlux'))
         alias_map_output.set('slot_CalibFlux', alias_map.get('slot_CalibFlux'))
-        output_schema = mapper.getOutputSchema()
+
         output_schema.setAliasMap(alias_map_output)
 
         return mapper, output_schema
@@ -457,35 +450,34 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             Selection schema (with alias map)
         """
         mapper = afwTable.SchemaMapper(input_schema)
-        fields = input_schema.extract('*')
-        for field, item in fields.items():
-            mapper.addMapping(item.key)
+        mapper.addMinimalSchema(input_schema)
 
-        mapper.editOutputSchema().addField(
+        selection_schema = mapper.getOutputSchema()
+
+        selection_schema.addField(
             'final_psf_candidate',
             type='Flag',
             doc=('set if the source was a candidate for PSF determination, '
                  'as determined from FinalizeCharacterizationTask.'),
         )
-        mapper.editOutputSchema().addField(
+        selection_schema.addField(
             'final_psf_reserved',
             type='Flag',
             doc=('set if source was reserved from PSF determination by '
                  'FinalizeCharacterizationTask.'),
         )
-        mapper.editOutputSchema().addField(
+        selection_schema.addField(
             'final_psf_used',
             type='Flag',
             doc=('set if source was used in the PSF determination by '
                  'FinalizeCharacterizationTask.'),
         )
 
-        selection_schema = mapper.getOutputSchema()
         selection_schema.setAliasMap(input_schema.getAliasMap())
 
         return mapper, selection_schema
 
-    def _concat_isolated_star_cats(self, band, isolated_star_cat_dict, isolated_star_source_dict):
+    def concat_isolated_star_cats(self, band, isolated_star_cat_dict, isolated_star_source_dict):
         """
         Concatenate isolated star catalogs and make reserve selection.
 
@@ -494,9 +486,9 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         band : `str`
             Band name.  Used to select reserved stars.
         isolated_star_cat_dict : `dict`
-            Per-tract dict of isolated star catalog references.
+            Per-tract dict of isolated star catalog handles.
         isolated_star_source_dict : `dict`
-            Per-tract dict of isolated star source catalog references.
+            Per-tract dict of isolated star source catalog handles.
 
         Returns
         -------
@@ -520,8 +512,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             )
             table_source = df_source.to_records()
 
-            # Cut isolated star table to those observed in this band, and adjust indices
-            use_band, = np.where(table_cat[f'nsource_{band}'] > 0)
+            # Cut isolated star table to those observed in this band, and adjust indexes
+            (use_band,) = (table_cat[f'nsource_{band}'] > 0).nonzero()
 
             # With the following matching:
             #   table_source[b] <-> table_cat[use_band[a]]
@@ -533,6 +525,15 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             _, index_new = np.unique(a, return_index=True)
             table_cat[f'source_cat_index_{band}'][use_band] = index_new
 
+            # After the following cuts, the catalogs have the following properties:
+            # - table_cat only contains isolated stars that have at least one source
+            #   in ``band``.
+            # - table_source only contains ``band`` sources.
+            # - The slice table_cat["source_cat_index_{band}"]: table_cat["source_cat_index_{band}"]
+            #                                                   + table_cat["nsource_{band}]
+            #   applied to table_source will give all the sources associated with the star.
+            # - For each source, table_source["obj_index"] points to the index of the associated
+            #   isolated star.
             table_source = table_source[b]
             table_cat = table_cat[use_band]
 
@@ -557,7 +558,7 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             )
             table_source['reserved'][:] = table_cat['reserved'][table_source['obj_index']]
 
-            # Offset indices to account for tract merging
+            # Offset indexes to account for tract merging
             table_cat[f'source_cat_index_{band}'] += merge_source_counter
             table_source['obj_index'] += merge_cat_counter
 
@@ -572,7 +573,7 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
 
         return isolated_table, isolated_source_table
 
-    def _compute_psf_and_ap_corr_map(self, visit, detector, exposure, src, isolated_source_table):
+    def compute_psf_and_ap_corr_map(self, visit, detector, exposure, src, isolated_source_table):
         """Compute psf model and aperture correction map for a single exposure.
 
         Parameters
@@ -598,6 +599,10 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         good_src = self.source_selector.selectSources(src)
 
         # Cut down input src to the selected sources
+        # We use a separate schema/mapper here than for the output/measurement catalog because of
+        # clashes between fields that were previously run and those that need to be rerun with
+        # the new psf model.  This may be slightly inefficient but keeps input
+        # and output values cleanly separated.
         selection_mapper, selection_schema = self._make_selection_schema_mapper(src.schema)
 
         selected_src = afwTable.SourceCatalog(selection_schema)
@@ -633,8 +638,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         try:
             psf_selection_result = self.make_psf_candidates.run(selected_src, exposure=exposure)
         except Exception as e:
-            self.log.warn('Failed to make psf candidates for visit %d, detector %d: %s',
-                          visit, detector, e)
+            self.log.warning('Failed to make psf candidates for visit %d, detector %d: %s',
+                             visit, detector, e)
             return None, None, measured_src
 
         psf_cand_cat = psf_selection_result.goodStarCat
@@ -651,8 +656,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
                                                              self.metadata,
                                                              flagKey=flag_key)
         except Exception as e:
-            self.log.warn('Failed to determine psf for visit %d, detector %d: %s',
-                          visit, detector, e)
+            self.log.warning('Failed to determine psf for visit %d, detector %d: %s',
+                             visit, detector, e)
             return None, None, measured_src
 
         # At this point, we need to transfer the psf used flag from the selection
@@ -665,12 +670,12 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         measured_used[matched_measured] = selected_src['final_psf_used'][matched_selected]
         measured_src['final_psf_used'] = measured_used
 
-        # Next, we do the measurement on the psf stars ...
+        # Next, we do the measurement on all the psf candidate, used, and reserved stars.
         try:
             self.measurement.run(measCat=measured_src, exposure=exposure)
         except Exception as e:
-            self.log.warn('Failed to make measurements for visit %d, detector %d: %s',
-                          visit, detector, e)
+            self.log.warning('Failed to make measurements for visit %d, detector %d: %s',
+                             visit, detector, e)
             return psf, None, measured_src
 
         # And finally the ap corr map.
@@ -678,16 +683,10 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             ap_corr_map = self.measure_ap_corr.run(exposure=exposure,
                                                    catalog=measured_src).apCorrMap
         except Exception as e:
-            self.log.warn('Failed to compute aperture corrections for visit %d, detector %d: %s',
-                          visit, detector, e)
+            self.log.warning('Failed to compute aperture corrections for visit %d, detector %d: %s',
+                             visit, detector, e)
             return psf, None, measured_src
 
-        try:
-            self.apply_ap_corr.run(catalog=measured_src, apCorrMap=ap_corr_map)
-        except Exception as e:
-            self.log.warn('Failed to apply aperture corrections for visit %d, detector %d: %s',
-                          visit, detector, e)
-            # Assume aperture correction map is bad, so return None.
-            return psf, None, measured_src
+        self.apply_ap_corr.run(catalog=measured_src, apCorrMap=ap_corr_map)
 
         return psf, ap_corr_map, measured_src

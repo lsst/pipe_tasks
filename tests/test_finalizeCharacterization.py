@@ -174,7 +174,7 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
         """
 
         for band in ['r', 'i']:
-            iso, iso_src = self.finalizeCharacterizationTask._concat_isolated_star_cats(
+            iso, iso_src = self.finalizeCharacterizationTask.concat_isolated_star_cats(
                 band,
                 self.isolated_star_cat_dict,
                 self.isolated_star_source_dict
