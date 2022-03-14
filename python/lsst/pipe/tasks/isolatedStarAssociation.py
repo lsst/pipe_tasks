@@ -128,7 +128,9 @@ class IsolatedStarAssociationConfig(pipeBase.PipelineTaskConfig,
                  'apFlux_17_0_instFluxErr',
                  'apFlux_17_0_flag',
                  'localBackground_instFlux',
-                 'localBackground_flag']
+                 'localBackground_flag',
+                 'psfFlux',
+                 'psfFluxErr']
     )
     source_selector = sourceSelectorRegistry.makeField(
         doc='How to select sources.  Under normal usage this should not be changed.',
