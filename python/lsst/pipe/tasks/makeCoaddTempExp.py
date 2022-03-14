@@ -97,6 +97,12 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
     )
     doApplySkyCorr = pexConfig.Field(dtype=bool, default=False, doc="Apply sky correction?")
 
+    doApplyFinalizedPsf = pexConfig.Field(
+        doc="Whether to apply finalized psf models and aperture correction map.",
+        dtype=bool,
+        default=False,
+    )
+
     def validate(self):
         CoaddBaseTask.ConfigClass.validate(self)
         if not self.makePsfMatched and not self.makeDirect:
@@ -646,6 +652,14 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
     )
+    finalizedPsfApCorrCatalog = connectionTypes.Input(
+        doc=("Per-visit finalized psf models and aperture correction maps. "
+             "These catalogs use the detector id for the catalog id, "
+             "sorted on id for fast lookup."),
+        name="finalized_psf_ap_corr_catalog",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit"),
+    )
     direct = connectionTypes.Output(
         doc=("Output direct warped exposure (previously called CoaddTempExp), produced by resampling ",
              "calexps onto the skyMap patch geometry."),
@@ -711,6 +725,8 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         else:
             self.inputs.remove("externalPhotoCalibTractCatalog")
             self.inputs.remove("externalPhotoCalibGlobalCatalog")
+        if not config.doApplyFinalizedPsf:
+            self.inputs.remove("finalizedPsfApCorrCatalog")
         if not config.makeDirect:
             self.outputs.remove("direct")
         if not config.makePsfMatched:
@@ -798,9 +814,15 @@ class MakeWarpTask(MakeCoaddTempExpTask):
         else:
             externalPhotoCalibCatalog = None
 
+        if self.config.doApplyFinalizedPsf:
+            finalizedPsfApCorrCatalog = inputs.pop("finalizedPsfApCorrCatalog")
+        else:
+            finalizedPsfApCorrCatalog = None
+
         completeIndices = self.prepareCalibratedExposures(**inputs,
                                                           externalSkyWcsCatalog=externalSkyWcsCatalog,
-                                                          externalPhotoCalibCatalog=externalPhotoCalibCatalog)
+                                                          externalPhotoCalibCatalog=externalPhotoCalibCatalog,
+                                                          finalizedPsfApCorrCatalog=finalizedPsfApCorrCatalog)
         # Redo the input selection with inputs with complete wcs/photocalib info.
         inputs = self.filterInputs(indices=completeIndices, inputs=inputs)
 
@@ -829,6 +851,7 @@ class MakeWarpTask(MakeCoaddTempExpTask):
 
     def prepareCalibratedExposures(self, calExpList, backgroundList=None, skyCorrList=None,
                                    externalSkyWcsCatalog=None, externalPhotoCalibCatalog=None,
+                                   finalizedPsfApCorrCatalog=None,
                                    **kwargs):
         """Calibrate and add backgrounds to input calExpList in place
 
@@ -848,6 +871,10 @@ class MakeWarpTask(MakeCoaddTempExpTask):
             Exposure catalog with external photoCalib to be applied
             if config.doApplyExternalPhotoCalib=True.  Catalog uses the detector
             id for the catalog id, sorted on id for fast lookup.
+        finalizedPsfApCorrCatalog : `lsst.afw.table.ExposureCatalog`, optional
+            Exposure catalog with finalized psf models and aperture correction
+            maps to be applied if config.doApplyFinalizedPsf=True.  Catalog uses
+            the detector id for the catalog id, sorted on id for fast lookup.
 
         Returns
         -------
@@ -908,6 +935,26 @@ class MakeWarpTask(MakeCoaddTempExpTask):
                     self.log.warning("Detector id %s has None for skyWcs in the calexp "
                                      "and will not be used in the warp.", detectorId)
                     continue
+
+            # Find and apply finalized psf and aperture correction
+            if finalizedPsfApCorrCatalog is not None:
+                row = finalizedPsfApCorrCatalog.find(detectorId)
+                if row is None:
+                    self.log.warning("Detector id %s not found in finalizedPsfApCorrCatalog "
+                                     "and will not be used in the warp.", detectorId)
+                    continue
+                psf = row.getPsf()
+                if psf is None:
+                    self.log.warning("Detector id %s has None for psf in finalizedPsfApCorrCatalog "
+                                     "and will not be used in the warp.", detectorId)
+                    continue
+                calexp.setPsf(psf)
+                apCorrMap = row.getApCorrMap()
+                if apCorrMap is None:
+                    self.log.warning("Detector id %s has None for ApCorrMap in finalizedPsfApCorrCatalog "
+                                     "and will not be used in the warp.", detectorId)
+                    continue
+                calexp.setApCorrMap(apCorrMap)
 
             # Calibrate the image
             calexp.maskedImage = photoCalib.calibrateImage(calexp.maskedImage,
