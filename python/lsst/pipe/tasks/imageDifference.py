@@ -97,6 +97,14 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
         multiple=True,
         deferLoad=True
     )
+    finalizedPsfApCorrCatalog = pipeBase.connectionTypes.Input(
+        doc=("Per-visit finalized psf models and aperture correction maps. "
+             "These catalogs use the detector id for the catalog id, "
+             "sorted on id for fast lookup."),
+        name="finalized_psf_ap_corr_catalog",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit"),
+    )
     outputSchema = pipeBase.connectionTypes.InitOutput(
         doc="Schema (as an example catalog) for output DIASource catalog.",
         storageClass="SourceCatalog",
@@ -149,6 +157,8 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
             self.outputs.remove("matchedExposure")
         if not config.doWriteSources:
             self.outputs.remove("diaSources")
+        if not config.doApplyFinalizedPsf:
+            self.inputs.remove("finalizedPsfApCorrCatalog")
 
     # TODO DM-22953: Add support for refObjLoader (kernelSourcesFromRef)
     # Make kernelSources optional
@@ -218,6 +228,11 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
     doWriteSources = pexConfig.Field(dtype=bool, default=True, doc="Write sources?")
     doAddMetrics = pexConfig.Field(dtype=bool, default=False,
                                    doc="Add columns to the source table to hold analysis metrics?")
+    doApplyFinalizedPsf = pexConfig.Field(
+        doc="Whether to apply finalized psf models and aperture correction map.",
+        dtype=bool,
+        default=False,
+    )
 
     coaddName = pexConfig.Field(
         doc="coadd name: typically one of deep, goodSeeing, or dcr",
@@ -532,6 +547,13 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                    outputRefs: pipeBase.OutputQuantizedConnection):
         inputs = butlerQC.get(inputRefs)
         self.log.info("Processing %s", butlerQC.quantum.dataId)
+
+        finalizedPsfApCorrCatalog = inputs.get("finalizedPsfApCorrCatalog", None)
+        exposure = self.prepareCalibratedExposure(
+            inputs["exposure"],
+            finalizedPsfApCorrCatalog=finalizedPsfApCorrCatalog
+        )
+
         expId, expBits = butlerQC.quantum.dataId.pack("visit_detector",
                                                       returnMaxBits=True)
         idFactory = self.makeIdFactory(expId=expId, expBits=expBits)
@@ -540,12 +562,12 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         else:
             templateExposures = inputRefs.coaddExposures
         templateStruct = self.getTemplate.runQuantum(
-            inputs['exposure'], butlerQC, inputRefs.skyMap, templateExposures
+            exposure, butlerQC, inputRefs.skyMap, templateExposures
         )
 
         self.checkTemplateIsSufficient(templateStruct.exposure)
 
-        outputs = self.run(exposure=inputs['exposure'],
+        outputs = self.run(exposure=exposure,
                            templateExposure=templateStruct.exposure,
                            idFactory=idFactory)
         # Consistency with runDataref gen2 handling
@@ -633,6 +655,42 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         if self.config.doWriteScoreExp:
             sensorRef.put(results.scoreExposure, self.config.coaddName + "Diff_scoreExp")
         return results
+
+    def prepareCalibratedExposure(self, exposure, finalizedPsfApCorrCatalog=None):
+        """Prepare a calibrated exposure and apply finalized psf if so configured.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.exposure.Exposure`
+            Input exposure to adjust calibrations.
+        finalizedPsfApCorrCatalog : `lsst.afw.table.ExposureCatalog`, optional
+            Exposure catalog with finalized psf models and aperture correction
+            maps to be applied if config.doApplyFinalizedPsf=True.  Catalog uses
+            the detector id for the catalog id, sorted on id for fast lookup.
+
+        Returns
+        -------
+        exposure : `lsst.afw.image.exposure.Exposure`
+            Exposure with adjusted calibrations.
+        """
+        detectorId = exposure.getInfo().getDetector().getId()
+
+        if finalizedPsfApCorrCatalog is not None:
+            row = finalizedPsfApCorrCatalog.find(detectorId)
+            if row is None:
+                self.log.warning("Detector id %s not found in finalizedPsfApCorrCatalog; "
+                                 "Using original psf.", detectorId)
+            else:
+                psf = row.getPsf()
+                apCorrMap = row.getApCorrMap()
+                if psf is None or apCorrMap is None:
+                    self.log.warning("Detector id %s has None for psf/apCorrMap in "
+                                     "finalizedPsfApCorrCatalog; Using original psf.", detectorId)
+                else:
+                    exposure.setPsf(psf)
+                    exposure.setApCorrMap(apCorrMap)
+
+        return exposure
 
     @timeMethod
     def run(self, exposure=None, selectSources=None, templateExposure=None, templateSources=None,
@@ -1351,7 +1409,13 @@ class ImageDifferenceFromTemplateTask(ImageDifferenceTask):
                                                       returnMaxBits=True)
         idFactory = self.makeIdFactory(expId=expId, expBits=expBits)
 
-        outputs = self.run(exposure=inputs['exposure'],
+        finalizedPsfApCorrCatalog = inputs.get("finalizedPsfApCorrCatalog", None)
+        exposure = self.prepareCalibratedExposure(
+            inputs["exposure"],
+            finalizedPsfApCorrCatalog=finalizedPsfApCorrCatalog
+        )
+
+        outputs = self.run(exposure=exposure,
                            templateExposure=inputs['inputTemplate'],
                            idFactory=idFactory)
 
