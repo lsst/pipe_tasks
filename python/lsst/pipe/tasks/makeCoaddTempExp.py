@@ -893,8 +893,7 @@ class MakeWarpTask(MakeCoaddTempExpTask):
             if not self.config.bgSubtracted:
                 calexp.maskedImage += background.getImage()
 
-            if externalSkyWcsCatalog is not None or externalPhotoCalibCatalog is not None:
-                detectorId = calexp.getInfo().getDetector().getId()
+            detectorId = calexp.getInfo().getDetector().getId()
 
             # Find the external photoCalib
             if externalPhotoCalibCatalog is not None:
