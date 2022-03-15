@@ -63,6 +63,13 @@ class ConfigurableActionField(ConfigField):
         history = instance._history.setdefault(self.name, [])
         history.append(("config value set", at, label))
 
+    def save(self, outfile, instance):
+        # docstring inherited from parent
+        value = self.__get__(instance)
+        fullname = _joinNamePath(instance._name, self.name)
+        outfile.write(f"{fullname}={_typeStr(value)}\n")
+        super().save(outfile, instance)
+
     def __init__(self, doc, dtype=ConfigurableAction, default=None, check=None, deprecated=None):
         if not issubclass(dtype, ConfigurableAction):
             raise ValueError("dtype must be a subclass of ConfigurableAction")

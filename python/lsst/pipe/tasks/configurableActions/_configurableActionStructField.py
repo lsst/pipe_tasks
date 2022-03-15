@@ -163,7 +163,8 @@ class ConfigurableActionStruct:
             raise FieldValidationError(self._field, self._config, msg)
 
         if attr not in (self.__dict__.keys() | type(self).__dict__.keys()):
-            name = _joinNamePath(self._config._name, self._field.name, attr)
+            base_name = _joinNamePath(self._config._name, self._field.name)
+            name = _joinNamePath(base_name, attr)
             if at is None:
                 at = getCallStack()
             if isinstance(value, ConfigurableAction):
@@ -257,7 +258,8 @@ class ConfigurableActionStructField(Field):
         actionStruct: ConfigurableActionStruct = self.__get__(instance)
         if actionStruct is not None:
             for k, v in actionStruct.items():
-                fullname = _joinNamePath(instance._name, self.name, k)
+                base_name = _joinNamePath(instance._name, self.name)
+                fullname = _joinNamePath(base_name, k)
                 v._rename(fullname)
 
     def validate(self, instance):
@@ -282,7 +284,6 @@ class ConfigurableActionStructField(Field):
             outfile.write(u"{}={!r}\n".format(fullname, actionStruct))
             return
 
-        outfile.write(u"{}={!r}\n".format(fullname, {}))
         for v in actionStruct:
             outfile.write(u"{}={}()\n".format(v._name, _typeStr(v)))
             v._save(outfile)
@@ -292,6 +293,13 @@ class ConfigurableActionStructField(Field):
         if actionStruct is not None:
             for v in actionStruct:
                 v.freeze()
+
+    def _collectImports(self, instance, imports):
+        # docstring inherited from Field
+        actionStruct = self.__get__(instance)
+        for v in actionStruct:
+            v._collectImports()
+            imports |= v._imports
 
     def _compare(self, instance1, instance2, shortcut, rtol, atol, output):
         """Compare two fields for equality.

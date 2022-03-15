@@ -85,6 +85,8 @@ def makeColumnExpressionAction(className: str, expr: str,
                                                                          Type[DataFrameAction]]]] = None,
                                docstring: str = None
                                ) -> Type[DataFrameAction]:
+    import inspect
+    new_module = inspect.stack()[1].frame.f_locals['__name__']
     node = ast.parse(expr, mode='eval')
 
     # gather the specified names
@@ -123,5 +125,6 @@ def makeColumnExpressionAction(className: str, expr: str,
     if docstring is not None:
         dct['__doc__'] = docstring
     dct.update(**fields)
+    dct['__module__'] = new_module
 
     return type(className, (DataFrameAction, ), dct)
