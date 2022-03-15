@@ -27,6 +27,8 @@ import os.path
 import pandas as pd
 import numpy as np
 import astropy.units as u
+from dustmaps.sfd import SFDQuery
+from astropy.coordinates import SkyCoord
 
 from lsst.daf.persistence import doImport
 from lsst.daf.butler import DeferredDatasetHandle
@@ -223,8 +225,9 @@ class Functor(object):
                 new_colDict[lev] = columnIndex.levels[i]
 
         levelCols = [new_colDict[lev] for lev in columnLevels]
-        cols = product(*levelCols)
-        return list(cols)
+        cols = list(product(*levelCols))
+        colsAvailable = [col for col in cols if col in columnIndex]
+        return colsAvailable
 
     def multilevelColumns(self, data, columnIndex=None, returnTuple=False):
         """Returns columns needed by functor from multilevel dataset
@@ -1406,9 +1409,12 @@ class ReferenceBand(Functor):
             colName = row.idxmax()
             return colName.replace('merge_measurement_', '')
 
+        # Skip columns that are unavailable, because this functor requests the
+        # superset of bands that could be included in the object table
+        columns = [col for col in self.columns if col in df.columns]
         # Makes a Series of dtype object if df is empty
-        return df[self.columns].apply(getFilterAliasName, axis=1,
-                                      result_type='reduce').astype('object')
+        return df[columns].apply(getFilterAliasName, axis=1,
+                                 result_type='reduce').astype('object')
 
 
 class Photometry(Functor):
@@ -1899,3 +1905,23 @@ class Ratio(Functor):
             np.warnings.filterwarnings('ignore', r'invalid value encountered')
             np.warnings.filterwarnings('ignore', r'divide by zero')
             return df[self.numerator] / df[self.denominator]
+
+
+class Ebv(Functor):
+    """Compute E(B-V) from dustmaps.sfd
+    """
+    _defaultDataset = 'ref'
+    name = "E(B-V)"
+    shortname = "ebv"
+
+    def __init__(self, **kwargs):
+        self._columns = ['coord_ra', 'coord_dec']
+        self.sfd = SFDQuery()
+        super().__init__(**kwargs)
+
+    def _func(self, df):
+        coords = SkyCoord(df['coord_ra']*u.rad, df['coord_dec']*u.rad)
+        ebv = self.sfd(coords)
+        # Double precision unnecessary scientifically
+        # but currently needed for ingest to qserv
+        return pd.Series(ebv, index=df.index).astype('float64')
