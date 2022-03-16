@@ -65,6 +65,9 @@ class ConfigurableActionField(ConfigField):
 
     def save(self, outfile, instance):
         # docstring inherited from parent
+        # This is different that the parent class in that this field must
+        # serialize which config class is assigned to this field prior to
+        # serializing any assignments to that config class's fields.
         value = self.__get__(instance)
         fullname = _joinNamePath(instance._name, self.name)
         outfile.write(f"{fullname}={_typeStr(value)}\n")
