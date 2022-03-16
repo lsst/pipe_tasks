@@ -85,6 +85,40 @@ def makeColumnExpressionAction(className: str, expr: str,
                                                                          Type[DataFrameAction]]]] = None,
                                docstring: str = None
                                ) -> Type[DataFrameAction]:
+    """Factory function for producing ConfigurableAction classes which are
+    realizations of arithmetic operations.
+
+    Parameters
+    ----------
+    className : `str`
+        The name of the class that will be produced
+    expr : `str`
+        An arithmetic expression that will be parsed to produce the output
+        ConfigurableAction. Individual variable names will be the name of
+        individual `ConfigActions` inside the expression (i.e. "x+y" will
+        produce an action with configAction.actions.x and
+        configAction.actions.y). Expression can contain arithmatic python
+        operators as well as; sin, cos, sinh, cosh, log (which is base 10).
+    exprDefaults : `Mapping` of `str` to `DataFrameAction` optional
+        A mapping of strings which correspond to the names in the expression to
+        values which are default `ConfigurableActions` to assign in the
+        expression. If no default for a action is supplied `SingleColumnAction`
+        is set as the default.
+    docstring : `str`
+        A string that is assigned as the resulting classes docstring
+
+    Returns
+    -------
+    action : `Type` of `DataFrameAction`
+        A `DataFrameAction` class that was programatically constructed from the
+        input expression.
+    """
+    # inspect is used because this is a factory function used to produce classes
+    # and it is desireable that the classes generated appear to be in the
+    # module of the calling frame, instead of something defined within the
+    # scope of this function call.
+    import inspect
+    new_module = inspect.stack()[1].frame.f_locals['__name__']
     node = ast.parse(expr, mode='eval')
 
     # gather the specified names
@@ -123,5 +157,6 @@ def makeColumnExpressionAction(className: str, expr: str,
     if docstring is not None:
         dct['__doc__'] = docstring
     dct.update(**fields)
+    dct['__module__'] = new_module
 
     return type(className, (DataFrameAction, ), dct)
