@@ -22,7 +22,7 @@
 from lsst.daf.butler import Butler
 from lsst.skymap import BaseSkyMap
 from lsst.pipe.tasks.makeDiscreteSkyMap import MakeDiscreteSkyMapTask, MakeDiscreteSkyMapConfig
-from lsst.obs.base.utils import getInstrument
+from lsst.pipe.base import Instrument
 
 
 def makeDiscreteSkyMap(repo, config_file, collections, instrument,
@@ -53,7 +53,7 @@ def makeDiscreteSkyMap(repo, config_file, collections, instrument,
         ``skymap_id``.  Ignored unless ``config.doAppend=True``.
     """
     butler = Butler(repo, collections=collections, writeable=True)
-    instr = getInstrument(instrument, butler.registry)
+    instr = Instrument.from_string(instrument, butler.registry)
     config = MakeDiscreteSkyMapConfig()
     instr.applyConfigOverrides(MakeDiscreteSkyMapTask._DefaultName, config)
 
