@@ -22,11 +22,13 @@ from __future__ import annotations
 
 __all__ = ("ConfigurableActionStructField", "ConfigurableActionStruct")
 
+from types import SimpleNamespace
 from typing import Iterable, Mapping, Optional, TypeVar, Union, Type, Tuple, List, Any, Dict
 
 from lsst.pex.config.config import Config, Field, FieldValidationError, _typeStr, _joinNamePath
 from lsst.pex.config.comparison import compareConfigs, compareScalars, getComparisonName
 from lsst.pex.config.callStack import StackFrame, getCallStack, getStackFrame
+from lsst.pipe.base import Struct
 
 from . import ConfigurableAction
 
@@ -224,7 +226,10 @@ class ConfigurableActionStructField(Field):
                     optional=optional, source=source, deprecated=deprecated)
 
     def __set__(self, instance: Config,
-                value: Union[None, Mapping[str, ConfigurableAction], ConfigurableActionStruct],
+                value: Union[None, Mapping[str, ConfigurableAction],
+                             ConfigurableActionStruct,
+                             ConfigurableActionStructField,
+                             Type[ConfigurableActionStructField]],
                 at: Iterable[StackFrame] = None, label: str = 'assigment'):
         if instance._frozen:
             msg = "Cannot modify a frozen Config. "\
@@ -234,9 +239,25 @@ class ConfigurableActionStructField(Field):
         if at is None:
             at = getCallStack()
 
-        if value is None or value == self.default:
+        if value is None or (self.default is not None and self.default == value):
             value = self.StructClass(instance, self, value, at=at, label=label)
         else:
+            # An actual value is being assgigned check for what it is
+            if isinstance(value, self.StructClass):
+                # If this is a ConfigurableActionStruct, we need to make our own
+                # copy that references this current field
+                value = self.StructClass(instance, self, value._attrs, at=at, label=label)
+            elif isinstance(value, (SimpleNamespace, Struct)):
+                # If this is a a python analogous container, we need to make
+                # a ConfigurableActionStruct initialized with this data
+                value = self.StructClass(instance, self, vars(value), at=at, label=label)
+
+            elif type(value) == ConfigurableActionStructField:
+                raise ValueError("ConfigurableActionStructFields can only be used in a class body declaration"
+                                 f"Use a {self.StructClass}, SimpleNamespace or Struct")
+            else:
+                raise ValueError(f"Unrecognized value {value}, cannot be assigned to this field")
+
             history = instance._history.setdefault(self.name, [])
             history.append((value, at, label))
 
