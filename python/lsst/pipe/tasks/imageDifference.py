@@ -345,6 +345,17 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
         target=SkyObjectsTask,
         doc="Generate sky sources",
     )
+    fwhmExposureGrid = pexConfig.Field(
+        doc="Grid size to compute the average FWHM in an exposure",
+        dtype=int,
+        default=10,
+    )
+    fwhmExposureBuffer = pexConfig.Field(
+        doc="Fractional buffer margin to be left out of all sides of the image during construction"
+            "of grid to compute average FWHM in an exposure",
+        dtype=float,
+        default=0.05,
+    )
 
     def setDefaults(self):
         # defaults are OK for catalog and diacatalog
@@ -791,12 +802,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
             elif self.config.subtract.name == 'al':
                 # compute scienceSigmaOrig: sigma of PSF of science image before pre-convolution
                 # Just need a rough estimate; average positions are fine
-                sciAvgPos = sciencePsf.getAveragePosition()
-                scienceSigmaOrig = sciencePsf.computeShape(sciAvgPos).getDeterminantRadius()
-
-                templatePsf = templateExposure.getPsf()
-                templateAvgPos = templatePsf.getAveragePosition()
-                templateSigma = templatePsf.computeShape(templateAvgPos).getDeterminantRadius()
+                scienceSigmaOrig = exposure.getFwhmPix(self.config.fwhmExposureBuffer,
+                                                       self.config.fwhmExposureGrid)
+                templateSigma = templateExposure.getFwhmPix(self.config.fwhmExposureBuffer,
+                                                            self.config.fwhmExposureGrid)
 
                 # if requested, convolve the science exposure with its PSF
                 # (properly, this should be a cross-correlation, but our code does not yet support that)
