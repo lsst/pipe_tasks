@@ -55,3 +55,6 @@ class DataFrameAction(ConfigurableAction):
         """This property should return an iterable of columns needed by this action
         """
         raise NotImplementedError("This method should be overloaded in a subclass")
+
+    def getColumns(self, **kwargs):
+        return (col.format(**kwargs) for col in self.columns)

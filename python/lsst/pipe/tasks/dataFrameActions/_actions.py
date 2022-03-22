@@ -24,8 +24,13 @@ class SingleColumnAction(DataFrameAction):
     def columns(self) -> Iterable[str]:
         return (self.column, )
 
+    def getColumns(self, **kwargs) -> Iterable[str]:
+        return (self.column.format(**kwargs), )
+
     def __call__(self, df, **kwargs):
-        return df[self.column]
+        column = next(iter(self.columns))
+        key = column.format(**kwargs)
+        return df[key]
 
 
 class MultiColumnAction(DataFrameAction):
@@ -34,6 +39,9 @@ class MultiColumnAction(DataFrameAction):
     @property
     def columns(self) -> Iterable[str]:
         yield from (column for action in self.actions for column in action.columns)
+
+    def getColumns(self, **kwargs) -> Iterable[str]:
+        yield from (column for action in self.actions for column in action.getColumns(**kwargs))
 
 
 class CoordColumn(SingleColumnAction):
