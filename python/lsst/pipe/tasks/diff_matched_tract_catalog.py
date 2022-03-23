@@ -89,6 +89,12 @@ class DiffMatchedTractCatalogConnections(
         dimensions=("tract", "skymap"),
         deferLoad=True,
     )
+    columns_match_target = cT.Input(
+        doc="Target match catalog columns",
+        name="match_target_{name_input_cat_ref}_{name_input_cat_target}.columns",
+        storageClass="DataFrameIndex",
+        dimensions=("tract", "skymap"),
+    )
     cat_matched = cT.Output(
         doc="Catalog with reference and target columns for matched sources only",
         name="matched_{name_input_cat_ref}_{name_input_cat_target}",
@@ -456,6 +462,10 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         inputs = butlerQC.get(inputRefs)
         skymap = inputs.pop("skymap")
 
+        columns_match_target = ['match_row']
+        if 'match_candidate' in inputs['columns_match_target']:
+            columns_match_target.append('match_candidate')
+
         outputs = self.run(
             catalog_ref=inputs['cat_ref'].get(parameters={'columns': self.config.columns_in_ref}),
             catalog_target=inputs['cat_target'].get(parameters={'columns': self.config.columns_in_target}),
@@ -463,7 +473,7 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
                 parameters={'columns': ['match_candidate', 'match_row']},
             ),
             catalog_match_target=inputs['cat_match_target'].get(
-                parameters={'columns': ['match_candidate', 'match_row']},
+                parameters={'columns': columns_match_target},
             ),
             wcs=skymap[butlerQC.quantum.dataId["tract"]].wcs,
         )
