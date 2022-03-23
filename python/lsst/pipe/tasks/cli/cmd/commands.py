@@ -29,7 +29,7 @@ from lsst.daf.butler.cli.opt import (
     repo_argument,
 )
 from lsst.daf.butler.cli.utils import ButlerCommand
-from lsst.obs.base.cli.opt import instrument_argument
+from lsst.pipe.base.cli.opt import instrument_argument
 from .opt import (
     band_names_argument,
     num_subfilters_argument,
