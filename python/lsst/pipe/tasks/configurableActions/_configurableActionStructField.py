@@ -164,6 +164,11 @@ class ConfigurableActionStruct:
                   f"Attempting to set item {attr} to value {value}"
             raise FieldValidationError(self._field, self._config, msg)
 
+        # verify that someone has not passed a string with a space or leading
+        # number or something through the dict assignment update interface
+        if not attr.isidentifier():
+            raise ValueError("Names used in ConfigurableStructs must be valid as python variable names")
+
         if attr not in (self.__dict__.keys() | type(self).__dict__.keys()):
             base_name = _joinNamePath(self._config._name, self._field.name)
             name = _joinNamePath(base_name, attr)
