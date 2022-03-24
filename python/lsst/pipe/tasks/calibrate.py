@@ -258,6 +258,10 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         target=SingleFrameMeasurementTask,
         doc="Measure sources"
     )
+    postCalibrationMeasurement = pexConfig.ConfigurableField(
+        target=SingleFrameMeasurementTask,
+        doc="Second round of measurement for plugins that need to be run after photocal"
+    )
     setPrimaryFlags = pexConfig.ConfigurableField(
         target=SetPrimaryFlagsTask,
         doc=("Set flags for primary source classification in single frame "
@@ -309,7 +313,10 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         super().setDefaults()
         self.detection.doTempLocalBackground = False
         self.deblend.maxFootprintSize = 2000
-        self.measurement.plugins.names |= ["base_LocalPhotoCalib", "base_LocalWcs"]
+        self.postCalibrationMeasurement.plugins.names = ["base_LocalPhotoCalib", "base_LocalWcs"]
+        self.postCalibrationMeasurement.doReplaceWithNoise = False
+        for key in self.postCalibrationMeasurement.slots:
+            setattr(self.postCalibrationMeasurement.slots, key, None)
 
     def validate(self):
         super().validate()
@@ -516,6 +523,8 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             self.makeSubtask("skySources")
             self.skySourceKey = self.schema.addField("sky_source", type="Flag", doc="Sky objects.")
         self.makeSubtask('measurement', schema=self.schema,
+                         algMetadata=self.algMetadata)
+        self.makeSubtask('postCalibrationMeasurement', schema=self.schema,
                          algMetadata=self.algMetadata)
         self.makeSubtask("setPrimaryFlags", schema=self.schema, isSingleFrame=True)
         if self.config.doApCorr:
@@ -761,6 +770,12 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                                  "(%s): attempting to proceed", e)
                 self.setMetadata(exposure=exposure, photoRes=None)
 
+        self.postCalibrationMeasurement.run(
+            measCat=sourceCat,
+            exposure=exposure,
+            exposureId=exposureIdInfo.expId
+        )
+
         if self.config.doInsertFakes:
             self.insertFakes.run(exposure, background=background)
 
@@ -776,6 +791,11 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             if self.config.doDeblend:
                 self.deblend.run(exposure=exposure, sources=sourceCat)
             self.measurement.run(
+                measCat=sourceCat,
+                exposure=exposure,
+                exposureId=exposureIdInfo.expId
+            )
+            self.postCalibrationMeasurement.run(
                 measCat=sourceCat,
                 exposure=exposure,
                 exposureId=exposureIdInfo.expId
