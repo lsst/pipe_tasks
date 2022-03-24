@@ -21,10 +21,12 @@
 
 import unittest
 from io import StringIO
+from types import SimpleNamespace
 
 from lsst.pipe.tasks.configurableActions import (ConfigurableActionStructField, ConfigurableAction,
                                                  ConfigurableActionField)
 from lsst.pex.config import Config, Field, FieldValidationError
+from lsst.pipe.base import Struct
 
 
 class ActionTest1(ConfigurableAction):
@@ -117,6 +119,16 @@ class ConfigurableActionsTestCase(unittest.TestCase):
 
         self.assertEqual(tuple(config.actions.fieldNames), ("test1", "test2", "test3"))
 
+        # verify tha the update interface cannot be used to assign invalid
+        # identifiers
+        configClass = self._createConfig()
+        config = configClass()
+        with self.assertRaises(ValueError):
+            config.actions.update = {"name with space": ActionTest2}
+
+        with self.assertRaises(ValueError):
+            config.actions.update = {"9leading_number": ActionTest2}
+
         # Test remove "assignment" using the remove accessor
         configClass = self._createConfig(default={"test1": ActionTest1, "test2": ActionTest2,
                                                   "test3": ActionTest3})
@@ -141,6 +153,34 @@ class ConfigurableActionsTestCase(unittest.TestCase):
 
         config.singleAction = ActionTest3()
         self.assertEqual(config.singleAction(), 3)
+
+        # Verify that ConfigurableActionStructField can be assigned to with
+        # a ConfigurableActionStruct, Struct, and SimpleNamespace
+        otherConfigClass = self._createConfig(default={"test1": ActionTest1(var=1),
+                                                       "test2": ActionTest2(var=2)})
+        assignSource1 = otherConfigClass().actions
+        assignSource2 = Struct(test1=ActionTest1(var=1), test2=ActionTest2(var=2))
+        assignSource3 = SimpleNamespace(test1=ActionTest1(var=1), test2=ActionTest2(var=2))
+
+        for source in (assignSource1, assignSource2, assignSource3):
+            configClass = self._createConfig()
+            config = configClass()
+            config.actions = source
+
+            self.assertEqual(tuple(config.actions.fieldNames), ("test1", "test2"))
+            self.assertEqual((config.actions.test1.var, config.actions.test2.var), (1, 2))
+
+        # Fail if assigment is ConfigurableActionStructField
+        with self.assertRaises(ValueError):
+            configClass = self._createConfig()
+            config = configClass()
+            config.actions = otherConfigClass.actions
+
+        # Fail if assignment is some other type
+        with self.assertRaises(ValueError):
+            configClass = self._createConfig()
+            config = configClass()
+            config.actions = {}
 
     def testValidate(self):
         configClass = self._createConfig(default={"test1": ActionTest1, "test2": ActionTest2,
