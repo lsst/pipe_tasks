@@ -802,10 +802,10 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
             elif self.config.subtract.name == 'al':
                 # compute scienceSigmaOrig: sigma of PSF of science image before pre-convolution
                 # Just need a rough estimate; average positions are fine
-                scienceSigmaOrig = exposure.getFwhmPix(self.config.fwhmExposureBuffer,
-                                                       self.config.fwhmExposureGrid)
-                templateSigma = templateExposure.getFwhmPix(self.config.fwhmExposureBuffer,
-                                                            self.config.fwhmExposureGrid)
+                scienceSigmaOrig = exposure.evaluateMedianFwhm(self.config.fwhmExposureBuffer,
+                                                               self.config.fwhmExposureGrid)
+                templateSigma = templateExposure.evaluateMedianFwhm(self.config.fwhmExposureBuffer,
+                                                                    self.config.fwhmExposureGrid)
 
                 # if requested, convolve the science exposure with its PSF
                 # (properly, this should be a cross-correlation, but our code does not yet support that)
