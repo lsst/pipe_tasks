@@ -247,7 +247,7 @@ class ConfigurableActionStructField(Field):
         if value is None or (self.default is not None and self.default == value):
             value = self.StructClass(instance, self, value, at=at, label=label)
         else:
-            # An actual value is being assgigned check for what it is
+            # An actual value is being assigned check for what it is
             if isinstance(value, self.StructClass):
                 # If this is a ConfigurableActionStruct, we need to make our own
                 # copy that references this current field
