@@ -376,9 +376,6 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
         if self.doUseRegister and not self.doSelectSources:
             raise ValueError("doUseRegister=True and doSelectSources=False. "
                              "Cannot run RegisterTask without selecting sources.")
-        if hasattr(self.getTemplate, "coaddName"):
-            if self.getTemplate.coaddName != self.coaddName:
-                raise ValueError("Mis-matched coaddName and getTemplate.coaddName in the config.")
         if self.doScaleDiffimVariance and self.doScaleTemplateVariance:
             raise ValueError("Scaling the diffim variance and scaling the template variance "
                              "are both set. Please choose one or the other.")
