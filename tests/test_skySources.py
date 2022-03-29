@@ -57,6 +57,8 @@ class SkySourcesTestCase(lsst.utils.tests.TestCase):
             Value of the config flag determining whether to insert sky sources.
         """
         charImConfig = CharacterizeImageConfig()
+        charImConfig.measurePsf.psfDeterminer = 'piff'
+        charImConfig.measurePsf.psfDeterminer['piff'].spatialOrder = 0
         charImTask = CharacterizeImageTask(config=charImConfig)
         charImResults = charImTask.run(self.exposure)
         calibConfig = CalibrateConfig()

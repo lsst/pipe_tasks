@@ -147,29 +147,32 @@ class ProcessCcdTestCase(lsst.utils.tests.TestCase):
                     # running the test to determine the updated values.
                     expectedPlaces = 7  # Tolerance for numerical comparisons
                     for name, var, val in [
-                        ("bgMean", bgMean, 191.48623786891795),
-                        ("bgStdDev", bgStdDev, 0.23994185672586282),
-                        ("numGoodPix", numGoodPix, 1966606),
-                        ("imMean", imMean, 1.1242456954648634),
-                        ("imStdDev", imStdDev, 85.8129750182329),
+                        ("bgMean", bgMean, 191.48618251407825),
+                        ("bgStdDev", bgStdDev, 0.23993854036946),
+                        ("numGoodPix", numGoodPix, 1966533),
+                        ("imMean", imMean, 1.12428293713628),
+                        ("imStdDev", imStdDev, 85.81297524976699),
                         ("varMean", varMean, 131.24003624152013),
                         ("varStdDev", varStdDev, 55.98012493452948),
-                        ("psfIxx", psfIxx, 2.843329671276296),
-                        ("psfIyy", psfIyy, 2.2249941554078156),
-                        ("psfIxy", psfIxy, 0.16073332780683286),
-                        ("summary_psfSigma", summary.psfSigma, 1.581520120798809),
-                        ("summary_psfIxx", summary.psfIxx, 2.8524883317493583),
-                        ("summary_psfIyy", summary.psfIyy, 2.2028393759764615),
-                        ("summary_psfIxy", summary.psfIxy, 0.16595993509518148),
-                        ("summary_psfArea", summary.psfArea, 38.63468352371086),
+                        ("psfIxx", psfIxx, 2.86673377350734),
+                        ("psfIyy", psfIyy, 2.22794091001822),
+                        ("psfIxy", psfIxy, 0.15356726688314),
+                        ("summary_psfSigma", summary.psfSigma, 1.58741282647433),
+                        ("summary_psfIxx", summary.psfIxx, 2.87668148939724),
+                        ("summary_psfIyy", summary.psfIyy, 2.21573211240281),
+                        ("summary_psfIxy", summary.psfIxy, 0.15544436672073),
+                        ("summary_psfArea", summary.psfArea, 38.06710084772205),
                         ("summary_ra", summary.ra, 78.85551507080474),
-                        ("summary_decl", summary.decl, -9.800258687592303),
+                        ("summary_decl", summary.decl, -9.80025868759230),
                         ("summary_zenithDistance", float('%.6f' % (summary.zenithDistance)), 42.361001),
-                        ("summary_zeroPoint", summary.zeroPoint, 30.940228147639207),
-                        ("summary_skyBg", summary.skyBg, 191.37726892903447),
-                        ("summary_skyNoise", summary.skyNoise, 12.512272992606531),
-                        ("summary_meanVar", summary.meanVar, 130.61335199119068)
+                        ("summary_zeroPoint", summary.zeroPoint, 30.94022814763921),
+                        ("summary_skyBg", summary.skyBg, 191.37631678208709),
+                        ("summary_skyNoise", summary.skyNoise, 12.51227414082489),
+                        ("summary_meanVar", summary.meanVar, 130.61335199119068),
                     ]:
+                        # Uncomment following line to get replacement code when values need updating.
+                        # Watch out for zenithDistance though!
+                        # print(f'("{name}", {name.replace("_", ".")}, {var:.14f}),')
                         self.assertAlmostEqual(var, val, places=expectedPlaces, msg=name)
 
                 else:
