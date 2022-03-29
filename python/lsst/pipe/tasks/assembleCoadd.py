@@ -42,10 +42,9 @@ from .coaddBase import CoaddBaseTask, SelectDataIdContainer, makeSkyInfo, makeCo
 from .interpImage import InterpImageTask
 from .scaleZeroPoint import ScaleZeroPointTask
 from .coaddHelpers import groupPatchExposures, getGroupDataRef
-from .scaleVariance import ScaleVarianceTask
 from .maskStreaks import MaskStreaksTask
 from .healSparseMapping import HealSparseInputMapTask
-from lsst.meas.algorithms import SourceDetectionTask, AccumulatorMeanStack
+from lsst.meas.algorithms import SourceDetectionTask, AccumulatorMeanStack, ScaleVarianceTask
 from lsst.daf.butler import DeferredDatasetHandle
 from lsst.utils.timer import timeMethod
 

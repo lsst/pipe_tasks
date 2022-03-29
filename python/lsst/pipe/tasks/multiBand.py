@@ -28,12 +28,11 @@ from lsst.pipe.base import (CmdLineTask, Struct, ArgumentParser, ButlerInitializ
                             PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.config import Config, Field, ConfigurableField
-from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader
+from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader, ScaleVarianceTask
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.meas.extensions.scarlet import ScarletDeblendTask
 from lsst.pipe.tasks.coaddBase import getSkyInfo
-from lsst.pipe.tasks.scaleVariance import ScaleVarianceTask
 from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
 from lsst.pipe.tasks.fakes import BaseFakeSourcesTask
 from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
