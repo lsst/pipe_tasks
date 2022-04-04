@@ -31,7 +31,7 @@ __all__ = ["ExampleSigmaClippedStatsConfig", "ExampleSigmaClippedStatsTask", "Ex
 # This works even for task(s) that are not in lsst.pipe.tasks.
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page pipeTasks_exampleStatsTasks
+## \page page_exampleStatsTasks ExampleStatsTasks
 ## \ref ExampleSigmaClippedStatsTask "ExampleSigmaClippedStatsTask"
 ##      A simple example subtask that computes sigma-clipped statistics of an image
 ## <br>

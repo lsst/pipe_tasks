@@ -49,7 +49,7 @@ class MeasurePsfConfig(pexConfig.Config):
 
 ## @addtogroup LSST_task_documentation
 ## @{
-## @page MeasurePsfTask
+## @page page_MeasurePsfTask MeasurePsfTask
 ## @ref MeasurePsfTask_ "MeasurePsfTask"
 ## @copybrief MeasurePsfTask
 ## @}

@@ -127,7 +127,7 @@ class SnapCombineConfig(pexConfig.Config):
 
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page SnapCombineTask
+## \page page_SnapCombineTask SnapCombineTask
 ## \ref SnapCombineTask_ "SnapCombineTask"
 ## \copybrief SnapCombineTask
 ## \}

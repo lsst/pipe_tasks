@@ -139,7 +139,7 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
 
 ## @addtogroup LSST_task_documentation
 ## @{
-## @page DetectCoaddSourcesTask
+## @page page_DetectCoaddSourcesTask DetectCoaddSourcesTask
 ## @ref DetectCoaddSourcesTask_ "DetectCoaddSourcesTask"
 ## @copybrief DetectCoaddSourcesTask
 ## @}
@@ -759,7 +759,7 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
 
 ## @addtogroup LSST_task_documentation
 ## @{
-## @page MeasureMergedCoaddSourcesTask
+## @page page_MeasureMergedCoaddSourcesTask MeasureMergedCoaddSourcesTask
 ## @ref MeasureMergedCoaddSourcesTask_ "MeasureMergedCoaddSourcesTask"
 ## @copybrief MeasureMergedCoaddSourcesTask
 ## @}

@@ -119,7 +119,7 @@ class PhotoCalConfig(pexConf.Config):
 
 ## @addtogroup LSST_task_documentation
 ## @{
-## @page photoCalTask
+## @page page_photoCalTask PhotoCalTask
 ## @ref PhotoCalTask_ "PhotoCalTask"
 ##      Detect positive and negative sources on an exposure and return a new SourceCatalog.
 ## @}

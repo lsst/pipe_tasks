@@ -120,7 +120,7 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
 
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page MakeCoaddTempExpTask
+## \page page_MakeCoaddTempExpTask MakeCoaddTempExpTask
 ## \ref MakeCoaddTempExpTask_ "MakeCoaddTempExpTask"
 ## \copybrief MakeCoaddTempExpTask
 ## \}

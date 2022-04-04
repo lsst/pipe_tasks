@@ -57,7 +57,7 @@ class RepairConfig(pexConfig.Config):
 
 ## @addtogroup LSST_task_documentation
 ## @{
-## @page RepairTask
+## @page page_RepairTask RepairTask
 ## @ref RepairTask_ "RepairTask"
 ## @copybrief RepairTask
 ## @}

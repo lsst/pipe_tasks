@@ -46,7 +46,7 @@ class TransformConfig(pexConfig.Config):
 
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page TransformTask
+## \page page_TransformTask TransformTask
 ## \ref TransformTask_ "TransformTask"
 ## \copybrief TransformTask
 ## \}
@@ -266,7 +266,7 @@ class RunTransformTaskBase(pipeBase.CmdLineTask):
 
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page SrcTransformTask
+## \page page_SrcTransformTask SrcTransformTask
 ## \ref SrcTransformTask_ "SrcTransformTask"
 ## \copybrief SrcTransformTask
 ## \}
@@ -291,7 +291,7 @@ class SrcTransformTask(RunTransformTaskBase):
 
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page ForcedSrcTransformTask
+## \page page_ForcedSrcTransformTask ForcedSrcTransformTask
 ## \ref ForcedSrcTransformTask_ "ForcedSrcTransformTask"
 ## \copybrief ForcedSrcTransformTask
 ## \}
@@ -312,7 +312,7 @@ class ForcedSrcTransformTask(RunTransformTaskBase):
 
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page CoaddSrcTransformTask
+## \page page_CoaddSrcTransformTask CoaddSrcTransformTask
 ## \ref CoaddSrcTransformTask_ "CoaddSrcTransformTask"
 ## \copybrief CoaddSrcTransformTask
 ## \}

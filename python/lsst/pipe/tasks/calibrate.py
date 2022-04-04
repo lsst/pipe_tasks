@@ -336,7 +336,7 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
 
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page CalibrateTask
+## \page page_CalibrateTask CalibrateTask
 ## \ref CalibrateTask_ "CalibrateTask"
 ## \copybrief CalibrateTask
 ## \}

@@ -69,7 +69,7 @@ class ProcessCcdConfig(pexConfig.Config):
 
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page ProcessCcdTask
+## \page page_ProcessCcdTask ProcessCcdTask
 ## \ref ProcessCcdTask_ "ProcessCcdTask"
 ## \copybrief ProcessCcdTask
 ## \}

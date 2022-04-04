@@ -242,7 +242,7 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
 
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page CharacterizeImageTask
+## \page page_CharacterizeImageTask CharacterizeImageTask
 ## \ref CharacterizeImageTask_ "CharacterizeImageTask"
 ## \copybrief CharacterizeImageTask
 ## \}

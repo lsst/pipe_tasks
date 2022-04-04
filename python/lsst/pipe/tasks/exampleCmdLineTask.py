@@ -31,7 +31,7 @@ __all__ = ["ExampleCmdLineConfig", "ExampleCmdLineTask"]
 # This works even for task(s) that are not in lsst.pipe.tasks.
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page pipeTasks_exampleTask
+## \page page_ExampleTask ExampleTask
 ## \ref ExampleCmdLineTask "ExampleCmdLineTask"
 ##      An example intended to show how to write a command-line task.
 ## \}

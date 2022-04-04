@@ -119,7 +119,7 @@ class MergeMeasurementsConfig(PipelineTaskConfig, pipelineConnections=MergeMeasu
 
 ## @addtogroup LSST_task_documentation
 ## @{
-## @page MergeMeasurementsTask
+## @page page_MergeMeasurementsTask MergeMeasurementsTask
 ## @ref MergeMeasurementsTask_ "MergeMeasurementsTask"
 ## @copybrief MergeMeasurementsTask
 ## @}
