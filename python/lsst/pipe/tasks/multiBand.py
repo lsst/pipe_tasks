@@ -37,7 +37,7 @@ from lsst.pipe.tasks.scaleVariance import ScaleVarianceTask
 from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
 from lsst.pipe.tasks.fakes import BaseFakeSourcesTask
 from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
-from lsst.pipe.tasks.propagateVisitFlags import PropagateVisitFlagsTask
+from lsst.pipe.tasks.propagateSourceFlags import PropagateSourceFlagsTask
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
@@ -624,11 +624,30 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
     visitCatalogs = cT.Input(
         doc="Source catalogs for visits which overlap input tract, patch, band. Will be "
             "further filtered in the task for the purpose of propagating flags from image calibration "
-            "and characterization to codd objects",
+            "and characterization to coadd objects. Only used in legacy PropagateVisitFlagsTask.",
         name="src",
         dimensions=("instrument", "visit", "detector"),
         storageClass="SourceCatalog",
         multiple=True
+    )
+    sourceTableHandles = cT.Input(
+        doc=("Source tables that are derived from the ``CalibrateTask`` sources. "
+             "These tables contain astrometry and photometry flags, and optionally "
+             "PSF flags."),
+        name="sourceTable_visit",
+        storageClass="DataFrame",
+        dimensions=("instrument", "visit"),
+        multiple=True,
+        deferLoad=True,
+    )
+    finalizedSourceTableHandles = cT.Input(
+        doc=("Finalized source tables from ``FinalizeCalibrationTask``. These "
+             "tables contain PSF flags from the finalized PSF estimation."),
+        name="finalized_src_table",
+        storageClass="DataFrame",
+        dimensions=("instrument", "visit"),
+        multiple=True,
+        deferLoad=True,
     )
     inputCatalog = cT.Input(
         doc=("Name of the input catalog to use."
@@ -665,6 +684,20 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
         super().__init__(config=config)
         if config.doPropagateFlags is False:
             self.inputs -= set(("visitCatalogs",))
+            self.inputs -= set(("sourceTableHandles",))
+            self.inputs -= set(("finalizedSourceTableHandles",))
+        elif config.propagateFlags.target == PropagateSourceFlagsTask:
+            # New PropagateSourceFlagsTask does not use visitCatalogs.
+            self.inputs -= set(("visitCatalogs",))
+            # Check for types of flags required.
+            if not config.propagateFlags.source_flags:
+                self.inputs -= set(("sourceTableHandles",))
+            if not config.propagateFlags.finalized_source_flags:
+                self.inputs -= set(("finalizedSourceTableHandles",))
+        else:
+            # Deprecated PropagateVisitFlagsTask uses visitCatalogs.
+            self.inputs -= set(("sourceTableHandles",))
+            self.inputs -= set(("finalizedSourceTableHandles",))
 
         if config.doMatchSources is False:
             self.outputs -= set(("matchResult",))
@@ -691,7 +724,7 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
         dtype=bool, default=True,
         doc="Whether to match sources to CCD catalogs to propagate flags (to e.g. identify PSF stars)"
     )
-    propagateFlags = ConfigurableField(target=PropagateVisitFlagsTask, doc="Propagate visit flags to coadd")
+    propagateFlags = ConfigurableField(target=PropagateSourceFlagsTask, doc="Propagate source flags to coadd")
     doMatchSources = Field(dtype=bool, default=True, doc="Match sources to reference catalog?")
     match = ConfigurableField(target=DirectMatchTask, doc="Matching to reference catalog")
     doWriteMatchesDenormalized = Field(
@@ -979,28 +1012,45 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         inputs['skyInfo'] = skyInfo
 
         if self.config.doPropagateFlags:
-            # Filter out any visit catalog that is not coadd inputs
-            ccdInputs = inputs['exposure'].getInfo().getCoaddInputs().ccds
-            visitKey = ccdInputs.schema.find("visit").key
-            ccdKey = ccdInputs.schema.find("ccd").key
-            inputVisitIds = set()
-            ccdRecordsWcs = {}
-            for ccdRecord in ccdInputs:
-                visit = ccdRecord.get(visitKey)
-                ccd = ccdRecord.get(ccdKey)
-                inputVisitIds.add((visit, ccd))
-                ccdRecordsWcs[(visit, ccd)] = ccdRecord.getWcs()
+            if self.config.propagateFlags.target == PropagateSourceFlagsTask:
+                # New version
+                ccdInputs = inputs["exposure"].getInfo().getCoaddInputs().ccds
+                inputs["ccdInputs"] = ccdInputs
 
-            inputCatalogsToKeep = []
-            inputCatalogWcsUpdate = []
-            for i, dataRef in enumerate(inputRefs.visitCatalogs):
-                key = (dataRef.dataId['visit'], dataRef.dataId['detector'])
-                if key in inputVisitIds:
-                    inputCatalogsToKeep.append(inputs['visitCatalogs'][i])
-                    inputCatalogWcsUpdate.append(ccdRecordsWcs[key])
-            inputs['visitCatalogs'] = inputCatalogsToKeep
-            inputs['wcsUpdates'] = inputCatalogWcsUpdate
-            inputs['ccdInputs'] = ccdInputs
+                if "sourceTableHandles" in inputs:
+                    sourceTableHandles = inputs.pop("sourceTableHandles")
+                    sourceTableHandleDict = {handle.dataId["visit"]: handle
+                                             for handle in sourceTableHandles}
+                    inputs["sourceTableHandleDict"] = sourceTableHandleDict
+                if "finalizedSourceTableHandles" in inputs:
+                    finalizedSourceTableHandles = inputs.pop("finalizedSourceTableHandles")
+                    finalizedSourceTableHandleDict = {handle.dataId["visit"]: handle
+                                                      for handle in finalizedSourceTableHandles}
+                    inputs["finalizedSourceTableHandleDict"] = finalizedSourceTableHandleDict
+            else:
+                # Deprecated legacy version
+                # Filter out any visit catalog that is not coadd inputs
+                ccdInputs = inputs['exposure'].getInfo().getCoaddInputs().ccds
+                visitKey = ccdInputs.schema.find("visit").key
+                ccdKey = ccdInputs.schema.find("ccd").key
+                inputVisitIds = set()
+                ccdRecordsWcs = {}
+                for ccdRecord in ccdInputs:
+                    visit = ccdRecord.get(visitKey)
+                    ccd = ccdRecord.get(ccdKey)
+                    inputVisitIds.add((visit, ccd))
+                    ccdRecordsWcs[(visit, ccd)] = ccdRecord.getWcs()
+
+                inputCatalogsToKeep = []
+                inputCatalogWcsUpdate = []
+                for i, dataRef in enumerate(inputRefs.visitCatalogs):
+                    key = (dataRef.dataId['visit'], dataRef.dataId['detector'])
+                    if key in inputVisitIds:
+                        inputCatalogsToKeep.append(inputs['visitCatalogs'][i])
+                        inputCatalogWcsUpdate.append(ccdRecordsWcs[key])
+                inputs['visitCatalogs'] = inputCatalogsToKeep
+                inputs['wcsUpdates'] = inputCatalogWcsUpdate
+                inputs['ccdInputs'] = ccdInputs
 
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
@@ -1041,7 +1091,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         self.write(patchRef, results.outputSources)
 
     def run(self, exposure, sources, skyInfo, exposureId, ccdInputs=None, visitCatalogs=None, wcsUpdates=None,
-            butler=None):
+            butler=None, sourceTableHandleDict=None, finalizedSourceTableHandleDict=None):
         """Run measurement algorithms on the input exposure, and optionally populate the
         resulting catalog with extra information.
 
@@ -1059,17 +1109,28 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
             packed unique number or bytes unique to the input exposure
         ccdInputs : `lsst.afw.table.ExposureCatalog`
             Catalog containing information on the individual visits which went into making
-            the exposure
-        visitCatalogs : list of `lsst.afw.table.SourceCatalogs` or `None`
+            the coadd.
+        sourceTableHandleDict : `dict` [`int`: `lsst.daf.butler.DeferredDatasetHandle`]
+            Dict for sourceTable_visit handles (key is visit) for propagating flags.
+            These tables are derived from the ``CalibrateTask`` sources, and contain
+            astrometry and photometry flags, and optionally PSF flags.
+        finalizedSourceTableHandleDict : `dict` [`int`: `lsst.daf.butler.DeferredDatasetHandle`], optional
+            Dict for finalized_src_table handles (key is visit) for propagating flags.
+            These tables are derived from ``FinalizeCalibrationTask`` and contain
+            PSF flags from the finalized PSF estimation.
+        visitCatalogs : list of `lsst.afw.table.SourceCatalogs`
             A list of source catalogs corresponding to measurements made on the individual
             visits which went into the input exposure. If None and butler is `None` then
             the task cannot propagate visit flags to the output catalog.
-        wcsUpdates : list of `lsst.afw.geom.SkyWcs` or `None`
+            Deprecated, to be removed with PropagateVisitFlagsTask.
+        wcsUpdates : list of `lsst.afw.geom.SkyWcs`
             If visitCatalogs is not `None` this should be a list of wcs objects which correspond
             to the input visits. Used to put all coordinates to common system. If `None` and
             butler is `None` then the task cannot propagate visit flags to the output catalog.
-        butler : `lsst.daf.butler.Butler` or `lsst.daf.persistence.Butler`
-            Either a gen2 or gen3 butler used to load visit catalogs
+            Deprecated, to be removed with PropagateVisitFlagsTask.
+        butler : `lsst.daf.persistence.Butler`
+            A gen2 butler used to load visit catalogs.
+            Deprecated, to be removed with Gen2.
 
         Returns
         -------
@@ -1100,7 +1161,24 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         self.setPrimaryFlags.run(sources, skyMap=skyInfo.skyMap, tractInfo=skyInfo.tractInfo,
                                  patchInfo=skyInfo.patchInfo)
         if self.config.doPropagateFlags:
-            self.propagateFlags.run(butler, sources, ccdInputs, exposure.getWcs(), visitCatalogs, wcsUpdates)
+            if self.config.propagateFlags.target == PropagateSourceFlagsTask:
+                # New version
+                self.propagateFlags.run(
+                    sources,
+                    ccdInputs,
+                    sourceTableHandleDict,
+                    finalizedSourceTableHandleDict
+                )
+            else:
+                # Legacy deprecated version
+                self.propagateFlags.run(
+                    butler,
+                    sources,
+                    ccdInputs,
+                    exposure.getWcs(),
+                    visitCatalogs,
+                    wcsUpdates
+                )
 
         results = Struct()
 
