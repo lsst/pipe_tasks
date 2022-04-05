@@ -356,7 +356,6 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
      - @ref pipe_tasks_calibrate_Metadata
      - @ref pipe_tasks_calibrate_Debug
 
-
     @section pipe_tasks_calibrate_Purpose  Description
 
     Given an exposure with a good PSF model and aperture correction map

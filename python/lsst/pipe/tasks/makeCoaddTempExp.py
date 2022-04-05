@@ -127,7 +127,8 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
 
 
 class MakeCoaddTempExpTask(CoaddBaseTask):
-    r"""!Warp and optionally PSF-Match calexps onto an a common projection.
+    r"""!
+    Warp and optionally PSF-Match calexps onto an a common projection.
 
     @anchor MakeCoaddTempExpTask_
 

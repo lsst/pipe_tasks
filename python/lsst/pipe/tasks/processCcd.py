@@ -76,7 +76,8 @@ class ProcessCcdConfig(pexConfig.Config):
 
 
 class ProcessCcdTask(pipeBase.CmdLineTask):
-    r"""!Assemble raw data, fit the PSF, detect and measure, and fit WCS and zero-point
+    r"""!
+    Assemble raw data, fit the PSF, detect and measure, and fit WCS and zero-point
 
     @anchor ProcessCcdTask_
 
