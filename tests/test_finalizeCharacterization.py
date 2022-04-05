@@ -64,6 +64,8 @@ class MockDataFrameReference(lsst.daf.butler.DeferredDatasetHandle):
 class TestFinalizeCharacterizationTask(FinalizeCharacterizationTask):
     """A derived class which skips the initialization routines.
     """
+    __test__ = False  # Stop Pytest from trying to parse as a TestCase
+
     def __init__(self, **kwargs):
         pipeBase.PipelineTask.__init__(self, **kwargs)
 
