@@ -41,7 +41,6 @@ import os.path
 import pandas as pd
 import numpy as np
 import astropy.units as u
-from dustmaps.sfd import SFDQuery
 from astropy.coordinates import SkyCoord
 
 from lsst.utils import doImport
@@ -1933,6 +1932,8 @@ class Ebv(Functor):
     shortname = "ebv"
 
     def __init__(self, **kwargs):
+        # import is only needed for Ebv
+        from dustmaps.sfd import SFDQuery
         self._columns = ['coord_ra', 'coord_dec']
         self.sfd = SFDQuery()
         super().__init__(**kwargs)
