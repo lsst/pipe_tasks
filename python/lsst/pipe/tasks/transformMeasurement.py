@@ -170,7 +170,7 @@ class RunTransformTaskBase(pipeBase.CmdLineTask):
 
     \brief Command line interface for TransformTask.
 
-    \section pipe_tasks_transform_Contents Contents
+    \section pipe_tasks_runtransform_Contents Contents
 
      - \ref pipe_tasks_runtransform_purpose
      - \ref pipe_tasks_runtransform_invoke
