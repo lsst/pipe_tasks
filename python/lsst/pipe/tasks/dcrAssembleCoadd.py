@@ -1236,7 +1236,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         convergeMaskPixels = dcrModels.mask[dcrBBox].array & convergeMask > 0
         weights = np.zeros_like(dcrModels[0][dcrBBox].array)
         weights[convergeMaskPixels] = 1.
-        weights = ndimage.filters.gaussian_filter(weights, self.config.modelWeightsWidth)
+        weights = ndimage.gaussian_filter(weights, self.config.modelWeightsWidth)
         weights /= np.max(weights)
         return weights
 
