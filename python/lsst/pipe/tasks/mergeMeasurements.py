@@ -171,7 +171,7 @@ class MergeMeasurementsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
     @section pipe_tasks_multiBand_MergeMeasurementsTask_Debug		Debug variables
 
-    The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a
+    The command line task interface supports a
     flag @c -d to import @b debug.py from your @c PYTHONPATH; see @ref baseDebug for more about @b debug.py
     files.
 

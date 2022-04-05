@@ -359,8 +359,8 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     @section pipe_tasks_calibrate_Purpose  Description
 
     Given an exposure with a good PSF model and aperture correction map
-    (e.g. as provided by @ref CharacterizeImageTask), perform the following
-     operations:
+    (e.g. as provided by @ref characterizeImage::CharacterizeImageTask "CharacterizeImageTask"),
+    perform the following operations:
     - Run detection and measurement
     - Run astrometry subtask to fit an improved WCS
     - Run photoCal subtask to fit the exposure's photometric zero-point
@@ -395,9 +395,10 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
     @section pipe_tasks_calibrate_Debug  Debug variables
 
-    The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink
+    The command line task
     interface supports a flag
-    `--debug` to import `debug.py` from your `$PYTHONPATH`; see @ref baseDebug
+    `--debug` to import `debug.py` from your `$PYTHONPATH`; see
+    <a href="https://pipelines.lsst.io/modules/lsstDebug/">the lsstDebug documentation</a>
     for more about `debug.py`.
 
     CalibrateTask has a debug dictionary containing one key:

@@ -156,9 +156,10 @@ class CoaddBaseTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         @brief Select exposures to coadd
 
         Get the corners of the bbox supplied in skyInfo using @ref geom.Box2D and convert the pixel
-        positions of the bbox corners to sky coordinates using @ref skyInfo.wcs.pixelToSky. Use the
-        @ref WcsSelectImagesTask_ "WcsSelectImagesTask" to select exposures that lie inside the patch
-        indicated by the dataRef.
+        positions of the bbox corners to sky coordinates using
+        @ref afw::geom::SkyWcs::pixelToSky "skyInfo.wcs.pixelToSky". Use the
+        @ref selectImages::WcsSelectImagesTask "WcsSelectImagesTask" to select exposures that lie
+        inside the patch indicated by the dataRef.
 
         @param[in] patchRef  data reference for sky map patch. Must include keys "tract", "patch",
                              plus the camera-specific filter key (e.g. "filter" or "band")
@@ -173,7 +174,8 @@ class CoaddBaseTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
 
     def getSkyInfo(self, patchRef):
         """!
-        @brief Use @ref getSkyinfo to return the skyMap, tract and patch information, wcs and the outer bbox
+        @brief Use @ref coaddBase::getSkyInfo "getSkyInfo" to return the skyMap,
+        tract and patch information, wcs and the outer bbox
         of the patch.
 
         @param[in] patchRef  data reference for sky map. Must include keys "tract" and "patch"

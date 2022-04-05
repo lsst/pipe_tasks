@@ -100,7 +100,7 @@ class RepairTask(pipeBase.Task):
 
     @section pipe_tasks_repair_Debug Debug variables
 
-    The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a
+    The command line task interface supports a
     flag @c -d to import @b debug.py from your @c PYTHONPATH; see <a
     href="https://developer.lsst.io/stack/debug.html">Debugging Tasks with lsstDebug</a> for more
     about @b debug.py files.

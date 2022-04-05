@@ -146,8 +146,9 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
     Warp and optionally PSF-Match calexps onto a common projection, by
     performing the following operations:
     - Group calexps by visit/run
-    - For each visit, generate a Warp by calling method @ref makeTempExp.
-      makeTempExp loops over the visit's calexps calling @ref WarpAndPsfMatch
+    - For each visit, generate a Warp by calling method @ref run.
+      `run` loops over the visit's calexps calling
+      @ref warpAndPsfMatch::WarpAndPsfMatchTask "WarpAndPsfMatchTask"
       on each visit
 
     The result is a `directWarp` (and/or optionally a `psfMatchedWarp`).
@@ -177,12 +178,12 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
     @section pipe_tasks_makeCoaddTempExp_Config  Configuration parameters
 
     See @ref MakeCoaddTempExpConfig and parameters inherited from
-    @link lsst.pipe.tasks.coaddBase.CoaddBaseConfig CoaddBaseConfig @endlink
+    @link coaddBase::CoaddBaseConfig CoaddBaseConfig @endlink
 
     @subsection pipe_tasks_MakeCoaddTempExp_psfMatching Guide to PSF-Matching Configs
 
     To make `psfMatchedWarps`, select `config.makePsfMatched=True`. The subtask
-    @link lsst.ip.diffim.modelPsfMatch.ModelPsfMatchTask ModelPsfMatchTask @endlink
+    @link ip::diffim::modelPsfMatch::ModelPsfMatchTask ModelPsfMatchTask @endlink
     is responsible for the PSF-Matching, and its config is accessed via `config.warpAndPsfMatch.psfMatch`.
     The optimal configuration depends on aspects of dataset: the pixel scale, average PSF FWHM and
     dimensions of the PSF kernel. These configs include the requested model PSF, the matching kernel size,
@@ -194,7 +195,7 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
     with the worst seeing. The smallest it should be set to is the median FWHM. The defaults
     of the other config options offer a reasonable starting point.
     The following list presents the most common problems that arise from a misconfigured
-    @link lsst.ip.diffim.modelPsfMatch.ModelPsfMatchTask ModelPsfMatchTask @endlink
+    @link ip::diffim::modelPsfMatch::ModelPsfMatchTask ModelPsfMatchTask @endlink
     and corresponding solutions. All assume the default Alard-Lupton kernel, with configs accessed via
     ```config.warpAndPsfMatch.psfMatch.kernel['AL']```. Each item in the list is formatted as:
     Problem: Explanation. *Solution*
