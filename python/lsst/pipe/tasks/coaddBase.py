@@ -164,6 +164,8 @@ class CoaddBaseTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         @param[in] patchRef  data reference for sky map patch. Must include keys "tract", "patch",
                              plus the camera-specific filter key (e.g. "filter" or "band")
         @param[in] skyInfo   geometry for the patch; output from getSkyInfo
+        @param[in] selectDataList list of @ref selectImages::SelectStruct "SelectStruct"
+                             to consider for selection
         @return    a list of science exposures to coadd, as butler data references
         """
         if skyInfo is None:

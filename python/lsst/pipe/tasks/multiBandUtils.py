@@ -148,6 +148,7 @@ def getInputSchema(task, butler=None, schema=None):
     """!
     @brief Obtain the input schema either directly or froma  butler reference.
 
+    @param[in]  task     the task whose input schema is desired
     @param[in]  butler   butler reference to obtain the input schema from
     @param[in]  schema   the input schema
     """
@@ -165,6 +166,7 @@ def readCatalog(task, patchRef):
     We read the input dataset provided by the 'inputDataset'
     class variable.
 
+    @param[in]  task       the task whose input catalog is desired
     @param[in]  patchRef   data reference for patch
     @return tuple consisting of the band name and the catalog
     """

@@ -302,6 +302,8 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
         @param[in] patchRef: data reference for sky map patch. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter" or "band")
+        @param[in] selectDataList list of @ref selectImages::SelectStruct "SelectStruct"
+            to consider for selection
         @return: dataRefList: a list of data references for the new @<coaddName>Coadd_directWarps
             if direct or both warp types are requested and @<coaddName>Coadd_psfMatchedWarps
             if only psfMatched

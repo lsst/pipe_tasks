@@ -401,6 +401,7 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
         @c first being of type lsst.afw.table.SimpleRecord and @c second type lsst.afw.table.SourceRecord ---
         the reference object and matched object respectively).
         (will not be modified  except to set the outputField if requested.).
+        @param[in]  expId Exposure identifier; used for seeding the random number generator.
 
         @return Struct of:
          - photoCalib -- @link lsst::afw::image::PhotoCalib @endlink object containing the calibration
