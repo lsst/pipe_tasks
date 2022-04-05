@@ -297,12 +297,14 @@ class MakeCoaddTempExpTask(CoaddBaseTask):
 
     @timeMethod
     def runDataRef(self, patchRef, selectDataList=[]):
-        """!Produce <coaddName>Coadd_<warpType>Warp images by warping and optionally PSF-matching.
+        """!
+        Produce @<coaddName>Coadd_@<warpType>Warp images by warping and optionally PSF-matching.
 
         @param[in] patchRef: data reference for sky map patch. Must include keys "tract", "patch",
             plus the camera-specific filter key (e.g. "filter" or "band")
-        @return: dataRefList: a list of data references for the new <coaddName>Coadd_directWarps
-            if direct or both warp types are requested and <coaddName>Coadd_psfMatchedWarps if only psfMatched
+        @return: dataRefList: a list of data references for the new @<coaddName>Coadd_directWarps
+            if direct or both warp types are requested and @<coaddName>Coadd_psfMatchedWarps
+            if only psfMatched
             warps are requested.
 
         @warning: this task assumes that all exposures in a warp (coaddTempExp) have the same filter.
