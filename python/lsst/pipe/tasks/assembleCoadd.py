@@ -2012,6 +2012,11 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig,
         dtype=bool,
         default=False
     )
+    growStreakFp = pexConfig.Field(
+        doc="Grow streak footprints by this number multiplied by the PSF width",
+        dtype=float,
+        default=5
+    )
 
     def setDefaults(self):
         AssembleCoaddConfig.setDefaults(self)
@@ -2417,6 +2422,13 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                     streakMask = warpDiffExp.mask
                     spanSetStreak = afwGeom.SpanSet.fromMask(streakMask,
                                                              streakMask.getPlaneBitMask(maskName)).split()
+                    # Pad the streaks to account for low-surface brightness wings
+                    psf = warpDiffExp.getPsf()
+                    for s, sset in enumerate(spanSetStreak):
+                        psfShape = psf.computeShape(sset.computeCentroid())
+                        dilation = self.config.growStreakFp * psfShape.getDeterminantRadius()
+                        sset_dilated = sset.dilated(int(dilation))
+                        spanSetStreak[s] = sset_dilated
 
                 # PSF-Matched warps have less available area (~the matching kernel) because the calexps
                 # undergo a second convolution. Pixels with data in the direct warp
