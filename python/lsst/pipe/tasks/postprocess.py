@@ -1268,7 +1268,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     def _makeVisitSummarySchema(self):
         """Make the schema for the visitSummary catalog."""
         schema = afwTable.ExposureTable.makeMinimalSchema()
-        schema.addField('visit', type='I', doc='Visit number')
+        schema.addField('visit', type='L', doc='Visit number')
         schema.addField('physical_filter', type='String', size=32, doc='Physical filter')
         schema.addField('band', type='String', size=32, doc='Name of band')
         schema.addField('psfSigma', type='F',
