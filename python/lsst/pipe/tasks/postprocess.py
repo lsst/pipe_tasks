@@ -1492,9 +1492,12 @@ class MakeCcdVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
 
             ccdEntry["skyRotation"] = visitInfo.getBoresightRotAngle().asDegrees()
             ccdEntry["expMidpt"] = visitInfo.getDate().toPython()
+            ccdEntry["expMidptMJD"] = visitInfo.getDate().get(dafBase.DateTime.MJD)
             expTime = visitInfo.getExposureTime()
             ccdEntry['expTime'] = expTime
             ccdEntry["obsStart"] = ccdEntry["expMidpt"] - 0.5 * pd.Timedelta(seconds=expTime)
+            expTime_days = expTime / (60*60*24)
+            ccdEntry["obsStartMJD"] = ccdEntry["expMidptMJD"] - 0.5 * expTime_days
             ccdEntry['darkTime'] = visitInfo.getDarkTime()
             ccdEntry['xSize'] = summaryTable['bbox_max_x'] - summaryTable['bbox_min_x']
             ccdEntry['ySize'] = summaryTable['bbox_max_y'] - summaryTable['bbox_min_y']
@@ -1579,10 +1582,16 @@ class MakeVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
             visitEntry["altitude"] = azAlt.getLatitude().asDegrees()
             visitEntry["zenithDistance"] = 90 - azAlt.getLatitude().asDegrees()
             visitEntry["airmass"] = visitInfo.getBoresightAirmass()
-            visitEntry["obsStart"] = visitInfo.getDate().toPython()
-            visitEntry["expTime"] = visitInfo.getExposureTime()
+            expTime = visitInfo.getExposureTime()
+            visitEntry["expTime"] = expTime
+            visitEntry["expMidpt"] = visitInfo.getDate().toPython()
+            visitEntry["expMidptMJD"] = visitInfo.getDate().get(dafBase.DateTime.MJD)
+            visitEntry["obsStart"] = visitEntry["expMidpt"] - 0.5 * pd.Timedelta(seconds=expTime)
+            expTime_days = expTime / (60*60*24)
+            visitEntry["obsStartMJD"] = visitEntry["expMidptMJD"] - 0.5 * expTime_days
             visitEntries.append(visitEntry)
-            # TODO: DM-30623, Add programId, exposureType, expMidpt, cameraTemp, mirror1Temp, mirror2Temp,
+
+            # TODO: DM-30623, Add programId, exposureType, cameraTemp, mirror1Temp, mirror2Temp,
             # mirror3Temp, domeTemp, externalTemp, dimmSeeing, pwvGPS, pwvMW, flags, nExposures
 
         outputCatalog = pd.DataFrame(data=visitEntries)
