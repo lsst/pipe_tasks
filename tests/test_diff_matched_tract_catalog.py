@@ -155,6 +155,7 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(columns_expect, list(result.cat_matched.columns))
         row = result.diff_matched.iloc[0].values
         self.assertEqual(len(row), len(self.diff_matched))
+        # Insert np.savetxt(filename, row) to regenerate comparison file
         self.assertEqual(np.sum(row.astype(float) != self.diff_matched), 0)
 
 

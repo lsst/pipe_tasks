@@ -36,6 +36,7 @@ from lsst.skymap import BaseSkyMap
 from abc import ABCMeta, abstractmethod
 from astropy.stats import mad_std
 from dataclasses import dataclass
+from decimal import Decimal
 from enum import Enum, auto
 import numpy as np
 import pandas as pd
@@ -45,6 +46,10 @@ from typing import Dict, Sequence, Set
 
 def is_sequence_set(x: Sequence):
     return len(x) == len(set(x))
+
+
+def is_percentile(x: str):
+    return 0 <= Decimal(x) <= 100
 
 
 DiffMatchedTractCatalogBaseTemplates = {
@@ -267,6 +272,13 @@ class DiffMatchedTractCatalogConfig(
         default=31.4,
         doc='Magnitude zeropoint for target sources',
     )
+    percentiles = pexConfig.ListField(
+        dtype=str,
+        default=('2.275', '15.866', '84.134', '97.725'),
+        doc='Percentiles to compute for diff/chi values',
+        itemCheck=is_percentile,
+        listCheck=is_sequence_set,
+    )
 
 
 class Measurement(Enum):
@@ -366,6 +378,10 @@ class Percentile(Statistic):
     def value(self, values):
         return np.percentile(values, self.percentile)
 
+    def __post_init__(self):
+        if not ((self.percentile >= 0) and (self.percentile <= 100)):
+            raise ValueError(f'percentile={self.percentile} not >=0 and <= 100')
+
 
 def compute_stats(values_ref, values_target, errors_target, row, stats, suffixes, prefix, skip_diff=False):
     """Compute statistics on differences and store results in a row.
@@ -432,7 +448,7 @@ def _get_columns(bands_columns: Dict, suffixes: Dict, suffixes_flux: Dict, suffi
     suffixes, suffixes_flux, suffixes_mag : `Dict` [`Measurement`, `str`]
         Dict of suffixes for each `Measurement` type, for general columns (e.g.
         coordinates), fluxes and magnitudes, respectively.
-    stats : `Dict` [`Statistic`, `str`]
+    stats : `Dict` [`str`, `Statistic`]
         Dict of suffixes for each `Statistic` type.
     target : `ComparableCatalog`
         A target catalog with coordinate column names.
@@ -623,13 +639,12 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         suffixes_flux = {Measurement.CHI: suffixes[Measurement.CHI]}
         # Skip chi for magnitudes, which have strange errors
         suffixes_mag = {Measurement.DIFF: suffixes[Measurement.DIFF]}
-        stats = {
-            '_median': Median(),
-            '_sig_iqr': SigmaIQR(),
-            '_sig_mad': SigmaMAD(),
-        }
-        for name, percentile in (('p05', 5.), ('p16', 16.), ('p84', 84.), ('p95', 95.)):
-            stats[f'_{name}'] = Percentile(percentile=percentile)
+        stats = {f'_{stat.name_short()}': stat() for stat in (Median, SigmaIQR, SigmaMAD)}
+
+        # -2, -1, +1, +2 sigma percentiles for normal distribution
+        for percentile in ('2.275', '15.866', '84.134', '97.725'):
+            stat = Percentile(percentile=float(Decimal(percentile)))
+            stats[f'_{stat.name_short()}'] = stat
 
         # Get dict of column names
         columns, n_models = _get_columns(
