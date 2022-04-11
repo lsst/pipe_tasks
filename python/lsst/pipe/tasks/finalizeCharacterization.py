@@ -310,7 +310,7 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         )
 
         exposure_cat_schema = afwTable.ExposureTable.makeMinimalSchema()
-        exposure_cat_schema.addField('visit', type='I', doc='Visit number')
+        exposure_cat_schema.addField('visit', type='L', doc='Visit number')
 
         metadata = dafBase.PropertyList()
         metadata.add("COMMENT", "Catalog id is detector id, sorted.")
@@ -415,7 +415,7 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         )
         output_schema.addField(
             'visit',
-            type=np.int32,
+            type=np.int64,
             doc='Visit number for the sources.',
         )
         output_schema.addField(

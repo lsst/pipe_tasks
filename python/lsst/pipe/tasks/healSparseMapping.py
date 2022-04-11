@@ -208,7 +208,7 @@ class HealSparseInputMapTask(pipeBase.Task):
         # Create a temporary map to hold the count of bad pixels in each healpix pixel
         self._ccd_input_pixels = self.ccd_input_map.valid_pixels
 
-        dtype = [(f"v{visit}", "i4") for visit in self._bits_per_visit.keys()]
+        dtype = [(f"v{visit}", np.int64) for visit in self._bits_per_visit.keys()]
 
         with warnings.catch_warnings():
             # Healsparse will emit a warning if nside coverage is greater than
