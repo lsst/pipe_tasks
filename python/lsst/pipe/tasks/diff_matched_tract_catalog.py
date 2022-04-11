@@ -40,7 +40,11 @@ from enum import Enum, auto
 import numpy as np
 import pandas as pd
 from scipy.stats import iqr
-from typing import Dict, Set
+from typing import Dict, Sequence, Set
+
+
+def is_sequence_set(x: Sequence):
+    return len(x) == len(set(x))
 
 
 DiffMatchedTractCatalogBaseTemplates = {
@@ -116,12 +120,12 @@ class MatchedCatalogFluxesConfig(pexConfig.Config):
     )
     columns_target_flux = pexConfig.ListField(
         dtype=str,
-        listCheck=lambda x: len(set(x)) == len(x),
+        listCheck=is_sequence_set,
         doc="List of target catalog flux column names",
     )
     columns_target_flux_err = pexConfig.ListField(
         dtype=str,
-        listCheck=lambda x: len(set(x)) == len(x),
+        listCheck=is_sequence_set,
         doc="List of target catalog flux error column names",
     )
 
