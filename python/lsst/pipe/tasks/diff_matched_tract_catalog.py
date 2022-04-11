@@ -274,8 +274,18 @@ class Statistic(metaclass=ABCMeta):
     """A statistic that can be applied to a set of values.
     """
     @abstractmethod
+    def doc(self) -> str:
+        """A description of the statistic"""
+        raise NotImplementedError('Subclasses must implement this method')
+
+    @abstractmethod
+    def name_short(self) -> str:
+        """A short name for the statistic, e.g. for a table column name"""
+        raise NotImplementedError('Subclasses must implement this method')
+
+    @abstractmethod
     def value(self, values):
-        """Return the value of the statistic given a set of values.
+        """The value of the statistic for a set of input values.
 
         Parameters
         ----------
@@ -287,23 +297,47 @@ class Statistic(metaclass=ABCMeta):
         statistic : `float`
             The value of the statistic.
         """
-        pass
+        raise NotImplementedError('Subclasses must implement this method')
 
 
 class Median(Statistic):
     """The median of a set of values."""
+    @classmethod
+    def doc(cls) -> str:
+        return "Median"
+
+    @classmethod
+    def name_short(cls) -> str:
+        return "median"
+
     def value(self, values):
         return np.median(values)
 
 
 class SigmaIQR(Statistic):
-    """The re-scaled inter-quartile range (sigma equivalent)."""
+    """The re-scaled interquartile range (sigma equivalent)."""
+    @classmethod
+    def doc(cls) -> str:
+        return "Interquartile range divided by ~1.349 (sigma-equivalent)"
+
+    @classmethod
+    def name_short(cls) -> str:
+        return "sig_iqr"
+
     def value(self, values):
         return iqr(values, scale='normal')
 
 
 class SigmaMAD(Statistic):
     """The re-scaled median absolute deviation (sigma equivalent)."""
+    @classmethod
+    def doc(cls) -> str:
+        return "Median absolute deviation multiplied by ~1.4826 (sigma-equivalent)"
+
+    @classmethod
+    def name_short(cls) -> str:
+        return "sig_mad"
+
     def value(self, values):
         return mad_std(values)
 
@@ -318,6 +352,12 @@ class Percentile(Statistic):
         A valid percentile (0 <= p <= 100).
     """
     percentile: float
+
+    def doc(self) -> str:
+        return "Median absolute deviation multiplied by ~1.4826 (sigma-equivalent)"
+
+    def name_short(self) -> str:
+        return f"pctl{f'{self.percentile/100:.5f}'[2:]}"
 
     def value(self, values):
         return np.percentile(values, self.percentile)
