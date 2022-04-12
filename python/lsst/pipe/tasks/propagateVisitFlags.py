@@ -43,7 +43,7 @@ class PropagateVisitFlagsConfig(Config):
 
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page PropagateVisitFlagsTask
+## \page page_PropagateVisitFlagsTask PropagateVisitFlagsTask
 ## \ref PropagateVisitFlagsTask_ "PropagateVisitFlagsTask"
 ## \copybrief PropagateVisitFlagsTask
 ## \}

@@ -543,7 +543,7 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         cat_left = cat_target.iloc[matched_row]
         has_index_left = cat_left.index.name is not None
         cat_right = cat_ref[matched_ref].reset_index()
-        cat_matched = pd.concat((cat_left.reset_index(drop=True), cat_right), 1)
+        cat_matched = pd.concat((cat_left.reset_index(drop=True), cat_right), axis=1)
         if has_index_left:
             cat_matched.index = cat_left.index
         cat_matched.columns.values[len(cat_target.columns):] = [f'refcat_{col}' for col in cat_right.columns]

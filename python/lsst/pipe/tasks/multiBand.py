@@ -139,7 +139,7 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
 
 ## @addtogroup LSST_task_documentation
 ## @{
-## @page DetectCoaddSourcesTask
+## @page page_DetectCoaddSourcesTask DetectCoaddSourcesTask
 ## @ref DetectCoaddSourcesTask_ "DetectCoaddSourcesTask"
 ## @copybrief DetectCoaddSourcesTask
 ## @}
@@ -199,7 +199,7 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
 
     @section pipe_tasks_multiBand_DetectCoaddSourcesTask_Debug		Debug variables
 
-    The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a
+    The command line task interface supports a
     flag @c -d to import @b debug.py from your @c PYTHONPATH; see @ref baseDebug for more about @b debug.py
     files.
 
@@ -759,7 +759,7 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
 
 ## @addtogroup LSST_task_documentation
 ## @{
-## @page MeasureMergedCoaddSourcesTask
+## @page page_MeasureMergedCoaddSourcesTask MeasureMergedCoaddSourcesTask
 ## @ref MeasureMergedCoaddSourcesTask_ "MeasureMergedCoaddSourcesTask"
 ## @copybrief MeasureMergedCoaddSourcesTask
 ## @}
@@ -842,7 +842,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
 
     @section pipe_tasks_multiBand_MeasureMergedCoaddSourcesTask_Debug		Debug variables
 
-    The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a
+    The command line task interface supports a
     flag @c -d to import @b debug.py from your @c PYTHONPATH; see @ref baseDebug for more about @b debug.py
     files.
 

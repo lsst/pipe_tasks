@@ -119,7 +119,7 @@ class PhotoCalConfig(pexConf.Config):
 
 ## @addtogroup LSST_task_documentation
 ## @{
-## @page photoCalTask
+## @page page_photoCalTask PhotoCalTask
 ## @ref PhotoCalTask_ "PhotoCalTask"
 ##      Detect positive and negative sources on an exposure and return a new SourceCatalog.
 ## @}
@@ -165,8 +165,10 @@ See @ref PhotoCalConfig
 
 @section pipe_tasks_photocal_Debug		Debug variables
 
-The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a
-flag @c -d to import @b debug.py from your @c PYTHONPATH; see @ref baseDebug for more about @b debug.py files.
+The command line task interface supports a
+flag @c -d to import @b debug.py from your @c PYTHONPATH; see
+<a href="https://pipelines.lsst.io/modules/lsstDebug/">the lsstDebug documentation</a>
+for more about @b debug.py files.
 
 The available variables in PhotoCalTask are:
 <DL>
@@ -189,7 +191,7 @@ The available variables in PhotoCalTask are:
 
 @section pipe_tasks_photocal_Example	A complete example of using PhotoCalTask
 
-This code is in @link examples/photoCalTask.py@endlink, and can be run as @em e.g.
+This code is in `examples/photoCalTask.py`, and can be run as @em e.g.
 @code
 examples/photoCalTask.py
 @endcode
@@ -287,7 +289,7 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
     def extractMagArrays(self, matches, filterLabel, sourceKeys):
         """!Extract magnitude and magnitude error arrays from the given matches.
 
-        @param[in] matches Reference/source matches, a @link lsst::afw::table::ReferenceMatchVector@endlink
+        @param[in] matches Reference/source matches, a @link lsst::afw::table::ReferenceMatchVector @endlink
         @param[in] filterLabel Label of filter being calibrated
         @param[in] sourceKeys  Struct of source catalog keys, as returned by getSourceKeys()
 
@@ -399,9 +401,10 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
         @c first being of type lsst.afw.table.SimpleRecord and @c second type lsst.afw.table.SourceRecord ---
         the reference object and matched object respectively).
         (will not be modified  except to set the outputField if requested.).
+        @param[in]  expId Exposure identifier; used for seeding the random number generator.
 
         @return Struct of:
-         - photoCalib -- @link lsst::afw::image::PhotoCalib@endlink object containing the calibration
+         - photoCalib -- @link lsst::afw::image::PhotoCalib @endlink object containing the calibration
          - arrays ------ Magnitude arrays returned be PhotoCalTask.extractMagArrays
          - matches ----- Final ReferenceMatchVector, as returned by PhotoCalTask.selectMatches.
          - zp ---------- Photometric zero point (mag)

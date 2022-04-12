@@ -242,14 +242,15 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
 
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page CharacterizeImageTask
+## \page page_CharacterizeImageTask CharacterizeImageTask
 ## \ref CharacterizeImageTask_ "CharacterizeImageTask"
 ## \copybrief CharacterizeImageTask
 ## \}
 
 
 class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
-    r"""!Measure bright sources and use this to estimate background and PSF of an exposure
+    r"""!
+    Measure bright sources and use this to estimate background and PSF of an exposure
 
     @anchor CharacterizeImageTask_
 
@@ -260,7 +261,6 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
      - @ref pipe_tasks_characterizeImage_IO
      - @ref pipe_tasks_characterizeImage_Config
      - @ref pipe_tasks_characterizeImage_Debug
-
 
     @section pipe_tasks_characterizeImage_Purpose  Description
 
@@ -288,8 +288,10 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
     @section pipe_tasks_characterizeImage_Debug  Debug variables
 
-    The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a flag
-    `--debug` to import `debug.py` from your `$PYTHONPATH`; see @ref baseDebug for more about `debug.py`.
+    The command line task interface supports a flag
+    `--debug` to import `debug.py` from your `$PYTHONPATH`; see
+    <a href="https://pipelines.lsst.io/modules/lsstDebug/">the lsstDebug documentation</a>
+    for more about `debug.py`.
 
     CharacterizeImageTask has a debug dictionary with the following keys:
     <dl>

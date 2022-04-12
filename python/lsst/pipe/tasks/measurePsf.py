@@ -49,7 +49,7 @@ class MeasurePsfConfig(pexConfig.Config):
 
 ## @addtogroup LSST_task_documentation
 ## @{
-## @page MeasurePsfTask
+## @page page_MeasurePsfTask MeasurePsfTask
 ## @ref MeasurePsfTask_ "MeasurePsfTask"
 ## @copybrief MeasurePsfTask
 ## @}
@@ -97,8 +97,10 @@ See @ref MeasurePsfConfig.
 
 @section pipe_tasks_measurePsf_Debug		Debug variables
 
-The @link lsst.pipe.base.cmdLineTask.CmdLineTask command line task@endlink interface supports a
-flag @c -d to import @b debug.py from your @c PYTHONPATH; see @ref baseDebug for more about @b debug.py files.
+The command line task interface supports a
+flag @c -d to import @b debug.py from your @c PYTHONPATH; see
+<a href="https://pipelines.lsst.io/modules/lsstDebug/">the lsstDebug documentation</a>
+for more about @b debug.py files.
 
 <DL>
   <DT> @c display
@@ -121,14 +123,13 @@ Additionally you can enable any debug outputs that your chosen star selector and
 
 @section pipe_tasks_measurePsf_Example	A complete example of using MeasurePsfTask
 
-This code is in @link measurePsfTask.py@endlink in the examples directory, and can be run as @em e.g.
+This code is in `measurePsfTask.py` in the examples directory, and can be run as @em e.g.
 @code
 examples/measurePsfTask.py --doDisplay
 @endcode
 @dontinclude measurePsfTask.py
 
-The example also runs SourceDetectionTask and SingleFrameMeasurementTask;
-see @ref meas_algorithms_measurement_Example for more explanation.
+The example also runs SourceDetectionTask and SingleFrameMeasurementTask.
 
 Import the tasks (there are some other standard imports; read the file to see them all):
 

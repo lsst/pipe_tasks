@@ -589,10 +589,10 @@ def mag_aware_eval(df, expr):
     """
     try:
         expr_new = re.sub(r'mag\((\w+)\)', r'-2.5*log(\g<1>)/log(10)', expr)
-        val = df.eval(expr_new, truediv=True)
+        val = df.eval(expr_new)
     except Exception:  # Should check what actually gets raised
         expr_new = re.sub(r'mag\((\w+)\)', r'-2.5*log(\g<1>_instFlux)/log(10)', expr)
-        val = df.eval(expr_new, truediv=True)
+        val = df.eval(expr_new)
     return val
 
 

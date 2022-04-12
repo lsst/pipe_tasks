@@ -31,7 +31,7 @@ __all__ = ["ExampleSigmaClippedStatsConfig", "ExampleSigmaClippedStatsTask", "Ex
 # This works even for task(s) that are not in lsst.pipe.tasks.
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page pipeTasks_exampleStatsTasks
+## \page page_exampleStatsTasks ExampleStatsTasks
 ## \ref ExampleSigmaClippedStatsTask "ExampleSigmaClippedStatsTask"
 ##      A simple example subtask that computes sigma-clipped statistics of an image
 ## <br>
@@ -62,7 +62,8 @@ class ExampleSigmaClippedStatsConfig(pexConfig.Config):
 
 
 class ExampleSigmaClippedStatsTask(pipeBase.Task):
-    r"""!Example task to compute sigma-clipped mean and standard deviation of an image
+    r"""!
+    Example task to compute sigma-clipped mean and standard deviation of an image
 
     \section pipeTasks_ExampleSigmaClippedStatsTask_Contents Contents
 
@@ -142,7 +143,8 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
 
 
 class ExampleSimpleStatsTask(pipeBase.Task):
-    r"""!Example task to compute mean and standard deviation of an image
+    r"""!
+    Example task to compute mean and standard deviation of an image
 
     \section pipeTasks_ExampleSimpleStatsTask_Contents Contents
 

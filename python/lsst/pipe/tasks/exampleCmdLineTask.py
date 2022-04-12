@@ -31,7 +31,7 @@ __all__ = ["ExampleCmdLineConfig", "ExampleCmdLineTask"]
 # This works even for task(s) that are not in lsst.pipe.tasks.
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page pipeTasks_exampleTask
+## \page page_ExampleTask ExampleTask
 ## \ref ExampleCmdLineTask "ExampleCmdLineTask"
 ##      An example intended to show how to write a command-line task.
 ## \}
@@ -53,7 +53,8 @@ class ExampleCmdLineConfig(pexConfig.Config):
 
 
 class ExampleCmdLineTask(pipeBase.CmdLineTask):
-    r"""!Example command-line task that computes simple statistics on an image
+    r"""!
+    Example command-line task that computes simple statistics on an image
 
     \section pipeTasks_ExampleCmdLineTask_Contents Contents
 
@@ -66,14 +67,17 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
 
     \copybrief ExampleCmdLineTask
 
-    This task was written as an example for the documents \ref pipeTasks_writeTask
-    and \ref pipeTasks_writeCmdLineTask.
+    This task was written as an example for the documents
+    <a href="https://pipelines.lsst.io/modules/lsst.pipe.base/creating-a-task.html">Creating a task</a>
+    and <a href="https://pipelines.lsst.io/modules/lsst.pipe.base/creating-a-command-line-task.html">
+    Creating a command-line task</a>.
     The task reads in a "calexp" (a calibrated science \ref lsst::afw::image::Exposure "exposure"),
     computes statistics on the image plane, and logs and returns the statistics.
     In addition, if debugging is enabled, it displays the image in current display backend.
 
     The image statistics are computed using a subtask, in order to show how to call subtasks and how to
-    \ref pipeBase_argumentParser_retargetSubtasks "retarget" (replace) them with variant subtasks.
+    <a href="https://pipelines.lsst.io/modules/lsst.pipe.base/command-line-task-retargeting-howto.html">
+    retarget</a> (replace) them with variant subtasks.
 
     The main method is \ref ExampleCmdLineTask.runDataRef "runDataRef".
 
@@ -89,7 +93,8 @@ class ExampleCmdLineTask(pipeBase.CmdLineTask):
         <dd>If True then display the exposure in current display backend
     </dl>
 
-    To enable debugging, see \ref baseDebug.
+    To enable debugging, see
+    <a href="https://pipelines.lsst.io/modules/lsstDebug/">the lsstDebug documentation</a>.
 
     \section pipeTasks_ExampleCmdLineTask_Example A complete example of using ExampleCmdLineTask
 

@@ -69,14 +69,15 @@ class ProcessCcdConfig(pexConfig.Config):
 
 ## \addtogroup LSST_task_documentation
 ## \{
-## \page ProcessCcdTask
+## \page page_ProcessCcdTask ProcessCcdTask
 ## \ref ProcessCcdTask_ "ProcessCcdTask"
 ## \copybrief ProcessCcdTask
 ## \}
 
 
 class ProcessCcdTask(pipeBase.CmdLineTask):
-    r"""!Assemble raw data, fit the PSF, detect and measure, and fit WCS and zero-point
+    r"""!
+    Assemble raw data, fit the PSF, detect and measure, and fit WCS and zero-point
 
     @anchor ProcessCcdTask_
 
