@@ -31,7 +31,7 @@ from lsst.daf.base import DateTime
 from lsst.utils.timer import timeMethod
 
 __all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "PsfWcsSelectImagesTask",
-           "DatabaseSelectImagesConfig", "BestSeeingWcsSelectImagesTask", "BestSeeingSelectVisitsTask",
+           "DatabaseSelectImagesConfig", "BestSeeingSelectVisitsTask",
            "BestSeeingQuantileSelectVisitsTask"]
 
 
@@ -519,107 +519,6 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
             valid = False
 
         return valid
-
-
-class BestSeeingWcsSelectImageConfig(WcsSelectImagesTask.ConfigClass):
-    """Base configuration for BestSeeingSelectImagesTask.
-    """
-    nImagesMax = pexConfig.RangeField(
-        dtype=int,
-        doc="Maximum number of images to select",
-        default=5,
-        min=0)
-    maxPsfFwhm = pexConfig.Field(
-        dtype=float,
-        doc="Maximum PSF FWHM (in arcseconds) to select",
-        default=1.5,
-        optional=True)
-    minPsfFwhm = pexConfig.Field(
-        dtype=float,
-        doc="Minimum PSF FWHM (in arcseconds) to select",
-        default=0.,
-        optional=True)
-
-
-class BestSeeingWcsSelectImagesTask(WcsSelectImagesTask):
-    """Select up to a maximum number of the best-seeing images using their Wcs.
-    """
-    ConfigClass = BestSeeingWcsSelectImageConfig
-
-    def runDataRef(self, dataRef, coordList, makeDataRefList=True,
-                   selectDataList=None):
-        """Select the best-seeing images in the selectDataList that overlap the patch.
-
-        This method is the old entry point for the Gen2 commandline tasks and drivers
-        Will be deprecated in v22.
-
-        Parameters
-        ----------
-        dataRef : `lsst.daf.persistence.ButlerDataRef`
-            Data reference for coadd/tempExp (with tract, patch)
-        coordList : `list` of `lsst.geom.SpherePoint`
-            List of ICRS sky coordinates specifying boundary of patch
-        makeDataRefList : `boolean`, optional
-            Construct a list of data references?
-        selectDataList : `list` of `SelectStruct`
-            List of SelectStruct, to consider for selection
-
-        Returns
-        -------
-        result : `lsst.pipe.base.Struct`
-            Result struct with components:
-            - ``exposureList``: the selected exposures
-                (`list` of `lsst.pipe.tasks.selectImages.BaseExposureInfo`).
-            - ``dataRefList``: the optional data references corresponding to
-                each element of ``exposureList``
-                (`list` of `lsst.daf.persistence.ButlerDataRef`, or `None`).
-        """
-        psfSizes = []
-        dataRefList = []
-        exposureInfoList = []
-
-        if selectDataList is None:
-            selectDataList = []
-
-        result = super().runDataRef(dataRef, coordList, makeDataRefList=True, selectDataList=selectDataList)
-
-        for dataRef, exposureInfo in zip(result.dataRefList, result.exposureInfoList):
-            cal = dataRef.get("calexp", immediate=True)
-
-            # if min/max PSF values are defined, remove images out of bounds
-            pixToArcseconds = cal.getWcs().getPixelScale().asArcseconds()
-            # Just need a rough estimate; average positions are fine
-            psfAvgPos = cal.getPsf().getAveragePosition()
-            psfSize = cal.getPsf().computeShape(psfAvgPos).getDeterminantRadius()*pixToArcseconds
-            sizeFwhm = psfSize * np.sqrt(8.*np.log(2.))
-            if self.config.maxPsfFwhm and sizeFwhm > self.config.maxPsfFwhm:
-                continue
-            if self.config.minPsfFwhm and sizeFwhm < self.config.minPsfFwhm:
-                continue
-            psfSizes.append(sizeFwhm)
-            dataRefList.append(dataRef)
-            exposureInfoList.append(exposureInfo)
-
-        if len(psfSizes) > self.config.nImagesMax:
-            sortedIndices = np.argsort(psfSizes)[:self.config.nImagesMax]
-            filteredDataRefList = [dataRefList[i] for i in sortedIndices]
-            filteredExposureInfoList = [exposureInfoList[i] for i in sortedIndices]
-            self.log.info("%d images selected with FWHM range of %f--%f arcseconds",
-                          len(sortedIndices), psfSizes[sortedIndices[0]], psfSizes[sortedIndices[-1]])
-
-        else:
-            if len(psfSizes) == 0:
-                self.log.warning("0 images selected.")
-            else:
-                self.log.debug("%d images selected with FWHM range of %d--%d arcseconds",
-                               len(psfSizes), psfSizes[0], psfSizes[-1])
-            filteredDataRefList = dataRefList
-            filteredExposureInfoList = exposureInfoList
-
-        return pipeBase.Struct(
-            dataRefList=filteredDataRefList if makeDataRefList else None,
-            exposureInfoList=filteredExposureInfoList,
-        )
 
 
 class BestSeeingSelectVisitsConnections(pipeBase.PipelineTaskConnections,
