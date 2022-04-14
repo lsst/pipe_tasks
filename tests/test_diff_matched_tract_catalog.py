@@ -38,6 +38,10 @@ def _error_format(column):
     return f'{column}Err'
 
 
+ROOT = os.path.dirname(__file__)
+filename_diff_matched = os.path.join(ROOT, "data", "test_diff_matched.txt")
+
+
 class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
     """DiffMatchedTractCatalogTask test case."""
     def setUp(self):
@@ -107,9 +111,7 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             'match_row': np.arange(len(ra))[::-1],
         })
 
-        self.diff_matched = np.loadtxt(
-            os.path.join(os.path.dirname(__file__), "data", "test_diff_matched.txt")
-        )
+        self.diff_matched = np.loadtxt(filename_diff_matched)
 
         columns_flux_configs = {
             band: MatchedCatalogFluxesConfig(
@@ -153,10 +155,18 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
         columns_expect.append(f'{prefix}index')
         columns_expect.extend((f'{prefix}{col}' for col in columns_ref))
         self.assertEqual(columns_expect, list(result.cat_matched.columns))
-        row = result.diff_matched.iloc[0].values
+
+        row = result.diff_matched.iloc[0].values.astype(float)
+        # Run to re-save reference data. Will be loaded after this test completes.
+        resave = False
+        if resave:
+            np.savetxt(filename_diff_matched, row)
+
         self.assertEqual(len(row), len(self.diff_matched))
-        # Insert np.savetxt(filename, row) to regenerate comparison file
-        self.assertEqual(np.sum(row.astype(float) != self.diff_matched), 0)
+
+        idx_diff = np.where(row != self.diff_matched)[0]
+        differences = [(row[d], self.diff_matched[d], result.diff_matched.columns[d]) for d in idx_diff]
+        self.assertEqual(len(idx_diff), 0, f'Differences (meas, ref, name): {differences}')
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
