@@ -169,7 +169,7 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
                                      'slot_Centroid_flag',
                                      'base_GaussianFlux_flag']
 
-        self.measure_ap_corr.sourceSelector['flagged'].field = 'final_psf_used'
+        self.measure_ap_corr.sourceSelector['flagged'].field = 'calib_psf_used'
 
         import lsst.meas.modelfit  # noqa: F401
         import lsst.meas.extensions.photometryKron  # noqa: F401
@@ -388,27 +388,27 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
 
         mapper.addMapping(
             input_schema[self.config.source_selector.active.signalToNoise.fluxField].asKey(),
-            'final_psf_selection_flux')
+            'calib_psf_selection_flux')
         mapper.addMapping(
             input_schema[self.config.source_selector.active.signalToNoise.errField].asKey(),
-            'final_psf_selection_flux_err')
+            'calib_psf_selection_flux_err')
 
         output_schema = mapper.getOutputSchema()
 
         output_schema.addField(
-            'final_psf_candidate',
+            'calib_psf_candidate',
             type='Flag',
             doc=('set if the source was a candidate for PSF determination, '
                  'as determined from FinalizeCharacterizationTask.'),
         )
         output_schema.addField(
-            'final_psf_reserved',
+            'calib_psf_reserved',
             type='Flag',
             doc=('set if source was reserved from PSF determination by '
                  'FinalizeCharacterizationTask.'),
         )
         output_schema.addField(
-            'final_psf_used',
+            'calib_psf_used',
             type='Flag',
             doc=('set if source was used in the PSF determination by '
                  'FinalizeCharacterizationTask.'),
@@ -453,25 +453,6 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         mapper.addMinimalSchema(input_schema)
 
         selection_schema = mapper.getOutputSchema()
-
-        selection_schema.addField(
-            'final_psf_candidate',
-            type='Flag',
-            doc=('set if the source was a candidate for PSF determination, '
-                 'as determined from FinalizeCharacterizationTask.'),
-        )
-        selection_schema.addField(
-            'final_psf_reserved',
-            type='Flag',
-            doc=('set if source was reserved from PSF determination by '
-                 'FinalizeCharacterizationTask.'),
-        )
-        selection_schema.addField(
-            'final_psf_used',
-            type='Flag',
-            doc=('set if source was used in the PSF determination by '
-                 'FinalizeCharacterizationTask.'),
-        )
 
         selection_schema.setAliasMap(input_schema.getAliasMap())
 
@@ -609,6 +590,12 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         selected_src.reserve(good_src.selected.sum())
         selected_src.extend(src[good_src.selected], mapper=selection_mapper)
 
+        # The calib flags have been copied from the input table,
+        # and we reset them here just to ensure they aren't propagated.
+        selected_src['calib_psf_candidate'] = np.zeros(len(selected_src), dtype=bool)
+        selected_src['calib_psf_used'] = np.zeros(len(selected_src), dtype=bool)
+        selected_src['calib_psf_reserved'] = np.zeros(len(selected_src), dtype=bool)
+
         # Find the isolated sources and set flags
         matched_src, matched_iso = esutil.numpy_util.match(
             selected_src['id'],
@@ -617,22 +604,22 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
 
         matched_arr = np.zeros(len(selected_src), dtype=bool)
         matched_arr[matched_src] = True
-        selected_src['final_psf_candidate'] = matched_arr
+        selected_src['calib_psf_candidate'] = matched_arr
 
         reserved_arr = np.zeros(len(selected_src), dtype=bool)
         reserved_arr[matched_src] = isolated_source_table['reserved'][matched_iso]
-        selected_src['final_psf_reserved'] = reserved_arr
+        selected_src['calib_psf_reserved'] = reserved_arr
 
-        selected_src = selected_src[selected_src['final_psf_candidate']].copy(deep=True)
+        selected_src = selected_src[selected_src['calib_psf_candidate']].copy(deep=True)
 
         # Make the measured source catalog as well, based on the selected catalog.
         measured_src = afwTable.SourceCatalog(self.schema)
         measured_src.reserve(len(selected_src))
         measured_src.extend(selected_src, mapper=self.schema_mapper)
 
-        # We need to copy over the final_psf flags because they were not in the mapper
-        measured_src['final_psf_candidate'] = selected_src['final_psf_candidate']
-        measured_src['final_psf_reserved'] = selected_src['final_psf_reserved']
+        # We need to copy over the calib_psf flags because they were not in the mapper
+        measured_src['calib_psf_candidate'] = selected_src['calib_psf_candidate']
+        measured_src['calib_psf_reserved'] = selected_src['calib_psf_reserved']
 
         # Select the psf candidates from the selection catalog
         try:
@@ -648,8 +635,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         # (omitting those marked as reserved)
         psf_determiner_list = [cand for cand, use
                                in zip(psf_selection_result.psfCandidates,
-                                      ~psf_cand_cat['final_psf_reserved']) if use]
-        flag_key = psf_cand_cat.schema['final_psf_used'].asKey()
+                                      ~psf_cand_cat['calib_psf_reserved']) if use]
+        flag_key = psf_cand_cat.schema['calib_psf_used'].asKey()
         try:
             psf, cell_set = self.psf_determiner.determinePsf(exposure,
                                                              psf_determiner_list,
@@ -667,8 +654,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             measured_src['id']
         )
         measured_used = np.zeros(len(measured_src), dtype=bool)
-        measured_used[matched_measured] = selected_src['final_psf_used'][matched_selected]
-        measured_src['final_psf_used'] = measured_used
+        measured_used[matched_measured] = selected_src['calib_psf_used'][matched_selected]
+        measured_src['calib_psf_used'] = measured_used
 
         # Next, we do the measurement on all the psf candidate, used, and reserved stars.
         try:

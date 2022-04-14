@@ -26,6 +26,7 @@ from lsst.pipe.base import Task
 import lsst.geom as geom
 import lsst.afw.table as afwTable
 import lsst.pex.exceptions as pexExceptions
+from deprecated.sphinx import deprecated
 
 
 class PropagateVisitFlagsConfig(Config):
@@ -48,6 +49,8 @@ class PropagateVisitFlagsConfig(Config):
 ## \copybrief PropagateVisitFlagsTask
 ## \}
 
+@deprecated(reason="This task has been replaced with PropagateSourceFlagsTask",
+            version="v24.0", category=FutureWarning)
 class PropagateVisitFlagsTask(Task):
     r"""!Task to propagate flags from single-frame measurements to coadd measurements
 
