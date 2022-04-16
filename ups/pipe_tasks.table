@@ -25,7 +25,6 @@ setupOptional(ip_diffim)
 setupOptional(skymap)
 setupOptional(sphgeom)
 
-setupOptional(obs_test) # for unit tests
 
 envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
 envPrepend(PATH, ${PRODUCT_DIR}/bin)
