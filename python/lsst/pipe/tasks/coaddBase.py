@@ -28,9 +28,9 @@ import lsst.meas.algorithms as measAlg
 
 from lsst.afw.fits import FitsError
 from lsst.coadd.utils import CoaddDataIdContainer
+from lsst.meas.algorithms import ScaleVarianceTask
 from .selectImages import WcsSelectImagesTask, SelectStruct
 from .coaddInputRecorder import CoaddInputRecorderTask
-from .scaleVariance import ScaleVarianceTask
 
 __all__ = ["CoaddBaseTask", "getSkyInfo", "makeSkyInfo", "makeCoaddSuffix"]
 

@@ -31,12 +31,12 @@ import lsst.geom as geom
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.extensions.trailedSources  # noqa: F401
+from lsst.meas.algorithms import (SourceDetectionTask, SingleGaussianPsf, ObjectSizeStarSelectorTask,
+                                  LoadIndexedReferenceObjectsTask, SkyObjectsTask,
+                                  ScaleVarianceTask)
 from lsst.meas.astrom import AstrometryConfig, AstrometryTask
 from lsst.meas.base import ForcedMeasurementTask, ApplyApCorrTask
-from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask, SkyObjectsTask
 from lsst.pipe.tasks.registerImage import RegisterTask
-from lsst.pipe.tasks.scaleVariance import ScaleVarianceTask
-from lsst.meas.algorithms import SourceDetectionTask, SingleGaussianPsf, ObjectSizeStarSelectorTask
 from lsst.ip.diffim import (DipoleAnalysis, SourceFlagChecker, KernelCandidateF, makeKernelBasisList,
                             KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig,
                             GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask,
