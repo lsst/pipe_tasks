@@ -115,14 +115,18 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
     detection = ConfigurableField(target=DynamicDetectionTask, doc="Source detection")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
     doInsertFakes = Field(dtype=bool, default=False,
-                          doc="Run fake sources injection task")
+                          doc="Run fake sources injection task",
+                          deprecated=("doInsertFakes is no longer supported. This config will be removed "
+                                      "after v24."))
     insertFakes = ConfigurableField(target=BaseFakeSourcesTask,
                                     doc="Injection of fake sources for testing "
-                                    "purposes (must be retargeted)")
+                                    "purposes (must be retargeted)",
+                                    deprecated=("insertFakes is no longer supported. This config will "
+                                                "be removed after v24."))
     hasFakes = Field(
         dtype=bool,
         default=False,
-        doc="Should be set to True if fake sources have been inserted into the input data."
+        doc="Should be set to True if fake sources have been inserted into the input data.",
     )
 
     def setDefaults(self):
@@ -262,8 +266,6 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
         super().__init__(**kwargs)
         if schema is None:
             schema = afwTable.SourceTable.makeMinimalSchema()
-        if self.config.doInsertFakes:
-            self.makeSubtask("insertFakes")
         self.schema = schema
         self.makeSubtask("detection", schema=self.schema)
         if self.config.doScaleVariance:
@@ -318,8 +320,6 @@ class DetectCoaddSourcesTask(PipelineTask, CmdLineTask):
             varScale = self.scaleVariance.run(exposure.maskedImage)
             exposure.getMetadata().add("VARIANCE_SCALE", varScale)
         backgrounds = afwMath.BackgroundList()
-        if self.config.doInsertFakes:
-            self.insertFakes.run(exposure, background=backgrounds)
         table = afwTable.SourceTable.make(self.schema, idFactory)
         detections = self.detection.run(table, exposure, expId=expId)
         sources = detections.sources

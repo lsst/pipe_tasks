@@ -20,8 +20,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """Test ProcessCcdTask and its immediate subtasks.
-
-Run the task on one obs_test image and perform various checks on the results
 """
 import shutil
 import tempfile

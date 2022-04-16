@@ -286,12 +286,16 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
     doInsertFakes = pexConfig.Field(
         dtype=bool,
         default=False,
-        doc="Run fake sources injection task"
+        doc="Run fake sources injection task",
+        deprecated=("doInsertFakes is no longer supported. This config will be removed after v24. "
+                    "Please use ProcessCcdWithFakesTask instead.")
     )
     insertFakes = pexConfig.ConfigurableField(
         target=BaseFakeSourcesTask,
         doc="Injection of fake sources for testing purposes (must be "
-            "retargeted)"
+            "retargeted)",
+        deprecated=("insertFakes is no longer supported. This config will be removed after v24. "
+                    "Please use ProcessCcdWithFakesTask instead.")
     )
     doComputeSummaryStats = pexConfig.Field(
         dtype=bool,
@@ -510,12 +514,6 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         self.makeSubtask('detection', schema=self.schema)
 
         self.algMetadata = dafBase.PropertyList()
-
-        # Only create a subtask for fakes if configuration option is set
-        # N.B. the config for fake object task must be retargeted to a child
-        # of BaseFakeSourcesTask
-        if self.config.doInsertFakes:
-            self.makeSubtask("insertFakes")
 
         if self.config.doDeblend:
             self.makeSubtask("deblend", schema=self.schema)
@@ -775,41 +773,6 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             exposure=exposure,
             exposureId=exposureIdInfo.expId
         )
-
-        if self.config.doInsertFakes:
-            self.insertFakes.run(exposure, background=background)
-
-            table = SourceTable.make(self.schema, sourceIdFactory)
-            table.setMetadata(self.algMetadata)
-
-            detRes = self.detection.run(table=table, exposure=exposure,
-                                        doSmooth=True)
-            sourceCat = detRes.sources
-            if detRes.fpSets.background:
-                for bg in detRes.fpSets.background:
-                    background.append(bg)
-            if self.config.doDeblend:
-                self.deblend.run(exposure=exposure, sources=sourceCat)
-            self.measurement.run(
-                measCat=sourceCat,
-                exposure=exposure,
-                exposureId=exposureIdInfo.expId
-            )
-            self.postCalibrationMeasurement.run(
-                measCat=sourceCat,
-                exposure=exposure,
-                exposureId=exposureIdInfo.expId
-            )
-            if self.config.doApCorr:
-                self.applyApCorr.run(
-                    catalog=sourceCat,
-                    apCorrMap=exposure.getInfo().getApCorrMap()
-                )
-            self.catalogCalculation.run(sourceCat)
-
-            if icSourceCat is not None and len(self.config.icSourceFieldsToCopy) > 0:
-                self.copyIcSourceFields(icSourceCat=icSourceCat,
-                                        sourceCat=sourceCat)
 
         if self.config.doComputeSummaryStats:
             summary = self.computeSummaryStats.run(exposure=exposure,
