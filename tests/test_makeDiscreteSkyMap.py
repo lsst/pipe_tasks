@@ -19,78 +19,76 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-import os.path
-import shutil
 import unittest
 
-from lsst.utils import getPackageDir
-import lsst.utils.tests
-from lsst.geom import Box2D
-from lsst.skymap import Index2D
-from lsst.daf.persistence import Butler
-from lsst.pipe.tasks.makeDiscreteSkyMap import MakeDiscreteSkyMapTask, DiscreteSkyMap
+import lsst.geom
+import lsst.afw.geom as afwGeom
+import lsst.skymap
+from lsst.pipe.tasks.makeDiscreteSkyMap import MakeDiscreteSkyMapTask, MakeDiscreteSkyMapConfig
 
 
 class MakeDiscreteSkyMapTestCase(unittest.TestCase):
-    """Test MakeDiscreteSkyMapTask"""
-
+    """Test MakeDiscreteSkyMapTask."""
     def setUp(self):
-        self.inPath = os.path.join(getPackageDir("obs_test"), "data", "input")
-        self.outPath = os.path.join(os.path.dirname(__file__), "testMakeDiscreteSkyMapOutput")
-        self.config = MakeDiscreteSkyMapTask.ConfigClass()
-        self.config.doWrite = False  # repo has no place to put the data
+        self.config = MakeDiscreteSkyMapConfig()
+        self.task = MakeDiscreteSkyMapTask(config=self.config)
 
-    def tearDown(self):
-        del self.config
-        if True:
-            shutil.rmtree(self.outPath)
+        self.cd_matrix = afwGeom.makeCdMatrix(scale=0.2*lsst.geom.arcseconds)
+        self.crpix = lsst.geom.Point2D(100, 100)
+        self.crval1 = lsst.geom.SpherePoint(10.0*lsst.geom.degrees, 0.0*lsst.geom.degrees)
+        self.wcs1 = afwGeom.makeSkyWcs(crpix=self.crpix, crval=self.crval1, cdMatrix=self.cd_matrix)
+        self.bbox = lsst.geom.Box2I(corner=lsst.geom.Point2I(0, 0), dimensions=lsst.geom.Extent2I(200, 200))
+        self.crval2 = lsst.geom.SpherePoint(11.0*lsst.geom.degrees, 1.0*lsst.geom.degrees)
+        self.wcs2 = afwGeom.makeSkyWcs(crpix=self.crpix, crval=self.crval2, cdMatrix=self.cd_matrix)
+        self.crval3 = lsst.geom.SpherePoint(20.0*lsst.geom.degrees, 10.0*lsst.geom.degrees)
+        self.wcs3 = afwGeom.makeSkyWcs(crpix=self.crpix, crval=self.crval3, cdMatrix=self.cd_matrix)
 
-    def testBasics(self):
-        """Test construction of a discrete sky map
-        """
-        butler = Butler(inputs=self.inPath, outputs={'root': self.outPath, 'mode': 'rw'})
-        coordList = []  # list of sky coords of all corners of all calexp
-        for dataId in (
-            dict(visit=1, filter="g"),
-            dict(visit=2, filter="g"),
-            dict(visit=3, filter="r"),
-        ):
-            rawImage = butler.get("raw", dataId)
-            # fake calexp by simply copying raw data; the task just cares about its bounding box
-            # (which is slightly larger for raw, but that doesn't matter for this test)
-            calexp = rawImage
-            butler.put(calexp, "calexp", dataId)
-            calexpWcs = calexp.getWcs()
-            calexpBoxD = Box2D(calexp.getBBox())
-            coordList += [calexpWcs.pixelToSky(corner) for corner in calexpBoxD.getCorners()]
+    def test_run(self):
+        """Test running the MakeDiscreteSkyMapTask."""
+        wcs_bbox_tuple_list = [
+            (self.wcs1, self.bbox),
+            (self.wcs2, self.bbox)
+        ]
+        results = self.task.run(wcs_bbox_tuple_list)
 
-        # use the calexp to make a sky map
-        retVal = MakeDiscreteSkyMapTask.parseAndRun(
-            args=[self.inPath, "--output", self.outPath, "--id", "filter=g^r"],
-            config=self.config,
-            doReturnResults=True,
-        )
-        self.assertEqual(len(retVal.resultList), 1)
-        skyMap = retVal.resultList[0].result.skyMap
-        self.assertEqual(type(skyMap), DiscreteSkyMap)
-        self.assertEqual(len(skyMap), 1)
-        tractInfo = skyMap[0]
-        self.assertEqual(tractInfo.getId(), 0)
-        self.assertEqual(tractInfo.getNumPatches(), Index2D(x=3, y=3))
-        tractWcs = tractInfo.getWcs()
-        tractBoxD = Box2D(tractInfo.getBBox())
-        for skyPoint in coordList:
-            self.assertTrue(tractBoxD.contains(tractWcs.skyToPixel(skyPoint)))
+        skymap = results.skyMap
+        self.assertIsInstance(skymap, lsst.skymap.DiscreteSkyMap)
+        self.assertEqual(len(skymap), 1)
+        tract_info = skymap[0]
 
+        # Ensure that the tract contains our points.
+        self.assertTrue(tract_info.contains(self.crval1))
+        self.assertTrue(tract_info.contains(self.crval2))
 
-class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
-    pass
+    def test_append(self):
+        wcs_bbox_tuple_list = [
+            (self.wcs1, self.bbox),
+            (self.wcs2, self.bbox)
+        ]
+        results = self.task.run(wcs_bbox_tuple_list)
 
+        skymap = results.skyMap
 
-def setup_module(module):
-    lsst.utils.tests.init()
+        wcs_bbox_tuple_list2 = [
+            (self.wcs3, self.bbox)
+        ]
+        results2 = self.task.run(wcs_bbox_tuple_list2, oldSkyMap=skymap)
+
+        skymap = results2.skyMap
+        self.assertIsInstance(skymap, lsst.skymap.DiscreteSkyMap)
+        self.assertEqual(len(skymap), 2)
+
+        tract_info1 = skymap[0]
+
+        # Ensure that the tract contains our points.
+        self.assertTrue(tract_info1.contains(self.crval1))
+        self.assertTrue(tract_info1.contains(self.crval2))
+
+        tract_info2 = skymap[1]
+
+        # Ensure that the tract contains our points.
+        self.assertTrue(tract_info2.contains(self.crval3))
 
 
 if __name__ == "__main__":
-    lsst.utils.tests.init()
     unittest.main()
