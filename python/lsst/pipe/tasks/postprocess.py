@@ -22,6 +22,7 @@
 import functools
 import pandas as pd
 from collections import defaultdict
+import logging
 import numpy as np
 import numbers
 import os
@@ -30,16 +31,20 @@ import lsst.geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
+from lsst.obs.base import ExposureIdInfo
 from lsst.pipe.base import connectionTypes
 import lsst.afw.table as afwTable
 from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.pipe.base import CmdLineTask, ArgumentParser, DataIdContainer
 from lsst.coadd.utils.coaddDataIdContainer import CoaddDataIdContainer
 from lsst.daf.butler import DeferredDatasetHandle, DataCoordinate
+from lsst.skymap import BaseSkyMap
 
 from .parquetTable import ParquetTable
 from .multiBandUtils import makeMergeArgumentParser, MergeSourcesRunner
 from .functors import CompositeFunctor, Column
+
+log = logging.getLogger(__name__)
 
 
 def flattenFilters(df, noDupCols=['coord_ra', 'coord_dec'], camelCase=False, inputBands=None):
@@ -278,18 +283,7 @@ class WriteSourceTableConnections(pipeBase.PipelineTaskConnections,
 
 class WriteSourceTableConfig(pipeBase.PipelineTaskConfig,
                              pipelineConnections=WriteSourceTableConnections):
-    doApplyExternalPhotoCalib = pexConfig.Field(
-        dtype=bool,
-        default=False,
-        doc=("Add local photoCalib columns from the calexp.photoCalib? Should only set True if "
-             "generating Source Tables from older src tables which do not already have local calib columns")
-    )
-    doApplyExternalSkyWcs = pexConfig.Field(
-        dtype=bool,
-        default=False,
-        doc=("Add local WCS columns from the calexp.wcs? Should only set True if "
-             "generating Source Tables from older src tables which do not already have local calib columns")
-    )
+    pass
 
 
 class WriteSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
@@ -298,15 +292,6 @@ class WriteSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
     _DefaultName = "writeSourceTable"
     ConfigClass = WriteSourceTableConfig
 
-    def runDataRef(self, dataRef):
-        src = dataRef.get('src')
-        if self.config.doApplyExternalPhotoCalib or self.config.doApplyExternalSkyWcs:
-            src = self.addCalibColumns(src, dataRef)
-
-        ccdVisitId = dataRef.get('ccdExposureId')
-        result = self.run(src, ccdVisitId=ccdVisitId)
-        dataRef.put(result.table, 'source')
-
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         inputs['ccdVisitId'] = butlerQC.quantum.dataId.pack("visit_detector")
@@ -314,7 +299,7 @@ class WriteSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
         outputs = pipeBase.Struct(outputCatalog=result.toDataFrame())
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, catalog, ccdVisitId=None):
+    def run(self, catalog, ccdVisitId=None, **kwargs):
         """Convert `src` catalog to parquet
 
         Parameters
@@ -330,75 +315,364 @@ class WriteSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
             ``table``
                 `ParquetTable` version of the input catalog
         """
-        self.log.info("Generating parquet table from src catalog %s", ccdVisitId)
+        self.log.info("Generating parquet table from src catalog ccdVisitId=%s", ccdVisitId)
         df = catalog.asAstropy().to_pandas().set_index('id', drop=True)
         df['ccdVisitId'] = ccdVisitId
         return pipeBase.Struct(table=ParquetTable(dataFrame=df))
 
-    def addCalibColumns(self, catalog, dataRef):
-        """Add columns with local calibration evaluated at each centroid
 
-        for backwards compatibility with old repos.
-        This exists for the purpose of converting old src catalogs
-        (which don't have the expected local calib columns) to Source Tables.
+class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
+                                              defaultTemplates={"catalogType": "",
+                                                                "skyWcsName": "jointcal",
+                                                                "photoCalibName": "fgcm"},
+                                              dimensions=("instrument", "visit", "detector", "skymap")):
+    skyMap = connectionTypes.Input(
+        doc="skyMap needed to choose which tract-level calibrations to use when multiple available",
+        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
+        storageClass="SkyMap",
+        dimensions=("skymap",),
+    )
+    exposure = connectionTypes.Input(
+        doc="Input exposure to perform photometry on.",
+        name="calexp",
+        storageClass="ExposureF",
+        dimensions=["instrument", "visit", "detector"],
+    )
+    externalSkyWcsTractCatalog = connectionTypes.Input(
+        doc=("Per-tract, per-visit wcs calibrations.  These catalogs use the detector "
+             "id for the catalog id, sorted on id for fast lookup."),
+        name="{skyWcsName}SkyWcsCatalog",
+        storageClass="ExposureCatalog",
+        dimensions=["instrument", "visit", "tract"],
+        multiple=True
+    )
+    externalSkyWcsGlobalCatalog = connectionTypes.Input(
+        doc=("Per-visit wcs calibrations computed globally (with no tract information). "
+             "These catalogs use the detector id for the catalog id, sorted on id for "
+             "fast lookup."),
+        name="{skyWcsName}SkyWcsCatalog",
+        storageClass="ExposureCatalog",
+        dimensions=["instrument", "visit"],
+    )
+    externalPhotoCalibTractCatalog = connectionTypes.Input(
+        doc=("Per-tract, per-visit photometric calibrations.  These catalogs use the "
+             "detector id for the catalog id, sorted on id for fast lookup."),
+        name="{photoCalibName}PhotoCalibCatalog",
+        storageClass="ExposureCatalog",
+        dimensions=["instrument", "visit", "tract"],
+        multiple=True
+    )
+    externalPhotoCalibGlobalCatalog = connectionTypes.Input(
+        doc=("Per-visit photometric calibrations computed globally (with no tract "
+             "information).  These catalogs use the detector id for the catalog id, "
+             "sorted on id for fast lookup."),
+        name="{photoCalibName}PhotoCalibCatalog",
+        storageClass="ExposureCatalog",
+        dimensions=["instrument", "visit"],
+    )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        # Same connection boilerplate as all other applications of
+        # Global/Tract calibrations
+        if config.doApplyExternalSkyWcs and config.doReevaluateSkyWcs:
+            if config.useGlobalExternalSkyWcs:
+                self.inputs.remove("externalSkyWcsTractCatalog")
+            else:
+                self.inputs.remove("externalSkyWcsGlobalCatalog")
+        else:
+            self.inputs.remove("externalSkyWcsTractCatalog")
+            self.inputs.remove("externalSkyWcsGlobalCatalog")
+        if config.doApplyExternalPhotoCalib and config.doReevaluatePhotoCalib:
+            if config.useGlobalExternalPhotoCalib:
+                self.inputs.remove("externalPhotoCalibTractCatalog")
+            else:
+                self.inputs.remove("externalPhotoCalibGlobalCatalog")
+        else:
+            self.inputs.remove("externalPhotoCalibTractCatalog")
+            self.inputs.remove("externalPhotoCalibGlobalCatalog")
+
+
+class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
+                                         pipelineConnections=WriteRecalibratedSourceTableConnections):
+
+    doReevaluatePhotoCalib = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc=("Add or replace local photoCalib columns from either the calexp.photoCalib or jointcal/FGCM")
+    )
+    doReevaluateSkyWcs = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc=("Add or replace local WCS columns from either the calexp.wcs or  or jointcal")
+    )
+    doApplyExternalPhotoCalib = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc=("Whether to apply external photometric calibration via an "
+             "`lsst.afw.image.PhotoCalib` object. Uses the "
+             "``externalPhotoCalibName`` field to determine which calibration "
+             "to load."),
+    )
+    doApplyExternalSkyWcs = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc=("Whether to apply external astrometric calibration via an "
+             "`lsst.afw.geom.SkyWcs` object. Uses ``externalSkyWcsName`` "
+             "field to determine which calibration to load."),
+    )
+    useGlobalExternalPhotoCalib = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc=("When using doApplyExternalPhotoCalib, use 'global' calibrations "
+             "that are not run per-tract.  When False, use per-tract photometric "
+             "calibration files.")
+    )
+    useGlobalExternalSkyWcs = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc=("When using doApplyExternalSkyWcs, use 'global' calibrations "
+             "that are not run per-tract.  When False, use per-tract wcs "
+             "files.")
+    )
+
+    def validate(self):
+        super().validate()
+        if self.doApplyExternalSkyWcs and not self.doReevaluateSkyWcs:
+            log.warning("doApplyExternalSkyWcs=True but doReevaluateSkyWcs=False"
+                        "External SkyWcs will not be read or evaluated.")
+        if self.doApplyExternalPhotoCalib and not self.doReevaluatePhotoCalib:
+            log.warning("doApplyExternalPhotoCalib=True but doReevaluatePhotoCalib=False."
+                        "External PhotoCalib will not be read or evaluated.")
+
+
+class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
+    """Write source table to parquet
+    """
+    _DefaultName = "writeRecalibratedSourceTable"
+    ConfigClass = WriteRecalibratedSourceTableConfig
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        inputs['ccdVisitId'] = butlerQC.quantum.dataId.pack("visit_detector")
+        inputs['exposureIdInfo'] = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "visit_detector")
+
+        if self.config.doReevaluatePhotoCalib or self.config.doReevaluateSkyWcs:
+            if self.config.doApplyExternalPhotoCalib or self.config.doApplyExternalSkyWcs:
+                inputs['exposure'] = self.attachCalibs(inputRefs, **inputs)
+
+            inputs['catalog'] = self.addCalibColumns(**inputs)
+
+        result = self.run(**inputs).table
+        outputs = pipeBase.Struct(outputCatalog=result.toDataFrame())
+        butlerQC.put(outputs, outputRefs)
+
+    def attachCalibs(self, inputRefs, skyMap, exposure, externalSkyWcsGlobalCatalog=None,
+                     externalSkyWcsTractCatalog=None, externalPhotoCalibGlobalCatalog=None,
+                     externalPhotoCalibTractCatalog=None, **kwargs):
+        """Apply external calibrations to exposure per configuration
+
+        When multiple tract-level calibrations overlap, select the one with the
+        center closest to detector.
 
         Parameters
         ----------
-        catalog: `afwTable.SourceCatalog`
-            catalog to which calib columns will be added
-        dataRef: `lsst.daf.persistence.ButlerDataRef
-            for fetching the calibs from disk.
+        inputRefs : `lsst.pipe.base.InputQuantizedConnection`, for dataIds of
+            tract-level calibs.
+        skyMap : `lsst.skymap.SkyMap`
+        exposure : `lsst.afw.image.exposure.Exposure`
+            Input exposure to adjust calibrations.
+        externalSkyWcsGlobalCatalog : `lsst.afw.table.ExposureCatalog`, optional
+            Exposure catalog with external skyWcs to be applied per config
+        externalSkyWcsTractCatalog : `lsst.afw.table.ExposureCatalog`, optional
+            Exposure catalog with external skyWcs to be applied per config
+        externalPhotoCalibGlobalCatalog : `lsst.afw.table.ExposureCatalog`, optional
+            Exposure catalog with external photoCalib to be applied per config
+        externalPhotoCalibTractCatalog : `lsst.afw.table.ExposureCatalog`, optional
+
 
         Returns
         -------
-        newCat:  `afwTable.SourceCatalog`
+        exposure : `lsst.afw.image.exposure.Exposure`
+            Exposure with adjusted calibrations.
+        """
+        if not self.config.doApplyExternalSkyWcs:
+            # Do not modify the exposure's SkyWcs
+            externalSkyWcsCatalog = None
+        elif self.config.useGlobalExternalSkyWcs:
+            # Use the global external SkyWcs
+            externalSkyWcsCatalog = externalSkyWcsGlobalCatalog
+            self.log.info('Applying global SkyWcs')
+        else:
+            # use tract-level external SkyWcs from the closest overlapping tract
+            inputRef = getattr(inputRefs, 'externalSkyWcsTractCatalog')
+            tracts = [ref.dataId['tract'] for ref in inputRef]
+            if len(tracts) == 1:
+                ind = 0
+                self.log.info('Applying tract-level SkyWcs from tract %s', tracts[ind])
+            else:
+                ind = self.getClosestTract(tracts, skyMap,
+                                           exposure.getBBox(), exposure.getWcs())
+                self.log.info('Multiple overlapping externalSkyWcsTractCatalogs found (%s). '
+                              'Applying closest to detector center: tract=%s', str(tracts), tracts[ind])
+
+            externalSkyWcsCatalog = externalSkyWcsTractCatalog[ind]
+
+        if not self.config.doApplyExternalPhotoCalib:
+            # Do not modify the exposure's PhotoCalib
+            externalPhotoCalibCatalog = None
+        elif self.config.useGlobalExternalPhotoCalib:
+            # Use the global external PhotoCalib
+            externalPhotoCalibCatalog = externalPhotoCalibGlobalCatalog
+            self.log.info('Applying global PhotoCalib')
+        else:
+            # use tract-level external PhotoCalib from the closest overlapping tract
+            inputRef = getattr(inputRefs, 'externalPhotoCalibTractCatalog')
+            tracts = [ref.dataId['tract'] for ref in inputRef]
+            if len(tracts) == 1:
+                ind = 0
+                self.log.info('Applying tract-level PhotoCalib from tract %s', tracts[ind])
+            else:
+                ind = self.getClosestTract(tracts, skyMap,
+                                           exposure.getBBox(), exposure.getWcs())
+                self.log.info('Multiple overlapping externalPhotoCalibTractCatalogs found (%s). '
+                              'Applying closest to detector center: tract=%s', str(tracts), tracts[ind])
+
+            externalPhotoCalibCatalog = externalPhotoCalibTractCatalog[ind]
+
+        return self.prepareCalibratedExposure(exposure, externalSkyWcsCatalog, externalPhotoCalibCatalog)
+
+    def getClosestTract(self, tracts, skyMap, bbox, wcs):
+        """Find the index of the tract closest to detector from list of tractIds
+
+        Parameters
+        ----------
+        tracts: `list` [`int`]
+            Iterable of integer tractIds
+        skyMap : `lsst.skymap.SkyMap`
+            skyMap to lookup tract geometry and wcs
+        bbox : `lsst.geom.Box2I`
+            Detector bbox, center of which will compared to tract centers
+        wcs : `lsst.afw.geom.SkyWcs`
+            Detector Wcs object to map the detector center to SkyCoord
+
+        Returns
+        -------
+        index : `int`
+        """
+        if len(tracts) == 1:
+            return 0
+
+        center = wcs.pixelToSky(bbox.getCenter())
+        sep = []
+        for tractId in tracts:
+            tract = skyMap[tractId]
+            tractCenter = tract.getWcs().pixelToSky(tract.getBBox().getCenter())
+            sep.append(center.separation(tractCenter))
+
+        return np.argmin(sep)
+
+    def prepareCalibratedExposure(self, exposure, externalSkyWcsCatalog=None, externalPhotoCalibCatalog=None):
+        """Prepare a calibrated exposure and apply external calibrations
+        if so configured.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.exposure.Exposure`
+            Input exposure to adjust calibrations.
+        externalSkyWcsCatalog :  `lsst.afw.table.ExposureCatalog`, optional
+            Exposure catalog with external skyWcs to be applied
+            if config.doApplyExternalSkyWcs=True.  Catalog uses the detector id
+            for the catalog id, sorted on id for fast lookup.
+        externalPhotoCalibCatalog : `lsst.afw.table.ExposureCatalog`, optional
+            Exposure catalog with external photoCalib to be applied
+            if config.doApplyExternalPhotoCalib=True.  Catalog uses the detector
+            id for the catalog id, sorted on id for fast lookup.
+
+        Returns
+        -------
+        exposure : `lsst.afw.image.exposure.Exposure`
+            Exposure with adjusted calibrations.
+        """
+        detectorId = exposure.getInfo().getDetector().getId()
+
+        if externalPhotoCalibCatalog is not None:
+            row = externalPhotoCalibCatalog.find(detectorId)
+            if row is None:
+                self.log.warning("Detector id %s not found in externalPhotoCalibCatalog; "
+                                 "Using original photoCalib.", detectorId)
+            else:
+                photoCalib = row.getPhotoCalib()
+                if photoCalib is None:
+                    self.log.warning("Detector id %s has None for photoCalib in externalPhotoCalibCatalog; "
+                                     "Using original photoCalib.", detectorId)
+                else:
+                    exposure.setPhotoCalib(photoCalib)
+
+        if externalSkyWcsCatalog is not None:
+            row = externalSkyWcsCatalog.find(detectorId)
+            if row is None:
+                self.log.warning("Detector id %s not found in externalSkyWcsCatalog; "
+                                 "Using original skyWcs.", detectorId)
+            else:
+                skyWcs = row.getWcs()
+                if skyWcs is None:
+                    self.log.warning("Detector id %s has None for skyWcs in externalSkyWcsCatalog; "
+                                     "Using original skyWcs.", detectorId)
+                else:
+                    exposure.setWcs(skyWcs)
+
+        return exposure
+
+    def addCalibColumns(self, catalog, exposure, exposureIdInfo, **kwargs):
+        """Add replace columns with calibs evaluated at each centroid
+
+        Add or replace 'base_LocalWcs' `base_LocalPhotoCalib' columns in a
+        a source catalog, by rerunning the plugins.
+
+        Parameters
+        ----------
+        catalog : `lsst.afw.table.SourceCatalog`
+            catalog to which calib columns will be added
+        exposure : `lsst.afw.image.exposure.Exposure`
+            Exposure with attached PhotoCalibs and SkyWcs attributes to be
+            reevaluated at local centroids. Pixels are not required.
+        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`
+
+        Returns
+        -------
+        newCat:  `lsst.afw.table.SourceCatalog`
             Source Catalog with requested local calib columns
         """
-        mapper = afwTable.SchemaMapper(catalog.schema)
         measureConfig = SingleFrameMeasurementTask.ConfigClass()
         measureConfig.doReplaceWithNoise = False
 
-        # Just need the WCS or the PhotoCalib attached to an exposue
-        exposure = dataRef.get('calexp_sub',
-                               bbox=lsst.geom.Box2I(lsst.geom.Point2I(0, 0), lsst.geom.Point2I(0, 0)))
-
-        mapper = afwTable.SchemaMapper(catalog.schema)
-        mapper.addMinimalSchema(catalog.schema, True)
-        schema = mapper.getOutputSchema()
-
-        exposureIdInfo = dataRef.get("expIdInfo")
         measureConfig.plugins.names = []
-        if self.config.doApplyExternalSkyWcs:
-            plugin = 'base_LocalWcs'
-            if plugin in schema:
-                raise RuntimeError(f"{plugin} already in src catalog. Set doApplyExternalSkyWcs=False")
-            else:
-                measureConfig.plugins.names.add(plugin)
+        if self.config.doReevaluateSkyWcs:
+            measureConfig.plugins.names.add('base_LocalWcs')
+            self.log.info("Re-evaluating base_LocalWcs plugin")
+        if self.config.doReevaluatePhotoCalib:
+            measureConfig.plugins.names.add('base_LocalPhotoCalib')
+            self.log.info("Re-evaluating base_LocalPhotoCalib plugin")
+        pluginsNotToCopy = tuple(measureConfig.plugins.names)
 
-        if self.config.doApplyExternalPhotoCalib:
-            plugin = 'base_LocalPhotoCalib'
-            if plugin in schema:
-                raise RuntimeError(f"{plugin} already in src catalog. Set doApplyExternalPhotoCalib=False")
-            else:
-                measureConfig.plugins.names.add(plugin)
+        # Create a new schema and catalog
+        # Copy all columns from original except for the ones to reevaluate
+        aliasMap = catalog.schema.getAliasMap()
+        mapper = afwTable.SchemaMapper(catalog.schema)
+        for item in catalog.schema:
+            if not item.field.getName().startswith(pluginsNotToCopy):
+                mapper.addMapping(item.key)
 
+        schema = mapper.getOutputSchema()
         measurement = SingleFrameMeasurementTask(config=measureConfig, schema=schema)
+        schema.setAliasMap(aliasMap)
         newCat = afwTable.SourceCatalog(schema)
         newCat.extend(catalog, mapper=mapper)
+
         measurement.run(measCat=newCat, exposure=exposure, exposureId=exposureIdInfo.expId)
+
         return newCat
-
-    def writeMetadata(self, dataRef):
-        """No metadata to write.
-        """
-        pass
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", 'src',
-                               help="data ID, e.g. --id visit=12345 ccd=0")
-        return parser
 
 
 class PostprocessAnalysis(object):
@@ -1624,7 +1898,7 @@ class WriteForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
     )
 
 
-class WriteForcedSourceTableConfig(WriteSourceTableConfig,
+class WriteForcedSourceTableConfig(pipeBase.PipelineTaskConfig,
                                    pipelineConnections=WriteForcedSourceTableConnections):
     key = lsst.pex.config.Field(
         doc="Column on which to join the two input tables on and make the primary key of the output",
