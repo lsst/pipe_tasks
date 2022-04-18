@@ -1,1 +1,2 @@
-lsst.obs.test.testMapper.TestMapper
+lsst.obs.base.test.testMapper.TestMapper
+
