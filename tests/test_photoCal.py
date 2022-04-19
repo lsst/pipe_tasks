@@ -22,12 +22,12 @@
 import os
 import unittest
 import logging
+import glob
 
 import numpy as np
 import astropy.units as u
 
-from lsst.daf.persistence import Butler
-from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
+from lsst.meas.algorithms import ReferenceObjectLoader
 import lsst.geom as geom
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
@@ -36,11 +36,9 @@ from lsst.utils import getPackageDir
 from lsst.pipe.tasks.photoCal import PhotoCalTask, PhotoCalConfig
 from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary
 from lsst.pipe.base.task_logging import TRACE
+from lsst.pipe.base import Struct
 
 RefCatDir = os.path.join(getPackageDir("pipe_tasks"), "tests", "data", "sdssrefcat")
-
-# Quiet down meas_astrom logging, so we can see PhotoCal logs better
-logging.getLogger("lsst.LoadIndexedReferenceObjectsTask").setLevel(logging.WARN)
 
 testColorterms = ColortermLibrary(data={
     "test*": ColortermDict(data={
@@ -54,6 +52,57 @@ testColorterms = ColortermLibrary(data={
 
 def setup_module(module):
     lsst.utils.tests.init()
+
+
+class MockLoadReferenceObjects(ReferenceObjectLoader):
+    def __init__(self, filenames):
+        self._cat = self.convertOldFiles(filenames)
+
+    def loadSkyCircle(self, ctrCoord, radius, filterName, epoch=None):
+        return Struct(refCat=self._cat, fluxField=f'{filterName}_flux')
+
+    def loadRegion(self, region, filterName, filtFunc=None, epoch=None):
+        return Struct(refCat=self._cat, fluxField=f'{filterName}_flux')
+
+    def loadPixelBox(self, bbox, wcs, filterName, epoch=None,
+                     bboxToSpherePadding=100):
+        return Struct(refCat=self._cat, fluxField=f'{filterName}_flux')
+
+    def convertOldFiles(self, filenames):
+        """Convert old files to a new refcat."""
+        inCat = afwTable.SourceCatalog.readFits(filenames[0])
+        inSchema = inCat.schema
+
+        filternames = ['u', 'g', 'r', 'i', 'z']
+
+        mapper = afwTable.SchemaMapper(inSchema)
+        mapper.addMinimalSchema(afwTable.SourceTable.makeMinimalSchema())
+        for filtername in filternames:
+            mapper.addMapping(inSchema[f'{filtername}_flux'].asKey())
+            mapper.addMapping(inSchema[f'{filtername}_fluxSigma'].asKey(),
+                              f'{filtername}_fluxErr')
+        mapper.addMapping(inSchema['photometric'].asKey())
+        mapper.addMapping(inSchema['resolved'].asKey())
+
+        schema = mapper.getOutputSchema()
+
+        cat = afwTable.SourceCatalog(schema)
+
+        for filename in filenames:
+            inCat = afwTable.SourceCatalog.readFits(filename)
+
+            cat.reserve(len(inCat))
+            cat.extend(inCat, mapper=mapper)
+
+        # Make contiguous
+        cat = cat.copy(deep=True)
+
+        # Convert from old units to nJy
+        for filtername in filternames:
+            cat[f'{filtername}_flux'] *= 1e9
+            cat[f'{filtername}_fluxErr'] *= 1e9
+
+        return cat
 
 
 class PhotoCalTest(unittest.TestCase):
@@ -84,8 +133,8 @@ class PhotoCalTest(unittest.TestCase):
             src.set(coordKey, wcs.pixelToSky(src.get(centroidKey)))
 
         # Make a reference loader
-        butler = Butler(RefCatDir)
-        self.refObjLoader = LoadIndexedReferenceObjectsTask(butler=butler)
+        filenames = sorted(glob.glob(os.path.join(RefCatDir, 'ref_cats', 'cal_ref_cat', '??????.fits')))
+        self.refObjLoader = MockLoadReferenceObjects(filenames)
         self.log = logging.getLogger('lsst.testPhotoCal')
         self.log.setLevel(TRACE)
 
