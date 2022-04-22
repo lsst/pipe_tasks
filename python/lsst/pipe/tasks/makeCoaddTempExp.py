@@ -100,7 +100,7 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
     doApplyFinalizedPsf = pexConfig.Field(
         doc="Whether to apply finalized psf models and aperture correction map.",
         dtype=bool,
-        default=False,
+        default=True,
     )
 
     def validate(self):

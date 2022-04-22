@@ -34,11 +34,6 @@ class PropagateSourceFlagsConfig(pexConfig.Config):
         keytype=str,
         itemtype=float,
         default={
-            # TODO: DM-34391: when doApplyFinalizedPsf is the default, these flags
-            # should be set below and not here.
-            "calib_psf_candidate": 0.2,
-            "calib_psf_used": 0.2,
-            "calib_psf_reserved": 0.2,
             "calib_astrometry_used": 0.2,
             "calib_photometry_used": 0.2,
             "calib_photometry_reserved": 0.2
@@ -51,11 +46,9 @@ class PropagateSourceFlagsConfig(pexConfig.Config):
         keytype=str,
         itemtype=float,
         default={
-            # TODO: DM-34391: when doApplyFinalizedPsf is the default, these flags
-            # should be set here and not above.
-            # "calib_psf_candidate": 0.2,
-            # "calib_psf_used": 0.2,
-            # "calib_psf_reserved": 0.2
+            "calib_psf_candidate": 0.2,
+            "calib_psf_used": 0.2,
+            "calib_psf_reserved": 0.2
         },
         doc=("Finalized source flags to propagate, with the threshold of relative "
              "occurrence (valid range: [0-1]). Coadd object will have flag set if "
