@@ -502,6 +502,8 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             medBackground = np.median(dmeRes.background.getImage().getArray())
             self.log.info("iter %s; PSF sigma=%0.2f, dimensions=%s; median background=%0.2f",
                           i + 1, psfSigma, psfDimensions, medBackground)
+            if np.isnan(psfSigma):
+                raise RuntimeError("PSF sigma is NaN, cannot continue PSF determination.")
 
         self.display("psf", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 
