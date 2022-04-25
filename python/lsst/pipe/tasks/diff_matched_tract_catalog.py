@@ -21,6 +21,8 @@
 
 __all__ = [
     'DiffMatchedTractCatalogConfig', 'DiffMatchedTractCatalogTask', 'MatchedCatalogFluxesConfig',
+    'MatchType', 'MeasurementType', 'SourceType',
+    'Statistic', 'Median', 'SigmaIQR', 'SigmaMAD', 'Percentile',
 ]
 
 import lsst.afw.geom as afwGeom
@@ -37,7 +39,7 @@ from abc import ABCMeta, abstractmethod
 from astropy.stats import mad_std
 from dataclasses import dataclass
 from decimal import Decimal
-from enum import Enum, auto
+from enum import Enum
 import numpy as np
 import pandas as pd
 from scipy.stats import iqr
@@ -274,6 +276,7 @@ class DiffMatchedTractCatalogConfig(
     )
     percentiles = pexConfig.ListField(
         dtype=str,
+        # -2, -1, +1, +2 sigma percentiles for normal distribution
         default=('2.275', '15.866', '84.134', '97.725'),
         doc='Percentiles to compute for diff/chi values',
         itemCheck=is_percentile,
@@ -281,9 +284,21 @@ class DiffMatchedTractCatalogConfig(
     )
 
 
-class Measurement(Enum):
-    DIFF = auto()
-    CHI = auto()
+@dataclass(frozen=True)
+class MeasurementTypeInfo:
+    doc: str
+    name: str
+
+
+class MeasurementType(Enum):
+    DIFF = MeasurementTypeInfo(
+        doc="difference (measured - reference)",
+        name="diff",
+    )
+    CHI = MeasurementTypeInfo(
+        doc="scaled difference (measured - reference)/error",
+        name="chi",
+    )
 
 
 class Statistic(metaclass=ABCMeta):
@@ -406,9 +421,8 @@ def compute_stats(values_ref, values_target, errors_target, row, stats, suffixes
         A numpy array with pre-assigned column names.
     stats : `Dict` [`str`, `Statistic`]
         A dict of `Statistic` values to measure, keyed by their column suffix.
-    suffixes : `Dict` [`str`, `Measurement`]
-        A dict of measurement types are the only valid values),
-        keyed by the column suffix.
+    suffixes : `Dict` [`MeasurementType`, `str`]
+        A dict of measurement type column suffixes, keyed by the measurement type.
     prefix : `str`
         A prefix for all column names (e.g. band).
     skip_diff : `bool`
@@ -433,9 +447,9 @@ def compute_stats(values_ref, values_target, errors_target, row, stats, suffixes
         chi = diff/errors_target if do_chi else diff
         # Could make this configurable, but non-finite values/errors are not really usable
         valid = np.isfinite(chi)
-        values_type = {} if skip_diff else {Measurement.DIFF: diff[valid]}
+        values_type = {} if skip_diff else {MeasurementType.DIFF: diff[valid]}
         if do_chi:
-            values_type[Measurement.CHI] = chi[valid]
+            values_type[MeasurementType.CHI] = chi[valid]
 
         for suffix_type, suffix in suffixes.items():
             values = values_type.get(suffix_type)
@@ -446,28 +460,21 @@ def compute_stats(values_ref, values_target, errors_target, row, stats, suffixes
 
 
 @dataclass(frozen=True)
-class SourceType:
-    is_extended: bool
+class SourceTypeInfo:
+    is_extended: [bool, None]
+    label: str
 
 
-sourcetypes = {
-    'all': SourceType(is_extended=None),
-    'resolved': SourceType(is_extended=True),
-    'unresolved': SourceType(is_extended=False),
-}
+class SourceType(Enum):
+    ALL = SourceTypeInfo(is_extended=None, label='all')
+    RESOLVED = SourceTypeInfo(is_extended=True, label='resolved')
+    UNRESOLVED = SourceTypeInfo(is_extended=False, label='unresolved')
 
 
 class MatchType(Enum):
-    ALL = auto()
-    MATCH_RIGHT = auto()
-    MATCH_WRONG = auto()
-
-
-matchtypes = {
-    MatchType.ALL: 'all',
-    MatchType.MATCH_RIGHT: 'match_right',
-    MatchType.MATCH_WRONG: 'match_wrong',
-}
+    ALL = 'all'
+    MATCH_RIGHT = 'match_right'
+    MATCH_WRONG = 'match_wrong'
 
 
 def _get_columns(bands_columns: Dict, suffixes: Dict, suffixes_flux: Dict, suffixes_mag: Dict,
@@ -478,8 +485,8 @@ def _get_columns(bands_columns: Dict, suffixes: Dict, suffixes_flux: Dict, suffi
     ----------
     bands_columns : `Dict` [`str`,`MatchedCatalogFluxesConfig`]
         Dict keyed by band of flux column configuration.
-    suffixes, suffixes_flux, suffixes_mag : `Dict` [`Measurement`, `str`]
-        Dict of suffixes for each `Measurement` type, for general columns (e.g.
+    suffixes, suffixes_flux, suffixes_mag : `Dict` [`MeasurementType`, `str`]
+        Dict of suffixes for each `MeasurementType` type, for general columns (e.g.
         coordinates), fluxes and magnitudes, respectively.
     stats : `Dict` [`str`, `Statistic`]
         Dict of suffixes for each `Statistic` type.
@@ -529,25 +536,24 @@ def _get_columns(bands_columns: Dict, suffixes: Dict, suffixes_flux: Dict, suffi
             raise RuntimeError(f'{config_flux} len(columns_target_flux)={n_models_flux} and'
                                f' len(columns_target_flux_err)={n_models_err} must equal {n_models}')
 
-        for sourcetype in sourcetypes:
+        for sourcetype in SourceType:
+            label = sourcetype.value.label
             # Totals would be redundant
-            if sourcetype != 'all':
-                for item in (f'n_{itype}_{mtype}' for itype in ('ref', 'target')
-                             for mtype in matchtypes.values()):
-                    columns[_get_column_name(band, sourcetype, item)] = int
+            if sourcetype != SourceType.ALL:
+                for item in (f'n_{itype}_{mtype.value}' for itype in ('ref', 'target')
+                             for mtype in MatchType):
+                    columns[_get_column_name(band, label, item)] = int
 
             for item in (target.column_coord1, target.column_coord2, column_dist):
                 for suffix in suffixes.values():
                     for stat in stats.keys():
-                        columns[_get_column_name(band, sourcetype, item, suffix, stat)] = float
+                        columns[_get_column_name(band, label, item, suffix, stat)] = float
 
             for item in config_flux.columns_target_flux:
                 for prefix_item, suffixes_col in columns_suffix:
                     for suffix in suffixes_col.values():
                         for stat in stats.keys():
-                            columns[
-                                _get_column_name(band, sourcetype, prefix_item, item, suffix, stat)
-                            ] = float
+                            columns[_get_column_name(band, label, prefix_item, item, suffix, stat)] = float
 
     return columns, n_models
 
@@ -674,15 +680,14 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         extended_target = cat_target[config.column_target_extended].values >= config.extendedness_cut
 
         # Define difference/chi columns and statistics thereof
-        suffixes = {Measurement.DIFF: 'diff', Measurement.CHI: 'chi'}
+        suffixes = {MeasurementType.DIFF: 'diff', MeasurementType.CHI: 'chi'}
         # Skip diff for fluxes - covered by mags
-        suffixes_flux = {Measurement.CHI: suffixes[Measurement.CHI]}
+        suffixes_flux = {MeasurementType.CHI: suffixes[MeasurementType.CHI]}
         # Skip chi for magnitudes, which have strange errors
-        suffixes_mag = {Measurement.DIFF: suffixes[Measurement.DIFF]}
+        suffixes_mag = {MeasurementType.DIFF: suffixes[MeasurementType.DIFF]}
         stats = {stat.name_short(): stat() for stat in (Median, SigmaIQR, SigmaMAD)}
 
-        # -2, -1, +1, +2 sigma percentiles for normal distribution
-        for percentile in ('2.275', '15.866', '84.134', '97.725'):
+        for percentile in self.config.percentiles:
             stat = Percentile(percentile=float(Decimal(percentile)))
             stats[stat.name_short()] = stat
 
@@ -813,23 +818,23 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
                             select_ref_bin = select_ref_bins[idx_bin]
                         select_target_bin = select_target & (mag_target > mag_lo) & (mag_target < mag_hi)
 
-                        for sourcetype, sourcetype_info in sourcetypes.items():
+                        for sourcetype in SourceType:
+                            sourcetype_info = sourcetype.value
                             is_extended = sourcetype_info.is_extended
                             # Counts filtered by match selection and magnitude bin
-                            if idx_model == 0:
-                                select_ref_sub = select_ref_bin.copy()
+                            select_ref_sub = select_ref_bin.copy()
                             select_target_sub = select_target_bin.copy()
                             if is_extended is not None:
+                                is_extended_ref = (extended_ref == is_extended)
+                                select_ref_sub &= is_extended_ref
                                 if idx_model == 0:
-                                    is_extended_ref = (extended_ref == is_extended)
-                                    select_ref_sub &= is_extended_ref
                                     n_ref_sub = np.count_nonzero(select_ref_sub)
-                                    row[_get_column_name(band, sourcetype, 'n_ref',
-                                                         matchtypes[MatchType.ALL])] = n_ref_sub
+                                    row[_get_column_name(band, sourcetype_info.label, 'n_ref',
+                                                         MatchType.ALL.value)] = n_ref_sub
                                 select_target_sub &= (extended_target == is_extended)
                                 n_target_sub = np.count_nonzero(select_target_sub)
-                                row[_get_column_name(band, sourcetype, 'n_target',
-                                                     matchtypes[MatchType.ALL])] = n_target_sub
+                                row[_get_column_name(band, sourcetype_info.label, 'n_target',
+                                                     MatchType.ALL.value)] = n_target_sub
 
                             # Filter matches by magnitude bin and true class
                             match_row_bin = match_row.copy()
@@ -847,11 +852,10 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
                                     right_type = extended_target[rows_matched] == is_extended
                                     n_total = len(right_type)
                                     n_right = np.count_nonzero(right_type)
-                                    row[_get_column_name(band, sourcetype, 'n_ref',
-                                                         matchtypes[MatchType.MATCH_RIGHT])] = n_right
+                                    row[_get_column_name(band, sourcetype_info.label, 'n_ref',
+                                                         MatchType.MATCH_RIGHT.value)] = n_right
                                     row[_get_column_name(
-                                        band, sourcetype, 'n_ref',
-                                        matchtypes[MatchType.MATCH_WRONG]
+                                        band, sourcetype_info.label, 'n_ref', MatchType.MATCH_WRONG.value,
                                     )] = n_total - n_right
 
                                 # compute stats for this bin, for all columns
@@ -870,7 +874,7 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
                                         row,
                                         stats,
                                         suffixes,
-                                        prefix=f'{band}_{sourcetype}_{column}',
+                                        prefix=f'{band}_{sourcetype_info.label}_{column}',
                                         skip_diff=skip_diff,
                                     )
 
@@ -886,10 +890,10 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
                                 right_type[match_row[matched_ref & is_extended_ref]] = True
                                 right_type &= select_target_sub
                                 n_right = np.count_nonzero(right_type)
-                                row[_get_column_name(band, sourcetype, 'n_target',
-                                                     matchtypes[MatchType.MATCH_RIGHT])] = n_right
-                                row[_get_column_name(band, sourcetype, 'n_target',
-                                                     matchtypes[MatchType.MATCH_WRONG])] = n_total - n_right
+                                row[_get_column_name(band, sourcetype_info.label, 'n_target',
+                                                     MatchType.MATCH_RIGHT.value)] = n_right
+                                row[_get_column_name(band, sourcetype_info.label, 'n_target',
+                                                     MatchType.MATCH_WRONG.value)] = n_total - n_right
 
                     # delete the flux/color columns since they change with each band
                     for prefix in ('flux', 'mag'):
