@@ -205,7 +205,13 @@ class PropagateSourceFlagsTask(pipeBase.Task):
                                 return_indices=True
                             )
                         except IndexError:
-                            # No matches.  Workaround a bug in smatch.
+                            # No matches.  Workaround a bug in older version of smatch.
+                            self.log.info("Visit %d has no overlapping objects", visit)
+                            continue
+
+                        if len(i1) == 0:
+                            # No matches (usually because detector does not overlap patch).
+                            self.log.info("Visit %d has no overlapping objects", visit)
                             continue
 
                         for flag in flag_counts:
