@@ -169,14 +169,19 @@ class PropagateSourceFlagsTask(pipeBase.Task):
         counts_list = [source_flag_counts, finalized_source_flag_counts]
         x_column_list = [self.config.x_column, self.config.finalized_x_column]
         y_column_list = [self.config.y_column, self.config.finalized_y_column]
+        name_list = ["sources", "finalized_sources"]
 
-        for handle_dict, columns, flag_counts, x_col, y_col in zip(handles_list,
-                                                                   columns_list,
-                                                                   counts_list,
-                                                                   x_column_list,
-                                                                   y_column_list):
+        for handle_dict, columns, flag_counts, x_col, y_col, name in zip(handles_list,
+                                                                         columns_list,
+                                                                         counts_list,
+                                                                         x_column_list,
+                                                                         y_column_list,
+                                                                         name_list):
             if handle_dict is not None and len(columns) > 0:
                 for visit in visits:
+                    if visit not in handle_dict:
+                        self.log.info("Visit %d not in input handle dict for %s", visit, name)
+                        continue
                     handle = handle_dict[visit]
                     df = handle.get(parameters={"columns": columns})
 
