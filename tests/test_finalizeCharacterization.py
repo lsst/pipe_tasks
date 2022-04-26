@@ -108,7 +108,9 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
                      ('source_cat_index_i', 'i4'),
                      ('nsource_i', 'i4'),
                      ('source_cat_index_r', 'i4'),
-                     ('nsource_r', 'i4')]
+                     ('nsource_r', 'i4'),
+                     ('source_cat_index_z', 'i4'),
+                     ('nsource_z', 'i4')]
 
         dtype_source = [('sourceId', 'i8'),
                         ('obj_index', 'i4')]
@@ -125,7 +127,7 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
         self.nstar_per_band = nstar - 10
 
         # This is a brute-force assembly of a star catalog and matched sources.
-        for tract in [0, 1]:
+        for tract in [0, 1, 2]:
             ra = np.random.uniform(low=tract, high=tract + 1.0, size=nstar)
             dec = np.random.uniform(low=0.0, high=1.0, size=nstar)
 
@@ -133,22 +135,30 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
             cat['isolated_star_id'] = tract*nstar + np.arange(nstar)
             cat['ra'] = ra
             cat['decl'] = dec
-            cat['primary_band'][0: 100] = 'i'
-            cat['primary_band'][100:] = 'r'
+            if tract < 2:
+                cat['primary_band'][0: 100] = 'i'
+                cat['primary_band'][100:] = 'r'
+            else:
+                # Tract 2 only has z band.
+                cat['primary_band'][:] = 'z'
 
             source_cats = []
             counter = 0
             for i in range(cat.size):
                 cat['source_cat_index'][i] = counter
-                if i < 90:
-                    cat['nsource'][i] = 2*nsource_per_band_per_star
-                    bands = ['r', 'i']
+                if tract < 2:
+                    if i < 90:
+                        cat['nsource'][i] = 2*nsource_per_band_per_star
+                        bands = ['r', 'i']
+                    else:
+                        cat['nsource'][i] = nsource_per_band_per_star
+                        if i < 100:
+                            bands = ['i']
+                        else:
+                            bands = ['r']
                 else:
                     cat['nsource'][i] = nsource_per_band_per_star
-                    if i < 100:
-                        bands = ['i']
-                    else:
-                        bands = ['r']
+                    bands = ['z']
 
                 for band in bands:
                     cat[f'source_cat_index_{band}'][i] = counter
@@ -215,6 +225,16 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
                 iso['reserved'][iso_src['obj_index'][res_src]],
                 True
             )
+
+    def test_concat_isolate_star_cats_no_sources(self):
+        """Test concatenation when there are no sources in a tract."""
+        iso, iso_src = self.finalizeCharacterizationTask.concat_isolated_star_cats(
+            'z',
+            self.isolated_star_cat_dict,
+            self.isolated_star_source_dict
+        )
+
+        self.assertGreater(len(iso), 0)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
