@@ -393,6 +393,18 @@ class InsertFakesConfig(PipelineTaskConfig,
         default="select",
     )
 
+    length_col = pexConfig.Field(
+        doc="Source catalog column name for trail length (in pixels).",
+        dtype=str,
+        default="trail_length",
+    )
+
+    angle_col = pexConfig.Field(
+        doc="Source catalog column name for trail angle (in radians).",
+        dtype=str,
+        default="trail_angle",
+    )
+
     # Deprecated config variables
 
     raColName = pexConfig.Field(
@@ -649,12 +661,15 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 if isinstance(fakeCat[self.config.sourceType].iloc[0], str):
                     galCheckVal = "galaxy"
                     starCheckVal = "star"
+                    trailCheckVal = "trail"
                 elif isinstance(fakeCat[self.config.sourceType].iloc[0], bytes):
                     galCheckVal = b"galaxy"
                     starCheckVal = b"star"
+                    trailCheckVal = b"trail"
                 elif isinstance(fakeCat[self.config.sourceType].iloc[0], (int, float)):
                     galCheckVal = 1
                     starCheckVal = 0
+                    trailCheckVal = 2
                 else:
                     raise TypeError(
                         "sourceType column does not have required type, should be str, bytes or int"
@@ -662,7 +677,8 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 if self.config.doCleanCat:
                     fakeCat = self.cleanCat(fakeCat, starCheckVal)
 
-                generator = self._generateGSObjectsFromCatalog(image, fakeCat, galCheckVal, starCheckVal)
+                generator = self._generateGSObjectsFromCatalog(image, fakeCat, galCheckVal, starCheckVal,
+                                                               trailCheckVal)
             else:
                 generator = self._generateGSObjectsFromImages(image, fakeCat)
             _add_fake_sources(image, generator, calibFluxRadius=self.config.calibFluxRadius, logger=self.log)
@@ -786,7 +802,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         return fakeCat
 
-    def _generateGSObjectsFromCatalog(self, exposure, fakeCat, galCheckVal, starCheckVal):
+    def _generateGSObjectsFromCatalog(self, exposure, fakeCat, galCheckVal, starCheckVal, trailCheckVal):
         """Process catalog to generate `galsim.GSObject` s.
 
         Parameters
@@ -796,9 +812,11 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         fakeCat : `pandas.core.frame.DataFrame`
             The catalog of fake sources to be input
         galCheckVal : `str`, `bytes` or `int`
-            The value that is set in the sourceType column to specifiy an object is a galaxy.
+            The value that is set in the sourceType column to specify an object is a galaxy.
         starCheckVal : `str`, `bytes` or `int`
-            The value that is set in the sourceType column to specifiy an object is a star.
+            The value that is set in the sourceType column to specify an object is a star.
+        trailCheckVal : `str`, `bytes` or `int`
+            The value that is set in the sourceType column to specify an object is a star
 
         Yields
         ------
@@ -840,6 +858,24 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 star = galsim.DeltaFunction()
                 star = star.withFlux(flux)
                 yield skyCoord, star
+            elif sourceType == trailCheckVal:
+                length = row['trail_length']
+                angle = row['trail_angle']
+
+                # Make a 'thin' box to mimic a line surface brightness profile
+                thickness = 1e-6  # Make the box much thinner than a pixel
+                theta = galsim.Angle(angle*galsim.radians)
+                trail = galsim.Box(length, thickness)
+                trail = trail.rotate(theta)
+                trail = trail.withFlux(flux*length)
+
+                # Galsim objects are assumed to be in sky-coordinates. Since
+                # we want the trail to appear as defined above in image-
+                # coordinates, we must transform the trail here.
+                mat = wcs.linearizePixelToSky(skyCoord, geom.arcseconds).getMatrix()
+                trail = trail.transform(mat[0, 0], mat[0, 1], mat[1, 0], mat[1, 1])
+
+                yield skyCoord, trail
             else:
                 raise TypeError(f"Unknown sourceType {sourceType}")
 
