@@ -47,6 +47,14 @@ class MeasurePsfConfig(pexConfig.Config):
         doc="Reserve sources from fitting"
     )
 
+    def validate(self):
+        super().validate()
+        if (self.psfDeterminer.name == "piff"
+                and self.psfDeterminer["piff"].kernelSize > self.makePsfCandidates.kernelSize):
+            msg = (f"PIFF kernelSize={self.psfDeterminer['piff'].kernelSize}"
+                   f" must be >= psf candidate kernelSize={self.makePsfCandidates.kernelSize}.")
+            raise pexConfig.FieldValidationError(MeasurePsfConfig.makePsfCandidates, self, msg)
+
 ## @addtogroup LSST_task_documentation
 ## @{
 ## @page page_MeasurePsfTask MeasurePsfTask
