@@ -1719,7 +1719,12 @@ class MakeCcdVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
             ccdEntry = {}
             summaryTable = visitSummary.asAstropy()
             selectColumns = ['id', 'visit', 'physical_filter', 'band', 'ra', 'decl', 'zenithDistance',
-                             'zeroPoint', 'psfSigma', 'skyBg', 'skyNoise']
+                             'zeroPoint', 'psfSigma', 'skyBg', 'skyNoise',
+                             'astromOffsetMean', 'astromOffsetStd', 'nPsfStar',
+                             'psfStarDeltaE1Median', 'psfStarDeltaE2Median',
+                             'psfStarDeltaE1Scatter', 'psfStarDeltaE2Scatter',
+                             'psfStarDeltaSizeMedian', 'psfStarDeltaSizeScatter',
+                             'psfStarScaledDeltaSizeScatter']
             ccdEntry = summaryTable[selectColumns].to_pandas().set_index('id')
             # 'visit' is the human readible visit number
             # 'visitId' is the key to the visitId table. They are the same
