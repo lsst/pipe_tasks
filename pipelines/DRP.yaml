@@ -61,6 +61,7 @@ tasks:
         # Setting template 'coaddName' is not sufficient to satisfy contract
         connections.coaddExposures: goodSeeingCoadd
         connections.subtractedExposure: goodSeeingDiff_differenceExp
+        decorrelate.decorrelateConfig.completeVarPlanePropagation: true
   transformDiaSourceCat:
     class: lsst.ap.association.TransformDiaSourceCatalogTask
     config:
