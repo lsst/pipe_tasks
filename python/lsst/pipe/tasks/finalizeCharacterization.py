@@ -496,6 +496,11 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             # Cut isolated star table to those observed in this band, and adjust indexes
             (use_band,) = (table_cat[f'nsource_{band}'] > 0).nonzero()
 
+            if len(use_band) == 0:
+                # There are no sources in this band in this tract.
+                self.log.info("No sources found in %s band in tract %d.", band, tract)
+                continue
+
             # With the following matching:
             #   table_source[b] <-> table_cat[use_band[a]]
             obj_index = table_source['obj_index'][:]

@@ -100,7 +100,7 @@ class MakeCoaddTempExpConfig(CoaddBaseTask.ConfigClass):
     doApplyFinalizedPsf = pexConfig.Field(
         doc="Whether to apply finalized psf models and aperture correction map.",
         dtype=bool,
-        default=False,
+        default=True,
     )
 
     def validate(self):
@@ -959,7 +959,7 @@ class MakeWarpTask(MakeCoaddTempExpTask):
                     self.log.warning("Detector id %s has None for ApCorrMap in finalizedPsfApCorrCatalog "
                                      "and will not be used in the warp.", detectorId)
                     continue
-                calexp.setApCorrMap(apCorrMap)
+                calexp.info.setApCorrMap(apCorrMap)
 
             # Calibrate the image
             calexp.maskedImage = photoCalib.calibrateImage(calexp.maskedImage,

@@ -34,11 +34,6 @@ class PropagateSourceFlagsConfig(pexConfig.Config):
         keytype=str,
         itemtype=float,
         default={
-            # TODO: DM-34391: when doApplyFinalizedPsf is the default, these flags
-            # should be set below and not here.
-            "calib_psf_candidate": 0.2,
-            "calib_psf_used": 0.2,
-            "calib_psf_reserved": 0.2,
             "calib_astrometry_used": 0.2,
             "calib_photometry_used": 0.2,
             "calib_photometry_reserved": 0.2
@@ -51,11 +46,9 @@ class PropagateSourceFlagsConfig(pexConfig.Config):
         keytype=str,
         itemtype=float,
         default={
-            # TODO: DM-34391: when doApplyFinalizedPsf is the default, these flags
-            # should be set here and not above.
-            # "calib_psf_candidate": 0.2,
-            # "calib_psf_used": 0.2,
-            # "calib_psf_reserved": 0.2
+            "calib_psf_candidate": 0.2,
+            "calib_psf_used": 0.2,
+            "calib_psf_reserved": 0.2
         },
         doc=("Finalized source flags to propagate, with the threshold of relative "
              "occurrence (valid range: [0-1]). Coadd object will have flag set if "
@@ -176,14 +169,19 @@ class PropagateSourceFlagsTask(pipeBase.Task):
         counts_list = [source_flag_counts, finalized_source_flag_counts]
         x_column_list = [self.config.x_column, self.config.finalized_x_column]
         y_column_list = [self.config.y_column, self.config.finalized_y_column]
+        name_list = ["sources", "finalized_sources"]
 
-        for handle_dict, columns, flag_counts, x_col, y_col in zip(handles_list,
-                                                                   columns_list,
-                                                                   counts_list,
-                                                                   x_column_list,
-                                                                   y_column_list):
+        for handle_dict, columns, flag_counts, x_col, y_col, name in zip(handles_list,
+                                                                         columns_list,
+                                                                         counts_list,
+                                                                         x_column_list,
+                                                                         y_column_list,
+                                                                         name_list):
             if handle_dict is not None and len(columns) > 0:
                 for visit in visits:
+                    if visit not in handle_dict:
+                        self.log.info("Visit %d not in input handle dict for %s", visit, name)
+                        continue
                     handle = handle_dict[visit]
                     df = handle.get(parameters={"columns": columns})
 
@@ -212,7 +210,13 @@ class PropagateSourceFlagsTask(pipeBase.Task):
                                 return_indices=True
                             )
                         except IndexError:
-                            # No matches.  Workaround a bug in smatch.
+                            # No matches.  Workaround a bug in older version of smatch.
+                            self.log.info("Visit %d has no overlapping objects", visit)
+                            continue
+
+                        if len(i1) == 0:
+                            # No matches (usually because detector does not overlap patch).
+                            self.log.info("Visit %d has no overlapping objects", visit)
                             continue
 
                         for flag in flag_counts:

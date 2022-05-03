@@ -688,7 +688,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                                      "finalizedPsfApCorrCatalog; Using original psf.", detectorId)
                 else:
                     exposure.setPsf(psf)
-                    exposure.setApCorrMap(apCorrMap)
+                    exposure.info.setApCorrMap(apCorrMap)
 
         return exposure
 
