@@ -1029,7 +1029,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                     if self.config.useGaussianForPreConvolution:
                         preConvKernel = preConvPsf.getLocalKernel()
                     if self.config.useScoreImageDetection:
-                        scoreExposure = self.decorrelate.run(exposureOrig, subtractRes.matchedExposure,
+                        scoreExposure = self.decorrelate.run(exposureOrig, subtractRes.warpedExposure,
                                                              scoreExposure,
                                                              subtractRes.psfMatchingKernel,
                                                              spatiallyVarying=self.config.doSpatiallyVarying,
@@ -1038,7 +1038,7 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                                                              preConvMode=True).correctedExposure
                     # Note that the subtracted exposure is always decorrelated,
                     # even if the score image is used for detection
-                    subtractedExposure = self.decorrelate.run(exposureOrig, subtractRes.matchedExposure,
+                    subtractedExposure = self.decorrelate.run(exposureOrig, subtractRes.warpedExposure,
                                                               subtractedExposure,
                                                               subtractRes.psfMatchingKernel,
                                                               spatiallyVarying=self.config.doSpatiallyVarying,
