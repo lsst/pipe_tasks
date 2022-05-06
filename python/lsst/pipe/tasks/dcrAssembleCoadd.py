@@ -253,6 +253,10 @@ class DcrAssembleCoaddConfig(CompareWarpAssembleCoaddConfig,
         # The signal to noise limit is good enough, while the flux limit is set
         # in dimensionless units and may not be appropriate for all data sets.
         self.measurePsf.starSelector["objectSize"].doFluxLimit = False
+        # Ensure psf candidate size is as large as piff psf size.
+        if (self.doCalculatePsf and self.measurePsf.psfDeterminer.name == "piff"
+                and self.psfDeterminer["piff"].kernelSize > self.makePsfCandidates.kernelSize):
+            self.makePsfCandidates.kernelSize = self.psfDeterminer["piff"].kernelSize
 
 
 class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
