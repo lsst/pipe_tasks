@@ -29,33 +29,15 @@ measurement tasks. The same test is carried out against both
 SingleFrameMeasurementTask and ForcedMeasurementTask, on the basis that the
 transformation system should be agnostic as to the origin of the source
 catalog it is transforming.
-
-Secondly, we use data from the obs_test package to demonstrate that the
-transformtion system and its interface package are capable of operating on
-data processed by the rest of the stack.
-
-For the purposes of testing, we define a "TrivialMeasurement" plugin and
-associated transformation. Rather than building a catalog by measuring
-genuine SourceRecords, we directly populate a catalog following the
-TrivialMeasurement schema, then check that it is transformed properly by the
-TrivialMeasurementTransform.
 """
-import contextlib
-import os
-import shutil
-import tempfile
 import unittest
 
 import lsst.utils
 import lsst.afw.table as afwTable
 import lsst.geom as geom
-import lsst.daf.persistence as dafPersist
 import lsst.meas.base as measBase
 import lsst.utils.tests
-from lsst.pipe.tasks.multiBand import MeasureMergedCoaddSourcesConfig
-from lsst.pipe.tasks.processCcd import ProcessCcdTask, ProcessCcdConfig
-from lsst.pipe.tasks.transformMeasurement import (TransformConfig, TransformTask, SrcTransformTask,
-                                                  RunTransformConfig, CoaddSrcTransformTask)
+from lsst.pipe.tasks.transformMeasurement import TransformConfig, TransformTask
 
 PLUGIN_NAME = "base_TrivialMeasurement"
 
@@ -200,137 +182,6 @@ class TransformTestCase(lsst.utils.tests.TestCase):
                                       inputSchema=forcedTask.schema, outputDataset="forced_src",
                                       config=transformConfig)
         self._transformAndCheck(forcedConfig, forcedTask.schema, transformTask)
-
-
-@contextlib.contextmanager
-def tempDirectory(*args, **kwargs):
-    """A context manager which provides a temporary directory and automatically cleans up when done."""
-    dirname = tempfile.mkdtemp(*args, **kwargs)
-    try:
-        yield dirname
-    finally:
-        shutil.rmtree(dirname, ignore_errors=True)
-
-
-class RunTransformTestCase(lsst.utils.tests.TestCase):
-
-    def testInterface(self):
-        obsTestDir = lsst.utils.getPackageDir('obs_test')
-        inputDir = os.path.join(obsTestDir, "data", "input")
-
-        # Configure a ProcessCcd task such that it will return a minimal
-        # number of measurements plus our test plugin.
-        cfg = ProcessCcdConfig()
-        cfg.calibrate.measurement.plugins.names = ["base_SdssCentroid", "base_SkyCoord", PLUGIN_NAME]
-        cfg.calibrate.measurement.slots.shape = None
-        cfg.calibrate.measurement.slots.psfFlux = None
-        cfg.calibrate.measurement.slots.apFlux = None
-        cfg.calibrate.measurement.slots.gaussianFlux = None
-        cfg.calibrate.measurement.slots.modelFlux = None
-        cfg.calibrate.measurement.slots.calibFlux = None
-        # no reference catalog, so...
-        cfg.calibrate.doAstrometry = False
-        cfg.calibrate.doPhotoCal = False
-        # disable aperture correction because we aren't measuring aperture flux
-        cfg.calibrate.doApCorr = False
-        # Extendedness requires modelFlux, disabled above.
-        cfg.calibrate.catalogCalculation.plugins.names.discard("base_ClassificationExtendedness")
-
-        # Process the test data with ProcessCcd then perform a transform.
-        with tempDirectory() as tempDir:
-            measResult = ProcessCcdTask.parseAndRun(args=[inputDir, "--output", tempDir, "--id", "visit=1"],
-                                                    config=cfg, doReturnResults=True)
-            trArgs = [tempDir, "--output", tempDir, "--id", "visit=1",
-                      "-c", "inputConfigType=processCcd_config"]
-            trResult = SrcTransformTask.parseAndRun(args=trArgs, doReturnResults=True)
-
-            # It should be possible to reprocess the data through a new transform task with exactly
-            # the same configuration without throwing. This check is useful since we are
-            # constructing the task on the fly, which could conceivably cause problems with
-            # configuration/metadata persistence.
-            trResult = SrcTransformTask.parseAndRun(args=trArgs, doReturnResults=True)
-
-        measSrcs = measResult.resultList[0].result.calibRes.sourceCat
-        trSrcs = trResult.resultList[0].result
-
-        # The length of the measured and transformed catalogs should be the same.
-        self.assertEqual(len(measSrcs), len(trSrcs))
-
-        # Each source should have been measured & transformed appropriately.
-        for measSrc, trSrc in zip(measSrcs, trSrcs):
-            # The TrivialMeasurement should be transformed as defined above.
-            self.assertEqual(trSrc[PLUGIN_NAME], measSrc[PLUGIN_NAME])
-            self.assertEqual(trSrc[PLUGIN_NAME + "_transform"], -1.0 * measSrc[PLUGIN_NAME])
-
-            # The SdssCentroid should be transformed to celestial coordinates.
-            # Checking that the full transformation has been done correctly is
-            # out of scope for this test case; we just ensure that there's
-            # plausible position in the transformed record.
-            trCoord = afwTable.CoordKey(trSrcs.schema["base_SdssCentroid"]).get(trSrc)
-            self.assertAlmostEqual(measSrc.getCoord().getLongitude(), trCoord.getLongitude())
-            self.assertAlmostEqual(measSrc.getCoord().getLatitude(), trCoord.getLatitude())
-
-
-class CoaddTransformTestCase(lsst.utils.tests.TestCase):
-    """Check that CoaddSrcTransformTask is set up properly.
-
-    RunTransformTestCase, above, has tested the basic RunTransformTask mechanism.
-    Here, we just check that it is appropriately adapted for coadds.
-    """
-    MEASUREMENT_CONFIG_DATASET = "measureCoaddSources_config"
-
-    # The following are hard-coded in lsst.pipe.tasks.multiBand:
-    SCHEMA_SUFFIX = "Coadd_meas_schema"
-    SOURCE_SUFFIX = "Coadd_meas"
-    CALEXP_SUFFIX = "Coadd_calexp"
-
-    def setUp(self):
-        # We need a temporary repository in which we can store test configs.
-        self.repo = tempfile.mkdtemp()
-        with open(os.path.join(self.repo, "_mapper"), "w") as f:
-            f.write("lsst.obs.test.TestMapper")
-        self.butler = dafPersist.Butler(self.repo)
-
-        # Persist a coadd measurement config.
-        # We disable all measurement plugins so that there's no actual work
-        # for the TransformTask to do.
-        measCfg = MeasureMergedCoaddSourcesConfig()
-        measCfg.measurement.plugins.names = []
-        self.butler.put(measCfg, self.MEASUREMENT_CONFIG_DATASET)
-
-        # Record the type of coadd on which our supposed measurements have
-        # been carried out: we need to check this was propagated to the
-        # transformation task.
-        self.coaddName = measCfg.coaddName
-
-        # Since we disabled all measurement plugins, our catalog can be
-        # simple.
-        c = afwTable.SourceCatalog(afwTable.SourceTable.makeMinimalSchema())
-        self.butler.put(c, self.coaddName + self.SCHEMA_SUFFIX)
-
-        # Our transformation config needs to know the type of the measurement
-        # configuration.
-        trCfg = RunTransformConfig()
-        trCfg.inputConfigType = self.MEASUREMENT_CONFIG_DATASET
-
-        self.transformTask = CoaddSrcTransformTask(config=trCfg, log=None, butler=self.butler)
-
-    def tearDown(self):
-        del self.butler
-        del self.transformTask
-        shutil.rmtree(self.repo)
-
-    def testCoaddName(self):
-        """Check that we have correctly derived the coadd name."""
-        self.assertEqual(self.transformTask.coaddName, self.coaddName)
-
-    def testSourceType(self):
-        """Check that we have correctly derived the type of the measured sources."""
-        self.assertEqual(self.transformTask.sourceType, self.coaddName + self.SOURCE_SUFFIX)
-
-    def testCalexpType(self):
-        """Check that we have correctly derived the type of the measurement images."""
-        self.assertEqual(self.transformTask.calexpType, self.coaddName + self.CALEXP_SUFFIX)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):

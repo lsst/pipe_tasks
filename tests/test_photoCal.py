@@ -22,12 +22,11 @@
 import os
 import unittest
 import logging
+import glob
 
 import numpy as np
 import astropy.units as u
 
-from lsst.daf.persistence import Butler
-from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
 import lsst.geom as geom
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
@@ -36,11 +35,9 @@ from lsst.utils import getPackageDir
 from lsst.pipe.tasks.photoCal import PhotoCalTask, PhotoCalConfig
 from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary
 from lsst.pipe.base.task_logging import TRACE
+from lsst.meas.algorithms.testUtils import MockReferenceObjectLoaderFromFiles
 
 RefCatDir = os.path.join(getPackageDir("pipe_tasks"), "tests", "data", "sdssrefcat")
-
-# Quiet down meas_astrom logging, so we can see PhotoCal logs better
-logging.getLogger("lsst.LoadIndexedReferenceObjectsTask").setLevel(logging.WARN)
 
 testColorterms = ColortermLibrary(data={
     "test*": ColortermDict(data={
@@ -84,8 +81,8 @@ class PhotoCalTest(unittest.TestCase):
             src.set(coordKey, wcs.pixelToSky(src.get(centroidKey)))
 
         # Make a reference loader
-        butler = Butler(RefCatDir)
-        self.refObjLoader = LoadIndexedReferenceObjectsTask(butler=butler)
+        filenames = sorted(glob.glob(os.path.join(RefCatDir, 'ref_cats', 'cal_ref_cat', '??????.fits')))
+        self.refObjLoader = MockReferenceObjectLoaderFromFiles(filenames, htmLevel=8)
         self.log = logging.getLogger('lsst.testPhotoCal')
         self.log.setLevel(TRACE)
 
