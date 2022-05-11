@@ -185,10 +185,12 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
     )
     refObjLoader = pexConfig.ConfigurableField(
         target=LoadIndexedReferenceObjectsTask,
+        deprecated="This field does nothing. Will be removed after v24 (see DM-34768).",
         doc="reference object loader",
     )
     ref_match = pexConfig.ConfigurableField(
         target=RefMatchTask,
+        deprecated="This field was never usable. Will be removed after v24 (see DM-34768).",
         doc="Task to load and match reference objects. Only used if measurePsf can use matches. "
         "Warning: matching will only work well if the initial WCS is accurate enough "
         "to give good matches (roughly: good to 3 arcsec across the CCD).",
@@ -352,6 +354,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             it is needed to load catalogs.  May be None if a catalog-based star selector is
             not used, if the reference object loader constructor does not require a butler,
             or if a reference object loader is passed directly via the refObjLoader argument.
+        # TODO DM-34769: remove rebObjLoader kwarg here.
         @param[in] refObjLoader  An instance of LoadReferenceObjectsTasks that supplies an
             external reference catalog to a catalog-based star selector.  May be None if a
             catalog star selector is not used or the loader can be constructed from the
@@ -368,6 +371,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         self.makeSubtask("installSimplePsf")
         self.makeSubtask("repair")
         self.makeSubtask("measurePsf", schema=self.schema)
+        # TODO DM-34769: remove this `if` block
         if self.config.doMeasurePsf and self.measurePsf.usesMatches:
             if not refObjLoader:
                 self.makeSubtask('refObjLoader', butler=butler)
@@ -600,6 +604,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
         measPsfRes = pipeBase.Struct(cellSet=None)
         if self.config.doMeasurePsf:
+            # TODO DM-34769: remove this `if` block, and the `matches` kwarg from measurePsf.run below.
             if self.measurePsf.usesMatches:
                 matches = self.ref_match.loadAndMatch(exposure=exposure, sourceCat=sourceCat).matches
             else:
