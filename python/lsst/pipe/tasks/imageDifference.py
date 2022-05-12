@@ -998,11 +998,11 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                 # Return warped template...  Construct sourceKernelCand list after subtract
                 self.log.info("Subtracting images")
                 subtractRes = self.subtract.subtractExposures(
-                    templateExposure=templateExposure,
+                    templateExposure=templateExposure[exposure.getBBox()],
                     scienceExposure=exposure,
                     candidateList=kernelSources,
                     convolveTemplate=self.config.convolveTemplate,
-                    doWarping=not self.config.doUseRegister
+                    doWarping=False
                 )
                 if self.config.useScoreImageDetection:
                     scoreExposure = subtractRes.subtractedExposure
