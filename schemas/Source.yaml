@@ -420,6 +420,7 @@ flag_rename_rules:
     - ['base_CircularApertureFlux', 'apFlux']
     - ['base_FootprintArea', 'footprintArea']
     - ['base_Jacobian', 'jacobian']
+    - ['ext_shapeHSM_HsmPsfMomentsDebiased', 'iDebiasedPSF']
     - ['ext_shapeHSM_Hsm', 'hsm']
     - ['ext_convolved_', '']
     - ['undeblended_base', 'undeblended']
