@@ -426,7 +426,8 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
                                                self.config.match_radius/3600.)
                 # Any object with a match should be removed.
                 match_indices = np.array([i for i in range(len(idx)) if len(idx[i]) > 0])
-                band_cat = np.delete(band_cat, match_indices)
+                if len(match_indices) > 0:
+                    band_cat = np.delete(band_cat, match_indices)
 
                 primary_star_cat = np.append(primary_star_cat, band_cat)
             self.log.info('Found %d primary stars in %s band.', len(band_cat), primary_band)

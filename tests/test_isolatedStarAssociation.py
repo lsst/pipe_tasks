@@ -106,7 +106,8 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                       tract,
                       only_neighbors=False,
                       only_out_of_tract=False,
-                      only_out_of_inner_tract=False):
+                      only_out_of_inner_tract=False,
+                      no_secondary_overlap=False):
         """Make simulated data tables and references.
 
         Parameters
@@ -117,6 +118,8 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
             All stars are out of the tract.
         only_out_of_inner_tract : `bool`, optional
             All stars are out of the inner tract.
+        no_secondary_overlap : `bool`, optional
+            Secondary band has no overlap with the primary band.
 
         Returns
         -------
@@ -176,6 +179,9 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
             if only_neighbors:
                 star_ra = np.concatenate(([ra_both[n_star_both//2]], ra_neighbor))
                 star_dec = np.concatenate(([dec_both[n_star_both//2]], dec_neighbor))
+            elif no_secondary_overlap:
+                star_ra = np.concatenate((ra_just,))
+                star_dec = np.concatenate((dec_just,))
             else:
                 star_ra = np.concatenate((ra_both, ra_neighbor, ra_just))
                 star_dec = np.concatenate((dec_both, dec_neighbor, dec_just))
@@ -437,6 +443,23 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         # And spot-check a couple of expected fields to make sure they have the right type.
         self.assertTrue('physical_filter' in struct.star_source_cat.dtype.names)
         self.assertTrue('nsource_i' in struct.star_cat.dtype.names)
+
+    def test_run_task_secondary_no_overlap(self):
+        """Test running the task when the secondary band has no overlaps.
+
+        This tests DM-34834.
+        """
+        data_refs = self._make_simdata(self.tract, no_secondary_overlap=True)
+        data_ref_dict = {visit: data_ref for visit, data_ref in zip(self.visits,
+                                                                    data_refs)}
+
+        struct = self.isolatedStarAssociationTask.run(self.skymap,
+                                                      self.tract,
+                                                      data_ref_dict)
+
+        # Add a sanity check that we got a catalog out.
+        self.assertGreater(len(struct.star_source_cat), 0)
+        self.assertGreater(len(struct.star_cat), 0)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
