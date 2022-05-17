@@ -281,6 +281,15 @@ funcs:
     ixyPSF:
         functor: Column
         args: slot_PsfShape_xy
+    ixxDebiasedPSF:
+        functor:  Column
+        args: ext_shapeHSM_HsmPsfMomentsDebiased_xx
+    iyyDebiasedPSF:
+        functor:  Column
+        args: ext_shapeHSM_HsmPsfMomentsDebiased_yy
+    ixyDebiasedPSF:
+        functor:  Column
+        args: ext_shapeHSM_HsmPsfMomentsDebiased_xy
     # apNann: Replaced by raw Aperture instFluxes in flags section below
     # apMeanSb: Replaced by raw Aperture instFluxes in flags section below
     # apMeanSbErr: Replaced by raw Aperture instFluxes in flags section below
@@ -383,6 +392,12 @@ flags:
    - ext_shapeHSM_HsmPsfMoments_flag_no_pixels
    - ext_shapeHSM_HsmPsfMoments_flag_not_contained
    - ext_shapeHSM_HsmPsfMoments_flag_parent_source
+   - ext_shapeHSM_HsmPsfMomentsDebiased_flag
+   - ext_shapeHSM_HsmPsfMomentsDebiased_flag_no_pixels
+   - ext_shapeHSM_HsmPsfMomentsDebiased_flag_not_contained
+   - ext_shapeHSM_HsmPsfMomentsDebiased_flag_parent_source
+   - ext_shapeHSM_HsmPsfMomentsDebiased_flag_galsim
+   - ext_shapeHSM_HsmPsfMomentsDebiased_flag_edge
    - ext_shapeHSM_HsmShapeRegauss_flag
    - ext_shapeHSM_HsmShapeRegauss_flag_galsim
    - ext_shapeHSM_HsmShapeRegauss_flag_no_pixels
@@ -405,6 +420,7 @@ flag_rename_rules:
     - ['base_CircularApertureFlux', 'apFlux']
     - ['base_FootprintArea', 'footprintArea']
     - ['base_Jacobian', 'jacobian']
+    - ['ext_shapeHSM_HsmPsfMomentsDebiased', 'iDebiasedPSF']
     - ['ext_shapeHSM_Hsm', 'hsm']
     - ['ext_convolved_', '']
     - ['undeblended_base', 'undeblended']
