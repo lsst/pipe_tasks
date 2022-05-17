@@ -50,7 +50,14 @@ class CalibrateTaskTestCaseWithButler(lsst.utils.tests.TestCase):
         butler.registry.insertDimensionData(
             "instrument",
             {"name": "notACam", "visit_max": 256, "exposure_max": 256, "detector_max": 64})
-        butler.registry.insertDimensionData("visit", {"instrument": "notACam", "id": 101, "name": "101"})
+        butler.registry.insertDimensionData(
+            "physical_filter",
+            {"instrument": "notACam", "name": "r", "band": "r"},
+        )
+        butler.registry.insertDimensionData(
+            "visit",
+            {"instrument": "notACam", "id": 101, "name": "101", "physical_filter": "r"},
+        )
         butler.registry.insertDimensionData("detector",
                                             {"instrument": "notACam", "id": 42, "full_name": "42"})
         return butler
