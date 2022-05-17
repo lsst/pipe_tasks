@@ -828,6 +828,12 @@ class TransformCatalogBaseConfig(pipeBase.PipelineTaskConfig,
         default=None,
         optional=True
     )
+    columnsFromDataId = pexConfig.ListField(
+        dtype=str,
+        default=None,
+        optional=True,
+        doc="Columns to extract from the dataId",
+    )
 
 
 class TransformCatalogBaseTask(pipeBase.PipelineTask):
@@ -984,9 +990,12 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
     def transform(self, band, parq, funcs, dataId):
         analysis = self.getAnalysis(parq, funcs=funcs, band=band)
         df = analysis.df
-        if dataId is not None:
-            for key, value in dataId.items():
-                df[str(key)] = value
+        if dataId and self.config.columnsFromDataId:
+            for key in self.config.columnsFromDataId:
+                if key in dataId:
+                    df[str(key)] = dataId[key]
+                else:
+                    raise ValueError(f"'{key}' in config.columnsFromDataId not found in dataId: {dataId}")
 
         if self.config.primaryKey:
             if df.index.name != self.config.primaryKey and self.config.primaryKey in df:
@@ -1086,6 +1095,7 @@ class TransformObjectCatalogConfig(TransformCatalogBaseConfig,
         super().setDefaults()
         self.functorFile = os.path.join('$PIPE_TASKS_DIR', 'schemas', 'Object.yaml')
         self.primaryKey = 'objectId'
+        self.columnsFromDataId = ['tract', 'patch']
         self.goodFlags = ['calib_astrometry_used',
                           'calib_photometry_reserved',
                           'calib_photometry_used',
@@ -1167,8 +1177,8 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
             noDupCols = list(set.union(*[set(v.noDupCols) for v in analysisDict.values()]))
             if self.config.primaryKey in noDupCols:
                 noDupCols.remove(self.config.primaryKey)
-            if dataId is not None:
-                noDupCols += list(dataId.keys())
+            if dataId and self.config.columnsFromDataId:
+                noDupCols += self.config.columnsFromDataId
             df = flattenFilters(df, noDupCols=noDupCols, camelCase=self.config.camelCase,
                                 inputBands=inputBands)
 
@@ -1305,6 +1315,7 @@ class TransformSourceTableConfig(TransformCatalogBaseConfig,
         super().setDefaults()
         self.functorFile = os.path.join('$PIPE_TASKS_DIR', 'schemas', 'Source.yaml')
         self.primaryKey = 'sourceId'
+        self.columnsFromDataId = ['visit', 'detector', 'band', 'physical_filter']
 
 
 class TransformSourceTableTask(TransformCatalogBaseTask):
@@ -1955,6 +1966,7 @@ class TransformForcedSourceTableConfig(TransformCatalogBaseConfig,
     def setDefaults(self):
         super().setDefaults()
         self.functorFile = os.path.join('$PIPE_TASKS_DIR', 'schemas', 'ForcedSource.yaml')
+        self.columnsFromDataId = ['tract', 'patch']
 
 
 class TransformForcedSourceTableTask(TransformCatalogBaseTask):
