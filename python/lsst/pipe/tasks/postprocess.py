@@ -830,7 +830,7 @@ class TransformCatalogBaseConfig(pipeBase.PipelineTaskConfig,
     )
 
 
-class TransformCatalogBaseTask(CmdLineTask, pipeBase.PipelineTask):
+class TransformCatalogBaseTask(pipeBase.PipelineTask):
     """Base class for transforming/standardizing a catalog
 
     by applying functors that convert units and apply calibrations.
@@ -943,15 +943,6 @@ class TransformCatalogBaseTask(CmdLineTask, pipeBase.PipelineTask):
                           dataId=outputRefs.outputCatalog.dataId.full)
         outputs = pipeBase.Struct(outputCatalog=result)
         butlerQC.put(outputs, outputRefs)
-
-    def runDataRef(self, dataRef):
-        parq = dataRef.get()
-        if self.funcs is None:
-            raise ValueError("config.functorFile is None. "
-                             "Must be a valid path to yaml in order to run as a CommandlineTask.")
-        df = self.run(parq, funcs=self.funcs, dataId=dataRef.dataId)
-        self.write(df, dataRef)
-        return df
 
     def run(self, parq, funcs=None, dataId=None, band=None):
         """Do postprocessing calculations
@@ -1116,18 +1107,6 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
     """
     _DefaultName = "transformObjectCatalog"
     ConfigClass = TransformObjectCatalogConfig
-
-    # Used by Gen 2 runDataRef only:
-    inputDataset = 'deepCoadd_obj'
-    outputDataset = 'objectTable'
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", cls.inputDataset,
-                               ContainerClass=CoaddDataIdContainer,
-                               help="data ID, e.g. --id tract=12345 patch=1,2")
-        return parser
 
     def run(self, parq, funcs=None, dataId=None, band=None):
         # NOTE: band kwarg is ignored here.
@@ -1333,26 +1312,6 @@ class TransformSourceTableTask(TransformCatalogBaseTask):
     """
     _DefaultName = "transformSourceTable"
     ConfigClass = TransformSourceTableConfig
-
-    inputDataset = 'source'
-    outputDataset = 'sourceTable'
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", datasetType=cls.inputDataset,
-                               level="sensor",
-                               help="data ID, e.g. --id visit=12345 ccd=0")
-        return parser
-
-    def runDataRef(self, dataRef):
-        """Override to specify band label to run()."""
-        parq = dataRef.get()
-        funcs = self.getFunctors()
-        band = dataRef.get("calexp_filterLabel", immediate=True).bandLabel
-        df = self.run(parq, funcs=funcs, dataId=dataRef.dataId, band=band)
-        self.write(df, dataRef)
-        return df
 
 
 class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
