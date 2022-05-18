@@ -203,7 +203,7 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
         ]
         self.measurement.plugins['ext_gaap_GaapFlux'].doPsfPhotometry = True
         self.measurement.slots.shape = 'ext_shapeHSM_HsmSourceMoments'
-        self.measurement.slots.psfShape = 'exp_shapeHSM_HsmPsfMoments'
+        self.measurement.slots.psfShape = 'ext_shapeHSM_HsmPsfMoments'
         self.measurement.plugins['ext_shapeHSM_HsmShapeRegauss'].deblendNChild = ""
         # Turn off slot setting for measurement for centroid and shape
         # (for which we use the input src catalog measurements)
