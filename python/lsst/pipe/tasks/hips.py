@@ -30,7 +30,7 @@ import sys
 
 from lsst.sphgeom import RangeSet, HealpixPixelization
 from lsst.utils.timer import timeMethod
-from lsst.daf.butler import Butler, DatasetRef, Quantum
+from lsst.daf.butler import Butler, DatasetRef, Quantum, SkyPixDimension
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.geom as afwGeom
@@ -64,6 +64,8 @@ class HighResolutionHipsConnections(pipeBase.PipelineTaskConnections,
         quantum_order = None
         for dim in self.dimensions:
             if 'healpix' in dim:
+                if quantum_order is not None:
+                    raise ValueError("Must not specify more than one quantum healpix dimension.")
                 quantum_order = int(dim.split('healpix')[1])
         if quantum_order is None:
             raise ValueError("Must specify a healpix dimension in quantum dimensions.")
@@ -74,6 +76,8 @@ class HighResolutionHipsConnections(pipeBase.PipelineTaskConnections,
         order = None
         for dim in self.hips_exposures.dimensions:
             if 'healpix' in dim:
+                if order is not None:
+                    raise ValueError("Must not specify more than one healpix dimension.")
                 order = int(dim.split('healpix')[1])
         if order is None:
             raise ValueError("Must specify a healpix dimension in hips_exposure dimensions.")
@@ -156,7 +160,7 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
         pixels = [hips_exposure.dataId[healpix_dim]
                   for hips_exposure in outputRefs.hips_exposures]
 
-        outputs = self.run(pixels, inputs["coadd_exposure_handles"])
+        outputs = self.run(pixels=pixels, coadd_exposure_handles=inputs["coadd_exposure_handles"])
 
         hips_exposure_ref_dict = {hips_exposure_ref.dataId[healpix_dim]:
                                   hips_exposure_ref for hips_exposure_ref in outputRefs.hips_exposures}
@@ -184,6 +188,9 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
         bbox_hpx = geom.Box2I(corner=geom.Point2I(0, 0),
                               dimensions=geom.Extent2I(npix, npix))
 
+        # For each healpix pixel we will create an empty exposure with the
+        # correct HPX WCS. We furthermore create a dict to hold each of
+        # the warps that will go into each HPX exposure.
         exp_hpx_dict = {}
         warp_dict = {}
         for pixel in pixels:
@@ -193,9 +200,12 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
             warp_dict[pixel] = []
 
         first_handle = True
+        # Loop over input coadd exposures to minimize i/o (this speeds things
+        # up by ~8x to batch together pixels that overlap a given coadd).
         for handle in coadd_exposure_handles:
             coadd_exp = handle.get()
 
+            # For each pixel, warp the coadd to the HPX WCS for the pixel.
             for pixel in pixels:
                 warped = self.warper.warpExposure(exp_hpx_dict[pixel].getWcs(), coadd_exp, maxBBox=bbox_hpx)
 
@@ -203,11 +213,13 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
                 exp.maskedImage.set(np.nan, afwImage.Mask.getPlaneBitMask("NO_DATA"), np.nan)
 
                 if first_handle:
+                    # Make sure the mask planes, filter, and photocalib of the output
+                    # exposure match the (first) input exposure.
                     exp_hpx_dict[pixel].mask.conformMaskPlanes(coadd_exp.mask.getMaskPlaneDict())
                     exp_hpx_dict[pixel].setFilterLabel(coadd_exp.getFilterLabel())
                     exp_hpx_dict[pixel].setPhotoCalib(coadd_exp.getPhotoCalib())
 
-                if warped.getBBox().getArea() == 0 or not np.any(np.isfinite(warped.getImage().array)):
+                if warped.getBBox().getArea() == 0 or not np.any(np.isfinite(warped.image.array)):
                     # There is no overlap, skip.
                     self.log.debug(
                         "No overlap between output HPX %d and input exposure %s",
@@ -227,13 +239,17 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
         stats_ctrl.setWeighted(True)
         stats_ctrl.setCalcErrorFromInputVariance(True)
 
+        # Loop over pixels and combine the warps for each pixel.
+        # The combination is done with a simple mean for pixels that
+        # overlap in neighboring patches.
         for pixel in pixels:
             exp_hpx_dict[pixel].maskedImage.set(np.nan, afwImage.Mask.getPlaneBitMask("NO_DATA"), np.nan)
 
             if not warp_dict[pixel]:
                 # Nothing in this pixel
                 self.log.debug("No data in HPX pixel %d", pixel)
-                # Remove the pixel from the output
+                # Remove the pixel from the output, no need to persist an
+                # empty exposure.
                 exp_hpx_dict.pop(pixel)
                 continue
 
@@ -247,6 +263,144 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
             )
 
         return pipeBase.Struct(hips_exposures=exp_hpx_dict)
+
+    @classmethod
+    def build_quantum_graph_cli(cls, argv):
+        """A command-line interface entry point to `build_quantum_graph`.
+        This method provides the implementation for the
+        ``build-high-resolution-hips-qg`` script.
+
+        Parameters
+        ----------
+        argv : `Sequence` [ `str` ]
+            Command-line arguments (e.g. ``sys.argv[1:]``).
+        """
+        parser = cls._make_cli_parser()
+
+        args = parser.parse_args(argv)
+
+        if args.subparser_name is None:
+            parser.print_help()
+            sys.exit(1)
+
+        pipeline = pipeBase.Pipeline.from_uri(args.pipeline)
+        expanded_pipeline = list(pipeline.toExpandedPipeline())
+
+        if len(expanded_pipeline) != 1:
+            raise RuntimeError(f"Pipeline file {args.pipeline} may only contain one task.")
+
+        (task_def,) = expanded_pipeline
+
+        butler = Butler(args.butler_config, collections=args.input)
+
+        if args.subparser_name == 'segment':
+            # Do the segmentation
+            hpix_pixelization = HealpixPixelization(level=args.hpix_build_order)
+            dataset = task_def.connections.coadd_exposure_handles.name
+            data_ids = set(butler.registry.queryDataIds("tract", datasets=dataset).expanded())
+            region_pixels = []
+            for data_id in data_ids:
+                region = data_id.region
+                pixel_range = hpix_pixelization.envelope(region)
+                for r in pixel_range.ranges():
+                    region_pixels.extend(range(r[0], r[1]))
+            indices = np.unique(region_pixels)
+
+            print(f"Pixels to run at HEALPix order --hpix_build_order {args.hpix_build_order}:")
+            for pixel in indices:
+                print(pixel)
+
+        elif args.subparser_name == 'build':
+            # Build the quantum graph.
+
+            build_ranges = RangeSet(sorted(args.pixels))
+
+            qg = cls.build_quantum_graph(
+                task_def,
+                butler.registry,
+                args.hpix_build_order,
+                build_ranges,
+                where=args.where,
+                collections=args.input
+            )
+            qg.saveUri(args.save_qgraph)
+
+    @classmethod
+    def _make_cli_parser(cls):
+        """Make the command-line parser.
+
+        Returns
+        -------
+        parser : `argparse.ArgumentParser`
+        """
+        parser = argparse.ArgumentParser(
+            description=(
+                "Build a QuantumGraph that runs HighResolutionHipsTask on existing coadd datasets."
+            ),
+        )
+        subparsers = parser.add_subparsers(help='sub-command help', dest='subparser_name')
+
+        parser_segment = subparsers.add_parser('segment',
+                                               help='Determine survey segments for workflow.')
+        parser_build = subparsers.add_parser('build',
+                                             help='Build quantum graph for HighResolutionHipsTask')
+
+        for sub in [parser_segment, parser_build]:
+            # These arguments are in common.
+            sub.add_argument(
+                "-b",
+                "--butler-config",
+                type=str,
+                help="Path to data repository or butler configuration.",
+                required=True,
+            )
+            sub.add_argument(
+                "-p",
+                "--pipeline",
+                type=str,
+                help="Pipeline file, limited to one task.",
+                required=True,
+            )
+            sub.add_argument(
+                "-i",
+                "--input",
+                type=str,
+                nargs="+",
+                help="Input collection(s) to search for coadd exposures.",
+                required=True,
+            )
+            sub.add_argument(
+                "-o",
+                "--hpix_build_order",
+                type=int,
+                default=1,
+                help="HEALPix order to segment sky for building quantum graph files.",
+            )
+            sub.add_argument(
+                "-w",
+                "--where",
+                type=str,
+                default=None,
+                help="Data ID expression used when querying for input coadd datasets.",
+            )
+
+        parser_build.add_argument(
+            "-q",
+            "--save-qgraph",
+            type=str,
+            help="Output filename for QuantumGraph.",
+            required=True,
+        )
+        parser_build.add_argument(
+            "-P",
+            "--pixels",
+            type=int,
+            nargs="+",
+            help="Pixels at --hpix_build_order to generate quantum graph.",
+            required=True,
+        )
+
+        return parser
 
     @classmethod
     def build_quantum_graph(
@@ -304,7 +458,8 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
         output_dataset_type = dataset_types.outputs[task_def.connections.hips_exposures.name]
         incidental_output_dataset_types = dataset_types.outputs.copy()
         incidental_output_dataset_types.remove(output_dataset_type)
-        (hpx_output_dimension,) = (d for d in output_dataset_type.dimensions if d.name != "band")
+        (hpx_output_dimension,) = (d for d in output_dataset_type.dimensions
+                                   if isinstance(d, SkyPixDimension))
 
         constraint_hpx_pixelization = registry.dimensions[f"healpix{constraint_order}"].pixelization
         common_skypix_name = registry.dimensions.commonSkyPix.name
