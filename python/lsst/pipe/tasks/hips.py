@@ -247,3 +247,172 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
             )
 
         return pipeBase.Struct(hips_exposures=exp_hpx_dict)
+
+    @classmethod
+    def build_quantum_graph(
+        cls,
+        task_def,
+        registry,
+        constraint_order,
+        constraint_ranges,
+        where=None,
+        collections=None,
+    ):
+        """Generate a `QuantumGraph` for running just this task.
+
+        This is a temporary workaround for incomplete butler query support for
+        HEALPix dimensions.
+
+        Parameters
+        ----------
+        task_def : `lsst.pipe.base.TaskDef`
+            Task definition.
+        registry : `lsst.daf.butler.Registry`
+            Client for the butler database.  May be read-only.
+        constraint_order : `int`
+            HEALPix order used to contrain which quanta are generated, via
+            ``constraint_indices``.  This should be a coarser grid (smaller
+            order) than the order used for the task's quantum and output data
+            IDs, and ideally something between the spatial scale of a patch or
+            the data repository's "common skypix" system (usually ``htm7``).
+        constraint_ranges : `lsst.sphgeom.RangeSet`
+            RangeSet which describes constraint pixels (HEALPix NEST, with order
+            constraint_order) to constrain generated quanta.
+        where : `str`, optional
+            A boolean `str` expression of the form accepted by
+            `Registry.queryDatasets` to constrain input datasets.  This may
+            contain a constraint on tracts, patches, or bands, but not HEALPix
+            indices.  Constraints on tracts and patches should usually be
+            unnecessary, however - existing coadds that overlap the given
+            HEALpix indices will be selected without such a constraint, and
+            providing one may reject some that should normally be included.
+        collections : `str` or `Iterable` [ `str` ], optional
+            Collection or collections to search for input datasets, in order.
+            If not provided, ``registry.defaults.collections`` will be
+            searched.
+        """
+        config = task_def.config
+
+        dataset_types = pipeBase.PipelineDatasetTypes.fromPipeline(pipeline=[task_def], registry=registry)
+        # Since we know this is the only task in the pipeline, we know there
+        # is only one overall input and one overall output.
+        (input_dataset_type,) = dataset_types.inputs
+
+        # Extract the main output dataset type (which needs multiple
+        # DatasetRefs, and tells us the output HPX level), and make a set of
+        # what remains for more mechanical handling later.
+        output_dataset_type = dataset_types.outputs[task_def.connections.hips_exposures.name]
+        incidental_output_dataset_types = dataset_types.outputs.copy()
+        incidental_output_dataset_types.remove(output_dataset_type)
+        (hpx_output_dimension,) = (d for d in output_dataset_type.dimensions if d.name != "band")
+
+        constraint_hpx_pixelization = registry.dimensions[f"healpix{constraint_order}"].pixelization
+        common_skypix_name = registry.dimensions.commonSkyPix.name
+        common_skypix_pixelization = registry.dimensions.commonSkyPix.pixelization
+
+        # We will need all the pixels at the quantum resolution as well
+        task_dimensions = registry.dimensions.extract(task_def.connections.dimensions)
+        (hpx_dimension,) = (d for d in task_dimensions if d.name != "band")
+        hpx_pixelization = hpx_dimension.pixelization
+
+        if hpx_pixelization.level < constraint_order:
+            raise ValueError(f"Quantum order {hpx_pixelization.level} must be < {constraint_order}")
+        hpx_ranges = constraint_ranges.scaled(4**(hpx_pixelization.level - constraint_order))
+
+        # We can be generous in looking for pixels here, because we constraint by actual
+        # patch regions below.
+        common_skypix_ranges = RangeSet()
+        for begin, end in constraint_ranges:
+            for hpx_index in range(begin, end):
+                constraint_hpx_region = constraint_hpx_pixelization.pixel(hpx_index)
+                common_skypix_ranges |= common_skypix_pixelization.envelope(constraint_hpx_region)
+
+        # To keep the query from getting out of hand (and breaking) we simplify until we have fewer
+        # than 100 ranges which seems to work fine.
+        for simp in range(1, 10):
+            if len(common_skypix_ranges) < 100:
+                break
+            common_skypix_ranges.simplify(simp)
+
+        # Use that RangeSet to assemble a WHERE constraint expression.  This
+        # could definitely get too big if the "constraint healpix" order is too
+        # fine.
+        where_terms = []
+        bind = {}
+        for n, (begin, end) in enumerate(common_skypix_ranges):
+            stop = end - 1  # registry range syntax is inclusive
+            if begin == stop:
+                where_terms.append(f"{common_skypix_name} = cpx{n}")
+                bind[f"cpx{n}"] = begin
+            else:
+                where_terms.append(f"({common_skypix_name} >= cpx{n}a AND {common_skypix_name} <= cpx{n}b)")
+                bind[f"cpx{n}a"] = begin
+                bind[f"cpx{n}b"] = stop
+        if where is None:
+            where = " OR ".join(where_terms)
+        else:
+            where = f"({where}) AND ({' OR '.join(where_terms)})"
+        # Query for input datasets with this constraint, and ask for expanded
+        # data IDs because we want regions.  Immediately group this by patch so
+        # we don't do later geometric stuff n_bands more times than we need to.
+        input_refs = registry.queryDatasets(
+            input_dataset_type,
+            where=where,
+            findFirst=True,
+            collections=collections,
+            bind=bind
+        ).expanded()
+        inputs_by_patch = defaultdict(set)
+        patch_dimensions = registry.dimensions.extract(["patch"])
+        for input_ref in input_refs:
+            inputs_by_patch[input_ref.dataId.subset(patch_dimensions)].add(input_ref)
+        if not inputs_by_patch:
+            message_body = '\n'.join(input_refs.explain_no_results())
+            raise RuntimeError(f"No inputs found:\n{message_body}")
+
+        # Iterate over patches and compute the set of output healpix pixels
+        # that overlap each one.  Use that to associate inputs with output
+        # pixels, but only for the output pixels we've already identified.
+        inputs_by_hpx = defaultdict(set)
+        for patch_data_id, input_refs_for_patch in inputs_by_patch.items():
+            patch_hpx_ranges = hpx_pixelization.envelope(patch_data_id.region)
+            for begin, end in patch_hpx_ranges & hpx_ranges:
+                for hpx_index in range(begin, end):
+                    inputs_by_hpx[hpx_index].update(input_refs_for_patch)
+        # Iterate over the dict we just created and create the actual quanta.
+        quanta = []
+        for hpx_index, input_refs_for_hpx_index in inputs_by_hpx.items():
+            # Group inputs by band.
+            input_refs_by_band = defaultdict(list)
+            for input_ref in input_refs_for_hpx_index:
+                input_refs_by_band[input_ref.dataId["band"]].append(input_ref)
+            # Iterate over bands to make quanta.
+            for band, input_refs_for_band in input_refs_by_band.items():
+                data_id = registry.expandDataId({hpx_dimension: hpx_index, "band": band})
+
+                hpx_pixel_ranges = RangeSet(hpx_index)
+                hpx_output_ranges = hpx_pixel_ranges.scaled(4**(config.hips_order - hpx_pixelization.level))
+                output_data_ids = []
+                for begin, end in hpx_output_ranges:
+                    for hpx_output_index in range(begin, end):
+                        output_data_ids.append(
+                            registry.expandDataId({hpx_output_dimension: hpx_output_index, "band": band})
+                        )
+                outputs = {dt: [DatasetRef(dt, data_id)] for dt in incidental_output_dataset_types}
+                outputs[output_dataset_type] = [DatasetRef(output_dataset_type, data_id)
+                                                for data_id in output_data_ids]
+                quanta.append(
+                    Quantum(
+                        taskName=task_def.taskName,
+                        taskClass=task_def.taskClass,
+                        dataId=data_id,
+                        initInputs={},
+                        inputs={input_dataset_type: input_refs_for_band},
+                        outputs=outputs,
+                    )
+                )
+
+        if len(quanta) == 0:
+            raise RuntimeError("Given constraints yielded empty quantum graph.")
+
+        return pipeBase.QuantumGraph(quanta={task_def: quanta})
