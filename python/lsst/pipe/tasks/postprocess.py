@@ -828,9 +828,15 @@ class TransformCatalogBaseConfig(pipeBase.PipelineTaskConfig,
         default=None,
         optional=True
     )
+    columnsFromDataId = pexConfig.ListField(
+        dtype=str,
+        default=None,
+        optional=True,
+        doc="Columns to extract from the dataId",
+    )
 
 
-class TransformCatalogBaseTask(CmdLineTask, pipeBase.PipelineTask):
+class TransformCatalogBaseTask(pipeBase.PipelineTask):
     """Base class for transforming/standardizing a catalog
 
     by applying functors that convert units and apply calibrations.
@@ -944,15 +950,6 @@ class TransformCatalogBaseTask(CmdLineTask, pipeBase.PipelineTask):
         outputs = pipeBase.Struct(outputCatalog=result)
         butlerQC.put(outputs, outputRefs)
 
-    def runDataRef(self, dataRef):
-        parq = dataRef.get()
-        if self.funcs is None:
-            raise ValueError("config.functorFile is None. "
-                             "Must be a valid path to yaml in order to run as a CommandlineTask.")
-        df = self.run(parq, funcs=self.funcs, dataId=dataRef.dataId)
-        self.write(df, dataRef)
-        return df
-
     def run(self, parq, funcs=None, dataId=None, band=None):
         """Do postprocessing calculations
 
@@ -993,9 +990,12 @@ class TransformCatalogBaseTask(CmdLineTask, pipeBase.PipelineTask):
     def transform(self, band, parq, funcs, dataId):
         analysis = self.getAnalysis(parq, funcs=funcs, band=band)
         df = analysis.df
-        if dataId is not None:
-            for key, value in dataId.items():
-                df[str(key)] = value
+        if dataId and self.config.columnsFromDataId:
+            for key in self.config.columnsFromDataId:
+                if key in dataId:
+                    df[str(key)] = dataId[key]
+                else:
+                    raise ValueError(f"'{key}' in config.columnsFromDataId not found in dataId: {dataId}")
 
         if self.config.primaryKey:
             if df.index.name != self.config.primaryKey and self.config.primaryKey in df:
@@ -1095,6 +1095,7 @@ class TransformObjectCatalogConfig(TransformCatalogBaseConfig,
         super().setDefaults()
         self.functorFile = os.path.join('$PIPE_TASKS_DIR', 'schemas', 'Object.yaml')
         self.primaryKey = 'objectId'
+        self.columnsFromDataId = ['tract', 'patch']
         self.goodFlags = ['calib_astrometry_used',
                           'calib_photometry_reserved',
                           'calib_photometry_used',
@@ -1116,18 +1117,6 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
     """
     _DefaultName = "transformObjectCatalog"
     ConfigClass = TransformObjectCatalogConfig
-
-    # Used by Gen 2 runDataRef only:
-    inputDataset = 'deepCoadd_obj'
-    outputDataset = 'objectTable'
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", cls.inputDataset,
-                               ContainerClass=CoaddDataIdContainer,
-                               help="data ID, e.g. --id tract=12345 patch=1,2")
-        return parser
 
     def run(self, parq, funcs=None, dataId=None, band=None):
         # NOTE: band kwarg is ignored here.
@@ -1188,8 +1177,8 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
             noDupCols = list(set.union(*[set(v.noDupCols) for v in analysisDict.values()]))
             if self.config.primaryKey in noDupCols:
                 noDupCols.remove(self.config.primaryKey)
-            if dataId is not None:
-                noDupCols += list(dataId.keys())
+            if dataId and self.config.columnsFromDataId:
+                noDupCols += self.config.columnsFromDataId
             df = flattenFilters(df, noDupCols=noDupCols, camelCase=self.config.camelCase,
                                 inputBands=inputBands)
 
@@ -1326,6 +1315,7 @@ class TransformSourceTableConfig(TransformCatalogBaseConfig,
         super().setDefaults()
         self.functorFile = os.path.join('$PIPE_TASKS_DIR', 'schemas', 'Source.yaml')
         self.primaryKey = 'sourceId'
+        self.columnsFromDataId = ['visit', 'detector', 'band', 'physical_filter']
 
 
 class TransformSourceTableTask(TransformCatalogBaseTask):
@@ -1333,26 +1323,6 @@ class TransformSourceTableTask(TransformCatalogBaseTask):
     """
     _DefaultName = "transformSourceTable"
     ConfigClass = TransformSourceTableConfig
-
-    inputDataset = 'source'
-    outputDataset = 'sourceTable'
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", datasetType=cls.inputDataset,
-                               level="sensor",
-                               help="data ID, e.g. --id visit=12345 ccd=0")
-        return parser
-
-    def runDataRef(self, dataRef):
-        """Override to specify band label to run()."""
-        parq = dataRef.get()
-        funcs = self.getFunctors()
-        band = dataRef.get("calexp_filterLabel", immediate=True).bandLabel
-        df = self.run(parq, funcs=funcs, dataId=dataRef.dataId, band=band)
-        self.write(df, dataRef)
-        return df
 
 
 class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
@@ -1996,6 +1966,7 @@ class TransformForcedSourceTableConfig(TransformCatalogBaseConfig,
     def setDefaults(self):
         super().setDefaults()
         self.functorFile = os.path.join('$PIPE_TASKS_DIR', 'schemas', 'ForcedSource.yaml')
+        self.columnsFromDataId = ['tract', 'patch']
 
 
 class TransformForcedSourceTableTask(TransformCatalogBaseTask):
