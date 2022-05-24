@@ -42,6 +42,8 @@ from .computeExposureSummaryStats import ComputeExposureSummaryStatsTask
 from lsst.pex.exceptions import LengthError
 from lsst.utils.timer import timeMethod
 
+from my_utils import splitTime
+
 __all__ = ["CharacterizeImageConfig", "CharacterizeImageTask"]
 
 
@@ -341,11 +343,13 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        splitTime("Start of imChar runQuantum:")
         inputs = butlerQC.get(inputRefs)
         if 'exposureIdInfo' not in inputs.keys():
             inputs['exposureIdInfo'] = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "visit_detector")
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
+        splitTime("End of imChar runQuantum (finished putting):")
 
     def __init__(self, butler=None, refObjLoader=None, schema=None, **kwargs):
         """!Construct a CharacterizeImageTask
@@ -479,6 +483,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         - psfCellSet: spatial cells of PSF candidates (an lsst.afw.math.SpatialCellSet)
         """
         self._frame = self._initialFrame  # reset debug display frame
+        splitTime("Start of imChar run():")
 
         if not self.config.doMeasurePsf and not exposure.hasPsf():
             self.log.info("CharacterizeImageTask initialized with 'simple' PSF.")
@@ -492,6 +497,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
         psfIterations = self.config.psfIterations if self.config.doMeasurePsf else 1
         for i in range(psfIterations):
+            splitTime(f"Start of imChar psf iteration {i}:")
             dmeRes = self.detectMeasureAndEstimatePsf(
                 exposure=exposure,
                 exposureIdInfo=exposureIdInfo,
@@ -512,18 +518,24 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         self.display("psf", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 
         # perform final repair with final PSF
+        splitTime("Start of CR repair:")
         self.repair.run(exposure=dmeRes.exposure)
+        splitTime("End of CR repair:")
         self.display("repair", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 
         # perform final measurement with final PSF, including measuring and applying aperture correction,
         # if wanted
+        splitTime("Start of imChar source measurement:")
         self.measurement.run(measCat=dmeRes.sourceCat, exposure=dmeRes.exposure,
                              exposureId=exposureIdInfo.expId)
+        splitTime("End of imChar source measurement:")
         if self.config.doApCorr:
             apCorrMap = self.measureApCorr.run(exposure=dmeRes.exposure, catalog=dmeRes.sourceCat).apCorrMap
             dmeRes.exposure.getInfo().setApCorrMap(apCorrMap)
             self.applyApCorr.run(catalog=dmeRes.sourceCat, apCorrMap=exposure.getInfo().getApCorrMap())
+        splitTime("End of imChar apCorr:")
         self.catalogCalculation.run(dmeRes.sourceCat)
+        splitTime("End of catalogCalculation:")
 
         self.display("measure", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 

@@ -43,6 +43,7 @@ from .fakes import BaseFakeSourcesTask
 from .photoCal import PhotoCalTask
 from .computeExposureSummaryStats import ComputeExposureSummaryStatsTask
 
+from my_utils import splitTime
 
 __all__ = ["CalibrateConfig", "CalibrateTask"]
 
@@ -629,8 +630,10 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         return calRes
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        splitTime("Entry to calibrate runQuantum:")
         inputs = butlerQC.get(inputRefs)
         inputs['exposureIdInfo'] = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "visit_detector")
+        splitTime("Finished getting calibrate products:")
 
         if self.config.doAstrometry:
             refObjLoader = ReferenceObjectLoader(dataIds=[ref.datasetRef.dataId
@@ -648,6 +651,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             self.photoCal.match.setRefObjLoader(photoRefObjLoader)
 
         outputs = self.run(**inputs)
+        splitTime("Finished running calibrate:")
 
         if self.config.doWriteMatches and self.config.doAstrometry:
             normalizedMatches = afwTable.packMatches(outputs.astromMatches)
@@ -657,6 +661,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 outputs.matchesDenormalized = denormMatches
             outputs.matches = normalizedMatches
         butlerQC.put(outputs, outputRefs)
+        splitTime("Finished putting calibrate outputs:")
 
     @timeMethod
     def run(self, exposure, exposureIdInfo=None, background=None,
@@ -691,6 +696,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
           solver
         """
         # detect, deblend and measure sources
+        splitTime("Entry to calibrate run method:")
         if exposureIdInfo is None:
             exposureIdInfo = ExposureIdInfo()
 
@@ -700,13 +706,17 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         table = SourceTable.make(self.schema, sourceIdFactory)
         table.setMetadata(self.algMetadata)
 
+        splitTime("Starting calibrate detection:")
         detRes = self.detection.run(table=table, exposure=exposure,
                                     doSmooth=True)
+        splitTime("Finished calibrate detection:")
+
         sourceCat = detRes.sources
         if detRes.fpSets.background:
             for bg in detRes.fpSets.background:
                 background.append(bg)
         if self.config.doSkySources:
+            splitTime("Starting sky sources:")
             skySourceFootprints = self.skySources.run(mask=exposure.mask, seed=exposureIdInfo.expId)
             if skySourceFootprints:
                 for foot in skySourceFootprints:
@@ -714,19 +724,24 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                     s.setFootprint(foot)
                     s.set(self.skySourceKey, True)
         if self.config.doDeblend:
+            splitTime("Starting deblending:")
             self.deblend.run(exposure=exposure, sources=sourceCat)
+        splitTime("Starting calibrate measurement:")
         self.measurement.run(
             measCat=sourceCat,
             exposure=exposure,
             exposureId=exposureIdInfo.expId
         )
         if self.config.doApCorr:
+            splitTime("Starting calibrate apCorr:")
             self.applyApCorr.run(
                 catalog=sourceCat,
                 apCorrMap=exposure.getInfo().getApCorrMap()
             )
+        splitTime("Starting calibrate catalogCalculation:")
         self.catalogCalculation.run(sourceCat)
 
+        splitTime("Starting calibrate setPrimaryFlags:")
         self.setPrimaryFlags.run(sourceCat)
 
         if icSourceCat is not None and \
@@ -746,6 +761,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         astromMatches = None
         matchMeta = None
         if self.config.doAstrometry:
+            splitTime("Starting calibrate astrometry:")
             try:
                 astromRes = self.astrometry.run(
                     exposure=exposure,
@@ -761,6 +777,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
         # compute photometric calibration
         if self.config.doPhotoCal:
+            splitTime("Starting calibrate photocal:")
             try:
                 photoRes = self.photoCal.run(exposure, sourceCat=sourceCat, expId=exposureIdInfo.expId)
                 exposure.setPhotoCalib(photoRes.photoCalib)
@@ -775,6 +792,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                                  "(%s): attempting to proceed", e)
                 self.setMetadata(exposure=exposure, photoRes=None)
 
+        splitTime("Starting calibrate postCalibrationMeasurement:")
         self.postCalibrationMeasurement.run(
             measCat=sourceCat,
             exposure=exposure,
@@ -782,6 +800,7 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         )
 
         if self.config.doComputeSummaryStats:
+            splitTime("Starting calibrate computeSummaryStats:")
             summary = self.computeSummaryStats.run(exposure=exposure,
                                                    sources=sourceCat,
                                                    background=background)
