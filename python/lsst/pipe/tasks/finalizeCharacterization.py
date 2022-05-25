@@ -169,7 +169,23 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
                                      'slot_Centroid_flag',
                                      'base_GaussianFlux_flag']
 
-        self.measure_ap_corr.sourceSelector['flagged'].field = 'calib_psf_used'
+        # Configure aperture correction to select only high s/n sources (that
+        # were used in the psf modeling) to avoid background problems when
+        # computing the aperture correction map.
+        self.measure_ap_corr.sourceSelector = 'science'
+
+        ap_selector = self.measure_ap_corr.sourceSelector['science']
+        ap_selector.doFluxLimit = False
+        ap_selector.doFlags = True
+        ap_selector.doUnresolved = False
+        ap_selector.doSignalToNoise = True
+        ap_selector.doIsolated = False
+        ap_selector.flags.good = ['calib_psf_used']
+        ap_selector.flags.bad = []
+        ap_selector.signalToNoise.minimum = 200.0
+        ap_selector.signalToNoise.maximum = None
+        ap_selector.signalToNoise.fluxField = 'base_PsfFlux_instFlux'
+        ap_selector.signalToNoise.errField = 'base_PsfFlux_instFluxErr'
 
         import lsst.meas.modelfit  # noqa: F401
         import lsst.meas.extensions.photometryKron  # noqa: F401
