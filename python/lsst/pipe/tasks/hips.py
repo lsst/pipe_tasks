@@ -27,6 +27,7 @@ from collections import defaultdict
 import numpy as np
 import argparse
 import sys
+import re
 
 from lsst.sphgeom import RangeSet, HealpixPixelization
 from lsst.utils.timer import timeMethod
@@ -141,11 +142,43 @@ class HighResolutionHipsConfig(pipeBase.PipelineTaskConfig,
         self.warp.warpingKernelName = "lanczos5"
 
 
+class HipsTaskNameDescriptor:
+    """Descriptor used create a DefaultName that matches the order of
+    the defined dimensions in the connections class.
+
+    Parameters
+    ----------
+    prefix : `str`
+        The prefix of the Default name, to which the order will be
+        appended.
+    """
+    def __init__(self, prefix):
+        # create a defaultName template
+        self._defaultName = f"{prefix}{{}}"
+        self._order = None
+
+    def __get__(self, obj, klass=None):
+        if klass is None:
+            raise RuntimeError(
+                "HipsTaskDescriptor was used in an unexpected context"
+            )
+        if self._order is None:
+            klassDimensions = klass.ConfigClass.ConnectionsClass.dimensions
+            for dim in klassDimensions:
+                if (match := re.match(r"^healpix(\d*)$", dim)) is not None:
+                    self._order = int(match.group(1))
+                    break
+            else:
+                raise RuntimeError(
+                    "Could not find healpix dimension in connections class"
+                )
+        return self._defaultName.format(self._order)
+
+
 class HighResolutionHipsTask(pipeBase.PipelineTask):
-    """Task for making high resolution HIPS images."""
+    """Task for making high resolution HiPS images."""
     ConfigClass = HighResolutionHipsConfig
-    # The name should include the quantum healpix order.
-    _DefaultName = "highResolutionHips9"
+    _DefaultName = HipsTaskNameDescriptor("highResolutionHips")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
