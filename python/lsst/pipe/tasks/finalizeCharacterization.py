@@ -668,6 +668,9 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
                              visit, detector, e)
             return None, None, measured_src
 
+        # Set the psf in the exposure for measurement/aperture corrections.
+        exposure.setPsf(psf)
+
         # At this point, we need to transfer the psf used flag from the selection
         # catalog to the measurement catalog.
         matched_selected, matched_measured = esutil.numpy_util.match(
