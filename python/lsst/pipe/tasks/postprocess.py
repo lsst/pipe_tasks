@@ -398,17 +398,17 @@ class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
 
     doReevaluatePhotoCalib = pexConfig.Field(
         dtype=bool,
-        default=False,
+        default=True,
         doc=("Add or replace local photoCalib columns from either the calexp.photoCalib or jointcal/FGCM")
     )
     doReevaluateSkyWcs = pexConfig.Field(
         dtype=bool,
-        default=False,
+        default=True,
         doc=("Add or replace local WCS columns from either the calexp.wcs or  or jointcal")
     )
     doApplyExternalPhotoCalib = pexConfig.Field(
         dtype=bool,
-        default=False,
+        default=True,
         doc=("Whether to apply external photometric calibration via an "
              "`lsst.afw.image.PhotoCalib` object. Uses the "
              "``externalPhotoCalibName`` field to determine which calibration "
@@ -416,7 +416,7 @@ class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
     )
     doApplyExternalSkyWcs = pexConfig.Field(
         dtype=bool,
-        default=False,
+        default=True,
         doc=("Whether to apply external astrometric calibration via an "
              "`lsst.afw.geom.SkyWcs` object. Uses ``externalSkyWcsName`` "
              "field to determine which calibration to load."),
