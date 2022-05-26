@@ -249,10 +249,17 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
             src.setFootprint(foot)
             src.set("merge_peak_sky", True)
         # deblend
-        result, fluxResult = deblendTask.run(coadds, catalog)
+        catalog, modelData = deblendTask.run(coadds, catalog)
+        # Attach footprints to the catalog
+        modelData.updateCatalogFootprints(
+            catalog=catalog,
+            band="test",
+            psfModel=coadds["test"].getPsf(),
+            redistributeImage=None,
+        )
         # measure
-        measureTask.run(result["test"], self.exposure)
-        outputCat = result["test"]
+        measureTask.run(catalog, self.exposure)
+        outputCat = catalog
         # Set the primary flags
         setPrimaryTask.run(outputCat, skyMap=skyMap, tractInfo=tractInfo, patchInfo=patchInfo)
 
