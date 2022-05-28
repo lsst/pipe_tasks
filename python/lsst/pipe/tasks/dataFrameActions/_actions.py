@@ -2,7 +2,7 @@ from __future__ import annotations
 
 __all__ = ("SingleColumnAction", "MultiColumnAction", "CoordColumn", "MagColumnDN", "SumColumns", "AddColumn",
            "DivideColumns", "SubtractColumns", "MultiplyColumns", "FractionalDifferenceColumns",
-           "MagColumnNanoJansky",)
+           "MagColumnNanoJansky", "DiffOfDividedColumns", "PercentDiffOfDividedColumns",)
 
 from typing import Iterable
 
@@ -136,6 +136,27 @@ together, subtract one and return the result.
 FractionalDifferenceColumns = makeColumnExpressionAction("FractionalDifferenceColumns", "(colA-colB)/colB",
                                                          exprDefaults={"colA": SingleColumnAction,
                                                                        "colB": SingleColumnAction},
+                                                         docstring=_docs)
+
+_docs = """This is a `MultiColumnAction` that is designed to subtract the division of two columns
+from the division of two other columns and return the result (i.e. colA1/colB1 - colA2/colB2).
+"""
+DiffOfDividedColumns = makeColumnExpressionAction("DiffOfDividedColumns", "(colA1/colB1)-(colA2/colB2)",
+                                                  exprDefaults={"colA1": SingleColumnAction,
+                                                                "colB1": SingleColumnAction,
+                                                                "colA2": SingleColumnAction,
+                                                                "colB2": SingleColumnAction},
+                                                  docstring=_docs)
+_docs = """This is a `MultiColumnAction` that is designed to compute the percent difference
+between the division of two columns and the division of two other columns and return the result
+(i.e. 100*((colA1/colB1 - colA2/colB2)/(colA1/colB1))).
+"""
+PercentDiffOfDividedColumns = makeColumnExpressionAction("PercentDiffOfDividedColumns",
+                                                         "100*(((colA1/colB1)-(colA2/colB2))/(colA1/colB1))",
+                                                         exprDefaults={"colA1": SingleColumnAction,
+                                                                       "colB1": SingleColumnAction,
+                                                                       "colA2": SingleColumnAction,
+                                                                       "colB2": SingleColumnAction},
                                                          docstring=_docs)
 
 
