@@ -232,13 +232,11 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
             "base_PixelFlags",
             "base_SdssCentroid",
             "ext_shapeHSM_HsmSourceMoments",
-            "ext_shapeHSM_HsmPsfMoments",
             "base_GaussianFlux",
             "base_PsfFlux",
             "base_CircularApertureFlux",
         ]
         self.measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
-        self.measurement.slots.psfShape = "ext_shapeHSM_HsmPsfMoments"
 
     def validate(self):
         if self.doApCorr and not self.measurePsf:
