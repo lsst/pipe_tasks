@@ -112,7 +112,7 @@ class CoaddTempExpInputRecorder:
             self._setExposureInfoInRecord(exposure=calExp, record=record)
             if self.task.config.saveCcdWeights:
                 record.setD(self.task.ccdWeightKey, 1.0)  # No weighting or overlap when warping
-            record.set(self.task.ccdFilterKey, calExp.getFilterLabel().physicalLabel)
+            record.set(self.task.ccdFilterKey, calExp.getFilter().physicalLabel)
 
     def finish(self, coaddTempExp, nGoodPix=None):
         """Finish creating the CoaddInputs for a CoaddTempExp.
@@ -216,7 +216,7 @@ class CoaddInputRecorderTask(pipeBase.Task):
         outputVisitRecord = coaddInputs.visits.addNew()
         outputVisitRecord.assign(inputVisitRecord)
         outputVisitRecord.setD(self.visitWeightKey, weight)
-        outputVisitRecord.set(self.visitFilterKey, coaddTempExp.getFilterLabel().physicalLabel)
+        outputVisitRecord.set(self.visitFilterKey, coaddTempExp.getFilter().physicalLabel)
         for inputCcdRecord in tempExpInputs.ccds:
             if inputCcdRecord.getL(self.ccdVisitKey) != inputVisitRecord.getId():
                 self.log.warning("CoaddInputs for coaddTempExp with id %d contains CCDs with visit=%d. "
@@ -226,5 +226,5 @@ class CoaddInputRecorderTask(pipeBase.Task):
             outputCcdRecord.assign(inputCcdRecord)
             if self.config.saveCcdWeights:
                 outputCcdRecord.setD(self.ccdWeightKey, weight)
-            outputCcdRecord.set(self.ccdFilterKey, coaddTempExp.getFilterLabel().physicalLabel)
+            outputCcdRecord.set(self.ccdFilterKey, coaddTempExp.getFilter().physicalLabel)
         return inputVisitRecord

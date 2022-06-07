@@ -531,7 +531,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             If ``lambdaMin`` is missing from the Mapper class of the obs package being used.
         """
         sigma2fwhm = 2.*np.sqrt(2.*np.log(2.))
-        filterLabel = templateCoadd.getFilterLabel()
+        filterLabel = templateCoadd.getFilter()
         tempExpName = self.getTempExpDatasetName(self.warpType)
         dcrShifts = []
         airmassDict = {}

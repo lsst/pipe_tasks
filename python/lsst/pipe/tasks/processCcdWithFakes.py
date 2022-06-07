@@ -736,7 +736,7 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
         if exposureIdInfo is None:
             exposureIdInfo = ExposureIdInfo()
 
-        band = exposure.getFilterLabel().bandLabel
+        band = exposure.getFilter().bandLabel
         ccdVisitMagnitudes = self.addVariablity(fakeCat, band, exposure, photoCalib, exposureIdInfo)
 
         self.insertFakes.run(fakeCat, exposure, wcs, photoCalib)

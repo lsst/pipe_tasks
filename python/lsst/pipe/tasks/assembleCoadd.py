@@ -898,7 +898,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         # Set the coadd FilterLabel to the band of the first input exposure:
         # Coadds are calibrated, so the physical label is now meaningless.
-        coaddExposure.setFilterLabel(afwImage.FilterLabel(tempExpList[0].getFilterLabel().bandLabel))
+        coaddExposure.setFilter(afwImage.FilterLabel(tempExpList[0].getFilter().bandLabel))
         coaddInputs = coaddExposure.getInfo().getCoaddInputs()
         coaddInputs.ccds.reserve(numCcds)
         coaddInputs.visits.reserve(len(tempExpList))

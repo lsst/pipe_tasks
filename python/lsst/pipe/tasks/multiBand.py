@@ -1248,7 +1248,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         results = Struct()
 
         if self.config.doMatchSources:
-            matchResult = self.match.run(sources, exposure.getInfo().getFilterLabel().bandLabel)
+            matchResult = self.match.run(sources, exposure.getInfo().getFilter().bandLabel)
             matches = afwTable.packMatches(matchResult.matches)
             matches.table.setMetadata(matchResult.matchMeta)
             results.matchResult = matches

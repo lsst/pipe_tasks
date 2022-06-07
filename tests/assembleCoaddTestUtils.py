@@ -425,7 +425,7 @@ class MockCoaddTestData:
         tempExp = rawExposure.clone()
         tempExp.setWcs(self.wcs)
 
-        tempExp.setFilterLabel(self.filterLabel)
+        tempExp.setFilter(self.filterLabel)
         tempExp.setPhotoCalib(self.photoCalib)
         tempExp.getInfo().setVisitInfo(visitInfo)
         tempExp.getInfo().setDetector(self.detector)
