@@ -371,6 +371,13 @@ class InsertFakesConfig(PipelineTaskConfig,
         default="disk_n",
     )
 
+    bulge_disk_flux_ratio_col = pexConfig.Field(
+        doc="Source catalog column name for the bulge/disk flux ratio.  See "
+            "also: ``bulge_flux_fraction_col``.",
+        dtype=str,
+        default="bulge_disk_flux_ratio",
+    )
+
     mag_col = pexConfig.Field(
         doc="Source catalog column name template for magnitudes, in the format "
             "``filter name``_mag_col.  E.g., if this config variable is set to "
@@ -382,7 +389,14 @@ class InsertFakesConfig(PipelineTaskConfig,
 
     bulge_flux_fraction_col = pexConfig.Field(
         doc="Source catalog column name for fraction of flux in bulge "
-            "component.",
+            "component, in the format ``filter name``_bulge_flux_fraction. "
+            "E.g., if this config variable is set to ``%s_bulge_flux_fraction,"
+            "then the i-band bulge flux fraction will be search for in the "
+            "``i_bulge_flux_fraction`` column of the source catalog. "
+            "Note that if the source catalog contains both the config values "
+            "for bulge_flux_fraction_col and bulge_disk_flux_ratio_col, then "
+            "the fluxes will be determined from bulge_flux_fraction_col and "
+            "the bulge_disk_flux_ratio_col column will be ignored.",
         dtype=str,
         default="%s_bulge_flux_fraction"
     )
@@ -407,13 +421,6 @@ class InsertFakesConfig(PipelineTaskConfig,
     )
 
     # Deprecated config variables
-
-    bulge_disk_flux_ratio_col = pexConfig.Field(
-        doc="Source catalog column name for the bulge/disk flux ratio.",
-        dtype=str,
-        default="bulge_disk_flux_ratio",
-        deprecated="Use `bulge_flux_fraction_col` instead."
-    )
 
     raColName = pexConfig.Field(
         doc="RA column name used in the fake source catalog.",
@@ -797,10 +804,11 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                     "axis ratio."
                 )
 
-            # Populate bulge_flux_fraction using either new-style with string interpolation,
-            # or old-style from b/d flux ratio.  If neither are available, fall back to
-            # deprecated behavior of bd flux ratio = 1.0, or equivalently,
-            # bulge_flux_fraction=0.5
+            # Standardize flux apportionment between bulge and disk using
+            #  `bulge_flux_fraction`.  Prefer, in order:
+            #   - `bulge_flux_fraction_col`
+            #   - `bulge_disk_flux_ratio_col`
+            #   - bd_flux_ratio = 1.0, which is equivalent to bulge_flux_fraction=0.5
             if cfg.bulge_flux_fraction_col%band in fakeCat.columns:
                 fakeCat = fakeCat.rename(
                     columns={
