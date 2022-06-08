@@ -136,6 +136,24 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
         dimensions=("tract", "patch", "band", "skymap"),
         multiple=True
     )
+    deblendedCatalog = cT.Output(
+        doc="Catalogs produced by multiband deblending",
+        name="{outputCoaddName}Coadd_deblendedCatalog",
+        storageClass="SourceCatalog",
+        dimensions=("tract", "patch", "skymap"),
+    )
+    scarletModelData = cT.Output(
+        doc="Multiband scarlet models produced by the deblender",
+        name="{outputCoaddName}Coadd_scarletModelData",
+        storageClass="ScarletModelData",
+        dimensions=("tract", "patch", "skymap"),
+    )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        # Remove unused connections.
+        # TODO: deprecate once RFC-860 passes.
+        self.outputs -= set(("fluxCatalogs", "templateCatalogs"))
 
 
 class DeblendCoaddSourcesMultiConfig(PipelineTaskConfig,
@@ -213,19 +231,11 @@ class DeblendCoaddSourcesMultiTask(DeblendCoaddSourcesBaseTask):
         inputs["idFactory"] = exposureIdInfo.makeSourceIdFactory()
         inputs["filters"] = [dRef.dataId["band"] for dRef in inputRefs.coadds]
         outputs = self.run(**inputs)
-        for outRef in outputRefs.templateCatalogs:
-            band = outRef.dataId['band']
-            if (catalog := outputs.templateCatalogs.get(band)) is not None:
-                butlerQC.put(catalog, outRef)
-
-        for outRef in outputRefs.fluxCatalogs:
-            band = outRef.dataId['band']
-            if (catalog := outputs.fluxCatalogs.get(band)) is not None:
-                butlerQC.put(catalog, outRef)
+        butlerQC.put(outputs, outputRefs)
 
     def run(self, coadds, filters, mergedDetections, idFactory):
         sources = self._makeSourceCatalog(mergedDetections, idFactory)
         multiExposure = afwImage.MultibandExposure.fromExposures(filters, coadds)
-        templateCatalogs, fluxCatalogs = self.multibandDeblend.run(multiExposure, sources)
-        retStruct = Struct(templateCatalogs=templateCatalogs, fluxCatalogs=fluxCatalogs)
+        catalog, modelData = self.multibandDeblend.run(multiExposure, sources)
+        retStruct = Struct(deblendedCatalog=catalog, scarletModelData=modelData)
         return retStruct

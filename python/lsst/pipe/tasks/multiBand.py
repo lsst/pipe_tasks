@@ -20,6 +20,7 @@
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
+import warnings
 import numpy as np
 
 from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
@@ -27,7 +28,7 @@ from lsst.coadd.utils.getGen3CoaddExposureId import getGen3CoaddExposureId
 from lsst.pipe.base import (CmdLineTask, Struct, ArgumentParser, ButlerInitializedTaskRunner,
                             PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
 import lsst.pipe.base.connectionTypes as cT
-from lsst.pex.config import Config, Field, ConfigurableField
+from lsst.pex.config import Config, Field, ConfigurableField, ChoiceField
 from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader, ScaleVarianceTask
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
@@ -590,6 +591,8 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
                                            defaultTemplates={"inputCoaddName": "deep",
                                                              "outputCoaddName": "deep",
                                                              "deblendedCatalog": "deblendedFlux"}):
+    warnings.warn("MeasureMergedCoaddSourcesConnections.defaultTemplates is deprecated and no longer used. "
+                  "Use MeasureMergedCoaddSourcesConfig.inputCatalog.")
     inputSchema = cT.InitInput(
         doc="Input schema for measure merged task produced by a deblender or detection task",
         name="{inputCoaddName}Coadd_deblendedFlux_schema",
@@ -659,6 +662,18 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "band", "skymap"),
     )
+    scarletCatalog = cT.Input(
+        doc="Catalogs produced by multiband deblending",
+        name="{inputCoaddName}Coadd_deblendedCatalog",
+        storageClass="SourceCatalog",
+        dimensions=("tract", "patch", "skymap"),
+    )
+    scarletModels = cT.Input(
+        doc="Multiband scarlet models produced by the deblender",
+        name="{inputCoaddName}Coadd_scarletModelData",
+        storageClass="ScarletModelData",
+        dimensions=("tract", "patch", "skymap"),
+    )
     outputSources = cT.Output(
         doc="Source catalog containing all the measurement information generated in this task",
         name="{outputCoaddName}Coadd_meas",
@@ -698,6 +713,15 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
             self.inputs -= set(("sourceTableHandles",))
             self.inputs -= set(("finalizedSourceTableHandles",))
 
+        if config.inputCatalog == "deblendedCatalog":
+            self.inputs -= set(("inputCatalog",))
+
+            if not config.doAddFootprints:
+                self.inputs -= set(("scarletModels",))
+        else:
+            self.inputs -= set(("deblendedCatalog"))
+            self.inputs -= set(("scarletModels",))
+
         if config.doMatchSources is False:
             self.outputs -= set(("matchResult",))
 
@@ -712,11 +736,29 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
 
     @brief Configuration parameters for the MeasureMergedCoaddSourcesTask
     """
-    inputCatalog = Field(dtype=str, default="deblendedFlux",
-                         doc=("Name of the input catalog to use."
-                              "If the single band deblender was used this should be 'deblendedFlux."
-                              "If the multi-band deblender was used this should be 'deblendedModel."
-                              "If no deblending was performed this should be 'mergeDet'"))
+    inputCatalog = ChoiceField(
+        dtype=str,
+        default="deblendedCatalog",
+        allowed={
+            "deblendedCatalog": "Output catalog from ScarletDeblendTask",
+            "deblendedFlux": "Output catalog from SourceDeblendTask",
+            "mergeDet": "The merged detections before deblending."
+        },
+        doc="The name of the input catalog.",
+    )
+    doAddFootprints = Field(dtype=bool,
+                            default=True,
+                            doc="Whether or not to add footprints to the input catalog from scarlet models. "
+                                "This should be true whenever using the multi-band deblender, "
+                                "otherwise this should be False.")
+    doConserveFlux = Field(dtype=bool, default=True,
+                           doc="Whether to use the deblender models as templates to re-distribute the flux "
+                               "from the 'exposure' (True), or to perform measurements on the deblender "
+                               "model footprints.")
+    doStripFootprints = Field(dtype=bool, default=True,
+                              doc="Whether to strip footprints from the output catalog before "
+                                  "saving to disk. "
+                                  "This is usually done when using scarlet models to save disk space.")
     measurement = ConfigurableField(target=SingleFrameMeasurementTask, doc="Source measurement")
     setPrimaryFlags = ConfigurableField(target=SetPrimaryFlagsTask, doc="Set flags for primary tract/patch")
     doPropagateFlags = Field(
@@ -992,15 +1034,37 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
         # Transform inputCatalog
         table = afwTable.SourceTable.make(self.schema, idFactory)
         sources = afwTable.SourceCatalog(table)
-        sources.extend(inputs.pop('inputCatalog'), self.schemaMapper)
+        # Load the correct input catalog
+        if "scarletCatalog" in inputs:
+            inputCatalog = inputs.pop("scarletCatalog")
+            catalogRef = inputRefs.scarletCatalog
+        else:
+            inputCatalog = inputs.pop("inputCatalog")
+            catalogRef = inputRefs.inputCatalog
+        sources.extend(inputCatalog, self.schemaMapper)
+        del inputCatalog
+        # Add the HeavyFootprints to the deblended sources
+        if self.config.doAddFootprints:
+            modelData = inputs.pop('scarletModels')
+            if self.config.doConserveFlux:
+                redistributeImage = inputs['exposure'].image
+            else:
+                redistributeImage = None
+            modelData.updateCatalogFootprints(
+                catalog=sources,
+                band=inputRefs.exposure.dataId["band"],
+                psfModel=inputs['exposure'].getPsf(),
+                redistributeImage=redistributeImage,
+                removeScarletData=True,
+            )
         table = sources.getTable()
         table.setMetadata(self.algMetadata)  # Capture algorithm metadata to write out to the source catalog.
         inputs['sources'] = sources
 
         skyMap = inputs.pop('skyMap')
-        tractNumber = inputRefs.inputCatalog.dataId['tract']
+        tractNumber = catalogRef.dataId['tract']
         tractInfo = skyMap[tractNumber]
-        patchInfo = tractInfo.getPatchInfo(inputRefs.inputCatalog.dataId['patch'])
+        patchInfo = tractInfo.getPatchInfo(catalogRef.dataId['patch'])
         skyInfo = Struct(
             skyMap=skyMap,
             tractInfo=tractInfo,
@@ -1052,6 +1116,8 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
                 inputs['ccdInputs'] = ccdInputs
 
         outputs = self.run(**inputs)
+        # Strip HeavyFootprints to save space on disk
+        sources = outputs.outputSources
         butlerQC.put(outputs, outputRefs)
 
     def runDataRef(self, patchRef, psfCache=100):
