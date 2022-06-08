@@ -92,7 +92,7 @@ class HipsTestCase(unittest.TestCase):
 
         # Check that metadata is correct
         self.assertEqual(output.hips_exposures[pixel].getPhotoCalib(), exposure.getPhotoCalib())
-        self.assertEqual(output.hips_exposures[pixel].getFilterLabel(), exposure.getFilterLabel())
+        self.assertEqual(output.hips_exposures[pixel].getFilter(), exposure.getFilter())
 
     def test_hips_double(self):
         """Test creating a HIPS image from two neighboring patches."""
@@ -192,7 +192,7 @@ class HipsTestCase(unittest.TestCase):
         exposure.image.array[:, :] = np.random.normal(scale=1.0, size=exposure.image.array.shape)
         exposure.setWcs(patch_info.wcs)
         exposure.setPhotoCalib(lsst.afw.image.PhotoCalib(calibrationMean=1.0))
-        exposure.setFilterLabel(lsst.afw.image.FilterLabel(band='i'))
+        exposure.setFilter(lsst.afw.image.FilterLabel(band='i'))
 
         return exposure
 

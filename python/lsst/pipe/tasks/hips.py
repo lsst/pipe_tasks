@@ -249,7 +249,7 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
                     # Make sure the mask planes, filter, and photocalib of the output
                     # exposure match the (first) input exposure.
                     exp_hpx_dict[pixel].mask.conformMaskPlanes(coadd_exp.mask.getMaskPlaneDict())
-                    exp_hpx_dict[pixel].setFilterLabel(coadd_exp.getFilterLabel())
+                    exp_hpx_dict[pixel].setFilter(coadd_exp.getFilter())
                     exp_hpx_dict[pixel].setPhotoCalib(coadd_exp.getPhotoCalib())
 
                 if warped.getBBox().getArea() == 0 or not np.any(np.isfinite(warped.image.array)):

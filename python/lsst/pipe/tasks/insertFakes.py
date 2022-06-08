@@ -650,7 +650,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         image.setWcs(wcs)
         image.setPhotoCalib(photoCalib)
 
-        band = image.getFilterLabel().bandLabel
+        band = image.getFilter().bandLabel
         fakeCat = self._standardizeColumns(fakeCat, band)
 
         fakeCat = self.addPixCoords(fakeCat, image)
@@ -894,7 +894,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
         gsObjects : `generator`
             A generator of tuples of `lsst.geom.SpherePoint` and `galsim.GSObject`.
         """
-        band = exposure.getFilterLabel().bandLabel
+        band = exposure.getFilter().bandLabel
         wcs = exposure.getWcs()
         photoCalib = exposure.getPhotoCalib()
 

@@ -193,7 +193,7 @@ class WriteObjectTableTask(CmdLineTask, pipeBase.PipelineTask):
         Tuple consisting of band name and a dict of catalogs, keyed by
         dataset name
         """
-        band = patchRef.get(self.config.coaddName + "Coadd_filterLabel", immediate=True).bandLabel
+        band = patchRef.get(self.config.coaddName + "Coadd_filter", immediate=True).bandLabel
         catalogDict = {}
         for dataset in self.inputDatasets:
             catalog = patchRef.get(self.config.coaddName + "Coadd_" + dataset, immediate=True)
@@ -1443,7 +1443,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         for i, dataRef in enumerate(dataRefs):
             if isGen3:
                 visitInfo = dataRef.get(component='visitInfo')
-                filterLabel = dataRef.get(component='filterLabel')
+                filterLabel = dataRef.get(component='filter')
                 summaryStats = dataRef.get(component='summaryStats')
                 detector = dataRef.get(component='detector')
                 wcs = dataRef.get(component='wcs')
@@ -1457,7 +1457,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 gen2_read_bbox = lsst.geom.BoxI(lsst.geom.PointI(0, 0), lsst.geom.PointI(1, 1))
                 exp = dataRef.get(datasetType='calexp_sub', bbox=gen2_read_bbox)
                 visitInfo = exp.getInfo().getVisitInfo()
-                filterLabel = dataRef.get("calexp_filterLabel")
+                filterLabel = dataRef.get("calexp_filter")
                 summaryStats = exp.getInfo().getSummaryStats()
                 wcs = exp.getWcs()
                 photoCalib = exp.getPhotoCalib()
