@@ -385,7 +385,12 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
             dec = star_source_cat[dec_col][use]
 
             with Matcher(ra, dec) as matcher:
-                idx = matcher.query_self(self.config.match_radius/3600., min_match=1)
+                try:
+                    # New smatch API
+                    idx = matcher.query_groups(self.config.match_radius/3600., min_match=1)
+                except AttributeError:
+                    # Old smatch API
+                    idx = matcher.query_self(self.config.match_radius/3600., min_match=1)
 
             count = len(idx)
 
@@ -457,7 +462,12 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
         with Matcher(primary_star_cat[ra_col], primary_star_cat[dec_col]) as matcher:
             # By setting min_match=2 objects that only match to themselves
             # will not be recorded.
-            idx = matcher.query_self(self.config.isolation_radius/3600., min_match=2)
+            try:
+                # New smatch API
+                idx = matcher.query_groups(self.config.isolation_radius/3600., min_match=2)
+            except AttributeError:
+                # Old smatch API
+                idx = matcher.query_self(self.config.isolation_radius/3600., min_match=2)
 
         try:
             neighbor_indices = np.concatenate(idx)
