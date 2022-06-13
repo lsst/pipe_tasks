@@ -79,7 +79,7 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
         posd = galsim.PositionD(pt.x, pt.y)
         posi = galsim.PositionI(pt.x//1, pt.y//1)
         if logger:
-            logger.debug(f"Adding fake source at {pt}")
+            logger.debug(f"Adding fake source {gsObj} at {pt}")
 
         mat = wcs.linearizePixelToSky(spt, geom.arcseconds).getMatrix()
         gsWCS = galsim.JacobianWCS(mat[0, 0], mat[0, 1], mat[1, 0], mat[1, 1])
@@ -762,6 +762,8 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 cfg.sourceSelectionColName,
                 'select'
             )
+        if replace_dict:
+            self.log.debug("Replacing columns:", replace_dict)
         fakeCat = fakeCat.rename(columns=replace_dict, copy=False)
 
         # Handling the half-light radius and axis-ratio are trickier, since we
@@ -772,15 +774,18 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 cfg.bulge_semimajor_col in fakeCat.columns
                 and cfg.bulge_axis_ratio_col in fakeCat.columns
             ):
+                replace_dict = {
+                    cfg.bulge_semimajor_col: 'bulge_semimajor',
+                    cfg.bulge_axis_ratio_col: 'bulge_axis_ratio',
+                    cfg.disk_semimajor_col: 'disk_semimajor',
+                    cfg.disk_axis_ratio_col: 'disk_axis_ratio',
+                }
                 fakeCat = fakeCat.rename(
-                    columns={
-                        cfg.bulge_semimajor_col: 'bulge_semimajor',
-                        cfg.bulge_axis_ratio_col: 'bulge_axis_ratio',
-                        cfg.disk_semimajor_col: 'disk_semimajor',
-                        cfg.disk_axis_ratio_col: 'disk_axis_ratio',
-                    },
+                    columns=replace_dict,
                     copy=False
                 )
+                if replace_dict:
+                    self.log.debug("Replacing columns:", replace_dict)
             elif (
                 cfg.bulgeHLR in fakeCat.columns
                 and cfg.aBulge in fakeCat.columns
@@ -797,6 +802,12 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 )
                 fakeCat['disk_semimajor'] = (
                     fakeCat[cfg.diskHLR]/np.sqrt(fakeCat['disk_axis_ratio'])
+                )
+                self.log.debug(
+                    f"Replacing ({cfg.bBulge}, {cfg.aBulge}, {cfg.bulgeHLR}, "
+                    f"{cfg.bDisk}, {cfg.aDisk}, {cfg.diskHLR}) with "
+                    "(bulge_axis_ratio, bulge_semimajor, disk_axis_ratio, "
+                    "disk_semimajor)"
                 )
             else:
                 raise ValueError(
@@ -816,12 +827,19 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                     },
                     copy=False
                 )
-            elif cfg.bulge_disk_flux_ratio_col in fakeCat.columns:
-                fakeCat['bulge_flux_fraction'] = (
-                    fakeCat['bulge_disk_flux_ratio'] / (1 + fakeCat['bulge_disk_flux_ratio'])
+                self.log.debug(
+                    f"Replacing {cfg.bulge_flux_fraction_col%band} with "
+                    " 'bulge_flux_fraction."
                 )
+            elif cfg.bulge_disk_flux_ratio_col in fakeCat.columns:
+                bdfr = cfg.bulge_disk_flux_ratio_col
+                fakeCat['bulge_flux_fraction'] = (
+                    fakeCat[bdfr] / (1 + fakeCat[bdfr])
+                )
+                self.log.debug(f"Replacing {bdfr} with bulge_flux_fraction.")
             else:
                 fakeCat['bulge_flux_fraction'] = 0.5
+                self.log.debug("Asserting bulge_flux_fraction = 0.5")
 
         return fakeCat
 
