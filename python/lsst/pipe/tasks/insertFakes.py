@@ -79,7 +79,7 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
         posd = galsim.PositionD(pt.x, pt.y)
         posi = galsim.PositionI(pt.x//1, pt.y//1)
         if logger:
-            logger.debug(f"Adding fake source {gsObj} at {pt}")
+            logger.debug("Adding fake source %s at %s", gsObj, pt)
 
         mat = wcs.linearizePixelToSky(spt, geom.arcseconds).getMatrix()
         gsWCS = galsim.JacobianWCS(mat[0, 0], mat[0, 1], mat[1, 0], mat[1, 1])
@@ -763,7 +763,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 'select'
             )
         if replace_dict:
-            self.log.debug("Replacing columns:", replace_dict)
+            self.log.debug("Replacing columns: %s", replace_dict)
         fakeCat = fakeCat.rename(columns=replace_dict, copy=False)
 
         # Handling the half-light radius and axis-ratio are trickier, since we
@@ -785,7 +785,7 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                     copy=False
                 )
                 if replace_dict:
-                    self.log.debug("Replacing columns:", replace_dict)
+                    self.log.debug("Replacing columns: %s", replace_dict)
             elif (
                 cfg.bulgeHLR in fakeCat.columns
                 and cfg.aBulge in fakeCat.columns
@@ -804,10 +804,11 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                     fakeCat[cfg.diskHLR]/np.sqrt(fakeCat['disk_axis_ratio'])
                 )
                 self.log.debug(
-                    f"Replacing ({cfg.bBulge}, {cfg.aBulge}, {cfg.bulgeHLR}, "
-                    f"{cfg.bDisk}, {cfg.aDisk}, {cfg.diskHLR}) with "
+                    "Replacing (%s, %s, %s, %s, %s, %s) with "
                     "(bulge_axis_ratio, bulge_semimajor, disk_axis_ratio, "
-                    "disk_semimajor)"
+                    "disk_semimajor)",
+                    cfg.bBulge, cfg.aBulge, cfg.bulgeHLR,
+                    cfg.bDisk, cfg.aDisk, cfg.diskHLR
                 )
             else:
                 raise ValueError(
@@ -828,15 +829,15 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                     copy=False
                 )
                 self.log.debug(
-                    f"Replacing {cfg.bulge_flux_fraction_col%band} with "
-                    " 'bulge_flux_fraction."
+                    "Replacing %s with bulge_flux_fraction.",
+                    cfg.bulge_flux_fraction_col%band
                 )
             elif cfg.bulge_disk_flux_ratio_col in fakeCat.columns:
                 bdfr = cfg.bulge_disk_flux_ratio_col
                 fakeCat['bulge_flux_fraction'] = (
                     fakeCat[bdfr] / (1 + fakeCat[bdfr])
                 )
-                self.log.debug(f"Replacing {bdfr} with bulge_flux_fraction.")
+                self.log.debug("Replacing %s with bulge_flux_fraction.", bdfr)
             else:
                 fakeCat['bulge_flux_fraction'] = 0.5
                 self.log.debug("Asserting bulge_flux_fraction = 0.5")
