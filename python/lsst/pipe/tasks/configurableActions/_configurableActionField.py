@@ -22,14 +22,16 @@ from __future__ import annotations
 
 __all__ = ("ConfigurableActionField",)
 
-from lsst.pex.config import ConfigField, FieldValidationError
+from typing import Generic
+
+from lsst.pex.config import ConfigField, FieldValidationError, FieldTypeVar
 from lsst.pex.config.config import _typeStr, _joinNamePath
 from lsst.pex.config.callStack import getCallStack
 
 from . import ConfigurableAction
 
 
-class ConfigurableActionField(ConfigField):
+class ConfigurableActionField(ConfigField, Generic[FieldTypeVar]):
     """`ConfigurableActionField` is a subclass of `~lsst.pex.config.Field` that
     allows a single `ConfigurableAction` (or a subclass of thus) to be
     assigned to it. The `ConfigurableAction` is then accessed through this
@@ -62,6 +64,12 @@ class ConfigurableActionField(ConfigField):
             instance._storage[self.name] = value(__name=name, __at=at, __label=label)
         history = instance._history.setdefault(self.name, [])
         history.append(("config value set", at, label))
+
+    def __get__(self, instance, owner=None) -> FieldTypeVar:
+        result = super().__get__(instance, owner)
+        if instance is not None:
+            result.identity = self.name # type: ignore
+        return result
 
     def save(self, outfile, instance):
         # docstring inherited from parent

@@ -23,14 +23,16 @@ from __future__ import annotations
 __all__ = ("ConfigurableActionStructField", "ConfigurableActionStruct")
 
 from types import SimpleNamespace
-from typing import Iterable, Mapping, Optional, TypeVar, Union, Type, Tuple, List, Any, Dict
+from typing import (
+    Iterable, Mapping, Optional, TypeVar, Union, Type, Tuple, List, Any, Dict, Iterator, Generic)
+from types import GenericAlias
 
 from lsst.pex.config.config import Config, Field, FieldValidationError, _typeStr, _joinNamePath
 from lsst.pex.config.comparison import compareConfigs, compareScalars, getComparisonName
 from lsst.pex.config.callStack import StackFrame, getCallStack, getStackFrame
 from lsst.pipe.base import Struct
 
-from . import ConfigurableAction
+from . import ConfigurableAction, ActionTypeVar
 
 import weakref
 
@@ -87,7 +89,7 @@ class ConfigurableActionStructRemover:
         return None
 
 
-class ConfigurableActionStruct:
+class ConfigurableActionStruct(Generic[ActionTypeVar]):
     """A ConfigurableActionStruct is the storage backend class that supports
     the ConfigurableActionStructField. This class should not be created
     directly.
@@ -120,7 +122,7 @@ class ConfigurableActionStruct:
     """
     # declare attributes that are set with __setattr__
     _config: Config
-    _attrs: Dict[str, ConfigurableAction]
+    _attrs: Dict[str, ActionTypeVar]
     _field: ConfigurableActionStructField
     _history: List[tuple]
 
@@ -178,13 +180,15 @@ class ConfigurableActionStruct:
                 valueInst = type(value)(__name=name, __at=at, __label=label, **value._storage)
             else:
                 valueInst = value(__name=name, __at=at, __label=label)
-            self._attrs[attr] = valueInst
+            self._attrs[attr] = valueInst  # type: ignore
         else:
             super().__setattr__(attr, value)
 
     def __getattr__(self, attr):
         if attr in object.__getattribute__(self, '_attrs'):
-            return self._attrs[attr]
+            result = self._attrs[attr]
+            result.identity = attr
+            return result
         else:
             super().__getattribute__(attr)
 
@@ -194,17 +198,19 @@ class ConfigurableActionStruct:
         else:
             super().__delattr__(name)
 
-    def __iter__(self) -> Iterable[ConfigurableAction]:
-        return iter(self._attrs.values())
+    def __iter__(self) -> Iterator[ActionTypeVar]:
+        for name in self.fieldNames:
+            yield getattr(self, name)
 
-    def items(self) -> Iterable[Tuple[str, ConfigurableAction]]:
-        return iter(self._attrs.items())
+    def items(self) -> Iterable[Tuple[str, ActionTypeVar]]:
+        for name in self.fieldNames:
+            yield name, getattr(self, name)
 
 
 T = TypeVar("T", bound="ConfigurableActionStructField")
 
 
-class ConfigurableActionStructField(Field):
+class ConfigurableActionStructField(Field[ActionTypeVar]):
     r"""`ConfigurableActionStructField` is a `~lsst.pex.config.Field` subclass
     that allows `ConfigurableAction`\ s to be organized in a
     `~lsst.pex.config.Config` class in a manner similar to how a
@@ -229,6 +235,9 @@ class ConfigurableActionStructField(Field):
         source = getStackFrame()
         self._setup(doc=doc, dtype=self.__class__, default=default, check=None,
                     optional=optional, source=source, deprecated=deprecated)
+
+    def __class_getitem__(cls, params):
+        return GenericAlias(cls, params)
 
     def __set__(self, instance: Config,
                 value: Union[None, Mapping[str, ConfigurableAction],
@@ -271,14 +280,18 @@ class ConfigurableActionStructField(Field):
                                        "Can only assign things that are subclasses of Configurable Action")
         instance._storage[self.name] = value
 
-    def __get__(self: T, instance: Config, owner: None = None, at: Iterable[StackFrame] = None,
-                label: str = "default"
-                ) -> Union[None, T, ConfigurableActionStruct]:
+    def __get__(
+        self,
+        instance,
+        owner=None,
+        at=None,
+        label='default'
+    ) -> ConfigurableActionStruct[ActionTypeVar]:
         if instance is None or not isinstance(instance, Config):
-            return self
+            return self  # type: ignore
         else:
-            field: Optional[ConfigurableActionStruct] = instance._storage[self.name]
-            return field
+            field: Optional[ConfigurableActionStruct] = instance._storage[self.name]  # type: ignore
+            return field  # type: ignore
 
     def rename(self, instance: Config):
         actionStruct: ConfigurableActionStruct = self.__get__(instance)
@@ -288,7 +301,7 @@ class ConfigurableActionStructField(Field):
                 fullname = _joinNamePath(base_name, k)
                 v._rename(fullname)
 
-    def validate(self, instance):
+    def validate(self, instance: Config):
         value = self.__get__(instance)
         if value is not None:
             for item in value:

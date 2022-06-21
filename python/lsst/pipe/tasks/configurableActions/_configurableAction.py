@@ -20,11 +20,14 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 
-__all__ = ["ConfigurableAction"]
+__all__ = ["ConfigurableAction", "ActionTypeVar"]
 
-from typing import Any
+from typing import Any, TypeVar
 
 from lsst.pex.config.config import Config
+
+
+ActionTypeVar = TypeVar("ActionTypeVar", bound='ConfigurableAction')
 
 
 class ConfigurableAction(Config):
@@ -45,5 +48,17 @@ class ConfigurableAction(Config):
     it will raise a `NotImplementedError` when called. Subclasses that
     represent concrete actions must provide an override.
     """
+
+    identity: str | None = None
+    """If a configurable action is assigned to a `ConfigurableActionField`, or a
+    `ConfigurableActionStructField` the name of the field will be bound to this
+    variable when it is retrieved.
+    """
+
+    def __setattr__(self, attr, value, at=None, label="assignment"):
+        if attr == 'identity':
+            return object.__setattr__(self, attr, value)
+        return super().__setattr__(attr, value, at, label)
+
     def __call__(self, *args, **kwargs) -> Any:
         raise NotImplementedError("This method should be overloaded in subclasses")
