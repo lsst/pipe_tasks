@@ -22,14 +22,16 @@ from __future__ import annotations
 
 __all__ = ("ConfigurableActionField",)
 
-from lsst.pex.config import ConfigField, FieldValidationError
+from typing import Any, overload
+
+from lsst.pex.config import ConfigField, FieldValidationError, Config
 from lsst.pex.config.config import _typeStr, _joinNamePath
 from lsst.pex.config.callStack import getCallStack
 
-from . import ConfigurableAction
+from . import ConfigurableAction, ActionTypeVar
 
 
-class ConfigurableActionField(ConfigField):
+class ConfigurableActionField(ConfigField[ActionTypeVar]):
     """`ConfigurableActionField` is a subclass of `~lsst.pex.config.Field` that
     allows a single `ConfigurableAction` (or a subclass of thus) to be
     assigned to it. The `ConfigurableAction` is then accessed through this
@@ -42,7 +44,13 @@ class ConfigurableActionField(ConfigField):
     # classes
     name: str
 
-    def __set__(self, instance, value, at=None, label="assignment"):
+    def __set__(
+        self,
+        instance: Config,
+        value: ActionTypeVar | type[ActionTypeVar],
+        at: Any = None,
+        label: str = "assignment"
+    ) -> None:
         if instance._frozen:
             raise FieldValidationError(self, instance,
                                        "Cannot modify a frozen Config")
@@ -62,6 +70,26 @@ class ConfigurableActionField(ConfigField):
             instance._storage[self.name] = value(__name=name, __at=at, __label=label)
         history = instance._history.setdefault(self.name, [])
         history.append(("config value set", at, label))
+
+    @overload
+    def __get__(
+        self, instance: None, owner: Any = None, at: Any = None, label: str = "default"
+    ) -> "ConfigurableActionField[ActionTypeVar]":
+        ...
+
+    @overload
+    def __get__(
+        self, instance: "Config", owner: Any = None, at: Any = None, label: str = "default"
+    ) -> Any:
+        ...
+
+    def __get__(self, instance, owner=None, at=None, label="default"):
+        result = super().__get__(instance, owner)
+        if instance is not None:
+            # ignore is due to typing resolved in overloads not translating to
+            # type checker not knowing this is not a Field
+            result.identity = self.name  # type: ignore
+        return result
 
     def save(self, outfile, instance):
         # docstring inherited from parent
