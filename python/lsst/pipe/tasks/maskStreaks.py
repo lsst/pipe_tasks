@@ -481,8 +481,8 @@ class MaskStreaksConfig(pexConfig.Config):
         default=10.**-1,
     )
     footprintThreshold = pexConfig.Field(
-        doc="Threshold at which to determine edge of line, in units of the line"
-            "profile maximum",
+        doc="Threshold at which to determine edge of line, in units of "
+            "nanoJanskys",
         dtype=float,
         default=0.01
     )
