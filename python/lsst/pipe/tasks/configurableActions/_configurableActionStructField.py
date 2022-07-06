@@ -220,6 +220,9 @@ class ConfigurableActionStruct(Generic[ActionTypeVar]):
         for name in self.fieldNames:
             yield name, getattr(self, name)
 
+    def __bool__(self) -> bool:
+        return bool(self._attrs)
+
 
 T = TypeVar("T", bound="ConfigurableActionStructField")
 
@@ -274,8 +277,8 @@ class ConfigurableActionStructField(Field[ActionTypeVar]):
         else:
             # An actual value is being assigned check for what it is
             if isinstance(value, self.StructClass):
-                # If this is a ConfigurableActionStruct, we need to make our own
-                # copy that references this current field
+                # If this is a ConfigurableActionStruct, we need to make our
+                # own copy that references this current field
                 value = self.StructClass(instance, self, value._attrs, at=at, label=label)
             elif isinstance(value, (SimpleNamespace, Struct)):
                 # If this is a a python analogous container, we need to make
@@ -355,8 +358,11 @@ class ConfigurableActionStructField(Field[ActionTypeVar]):
     def save(self, outfile, instance):
         actionStruct = self.__get__(instance)
         fullname = _joinNamePath(instance._name, self.name)
+
+        # Ensure that a struct is always empty before assigning to it.
+        outfile.write(f"{fullname}=None\n")
+
         if actionStruct is None:
-            outfile.write(u"{}={!r}\n".format(fullname, actionStruct))
             return
 
         for v in actionStruct:
