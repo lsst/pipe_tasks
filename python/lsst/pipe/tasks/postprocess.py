@@ -673,6 +673,9 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         newCat = afwTable.SourceCatalog(schema)
         newCat.extend(catalog, mapper=mapper)
 
+        if self.config.doReevaluateSkyWcs:
+            afwTable.updateSourceCoords(exposure.wcs, newCat)
+
         measurement.run(measCat=newCat, exposure=exposure, exposureId=exposureIdInfo.expId)
 
         return newCat
