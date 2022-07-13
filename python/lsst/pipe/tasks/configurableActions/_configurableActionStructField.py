@@ -365,7 +365,7 @@ class ConfigurableActionStructField(Field[ActionTypeVar]):
         if actionStruct is None:
             return
 
-        for v in actionStruct:
+        for _, v in sorted(actionStruct.items()):
             outfile.write(u"{}={}()\n".format(v._name, _typeStr(v)))
             v._save(outfile)
 

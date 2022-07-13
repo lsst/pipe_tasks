@@ -29,6 +29,7 @@ from lsst.pipe.tasks.configurableActions.tests import (
     ActionTest3,
     TestConfig,
 )
+from lsst.pipe.tasks.dataFrameActions import DivideColumns, SingleColumnAction
 
 from lsst.pex.config import FieldValidationError
 from lsst.pipe.base import Struct
@@ -214,7 +215,10 @@ class ConfigurableActionsTestCase(unittest.TestCase):
         config = TestConfig()
         config.actions.test1 = ActionTest1
         config.actions.test2 = ActionTest2
-        config.singleAction = ActionTest1
+        config.singleAction = DivideColumns(
+            colA=SingleColumnAction(column="a"),
+            colB=SingleColumnAction(column="b"),
+        )
 
         config.saveToStream(ioObject)
         string1 = ioObject.getvalue()
@@ -223,7 +227,21 @@ class ConfigurableActionsTestCase(unittest.TestCase):
         self.assertTrue(config.compare(loadedConfig), msg=f"{config} != {loadedConfig}")
         # Be sure that the fields are actually there
         self.assertEqual(loadedConfig.actions.test1.var, 0)
-        self.assertEqual(loadedConfig.singleAction.var, 0)
+        self.assertEqual(loadedConfig.singleAction.colA.column, "a")
+        self.assertEqual(loadedConfig.singleAction.colB.column, "b")
+        # Save an equivalent struct with fields originally ordered differently,
+        # check that the saved form is the same (via deterministic sorting).
+        config2 = TestConfig()
+        config2.actions.test2 = ActionTest2
+        config2.actions.test1 = ActionTest1
+        config2.singleAction = DivideColumns(
+            colB=SingleColumnAction(column="b"),
+            colA=SingleColumnAction(column="a"),
+        )
+        ioObject2 = StringIO()
+        config2.saveToStream(ioObject2)
+        self.maxDiff = None
+        self.assertEqual(string1, ioObject2.getvalue())
 
     def testToDict(self):
         """Test the toDict interface"""
