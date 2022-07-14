@@ -131,7 +131,7 @@ def makeColumnExpressionAction(className: str, expr: str,
     names -= EXTRA_MATH.keys()
 
     fields: Mapping[str, ConfigurableActionField] = {}
-    for name in names:
+    for name in sorted(names):
         if exprDefaults is not None and (value := exprDefaults.get(name)) is not None:
             kwargs = {"default": value}
         else:

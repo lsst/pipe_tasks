@@ -23,50 +23,31 @@ import unittest
 from io import StringIO
 from types import SimpleNamespace
 
-from lsst.pipe.tasks.configurableActions import (ConfigurableActionStructField, ConfigurableAction,
-                                                 ConfigurableActionField)
-from lsst.pex.config import Config, Field, FieldValidationError
+from lsst.pipe.tasks.configurableActions.tests import (
+    ActionTest1,
+    ActionTest2,
+    ActionTest3,
+    TestConfig,
+)
+from lsst.pipe.tasks.dataFrameActions import DivideColumns, SingleColumnAction
+
+from lsst.pex.config import FieldValidationError
 from lsst.pipe.base import Struct
-
-
-class ActionTest1(ConfigurableAction):
-    var = Field(doc="test field", dtype=int, default=0)
-
-    def __call__(self):
-        return self.var
-
-    def validate(self):
-        assert(self.var is not None)
-
-
-class ActionTest2(ConfigurableAction):
-    var = Field(doc="test field", dtype=int, default=1)
-
-    def __call__(self):
-        return self.var
-
-    def validate(self):
-        assert(self.var is not None)
-
-
-class ActionTest3(ConfigurableAction):
-    var = Field(doc="test field", dtype=int, default=3)
-
-    def __call__(self):
-        return self.var
-
-    def validate(self):
-        assert(self.var is not None)
 
 
 class ConfigurableActionsTestCase(unittest.TestCase):
     def _createConfig(self, default=None, singleDefault=None):
-        class TestConfig(Config):
-            actions = ConfigurableActionStructField(doc="Actions to be tested", default=default)
-            singleAction = ConfigurableActionField(doc="A configurable action", default=singleDefault)
-        return TestConfig
+        class NewTestConfig(TestConfig):
+            def setDefaults(self):
+                super().setDefaults()
+                if default is not None:
+                    for k, v in default.items():
+                        setattr(self.actions, k, v)
+                if singleDefault is not None:
+                    self.singleAction = singleDefault
+        return NewTestConfig
 
-    def testConfigInstatiation(self):
+    def testConfigInstantiation(self):
         # This will raise if there is an issue instantiating something
         configClass = self._createConfig()
         config = configClass()
@@ -231,17 +212,36 @@ class ConfigurableActionsTestCase(unittest.TestCase):
         # This method will also test rename, as it is part of the
         # implementation in pex_config
         ioObject = StringIO()
-        configClass = self._createConfig(default={"test1": ActionTest1},
-                                         singleDefault=ActionTest1)
-        config = configClass()
+        config = TestConfig()
+        config.actions.test1 = ActionTest1
+        config.actions.test2 = ActionTest2
+        config.singleAction = DivideColumns(
+            colA=SingleColumnAction(column="a"),
+            colB=SingleColumnAction(column="b"),
+        )
 
         config.saveToStream(ioObject)
-        loadedConfig = configClass()
-        loadedConfig.loadFromStream(ioObject.read())
-        self.assertTrue(config.compare(loadedConfig))
+        string1 = ioObject.getvalue()
+        loadedConfig = TestConfig()
+        loadedConfig.loadFromStream(string1)
+        self.assertTrue(config.compare(loadedConfig), msg=f"{config} != {loadedConfig}")
         # Be sure that the fields are actually there
         self.assertEqual(loadedConfig.actions.test1.var, 0)
-        self.assertEqual(loadedConfig.singleAction.var, 0)
+        self.assertEqual(loadedConfig.singleAction.colA.column, "a")
+        self.assertEqual(loadedConfig.singleAction.colB.column, "b")
+        # Save an equivalent struct with fields originally ordered differently,
+        # check that the saved form is the same (via deterministic sorting).
+        config2 = TestConfig()
+        config2.actions.test2 = ActionTest2
+        config2.actions.test1 = ActionTest1
+        config2.singleAction = DivideColumns(
+            colB=SingleColumnAction(column="b"),
+            colA=SingleColumnAction(column="a"),
+        )
+        ioObject2 = StringIO()
+        config2.saveToStream(ioObject2)
+        self.maxDiff = None
+        self.assertEqual(string1, ioObject2.getvalue())
 
     def testToDict(self):
         """Test the toDict interface"""
