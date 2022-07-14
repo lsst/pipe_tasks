@@ -1,4 +1,0 @@
-description: >
-  This pipeline is a backwards-compatibility stub.
-imports:
-  location: $DRP_PIPE_DIR/ingredients/DRP.yaml
