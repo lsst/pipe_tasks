@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import healpy as hp
+import hpgeom as hpg
 import numpy as np
 import unittest
 
@@ -30,7 +30,7 @@ import lsst.utils.tests
 class TestAssociationUtils(lsst.utils.tests.TestCase):
 
     def test_queryDisc(self):
-        """Test that doing a disc query of healpy using our wrapper works as
+        """Test that doing a circle query of hpgeom using our wrapper works as
         expected.
 
         Most other calculations are very simple and not worth testing.
@@ -39,8 +39,8 @@ class TestAssociationUtils(lsst.utils.tests.TestCase):
         nside = 128
         testRa = 225
         testDec = 45
-        centerPixNumber = hp.ang2pix(nside, testRa, testDec, lonlat=True)
-        ra, dec = hp.pix2ang(nside, centerPixNumber, lonlat=True)
+        centerPixNumber = hpg.angle_to_pixel(nside, testRa, testDec, nest=False)
+        ra, dec = hpg.pixel_to_angle(nside, centerPixNumber, nest=False)
         # Test that only one pixel is found.
         pixelReturn = query_disc(nside, ra, dec, np.radians(0.1))
         self.assertEqual(len(pixelReturn), 1)

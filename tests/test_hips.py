@@ -22,7 +22,7 @@
 """Test HIPS code."""
 import unittest
 import numpy as np
-import healpy as hp
+import hpgeom as hpg
 
 import lsst.utils.tests
 import lsst.daf.butler
@@ -227,12 +227,10 @@ class HipsTestCase(unittest.TestCase):
         pixel : `int`
             Healpix pixel (nest ordering)
         """
-        pixel = hp.ang2pix(
+        pixel = hpg.angle_to_pixel(
             nside,
             sphpoint.getRa().asDegrees(),
             sphpoint.getDec().asDegrees(),
-            lonlat=True,
-            nest=True
         )
         return pixel
 
