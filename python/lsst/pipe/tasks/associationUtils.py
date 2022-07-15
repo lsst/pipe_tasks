@@ -20,11 +20,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-"""Utilities for interfacing with healpy. Originally implemented in
-http://github.com/LSSTDESC/dia_pipe
+"""Utilities for interfacing with hpgeom. Originally implemented in
+http://github.com/LSSTDESC/dia_pipe and then translated to hpgeom.
 """
 
-import healpy as hp
+import hpgeom as hpg
 import numpy as np
 
 
@@ -45,7 +45,7 @@ def toIndex(nside, ra, dec):
     index : `int`
         Unique healpix pixel ID containing point RA, DEC at resolution nside.
     """
-    return hp.pixelfunc.ang2pix(nside, np.radians(-dec + 90), np.radians(ra))
+    return hpg.angle_to_pixel(nside, ra, dec, nest=False)
 
 
 def toRaDec(nside, index):
@@ -63,9 +63,7 @@ def toRaDec(nside, index):
     pos : `numpy.ndarray`, (2,)
         RA and DEC of healpix pixel location in degrees.
     """
-    vec = hp.pix2ang(nside, index)
-    dec = np.rad2deg(-vec[0]) + 90
-    ra = np.rad2deg(vec[1])
+    ra, dec = hpg.pixel_to_angle(nside, index, nest=False)
     return np.dstack((ra, dec))[0]
 
 
@@ -175,12 +173,13 @@ def query_disc(nside, ra, dec, max_rad, min_rad=0):
     min_rad : `float`, optional
         Minimum distance in radians to search healpixels. Default = 0.
     """
-    if np.isscalar(ra):
-        ra = np.array([ra])
-        dec = np.array([dec])
+    ra = np.atleast_1d(ra)
+    dec = np.atleast_1d(dec)
+
+    max_rad_deg = np.rad2deg(max_rad)
 
     pixels = np.unique(
-        [hp.query_disc(nside, eq2xyzVec(a, b), max_rad)
+        [hpg.query_circle(nside, a, b, max_rad_deg, nest=False)
          for (a, b) in zip(ra, dec)])
 
     if min_rad > 0 and len(pixels) > 0:
