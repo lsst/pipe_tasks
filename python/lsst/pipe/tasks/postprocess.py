@@ -444,6 +444,11 @@ class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
         default=False,
         doc=("Add or replace local WCS columns from either the calexp.wcs or  or jointcal")
     )
+    doReevaluateLocalBackground = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc=("Add or replace local Background columns")
+    )
     doApplyExternalPhotoCalib = pexConfig.Field(
         dtype=bool,
         default=False,
@@ -692,6 +697,9 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         if self.config.doReevaluatePhotoCalib:
             measureConfig.plugins.names.add('base_LocalPhotoCalib')
             self.log.info("Re-evaluating base_LocalPhotoCalib plugin")
+        if self.config.doReevaluateLocalBackground:
+            measureConfig.plugins.names.add('base_LocalBackground')
+            self.log.info("Re-evaluating base_LocalBackground plugin")
         pluginsNotToCopy = tuple(measureConfig.plugins.names)
 
         # Create a new schema and catalog
@@ -1974,6 +1982,61 @@ class WriteForcedSourceTableTask(pipeBase.PipelineTask):
 
         outputCatalog = functools.reduce(lambda d1, d2: d1.join(d2), dfs)
         return pipeBase.Struct(outputCatalog=outputCatalog)
+
+
+class RewriteForcedSourceOnDiaObjectConnections(WriteForcedSourceTableConnections):
+    exposure = connectionTypes.Input(
+        doc="Input exposure to perform photometry on.",
+        name="calexp",
+        storageClass="ExposureF",
+        dimensions=["instrument", "visit", "detector"],
+    )
+
+
+class RewriteForcedSourceOnDiaObjectConfig(WriteForcedSourceTableConfig,
+                                           pipelineConnections=RewriteForcedSourceOnDiaObjectConnections):
+    reevaluate = pexConfig.ConfigurableField(
+        target=WriteRecalibratedSourceTableTask,
+        doc="Subtask with addCalibColumns method",
+    )
+
+    def setDefaults(self):
+        super().setDefaults()
+        self.reevaluate.doReevaluatePhotoCalib = True
+        self.reevaluate.doReevaluateSkyWcs = True
+        self.reevaluate.doReevaluateLocalBackground = True
+        self.connections.inputCatalogDiff = "forced_diff_diaObject"
+        self.connections.inputCatalog = "forced_src_diaObject"
+        self.connections.outputCatalog = "mergedForcedSourceOnDiaObject"
+        self.key = "diaObjectId"
+
+
+class RewriteForcedSourceOnDiaObjectTask(WriteForcedSourceTableTask):
+    """Specialized afterburner to recalibrate DP0.2 ForcedSourceOnDiaObject"""
+    _DefaultName = "RewriteForcedSourceOnDiaObject"
+    ConfigClass = RewriteForcedSourceOnDiaObjectConfig
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.makeSubtask("reevaluate")
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        # Add ccdVisitId to allow joining with CcdVisitTable
+        inputs['ccdVisitId'] = butlerQC.quantum.dataId.pack("visit_detector")
+        inputs['band'] = butlerQC.quantum.dataId.full['band']
+        exposureIdInfo = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "visit_detector")
+        exposure = inputs.pop('exposure')
+
+        inputs['inputCatalog'] = self.reevaluate.addCalibColumns(catalog=inputs['inputCatalog'],
+                                                                 exposure=exposure,
+                                                                 exposureIdInfo=exposureIdInfo)
+        inputs['inputCatalogDiff'] = self.reevaluate.addCalibColumns(catalog=inputs['inputCatalogDiff'],
+                                                                     exposure=exposure,
+                                                                     exposureIdInfo=exposureIdInfo)
+
+        outputs = self.run(**inputs)
+        butlerQC.put(outputs, outputRefs)
 
 
 class TransformForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
