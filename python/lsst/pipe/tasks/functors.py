@@ -22,6 +22,7 @@
 import yaml
 import re
 from itertools import product
+import logging
 import os.path
 
 import pandas as pd
@@ -145,6 +146,7 @@ class Functor(object):
         self.filt = filt
         self.dataset = dataset if dataset is not None else self._defaultDataset
         self._noDup = noDup
+        self.log = logging.getLogger(type(self).__name__)
 
     @property
     def noDup(self):
@@ -344,7 +346,8 @@ class Functor(object):
         try:
             df = self._get_data(data)
             vals = self._func(df)
-        except Exception:
+        except Exception as e:
+            self.log.error("Exception in %s call: %s: %s", self.name, type(e).__name__, e)
             vals = self.fail(df)
         if dropna:
             vals = self._dropna(vals)
@@ -491,6 +494,7 @@ class CompositeFunctor(Functor):
                     )
                     valDict[k] = f._func(subdf)
                 except Exception as e:
+                    self.log.error("Exception in %s call: %s: %s", self.name, type(e).__name__, e)
                     try:
                         valDict[k] = f.fail(subdf)
                     except NameError:
@@ -574,7 +578,7 @@ class CompositeFunctor(Functor):
         return cls(funcs, **kwargs)
 
 
-def mag_aware_eval(df, expr):
+def mag_aware_eval(df, expr, log):
     """Evaluate an expression on a DataFrame, knowing what the 'mag' function means
 
     Builds on `pandas.DataFrame.eval`, which parses and executes math on dataframes.
@@ -590,7 +594,8 @@ def mag_aware_eval(df, expr):
     try:
         expr_new = re.sub(r'mag\((\w+)\)', r'-2.5*log(\g<1>)/log(10)', expr)
         val = df.eval(expr_new)
-    except Exception:  # Should check what actually gets raised
+    except Exception as e:  # Should check what actually gets raised
+        log.error("Exception in mag_aware_eval: %s: %s", type(e).__name__, e)
         expr_new = re.sub(r'mag\((\w+)\)', r'-2.5*log(\g<1>_instFlux)/log(10)', expr)
         val = df.eval(expr_new)
     return val
@@ -633,7 +638,7 @@ class CustomFunctor(Functor):
         return list(set([c for c in cols if c not in not_a_col]))
 
     def _func(self, df):
-        return mag_aware_eval(df, self.expr)
+        return mag_aware_eval(df, self.expr, self.log)
 
 
 class Column(Functor):

@@ -36,6 +36,7 @@ from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
 from lsst.obs.base import ExposureIdInfo
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
+import lsst.meas.extensions.shapeHSM  # noqa: F401 needed for default shape plugin
 from .measurePsf import MeasurePsfTask
 from .repair import RepairTask
 from .computeExposureSummaryStats import ComputeExposureSummaryStatsTask
@@ -230,11 +231,12 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
         self.measurement.plugins.names = [
             "base_PixelFlags",
             "base_SdssCentroid",
-            "base_SdssShape",
+            "ext_shapeHSM_HsmSourceMoments",
             "base_GaussianFlux",
             "base_PsfFlux",
             "base_CircularApertureFlux",
         ]
+        self.measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
 
     def validate(self):
         if self.doApCorr and not self.measurePsf:
