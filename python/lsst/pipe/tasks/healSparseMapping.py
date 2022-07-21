@@ -23,7 +23,7 @@ from collections import defaultdict
 import warnings
 import numbers
 import numpy as np
-import healpy as hp
+import hpgeom as hpg
 import healsparse as hsp
 
 import lsst.pex.config as pexConfig
@@ -168,7 +168,7 @@ class HealSparseInputMapTask(pipeBase.Task):
         self._ccds = ccds
 
         pixel_scale = wcs.getPixelScale().asArcseconds()
-        hpix_area_arcsec2 = hp.nside2pixarea(self.config.nside, degrees=True)*(3600.**2.)
+        hpix_area_arcsec2 = hpg.nside_to_pixel_area(self.config.nside, degrees=True)*(3600.**2.)
         self._min_bad = self.config.bad_mask_min_coverage*hpix_area_arcsec2/(pixel_scale**2.)
 
         metadata = {}
@@ -259,8 +259,7 @@ class HealSparseInputMapTask(pipeBase.Task):
         bad_ra, bad_dec = self._wcs.pixelToSkyArray(bad_pixels[1].astype(np.float64),
                                                     bad_pixels[0].astype(np.float64),
                                                     degrees=True)
-        bad_hpix = hp.ang2pix(self.config.nside, bad_ra, bad_dec,
-                              lonlat=True, nest=True)
+        bad_hpix = hpg.angle_to_pixel(self.config.nside, bad_ra, bad_dec)
 
         # Count the number of bad image pixels in each healpix pixel
         min_bad_hpix = bad_hpix.min()
@@ -705,7 +704,7 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
         tract_area = num_patches[0]*num_patches[1]*patch_area
         # Start with a fairly low nside and increase until we find the approximate area.
         nside_coverage_tract = 32
-        while hp.nside2pixarea(nside_coverage_tract, degrees=True) > tract_area:
+        while hpg.nside_to_pixel_area(nside_coverage_tract, degrees=True) > tract_area:
             nside_coverage_tract = 2*nside_coverage_tract
         # Step back one, but don't go bigger pixels than nside=32 or smaller
         # than 128 (recommended by healsparse).
