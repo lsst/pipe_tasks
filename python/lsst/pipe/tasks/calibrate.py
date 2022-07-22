@@ -20,6 +20,7 @@
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import math
+import numpy as np
 
 from lsstDebug import getDebugFrame
 import lsst.pex.config as pexConfig
@@ -311,6 +312,12 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         default=True,
         doc="Write the calexp? If fakes have been added then we do not want to write out the calexp as a "
             "normal calexp but as a fakes_calexp."
+    )
+    # This should be configurable and the selector, but we're just winging it now.
+    compensatedApertureReferenceFlux = pexConfig.Field(
+        doc="Reference flux for normalizing compensated aperture.",
+        dtype=str,
+        default="base_CircularApertureFlux_12_0_instFlux",
     )
 
     def setDefaults(self):
@@ -796,6 +803,41 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 frame=frame,
                 pause=False,
             )
+
+        # And here we hack together normalization of any compensated apertures
+        for flux_field in sourceCat.schema.extract('*Compensated*instFlux'):
+            norm_field = flux_field.removesuffix('instFlux') + 'normalization'
+            err_field = flux_field + 'Err'
+            aper_flag_field = self.config.compensatedApertureReferenceFlux.removesuffix('instFlux') + 'flag'
+            # Simple star selection
+            use, = np.where((sourceCat['base_ClassificationExtendedness_value'] < 0.5)
+                            & (sourceCat[flux_field]/sourceCat[err_field] > 10.0)
+                            & (~sourceCat[aper_flag_field])
+                            & (~sourceCat['base_PixelFlags_flag_edge'])
+                            & (~sourceCat['base_PixelFlags_flag_saturatedCenter'])
+                            & (~sourceCat['base_PixelFlags_flag_saturated'])
+                            & (~sourceCat['base_PixelFlags_flag_saturatedCenter'])
+                            & (~sourceCat['base_PixelFlags_flag_bad'])
+                            & (~sourceCat['base_PixelFlags_flag_interpolated'])
+                            & (~sourceCat['base_PixelFlags_flag_crCenter']))
+            if use.size < 3:
+                # Bad! Will need to flag, etc.
+                continue
+            # In flux space, we need to reverse the percentile (25% brightest is 75% percentile)
+            ok, = np.where(
+                sourceCat[flux_field][use] > np.nanpercentile(sourceCat[flux_field][use], 100 - 25)
+            )
+            if ok.size < 3:
+                # Bad! Will need to flag, etc.
+                continue
+            norm = np.nanmedian(
+                sourceCat[flux_field][use[ok]]
+                / sourceCat[self.config.compensatedApertureReferenceFlux][use[ok]]
+            )
+            # Need to divide by this norm ...
+            sourceCat[norm_field] /= norm
+            sourceCat[flux_field] /= norm
+            sourceCat[err_field] /= norm
 
         return pipeBase.Struct(
             exposure=exposure,
