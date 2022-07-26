@@ -48,6 +48,8 @@ from lsst.skymap import BaseSkyMap
 from lsst.obs.base import ExposureIdInfo
 from lsst.utils.timer import timeMethod
 
+from deprecated.sphinx import deprecated
+
 __all__ = ["ImageDifferenceConfig", "ImageDifferenceTask"]
 FwhmPerSigma = 2*math.sqrt(2*math.log(2))
 IqrToSigma = 0.741
@@ -442,6 +444,9 @@ class ImageDifferenceTaskRunner(pipeBase.ButlerInitializedTaskRunner):
                                                  **kwargs)
 
 
+@deprecated(reason="This Task has been replaced with lsst.ip.diffim.subtractImages"
+            " and lsst.ip.diffim.detectAndMeasure. Will be removed after v25.",
+            version="v24.0", category=FutureWarning)
 class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
     """Subtract an image from a template and measure the result
     """
