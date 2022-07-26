@@ -559,9 +559,9 @@ class FocalPlaneBackground:
         dims = geom.Extent2I(int(numpy.ceil(width/config.xSize)) + 2,
                              int(numpy.ceil(height/config.ySize)) + 2)
         # Transform takes us from focal plane coordinates --> sample coordinates
-        transform = (geom.AffineTransform.makeTranslation(geom.Extent2D(1, 1))*
-                     geom.AffineTransform.makeScaling(1.0/config.xSize, 1.0/config.ySize)*
-                     geom.AffineTransform.makeTranslation(offset))
+        transform = (geom.AffineTransform.makeTranslation(geom.Extent2D(1, 1))
+                     * geom.AffineTransform.makeScaling(1.0/config.xSize, 1.0/config.ySize)
+                     * geom.AffineTransform.makeTranslation(offset))
 
         return cls(config, dims, afwGeom.makeTransform(transform))
 
@@ -681,8 +681,8 @@ class FocalPlaneBackground:
         """
         transform = detector.getTransformMap().getTransform(detector.makeCameraSys(afwCameraGeom.PIXELS),
                                                             detector.makeCameraSys(afwCameraGeom.FOCAL_PLANE))
-        binTransform = (geom.AffineTransform.makeScaling(self.config.binning)*
-                        geom.AffineTransform.makeTranslation(geom.Extent2D(0.5, 0.5)))
+        binTransform = (geom.AffineTransform.makeScaling(self.config.binning)
+                        * geom.AffineTransform.makeTranslation(geom.Extent2D(0.5, 0.5)))
 
         # Binned image on CCD --> unbinned image on CCD --> focal plane --> binned focal plane
         toSample = afwGeom.makeTransform(binTransform).then(transform).then(self.transform)
@@ -759,8 +759,8 @@ class FocalPlaneBackground:
         """
         values = self._values.clone()
         values /= self._numbers
-        thresh = (self.config.minFrac*
-                  (self.config.xSize/self.config.pixelSize)*(self.config.ySize/self.config.pixelSize))
+        thresh = (self.config.minFrac
+                  * (self.config.xSize/self.config.pixelSize)*(self.config.ySize/self.config.pixelSize))
         isBad = self._numbers.getArray() < thresh
         if self.config.doSmooth:
             array = values.getArray()
@@ -792,9 +792,9 @@ class MaskObjectsConfig(Config):
         self.interpolate.useApprox = False
 
     def validate(self):
-        if (self.detection.reEstimateBackground or
-                self.detection.doTempLocalBackground or
-                self.detection.doTempWideBackground):
+        if (self.detection.reEstimateBackground
+                or self.detection.doTempLocalBackground
+                or self.detection.doTempWideBackground):
             raise RuntimeError("Incorrect settings for object masking: reEstimateBackground, "
                                "doTempLocalBackground and doTempWideBackground must be False")
 
