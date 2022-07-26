@@ -1,9 +1,12 @@
+__all__ = ["read_all"]
+
 from lsst.meas.algorithms.simple_curve import Curve
 from lsst.ip.isr import (Linearizer, CrosstalkCalib, Defects, BrighterFatterKernel, PhotodiodeCalib)
 
 import os
 import glob
 import dateutil.parser
+from deprecated.sphinx import deprecated
 
 
 def read_one_chip(root, chip_name, chip_id):
@@ -90,6 +93,9 @@ def check_metadata(obj, valid_start, instrument, chip_id, filepath, data_name):
                          )
 
 
+@deprecated(reason="Curated calibration ingest now handled by obs_base Instrument classes."
+            " Will be removed after v25.0.",
+            version="v25.0", category=FutureWarning)
 def read_all(root, camera):
     """Read all data from the standard format at a particular root.
 
