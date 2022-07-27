@@ -30,7 +30,9 @@ __all__ = [
     "SkyStatsConfig",
 ]
 
+import sys
 import numpy
+import importlib
 import itertools
 from scipy.ndimage import gaussian_filter
 
@@ -919,3 +921,31 @@ def smoothArray(array, bad, sigma):
     convolved = gaussian_filter(numpy.where(bad, 0.0, array), sigma, mode="constant", cval=0.0)
     denominator = gaussian_filter(numpy.where(bad, 0.0, 1.0), sigma, mode="constant", cval=0.0)
     return convolved/denominator
+
+
+def _create_module_child(name):
+    """Create an empty module attached to the relevant parent."""
+    parent, child = name.rsplit(".", 1)
+    spec = importlib.machinery.ModuleSpec(name, None)
+    newmod = importlib.util.module_from_spec(spec)
+    setattr(sys.modules[parent], child, newmod)
+    sys.modules[name] = newmod
+    return newmod
+
+
+# This module used to be located in pipe_drivers as
+# lsst.pipe.drivers.background.  All pickled datasets using this name
+# require that it still exists as that name. Therefore we create a faked
+# version of lsst.pipe.drivers if that package is not around.
+try:
+    import lsst.pipe.drivers.background  # noqa: F401
+except ImportError:
+    # Create a fake lsst.pipe.drivers module and attach it to lsst.pipe.
+    pipe_drivers = _create_module_child("lsst.pipe.drivers")
+
+    # Create a background module and attach that to drivers.
+    pipe_drivers_background = _create_module_child("lsst.pipe.drivers.background")
+
+    # Attach the classes to the faked pipe_drivers variant.
+    setattr(pipe_drivers_background, FocalPlaneBackground.__name__, FocalPlaneBackground)
+    setattr(pipe_drivers_background, FocalPlaneBackgroundConfig.__name__, FocalPlaneBackgroundConfig)
