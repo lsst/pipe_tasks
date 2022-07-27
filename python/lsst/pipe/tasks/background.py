@@ -565,6 +565,23 @@ class FocalPlaneBackground:
 
         return cls(config, dims, afwGeom.makeTransform(transform))
 
+    @classmethod
+    def fromSimilar(cls, other):
+        """Construct from an object that has the same interface.
+
+        Parameters
+        ----------
+        other : `FocalPlaneBackground`-like
+            An object that matches the interface of `FocalPlaneBackground`
+            but which may be different.
+
+        Returns
+        -------
+        background : `FocalPlaneBackground`
+            Something guaranteed to be a `FocalPlaneBackground`.
+        """
+        return cls(other.config, other.dims, other.transform, other._values, other._numbers)
+
     def __init__(self, config, dims, transform, values=None, numbers=None):
         """Constructor
 
