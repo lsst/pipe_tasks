@@ -19,7 +19,6 @@
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
-import os
 import copy
 import numpy
 import warnings
@@ -38,14 +37,12 @@ import lsst.meas.algorithms as measAlg
 import lsstDebug
 import lsst.utils as utils
 from lsst.skymap import BaseSkyMap
-from .coaddBase import CoaddBaseTask, SelectDataIdContainer, makeSkyInfo, makeCoaddSuffix, reorderAndPadList
+from .coaddBase import CoaddBaseTask, makeSkyInfo, makeCoaddSuffix, reorderAndPadList
 from .interpImage import InterpImageTask
 from .scaleZeroPoint import ScaleZeroPointTask
-from .coaddHelpers import groupPatchExposures, getGroupDataRef
 from .maskStreaks import MaskStreaksTask
 from .healSparseMapping import HealSparseInputMapTask
 from lsst.meas.algorithms import SourceDetectionTask, AccumulatorMeanStack, ScaleVarianceTask
-from lsst.daf.butler import DeferredDatasetHandle
 from lsst.utils.timer import timeMethod
 
 __all__ = ["AssembleCoaddTask", "AssembleCoaddConnections", "AssembleCoaddConfig",
@@ -445,14 +442,11 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         Assemble a coadd from a set of Warps.
 
         PipelineTask (Gen3) entry point to Coadd a set of Warps.
-        Analogous to `runDataRef`, it prepares all the data products to be
+        It prepares all the data products to be
         passed to `run`, and processes the results before returning a struct
         of results to be written out. AssembleCoadd cannot fit all Warps in memory.
         Therefore, its inputs are accessed subregion by subregion
-        by the Gen3 `DeferredDatasetHandle` that is analagous to the Gen2
-        `lsst.daf.persistence.ButlerDataRef`. Any updates to this method should
-        correspond to an update in `runDataRef` while both entry points
-        are used.
+        by the `DeferredDatasetHandle`.
         """
         inputData = butlerQC.get(inputRefs)
 
@@ -470,7 +464,6 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         else:
             warpRefList = inputData['inputWarps']
 
-        # Perform same middle steps as `runDataRef` does
         inputs = self.prepareInputs(warpRefList)
         self.log.info("Found %d %s", len(inputs.tempExpRefList),
                       self.getTempExpDatasetName(self.warpType))
@@ -486,83 +479,6 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         if self.config.doWrite:
             butlerQC.put(retStruct, outputRefs)
-        return retStruct
-
-    @timeMethod
-    def runDataRef(self, dataRef, selectDataList=None, warpRefList=None):
-        """Assemble a coadd from a set of Warps.
-
-        Pipebase.CmdlineTask entry point to Coadd a set of Warps.
-        Compute weights to be applied to each Warp and
-        find scalings to match the photometric zeropoint to a reference Warp.
-        Assemble the Warps using `run`. Interpolate over NaNs and
-        optionally write the coadd to disk. Return the coadded exposure.
-
-        Parameters
-        ----------
-        dataRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
-            Data reference defining the patch for coaddition and the
-            reference Warp (if ``config.autoReference=False``).
-            Used to access the following data products:
-            - ``self.config.coaddName + "Coadd_skyMap"``
-            - ``self.config.coaddName + "Coadd_ + <warpType> + "Warp"`` (optionally)
-            - ``self.config.coaddName + "Coadd"``
-        selectDataList : `list`
-            List of data references to Calexps. Data to be coadded will be
-            selected from this list based on overlap with the patch defined
-            by dataRef, grouped by visit, and converted to a list of data
-            references to warps.
-        warpRefList : `list`
-            List of data references to Warps to be coadded.
-            Note: `warpRefList` is just the new name for `tempExpRefList`.
-
-        Returns
-        -------
-        retStruct : `lsst.pipe.base.Struct`
-           Result struct with components:
-
-           - ``coaddExposure``: coadded exposure (``Exposure``).
-           - ``nImage``: exposure count image (``Image``).
-        """
-        if selectDataList and warpRefList:
-            raise RuntimeError("runDataRef received both a selectDataList and warpRefList, "
-                               "and which to use is ambiguous. Please pass only one.")
-
-        skyInfo = self.getSkyInfo(dataRef)
-        if warpRefList is None:
-            calExpRefList = self.selectExposures(dataRef, skyInfo, selectDataList=selectDataList)
-            if len(calExpRefList) == 0:
-                self.log.warning("No exposures to coadd")
-                return
-            self.log.info("Coadding %d exposures", len(calExpRefList))
-
-            warpRefList = self.getTempExpRefList(dataRef, calExpRefList)
-
-        inputData = self.prepareInputs(warpRefList)
-        self.log.info("Found %d %s", len(inputData.tempExpRefList),
-                      self.getTempExpDatasetName(self.warpType))
-        if len(inputData.tempExpRefList) == 0:
-            self.log.warning("No coadd temporary exposures found")
-            return
-
-        supplementaryData = self.makeSupplementaryData(dataRef, warpRefList=inputData.tempExpRefList)
-
-        retStruct = self.run(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
-                             inputData.weightList, supplementaryData=supplementaryData)
-
-        brightObjects = self.readBrightObjectMasks(dataRef) if self.config.doMaskBrightObjects else None
-        self.processResults(retStruct.coaddExposure, brightObjectMasks=brightObjects, dataId=dataRef.dataId)
-
-        if self.config.doWrite:
-            if self.getCoaddDatasetName(self.warpType) == "deepCoadd" and self.config.hasFakes:
-                coaddDatasetName = "fakes_" + self.getCoaddDatasetName(self.warpType)
-            else:
-                coaddDatasetName = self.getCoaddDatasetName(self.warpType)
-            self.log.info("Persisting %s", coaddDatasetName)
-            dataRef.put(retStruct.coaddExposure, coaddDatasetName)
-        if self.config.doNImage and retStruct.nImage is not None:
-            dataRef.put(retStruct.nImage, self.getCoaddDatasetName(self.warpType) + '_nImage')
-
         return retStruct
 
     def processResults(self, coaddExposure, brightObjectMasks=None, dataId=None):
@@ -584,25 +500,6 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         if self.config.doMaskBrightObjects:
             self.setBrightObjectMasks(coaddExposure, brightObjectMasks, dataId)
-
-    def makeSupplementaryData(self, dataRef, selectDataList=None, warpRefList=None):
-        """Make additional inputs to run() specific to subclasses (Gen2)
-
-        Duplicates interface of `runDataRef` method
-        Available to be implemented by subclasses only if they need the
-        coadd dataRef for performing preliminary processing before
-        assembling the coadd.
-
-        Parameters
-        ----------
-        dataRef : `lsst.daf.persistence.ButlerDataRef`
-            Butler data reference for supplementary data.
-        selectDataList : `list` (optional)
-            Optional List of data references to Calexps.
-        warpRefList : `list` (optional)
-            Optional List of data references to Warps.
-        """
-        return pipeBase.Struct()
 
     def makeSupplementaryDataGen3(self, butlerQC, inputRefs, outputRefs):
         """Make additional inputs to run() specific to subclasses (Gen3)
@@ -627,30 +524,6 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             for corresponding dataset type.
         """
         return pipeBase.Struct()
-
-    def getTempExpRefList(self, patchRef, calExpRefList):
-        """Generate list data references corresponding to warped exposures
-        that lie within the patch to be coadded.
-
-        Parameters
-        ----------
-        patchRef : `dataRef`
-            Data reference for patch.
-        calExpRefList : `list`
-            List of data references for input calexps.
-
-        Returns
-        -------
-        tempExpRefList : `list`
-            List of Warp/CoaddTempExp data references.
-        """
-        butler = patchRef.getButler()
-        groupData = groupPatchExposures(patchRef, calExpRefList, self.getCoaddDatasetName(self.warpType),
-                                        self.getTempExpDatasetName(self.warpType))
-        tempExpRefList = [getGroupDataRef(butler, self.getTempExpDatasetName(self.warpType),
-                                          g, groupData.keys) for
-                          g in groupData.groups.keys()]
-        return tempExpRefList
 
     def prepareInputs(self, refList):
         """Prepare the input warps for coaddition by measuring the weight for
@@ -687,21 +560,14 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         imageScalerList = []
         tempExpName = self.getTempExpDatasetName(self.warpType)
         for tempExpRef in refList:
-            # Gen3's DeferredDatasetHandles are guaranteed to exist and
-            # therefore have no datasetExists() method
-            if not isinstance(tempExpRef, DeferredDatasetHandle):
-                if not tempExpRef.datasetExists(tempExpName):
-                    self.log.warning("Could not find %s %s; skipping it", tempExpName, tempExpRef.dataId)
-                    continue
-
-            tempExp = tempExpRef.get(datasetType=tempExpName, immediate=True)
+            tempExp = tempExpRef.get()
             # Ignore any input warp that is empty of data
             if numpy.isnan(tempExp.image.array).all():
                 continue
             maskedImage = tempExp.getMaskedImage()
             imageScaler = self.scaleZeroPoint.computeImageScaler(
                 exposure=tempExp,
-                dataRef=tempExpRef,
+                dataRef=tempExpRef,  # FIXME
             )
             try:
                 imageScaler.scaleMaskedImage(maskedImage)
@@ -881,19 +747,14 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             List of weights.
         """
         assert len(tempExpRefList) == len(weightList), "Length mismatch"
-        tempExpName = self.getTempExpDatasetName(self.warpType)
+
         # We load a single pixel of each coaddTempExp, because we just want to get at the metadata
         # (and we need more than just the PropertySet that contains the header), which is not possible
         # with the current butler (see #2777).
         bbox = geom.Box2I(coaddExposure.getBBox().getMin(), geom.Extent2I(1, 1))
 
-        if isinstance(tempExpRefList[0], DeferredDatasetHandle):
-            # Gen 3 API
-            tempExpList = [tempExpRef.get(parameters={'bbox': bbox}) for tempExpRef in tempExpRefList]
-        else:
-            # Gen 2 API. Delete this when Gen 2 retired
-            tempExpList = [tempExpRef.get(tempExpName + "_sub", bbox=bbox, immediate=True)
-                           for tempExpRef in tempExpRefList]
+        tempExpList = [tempExpRef.get(parameters={'bbox': bbox}) for tempExpRef in tempExpRefList]
+
         numCcds = sum(len(tempExp.getInfo().getCoaddInputs().ccds) for tempExp in tempExpList)
 
         # Set the coadd FilterLabel to the band of the first input exposure:
@@ -968,7 +829,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             Keeps track of exposure count for each pixel.
         """
         self.log.debug("Computing coadd over %s", bbox)
-        tempExpName = self.getTempExpDatasetName(self.warpType)
+
         coaddExposure.mask.addMaskPlane("REJECTED")
         coaddExposure.mask.addMaskPlane("CLIPPED")
         coaddExposure.mask.addMaskPlane("SENSOR_EDGE")
@@ -979,12 +840,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             subNImage = afwImage.ImageU(bbox.getWidth(), bbox.getHeight())
         for tempExpRef, imageScaler, altMask in zip(tempExpRefList, imageScalerList, altMaskList):
 
-            if isinstance(tempExpRef, DeferredDatasetHandle):
-                # Gen 3 API
-                exposure = tempExpRef.get(parameters={'bbox': bbox})
-            else:
-                # Gen 2 API. Delete this when Gen 2 retired
-                exposure = tempExpRef.get(tempExpName + "_sub", bbox=bbox)
+            exposure = tempExpRef.get(parameters={'bbox': bbox})
 
             maskedImage = exposure.getMaskedImage()
             mask = maskedImage.getMask()
@@ -1039,7 +895,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             Keeps track of exposure count for each pixel.
         """
         self.log.debug("Computing online coadd.")
-        tempExpName = self.getTempExpDatasetName(self.warpType)
+
         coaddExposure.mask.addMaskPlane("REJECTED")
         coaddExposure.mask.addMaskPlane("CLIPPED")
         coaddExposure.mask.addMaskPlane("SENSOR_EDGE")
@@ -1062,13 +918,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                                                             imageScalerList,
                                                             altMaskList,
                                                             weightList):
-            if isinstance(tempExpRef, DeferredDatasetHandle):
-                # Gen 3 API
-                exposure = tempExpRef.get()
-            else:
-                # Gen 2 API. Delete this when Gen 2 retired
-                exposure = tempExpRef.get(tempExpName)
-
+            exposure = tempExpRef.get()
             maskedImage = exposure.getMaskedImage()
             mask = maskedImage.getMask()
             if altMask is not None:
@@ -1187,28 +1037,6 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                 validPolygon = afwGeom.polygon.Polygon(geom.Box2D(validPolyBBox))
             ccd.setValidPolygon(validPolygon)
 
-    def readBrightObjectMasks(self, dataRef):
-        """Retrieve the bright object masks.
-
-        Returns None on failure.
-
-        Parameters
-        ----------
-        dataRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
-            A Butler dataRef.
-
-        Returns
-        -------
-        result : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
-            Bright object mask from the Butler object, or None if it cannot
-            be retrieved.
-        """
-        try:
-            return dataRef.get(datasetType="brightObjectMask", immediate=True)
-        except Exception as e:
-            self.log.warning("Unable to read brightObjectMask for %s: %s", dataRef.dataId, e)
-            return None
-
     def setBrightObjectMasks(self, exposure, brightObjectMasks, dataId=None):
         """Set the bright object masks.
 
@@ -1272,19 +1100,6 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         selected = array & (sensorEdge | clipped | rejected) > 0
         array[selected] |= inexactPsf
 
-    @classmethod
-    def _makeArgumentParser(cls):
-        """Create an argument parser.
-        """
-        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", cls.ConfigClass().coaddName + "Coadd_"
-                               + cls.ConfigClass().warpType + "Warp",
-                               help="data ID, e.g. --id tract=12345 patch=1,2",
-                               ContainerClass=AssembleCoaddDataIdContainer)
-        parser.add_id_argument("--selectId", "calexp", help="data ID, e.g. --selectId visit=6789 ccd=0..9",
-                               ContainerClass=SelectDataIdContainer)
-        return parser
-
     @staticmethod
     def _subBBoxIter(bbox, subregionSize):
         """Iterate over subregions of a bbox.
@@ -1339,34 +1154,6 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             if visit in inputWarpDict:
                 filteredInputs.append(inputWarpDict[visit])
         return filteredInputs
-
-
-class AssembleCoaddDataIdContainer(pipeBase.DataIdContainer):
-    """A version of `lsst.pipe.base.DataIdContainer` specialized for assembleCoadd.
-    """
-
-    def makeDataRefList(self, namespace):
-        """Make self.refList from self.idList.
-
-        Parameters
-        ----------
-        namespace
-            Results of parsing command-line (with ``butler`` and ``log`` elements).
-        """
-        datasetType = namespace.config.coaddName + "Coadd"
-        keysCoadd = namespace.butler.getKeys(datasetType=datasetType, level=self.level)
-
-        for dataId in self.idList:
-            # tract and patch are required
-            for key in keysCoadd:
-                if key not in dataId:
-                    raise RuntimeError("--id must include " + key)
-
-            dataRef = namespace.butler.dataRef(
-                datasetType=datasetType,
-                dataId=dataId,
-            )
-            self.refList.append(dataRef)
 
 
 def countMaskFromFootprint(mask, footprint, bitmask, ignoreMask):
@@ -2243,30 +2030,6 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                                imageScalerList=templateCoadd.imageScalerList,
                                weightList=templateCoadd.weightList)
 
-    @utils.inheritDoc(AssembleCoaddTask)
-    def makeSupplementaryData(self, dataRef, selectDataList=None, warpRefList=None):
-        """
-        Generate a templateCoadd to use as a naive model of static sky to
-        subtract from PSF-Matched warps.
-
-        Returns
-        -------
-        result : `lsst.pipe.base.Struct`
-           Result struct with components:
-
-           - ``templateCoadd``: coadded exposure (``lsst.afw.image.Exposure``)
-           - ``nImage``: N Image (``lsst.afw.image.Image``)
-        """
-        templateCoadd = self.assembleStaticSkyModel.runDataRef(dataRef, selectDataList, warpRefList)
-        if templateCoadd is None:
-            raise RuntimeError(self._noTemplateMessage(self.assembleStaticSkyModel.warpType))
-
-        return pipeBase.Struct(templateCoadd=templateCoadd.coaddExposure,
-                               nImage=templateCoadd.nImage,
-                               warpRefList=templateCoadd.warpRefList,
-                               imageScalerList=templateCoadd.imageScalerList,
-                               weightList=templateCoadd.weightList)
-
     def _noTemplateMessage(self, warpType):
         warpName = (warpType[0].upper() + warpType[1:])
         message = """No %(warpName)s warps were found to build the template coadd which is
@@ -2561,7 +2324,6 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
     def _readAndComputeWarpDiff(self, warpRef, imageScaler, templateCoadd):
         """Fetch a warp from the butler and return a warpDiff.
-
         Parameters
         ----------
         warpRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
@@ -2570,7 +2332,6 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             An image scaler object.
         templateCoadd : `lsst.afw.image.Exposure`
             Exposure to be substracted from the scaled warp.
-
         Returns
         -------
         warp : `lsst.afw.image.Exposure`
@@ -2583,11 +2344,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             return None
         # Warp comparison must use PSF-Matched Warps regardless of requested coadd warp type
         warpName = self.getTempExpDatasetName('psfMatched')
-        if not isinstance(warpRef, DeferredDatasetHandle):
-            if not warpRef.datasetExists(warpName):
-                self.log.warning("Could not find %s %s; skipping it", warpName, warpRef.dataId)
-                return None
-        warp = warpRef.get(datasetType=warpName, immediate=True)
+
+        warp = warpRef.get()
         # direct image scaler OK for PSF-matched Warp
         imageScaler.scaleMaskedImage(warp.getMaskedImage())
         mi = warp.getMaskedImage()
@@ -2598,32 +2356,3 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                 self.log.warning("Unable to rescale variance of warp (%s); leaving it as-is", exc)
         mi -= templateCoadd.getMaskedImage()
         return warp
-
-    def _dataRef2DebugPath(self, prefix, warpRef, coaddLevel=False):
-        """Return a path to which to write debugging output.
-
-        Creates a hyphen-delimited string of dataId values for simple filenames.
-
-        Parameters
-        ----------
-        prefix : `str`
-            Prefix for filename.
-        warpRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
-            Butler dataRef to make the path from.
-        coaddLevel : `bool`, optional.
-            If True, include only coadd-level keys (e.g., 'tract', 'patch',
-            'filter', but no 'visit').
-
-        Returns
-        -------
-        result : `str`
-            Path for debugging output.
-        """
-        if coaddLevel:
-            keys = warpRef.getButler().getKeys(self.getCoaddDatasetName(self.warpType))
-        else:
-            keys = warpRef.dataId.keys()
-        keyList = sorted(keys, reverse=True)
-        directory = lsstDebug.Info(__name__).figPath if lsstDebug.Info(__name__).figPath else "."
-        filename = "%s-%s.fits" % (prefix, '-'.join([str(warpRef.dataId[k]) for k in keyList]))
-        return os.path.join(directory, filename)
