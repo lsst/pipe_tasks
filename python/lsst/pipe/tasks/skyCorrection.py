@@ -18,10 +18,13 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import numpy as np
+
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
 
+from lsst.afw.cameraGeom.utils import makeImageFromCamera
 from lsst.pipe.base import ArgumentParser, ConfigDatasetType
 from lsst.daf.butler import DimensionGraph
 from lsst.pex.config import Config, Field, ConfigurableField, ConfigField
@@ -29,7 +32,6 @@ from lsst.ctrl.pool.pool import Pool
 from lsst.ctrl.pool.parallel import BatchPoolTask
 from lsst.pipe.drivers.background import (SkyMeasurementTask, FocalPlaneBackground,
                                           FocalPlaneBackgroundConfig, MaskObjectsTask)
-import lsst.pipe.drivers.visualizeVisit as visualizeVisit
 import lsst.pipe.base.connectionTypes as cT
 
 __all__ = ["SkyCorrectionConfig", "SkyCorrectionTask"]
@@ -67,6 +69,64 @@ def reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):
     return outputList
 
 
+def _makeCameraImage(camera, exposures, binning):
+    """Make and write an image of an entire focal plane
+
+    Parameters
+    ----------
+    camera : `lsst.afw.cameraGeom.Camera`
+        Camera description.
+    exposures : `dict` mapping detector ID to `lsst.afw.image.Exposure`
+        CCD exposures, binned by `binning`.
+    binning : `int`
+        Binning size that has been applied to images.
+    """
+    class ImageSource:
+        """Source of images for makeImageFromCamera"""
+        def __init__(self, exposures):
+            """Constructor
+
+            Parameters
+            ----------
+            exposures : `dict` mapping detector ID to `lsst.afw.image.Exposure`
+                CCD exposures, already binned.
+            """
+            self.isTrimmed = True
+            self.exposures = exposures
+            self.background = np.nan
+
+        def getCcdImage(self, detector, imageFactory, binSize):
+            """Provide image of CCD to makeImageFromCamera"""
+            detId = detector.getId()
+            if detId not in self.exposures:
+                dims = detector.getBBox().getDimensions()/binSize
+                image = imageFactory(*[int(xx) for xx in dims])
+                image.set(self.background)
+            else:
+                image = self.exposures[detector.getId()]
+            if hasattr(image, "getMaskedImage"):
+                image = image.getMaskedImage()
+            if hasattr(image, "getMask"):
+                mask = image.getMask()
+                isBad = mask.getArray() & mask.getPlaneBitMask("NO_DATA") > 0
+                image = image.clone()
+                image.getImage().getArray()[isBad] = self.background
+            if hasattr(image, "getImage"):
+                image = image.getImage()
+
+            image = afwMath.rotateImageBy90(image, detector.getOrientation().getNQuarter())
+
+            return image, detector
+
+    image = makeImageFromCamera(
+        camera,
+        imageSource=ImageSource(exposures),
+        imageFactory=afwImage.ImageF,
+        binSize=binning
+    )
+    return image
+
+
 def makeCameraImage(camera, exposures, filename=None, binning=8):
     """Make and write an image of an entire focal plane
 
@@ -81,7 +141,7 @@ def makeCameraImage(camera, exposures, filename=None, binning=8):
     binning : `int`
         Binning size that has been applied to images.
     """
-    image = visualizeVisit.makeCameraImage(camera, dict(exp for exp in exposures if exp is not None), binning)
+    image = _makeCameraImage(camera, dict(exp for exp in exposures if exp is not None), binning)
     if filename is not None:
         image.writeFits(filename)
     return image
