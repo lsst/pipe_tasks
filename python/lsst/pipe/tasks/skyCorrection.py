@@ -30,9 +30,11 @@ from lsst.daf.butler import DimensionGraph
 from lsst.pex.config import Config, Field, ConfigurableField, ConfigField
 from lsst.ctrl.pool.pool import Pool
 from lsst.ctrl.pool.parallel import BatchPoolTask
-from lsst.pipe.drivers.background import (SkyMeasurementTask, FocalPlaneBackground,
-                                          FocalPlaneBackgroundConfig, MaskObjectsTask)
 import lsst.pipe.base.connectionTypes as cT
+
+from .background import (SkyMeasurementTask, FocalPlaneBackground,
+                         FocalPlaneBackgroundConfig, MaskObjectsTask)
+
 
 __all__ = ["SkyCorrectionConfig", "SkyCorrectionTask"]
 
