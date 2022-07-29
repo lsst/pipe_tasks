@@ -38,7 +38,7 @@ import lsst.pex.config as pexConfig
 from lsst.pipe import base as pipeBase
 from lsst.pipe.base import connectionTypes as cT
 from lsst.pex.exceptions import InvalidParameterError
-from lsst.meas.algorithms.loadIndexedReferenceObjects import LoadIndexedReferenceObjectsTask
+from lsst.meas.algorithms import LoadReferenceObjectsConfig
 from lsst.meas.algorithms import ReferenceObjectLoader
 from lsst.meas.algorithms import brightStarStamps as bSS
 from lsst.utils.timer import timeMethod
@@ -169,8 +169,8 @@ class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
         doc="Should stars with NaN annular flux be discarded?",
         default=False
     )
-    refObjLoader = pexConfig.ConfigurableField(
-        target=LoadIndexedReferenceObjectsTask,
+    refObjLoader = pexConfig.ConfigField(
+        dtype=LoadReferenceObjectsConfig,
         doc="Reference object loader for astrometric calibration.",
     )
 
@@ -178,7 +178,7 @@ class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
         self.refObjLoader.ref_dataset_name = "gaia_dr2_20200414"
 
 
-class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
+class ProcessBrightStarsTask(pipeBase.PipelineTask):
     """The description of the parameters for this Task are detailed in
     :lsst-task:`~lsst.pipe.base.PipelineTask`.
 
@@ -201,7 +201,6 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     """
     ConfigClass = ProcessBrightStarsConfig
     _DefaultName = "processBrightStars"
-    RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
     def __init__(self, butler=None, initInputs=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -249,7 +248,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         ----------
         inputExposure : `afwImage.exposure.exposure.ExposureF`
             The image from which bright star stamps should be extracted.
-        refObjLoader : `LoadIndexedReferenceObjectsTask`, optional
+        refObjLoader : `lsst.meas.algorithms.ReferenceObjectLoader`, optional
             Loader to find objects within a reference catalog.
 
         Returns
@@ -443,7 +442,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         ----------
         inputExposure : `afwImage.exposure.exposure.ExposureF`
             The image from which bright star stamps should be extracted.
-        refObjLoader : `LoadIndexedReferenceObjectsTask`, optional
+        refObjLoader : `lsst.meas.algorithms.ReferenceObjectLoader`, optional
             Loader to find objects within a reference catalog.
         dataId : `dict` or `lsst.daf.butler.DataCoordinate`
             The dataId of the exposure (and detector) bright stars should be
@@ -504,22 +503,6 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                                                                  discardNanFluxObjects=(
                                                                      self.config.discardNanFluxStars))
         return pipeBase.Struct(brightStarStamps=brightStarStamps)
-
-    def runDataRef(self, dataRef):
-        """Read in required calexp, extract and process stamps around bright
-        stars and write them to disk.
-
-        Parameters
-        ----------
-        dataRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
-            Data reference to the calexp to extract bright stars from.
-        """
-        calexp = dataRef.get("calexp")
-        skyCorr = dataRef.get("skyCorr") if self.config.doApplySkyCorr else None
-        output = self.run(calexp, dataId=dataRef.dataId, skyCorr=skyCorr)
-        # Save processed bright star stamps
-        dataRef.put(output.brightStarStamps, "brightStarStamps")
-        return pipeBase.Struct(brightStarStamps=output.brightStarStamps)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
