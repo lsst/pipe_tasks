@@ -42,8 +42,8 @@ from lsst.obs.base import ExposureIdInfo
 # NOTE: these imports are a convenience so multiband users only have to import this file.
 from .mergeDetections import MergeDetectionsConfig, MergeDetectionsTask  # noqa: F401
 from .mergeMeasurements import MergeMeasurementsConfig, MergeMeasurementsTask  # noqa: F401
-from .multiBandUtils import MergeSourcesRunner, CullPeaksConfig, _makeGetSchemaCatalogs  # noqa: F401
-from .multiBandUtils import getInputSchema, readCatalog, _makeMakeIdFactory  # noqa: F401
+from .multiBandUtils import CullPeaksConfig, _makeGetSchemaCatalogs  # noqa: F401
+from .multiBandUtils import _makeMakeIdFactory  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesSingleConfig  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesSingleTask  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesMultiConfig  # noqa: F401
