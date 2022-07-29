@@ -22,7 +22,6 @@
 """
 Insert fake sources into calexps
 """
-from astropy.table import Table
 import numpy as np
 import pandas as pd
 
@@ -32,7 +31,7 @@ import lsst.pipe.base as pipeBase
 from .insertFakes import InsertFakesTask
 from lsst.afw.table import SourceTable
 from lsst.obs.base import ExposureIdInfo
-from lsst.pipe.base import PipelineTask, PipelineTaskConfig, CmdLineTask, PipelineTaskConnections
+from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections
 import lsst.pipe.base.connectionTypes as cT
 import lsst.afw.table as afwTable
 from lsst.skymap import BaseSkyMap
@@ -257,7 +256,7 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig,
         self.calibrate.detection.reEstimateBackground = False
 
 
-class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
+class ProcessCcdWithFakesTask(PipelineTask):
     """Insert fake objects into calexps.
 
     Add fake stars and galaxies to the given calexp, specified in the dataRef. Galaxy parameters are read in
@@ -302,59 +301,6 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
         self.schema = schema
         self.makeSubtask("insertFakes")
         self.makeSubtask("calibrate")
-
-    def runDataRef(self, dataRef):
-        """Read in/write out the required data products and add fake sources to the calexp.
-
-        Parameters
-        ----------
-        dataRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
-            Data reference defining the ccd to have fakes added to it.
-            Used to access the following data products:
-                calexp
-                jointcal_wcs
-                jointcal_photoCalib
-
-        Notes
-        -----
-        Uses the calibration and WCS information attached to the calexp for the posistioning and calibration
-        of the sources unless the config option config.externalPhotoCalibName or config.externalSkyWcsName
-        are set then it uses the specified outputs. The config defualts for the column names in the catalog
-        of fakes are taken from the University of Washington simulations database.
-        Operates on one ccd at a time.
-        """
-        exposureIdInfo = dataRef.get("expIdInfo")
-
-        if self.config.insertFakes.fakeType == "snapshot":
-            fakeCat = dataRef.get("fakeSourceCat").toDataFrame()
-        elif self.config.insertFakes.fakeType == "static":
-            fakeCat = dataRef.get("deepCoadd_fakeSourceCat").toDataFrame()
-        else:
-            fakeCat = Table.read(self.config.insertFakes.fakeType).to_pandas()
-
-        calexp = dataRef.get("calexp")
-        if self.config.doApplyExternalGlobalSkyWcs or self.config.doApplyExternalTractSkyWcs:
-            self.log.info("Using external wcs from %s", self.config.externalSkyWcsName)
-            wcs = dataRef.get(self.config.externalSkyWcsName + "_wcs")
-        else:
-            wcs = calexp.getWcs()
-
-        if self.config.doApplyExternalGlobalPhotoCalib or self.config.doApplyExternalTractPhotoCalib:
-            self.log.info("Using external photocalib from %s", self.config.externalPhotoCalibName)
-            photoCalib = dataRef.get(self.config.externalPhotoCalibName + "_photoCalib")
-        else:
-            photoCalib = calexp.getPhotoCalib()
-
-        icSourceCat = dataRef.get("icSrc", immediate=True)
-        sfdSourceCat = dataRef.get("src", immediate=True)
-
-        resultStruct = self.run(fakeCat, calexp, wcs=wcs, photoCalib=photoCalib,
-                                exposureIdInfo=exposureIdInfo, icSourceCat=icSourceCat,
-                                sfdSourceCat=sfdSourceCat)
-
-        dataRef.put(resultStruct.outputExposure, "fakes_calexp")
-        dataRef.put(resultStruct.outputCat, "fakes_src")
-        return resultStruct
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
