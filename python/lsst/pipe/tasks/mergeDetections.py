@@ -23,23 +23,20 @@
 
 import numpy as np
 from numpy.lib.recfunctions import rec_join
+import warnings
 
-from .multiBandUtils import (CullPeaksConfig, MergeSourcesRunner, _makeMakeIdFactory, makeMergeArgumentParser,
-                             getInputSchema, readCatalog)
-
+from .multiBandUtils import CullPeaksConfig
 
 import lsst.afw.detection as afwDetect
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 
-from lsst.coadd.utils.getGen3CoaddExposureId import getGen3CoaddExposureId
 from lsst.meas.algorithms import SkyObjectsTask
 from lsst.skymap import BaseSkyMap
 from lsst.pex.config import Config, Field, ListField, ConfigurableField, ConfigField
-from lsst.pipe.base import (CmdLineTask, PipelineTask, PipelineTaskConfig, Struct,
+from lsst.pipe.base import (PipelineTask, PipelineTaskConfig, Struct,
                             PipelineTaskConnections)
 import lsst.pipe.base.connectionTypes as cT
-from lsst.pipe.tasks.coaddBase import getSkyInfo
 from lsst.obs.base import ExposureIdInfo
 
 
@@ -65,10 +62,6 @@ def matchCatalogsExact(catalog1, catalog2, patch1=None, patch2=None):
 
     patch1, patch2 : array of int
         Patch for each row, converted into an integer.
-        In the gen3 butler this is done already, in gen2
-        it is recommended to use `patch2Int`, assuming that
-        the patches are the same structure as HSC, that range
-        from '0,0' to '9,9'.
 
     Returns
     -------
@@ -204,136 +197,45 @@ class MergeDetectionsConfig(PipelineTaskConfig, pipelineConnections=MergeDetecti
             raise RuntimeError("No priority list provided")
 
 
-class MergeDetectionsTask(PipelineTask, CmdLineTask):
-    r"""!
-    @anchor MergeDetectionsTask_
+class MergeDetectionsTask(PipelineTask):
+    """Task to merge coadd tetections from multiple bands.
 
-    @brief Merge coadd detections from multiple bands.
-
-    @section pipe_tasks_multiBand_Contents Contents
-
-      - @ref pipe_tasks_multiBand_MergeDetectionsTask_Purpose
-      - @ref pipe_tasks_multiBand_MergeDetectionsTask_Init
-      - @ref pipe_tasks_multiBand_MergeDetectionsTask_Run
-      - @ref pipe_tasks_multiBand_MergeDetectionsTask_Config
-      - @ref pipe_tasks_multiBand_MergeDetectionsTask_Debug
-      - @ref pipe_tasks_multiband_MergeDetectionsTask_Example
-
-    @section pipe_tasks_multiBand_MergeDetectionsTask_Purpose	Description
-
-    Command-line task that merges sources detected in coadds of exposures obtained with different filters.
-
-    To perform photometry consistently across coadds in multiple filter bands, we create a master catalog of
-    sources from all bands by merging the sources (peaks & footprints) detected in each coadd, while keeping
-    track of which band each source originates in.
-
-    The catalog merge is performed by @ref getMergedSourceCatalog. Spurious peaks detected around bright
-    objects are culled as described in @ref CullPeaksConfig_.
-
-      @par Inputs:
-        deepCoadd_det{tract,patch,filter}: SourceCatalog (only parent Footprints)
-      @par Outputs:
-        deepCoadd_mergeDet{tract,patch}: SourceCatalog (only parent Footprints)
-      @par Data Unit:
-        tract, patch
-
-    @section pipe_tasks_multiBand_MergeDetectionsTask_Init       Task initialisation
-
-    @copydoc \_\_init\_\_
-
-    @section pipe_tasks_multiBand_MergeDetectionsTask_Run       Invoking the Task
-
-    @copydoc run
-
-    @section pipe_tasks_multiBand_MergeDetectionsTask_Config       Configuration parameters
-
-    See @ref MergeDetectionsConfig_
-
-    @section pipe_tasks_multiBand_MergeDetectionsTask_Debug		Debug variables
-
-    The command line task interface supports a flag @c -d
-    to import @b debug.py from your @c PYTHONPATH; see @ref baseDebug for more about @b debug.py files.
-
-    MergeDetectionsTask has no debug variables.
-
-    @section pipe_tasks_multiband_MergeDetectionsTask_Example	A complete example of using MergeDetectionsTask
-
-    MergeDetectionsTask is meant to be run after detecting sources in coadds generated for the chosen subset
-    of the available bands.
-    The purpose of the task is to merge sources (peaks & footprints) detected in the coadds generated from the
-    chosen subset of filters.
-    Subsequent tasks in the multi-band processing procedure will deblend the generated master list of sources
-    and, eventually, perform forced photometry.
-    Command-line usage of MergeDetectionsTask expects data references for all the coadds to be processed.
-    A list of the available optional arguments can be obtained by calling mergeCoaddDetections.py with the
-    `--help` command line argument:
-    @code
-    mergeCoaddDetections.py --help
-    @endcode
-
-    To demonstrate usage of the DetectCoaddSourcesTask in the larger context of multi-band processing, we
-    will process HSC data in the [ci_hsc](https://github.com/lsst/ci_hsc) package. Assuming one has finished
-    step 5 at @ref pipeTasks_multiBand, one may merge the catalogs of sources from each coadd as follows:
-    @code
-    mergeCoaddDetections.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I^HSC-R
-    @endcode
-    This will merge the HSC-I & -R band parent source catalogs and write the results to
-    `$CI_HSC_DIR/DATA/deepCoadd-results/merged/0/5,4/mergeDet-0-5,4.fits`.
-
-    The next step in the multi-band processing procedure is
-    @ref MeasureMergedCoaddSourcesTask_ "MeasureMergedCoaddSourcesTask"
+    Parameters
+    ----------
+    butler : `None`
+        Compatibility parameter. Should always be `None`.
+    schema : `lsst.afw.table.Schema`, optional
+        The schema of the detection catalogs used as input to this task.
+    initInputs : `dict`, optional
+        Dictionary that can contain a key ``schema`` containing the
+        input schema. If present will override the value of ``schema``.
     """
     ConfigClass = MergeDetectionsConfig
-    RunnerClass = MergeSourcesRunner
     _DefaultName = "mergeCoaddDetections"
-    inputDataset = "det"
-    outputDataset = "mergeDet"
-    makeIdFactory = _makeMakeIdFactory("MergedCoaddId", includeBand=False)
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        return makeMergeArgumentParser(cls._DefaultName, cls.inputDataset)
-
-    def getInputSchema(self, butler=None, schema=None):
-        return getInputSchema(self, butler, schema)
 
     def __init__(self, butler=None, schema=None, initInputs=None, **kwargs):
-        # Make PipelineTask-only wording less transitional after cmdlineTask is removed
-        """!
-        @brief Initialize the merge detections task.
-
-        A @ref FootprintMergeList_ "FootprintMergeList" will be used to
-        merge the source catalogs.
-
-        @param[in] schema     the schema of the detection catalogs used as input to this one
-        @param[in] butler     a butler used to read the input schema from disk, if schema is None
-        @param[in] initInputs This a PipelineTask-only argument that holds all inputs passed in
-                              through the PipelineTask middleware
-        @param[in] **kwargs   keyword arguments to be passed to CmdLineTask.__init__
-
-        The task will set its own self.schema attribute to the schema of the output merged catalog.
-        """
         super().__init__(**kwargs)
+
+        if butler is not None:
+            warnings.warn("The 'butler' parameter is no longer used and can be safely removed.",
+                          category=FutureWarning, stacklevel=2)
+            butler = None
+
         if initInputs is not None:
             schema = initInputs['schema'].schema
 
+        if schema is None:
+            raise ValueError("No input schema or initInputs['schema'] provided.")
+
+        self.schema = schema
+
         self.makeSubtask("skyObjects")
-        self.schema = self.getInputSchema(butler=butler, schema=schema)
 
         filterNames = list(self.config.priorityList)
         filterNames.append(self.config.skyFilterName)
         self.merged = afwDetect.FootprintMergeList(self.schema, filterNames)
         self.outputSchema = afwTable.SourceCatalog(self.schema)
         self.outputPeakSchema = afwDetect.PeakCatalog(self.merged.getPeakSchema())
-
-    def runDataRef(self, patchRefList):
-        catalogs = dict(readCatalog(self, patchRef) for patchRef in patchRefList)
-        skyInfo = getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRefList[0])
-        idFactory = self.makeIdFactory(patchRefList[0])
-        skySeed = getGen3CoaddExposureId(patchRefList[0], coaddName=self.config.coaddName, includeBand=False,
-                                         log=self.log)
-        mergeCatalogStruct = self.run(catalogs, skyInfo, idFactory, skySeed)
-        self.write(patchRefList[0], mergeCatalogStruct.outputCatalog)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -475,26 +377,3 @@ class MergeDetectionsTask(PipelineTask, CmdLineTask):
             converted.append(newFoot)
 
         return converted
-
-    def write(self, patchRef, catalog):
-        """!
-        @brief Write the output.
-
-        @param[in]  patchRef   data reference for patch
-        @param[in]  catalog    catalog
-
-        We write as the dataset provided by the 'outputDataset'
-        class variable.
-        """
-        patchRef.put(catalog, self.config.coaddName + "Coadd_" + self.outputDataset)
-        # since the filter isn't actually part of the data ID for the dataset we're saving,
-        # it's confusing to see it in the log message, even if the butler simply ignores it.
-        mergeDataId = patchRef.dataId.copy()
-        del mergeDataId["filter"]
-        self.log.info("Wrote merged catalog: %s", mergeDataId)
-
-    def writeMetadata(self, dataRefList):
-        """!
-        @brief No metadata to write, and not sure how to write it for a list of dataRefs.
-        """
-        pass
