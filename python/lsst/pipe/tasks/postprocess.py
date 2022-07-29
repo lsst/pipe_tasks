@@ -21,7 +21,6 @@
 
 import functools
 import pandas as pd
-from collections import defaultdict
 import logging
 import numpy as np
 import numbers
@@ -35,13 +34,10 @@ from lsst.obs.base import ExposureIdInfo
 from lsst.pipe.base import connectionTypes
 import lsst.afw.table as afwTable
 from lsst.meas.base import SingleFrameMeasurementTask
-from lsst.pipe.base import CmdLineTask, ArgumentParser, DataIdContainer
-from lsst.coadd.utils.coaddDataIdContainer import CoaddDataIdContainer
 from lsst.daf.butler import DeferredDatasetHandle, DataCoordinate
 from lsst.skymap import BaseSkyMap
 
 from .parquetTable import ParquetTable
-from .multiBandUtils import makeMergeArgumentParser, MergeSourcesRunner
 from .functors import CompositeFunctor, Column
 
 log = logging.getLogger(__name__)
@@ -116,36 +112,17 @@ class WriteObjectTableConfig(pipeBase.PipelineTaskConfig,
     )
 
 
-class WriteObjectTableTask(CmdLineTask, pipeBase.PipelineTask):
+class WriteObjectTableTask(pipeBase.PipelineTask):
     """Write filter-merged source tables to parquet
     """
     _DefaultName = "writeObjectTable"
     ConfigClass = WriteObjectTableConfig
-    RunnerClass = MergeSourcesRunner
 
     # Names of table datasets to be merged
     inputDatasets = ('forced_src', 'meas', 'ref')
 
     # Tag of output dataset written by `MergeSourcesTask.write`
     outputDataset = 'obj'
-
-    def __init__(self, butler=None, schema=None, **kwargs):
-        # It is a shame that this class can't use the default init for
-        # CmdLineTask, but to do so would require its own special task
-        # runner, which is many more lines of specialization, so this is
-        # how it is for now.
-        super().__init__(**kwargs)
-
-    def runDataRef(self, patchRefList):
-        """!
-        @brief Merge coadd sources from multiple bands. Calls @ref `run` which
-        must be defined in subclasses that inherit from MergeSourcesTask.
-        @param[in] patchRefList list of data references for each filter
-        """
-        catalogs = dict(self.readCatalog(patchRef) for patchRef in patchRefList)
-        dataId = patchRefList[0].dataId
-        mergedCatalog = self.run(catalogs, tract=dataId['tract'], patch=dataId['patch'])
-        self.write(patchRefList[0], ParquetTable(dataFrame=mergedCatalog))
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -164,19 +141,6 @@ class WriteObjectTableTask(CmdLineTask, pipeBase.PipelineTask):
         df = self.run(catalogs=catalogs, tract=dataId['tract'], patch=dataId['patch'])
         outputs = pipeBase.Struct(outputCatalog=df)
         butlerQC.put(outputs, outputRefs)
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        """Create a suitable ArgumentParser.
-
-        We will use the ArgumentParser to get a list of data
-        references for patches; the RunnerClass will sort them into lists
-        of data references for the same patch.
-
-        References first of self.inputDatasets, rather than
-        self.inputDataset
-        """
-        return makeMergeArgumentParser(cls._DefaultName, cls.inputDatasets[0])
 
     def readCatalog(self, patchRef):
         """Read input catalogs
@@ -289,7 +253,7 @@ class WriteSourceTableConfig(pipeBase.PipelineTaskConfig,
     pass
 
 
-class WriteSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
+class WriteSourceTableTask(pipeBase.PipelineTask):
     """Write source table to parquet.
     """
     _DefaultName = "writeSourceTable"
@@ -1195,44 +1159,6 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
         return df
 
 
-class TractObjectDataIdContainer(CoaddDataIdContainer):
-
-    def makeDataRefList(self, namespace):
-        """Make self.refList from self.idList
-
-        Generate a list of data references given tract and/or patch.
-        This was adapted from `TractQADataIdContainer`, which was
-        `TractDataIdContainer` modifie to not require "filter".
-        Only existing dataRefs are returned.
-        """
-        def getPatchRefList(tract):
-            return [namespace.butler.dataRef(datasetType=self.datasetType,
-                                             tract=tract.getId(),
-                                             patch="%d,%d" % patch.getIndex()) for patch in tract]
-
-        tractRefs = defaultdict(list)  # Data references for each tract
-        for dataId in self.idList:
-            skymap = self.getSkymap(namespace)
-
-            if "tract" in dataId:
-                tractId = dataId["tract"]
-                if "patch" in dataId:
-                    tractRefs[tractId].append(namespace.butler.dataRef(datasetType=self.datasetType,
-                                                                       tract=tractId,
-                                                                       patch=dataId['patch']))
-                else:
-                    tractRefs[tractId] += getPatchRefList(skymap[tractId])
-            else:
-                tractRefs = dict((tract.getId(), tractRefs.get(tract.getId(), []) + getPatchRefList(tract))
-                                 for tract in skymap)
-        outputRefList = []
-        for tractRefList in tractRefs.values():
-            existingRefs = [ref for ref in tractRefList if ref.datasetExists()]
-            outputRefList.append(existingRefs)
-
-        self.refList = outputRefList
-
-
 class ConsolidateObjectTableConnections(pipeBase.PipelineTaskConnections,
                                         dimensions=("tract", "skymap")):
     inputCatalogs = connectionTypes.Input(
@@ -1259,7 +1185,7 @@ class ConsolidateObjectTableConfig(pipeBase.PipelineTaskConfig,
     )
 
 
-class ConsolidateObjectTableTask(CmdLineTask, pipeBase.PipelineTask):
+class ConsolidateObjectTableTask(pipeBase.PipelineTask):
     """Write patch-merged source tables to a tract-level parquet file.
 
     Concatenates `objectTable` list into a per-visit `objectTable_tract`.
@@ -1276,24 +1202,6 @@ class ConsolidateObjectTableTask(CmdLineTask, pipeBase.PipelineTask):
                       len(inputs['inputCatalogs']))
         df = pd.concat(inputs['inputCatalogs'])
         butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        parser = ArgumentParser(name=cls._DefaultName)
-
-        parser.add_id_argument("--id", cls.inputDataset,
-                               help="data ID, e.g. --id tract=12345",
-                               ContainerClass=TractObjectDataIdContainer)
-        return parser
-
-    def runDataRef(self, patchRefList):
-        df = pd.concat([patchRef.get().toDataFrame() for patchRef in patchRefList])
-        patchRefList[0].put(ParquetTable(dataFrame=df), self.outputDataset)
-
-    def writeMetadata(self, dataRef):
-        """No metadata to write.
-        """
-        pass
 
 
 class TransformSourceTableConnections(pipeBase.PipelineTaskConnections,
@@ -1360,7 +1268,7 @@ class ConsolidateVisitSummaryConfig(pipeBase.PipelineTaskConfig,
     pass
 
 
-class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
+class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
     """Task to consolidate per-detector visit metadata.
 
     This task aggregates the following metadata from all the detectors in a
@@ -1380,35 +1288,6 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
     """
     _DefaultName = "consolidateVisitSummary"
     ConfigClass = ConsolidateVisitSummaryConfig
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        parser = ArgumentParser(name=cls._DefaultName)
-
-        parser.add_id_argument("--id", "calexp",
-                               help="data ID, e.g. --id visit=12345",
-                               ContainerClass=VisitDataIdContainer)
-        return parser
-
-    def writeMetadata(self, dataRef):
-        """No metadata to persist, so override to remove metadata persistance.
-        """
-        pass
-
-    def writeConfig(self, butler, clobber=False, doBackup=True):
-        """No config to persist, so override to remove config persistance.
-        """
-        pass
-
-    def runDataRef(self, dataRefList):
-        visit = dataRefList[0].dataId['visit']
-
-        self.log.debug("Concatenating metadata from %d per-detector calexps (visit %d)",
-                       len(dataRefList), visit)
-
-        expCatalog = self._combineExposureMetadata(visit, dataRefList, isGen3=False)
-
-        dataRefList[0].put(expCatalog, 'visitSummary', visit=visit)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         dataRefs = butlerQC.get(inputRefs.calexp)
@@ -1574,39 +1453,6 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         return schema
 
 
-class VisitDataIdContainer(DataIdContainer):
-    """DataIdContainer that groups sensor-level ids by visit.
-    """
-
-    def makeDataRefList(self, namespace):
-        """Make self.refList from self.idList
-
-        Generate a list of data references grouped by visit.
-
-        Parameters
-        ----------
-        namespace : `argparse.Namespace`
-            Namespace used by `lsst.pipe.base.CmdLineTask` to parse command
-            line arguments.
-        """
-        # Group by visits
-        visitRefs = defaultdict(list)
-        for dataId in self.idList:
-            if "visit" in dataId:
-                visitId = dataId["visit"]
-                # append all subsets to
-                subset = namespace.butler.subset(self.datasetType, dataId=dataId)
-                visitRefs[visitId].extend([dataRef for dataRef in subset])
-
-        outputRefList = []
-        for refList in visitRefs.values():
-            existingRefs = [ref for ref in refList if ref.datasetExists()]
-            if existingRefs:
-                outputRefList.append(existingRefs)
-
-        self.refList = outputRefList
-
-
 class ConsolidateSourceTableConnections(pipeBase.PipelineTaskConnections,
                                         defaultTemplates={"catalogType": ""},
                                         dimensions=("instrument", "visit")):
@@ -1630,7 +1476,7 @@ class ConsolidateSourceTableConfig(pipeBase.PipelineTaskConfig,
     pass
 
 
-class ConsolidateSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
+class ConsolidateSourceTableTask(pipeBase.PipelineTask):
     """Concatenate `sourceTable` list into a per-visit `sourceTable_visit`
     """
     _DefaultName = 'consolidateSourceTable'
@@ -1640,7 +1486,7 @@ class ConsolidateSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
     outputDataset = 'sourceTable_visit'
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        from .makeCoaddTempExp import reorderRefs
+        from .makeWarp import reorderRefs
 
         detectorOrder = [ref.dataId['detector'] for ref in inputRefs.inputCatalogs]
         detectorOrder.sort()
@@ -1650,30 +1496,6 @@ class ConsolidateSourceTableTask(CmdLineTask, pipeBase.PipelineTask):
                       len(inputs['inputCatalogs']))
         df = pd.concat(inputs['inputCatalogs'])
         butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
-
-    def runDataRef(self, dataRefList):
-        self.log.info("Concatenating %s per-detector Source Tables", len(dataRefList))
-        df = pd.concat([dataRef.get().toDataFrame() for dataRef in dataRefList])
-        dataRefList[0].put(ParquetTable(dataFrame=df), self.outputDataset)
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        parser = ArgumentParser(name=cls._DefaultName)
-
-        parser.add_id_argument("--id", cls.inputDataset,
-                               help="data ID, e.g. --id visit=12345",
-                               ContainerClass=VisitDataIdContainer)
-        return parser
-
-    def writeMetadata(self, dataRef):
-        """No metadata to write.
-        """
-        pass
-
-    def writeConfig(self, butler, clobber=False, doBackup=True):
-        """No config to write.
-        """
-        pass
 
 
 class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
@@ -1700,7 +1522,7 @@ class MakeCcdVisitTableConfig(pipeBase.PipelineTaskConfig,
     pass
 
 
-class MakeCcdVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
+class MakeCcdVisitTableTask(pipeBase.PipelineTask):
     """Produce a `ccdVisitTable` from the `visitSummary` exposure catalogs.
     """
     _DefaultName = 'makeCcdVisitTable'
@@ -1805,7 +1627,7 @@ class MakeVisitTableConfig(pipeBase.PipelineTaskConfig,
     pass
 
 
-class MakeVisitTableTask(CmdLineTask, pipeBase.PipelineTask):
+class MakeVisitTableTask(pipeBase.PipelineTask):
     """Produce a `visitTable` from the `visitSummary` exposure catalogs.
     """
     _DefaultName = 'makeVisitTable'
@@ -2071,7 +1893,7 @@ class ConsolidateTractConfig(pipeBase.PipelineTaskConfig,
     pass
 
 
-class ConsolidateTractTask(CmdLineTask, pipeBase.PipelineTask):
+class ConsolidateTractTask(pipeBase.PipelineTask):
     """Concatenate any per-patch, dataframe list into a single
     per-tract DataFrame.
     """
