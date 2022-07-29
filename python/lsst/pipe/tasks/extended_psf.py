@@ -308,14 +308,11 @@ class StackBrightStarsConfig(pexConfig.Config):
     )
 
 
-class StackBrightStarsTask(pipeBase.CmdLineTask):
+class StackBrightStarsTask(pipeBase.Task):
     """Stack bright stars together to build an extended PSF model.
     """
     ConfigClass = StackBrightStarsConfig
     _DefaultName = "stack_bright_stars"
-
-    def __init__(self, initInputs=None, *args, **kwargs):
-        pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
 
     def _set_up_stacking(self, example_stamp):
         """Configure stacking statistic and control from config fields.
@@ -420,7 +417,7 @@ class MeasureExtendedPsfConfig(pipeBase.PipelineTaskConfig,
     )
 
 
-class MeasureExtendedPsfTask(pipeBase.CmdLineTask):
+class MeasureExtendedPsfTask(pipeBase.Task):
     """Build and save extended PSF model.
 
     The model is built by stacking bright star stamps, extracted and
@@ -435,7 +432,7 @@ class MeasureExtendedPsfTask(pipeBase.CmdLineTask):
     _DefaultName = "measureExtendedPsf"
 
     def __init__(self, initInputs=None, *args, **kwargs):
-        pipeBase.CmdLineTask.__init__(self, *args, **kwargs)
+        pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("stack_bright_stars")
         self.focal_plane_regions = {region: [] for region in
                                     set(self.config.detectors_focal_plane_regions.values())}
