@@ -20,7 +20,6 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.config as pexConfig
-import lsst.geom as geom
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
@@ -47,6 +46,8 @@ class CoaddBaseConfig(pexConfig.Config):
     select = pexConfig.ConfigurableField(
         doc="Image selection subtask.",
         target=WcsSelectImagesTask,
+        deprecated="This configuration was only used in Gen2, and will be "
+        "removed after v25.0",
     )
     badMaskPlanes = pexConfig.ListField(
         dtype=str,
@@ -88,7 +89,8 @@ class CoaddBaseConfig(pexConfig.Config):
             "jointcal": "Use jointcal_photoCalib",
             "fgcm": "Use fgcm_photoCalib",
             "fgcm_tract": "Use fgcm_tract_photoCalib"
-        }
+        },
+        deprecated="This configuration is no longer used, and will be removed after v25.0",
     )
     doApplyExternalSkyWcs = pexConfig.Field(
         dtype=bool,
@@ -112,7 +114,8 @@ class CoaddBaseConfig(pexConfig.Config):
         default="jointcal",
         allowed={
             "jointcal": "Use jointcal_wcs"
-        }
+        },
+        deprecated="This configuration is no longer used, and will be removed after v25.0",
     )
     includeCalibVar = pexConfig.Field(
         dtype=bool,
@@ -136,31 +139,7 @@ class CoaddBaseTask(pipeBase.PipelineTask):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.makeSubtask("select")
         self.makeSubtask("inputRecorder")
-
-    def selectExposures(self, patchRef, skyInfo=None, selectDataList=[]):
-        """!
-        @brief Select exposures to coadd
-
-        Get the corners of the bbox supplied in skyInfo using @ref geom.Box2D and convert the pixel
-        positions of the bbox corners to sky coordinates using
-        @ref afw::geom::SkyWcs::pixelToSky "skyInfo.wcs.pixelToSky". Use the
-        @ref selectImages::WcsSelectImagesTask "WcsSelectImagesTask" to select exposures that lie
-        inside the patch indicated by the dataRef.
-
-        @param[in] patchRef  data reference for sky map patch. Must include keys "tract", "patch",
-                             plus the camera-specific filter key (e.g. "filter" or "band")
-        @param[in] skyInfo   geometry for the patch; output from getSkyInfo
-        @param[in] selectDataList list of @ref selectImages::SelectStruct "SelectStruct"
-                             to consider for selection
-        @return    a list of science exposures to coadd, as butler data references
-        """
-        if skyInfo is None:
-            skyInfo = self.getSkyInfo(patchRef)
-        cornerPosList = geom.Box2D(skyInfo.bbox).getCorners()
-        coordList = [skyInfo.wcs.pixelToSky(pos) for pos in cornerPosList]
-        return self.select.runDataRef(patchRef, coordList, selectDataList=selectDataList).dataRefList
 
     def getSkyInfo(self, patchRef):
         """!
