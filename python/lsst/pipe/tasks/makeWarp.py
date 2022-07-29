@@ -283,9 +283,6 @@ class MakeWarpTask(CoaddBaseTask):
         Notes
         ----
         Construct warps for requested warp type for single epoch
-
-        PipelineTask (Gen3) entry point to warp and optionally PSF-match
-        calexps. This method is analogous to `runDataRef`.
         """
         # Obtain the list of input detectors from calExpList.  Sort them by
         # detector order (to ensure reproducibility).  Then ensure all input
