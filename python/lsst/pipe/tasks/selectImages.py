@@ -92,58 +92,6 @@ class BaseSelectImagesTask(pipeBase.Task):
         """
         raise NotImplementedError()
 
-    def _runArgDictFromDataId(self, dataId):
-        """Extract keyword arguments for run (other than coordList) from a data ID
-
-        @return keyword arguments for run (other than coordList), as a dict
-        """
-        raise NotImplementedError()
-
-    def runDataRef(self, dataRef, coordList, makeDataRefList=True, selectDataList=[]):
-        """Run based on a data reference
-
-        This delegates to run() and _runArgDictFromDataId() to do the actual
-        selection. In the event that the selectDataList is non-empty, this will
-        be used to further restrict the selection, providing the user with
-        additional control over the selection.
-
-        @param[in] dataRef: data reference; must contain any extra keys needed by the subclass
-        @param[in] coordList: list of coordinates defining region of interest; if None, search the whole sky
-        @param[in] makeDataRefList: if True, return dataRefList
-        @param[in] selectDataList: List of SelectStruct with dataRefs to consider for selection
-        @return a pipeBase Struct containing:
-        - exposureInfoList: a list of objects derived from ExposureInfo
-        - dataRefList: a list of data references (None if makeDataRefList False)
-        """
-        runArgDict = self._runArgDictFromDataId(dataRef.dataId)
-        exposureInfoList = self.run(coordList, **runArgDict).exposureInfoList
-
-        if len(selectDataList) > 0 and len(exposureInfoList) > 0:
-            # Restrict the exposure selection further
-            ccdKeys, ccdValues = _extractKeyValue(exposureInfoList)
-            inKeys, inValues = _extractKeyValue([s.dataRef for s in selectDataList], keys=ccdKeys)
-            inValues = set(inValues)
-            newExposureInfoList = []
-            for info, ccdVal in zip(exposureInfoList, ccdValues):
-                if ccdVal in inValues:
-                    newExposureInfoList.append(info)
-                else:
-                    self.log.info("De-selecting exposure %s: not in selectDataList", info.dataId)
-            exposureInfoList = newExposureInfoList
-
-        if makeDataRefList:
-            butler = dataRef.butlerSubset.butler
-            dataRefList = [butler.dataRef(datasetType="calexp",
-                                          dataId=expInfo.dataId,
-                                          ) for expInfo in exposureInfoList]
-        else:
-            dataRefList = None
-
-        return pipeBase.Struct(
-            dataRefList=dataRefList,
-            exposureInfoList=exposureInfoList,
-        )
-
 
 def _extractKeyValue(dataList, keys=None):
     """Extract the keys and values from a list of dataIds
@@ -183,38 +131,6 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
         directly because the standard for the inputs to ConvexPolygon
         are pretty high and we don't want to be responsible for reaching them.
         """
-
-    def runDataRef(self, dataRef, coordList, makeDataRefList=True, selectDataList=[]):
-        """Select images in the selectDataList that overlap the patch
-
-        This method is the old entry point for the Gen2 commandline tasks and drivers
-        Will be deprecated in v22.
-
-        @param dataRef: Data reference for coadd/tempExp (with tract, patch)
-        @param coordList: List of ICRS coordinates (lsst.geom.SpherePoint) specifying boundary of patch
-        @param makeDataRefList: Construct a list of data references?
-        @param selectDataList: List of SelectStruct, to consider for selection
-        """
-        dataRefList = []
-        exposureInfoList = []
-
-        patchVertices = [coord.getVector() for coord in coordList]
-        patchPoly = lsst.sphgeom.ConvexPolygon.convexHull(patchVertices)
-
-        for data in selectDataList:
-            dataRef = data.dataRef
-            imageWcs = data.wcs
-            imageBox = data.bbox
-
-            imageCorners = self.getValidImageCorners(imageWcs, imageBox, patchPoly, dataId=None)
-            if imageCorners:
-                dataRefList.append(dataRef)
-                exposureInfoList.append(BaseExposureInfo(dataRef.dataId, imageCorners))
-
-        return pipeBase.Struct(
-            dataRefList=dataRefList if makeDataRefList else None,
-            exposureInfoList=exposureInfoList,
-        )
 
     def run(self, wcsList, bboxList, coordList, dataIds=None, **kwargs):
         """Return indices of provided lists that meet the selection criteria
@@ -264,11 +180,6 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
             return imageCorners
 
 
-def sigmaMad(array):
-    "Return median absolute deviation scaled to normally distributed data"
-    return 1.4826*np.median(np.abs(array - np.median(array)))
-
-
 class PsfWcsSelectImagesConnections(pipeBase.PipelineTaskConnections,
                                     dimensions=("tract", "patch", "skymap", "instrument", "visit"),
                                     defaultTemplates={"coaddName": "deep"}):
@@ -294,34 +205,6 @@ class PsfWcsSelectImagesConfig(pipeBase.PipelineTaskConfig,
         default=0.009,
         optional=True,
     )
-    starSelection = pexConfig.Field(
-        doc="select star with this field",
-        dtype=str,
-        default='calib_psf_used',
-        deprecated=('This field has been moved to ComputeExposureSummaryStatsTask and '
-                    'will be removed after v24.')
-    )
-    starShape = pexConfig.Field(
-        doc="name of star shape",
-        dtype=str,
-        default='base_SdssShape',
-        deprecated=('This field has been moved to ComputeExposureSummaryStatsTask and '
-                    'will be removed after v24.')
-    )
-    psfShape = pexConfig.Field(
-        doc="name of psf shape",
-        dtype=str,
-        default='base_SdssShape_psf',
-        deprecated=('This field has been moved to ComputeExposureSummaryStatsTask and '
-                    'will be removed after v24.')
-    )
-    doLegacyStarSelectionComputation = pexConfig.Field(
-        doc="Perform the legacy star selection computations (for backwards compatibility)",
-        dtype=bool,
-        default=False,
-        deprecated=("This field is here for backwards compatibility and will be "
-                    "removed after v24.")
-    )
 
 
 class PsfWcsSelectImagesTask(WcsSelectImagesTask):
@@ -340,38 +223,7 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
     ConfigClass = PsfWcsSelectImagesConfig
     _DefaultName = "PsfWcsSelectImages"
 
-    def runDataRef(self, dataRef, coordList, makeDataRefList=True, selectDataList=[]):
-        """Select images in the selectDataList that overlap the patch and satisfy PSF quality critera.
-
-        This method is the old entry point for the Gen2 commandline tasks and drivers
-        Will be deprecated in v22.
-
-        @param dataRef: Data reference for coadd/tempExp (with tract, patch)
-        @param coordList: List of ICRS coordinates (lsst.geom.SpherePoint) specifying boundary of patch
-        @param makeDataRefList: Construct a list of data references?
-        @param selectDataList: List of SelectStruct, to consider for selection
-        """
-        result = super(PsfWcsSelectImagesTask, self).runDataRef(dataRef, coordList, makeDataRefList,
-                                                                selectDataList)
-
-        dataRefList = []
-        exposureInfoList = []
-        for dataRef, exposureInfo in zip(result.dataRefList, result.exposureInfoList):
-            butler = dataRef.butlerSubset.butler
-            srcCatalog = butler.get('src', dataRef.dataId)
-            valid = self.isValidLegacy(srcCatalog, dataRef.dataId)
-            if valid is False:
-                continue
-
-            dataRefList.append(dataRef)
-            exposureInfoList.append(exposureInfo)
-
-        return pipeBase.Struct(
-            dataRefList=dataRefList,
-            exposureInfoList=exposureInfoList,
-        )
-
-    def run(self, wcsList, bboxList, coordList, visitSummary, dataIds=None, srcList=None, **kwargs):
+    def run(self, wcsList, bboxList, coordList, visitSummary, dataIds=None, **kwargs):
         """Return indices of provided lists that meet the selection criteria
 
         Parameters:
@@ -384,10 +236,6 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
             ICRS coordinates specifying boundary of the patch.
         visitSummary : `list` of `lsst.afw.table.ExposureCatalog`
             containing the PSF shape information for the input ccds to be selected.
-        srcList : `list` of `lsst.afw.table.SourceCatalog`, optional
-            containing the PSF shape information for the input ccds to be selected.
-            This is only used if ``config.doLegacyStarSelectionComputation`` is
-            True.
 
         Returns:
         --------
@@ -399,26 +247,11 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
 
         goodPsf = []
 
-        if not self.config.doLegacyStarSelectionComputation:
-            # Check for old inputs, and give a helpful error message if so.
-            if 'nPsfStar' not in visitSummary[0].schema.getNames():
-                raise RuntimeError("Old calexps detected. "
-                                   "Please set config.doLegacyStarSelectionComputation=True for "
-                                   "backwards compatibility.")
-
-            for i, dataId in enumerate(dataIds):
-                if i not in goodWcs:
-                    continue
-                if self.isValid(visitSummary, dataId["detector"]):
-                    goodPsf.append(i)
-        else:
-            if dataIds is None:
-                dataIds = [None] * len(srcList)
-            for i, (srcCatalog, dataId) in enumerate(zip(srcList, dataIds)):
-                if i not in goodWcs:
-                    continue
-                if self.isValidLegacy(srcCatalog, dataId):
-                    goodPsf.append(i)
+        for i, dataId in enumerate(dataIds):
+            if i not in goodWcs:
+                continue
+            if self.isValid(visitSummary, dataId["detector"]):
+                goodPsf.append(i)
 
         return goodPsf
 
@@ -458,64 +291,6 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         elif self.config.maxScaledSizeScatter and scaledScatterSize > self.config.maxScaledSizeScatter:
             self.log.info("Removing visit %d detector %d because scaled size scatter too large: %f vs %f",
                           row["visit"], detectorId, scaledScatterSize, self.config.maxScaledSizeScatter)
-            valid = False
-
-        return valid
-
-    def isValidLegacy(self, srcCatalog, dataId=None):
-        """Should this ccd be selected based on its PSF shape information.
-
-        This routine is only used in legacy processing (gen2 and
-        backwards compatible old calexps) and should be removed after v24.
-
-        Parameters
-        ----------
-        srcCatalog : `lsst.afw.table.SourceCatalog`
-        dataId : `dict` of dataId keys, optional.
-            Used only for logging. Defaults to None.
-
-        Returns
-        -------
-        valid : `bool`
-            True if selected.
-        """
-        mask = srcCatalog[self.config.starSelection]
-
-        starXX = srcCatalog[self.config.starShape+'_xx'][mask]
-        starYY = srcCatalog[self.config.starShape+'_yy'][mask]
-        starXY = srcCatalog[self.config.starShape+'_xy'][mask]
-        psfXX = srcCatalog[self.config.psfShape+'_xx'][mask]
-        psfYY = srcCatalog[self.config.psfShape+'_yy'][mask]
-        psfXY = srcCatalog[self.config.psfShape+'_xy'][mask]
-
-        starSize = np.power(starXX*starYY - starXY**2, 0.25)
-        starE1 = (starXX - starYY)/(starXX + starYY)
-        starE2 = 2*starXY/(starXX + starYY)
-        medianSize = np.median(starSize)
-
-        psfSize = np.power(psfXX*psfYY - psfXY**2, 0.25)
-        psfE1 = (psfXX - psfYY)/(psfXX + psfYY)
-        psfE2 = 2*psfXY/(psfXX + psfYY)
-
-        medianE1 = np.abs(np.median(starE1 - psfE1))
-        medianE2 = np.abs(np.median(starE2 - psfE2))
-        medianE = np.sqrt(medianE1**2 + medianE2**2)
-
-        scatterSize = sigmaMad(starSize - psfSize)
-        scaledScatterSize = scatterSize/medianSize**2
-
-        valid = True
-        if self.config.maxEllipResidual and medianE > self.config.maxEllipResidual:
-            self.log.info("Removing visit %s because median e residual too large: %f vs %f",
-                          dataId, medianE, self.config.maxEllipResidual)
-            valid = False
-        elif self.config.maxSizeScatter and scatterSize > self.config.maxSizeScatter:
-            self.log.info("Removing visit %s because size scatter is too large: %f vs %f",
-                          dataId, scatterSize, self.config.maxSizeScatter)
-            valid = False
-        elif self.config.maxScaledSizeScatter and scaledScatterSize > self.config.maxScaledSizeScatter:
-            self.log.info("Removing visit %s because scaled size scatter is too large: %f vs %f",
-                          dataId, scaledScatterSize, self.config.maxScaledSizeScatter)
             valid = False
 
         return valid

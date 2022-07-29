@@ -25,22 +25,8 @@ import unittest
 import lsst.utils.tests
 import lsst.geom as geom
 import lsst.afw.geom as afwGeom
-from lsst.pipe.tasks.selectImages import WcsSelectImagesTask, SelectStruct
+from lsst.pipe.tasks.selectImages import WcsSelectImagesTask
 from lsst.pipe.tasks.coaddBase import CoaddBaseTask
-
-
-class KeyValue:
-
-    """Mixin to provide __getitem__ of key/value pair"""
-
-    def __init__(self, key, value):
-        self._key = key
-        self._value = value
-
-    def __getitem__(self, key):
-        if key != self._key:
-            raise KeyError("Unrecognised key in %s: %s vs %s" % (self.__class__.__name__, key, self._key))
-        return self._value
 
 
 class DummyPatch:
@@ -52,41 +38,6 @@ class DummyPatch:
 
     def getOuterBBox(self):
         return self._outerBBox
-
-
-class DummyTract(KeyValue):
-
-    """Quacks like a lsst.skymap.TractInfo"""
-
-    def __init__(self, patchId, patch, wcs):
-        super(DummyTract, self).__init__(patchId, patch)
-        self._wcs = wcs
-
-    def getPatchInfo(self, patchId):
-        return self[patchId]
-
-    def getWcs(self):
-        return self._wcs
-
-
-class DummySkyMap(KeyValue):
-
-    """Quacks like a lsst.skymap.BaseSkyMap"""
-
-    def __init__(self, tractId, tract):
-        super(DummySkyMap, self).__init__(tractId, tract)
-
-
-class DummyDataRef:
-
-    """Quacks like a lsst.daf.persistence.ButlerDataRef"""
-
-    def __init__(self, dataId, **data):
-        self.dataId = dataId
-        self._data = data
-
-    def get(self, dataType):
-        return self._data[dataType]
 
 
 # Common defaults for createPatch and createImage
@@ -107,10 +58,9 @@ def createPatch(
     cdMatrix = afwGeom.makeCdMatrix(scale=scale)
     wcs = afwGeom.makeSkyWcs(crpix=crpix, crval=center, cdMatrix=cdMatrix)
     patch = DummyPatch(xy0, dims)
-    tract = DummyTract(patchId, patch, wcs)
-    skymap = DummySkyMap(tractId, tract)
-    dataRef = DummyDataRef({'tract': tractId, 'patch': ",".join(map(str, patchId))}, deepCoadd_skyMap=skymap)
-    return dataRef
+    # tract = DummyTract(patchId, patch, wcs)
+    # skymap = DummySkyMap(tractId, tract)
+    return patch, wcs
 
 
 def createImage(
@@ -125,36 +75,40 @@ def createImage(
     center = center.rotated(rotateAxis, rotateAngle)
     cdMatrix = afwGeom.makeCdMatrix(scale=scale)
     wcs = afwGeom.makeSkyWcs(crpix=crpix, crval=center, cdMatrix=cdMatrix)
-    return SelectStruct(DummyDataRef(dataId), wcs, geom.Box2I(geom.Point2I(0, 0),
-                                                              geom.Extent2I(dims[0], dims[1])))
+    return wcs, geom.Box2I(geom.Point2I(0, 0), geom.Extent2I(dims[0], dims[1]))
 
 
 class WcsSelectImagesTestCase(unittest.TestCase):
 
-    def check(self, patchRef, selectData, doesOverlap):
+    def check(self, patch, patchWcs, wcs, bbox, doesOverlap):
         config = CoaddBaseTask.ConfigClass()
         config.select.retarget(WcsSelectImagesTask)
         task = CoaddBaseTask(config=config, name="CoaddBase")
-        dataRefList = task.selectExposures(patchRef, selectDataList=[selectData])
+
+        cornerPosList = geom.Box2D(patch.getOuterBBox()).getCorners()
+        coordList = [patchWcs.pixelToSky(pos) for pos in cornerPosList]
+
+        result = task.select.run([wcs], [bbox], coordList)
+
         numExpected = 1 if doesOverlap else 0
-        self.assertEqual(len(dataRefList), numExpected)
+        self.assertEqual(len(result), numExpected)
 
     def testIdentical(self):
-        self.check(createPatch(), createImage(), True)
+        self.check(*createPatch(), *createImage(), True)
 
     def testImageContains(self):
-        self.check(createPatch(), createImage(scale=2*SCALE), True)
+        self.check(*createPatch(), *createImage(scale=2*SCALE), True)
 
     def testImageContained(self):
-        self.check(createPatch(), createImage(scale=0.5*SCALE), True)
+        self.check(*createPatch(), *createImage(scale=0.5*SCALE), True)
 
     def testDisjoint(self):
-        self.check(createPatch(),
-                   createImage(center=geom.SpherePoint(0, -90, geom.degrees)),
+        self.check(*createPatch(),
+                   *createImage(center=geom.SpherePoint(0, -90, geom.degrees)),
                    False)
 
     def testIntersect(self):
-        self.check(createPatch(), createImage(rotateAngle=0.5*geom.Extent2D(DIMS).computeNorm()*SCALE),
+        self.check(*createPatch(), *createImage(rotateAngle=0.5*geom.Extent2D(DIMS).computeNorm()*SCALE),
                    True)
 
 

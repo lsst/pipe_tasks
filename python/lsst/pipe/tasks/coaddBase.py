@@ -25,7 +25,7 @@ import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
 
 from lsst.meas.algorithms import ScaleVarianceTask
-from .selectImages import WcsSelectImagesTask
+from .selectImages import PsfWcsSelectImagesTask
 from .coaddInputRecorder import CoaddInputRecorderTask
 
 __all__ = ["CoaddBaseTask", "getSkyInfo", "makeSkyInfo"]
@@ -45,9 +45,7 @@ class CoaddBaseConfig(pexConfig.Config):
     )
     select = pexConfig.ConfigurableField(
         doc="Image selection subtask.",
-        target=WcsSelectImagesTask,
-        deprecated="This configuration was only used in Gen2, and will be "
-        "removed after v25.0",
+        target=PsfWcsSelectImagesTask,
     )
     badMaskPlanes = pexConfig.ListField(
         dtype=str,
@@ -139,6 +137,7 @@ class CoaddBaseTask(pipeBase.PipelineTask):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.makeSubtask("select")
         self.makeSubtask("inputRecorder")
 
     def getSkyInfo(self, patchRef):

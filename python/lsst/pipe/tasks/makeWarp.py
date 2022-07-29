@@ -33,7 +33,6 @@ from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
 from lsst.skymap import BaseSkyMap
 from lsst.utils.timer import timeMethod
 from .coaddBase import CoaddBaseTask, makeSkyInfo, reorderAndPadList
-from .selectImages import PsfWcsSelectImagesTask
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from collections.abc import Iterable
 
@@ -260,7 +259,6 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
     def setDefaults(self):
         CoaddBaseTask.ConfigClass.setDefaults(self)
         self.warpAndPsfMatch.psfMatch.kernel.active.kernelSize = self.matchingKernelSize
-        self.select.retarget(PsfWcsSelectImagesTask)
 
 
 class MakeWarpTask(CoaddBaseTask):
