@@ -29,7 +29,7 @@ from lsst.meas.algorithms import ScaleVarianceTask
 from .selectImages import WcsSelectImagesTask
 from .coaddInputRecorder import CoaddInputRecorderTask
 
-__all__ = ["CoaddBaseTask", "getSkyInfo", "makeSkyInfo", "makeCoaddSuffix"]
+__all__ = ["CoaddBaseTask", "getSkyInfo", "makeSkyInfo"]
 
 
 class CoaddBaseConfig(pexConfig.Config):
@@ -179,20 +179,6 @@ class CoaddBaseTask(pipeBase.PipelineTask):
         """
         return getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
 
-    def getCoaddDatasetName(self, warpType="direct"):
-        """Return coadd name for given warpType and task config
-
-        Parameters
-        ----------
-        warpType : string
-            Either 'direct' or 'psfMatched'
-
-        Returns
-        -------
-        CoaddDatasetName : `string`
-        """
-        return self.config.coaddName + "Coadd" + makeCoaddSuffix(warpType)
-
     def getTempExpDatasetName(self, warpType="direct"):
         """Return warp name for given warpType and task config
 
@@ -287,22 +273,6 @@ def scaleVariance(maskedImage, maskPlanes, log=None):
     config.maskPlanes = maskPlanes
     task = ScaleVarianceTask(config=config, name="scaleVariance", log=log)
     return task.run(maskedImage)
-
-
-def makeCoaddSuffix(warpType="direct"):
-    """Return coadd suffix for warpType
-
-    Parameters
-    ----------
-    warpType : string
-        Either 'direct' or 'psfMatched'
-
-    Returns
-    -------
-    CoaddSuffix : `string`
-    """
-    suffix = "" if warpType == "direct" else warpType[0].upper() + warpType[1:]
-    return suffix
 
 
 def reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):

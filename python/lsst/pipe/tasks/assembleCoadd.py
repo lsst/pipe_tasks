@@ -36,7 +36,7 @@ import lsst.meas.algorithms as measAlg
 import lsstDebug
 import lsst.utils as utils
 from lsst.skymap import BaseSkyMap
-from .coaddBase import CoaddBaseTask, makeSkyInfo, makeCoaddSuffix, reorderAndPadList
+from .coaddBase import CoaddBaseTask, makeSkyInfo, reorderAndPadList
 from .interpImage import InterpImageTask
 from .scaleZeroPoint import ScaleZeroPointTask
 from .maskStreaks import MaskStreaksTask
@@ -107,17 +107,6 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
-
-        # Override the connection's name template with config to replicate Gen2 behavior
-        # This duplicates some of the logic in the base class, due to wanting Gen2 and
-        # Gen3 configs to stay in sync. This should be removed when gen2 is deprecated
-        templateValues = {name: getattr(config.connections, name) for name in self.defaultTemplates}
-        templateValues['warpType'] = config.warpType
-        templateValues['warpTypeSuffix'] = makeCoaddSuffix(config.warpType)
-        self._nameOverrides = {name: getattr(config.connections, name).format(**templateValues)
-                               for name in self.allConnections}
-        self._typeNameToVarName = {v: k for k, v in self._nameOverrides.items()}
-        # End code to remove after deprecation
 
         if not config.doMaskBrightObjects:
             self.prerequisiteInputs.remove("brightObjectMask")
