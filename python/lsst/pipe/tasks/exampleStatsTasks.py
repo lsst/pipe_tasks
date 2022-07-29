@@ -76,7 +76,7 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
 
     \copybrief ExampleSigmaClippedStatsTask
 
-    This is a simple example task designed to be run as a subtask by ExampleCmdLineTask.
+    This is a simple example task designed to be run as a subtask.
     See also ExampleSimpleStatsTask as a variant that is even simpler.
 
     The main method is \ref ExampleSigmaClippedStatsTask.run "run".
@@ -157,7 +157,7 @@ class ExampleSimpleStatsTask(pipeBase.Task):
 
     \copybrief ExampleSimpleStatsTask
 
-    This was designed to be run as a subtask by ExampleCmdLineTask.
+    This was designed to be run as a subtask.
     It is about as simple as a task can be; it has no configuration parameters and requires no special
     initialization. See also ExampleSigmaClippedStatsTask as a variant that is slightly more complicated.
 
