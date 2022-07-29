@@ -24,6 +24,7 @@ import unittest
 import numpy as np
 
 import lsst.utils.tests
+import pytest
 
 import lsst.afw.image
 from lsst.pipe.tasks.makeWarp import (MakeWarpTask, MakeWarpConfig)
@@ -100,6 +101,16 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
         self.assertGreater(np.isfinite(warp.image.array.ravel()).sum(), 0)
         # Ensure the warp has the correct WCS
         self.assertEqual(warp.getWcs(), self.skyInfo.wcs)
+
+    def test_makeCoaddTempExp(self):
+        """Test deprecated MakeCoaddTempExp."""
+        from lsst.pipe.tasks.makeCoaddTempExp import (MakeWarpTask, MakeWarpConfig)
+
+        with pytest.warns(FutureWarning):
+            _ = MakeWarpTask(config=self.config)
+
+        with pytest.warns(FutureWarning):
+            _ = MakeWarpConfig()
 
 
 def setup_module(module):
