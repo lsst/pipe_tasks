@@ -27,7 +27,7 @@ import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryTask, displayAstrometry, denormalizeMatches
-from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask, SkyObjectsTask
+from lsst.meas.algorithms import LoadReferenceObjectsConfig, SkyObjectsTask
 from lsst.obs.base import ExposureIdInfo
 import lsst.daf.base as dafBase
 from lsst.afw.math import BackgroundList
@@ -180,12 +180,12 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         default=True,
         doc="Perform astrometric calibration?",
     )
-    astromRefObjLoader = pexConfig.ConfigurableField(
-        target=LoadIndexedReferenceObjectsTask,
+    astromRefObjLoader = pexConfig.ConfigField(
+        dtype=LoadReferenceObjectsConfig,
         doc="reference object loader for astrometric calibration",
     )
-    photoRefObjLoader = pexConfig.ConfigurableField(
-        target=LoadIndexedReferenceObjectsTask,
+    photoRefObjLoader = pexConfig.ConfigField(
+        dtype=LoadReferenceObjectsConfig,
         doc="reference object loader for photometric calibration",
     )
     astrometry = pexConfig.ConfigurableField(
@@ -352,111 +352,19 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
 ## \copybrief CalibrateTask
 ## \}
 
-class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
-    r"""!Calibrate an exposure: measure sources and perform astrometric and
-        photometric calibration
-
-    @anchor CalibrateTask_
-
-    @section pipe_tasks_calibrate_Contents  Contents
-
-     - @ref pipe_tasks_calibrate_Purpose
-     - @ref pipe_tasks_calibrate_Initialize
-     - @ref pipe_tasks_calibrate_IO
-     - @ref pipe_tasks_calibrate_Config
-     - @ref pipe_tasks_calibrate_Metadata
-     - @ref pipe_tasks_calibrate_Debug
-
-    @section pipe_tasks_calibrate_Purpose  Description
-
-    Given an exposure with a good PSF model and aperture correction map
-    (e.g. as provided by @ref characterizeImage::CharacterizeImageTask "CharacterizeImageTask"),
-    perform the following operations:
-    - Run detection and measurement
-    - Run astrometry subtask to fit an improved WCS
-    - Run photoCal subtask to fit the exposure's photometric zero-point
-
-    @section pipe_tasks_calibrate_Initialize  Task initialisation
-
-    @copydoc \_\_init\_\_
-
-    @section pipe_tasks_calibrate_IO  Invoking the Task
-
-    If you want this task to unpersist inputs or persist outputs, then call
-    the `runDataRef` method (a wrapper around the `run` method).
-
-    If you already have the inputs unpersisted and do not want to persist the
-    output then it is more direct to call the `run` method:
-
-    @section pipe_tasks_calibrate_Config  Configuration parameters
-
-    See @ref CalibrateConfig
-
-    @section pipe_tasks_calibrate_Metadata  Quantities set in exposure Metadata
-
-    Exposure metadata
-    <dl>
-        <dt>MAGZERO_RMS  <dd>MAGZERO's RMS == sigma reported by photoCal task
-        <dt>MAGZERO_NOBJ <dd>Number of stars used == ngood reported by photoCal
-                             task
-        <dt>COLORTERM1   <dd>?? (always 0.0)
-        <dt>COLORTERM2   <dd>?? (always 0.0)
-        <dt>COLORTERM3   <dd>?? (always 0.0)
-    </dl>
-
-    @section pipe_tasks_calibrate_Debug  Debug variables
-
-    The command line task
-    interface supports a flag
-    `--debug` to import `debug.py` from your `$PYTHONPATH`; see
-    <a href="https://pipelines.lsst.io/modules/lsstDebug/">the lsstDebug documentation</a>
-    for more about `debug.py`.
-
-    CalibrateTask has a debug dictionary containing one key:
-    <dl>
-    <dt>calibrate
-    <dd>frame (an int; <= 0 to not display) in which to display the exposure,
-        sources and matches. See @ref lsst.meas.astrom.displayAstrometry for
-        the meaning of the various symbols.
-    </dl>
-
-    For example, put something like:
-    @code{.py}
-        import lsstDebug
-        def DebugInfo(name):
-            di = lsstDebug.getInfo(name)  # N.b. lsstDebug.Info(name) would
-                                          # call us recursively
-            if name == "lsst.pipe.tasks.calibrate":
-                di.display = dict(
-                    calibrate = 1,
-                )
-
-            return di
-
-        lsstDebug.Info = DebugInfo
-    @endcode
-    into your `debug.py` file and run `calibrateTask.py` with the `--debug`
-    flag.
-
-    Some subtasks may have their own debug variables; see individual Task
-    documentation.
-    """
-
+class CalibrateTask(pipeBase.PipelineTask):
+    """Task to calibrate an exposure."""
     # Example description used to live here, removed 2-20-2017 as per
     # https://jira.lsstcorp.org/browse/DM-9520
 
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
-    RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
-    def __init__(self, butler=None, astromRefObjLoader=None,
+    def __init__(self, astromRefObjLoader=None,
                  photoRefObjLoader=None, icSourceSchema=None,
                  initInputs=None, **kwargs):
         """!Construct a CalibrateTask
 
-        @param[in] butler  The butler is passed to the refObjLoader constructor
-            in case it is needed.  Ignored if the refObjLoader argument
-            provides a loader directly.
         @param[in] astromRefObjLoader  An instance of LoadReferenceObjectsTasks
             that supplies an external reference catalog for astrometric
             calibration.  May be None if the desired loader can be constructed
@@ -472,15 +380,11 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             taken from this schema. If set to None, no values will be
             propagated from the icSourceCatalog
         @param[in,out] kwargs  other keyword arguments for
-            lsst.pipe.base.CmdLineTask
+            lsst.pipe.base.PipelineTask
         """
         super().__init__(**kwargs)
 
-        if icSourceSchema is None and butler is not None:
-            # Use butler to read icSourceSchema from disk.
-            icSourceSchema = butler.get("icSrc_schema", immediate=True).schema
-
-        if icSourceSchema is None and butler is None and initInputs is not None:
+        if icSourceSchema is None and initInputs is not None:
             icSourceSchema = initInputs['icSourceSchema'].schema
 
         if icSourceSchema is not None:
@@ -537,15 +441,9 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         self.makeSubtask('catalogCalculation', schema=self.schema)
 
         if self.config.doAstrometry:
-            if astromRefObjLoader is None and butler is not None:
-                self.makeSubtask('astromRefObjLoader', butler=butler)
-                astromRefObjLoader = self.astromRefObjLoader
             self.makeSubtask("astrometry", refObjLoader=astromRefObjLoader,
                              schema=self.schema)
         if self.config.doPhotoCal:
-            if photoRefObjLoader is None and butler is not None:
-                self.makeSubtask('photoRefObjLoader', butler=butler)
-                photoRefObjLoader = self.photoRefObjLoader
             self.makeSubtask("photoCal", refObjLoader=photoRefObjLoader,
                              schema=self.schema)
         if self.config.doComputeSummaryStats:
@@ -563,70 +461,6 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         sourceCatSchema = afwTable.SourceCatalog(self.schema)
         sourceCatSchema.getTable().setMetadata(self.algMetadata)
         self.outputSchema = sourceCatSchema
-
-    @timeMethod
-    def runDataRef(self, dataRef, exposure=None, background=None, icSourceCat=None,
-                   doUnpersist=True):
-        """!Calibrate an exposure, optionally unpersisting inputs and
-            persisting outputs.
-
-        This is a wrapper around the `run` method that unpersists inputs
-        (if `doUnpersist` true) and persists outputs (if `config.doWrite` true)
-
-        @param[in] dataRef  butler data reference corresponding to a science
-            image
-        @param[in,out] exposure  characterized exposure (an
-            lsst.afw.image.ExposureF or similar), or None to unpersist existing
-            icExp and icBackground. See `run` method for details of what is
-            read and written.
-        @param[in,out] background  initial model of background already
-            subtracted from exposure (an lsst.afw.math.BackgroundList). May be
-            None if no background has been subtracted, though that is unusual
-            for calibration. A refined background model is output. Ignored if
-            exposure is None.
-        @param[in] icSourceCat  catalog from which to copy the fields specified
-            by icSourceKeys, or None;
-        @param[in] doUnpersist  unpersist data:
-            - if True, exposure, background and icSourceCat are read from
-              dataRef and those three arguments must all be None;
-            - if False the exposure must be provided; background and
-              icSourceCat are optional. True is intended for running as a
-              command-line task, False for running as a subtask
-        @return same data as the calibrate method
-        """
-        self.log.info("Processing %s", dataRef.dataId)
-
-        if doUnpersist:
-            if any(item is not None for item in (exposure, background,
-                                                 icSourceCat)):
-                raise RuntimeError("doUnpersist true; exposure, background "
-                                   "and icSourceCat must all be None")
-            exposure = dataRef.get("icExp", immediate=True)
-            background = dataRef.get("icExpBackground", immediate=True)
-            icSourceCat = dataRef.get("icSrc", immediate=True)
-        elif exposure is None:
-            raise RuntimeError("doUnpersist false; exposure must be provided")
-
-        exposureIdInfo = dataRef.get("expIdInfo")
-
-        calRes = self.run(
-            exposure=exposure,
-            exposureIdInfo=exposureIdInfo,
-            background=background,
-            icSourceCat=icSourceCat,
-        )
-
-        if self.config.doWrite:
-            self.writeOutputs(
-                dataRef=dataRef,
-                exposure=calRes.exposure,
-                background=calRes.background,
-                sourceCat=calRes.sourceCat,
-                astromMatches=calRes.astromMatches,
-                matchMeta=calRes.matchMeta,
-            )
-
-        return calRes
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -798,41 +632,13 @@ class CalibrateTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             )
 
         return pipeBase.Struct(
-            exposure=exposure,
-            background=background,
             sourceCat=sourceCat,
             astromMatches=astromMatches,
             matchMeta=matchMeta,
-            # These are duplicate entries with different names for use with
-            # gen3 middleware
             outputExposure=exposure,
             outputCat=sourceCat,
             outputBackground=background,
         )
-
-    def writeOutputs(self, dataRef, exposure, background, sourceCat,
-                     astromMatches, matchMeta):
-        """Write output data to the output repository
-
-        @param[in] dataRef  butler data reference corresponding to a science
-            image
-        @param[in] exposure  exposure to write
-        @param[in] background  background model for exposure
-        @param[in] sourceCat  catalog of measured sources
-        @param[in] astromMatches  list of source/refObj matches from the
-            astrometry solver
-        """
-        dataRef.put(sourceCat, "src")
-        if self.config.doWriteMatches and astromMatches is not None:
-            normalizedMatches = afwTable.packMatches(astromMatches)
-            normalizedMatches.table.setMetadata(matchMeta)
-            dataRef.put(normalizedMatches, "srcMatch")
-            if self.config.doWriteMatchesDenormalized:
-                denormMatches = denormalizeMatches(astromMatches, matchMeta)
-                dataRef.put(denormMatches, "srcMatchFull")
-        if self.config.doWriteExposure:
-            dataRef.put(exposure, "calexp")
-            dataRef.put(background, "calexpBackground")
 
     def getSchemaCatalogs(self):
         """Return a dict of empty catalogs for each catalog dataset produced
