@@ -21,10 +21,7 @@
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import numpy
-
-from .multiBandUtils import (MergeSourcesRunner, _makeGetSchemaCatalogs, makeMergeArgumentParser,
-                             getInputSchema, readCatalog)
-
+import warnings
 
 import lsst.afw.table as afwTable
 import lsst.pex.config as pexConfig
@@ -125,118 +122,41 @@ class MergeMeasurementsConfig(PipelineTaskConfig, pipelineConnections=MergeMeasu
 ## @}
 
 
-class MergeMeasurementsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
-    r"""!
-    @anchor MergeMeasurementsTask_
+class MergeMeasurementsTask(pipeBase.PipelineTask):
+    """Merge measurements from multiple bands.
 
-    @brief Merge measurements from multiple bands
-
-    @section pipe_tasks_multiBand_Contents Contents
-
-      - @ref pipe_tasks_multiBand_MergeMeasurementsTask_Purpose
-      - @ref pipe_tasks_multiBand_MergeMeasurementsTask_Initialize
-      - @ref pipe_tasks_multiBand_MergeMeasurementsTask_Run
-      - @ref pipe_tasks_multiBand_MergeMeasurementsTask_Config
-      - @ref pipe_tasks_multiBand_MergeMeasurementsTask_Debug
-      - @ref pipe_tasks_multiband_MergeMeasurementsTask_Example
-
-    @section pipe_tasks_multiBand_MergeMeasurementsTask_Purpose	Description
-
-    Command-line task that merges measurements from multiple bands.
-
-    Combines consistent (i.e. with the same peaks and footprints) catalogs of sources from multiple filter
-    bands to construct a unified catalog that is suitable for driving forced photometry. Every source is
-    required to have centroid, shape and flux measurements in each band.
-
-      @par Inputs:
-        deepCoadd_meas{tract,patch,filter}: SourceCatalog
-      @par Outputs:
-        deepCoadd_ref{tract,patch}: SourceCatalog
-      @par Data Unit:
-        tract, patch
-
-    MergeMeasurementsTask subclasses @ref CmdLineTask_ "CmdLineTask".
-
-    @section pipe_tasks_multiBand_MergeMeasurementsTask_Initialize       Task initialization
-
-    @copydoc \_\_init\_\_
-
-    @section pipe_tasks_multiBand_MergeMeasurementsTask_Run       Invoking the Task
-
-    @copydoc run
-
-    @section pipe_tasks_multiBand_MergeMeasurementsTask_Config       Configuration parameters
-
-    See @ref MergeMeasurementsConfig_
-
-    @section pipe_tasks_multiBand_MergeMeasurementsTask_Debug		Debug variables
-
-    The command line task interface supports a
-    flag @c -d to import @b debug.py from your @c PYTHONPATH; see @ref baseDebug for more about @b debug.py
-    files.
-
-    MergeMeasurementsTask has no debug variables.
-
-    @section pipe_tasks_multiband_MergeMeasurementsTask_Example	A complete example
-    of using MergeMeasurementsTask
-
-    MergeMeasurementsTask is meant to be run after deblending & measuring sources in every band.
-    The purpose of the task is to generate a catalog of sources suitable for driving forced photometry in
-    coadds and individual exposures.
-    Command-line usage of MergeMeasurementsTask expects a data reference to the coadds to be processed. A list
-    of the available optional arguments can be obtained by calling mergeCoaddMeasurements.py with the `--help`
-    command line argument:
-    @code
-    mergeCoaddMeasurements.py --help
-    @endcode
-
-    To demonstrate usage of the DetectCoaddSourcesTask in the larger context of multi-band processing, we
-    will process HSC data in the [ci_hsc](https://github.com/lsst/ci_hsc) package. Assuming one has finished
-    step 7 at @ref pipeTasks_multiBand, one may merge the catalogs generated after deblending and measuring
-    as follows:
-    @code
-    mergeCoaddMeasurements.py $CI_HSC_DIR/DATA --id patch=5,4 tract=0 filter=HSC-I^HSC-R
-    @endcode
-    This will merge the HSC-I & HSC-R band catalogs. The results are written in
-    `$CI_HSC_DIR/DATA/deepCoadd-results/`.
+    Parameters
+    ----------
+    butler : `None`
+        Compatibility parameter. Should always be `None`.
+    schema : `lsst.afw.table.Schema`, optional
+        The schema of the detection catalogs used as input to this task.
+    initInputs : `dict`, optional
+        Dictionary that can contain a key ``inputSchema`` containing the
+        input schema. If present will override the value of ``schema``.
     """
     _DefaultName = "mergeCoaddMeasurements"
     ConfigClass = MergeMeasurementsConfig
-    RunnerClass = MergeSourcesRunner
+
     inputDataset = "meas"
     outputDataset = "ref"
-    getSchemaCatalogs = _makeGetSchemaCatalogs("ref")
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        return makeMergeArgumentParser(cls._DefaultName, cls.inputDataset)
-
-    def getInputSchema(self, butler=None, schema=None):
-        return getInputSchema(self, butler, schema)
-
-    def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        inputs = butlerQC.get(inputRefs)
-        dataIds = (ref.dataId for ref in inputRefs.catalogs)
-        catalogDict = {dataId['band']: cat for dataId, cat in zip(dataIds, inputs['catalogs'])}
-        inputs['catalogs'] = catalogDict
-        outputs = self.run(**inputs)
-        butlerQC.put(outputs, outputRefs)
 
     def __init__(self, butler=None, schema=None, initInputs=None, **kwargs):
-        """!
-        Initialize the task.
-
-        @param[in] schema: the schema of the detection catalogs used as input to this one
-        @param[in] butler: a butler used to read the input schema from disk, if schema is None
-
-        The task will set its own self.schema attribute to the schema of the output merged catalog.
-        """
         super().__init__(**kwargs)
 
+        if butler is not None:
+            warnings.warn("The 'butler' parameter is no longer used and can be safely removed.",
+                          category=FutureWarning, stacklevel=2)
+            butler = None
+
         if initInputs is not None:
-            inputSchema = initInputs['inputSchema'].schema
-        else:
-            inputSchema = self.getInputSchema(butler=butler, schema=schema)
+            schema = initInputs['inputSchema'].schema
+
+        if schema is None:
+            raise ValueError("No input schema or initInputs['inputSchema'] provided.")
+
+        inputSchema = schema
+
         self.schemaMapper = afwTable.SchemaMapper(inputSchema, True)
         self.schemaMapper.addMinimalSchema(inputSchema, True)
         self.instFluxKey = inputSchema.find(self.config.snName + "_instFlux").getKey()
@@ -270,14 +190,13 @@ class MergeMeasurementsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 self.log.warning("Can't find flag %s in schema: %s", flag, exc)
         self.outputSchema = afwTable.SourceCatalog(self.schema)
 
-    def runDataRef(self, patchRefList):
-        """!
-        @brief Merge coadd sources from multiple bands. Calls @ref `run`.
-        @param[in] patchRefList list of data references for each filter
-        """
-        catalogs = dict(readCatalog(self, patchRef) for patchRef in patchRefList)
-        mergedCatalog = self.run(catalogs).mergedCatalog
-        self.write(patchRefList[0], mergedCatalog)
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        dataIds = (ref.dataId for ref in inputRefs.catalogs)
+        catalogDict = {dataId['band']: cat for dataId, cat in zip(dataIds, inputs['catalogs'])}
+        inputs['catalogs'] = catalogDict
+        outputs = self.run(**inputs)
+        butlerQC.put(outputs, outputRefs)
 
     def run(self, catalogs):
         """!
@@ -383,26 +302,3 @@ class MergeMeasurementsTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         return pipeBase.Struct(
             mergedCatalog=mergedCatalog
         )
-
-    def write(self, patchRef, catalog):
-        """!
-        @brief Write the output.
-
-        @param[in]  patchRef   data reference for patch
-        @param[in]  catalog    catalog
-
-        We write as the dataset provided by the 'outputDataset'
-        class variable.
-        """
-        patchRef.put(catalog, self.config.coaddName + "Coadd_" + self.outputDataset)
-        # since the filter isn't actually part of the data ID for the dataset we're saving,
-        # it's confusing to see it in the log message, even if the butler simply ignores it.
-        mergeDataId = patchRef.dataId.copy()
-        del mergeDataId["filter"]
-        self.log.info("Wrote merged catalog: %s", mergeDataId)
-
-    def writeMetadata(self, dataRefList):
-        """!
-        @brief No metadata to write, and not sure how to write it for a list of dataRefs.
-        """
-        pass
