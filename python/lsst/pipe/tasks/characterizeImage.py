@@ -32,7 +32,7 @@ from lsst.afw.table import SourceTable, SourceCatalog
 from lsst.meas.algorithms import SubtractBackgroundTask, SourceDetectionTask, MeasureApCorrTask
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
 from lsst.meas.astrom import RefMatchTask, displayAstrometry
-from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask
+from lsst.meas.algorithms import LoadReferenceObjectsConfig
 from lsst.obs.base import ExposureIdInfo
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
 from lsst.meas.deblender import SourceDeblendTask
@@ -184,8 +184,8 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
         target=InstallGaussianPsfTask,
         doc="Install a simple PSF model",
     )
-    refObjLoader = pexConfig.ConfigurableField(
-        target=LoadIndexedReferenceObjectsTask,
+    refObjLoader = pexConfig.ConfigField(
+        dtype=LoadReferenceObjectsConfig,
         deprecated="This field does nothing. Will be removed after v24 (see DM-34768).",
         doc="reference object loader",
     )
@@ -252,95 +252,12 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
 ## \}
 
 
-class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
-    r"""!
-    Measure bright sources and use this to estimate background and PSF of an exposure
-
-    @anchor CharacterizeImageTask_
-
-    @section pipe_tasks_characterizeImage_Contents  Contents
-
-     - @ref pipe_tasks_characterizeImage_Purpose
-     - @ref pipe_tasks_characterizeImage_Initialize
-     - @ref pipe_tasks_characterizeImage_IO
-     - @ref pipe_tasks_characterizeImage_Config
-     - @ref pipe_tasks_characterizeImage_Debug
-
-    @section pipe_tasks_characterizeImage_Purpose  Description
-
-    Given an exposure with defects repaired (masked and interpolated over, e.g. as output by IsrTask):
-    - detect and measure bright sources
-    - repair cosmic rays
-    - measure and subtract background
-    - measure PSF
-
-    @section pipe_tasks_characterizeImage_Initialize  Task initialisation
-
-    @copydoc \_\_init\_\_
-
-    @section pipe_tasks_characterizeImage_IO  Invoking the Task
-
-    If you want this task to unpersist inputs or persist outputs, then call
-    the `runDataRef` method (a thin wrapper around the `run` method).
-
-    If you already have the inputs unpersisted and do not want to persist the output
-    then it is more direct to call the `run` method:
-
-    @section pipe_tasks_characterizeImage_Config  Configuration parameters
-
-    See @ref CharacterizeImageConfig
-
-    @section pipe_tasks_characterizeImage_Debug  Debug variables
-
-    The command line task interface supports a flag
-    `--debug` to import `debug.py` from your `$PYTHONPATH`; see
-    <a href="https://pipelines.lsst.io/modules/lsstDebug/">the lsstDebug documentation</a>
-    for more about `debug.py`.
-
-    CharacterizeImageTask has a debug dictionary with the following keys:
-    <dl>
-    <dt>frame
-    <dd>int: if specified, the frame of first debug image displayed (defaults to 1)
-    <dt>repair_iter
-    <dd>bool; if True display image after each repair in the measure PSF loop
-    <dt>background_iter
-    <dd>bool; if True display image after each background subtraction in the measure PSF loop
-    <dt>measure_iter
-    <dd>bool; if True display image and sources at the end of each iteration of the measure PSF loop
-        See @ref lsst.meas.astrom.displayAstrometry for the meaning of the various symbols.
-    <dt>psf
-    <dd>bool; if True display image and sources after PSF is measured;
-        this will be identical to the final image displayed by measure_iter if measure_iter is true
-    <dt>repair
-    <dd>bool; if True display image and sources after final repair
-    <dt>measure
-    <dd>bool; if True display image and sources after final measurement
-    </dl>
-
-    For example, put something like:
-    @code{.py}
-        import lsstDebug
-        def DebugInfo(name):
-            di = lsstDebug.getInfo(name)  # N.b. lsstDebug.Info(name) would call us recursively
-            if name == "lsst.pipe.tasks.characterizeImage":
-                di.display = dict(
-                    repair = True,
-                )
-
-            return di
-
-        lsstDebug.Info = DebugInfo
-    @endcode
-    into your `debug.py` file and run `calibrateTask.py` with the `--debug` flag.
-
-    Some subtasks may have their own debug variables; see individual Task documentation.
-    """
-
+class CharacterizeImageTask(pipeBase.PipelineTask):
+    """Measure bright sources and use this to estimate background and PSF of an exposure."""
     # Example description used to live here, removed 2-20-2017 by MSSG
 
     ConfigClass = CharacterizeImageConfig
     _DefaultName = "characterizeImage"
-    RunnerClass = pipeBase.ButlerInitializedTaskRunner
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -349,7 +266,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
-    def __init__(self, butler=None, refObjLoader=None, schema=None, **kwargs):
+    def __init__(self, refObjLoader=None, schema=None, **kwargs):
         """!Construct a CharacterizeImageTask
 
         @param[in] butler  A butler object is passed to the refObjLoader constructor in case
@@ -362,7 +279,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             catalog star selector is not used or the loader can be constructed from the
             butler argument.
         @param[in,out] schema  initial schema (an lsst.afw.table.SourceTable), or None
-        @param[in,out] kwargs  other keyword arguments for lsst.pipe.base.CmdLineTask
+        @param[in,out] kwargs  other keyword arguments for lsst.pipe.base.PipelineTask
         """
         super().__init__(**kwargs)
 
@@ -375,9 +292,6 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         self.makeSubtask("measurePsf", schema=self.schema)
         # TODO DM-34769: remove this `if` block
         if self.config.doMeasurePsf and self.measurePsf.usesMatches:
-            if not refObjLoader:
-                self.makeSubtask('refObjLoader', butler=butler)
-                refObjLoader = self.refObjLoader
             self.makeSubtask("ref_match", refObjLoader=refObjLoader)
         self.algMetadata = dafBase.PropertyList()
         self.makeSubtask('detection', schema=self.schema)
@@ -397,58 +311,6 @@ class CharacterizeImageTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         outputCatSchema = afwTable.SourceCatalog(self.schema)
         outputCatSchema.getTable().setMetadata(self.algMetadata)
         return {'outputSchema': outputCatSchema}
-
-    @timeMethod
-    def runDataRef(self, dataRef, exposure=None, background=None, doUnpersist=True):
-        """!Characterize a science image and, if wanted, persist the results
-
-        This simply unpacks the exposure and passes it to the characterize method to do the work.
-
-        @param[in] dataRef: butler data reference for science exposure
-        @param[in,out] exposure  exposure to characterize (an lsst.afw.image.ExposureF or similar).
-            If None then unpersist from "postISRCCD".
-            The following changes are made, depending on the config:
-            - set psf to the measured PSF
-            - set apCorrMap to the measured aperture correction
-            - subtract background
-            - interpolate over cosmic rays
-            - update detection and cosmic ray mask planes
-        @param[in,out] background  initial model of background already subtracted from exposure
-            (an lsst.afw.math.BackgroundList). May be None if no background has been subtracted,
-            which is typical for image characterization.
-            A refined background model is output.
-        @param[in] doUnpersist  if True the exposure is read from the repository
-            and the exposure and background arguments must be None;
-            if False the exposure must be provided.
-            True is intended for running as a command-line task, False for running as a subtask
-
-        @return same data as the characterize method
-        """
-        self._frame = self._initialFrame  # reset debug display frame
-        self.log.info("Processing %s", dataRef.dataId)
-
-        if doUnpersist:
-            if exposure is not None or background is not None:
-                raise RuntimeError("doUnpersist true; exposure and background must be None")
-            exposure = dataRef.get("postISRCCD", immediate=True)
-        elif exposure is None:
-            raise RuntimeError("doUnpersist false; exposure must be provided")
-
-        exposureIdInfo = dataRef.get("expIdInfo")
-
-        charRes = self.run(
-            exposure=exposure,
-            exposureIdInfo=exposureIdInfo,
-            background=background,
-        )
-
-        if self.config.doWrite:
-            dataRef.put(charRes.sourceCat, "icSrc")
-            if self.config.doWriteExposure:
-                dataRef.put(charRes.exposure, "icExp")
-                dataRef.put(charRes.background, "icExpBackground")
-
-        return charRes
 
     @timeMethod
     def run(self, exposure, exposureIdInfo=None, background=None):
