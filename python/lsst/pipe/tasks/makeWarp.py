@@ -148,13 +148,6 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit",),
     )
-    srcList = connectionTypes.Input(
-        doc="Source catalogs used by PsfWcsSelectImages subtask to further select on PSF stability",
-        name="src",
-        storageClass="SourceCatalog",
-        dimensions=("instrument", "visit", "detector"),
-        multiple=True,
-    )
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
@@ -187,10 +180,6 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         # TODO DM-28769: add connection per selectImages connections
         if config.select.target != lsst.pipe.tasks.selectImages.PsfWcsSelectImagesTask:
             self.inputs.remove("visitSummary")
-            self.inputs.remove("srcList")
-        elif not config.select.doLegacyStarSelectionComputation:
-            # Remove backwards-compatibility connections.
-            self.inputs.remove("srcList")
 
 
 class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
