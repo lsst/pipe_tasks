@@ -20,6 +20,7 @@
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
 import math
+import warnings
 
 from lsstDebug import getDebugFrame
 import lsst.pex.config as pexConfig
@@ -345,46 +346,39 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
             )
 
 
-## \addtogroup LSST_task_documentation
-## \{
-## \page page_CalibrateTask CalibrateTask
-## \ref CalibrateTask_ "CalibrateTask"
-## \copybrief CalibrateTask
-## \}
-
 class CalibrateTask(pipeBase.PipelineTask):
-    """Task to calibrate an exposure."""
-    # Example description used to live here, removed 2-20-2017 as per
-    # https://jira.lsstcorp.org/browse/DM-9520
+    """Task to calibrate an exposure.
 
+    Parameters
+    ----------
+    butler : `None`
+        Compatibility parameter. Should always be `None`.
+    astromRefObjLoader : `lsst.meas.algorithms.ReferenceObjectLoader`, optional
+        Reference object loader for astrometry task. Must be None if
+        run as part of PipelineTask.
+    photoRefObjLoader : `lsst.meas.algorithms.ReferenceObjectLoader`, optional
+        Reference object loader for photometry task. Must be None if
+        run as part of PipelineTask.
+    icSourceSchema : `lsst.afw.table.Schema`, optional
+        Schema for the icSource catalog.
+    initInputs : `dict`, optional
+        Dictionary that can contain a key ``icSourceSchema`` containing the
+        input schema. If present will override the value of ``icSourceSchema``.
+    """
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
 
-    def __init__(self, astromRefObjLoader=None,
+    def __init__(self, butler=None, astromRefObjLoader=None,
                  photoRefObjLoader=None, icSourceSchema=None,
                  initInputs=None, **kwargs):
-        """!Construct a CalibrateTask
-
-        @param[in] astromRefObjLoader  An instance of LoadReferenceObjectsTasks
-            that supplies an external reference catalog for astrometric
-            calibration.  May be None if the desired loader can be constructed
-            from the butler argument or all steps requiring a reference catalog
-            are disabled.
-        @param[in] photoRefObjLoader  An instance of LoadReferenceObjectsTasks
-            that supplies an external reference catalog for photometric
-            calibration.  May be None if the desired loader can be constructed
-            from the butler argument or all steps requiring a reference catalog
-            are disabled.
-        @param[in] icSourceSchema  schema for icSource catalog, or None.
-            Schema values specified in config.icSourceFieldsToCopy will be
-            taken from this schema. If set to None, no values will be
-            propagated from the icSourceCatalog
-        @param[in,out] kwargs  other keyword arguments for
-            lsst.pipe.base.PipelineTask
-        """
         super().__init__(**kwargs)
 
-        if icSourceSchema is None and initInputs is not None:
+        if butler is not None:
+            warnings.warn("The 'butler' parameter is no longer used and can be safely removed.",
+                          category=FutureWarning, stacklevel=2)
+            butler = None
+
+        if initInputs is not None:
             icSourceSchema = initInputs['icSourceSchema'].schema
 
         if icSourceSchema is not None:
@@ -495,34 +489,39 @@ class CalibrateTask(pipeBase.PipelineTask):
     @timeMethod
     def run(self, exposure, exposureIdInfo=None, background=None,
             icSourceCat=None):
-        """!Calibrate an exposure (science image or coadd)
+        """Calibrate an exposure.
 
-        @param[in,out] exposure  exposure to calibrate (an
-            lsst.afw.image.ExposureF or similar);
-            in:
-            - MaskedImage
-            - Psf
-            out:
-            - MaskedImage has background subtracted
-            - Wcs is replaced
-            - PhotoCalib is replaced
-        @param[in] exposureIdInfo  ID info for exposure (an
-            lsst.obs.base.ExposureIdInfo) If not provided, returned
-            SourceCatalog IDs will not be globally unique.
-        @param[in,out] background  background model already subtracted from
-            exposure (an lsst.afw.math.BackgroundList). May be None if no
-            background has been subtracted, though that is unusual for
-            calibration. A refined background model is output.
-        @param[in] icSourceCat  A SourceCatalog from CharacterizeImageTask
-            from which we can copy some fields.
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.ExposureF`
+            Exposure to calibrate.
+        exposureIdInfo : `lsst.obs.baseExposureIdInfo`, optional
+            Exposure ID info. If not provided, returned SourceCatalog IDs will not
+            be globally unique.
+        background : `lsst.afw.math.BackgroundList`, optional
+            Initial model of background already subtracted from exposure.
+        icSourceCat : `lsst.afw.image.SourceCatalog`, optional
+            SourceCatalog from CharacterizeImageTask from which we can copy some fields.
 
-        @return pipe_base Struct containing these fields:
-        - exposure  calibrate science exposure with refined WCS and PhotoCalib
-        - background  model of background subtracted from exposure (an
-          lsst.afw.math.BackgroundList)
-        - sourceCat  catalog of measured sources
-        - astromMatches  list of source/refObj matches from the astrometry
-          solver
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            Result structure with the following attributes:
+
+            ``exposure``
+               Characterized exposure (`lsst.afw.image.ExposureF`).
+            ``sourceCat``
+               Detected sources (`lsst.afw.table.SourceCatalog`).
+            ``outputBackground``
+               Model of subtracted background (`lsst.afw.math.BackgroundList`).
+            ``astromMatches``
+               List of source/ref matches from astrometry solver.
+            ``matchMeta``
+               Metadata from astrometry matches.
+            ``outputExposure``
+               Another reference to ``exposure`` for compatibility.
+            ``outputCat``
+               Another reference to ``sourceCat`` for compatibility.
         """
         # detect, deblend and measure sources
         if exposureIdInfo is None:
@@ -649,13 +648,16 @@ class CalibrateTask(pipeBase.PipelineTask):
         return {"src": sourceCat}
 
     def setMetadata(self, exposure, photoRes=None):
-        """!Set task and exposure metadata
+        """Set task and exposure metadata.
 
-        Logs a warning and continues if needed data is missing.
+        Logs a warning continues if needed data is missing.
 
-        @param[in,out] exposure  exposure whose metadata is to be set
-        @param[in]  photoRes  results of running photoCal; if None then it was
-            not run
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.ExposureF`
+            Exposure to set metadata on.
+        photoRes : `lsst.pipe.base.Struct`, optional
+            Result of running photoCal task.
         """
         if photoRes is None:
             return
@@ -682,14 +684,16 @@ class CalibrateTask(pipeBase.PipelineTask):
             self.log.warning("Could not set exposure metadata: %s", e)
 
     def copyIcSourceFields(self, icSourceCat, sourceCat):
-        """!Match sources in icSourceCat and sourceCat and copy the specified fields
+        """Match sources in an icSourceCat and a sourceCat and copy fields.
 
-        @param[in] icSourceCat  catalog from which to copy fields
-        @param[in,out] sourceCat  catalog to which to copy fields
+        The fields copied are those specified by ``config.icSourceFieldsToCopy``.
 
-        The fields copied are those specified by `config.icSourceFieldsToCopy`
-        that actually exist in the schema. This was set up by the constructor
-        using self.schemaMapper.
+        Parameters
+        ----------
+        icSourceCat : `lsst.afw.table.SourceCatalog`
+            Catalog from which to copy fields.
+        sourceCat : `lsst.afw.table.SourceCatalog`
+            Catalog to which to copy fields.
         """
         if self.schemaMapper is None:
             raise RuntimeError("To copy icSource fields you must specify "
