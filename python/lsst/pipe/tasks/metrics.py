@@ -30,7 +30,6 @@ import astropy.units as u
 
 from lsst.pipe.base import Struct, connectionTypes
 from lsst.verify import Measurement
-from lsst.verify.gen2tasks import register
 from lsst.verify.tasks import MetricTask, MetricConfig, MetricConnections, MetricComputationError
 
 
@@ -54,7 +53,6 @@ class NumberDeblendedSourcesMetricConfig(
     pass
 
 
-@register("numDeblendedSciSources")
 class NumberDeblendedSourcesMetricTask(MetricTask):
     """Task that computes the number of science sources that have
     been deblended.
@@ -139,7 +137,6 @@ class NumberDeblendChildSourcesMetricConfig(
     pass
 
 
-@register("numDeblendChildSciSources")
 class NumberDeblendChildSourcesMetricTask(MetricTask):
     """Task that computes the number of science sources created
     through deblending.
