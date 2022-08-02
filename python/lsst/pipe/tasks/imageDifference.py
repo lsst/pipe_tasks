@@ -39,7 +39,7 @@ from lsst.meas.base import ForcedMeasurementTask, ApplyApCorrTask
 from lsst.pipe.tasks.registerImage import RegisterTask
 from lsst.ip.diffim import (DipoleAnalysis, SourceFlagChecker, KernelCandidateF, makeKernelBasisList,
                             KernelCandidateQa, DiaCatalogSourceSelectorTask, DiaCatalogSourceSelectorConfig,
-                            GetCoaddAsTemplateTask, GetCalexpAsTemplateTask, DipoleFitTask,
+                            GetCoaddAsTemplateTask, DipoleFitTask,
                             DecorrelateALKernelSpatialTask, subtractAlgorithmRegistry)
 import lsst.ip.diffim.diffimTools as diffimTools
 import lsst.ip.diffim.utils as diUtils
@@ -1428,51 +1428,3 @@ class ImageDifferenceFromTemplateTask(ImageDifferenceTask):
         if outputs.diaSources is None:
             del outputs.diaSources
         butlerQC.put(outputs, outputRefs)
-
-
-class Winter2013ImageDifferenceConfig(ImageDifferenceConfig):
-    winter2013WcsShift = pexConfig.Field(dtype=float, default=0.0,
-                                         doc="Shift stars going into RegisterTask by this amount")
-    winter2013WcsRms = pexConfig.Field(dtype=float, default=0.0,
-                                       doc="Perturb stars going into RegisterTask by this amount")
-
-    def setDefaults(self):
-        ImageDifferenceConfig.setDefaults(self)
-        self.getTemplate.retarget(GetCalexpAsTemplateTask)
-
-
-class Winter2013ImageDifferenceTask(ImageDifferenceTask):
-    """!Image difference Task used in the Winter 2013 data challege.
-    Enables testing the effects of registration shifts and scatter.
-
-    For use with winter 2013 simulated images:
-    Use --templateId visit=88868666 for sparse data
-        --templateId visit=22222200 for dense data (g)
-        --templateId visit=11111100 for dense data (i)
-    """
-    ConfigClass = Winter2013ImageDifferenceConfig
-    _DefaultName = "winter2013ImageDifference"
-
-    def __init__(self, **kwargs):
-        ImageDifferenceTask.__init__(self, **kwargs)
-
-    def fitAstrometry(self, templateSources, templateExposure, selectSources):
-        """Fit the relative astrometry between templateSources and selectSources"""
-        if self.config.winter2013WcsShift > 0.0:
-            offset = geom.Extent2D(self.config.winter2013WcsShift,
-                                   self.config.winter2013WcsShift)
-            cKey = templateSources[0].getTable().getCentroidSlot().getMeasKey()
-            for source in templateSources:
-                centroid = source.get(cKey)
-                source.set(cKey, centroid + offset)
-        elif self.config.winter2013WcsRms > 0.0:
-            cKey = templateSources[0].getTable().getCentroidSlot().getMeasKey()
-            for source in templateSources:
-                offset = geom.Extent2D(self.config.winter2013WcsRms*numpy.random.normal(),
-                                       self.config.winter2013WcsRms*numpy.random.normal())
-                centroid = source.get(cKey)
-                source.set(cKey, centroid + offset)
-
-        results = self.register.run(templateSources, templateExposure.getWcs(),
-                                    templateExposure.getBBox(), selectSources)
-        return results
