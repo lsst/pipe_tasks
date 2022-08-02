@@ -30,7 +30,6 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
 from .insertFakes import InsertFakesTask
-from lsst.meas.base import PerTractCcdDataIdContainer
 from lsst.afw.table import SourceTable
 from lsst.obs.base import ExposureIdInfo
 from lsst.pipe.base import PipelineTask, PipelineTaskConfig, CmdLineTask, PipelineTaskConnections
@@ -418,14 +417,6 @@ class ProcessCcdWithFakesTask(PipelineTask, CmdLineTask):
 
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", "fakes_calexp", help="data ID with raw CCD keys [+ tract optionally], "
-                               "e.g. --id visit=12345 ccd=1,2 [tract=0]",
-                               ContainerClass=PerTractCcdDataIdContainer)
-        return parser
 
     def run(self, fakeCats, exposure, skyMap, wcs=None, photoCalib=None, exposureIdInfo=None,
             icSourceCat=None, sfdSourceCat=None, externalSkyWcsGlobalCatalog=None,
