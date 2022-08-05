@@ -30,7 +30,7 @@ from astropy import units
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-from lsst.meas.algorithms import LoadIndexedReferenceObjectsTask, ReferenceSourceSelectorTask
+from lsst.meas.algorithms import ReferenceSourceSelectorTask
 from lsst.meas.algorithms import getRefFluxField
 from lsst.pipe.tasks.colorterms import ColortermLibrary
 from lsst.afw.image import abMagErrFromFluxErr
@@ -43,9 +43,9 @@ __all__ = ['LoadReferenceCatalogConfig', 'LoadReferenceCatalogTask']
 
 class LoadReferenceCatalogConfig(pexConfig.Config):
     """Config for LoadReferenceCatalogTask"""
-    refObjLoader = pexConfig.ConfigurableField(
-        target=LoadIndexedReferenceObjectsTask,
-        doc="Reference object loader for photometry",
+    refObjLoader = pexConfig.ConfigField(
+        dtype=LoadReferenceObjectsConfig,
+        doc="Configuration for the reference object loader.",
     )
     doApplyColorTerms = pexConfig.Field(
         doc=("Apply photometric color terms to reference stars? "
@@ -84,14 +84,16 @@ class LoadReferenceCatalogTask(pipeBase.Task):
         in a Gen3 repository.  Required for Gen3.
     refCats : iterable of `lsst.daf.butler.DeferredDatasetHandle`, optional
         An iterable object of dataset refs for reference catalogs in
-        a Gen3 repository.  Required for Gen3.
-    butler : `lsst.daf.persistence.Butler`, optional
-        A Gen2 butler.  Required for Gen2.
+        a Gen3 repository.
+
+    Raises
+    ------
+    RuntimeError if dataIds or refCats is None.
     """
     ConfigClass = LoadReferenceCatalogConfig
     _DefaultName = "loadReferenceCatalog"
 
-    def __init__(self, dataIds=None, refCats=None, butler=None, **kwargs):
+    def __init__(self, dataIds=None, refCats=None, **kwargs):
         if dataIds is not None and refCats is not None:
             pipeBase.Task.__init__(self, **kwargs)
             refConfig = self.config.refObjLoader
@@ -99,8 +101,6 @@ class LoadReferenceCatalogTask(pipeBase.Task):
                                                       refCats=refCats,
                                                       config=refConfig,
                                                       log=self.log)
-        elif butler is not None:
-            raise RuntimeError("LoadReferenceCatalogTask does not support Gen2 Butlers.")
         else:
             raise RuntimeError("Must instantiate LoadReferenceCatalogTask with "
                                "dataIds and refCats (Gen3)")
@@ -265,12 +265,7 @@ class LoadReferenceCatalogTask(pipeBase.Task):
         npRefCat['refMagErr'][:, :] = 99.0
 
         if self.config.doApplyColorTerms:
-            if isinstance(self.refObjLoader, ReferenceObjectLoader):
-                # Gen3
-                refCatName = self.refObjLoader.config.value.ref_dataset_name
-            else:
-                # Gen2
-                refCatName = self.refObjLoader.ref_dataset_name
+            refCatName = self.refObjLoader.config.ref_dataset_name
 
             for i, (filterName, fluxField) in enumerate(zip(self._fluxFilters, self._fluxFields)):
                 if fluxField is None:
