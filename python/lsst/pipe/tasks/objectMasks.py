@@ -59,8 +59,8 @@ class ObjectMaskCatalog:
     def __setitem__(self, i, v):
         return self._catalog.__setitem__(i, v)
 
-    @staticmethod
-    def read(fileName):
+    @classmethod
+    def read(cls, fileName):
         """Read a ds9 region file, returning a ObjectMaskCatalog object
 
         The files should be structured as follows:
@@ -91,7 +91,7 @@ class ObjectMaskCatalog:
 
         log = logging.getLogger("lsst.ObjectMaskCatalog")
 
-        brightObjects = ObjectMaskCatalog()
+        brightObjects = cls()
         checkedWcsIsFk5 = False
         NaN = float("NaN")*geom.degrees
 
