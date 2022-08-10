@@ -27,7 +27,6 @@ import lsst.geom as geom
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.coadd.utils as coaddUtils
-from lsst.daf.butler import DeferredDatasetHandle
 from lsst.ip.diffim.dcrModel import applyDcr, calculateDcr, DcrModel
 import lsst.meas.algorithms as measAlg
 from lsst.meas.base import SingleFrameMeasurementTask
@@ -333,21 +332,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         Notes
         -----
         Assemble a coadd from a set of Warps.
-
-        PipelineTask (Gen3) entry point to Coadd a set of Warps.
-        Analogous to `runDataRef`, it prepares all the data products to be
-        passed to `run`, and processes the results before returning a struct
-        of results to be written out. AssembleCoadd cannot fit all Warps in memory.
-        Therefore, its inputs are accessed subregion by subregion
-        by the Gen3 `DeferredDatasetHandle` that is analagous to the Gen2
-        `lsst.daf.persistence.ButlerDataRef`. Any updates to this method should
-        correspond to an update in `runDataRef` while both entry points
-        are used.
         """
         inputData = butlerQC.get(inputRefs)
 
         # Construct skyInfo expected by run
-        # Do not remove skyMap from inputData in case makeSupplementaryDataGen3 needs it
+        # Do not remove skyMap from inputData in case _makeSupplementaryData needs it
         skyMap = inputData["skyMap"]
         outputDataId = butlerQC.quantum.dataId
 
@@ -356,9 +345,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
                                            patchId=outputDataId['patch'])
 
         # Construct list of input Deferred Datasets
-        # These quack a bit like like Gen2 DataRefs
         warpRefList = inputData['inputWarps']
-        # Perform same middle steps as `runDataRef` does
+
         inputs = self.prepareInputs(warpRefList)
         self.log.info("Found %d %s", len(inputs.tempExpRefList),
                       self.getTempExpDatasetName(self.warpType))
@@ -366,7 +354,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             self.log.warning("No coadd temporary exposures found")
             return
 
-        supplementaryData = self.makeSupplementaryDataGen3(butlerQC, inputRefs, outputRefs)
+        supplementaryData = self._makeSupplementaryData(butlerQC, inputRefs, outputRefs)
         retStruct = self.run(inputData['skyInfo'], inputs.tempExpRefList, inputs.imageScalerList,
                              inputs.weightList, supplementaryData=supplementaryData)
 
@@ -380,92 +368,9 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             butlerQC.put(retStruct, outputRefs)
         return retStruct
 
-    @timeMethod
-    def runDataRef(self, dataRef, selectDataList=None, warpRefList=None):
-        """Assemble a coadd from a set of warps.
-
-        Coadd a set of Warps. Compute weights to be applied to each Warp and
-        find scalings to match the photometric zeropoint to a reference Warp.
-        Assemble the Warps using run method.
-        Forward model chromatic effects across multiple subfilters,
-        and subtract from the input Warps to build sets of residuals.
-        Use the residuals to construct a new ``DcrModel`` for each subfilter,
-        and iterate until the model converges.
-        Interpolate over NaNs and optionally write the coadd to disk.
-        Return the coadded exposure.
-
-        Parameters
-        ----------
-        dataRef : `lsst.daf.persistence.ButlerDataRef`
-            Data reference defining the patch for coaddition and the
-            reference Warp
-        selectDataList : `list` of `lsst.daf.persistence.ButlerDataRef`
-            List of data references to warps. Data to be coadded will be
-            selected from this list based on overlap with the patch defined by
-            the data reference.
-
-        Returns
-        -------
-        results : `lsst.pipe.base.Struct`
-            The Struct contains the following fields:
-
-            - ``coaddExposure``: coadded exposure (`lsst.afw.image.Exposure`)
-            - ``nImage``: exposure count image (`lsst.afw.image.ImageU`)
-            - ``dcrCoadds``: `list` of coadded exposures for each subfilter
-            - ``dcrNImages``: `list` of exposure count images for each subfilter
-        """
-        if (selectDataList is None and warpRefList is None) or (selectDataList and warpRefList):
-            raise RuntimeError("runDataRef must be supplied either a selectDataList or warpRefList")
-
-        skyInfo = self.getSkyInfo(dataRef)
-        if warpRefList is None:
-            calExpRefList = self.selectExposures(dataRef, skyInfo, selectDataList=selectDataList)
-            if len(calExpRefList) == 0:
-                self.log.warning("No exposures to coadd")
-                return
-            self.log.info("Coadding %d exposures", len(calExpRefList))
-
-            warpRefList = self.getTempExpRefList(dataRef, calExpRefList)
-
-        inputData = self.prepareInputs(warpRefList)
-        self.log.info("Found %d %s", len(inputData.tempExpRefList),
-                      self.getTempExpDatasetName(self.warpType))
-        if len(inputData.tempExpRefList) == 0:
-            self.log.warning("No coadd temporary exposures found")
-            return
-
-        supplementaryData = self.makeSupplementaryData(dataRef, warpRefList=inputData.tempExpRefList)
-
-        results = self.run(skyInfo, inputData.tempExpRefList, inputData.imageScalerList,
-                           inputData.weightList, supplementaryData=supplementaryData)
-        if results is None:
-            self.log.warning("Could not construct DcrModel for patch %s: no data to coadd.",
-                             skyInfo.patchInfo.getIndex())
-            return
-
-        if self.config.doCalculatePsf:
-            self.measureCoaddPsf(results.coaddExposure)
-        brightObjects = self.readBrightObjectMasks(dataRef) if self.config.doMaskBrightObjects else None
-        for subfilter in range(self.config.dcrNumSubfilters):
-            # Use the PSF of the stacked dcrModel, and do not recalculate the PSF for each subfilter
-            results.dcrCoadds[subfilter].setPsf(results.coaddExposure.getPsf())
-            self.processResults(results.dcrCoadds[subfilter],
-                                brightObjectMasks=brightObjects, dataId=dataRef.dataId)
-            if self.config.doWrite:
-                self.log.info("Persisting dcrCoadd")
-                dataRef.put(results.dcrCoadds[subfilter], "dcrCoadd", subfilter=subfilter,
-                            numSubfilters=self.config.dcrNumSubfilters)
-            if self.config.doNImage and results.dcrNImages is not None:
-                dataRef.put(results.dcrNImages[subfilter], "dcrCoadd_nImage", subfilter=subfilter,
-                            numSubfilters=self.config.dcrNumSubfilters)
-
-        return results
-
     @utils.inheritDoc(AssembleCoaddTask)
-    def makeSupplementaryDataGen3(self, butlerQC, inputRefs, outputRefs):
+    def _makeSupplementaryData(self, butlerQC, inputRefs, outputRefs):
         """Load the previously-generated template coadd.
-
-        This can be removed entirely once we no longer support the Gen 2 butler.
 
         Returns
         -------
@@ -532,20 +437,13 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         sigma2fwhm = 2.*np.sqrt(2.*np.log(2.))
         filterLabel = templateCoadd.getFilter()
-        tempExpName = self.getTempExpDatasetName(self.warpType)
         dcrShifts = []
         airmassDict = {}
         angleDict = {}
         psfSizeDict = {}
         for visitNum, warpExpRef in enumerate(warpRefList):
-            if isinstance(warpExpRef, DeferredDatasetHandle):
-                # Gen 3 API
-                visitInfo = warpExpRef.get(component="visitInfo")
-                psf = warpExpRef.get(component="psf")
-            else:
-                # Gen 2 API. Delete this when Gen 2 retired
-                visitInfo = warpExpRef.get(tempExpName + "_visitInfo")
-                psf = warpExpRef.get(tempExpName).getPsf()
+            visitInfo = warpExpRef.get(component="visitInfo")
+            psf = warpExpRef.get(component="psf")
             visit = warpExpRef.dataId["visit"]
             # Just need a rough estimate; average positions are fine
             psfAvgPos = psf.getAveragePosition()
@@ -618,7 +516,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         weightList : `list` of `float`
             The weight to give each input exposure in the coadd
         supplementaryData : `lsst.pipe.base.Struct`
-            Result struct returned by ``makeSupplementaryData`` with components:
+            Result struct returned by ``_makeSupplementaryData`` with components:
 
             - ``templateCoadd``: coadded exposure (`lsst.afw.image.Exposure`)
 
@@ -771,14 +669,8 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         """
         dcrNImages = [afwImage.ImageU(bbox) for subfilter in range(self.config.dcrNumSubfilters)]
         dcrWeights = [afwImage.ImageF(bbox) for subfilter in range(self.config.dcrNumSubfilters)]
-        tempExpName = self.getTempExpDatasetName(self.warpType)
         for warpExpRef, altMaskSpans in zip(warpRefList, spanSetMaskList):
-            if isinstance(warpExpRef, DeferredDatasetHandle):
-                # Gen 3 API
-                exposure = warpExpRef.get(parameters={'bbox': bbox})
-            else:
-                # Gen 2 API. Delete this when Gen 2 retired
-                exposure = warpExpRef.get(tempExpName + "_sub", bbox=bbox)
+            exposure = warpExpRef.get(parameters={'bbox': bbox})
             visitInfo = exposure.getInfo().getVisitInfo()
             wcs = exposure.getInfo().getWcs()
             mask = exposure.mask
@@ -1289,14 +1181,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             The pre-loaded exposures for the current subregion.
             The variance plane contains weights, and not the variance
         """
-        tempExpName = self.getTempExpDatasetName(self.warpType)
         zipIterables = zip(warpRefList, imageScalerList, spanSetMaskList)
         subExposures = {}
         for warpExpRef, imageScaler, altMaskSpans in zipIterables:
-            if isinstance(warpExpRef, DeferredDatasetHandle):
-                exposure = warpExpRef.get(parameters={'bbox': bbox})
-            else:
-                exposure = warpExpRef.get(tempExpName + "_sub", bbox=bbox)
+            exposure = warpExpRef.get(parameters={'bbox': bbox})
             visit = warpExpRef.dataId["visit"]
             if altMaskSpans is not None:
                 self.applyAltMaskPlanes(exposure.mask, altMaskSpans)
@@ -1328,7 +1216,6 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             The average PSF of the input exposures with the best seeing.
         """
         sigma2fwhm = 2.*np.sqrt(2.*np.log(2.))
-        tempExpName = self.getTempExpDatasetName(self.warpType)
         # Note: ``ccds`` is a `lsst.afw.table.ExposureCatalog` with one entry per ccd and per visit
         # If there are multiple ccds, it will have that many times more elements than ``warpExpRef``
         ccds = templateCoadd.getInfo().getCoaddInputs().ccds
@@ -1339,12 +1226,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         psfSizes = np.zeros(len(ccds))
         ccdVisits = np.array(ccds["visit"])
         for warpExpRef in warpRefList:
-            if isinstance(warpExpRef, DeferredDatasetHandle):
-                # Gen 3 API
-                psf = warpExpRef.get(component="psf")
-            else:
-                # Gen 2 API. Delete this when Gen 2 retired
-                psf = warpExpRef.get(tempExpName).getPsf()
+            psf = warpExpRef.get(component="psf")
             visit = warpExpRef.dataId["visit"]
             psfAvgPos = psf.getAveragePosition()
             psfSize = psf.computeShape(psfAvgPos).getDeterminantRadius()*sigma2fwhm

@@ -72,8 +72,7 @@ class VisualizeBinExpConfig(pipeBase.PipelineTaskConfig,
     )
 
 
-class VisualizeBinExpTask(pipeBase.PipelineTask,
-                          pipeBase.CmdLineTask):
+class VisualizeBinExpTask(pipeBase.PipelineTask):
     """Bin the detectors of an exposure.
 
     The outputs of this task should be passed to
@@ -153,8 +152,7 @@ class VisualizeMosaicExpConfig(pipeBase.PipelineTaskConfig,
     )
 
 
-class VisualizeMosaicExpTask(pipeBase.PipelineTask,
-                             pipeBase.CmdLineTask):
+class VisualizeMosaicExpTask(pipeBase.PipelineTask):
     """Task to mosaic binned products.
 
     The config.binning parameter must match that used in the

@@ -32,7 +32,7 @@ from lsst.obs.base import ExposureIdInfo
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 
-from .makeCoaddTempExp import reorderRefs
+from .makeWarp import reorderRefs
 
 __all__ = ("DeblendCoaddSourcesSingleConfig", "DeblendCoaddSourcesSingleTask",
            "DeblendCoaddSourcesMultiConfig", "DeblendCoaddSourcesMultiTask")

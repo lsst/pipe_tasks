@@ -19,15 +19,12 @@
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 #
-import sys
-import traceback
 import lsst.sphgeom
 
 import lsst.geom as geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.skymap import DiscreteSkyMap, BaseSkyMap
-from lsst.pipe.base import ArgumentParser
 from lsst.utils.timer import timeMethod
 
 
@@ -63,59 +60,7 @@ class MakeDiscreteSkyMapConfig(pexConfig.Config):
         self.skyMap.tractOverlap = 0.0
 
 
-class MakeDiscreteSkyMapRunner(pipeBase.TaskRunner):
-    """Run a task with all dataRefs at once, rather than one dataRef at a time.
-
-    Call the run method of the task using two positional arguments:
-    - butler: data butler
-    - dataRefList: list of all dataRefs,
-    """
-    @staticmethod
-    def getTargetList(parsedCmd):
-        return [(parsedCmd.butler, parsedCmd.id.refList)]
-
-    def __call__(self, args):
-        """
-        @param args     Arguments for Task.run()
-
-        @return:
-        - None if self.doReturnResults false
-        - A pipe_base Struct containing these fields if self.doReturnResults true:
-            - dataRef: the provided data reference
-            - metadata: task metadata after execution of run
-            - result: result returned by task run, or None if the task fails
-        """
-        butler, dataRefList = args
-        task = self.TaskClass(config=self.config, log=self.log)
-        result = None  # in case the task fails
-        exitStatus = 0  # exit status for shell
-        if self.doRaise:
-            result = task.runDataRef(butler, dataRefList)
-        else:
-            try:
-                result = task.runDataRef(butler, dataRefList)
-            except Exception as e:
-                task.log.fatal("Failed: %s", e)
-                exitStatus = 1
-                if not isinstance(e, pipeBase.TaskError):
-                    traceback.print_exc(file=sys.stderr)
-        for dataRef in dataRefList:
-            task.writeMetadata(dataRef)
-
-        if self.doReturnResults:
-            return pipeBase.Struct(
-                dataRefList=dataRefList,
-                metadata=task.metadata,
-                result=result,
-                exitStatus=exitStatus,
-            )
-        else:
-            return pipeBase.Struct(
-                exitStatus=exitStatus,
-            )
-
-
-class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
+class MakeDiscreteSkyMapTask(pipeBase.Task):
     """!Make a DiscreteSkyMap in a repository, using the bounding box of a set of calexps.
 
     The command-line and run signatures and config are sufficiently different from MakeSkyMapTask
@@ -123,45 +68,6 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
     """
     ConfigClass = MakeDiscreteSkyMapConfig
     _DefaultName = "makeDiscreteSkyMap"
-    RunnerClass = MakeDiscreteSkyMapRunner
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-    def runDataRef(self, butler, dataRefList):
-        """Make a skymap from the bounds of the given set of calexps using the butler.
-
-        Parameters
-        ----------
-        butler : `lsst.daf.persistence.Butler`
-           Gen2 data butler used to save the SkyMap
-        dataRefList : iterable
-           A list of Gen2 data refs of calexps used to determin the size and pointing of the SkyMap
-        Returns
-        -------
-        struct : `lsst.pipe.base.Struct`
-           The returned struct has one attribute, ``skyMap``, which holds the returned SkyMap
-        """
-        wcs_bbox_tuple_list = []
-        oldSkyMap = None
-        datasetName = self.config.coaddName + "Coadd_skyMap"
-        for dataRef in dataRefList:
-            if not dataRef.datasetExists("calexp"):
-                self.log.warning("CalExp for %s does not exist: ignoring", dataRef.dataId)
-                continue
-            wcs_bbox_tuple_list.append((dataRef.get("calexp_wcs", immediate=True),
-                                        dataRef.get("calexp_bbox", immediate=True)))
-        if self.config.doAppend and butler.datasetExists(datasetName):
-            oldSkyMap = butler.get(datasetName, immediate=True)
-            if not isinstance(oldSkyMap.config, DiscreteSkyMap.ConfigClass):
-                raise TypeError("Cannot append to existing non-discrete skymap")
-            compareLog = []
-            if not self.config.skyMap.compare(oldSkyMap.config, output=compareLog.append):
-                raise ValueError("Cannot append to existing skymap - configurations differ:", *compareLog)
-        result = self.run(wcs_bbox_tuple_list, oldSkyMap)
-        if self.config.doWrite:
-            butler.put(result.skyMap, datasetName)
-        return result
 
     @timeMethod
     def run(self, wcs_bbox_tuple_list, oldSkyMap=None):
@@ -227,24 +133,3 @@ class MakeDiscreteSkyMapTask(pipeBase.CmdLineTask):
         return pipeBase.Struct(
             skyMap=skyMap
         )
-
-    def _getConfigName(self):
-        """Return None to disable saving config
-
-        There's only one SkyMap per repository, so the config is redundant, and checking it means we can't
-        easily overwrite or append to an existing repository.
-        """
-        return None
-
-    def _getMetadataName(self):
-        """Return None to disable saving metadata
-
-        The metadata is not interesting, and by not saving it we can eliminate a dataset type.
-        """
-        return None
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        parser = ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument(name="--id", datasetType="calexp", help="data ID, e.g. --id visit=123 ccd=1,2")
-        return parser

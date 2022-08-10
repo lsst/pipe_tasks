@@ -32,7 +32,7 @@ import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.meas.extensions.trailedSources  # noqa: F401
 from lsst.meas.algorithms import (SourceDetectionTask, SingleGaussianPsf, ObjectSizeStarSelectorTask,
-                                  LoadIndexedReferenceObjectsTask, SkyObjectsTask,
+                                  LoadReferenceObjectsConfig, SkyObjectsTask,
                                   ScaleVarianceTask)
 from lsst.meas.astrom import AstrometryConfig, AstrometryTask
 from lsst.meas.base import ForcedMeasurementTask, ApplyApCorrTask
@@ -246,8 +246,8 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
         dtype=bool,
         default=True
     )
-    refObjLoader = pexConfig.ConfigurableField(
-        target=LoadIndexedReferenceObjectsTask,
+    refObjLoader = pexConfig.ConfigField(
+        dtype=LoadReferenceObjectsConfig,
         doc="reference object loader",
     )
     astrometer = pexConfig.ConfigurableField(
@@ -436,22 +436,13 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
                     "Gaussian PSF approximation exists only for AL subtraction w/ pre-convolution.")
 
 
-class ImageDifferenceTaskRunner(pipeBase.ButlerInitializedTaskRunner):
-
-    @staticmethod
-    def getTargetList(parsedCmd, **kwargs):
-        return pipeBase.TaskRunner.getTargetList(parsedCmd, templateIdList=parsedCmd.templateId.idList,
-                                                 **kwargs)
-
-
 @deprecated(reason="This Task has been replaced with lsst.ip.diffim.subtractImages"
             " and lsst.ip.diffim.detectAndMeasure. Will be removed after v25.",
             version="v24.0", category=FutureWarning)
-class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
+class ImageDifferenceTask(pipeBase.PipelineTask):
     """Subtract an image from a template and measure the result
     """
     ConfigClass = ImageDifferenceConfig
-    RunnerClass = ImageDifferenceTaskRunner
     _DefaultName = "imageDifference"
 
     def __init__(self, butler=None, **kwargs):
@@ -579,87 +570,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         if outputs.diaSources is None:
             del outputs.diaSources
         butlerQC.put(outputs, outputRefs)
-
-    @timeMethod
-    def runDataRef(self, sensorRef, templateIdList=None):
-        """Subtract an image from a template coadd and measure the result.
-
-        Data I/O wrapper around `run` using the butler in Gen2.
-
-        Parameters
-        ----------
-        sensorRef : `lsst.daf.persistence.ButlerDataRef`
-            Sensor-level butler data reference, used for the following data products:
-
-            Input only:
-            - calexp
-            - psf
-            - ccdExposureId
-            - ccdExposureId_bits
-            - self.config.coaddName + "Coadd_skyMap"
-            - self.config.coaddName + "Coadd"
-            Input or output, depending on config:
-            - self.config.coaddName + "Diff_subtractedExp"
-            Output, depending on config:
-            - self.config.coaddName + "Diff_matchedExp"
-            - self.config.coaddName + "Diff_src"
-
-        Returns
-        -------
-        results : `lsst.pipe.base.Struct`
-            Returns the Struct by `run`.
-        """
-        subtractedExposureName = self.config.coaddName + "Diff_differenceExp"
-        subtractedExposure = None
-        selectSources = None
-        calexpBackgroundExposure = None
-        self.log.info("Processing %s", sensorRef.dataId)
-
-        # We make one IdFactory that will be used by both icSrc and src datasets;
-        # I don't know if this is the way we ultimately want to do things, but at least
-        # this ensures the source IDs are fully unique.
-        idFactory = self.makeIdFactory(expId=int(sensorRef.get("ccdExposureId")),
-                                       expBits=sensorRef.get("ccdExposureId_bits"))
-        if self.config.doAddCalexpBackground:
-            calexpBackgroundExposure = sensorRef.get("calexpBackground")
-
-        # Retrieve the science image we wish to analyze
-        exposure = sensorRef.get("calexp", immediate=True)
-
-        # Retrieve the template image
-        template = self.getTemplate.runDataRef(exposure, sensorRef, templateIdList=templateIdList)
-
-        if sensorRef.datasetExists("src"):
-            self.log.info("Source selection via src product")
-            # Sources already exist; for data release processing
-            selectSources = sensorRef.get("src")
-
-        if not self.config.doSubtract and self.config.doDetection:
-            # If we don't do subtraction, we need the subtracted exposure from the repo
-            subtractedExposure = sensorRef.get(subtractedExposureName)
-        # Both doSubtract and doDetection cannot be False
-
-        results = self.run(exposure=exposure,
-                           selectSources=selectSources,
-                           templateExposure=template.exposure,
-                           templateSources=template.sources,
-                           idFactory=idFactory,
-                           calexpBackgroundExposure=calexpBackgroundExposure,
-                           subtractedExposure=subtractedExposure)
-
-        if self.config.doWriteSources and results.diaSources is not None:
-            sensorRef.put(results.diaSources, self.config.coaddName + "Diff_diaSrc")
-        if self.config.doWriteWarpedExp:
-            sensorRef.put(results.warpedExposure, self.config.coaddName + "Diff_warpedExp")
-        if self.config.doWriteMatchedExp:
-            sensorRef.put(results.matchedExposure, self.config.coaddName + "Diff_matchedExp")
-        if self.config.doAddMetrics and self.config.doSelectSources:
-            sensorRef.put(results.selectSources, self.config.coaddName + "Diff_kernelSrc")
-        if self.config.doWriteSubtractedExp:
-            sensorRef.put(results.subtractedExposure, subtractedExposureName)
-        if self.config.doWriteScoreExp:
-            sensorRef.put(results.scoreExposure, self.config.coaddName + "Diff_scoreExp")
-        return results
 
     def prepareCalibratedExposure(self, exposure, finalizedPsfApCorrCatalog=None):
         """Prepare a calibrated exposure and apply finalized psf if so configured.
@@ -1349,31 +1259,6 @@ class ImageDifferenceTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
                            100*pixGood/templateExposure.getBBox().getArea(),
                            100*self.config.requiredTemplateFraction))
             raise pipeBase.NoWorkFound(message)
-
-    def _getConfigName(self):
-        """Return the name of the config dataset
-        """
-        return "%sDiff_config" % (self.config.coaddName,)
-
-    def _getMetadataName(self):
-        """Return the name of the metadata dataset
-        """
-        return "%sDiff_metadata" % (self.config.coaddName,)
-
-    def getSchemaCatalogs(self):
-        """Return a dict of empty catalogs for each catalog dataset produced by this task."""
-        return {self.config.coaddName + "Diff_diaSrc": self.outputSchema}
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        """Create an argument parser
-        """
-        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", "calexp", help="data ID, e.g. --id visit=12345 ccd=1,2")
-        parser.add_id_argument("--templateId", "calexp", doMakeDataRefList=True,
-                               help="Template data ID in case of calexp template,"
-                               " e.g. --templateId visit=6789")
-        return parser
 
 
 class ImageDifferenceFromTemplateConnections(ImageDifferenceTaskConnections,

@@ -72,7 +72,7 @@ class CosmicRayPostDiffConfig(pipeBase.PipelineTaskConfig,
         super().setDefaults()
 
 
-class CosmicRayPostDiffTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
+class CosmicRayPostDiffTask(pipeBase.PipelineTask):
     """ Detect and repair cosmic rays on an image difference.
         Given an output image from image differencing:
           - detect and repair cosmic rays

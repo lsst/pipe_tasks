@@ -20,95 +20,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import lsst.afw.table as afwTable
 
-from lsst.coadd.utils import ExistingCoaddDataIdContainer
 from lsst.coadd.utils.getGen3CoaddExposureId import getGen3CoaddExposureId
-from lsst.pipe.base import TaskRunner, ArgumentParser
 from lsst.pex.config import Config, RangeField
 from lsst.obs.base import ExposureIdInfo
-
-
-class MergeSourcesRunner(TaskRunner):
-    """Task runner for `MergeDetectionTask` `MergeMeasurementTask`
-
-    Required because the run method requires a list of
-    dataRefs rather than a single dataRef.
-    """
-    def makeTask(self, parsedCmd=None, args=None):
-        """Provide a butler to the Task constructor.
-
-        Parameters
-        ----------
-        parsedCmd:
-            The parsed command
-        args: tuple
-            Tuple of a list of data references and kwargs (un-used)
-
-        Raises
-        ------
-        RuntimeError
-            Thrown if both `parsedCmd` & `args` are `None`
-        """
-        if parsedCmd is not None:
-            butler = parsedCmd.butler
-        elif args is not None:
-            dataRefList, kwargs = args
-            butler = dataRefList[0].getButler()
-        else:
-            raise RuntimeError("Neither parsedCmd or args specified")
-        return self.TaskClass(config=self.config, log=self.log, butler=butler)
-
-    @staticmethod
-    def buildRefDict(parsedCmd):
-        """Build a hierarchical dictionary of patch references
-
-        Parameters
-        ----------
-        parsedCmd:
-            The parsed command
-
-        Returns
-        -------
-        refDict: dict
-            A reference dictionary of the form {patch: {tract: {filter: dataRef}}}
-
-        Raises
-        ------
-        RuntimeError
-            Thrown when multiple references are provided for the same
-            combination of tract, patch and filter
-        """
-        refDict = {}  # Will index this as refDict[tract][patch][filter] = ref
-        for ref in parsedCmd.id.refList:
-            tract = ref.dataId["tract"]
-            patch = ref.dataId["patch"]
-            filter = ref.dataId["filter"]
-            if tract not in refDict:
-                refDict[tract] = {}
-            if patch not in refDict[tract]:
-                refDict[tract][patch] = {}
-            if filter in refDict[tract][patch]:
-                raise RuntimeError("Multiple versions of %s" % (ref.dataId,))
-            refDict[tract][patch][filter] = ref
-        return refDict
-
-    @staticmethod
-    def getTargetList(parsedCmd, **kwargs):
-        """Provide a list of patch references for each patch, tract, filter combo.
-
-        Parameters
-        ----------
-        parsedCmd:
-            The parsed command
-        kwargs:
-            Keyword arguments passed to the task
-
-        Returns
-        -------
-        targetList: list
-            List of tuples, where each tuple is a (dataRef, kwargs) pair.
-        """
-        refDict = MergeSourcesRunner.buildRefDict(parsedCmd)
-        return [(list(p.values()), kwargs) for t in refDict.values() for p in t.values()]
 
 
 def _makeGetSchemaCatalogs(datasetSuffix):
@@ -127,53 +41,6 @@ def _makeGetSchemaCatalogs(datasetSuffix):
             src.getTable().setMetadata(self.algMetadata)
         return {self.config.coaddName + "Coadd_" + datasetSuffix: src}
     return getSchemaCatalogs
-
-
-def makeMergeArgumentParser(name, dataset):
-    """!
-    @brief Create a suitable ArgumentParser.
-
-    We will use the ArgumentParser to get a provide a list of data
-    references for patches; the RunnerClass will sort them into lists
-    of data references for the same patch
-    """
-    parser = ArgumentParser(name)
-    parser.add_id_argument("--id", "deepCoadd_" + dataset,
-                           ContainerClass=ExistingCoaddDataIdContainer,
-                           help="data ID, e.g. --id tract=12345 patch=1,2 filter=g^r^i")
-    return parser
-
-
-def getInputSchema(task, butler=None, schema=None):
-    """!
-    @brief Obtain the input schema either directly or froma  butler reference.
-
-    @param[in]  task     the task whose input schema is desired
-    @param[in]  butler   butler reference to obtain the input schema from
-    @param[in]  schema   the input schema
-    """
-    if schema is None:
-        assert butler is not None, "Neither butler nor schema specified"
-        schema = butler.get(task.config.coaddName + "Coadd_" + task.inputDataset + "_schema",
-                            immediate=True).schema
-    return schema
-
-
-def readCatalog(task, patchRef):
-    """!
-    @brief Read input catalog.
-
-    We read the input dataset provided by the 'inputDataset'
-    class variable.
-
-    @param[in]  task       the task whose input catalog is desired
-    @param[in]  patchRef   data reference for patch
-    @return tuple consisting of the band name and the catalog
-    """
-    band = patchRef.get(task.config.coaddName + "Coadd_filterLabel", immediate=True).bandLabel
-    catalog = patchRef.get(task.config.coaddName + "Coadd_" + task.inputDataset, immediate=True)
-    task.log.info("Read %d sources for band %s: %s", len(catalog), band, patchRef.dataId)
-    return band, catalog
 
 
 class CullPeaksConfig(Config):

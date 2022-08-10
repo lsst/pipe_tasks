@@ -28,8 +28,8 @@ import numpy as np
 
 import lsst.utils.tests
 
+import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.assembleCoadd import (AssembleCoaddTask, AssembleCoaddConfig,
-                                           SafeClipAssembleCoaddTask, SafeClipAssembleCoaddConfig,
                                            CompareWarpAssembleCoaddTask, CompareWarpAssembleCoaddConfig)
 from lsst.pipe.tasks.dcrAssembleCoadd import DcrAssembleCoaddTask, DcrAssembleCoaddConfig
 from assembleCoaddTestUtils import makeMockSkyInfo, MockCoaddTestData
@@ -64,10 +64,6 @@ class MockAssembleCoaddTask(AssembleCoaddTask):
         "This should be tested separately."
         pass
 
-    def _dataRef2DebugPath(self, *args, **kwargs):
-        raise NotImplementedError("This lightweight version of the task is not "
-                                  "meant to test debugging options.")
-
     def runQuantum(self, mockSkyInfo, warpRefList, *args):
         """Modified interface for testing coaddition algorithms without a Butler.
 
@@ -87,66 +83,10 @@ class MockAssembleCoaddTask(AssembleCoaddTask):
             The coadded exposure and associated metadata.
         """
         inputs = self.prepareInputs(warpRefList)
-        supplementaryData = self.makeSupplementaryData(mockSkyInfo, warpRefList=inputs.tempExpRefList)
+
         retStruct = self.run(mockSkyInfo, inputs.tempExpRefList, inputs.imageScalerList,
-                             inputs.weightList, supplementaryData=supplementaryData)
+                             inputs.weightList, supplementaryData=pipeBase.Struct())
         return retStruct
-
-    def runDataRef(self, mockSkyInfo, selectDataList=None, warpRefList=None):
-        """Modified interface for testing coaddition algorithms without a Butler.
-
-        Notes
-        -----
-        This tests the coaddition algorithms using Gen 2 Butler data references,
-        and can be removed once that is fully deprecated.
-
-        Both `runDataRef` and `runQuantum` are needed even those their
-        implementation here is identical, because the Gen 2 and Gen 3 versions
-        of `makeSupplementaryData` call `runDataRef` and `runQuantum` to build
-        initial templates, respectively.
-
-        Parameters
-        ----------
-        mockSkyInfo : `lsst.pipe.base.Struct`
-            A simple container that supplies a bounding box and WCS in the
-            same format as the output of
-            `lsst.pipe.tasks.CoaddBaseTask.getSkyInfo`
-        warpRefList : `list` of `lsst.pipe.tasks.MockGen2ExposureReference`
-            Data references to the test exposures that will be coadded,
-            using the Gen 2 API.
-
-        Returns
-        -------
-        retStruct : `lsst.pipe.base.Struct`
-            The coadded exposure and associated metadata.
-        """
-        inputData = self.prepareInputs(warpRefList)
-        supplementaryData = self.makeSupplementaryData(mockSkyInfo, warpRefList=inputData.tempExpRefList)
-        retStruct = self.run(mockSkyInfo, inputData.tempExpRefList, inputData.imageScalerList,
-                             inputData.weightList, supplementaryData=supplementaryData)
-        return retStruct
-
-
-class MockSafeClipAssembleCoaddConfig(SafeClipAssembleCoaddConfig):
-
-    def setDefaults(self):
-        super().setDefaults()
-        self.doWrite = False
-
-
-class MockSafeClipAssembleCoaddTask(MockAssembleCoaddTask, SafeClipAssembleCoaddTask):
-    """Lightly modified version of `SafeClipAssembleCoaddTask`
-    for use with unit tests.
-
-    The modifications bypass the usual middleware for loading data and setting
-    up the Task, and instead supply in-memory mock data references to the `run`
-    method so that the coaddition algorithms can be tested without a Butler.
-    """
-    ConfigClass = MockSafeClipAssembleCoaddConfig
-    _DefaultName = "safeClipAssembleCoadd"
-
-    def __init__(self, *args, **kwargs):
-        SafeClipAssembleCoaddTask.__init__(self, *args, **kwargs)
 
 
 class MockCompareWarpAssembleCoaddConfig(CompareWarpAssembleCoaddConfig):
@@ -172,6 +112,23 @@ class MockCompareWarpAssembleCoaddTask(MockAssembleCoaddTask, CompareWarpAssembl
     def __init__(self, *args, **kwargs):
         CompareWarpAssembleCoaddTask.__init__(self, *args, **kwargs)
 
+    def runQuantum(self, mockSkyInfo, warpRefList, *args):
+        inputs = self.prepareInputs(warpRefList)
+
+        assembleStaticSkyModel = MockAssembleCoaddTask(config=self.config.assembleStaticSkyModel)
+        templateCoadd = assembleStaticSkyModel.runQuantum(mockSkyInfo, warpRefList)
+
+        supplementaryData = pipeBase.Struct(
+            templateCoadd=templateCoadd.coaddExposure,
+            nImage=templateCoadd.nImage,
+            warpRefList=templateCoadd.warpRefList,
+            imageScalerList=templateCoadd.imageScalerList,
+            weightList=templateCoadd.weightList)
+
+        retStruct = self.run(mockSkyInfo, inputs.tempExpRefList, inputs.imageScalerList,
+                             inputs.weightList, supplementaryData=supplementaryData)
+        return retStruct
+
 
 class MockDcrAssembleCoaddConfig(DcrAssembleCoaddConfig):
 
@@ -184,7 +141,7 @@ class MockDcrAssembleCoaddConfig(DcrAssembleCoaddConfig):
         self.bandwidth = 552. - 405.
 
 
-class MockDcrAssembleCoaddTask(MockAssembleCoaddTask, DcrAssembleCoaddTask):
+class MockDcrAssembleCoaddTask(MockCompareWarpAssembleCoaddTask, DcrAssembleCoaddTask):
     """Lightly modified version of `DcrAssembleCoaddTask`
     for use with unit tests.
 
@@ -243,48 +200,41 @@ class AssembleCoaddTestCase(lsst.utils.tests.TestCase):
                                                     'direct', patch=patch, tract=tract)
         self.dataRefListPsfMatched = testData.makeDataRefList(exposures, matchedExposures,
                                                               'psfMatched', patch=patch, tract=tract)
-        self.skyInfoGen2 = makeMockSkyInfo(testData.bbox, testData.wcs, patch=patchGen2)
         self.skyInfo = makeMockSkyInfo(testData.bbox, testData.wcs, patch=patch)
 
-    def checkGen2Gen3Compatibility(self, assembleTask, warpType="direct"):
+    def checkRun(self, assembleTask, warpType="direct"):
+        """Check that the task runs successfully."""
         dataRefList = self.dataRefListPsfMatched if warpType == "psfMatched" else self.dataRefList
-        resultsGen3 = assembleTask.runQuantum(self.skyInfo, dataRefList)
-        resultsGen2 = assembleTask.runDataRef(self.skyInfoGen2, warpRefList=self.gen2DataRefList)
-        coaddGen2 = resultsGen2.coaddExposure
-        coaddGen3 = resultsGen3.coaddExposure
-        self.assertFloatsEqual(coaddGen2.image.array, coaddGen3.image.array)
+        result = assembleTask.runQuantum(self.skyInfo, dataRefList)
 
-    def testGen2Gen3Compatibility(self):
+        # Check that we produced an exposure.
+        self.assertTrue(result.coaddExposure is not None)
+
+    def testAssembleBasic(self):
         config = MockAssembleCoaddConfig()
         config.validate()
         assembleTask = MockAssembleCoaddTask(config=config)
-        self.checkGen2Gen3Compatibility(assembleTask)
+        self.checkRun(assembleTask)
 
-    def testPsfMatchedGen2Gen3Compatibility(self):
+    def testAssemblePsfMatched(self):
         config = MockAssembleCoaddConfig(warpType="psfMatched")
         config.validate()
         assembleTask = MockAssembleCoaddTask(config=config)
-        self.checkGen2Gen3Compatibility(assembleTask, warpType="psfMatched")
+        self.checkRun(assembleTask, warpType="psfMatched")
 
-    def testSafeClipGen2Gen3Compatibility(self):
-        config = MockSafeClipAssembleCoaddConfig()
-        config.validate()
-        assembleTask = MockSafeClipAssembleCoaddTask(config=config)
-        self.checkGen2Gen3Compatibility(assembleTask)
-
-    def testCompareWarpGen2Gen3Compatibility(self):
+    def testAssembleCompareWarp(self):
         config = MockCompareWarpAssembleCoaddConfig()
         config.validate()
         assembleTask = MockCompareWarpAssembleCoaddTask(config=config)
-        self.checkGen2Gen3Compatibility(assembleTask)
+        self.checkRun(assembleTask)
 
-    def testDcrGen2Gen3Compatibility(self):
+    def testAssembleDCR(self):
         config = MockDcrAssembleCoaddConfig()
         config.validate()
         assembleTask = MockDcrAssembleCoaddTask(config=config)
-        self.checkGen2Gen3Compatibility(assembleTask)
+        self.checkRun(assembleTask)
 
-    def testOnlineCoaddGen3(self):
+    def testOnlineCoadd(self):
         config = MockInputMapAssembleCoaddConfig()
         config.statistic = "MEAN"
         config.validate()
@@ -309,7 +259,7 @@ class AssembleCoaddTestCase(lsst.utils.tests.TestCase):
                                      coadd.variance.array, rtol=1e-6)
         self.assertMasksEqual(coaddOnline.mask, coadd.mask)
 
-    def testInputMapGen3(self):
+    def testInputMap(self):
         config = MockInputMapAssembleCoaddConfig()
         config.validate()
         assembleTask = MockInputMapAssembleCoaddTask(config=config)

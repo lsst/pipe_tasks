@@ -20,19 +20,15 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 import lsst.pex.config as pexConfig
-import lsst.geom as geom
-import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
 
-from lsst.afw.fits import FitsError
-from lsst.coadd.utils import CoaddDataIdContainer
 from lsst.meas.algorithms import ScaleVarianceTask
-from .selectImages import WcsSelectImagesTask, SelectStruct
+from .selectImages import PsfWcsSelectImagesTask
 from .coaddInputRecorder import CoaddInputRecorderTask
 
-__all__ = ["CoaddBaseTask", "getSkyInfo", "makeSkyInfo", "makeCoaddSuffix"]
+__all__ = ["CoaddBaseTask", "getSkyInfo", "makeSkyInfo"]
 
 
 class CoaddBaseConfig(pexConfig.Config):
@@ -49,7 +45,7 @@ class CoaddBaseConfig(pexConfig.Config):
     )
     select = pexConfig.ConfigurableField(
         doc="Image selection subtask.",
-        target=WcsSelectImagesTask,
+        target=PsfWcsSelectImagesTask,
     )
     badMaskPlanes = pexConfig.ListField(
         dtype=str,
@@ -91,7 +87,8 @@ class CoaddBaseConfig(pexConfig.Config):
             "jointcal": "Use jointcal_photoCalib",
             "fgcm": "Use fgcm_photoCalib",
             "fgcm_tract": "Use fgcm_tract_photoCalib"
-        }
+        },
+        deprecated="This configuration is no longer used, and will be removed after v25.0",
     )
     doApplyExternalSkyWcs = pexConfig.Field(
         dtype=bool,
@@ -115,7 +112,8 @@ class CoaddBaseConfig(pexConfig.Config):
         default="jointcal",
         allowed={
             "jointcal": "Use jointcal_wcs"
-        }
+        },
+        deprecated="This configuration is no longer used, and will be removed after v25.0",
     )
     includeCalibVar = pexConfig.Field(
         dtype=bool,
@@ -130,49 +128,17 @@ class CoaddBaseConfig(pexConfig.Config):
     )
 
 
-class CoaddTaskRunner(pipeBase.TaskRunner):
-
-    @staticmethod
-    def getTargetList(parsedCmd, **kwargs):
-        return pipeBase.TaskRunner.getTargetList(parsedCmd, selectDataList=parsedCmd.selectId.dataList,
-                                                 **kwargs)
-
-
-class CoaddBaseTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
+class CoaddBaseTask(pipeBase.PipelineTask):
     """!Base class for coaddition.
 
     Subclasses must specify _DefaultName
     """
     ConfigClass = CoaddBaseConfig
-    RunnerClass = CoaddTaskRunner
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.makeSubtask("select")
         self.makeSubtask("inputRecorder")
-
-    def selectExposures(self, patchRef, skyInfo=None, selectDataList=[]):
-        """!
-        @brief Select exposures to coadd
-
-        Get the corners of the bbox supplied in skyInfo using @ref geom.Box2D and convert the pixel
-        positions of the bbox corners to sky coordinates using
-        @ref afw::geom::SkyWcs::pixelToSky "skyInfo.wcs.pixelToSky". Use the
-        @ref selectImages::WcsSelectImagesTask "WcsSelectImagesTask" to select exposures that lie
-        inside the patch indicated by the dataRef.
-
-        @param[in] patchRef  data reference for sky map patch. Must include keys "tract", "patch",
-                             plus the camera-specific filter key (e.g. "filter" or "band")
-        @param[in] skyInfo   geometry for the patch; output from getSkyInfo
-        @param[in] selectDataList list of @ref selectImages::SelectStruct "SelectStruct"
-                             to consider for selection
-        @return    a list of science exposures to coadd, as butler data references
-        """
-        if skyInfo is None:
-            skyInfo = self.getSkyInfo(patchRef)
-        cornerPosList = geom.Box2D(skyInfo.bbox).getCorners()
-        coordList = [skyInfo.wcs.pixelToSky(pos) for pos in cornerPosList]
-        return self.select.runDataRef(patchRef, coordList, selectDataList=selectDataList).dataRefList
 
     def getSkyInfo(self, patchRef):
         """!
@@ -191,20 +157,6 @@ class CoaddBaseTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         """
         return getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
 
-    def getCoaddDatasetName(self, warpType="direct"):
-        """Return coadd name for given warpType and task config
-
-        Parameters
-        ----------
-        warpType : string
-            Either 'direct' or 'psfMatched'
-
-        Returns
-        -------
-        CoaddDatasetName : `string`
-        """
-        return self.config.coaddName + "Coadd" + makeCoaddSuffix(warpType)
-
     def getTempExpDatasetName(self, warpType="direct"):
         """Return warp name for given warpType and task config
 
@@ -219,57 +171,11 @@ class CoaddBaseTask(pipeBase.CmdLineTask, pipeBase.PipelineTask):
         """
         return self.config.coaddName + "Coadd_" + warpType + "Warp"
 
-    @classmethod
-    def _makeArgumentParser(cls):
-        """Create an argument parser
-        """
-        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument("--id", "deepCoadd", help="data ID, e.g. --id tract=12345 patch=1,2",
-                               ContainerClass=CoaddDataIdContainer)
-        parser.add_id_argument("--selectId", "calexp", help="data ID, e.g. --selectId visit=6789 ccd=0..9",
-                               ContainerClass=SelectDataIdContainer)
-        return parser
-
-    def _getConfigName(self):
-        """Return the name of the config dataset
-        """
-        return "%s_%s_config" % (self.config.coaddName, self._DefaultName)
-
-    def _getMetadataName(self):
-        """Return the name of the metadata dataset
-        """
-        return "%s_%s_metadata" % (self.config.coaddName, self._DefaultName)
-
     def getBadPixelMask(self):
         """!
         @brief Convenience method to provide the bitmask from the mask plane names
         """
         return afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes)
-
-
-class SelectDataIdContainer(pipeBase.DataIdContainer):
-    """!
-    @brief A dataId container for inputs to be selected.
-
-    Read the header (including the size and Wcs) for all specified
-    inputs and pass those along, ultimately for the SelectImagesTask.
-    This is most useful when used with multiprocessing, as input headers are
-    only read once.
-    """
-
-    def makeDataRefList(self, namespace):
-        """Add a dataList containing useful information for selecting images"""
-        super(SelectDataIdContainer, self).makeDataRefList(namespace)
-        self.dataList = []
-        for ref in self.refList:
-            try:
-                md = ref.get("calexp_md", immediate=True)
-                wcs = afwGeom.makeSkyWcs(md)
-                data = SelectStruct(dataRef=ref, wcs=wcs, bbox=afwImage.bboxFromMetadata(md))
-            except FitsError:
-                namespace.log.warning("Unable to construct Wcs from %s", ref.dataId)
-                continue
-            self.dataList.append(data)
 
 
 def getSkyInfo(coaddName, patchRef):
@@ -345,22 +251,6 @@ def scaleVariance(maskedImage, maskPlanes, log=None):
     config.maskPlanes = maskPlanes
     task = ScaleVarianceTask(config=config, name="scaleVariance", log=log)
     return task.run(maskedImage)
-
-
-def makeCoaddSuffix(warpType="direct"):
-    """Return coadd suffix for warpType
-
-    Parameters
-    ----------
-    warpType : string
-        Either 'direct' or 'psfMatched'
-
-    Returns
-    -------
-    CoaddSuffix : `string`
-    """
-    suffix = "" if warpType == "direct" else warpType[0].upper() + warpType[1:]
-    return suffix
 
 
 def reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):

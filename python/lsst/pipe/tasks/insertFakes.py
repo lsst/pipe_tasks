@@ -23,7 +23,6 @@
 Insert fakes into deepCoadds
 """
 import galsim
-from astropy.table import Table
 import numpy as np
 from astropy import units as u
 
@@ -33,10 +32,9 @@ import lsst.afw.math as afwMath
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
-from lsst.pipe.base import CmdLineTask, PipelineTask, PipelineTaskConfig, PipelineTaskConnections
+from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.exceptions import LogicError, InvalidParameterError
-from lsst.coadd.utils.coaddDataIdContainer import ExistingCoaddDataIdContainer
 from lsst.geom import SpherePoint, radians, Box2D, Point2D
 
 __all__ = ["InsertFakesConfig", "InsertFakesTask"]
@@ -534,7 +532,7 @@ class InsertFakesConfig(PipelineTaskConfig,
     )
 
 
-class InsertFakesTask(PipelineTask, CmdLineTask):
+class InsertFakesTask(PipelineTask):
     """Insert fake objects into images.
 
     Add fake stars and galaxies to the given image, read in through the dataRef. Galaxy parameters are read in
@@ -563,38 +561,6 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
     _DefaultName = "insertFakes"
     ConfigClass = InsertFakesConfig
 
-    def runDataRef(self, dataRef):
-        """Read in/write out the required data products and add fake sources to the deepCoadd.
-
-        Parameters
-        ----------
-        dataRef : `lsst.daf.persistence.butlerSubset.ButlerDataRef`
-            Data reference defining the image to have fakes added to it
-            Used to access the following data products:
-                deepCoadd
-        """
-
-        self.log.info("Adding fakes to: tract: %d, patch: %s, filter: %s",
-                      dataRef.dataId["tract"], dataRef.dataId["patch"], dataRef.dataId["filter"])
-
-        # To do: should it warn when asked to insert variable sources into the coadd
-
-        if self.config.fakeType == "static":
-            fakeCat = dataRef.get("deepCoadd_fakeSourceCat").toDataFrame()
-            # To do: DM-16254, the read and write of the fake catalogs will be changed once the new pipeline
-            # task structure for ref cats is in place.
-            self.fakeSourceCatType = "deepCoadd_fakeSourceCat"
-        else:
-            fakeCat = Table.read(self.config.fakeType).to_pandas()
-
-        coadd = dataRef.get("deepCoadd")
-        wcs = coadd.getWcs()
-        photoCalib = coadd.getPhotoCalib()
-
-        imageWithFakes = self.run(fakeCat, coadd, wcs, photoCalib)
-
-        dataRef.put(imageWithFakes.imageWithFakes, "fakes_deepCoadd")
-
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         inputs["wcs"] = inputs["image"].getWcs()
@@ -602,14 +568,6 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
 
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
-
-    @classmethod
-    def _makeArgumentParser(cls):
-        parser = pipeBase.ArgumentParser(name=cls._DefaultName)
-        parser.add_id_argument(name="--id", datasetType="deepCoadd",
-                               help="data IDs for the deepCoadd, e.g. --id tract=12345 patch=1,2 filter=r",
-                               ContainerClass=ExistingCoaddDataIdContainer)
-        return parser
 
     def run(self, fakeCat, image, wcs, photoCalib):
         """Add fake sources to an image.
@@ -1313,7 +1271,3 @@ class InsertFakesTask(PipelineTask, CmdLineTask):
                 imageMIView += clippedFakeImageMI
 
         return image
-
-    def _getMetadataName(self):
-        """Disable metadata writing"""
-        return None
