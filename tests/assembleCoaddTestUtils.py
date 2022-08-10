@@ -190,10 +190,6 @@ class MockCoaddTestData:
         CCD number to put in the metadata of the exposure.
     patch : `int`, optional
         Unique identifier for a subdivision of a tract.
-    patchGen2 : `str`, optional
-        Unique identifier for a subdivision of a tract.
-        In Gen 2 the patch identifier consists
-        of two integers separated by a comma.
     tract : `int`, optional
         Unique identifier for a tract of a skyMap.
 
@@ -238,12 +234,11 @@ class MockCoaddTestData:
                  fluxRange=2., noiseLevel=5, sourceSigma=200.,
                  minPsfSize=1.5, maxPsfSize=3.,
                  pixelScale=0.2*arcseconds, ra=209.*degrees, dec=-20.25*degrees,
-                 ccd=37, patch=42, patchGen2="2,3", tract=0):
+                 ccd=37, patch=42, tract=0):
         self.ra = ra
         self.dec = dec
         self.pixelScale = pixelScale
         self.patch = patch
-        self.patchGen2 = patchGen2
         self.tract = tract
         self.filterLabel = afwImage.FilterLabel(band="gTest", physical="gTest")
         self.rngData = np.random.default_rng(seed)
