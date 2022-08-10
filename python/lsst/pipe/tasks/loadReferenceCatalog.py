@@ -93,17 +93,18 @@ class LoadReferenceCatalogTask(pipeBase.Task):
     ConfigClass = LoadReferenceCatalogConfig
     _DefaultName = "loadReferenceCatalog"
 
-    def __init__(self, dataIds=None, refCats=None, **kwargs):
-        if dataIds is not None and refCats is not None:
+    def __init__(self, dataIds=None, refCats=None, name=None, **kwargs):
+        if dataIds is not None and refCats is not None and name is not None:
             pipeBase.Task.__init__(self, **kwargs)
             refConfig = self.config.refObjLoader
             self.refObjLoader = ReferenceObjectLoader(dataIds=dataIds,
                                                       refCats=refCats,
+                                                      name=name,
                                                       config=refConfig,
                                                       log=self.log)
         else:
             raise RuntimeError("Must instantiate LoadReferenceCatalogTask with "
-                               "dataIds and refCats (Gen3)")
+                               "dataIds and refCats and name (Gen3)")
 
         if self.config.doReferenceSelection:
             self.makeSubtask('referenceSelector')

@@ -87,14 +87,17 @@ class LoadReferenceCatalogTestCase(lsst.utils.tests.TestCase):
         cls.synthMag1Corr = cls.synthMag1 + 0.01*(cls.synthMag1 - cls.synthMag2)
         cls.synthMag2Corr = cls.synthMag2 - 0.01*(cls.synthMag2 - cls.synthMag3)
 
-        cls.trivialLoader = TrivialLoader(dataIds=[], refCats=[], config=cls.config.refObjLoader)
+        cls.trivialLoader = TrivialLoader(dataIds=[],
+                                          refCats=[],
+                                          name="synthCam",
+                                          config=cls.config.refObjLoader)
 
     def testGetReferenceCatalogCircle(self):
         """Get a reference catalog skycircle."""
         config = copy.copy(self.config)
         config.freeze()
 
-        loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[])
+        loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[], name="synthCam")
         # Monkey-patch our testing trivial loader to bypass the butler
         loaderTask.refObjLoader = self.trivialLoader
 
@@ -112,7 +115,7 @@ class LoadReferenceCatalogTestCase(lsst.utils.tests.TestCase):
         config = copy.copy(self.config)
         config.freeze()
 
-        loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[])
+        loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[], name="synthCam")
         # Monkey-patch our testing trivial loader to bypass the butler
         loaderTask.refObjLoader = self.trivialLoader
 
@@ -138,7 +141,7 @@ class LoadReferenceCatalogTestCase(lsst.utils.tests.TestCase):
         config.doApplyColorTerms = True
         config.freeze()
 
-        loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[])
+        loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[], name="synthCam")
         # Monkey-patch our testing trivial loader to bypass the butler
         loaderTask.refObjLoader = self.trivialLoader
 
@@ -157,7 +160,7 @@ class LoadReferenceCatalogTestCase(lsst.utils.tests.TestCase):
         config.doReferenceSelection = True
         config.freeze()
 
-        loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[])
+        loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[], name="synthCam")
         # Monkey-patch our testing trivial loader to bypass the butler
         loaderTask.refObjLoader = self.trivialLoader
 
@@ -173,7 +176,7 @@ class LoadReferenceCatalogTestCase(lsst.utils.tests.TestCase):
         config = copy.copy(self.config)
         config.freeze()
 
-        loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[])
+        loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[], name="synthCam")
         # Monkey-patch our testing trivial loader to bypass the butler
         loaderTask.refObjLoader = self.trivialLoader
 
@@ -195,7 +198,7 @@ class LoadReferenceCatalogTestCase(lsst.utils.tests.TestCase):
         config.doReferenceSelection = False
         config.freeze()
 
-        loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[])
+        loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[], name="synthCam")
         # Monkey-patch our testing trivial loader to bypass the butler
         loaderTask.refObjLoader = self.trivialLoader
 
@@ -212,9 +215,9 @@ class LoadReferenceCatalogTestCase(lsst.utils.tests.TestCase):
         config.refObjLoader.requireProperMotion = True
         config.freeze()
 
-        loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[])
+        loaderTask = LoadReferenceCatalogTask(config=config, dataIds=[], refCats=[], name="synthCam")
         # Monkey-patch our testing trivial loader to bypass the butler
-        trivialLoader2 = TrivialLoader(dataIds=[], refCats=[], config=config.refObjLoader)
+        trivialLoader2 = TrivialLoader(dataIds=[], refCats=[], name="synthCam", config=config.refObjLoader)
         loaderTask.refObjLoader = trivialLoader2
 
         cat = loaderTask.getSkyCircleCatalog(_synthCenter,
