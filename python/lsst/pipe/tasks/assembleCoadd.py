@@ -44,6 +44,7 @@ from .maskStreaks import MaskStreaksTask
 from .healSparseMapping import HealSparseInputMapTask
 from lsst.meas.algorithms import SourceDetectionTask, AccumulatorMeanStack, ScaleVarianceTask
 from lsst.utils.timer import timeMethod
+from deprecated.sphinx import deprecated
 
 __all__ = ["AssembleCoaddTask", "AssembleCoaddConnections", "AssembleCoaddConfig",
            "SafeClipAssembleCoaddTask", "SafeClipAssembleCoaddConfig",
@@ -451,7 +452,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         inputData = butlerQC.get(inputRefs)
 
         # Construct skyInfo expected by run
-        # Do not remove skyMap from inputData in case makeSupplementaryDataGen3 needs it
+        # Do not remove skyMap from inputData in case _makeSupplementaryData needs it
         skyMap = inputData["skyMap"]
         outputDataId = butlerQC.quantum.dataId
 
@@ -470,7 +471,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         if len(inputs.tempExpRefList) == 0:
             raise pipeBase.NoWorkFound("No coadd temporary exposures found")
 
-        supplementaryData = self.makeSupplementaryDataGen3(butlerQC, inputRefs, outputRefs)
+        supplementaryData = self._makeSupplementaryData(butlerQC, inputRefs, outputRefs)
         retStruct = self.run(inputData['skyInfo'], inputs.tempExpRefList, inputs.imageScalerList,
                              inputs.weightList, supplementaryData=supplementaryData)
 
@@ -501,7 +502,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         if self.config.doMaskBrightObjects:
             self.setBrightObjectMasks(coaddExposure, brightObjectMasks, dataId)
 
-    def makeSupplementaryDataGen3(self, butlerQC, inputRefs, outputRefs):
+    def _makeSupplementaryData(self, butlerQC, inputRefs, outputRefs):
         """Make additional inputs to run() specific to subclasses (Gen3)
 
         Duplicates interface of `runQuantum` method.
@@ -524,6 +525,14 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             for corresponding dataset type.
         """
         return pipeBase.Struct()
+
+    @deprecated(
+        reason="makeSupplementaryDataGen3 is deprecated in favor of _makeSupplementaryData",
+        version="v25.0",
+        category=FutureWarning
+    )
+    def makeSupplementaryDataGen3(self, butlerQC, inputRefs, outputRefs):
+        return self._makeSupplementaryData(butlerQC, inputRefs, outputRefs)
 
     def prepareInputs(self, refList):
         """Prepare the input warps for coaddition by measuring the weight for
@@ -655,7 +664,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             Bit mask value to exclude from coaddition.
         supplementaryData : lsst.pipe.base.Struct, optional
             Struct with additional data products needed to assemble coadd.
-            Only used by subclasses that implement `makeSupplementaryData`
+            Only used by subclasses that implement `_makeSupplementaryData`
             and override `run`.
 
         Returns
@@ -1988,7 +1997,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
             self.makeSubtask("maskStreaks")
 
     @utils.inheritDoc(AssembleCoaddTask)
-    def makeSupplementaryDataGen3(self, butlerQC, inputRefs, outputRefs):
+    def _makeSupplementaryData(self, butlerQC, inputRefs, outputRefs):
         """
         Generate a templateCoadd to use as a naive model of static sky to
         subtract from PSF-Matched warps.
