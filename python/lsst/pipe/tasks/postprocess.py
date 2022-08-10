@@ -1300,7 +1300,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
 
         butlerQC.put(expCatalog, outputRefs.visitSummary)
 
-    def _combineExposureMetadata(self, visit, dataRefs, isGen3=True):
+    def _combineExposureMetadata(self, visit, dataRefs):
         """Make a combined exposure catalog from a list of dataRefs.
         These dataRefs must point to exposures with wcs, summaryStats,
         and other visit metadata.
@@ -1309,12 +1309,8 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
         ----------
         visit : `int`
             Visit identification number.
-        dataRefs : `list`
-            List of dataRefs in visit.  May be list of
-            `lsst.daf.persistence.ButlerDataRef` (Gen2) or
-            `lsst.daf.butler.DeferredDatasetHandle` (Gen3).
-        isGen3 : `bool`, optional
-            Specifies if this is a Gen3 list of datarefs.
+        dataRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
+            List of dataRefs in visit.
 
         Returns
         -------
@@ -1328,29 +1324,15 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
         cat['visit'] = visit
 
         for i, dataRef in enumerate(dataRefs):
-            if isGen3:
-                visitInfo = dataRef.get(component='visitInfo')
-                filterLabel = dataRef.get(component='filter')
-                summaryStats = dataRef.get(component='summaryStats')
-                detector = dataRef.get(component='detector')
-                wcs = dataRef.get(component='wcs')
-                photoCalib = dataRef.get(component='photoCalib')
-                detector = dataRef.get(component='detector')
-                bbox = dataRef.get(component='bbox')
-                validPolygon = dataRef.get(component='validPolygon')
-            else:
-                # Note that we need to read the calexp because there is
-                # no magic access to the psf except through the exposure.
-                gen2_read_bbox = lsst.geom.BoxI(lsst.geom.PointI(0, 0), lsst.geom.PointI(1, 1))
-                exp = dataRef.get(datasetType='calexp_sub', bbox=gen2_read_bbox)
-                visitInfo = exp.getInfo().getVisitInfo()
-                filterLabel = dataRef.get("calexp_filter")
-                summaryStats = exp.getInfo().getSummaryStats()
-                wcs = exp.getWcs()
-                photoCalib = exp.getPhotoCalib()
-                detector = exp.getDetector()
-                bbox = dataRef.get(datasetType='calexp_bbox')
-                validPolygon = exp.getInfo().getValidPolygon()
+            visitInfo = dataRef.get(component='visitInfo')
+            filterLabel = dataRef.get(component='filter')
+            summaryStats = dataRef.get(component='summaryStats')
+            detector = dataRef.get(component='detector')
+            wcs = dataRef.get(component='wcs')
+            photoCalib = dataRef.get(component='photoCalib')
+            detector = dataRef.get(component='detector')
+            bbox = dataRef.get(component='bbox')
+            validPolygon = dataRef.get(component='validPolygon')
 
             rec = cat[i]
             rec.setBBox(bbox)
