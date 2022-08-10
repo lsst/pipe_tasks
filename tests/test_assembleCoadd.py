@@ -187,15 +187,12 @@ class AssembleCoaddTestCase(lsst.utils.tests.TestCase):
 
     def setUp(self):
         patch = 42
-        patchGen2 = "2,3"
         tract = 0
         testData = MockCoaddTestData(fluxRange=1e4)
         exposures = {}
         matchedExposures = {}
         for expId in range(100, 110):
             exposures[expId], matchedExposures[expId] = testData.makeTestImage(expId)
-        self.gen2DataRefList = testData.makeGen2DataRefList(exposures, matchedExposures,
-                                                            patch=patchGen2, tract=tract)
         self.dataRefList = testData.makeDataRefList(exposures, matchedExposures,
                                                     'direct', patch=patch, tract=tract)
         self.dataRefListPsfMatched = testData.makeDataRefList(exposures, matchedExposures,
