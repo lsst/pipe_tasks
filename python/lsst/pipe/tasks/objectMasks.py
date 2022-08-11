@@ -30,8 +30,6 @@ from lsst.daf.butler.formatters.file import FileFormatter
 
 class ObjectMaskCatalog:
     """Class to support bright object masks
-
-    N.b. I/O is done by providing a readFits method which fools the butler.
     """
 
     def __init__(self):
@@ -62,34 +60,7 @@ class ObjectMaskCatalog:
         return self._catalog.__setitem__(i, v)
 
     @classmethod
-    def readFits(cls, fileName, hdu=0, flags=0):
-        """FitsCatalogStorage facade for `read`.
-
-        This method is intended for use by the Gen2 Butler only.
-
-        Parameters
-        ----------
-        fileName : `str`
-            Name of the file to read.
-        hdu : `int`
-            Provided for compatibility with the "FitsCatalogStorage" read API
-            defined in `lsst.daf.persistence`, and ignored here.
-        flags : `int`
-            Provided for compatibility with the "FitsCatalogStorage" read API
-            defined in `lsst.daf.persistence`, and ignored here.
-
-        Notes
-        -----
-        Having a `readFits` method makes the `ObjectCatalogMask` class
-        duck-type compatible with `lsst.afw.table` catalogs, to the extent
-        needed to support reading by the Gen2 Butler with no specialized code
-        in `lsst.daf.persistence`. The on-disk type should actually be an
-        ASCII ds9 region file, typically with a ".reg" suffix.
-        """
-        return cls.read(fileName)
-
-    @staticmethod
-    def read(fileName):
+    def read(cls, fileName):
         """Read a ds9 region file, returning a ObjectMaskCatalog object
 
         The files should be structured as follows:
@@ -120,7 +91,7 @@ class ObjectMaskCatalog:
 
         log = logging.getLogger("lsst.ObjectMaskCatalog")
 
-        brightObjects = ObjectMaskCatalog()
+        brightObjects = cls()
         checkedWcsIsFk5 = False
         NaN = float("NaN")*geom.degrees
 

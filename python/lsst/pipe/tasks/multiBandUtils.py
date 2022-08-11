@@ -20,9 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import lsst.afw.table as afwTable
 
-from lsst.coadd.utils.getGen3CoaddExposureId import getGen3CoaddExposureId
 from lsst.pex.config import Config, RangeField
-from lsst.obs.base import ExposureIdInfo
 
 
 def _makeGetSchemaCatalogs(datasetSuffix):
@@ -76,25 +74,3 @@ class CullPeaksConfig(Config):
     rankNormalizedConsidered = RangeField(dtype=float, default=0.7, min=0.0,
                                           doc=("Keep peaks with less than this normalized rank that"
                                                " also match the rankConsidered condition."))
-
-
-def _makeMakeIdFactory(datasetName, includeBand=True):
-    """Construct a makeIdFactory instance method
-
-    These are identical for all the classes here, so this consolidates
-    the code.
-
-    datasetName:  Dataset name without the coadd name prefix, e.g., "CoaddId" for "deepCoaddId"
-    """
-
-    def makeIdFactory(self, dataRef):
-        """Return an IdFactory for setting the detection identifiers
-
-        The actual parameters used in the IdFactory are provided by
-        the butler (through the provided data reference.
-        """
-        expId = getGen3CoaddExposureId(dataRef, coaddName=self.config.coaddName, includeBand=includeBand,
-                                       log=self.log)
-        info = ExposureIdInfo(expId, dataRef.get(self.config.coaddName + datasetName + "_bits"))
-        return info.makeSourceIdFactory()
-    return makeIdFactory

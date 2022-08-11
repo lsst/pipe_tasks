@@ -34,7 +34,6 @@ from lsst.afw.cameraGeom.testUtils import DetectorWrapper
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.daf.butler
-import lsst.daf.persistence.dataId
 import lsst.geom as geom
 from lsst.geom import arcseconds, degrees
 from lsst.meas.algorithms.testUtils import plantSources
@@ -44,121 +43,7 @@ from lsst.pipe.tasks.coaddInputRecorder import CoaddInputRecorderTask, CoaddInpu
 
 from astro_metadata_translator import makeObservationInfo
 
-__all__ = ["MockWarpReference", "makeMockSkyInfo", "MockCoaddTestData",
-           "MockGen2WarpReference"]
-
-
-class MockGen2WarpReference:
-    """Very simple object that looks like a Gen2 data reference to a warped
-    exposure.
-
-    Parameters
-    ----------
-    exposure : `lsst.afw.image.Exposure`
-        The exposure to be retrieved by the data reference.
-    exposurePsfMatched : `lsst.afw.image.Exposure`, optional
-        The exposure to be retrieved by the data reference, with a degraded PSF.
-    coaddName : `str`
-        The type of coadd being produced. Typically 'deep'.
-    patch : `str`
-        Unique identifier for a subdivision of a tract.
-        In Gen 2 the patch identifier consists
-        of two integers separated by a comma.
-    tract : `int`
-        Unique identifier for a tract of a skyMap
-    visit : `int`
-        Unique identifier for an observation,
-        potentially consisting of multiple ccds.
-    """
-    datasetTypes = None
-    "List of the names of exposures that can be retrieved."
-    metadataTypes = None
-    "List of the names of metadata objects that can be retrieved."
-    dataLookup = None
-    "Stores the data and metadata that can be retrieved."
-
-    def __init__(self, exposure, exposurePsfMatched=None, coaddName='deep',
-                 patch="2,3", tract=0, visit=100):
-        self.coaddName = coaddName
-        self.tract = tract
-        self.patch = patch
-        self.visit = visit
-        visitInfo = exposure.getInfo().getVisitInfo()
-
-        self.datasetTypes = (f"{coaddName}Coadd_directWarp", f"{coaddName}Coadd_psfMatchedWarp",
-                             f"{coaddName}Coadd_directWarp_sub", f"{coaddName}Coadd_psfMatchedWarp_sub")
-
-        self.metadataTypes = (f"{coaddName}Coadd_directWarp_visitInfo",
-                              f"{coaddName}Coadd_psfMatchedWarp_visitInfo")
-
-        self.dataLookup = {f"{coaddName}Coadd_directWarp": exposure,
-                           f"{coaddName}Coadd_psfMatchedWarp": exposurePsfMatched,
-                           f"{coaddName}Coadd_directWarp_sub": exposure,
-                           f"{coaddName}Coadd_psfMatchedWarp_sub": exposurePsfMatched,
-                           f"{coaddName}Coadd_directWarp_visitInfo": visitInfo,
-                           f"{coaddName}Coadd_psfMatchedWarp_visitInfo": visitInfo}
-
-    def get(self, datasetType, bbox=None, **kwargs):
-        """Retrieve the specified dataset using the API of the Gen 2 Butler.
-
-        Parameters
-        ----------
-        datasetType : `str`
-            Name of the type of exposure to retrieve.
-        bbox : `lsst.geom.box.Box2I`, optional
-            If supplied and the `datasetType ends in "_sub",
-            then retrieve only a subregion of the exposure.
-        **kwargs
-            Additional keyword arguments such as `immediate=True` that would
-            control internal butler behavior.
-
-        Returns
-        -------
-        `lsst.afw.image.Exposure` or `lsst.afw.image.VisitInfo`
-            Either the exposure or its metadata, depending on the datasetType.
-
-        Raises
-        ------
-        KeyError
-            If a bounding box is specified incorrectly for the datasetType.
-        ValueError
-            If an unknown datasetType is supplied.
-        """
-        if "_sub" in datasetType:
-            if bbox is None:
-                raise KeyError(f"A bbox must be supplied for dataset {datasetType}")
-        else:
-            if bbox is not None:
-                raise KeyError(f"A bbox cannot be supplied for dataset {datasetType}")
-        if datasetType in self.datasetTypes:
-            exp = self.dataLookup[datasetType].clone()
-            if "_sub" in datasetType:
-                return exp[bbox]
-            else:
-                return exp
-        elif datasetType in self.metadataTypes:
-            return self.dataLookup[datasetType]
-        else:
-            raise ValueError(f"Unknown datasetType {datasetType}. Must be one of {self.datasetTypes}.")
-
-    @property
-    def dataId(self):
-        """Generate a valid data identifier.
-
-        Returns
-        -------
-        dataId : `lsst.daf.persistence.dataId`
-            Data identifier dict for patch.
-        """
-        return lsst.daf.persistence.dataId.DataId(tract=self.tract, patch=self.patch, visit=self.visit)
-
-    def datasetExists(self, tempExpName):
-        """Mimic the Gen2 Butler API for determining whether a dataset exists.
-        """
-        if tempExpName in self.datasetTypes:
-            return True
-        else:
-            return False
+__all__ = ["MockWarpReference", "makeMockSkyInfo", "MockCoaddTestData"]
 
 
 class MockWarpReference(lsst.daf.butler.DeferredDatasetHandle):
@@ -227,14 +112,17 @@ class MockWarpReference(lsst.daf.butler.DeferredDatasetHandle):
 
         Returns
         -------
-        dataId : `lsst.daf.persistence.dataId`
+        dataId : `lsst.daf.butler.DataCoordinate`
             Data identifier dict for the patch.
         """
-        return lsst.daf.persistence.dataId.DataId(tract=self.tract, patch=self.patch, visit=self.visit)
-
-    def datasetExists(self, tempExpName):
-        """Raise a more informative error if this Gen 2 method is called."""
-        raise NotImplementedError("Gen3 butler data references don't support `datasetExists`")
+        return lsst.daf.butler.DataCoordinate.standardize(
+            tract=self.tract,
+            patch=self.patch,
+            visit=self.visit,
+            instrument="DummyCam",
+            skymap="Skymap",
+            universe=lsst.daf.butler.DimensionUniverse(),
+        )
 
 
 def makeMockSkyInfo(bbox, wcs, patch):
@@ -304,10 +192,6 @@ class MockCoaddTestData:
         CCD number to put in the metadata of the exposure.
     patch : `int`, optional
         Unique identifier for a subdivision of a tract.
-    patchGen2 : `str`, optional
-        Unique identifier for a subdivision of a tract.
-        In Gen 2 the patch identifier consists
-        of two integers separated by a comma.
     tract : `int`, optional
         Unique identifier for a tract of a skyMap.
 
@@ -352,12 +236,11 @@ class MockCoaddTestData:
                  fluxRange=2., noiseLevel=5, sourceSigma=200.,
                  minPsfSize=1.5, maxPsfSize=3.,
                  pixelScale=0.2*arcseconds, ra=209.*degrees, dec=-20.25*degrees,
-                 ccd=37, patch=42, patchGen2="2,3", tract=0):
+                 ccd=37, patch=42, tract=0):
         self.ra = ra
         self.dec = dec
         self.pixelScale = pixelScale
         self.patch = patch
-        self.patchGen2 = patchGen2
         self.tract = tract
         self.filterLabel = afwImage.FilterLabel(band="gTest", physical="gTest")
         self.rngData = np.random.default_rng(seed)
@@ -564,35 +447,6 @@ class MockCoaddTestData:
         exposure = self.makeCoaddTempExp(model, visitInfo, expId)
         matchedExposure = self.makeCoaddTempExp(modelPsfMatched, visitInfo, expId)
         return exposure, matchedExposure
-
-    @staticmethod
-    def makeGen2DataRefList(exposures, matchedExposures, tract=0, patch="2,3", coaddName="deep"):
-        """Make data references from the simulated exposures that can be
-        retrieved using the Gen 2 Butler API.
-
-        Parameters
-        ----------
-        tract : `int`
-            Unique identifier for a tract of a skyMap.
-        patch : `str`
-            Unique identifier for a subdivision of a tract.
-        coaddName : `str`
-            The type of coadd being produced. Typically 'deep'.
-
-        Returns
-        -------
-        dataRefList : `list` of `MockGen2WarpReference`
-            The data references.
-
-        """
-        dataRefList = []
-        for expId in exposures:
-            exposure = exposures[expId]
-            exposurePsfMatched = matchedExposures[expId]
-            dataRef = MockGen2WarpReference(exposure, exposurePsfMatched=exposurePsfMatched,
-                                            coaddName=coaddName, tract=tract, patch=patch, visit=expId)
-            dataRefList.append(dataRef)
-        return dataRefList
 
     @staticmethod
     def makeDataRefList(exposures, matchedExposures, warpType, tract=0, patch=42, coaddName="deep"):
