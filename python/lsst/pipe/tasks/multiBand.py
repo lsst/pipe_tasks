@@ -43,7 +43,6 @@ from lsst.obs.base import ExposureIdInfo
 from .mergeDetections import MergeDetectionsConfig, MergeDetectionsTask  # noqa: F401
 from .mergeMeasurements import MergeMeasurementsConfig, MergeMeasurementsTask  # noqa: F401
 from .multiBandUtils import CullPeaksConfig, _makeGetSchemaCatalogs  # noqa: F401
-from .multiBandUtils import _makeMakeIdFactory  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesSingleConfig  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesSingleTask  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesMultiConfig  # noqa: F401
@@ -148,7 +147,6 @@ class DetectCoaddSourcesTask(PipelineTask):
     _DefaultName = "detectCoaddSources"
     ConfigClass = DetectCoaddSourcesConfig
     getSchemaCatalogs = _makeGetSchemaCatalogs("det")
-    makeIdFactory = _makeMakeIdFactory("CoaddId")
 
     def __init__(self, schema=None, **kwargs):
         """!
@@ -485,8 +483,6 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
     _DefaultName = "measureCoaddSources"
     ConfigClass = MeasureMergedCoaddSourcesConfig
     getSchemaCatalogs = _makeGetSchemaCatalogs("meas")
-    # The IDs we already have are of this type
-    makeIdFactory = _makeMakeIdFactory("MergedCoaddId", includeBand=False)
 
     def __init__(self, butler=None, schema=None, peakSchema=None, refObjLoader=None, initInputs=None,
                  **kwargs):
