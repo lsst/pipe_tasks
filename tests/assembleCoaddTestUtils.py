@@ -34,7 +34,6 @@ from lsst.afw.cameraGeom.testUtils import DetectorWrapper
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.daf.butler
-import lsst.daf.persistence.dataId
 import lsst.geom as geom
 from lsst.geom import arcseconds, degrees
 from lsst.meas.algorithms.testUtils import plantSources
@@ -113,14 +112,17 @@ class MockWarpReference(lsst.daf.butler.DeferredDatasetHandle):
 
         Returns
         -------
-        dataId : `lsst.daf.persistence.dataId`
+        dataId : `lsst.daf.butler.DataCoordinate`
             Data identifier dict for the patch.
         """
-        return lsst.daf.persistence.dataId.DataId(tract=self.tract, patch=self.patch, visit=self.visit)
-
-    def datasetExists(self, tempExpName):
-        """Raise a more informative error if this Gen 2 method is called."""
-        raise NotImplementedError("Gen3 butler data references don't support `datasetExists`")
+        return lsst.daf.butler.DataCoordinate.standardize(
+            tract=self.tract,
+            patch=self.patch,
+            visit=self.visit,
+            instrument="DummyCam",
+            skymap="Skymap",
+            universe=lsst.daf.butler.DimensionUniverse(),
+        )
 
 
 def makeMockSkyInfo(bbox, wcs, patch):
