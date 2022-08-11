@@ -418,8 +418,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         ----------
         templateCoadd : `lsst.afw.image.ExposureF`
             The initial coadd exposure before accounting for DCR.
-        warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle` or
-            `lsst.daf.persistence.ButlerDataRef`
+        warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             The data references to the input warped exposures.
         weightList : `list` of `float`
             The weight to give each input exposure in the coadd
@@ -508,8 +507,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         ----------
         skyInfo : `lsst.pipe.base.Struct`
             Patch geometry information, from getSkyInfo
-        warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle` or
-            `lsst.daf.persistence.ButlerDataRef`
+        warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             The data references to the input warped exposures.
         imageScalerList : `list` of `lsst.pipe.task.ImageScaler`
             The image scalars correct for the zero point of the exposures.
@@ -649,8 +647,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Best fit model of the true sky after correcting chromatic effects.
         bbox : `lsst.geom.box.Box2I`
             Bounding box of the patch to coadd.
-        warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle` or
-            `lsst.daf.persistence.ButlerDataRef`
+        warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             The data references to the input warped exposures.
         spanSetMaskList : `list` of `dict` containing spanSet lists, or None
             Each element of the `dict` contains the new mask plane name
@@ -723,8 +720,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Bounding box of the subregion to coadd.
         dcrBBox : `lsst.geom.box.Box2I`
             Sub-region of the coadd which includes a buffer to allow for DCR.
-        warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle` or
-            `lsst.daf.persistence.ButlerDataRef`
+        warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             The data references to the input warped exposures.
         statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
@@ -871,8 +867,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             The pre-loaded exposures for the current subregion.
         bbox : `lsst.geom.box.Box2I`
             Sub-region to coadd
-        warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle` or
-            `lsst.daf.persistence.ButlerDataRef`
+        warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             The data references to the input warped exposures.
         weightList : `list` of `float`
             The weight to give each input exposure in the coadd
@@ -974,8 +969,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Best fit model of the true sky after correcting chromatic effects.
         skyInfo : `lsst.pipe.base.Struct`
             Patch geometry information, from getSkyInfo
-        warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle` or
-            `lsst.daf.persistence.ButlerDataRef`
+        warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             The data references to the input warped exposures.
         weightList : `list` of `float`
             The weight to give each input exposure in the coadd
@@ -1165,8 +1159,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Sub-region to coadd
         statsCtrl : `lsst.afw.math.StatisticsControl`
             Statistics control object for coadd
-        warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle` or
-            `lsst.daf.persistence.ButlerDataRef`
+        warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             The data references to the input warped exposures.
         imageScalerList : `list` of `lsst.pipe.task.ImageScaler`
             The image scalars correct for the zero point of the exposures.
@@ -1206,8 +1199,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         ----------
         templateCoadd : `lsst.afw.image.ExposureF`
             The initial coadd exposure before accounting for DCR.
-        warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle` or
-            `lsst.daf.persistence.ButlerDataRef`
+        warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             The data references to the input warped exposures.
 
         Returns
