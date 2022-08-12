@@ -29,7 +29,7 @@ from lsst.afw.table import SourceCatalog
 import lsst.utils.tests
 import lsst.pipe.base.testUtils
 from lsst.verify import Name
-from lsst.verify.gen2tasks.testUtils import MetricTaskTestCase
+from lsst.verify.tasks.testUtils import MetricTaskTestCase
 
 from lsst.pipe.tasks.metrics import \
     NumberDeblendedSourcesMetricTask, NumberDeblendChildSourcesMetricTask
