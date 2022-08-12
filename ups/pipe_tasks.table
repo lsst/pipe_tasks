@@ -1,6 +1,5 @@
 setupRequired(afw)
 setupRequired(coadd_utils)
-setupRequired(daf_persistence)
 setupRequired(daf_butler)
 setupRequired(dustmaps_cachedata)
 setupRequired(meas_base)
