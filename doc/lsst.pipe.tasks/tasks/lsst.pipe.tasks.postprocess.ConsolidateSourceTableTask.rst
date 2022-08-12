@@ -13,40 +13,12 @@ It is the third of three postprocessing tasks to convert a `src` table to a
 per-visit Source Table that conforms to the standard data model. The first is
 :doc:`lsst.pipe.tasks.postprocess.WriteSourceTableTask`. The second is :doc:`lsst.pipe.tasks.postprocess.TransformSourceTableTask`.
 
-``ConsolidateSourceTableTask`` is available as a :ref:`command-line task <lsst.pipe.tasks-command-line-tasks>`, :command:`consolidateSourceTable.py`.
-
 .. _lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask-summary:
 
 Processing summary
 ==================
 
 ``ConsolidateSourceTableTask`` reads in all detector-level Source Tables (dataset `sourceTable`) for a given visit, concatenates them, and writes the result out as a visit-level Source Table (dataset `sourceTable_visit`)
-
-
-.. lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask-cli:
-
-consolidateSourceTable.py command-line interface
-================================================
-
-.. code-block:: text
-
-   consolidateSourceTable.py REPOPATH [@file [@file2 ...]] [--output OUTPUTREPO | --rerun RERUN] [--id] [other options]
-
-Key arguments:
-
-.. option:: REPOPATH
-
-   The input Butler repository's URI or file path.
-
-Key options:
-
-.. option:: --id
-
-   The data IDs to process.
-
-.. seealso::
-
-   See :ref:`command-line-task-argument-reference` for details and additional options.
 
 .. _lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask-api:
 
@@ -60,7 +32,7 @@ Python API summary
 Butler datasets
 ===============
 
-When run as the ``consolidateSourceTable.py`` command-line task, or directly through the `~lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask.runDataRef` method, ``ConsolidateSourceTableTask`` obtains datasets from the input Butler data repository and persists outputs to the output Butler data repository.
+When run through the `~lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask.runQuantum` method, ``ConsolidateSourceTableTask`` obtains datasets from the input Butler data repository and persists outputs to the output Butler data repository.
 Note that configurations for ``ConsolidateSourceTableTask``, and its subtasks, affect what datasets are persisted and what their content is.
 
 .. _lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask-butler-inputs:
@@ -106,4 +78,3 @@ The following command shows an example of how to run the task on an example HSC 
     consolidateSourceTable.py /datasets/hsc/repo  --calib /datasets/hsc/repo/CALIB --rerun <rerun name> --id visit=30504
 
 .. _lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask-debug:
-
