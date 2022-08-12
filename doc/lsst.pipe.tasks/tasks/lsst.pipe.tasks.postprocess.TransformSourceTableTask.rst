@@ -83,20 +83,13 @@ Configuration fields
 Examples
 ========
 
-The following command shows an example of how to run the task on an example HSC repository.
-
-.. code-block:: bash
-
-    transformSourceTable.py /datasets/hsc/repo  --calib /datasets/hsc/repo/CALIB --rerun <rerun name> --id visit=30504  ccd=0..8^10..103
-
-
-Using the python API
+The following command shows an example of how to run the task on an example HSC repository using the python API
 
 .. code-block:: python
 
     import os
     from lsst.utils import getPackageDir
-    from lsst.daf.persistence import Butler
+    from lsst.daf.butler import Butler
     from lsst.pipe.tasks.postprocess import TransformSourceTableTask
 
     # get input catalogs
