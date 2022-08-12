@@ -26,6 +26,7 @@ setupRequired(pipe_base)
 setupRequired(skymap)
 setupRequired(sphgeom)
 setupRequired(utils)
+setupRequired(verify)
 
 envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
 envPrepend(PATH, ${PRODUCT_DIR}/bin)
