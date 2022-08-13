@@ -124,24 +124,6 @@ class SkyMeasurementTask(Task):
     """
     ConfigClass = SkyMeasurementConfig
 
-    def getSkyData(self, butler, calibId):
-        """Retrieve sky frame from the butler
-
-        Parameters
-        ----------
-        butler : `lsst.daf.persistence.Butler`
-            Data butler
-        calibId : `dict`
-            Data identifier for calib
-
-        Returns
-        -------
-        sky : `lsst.afw.math.BackgroundList`
-            Sky frame
-        """
-        exp = butler.get("sky", calibId)
-        return self.exposureToBackground(exp)
-
     @staticmethod
     def exposureToBackground(bgExp):
         """Convert an exposure to background model

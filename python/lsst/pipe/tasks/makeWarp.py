@@ -597,29 +597,6 @@ class MakeWarpTask(CoaddBaseTask):
             warpTypeList.append("psfMatched")
         return warpTypeList
 
-    def applySkyCorr(self, dataRef, calexp):
-        """Apply correction to the sky background level
-
-        Sky corrections can be generated with the 'skyCorrection.py'
-        executable in pipe_drivers. Because the sky model used by that
-        code extends over the entire focal plane, this can produce
-        better sky subtraction.
-
-        The calexp is updated in-place.
-
-        Parameters
-        ----------
-        dataRef : `lsst.daf.persistence.ButlerDataRef`
-            Data reference for calexp.
-        calexp : `lsst.afw.image.Exposure` or `lsst.afw.image.MaskedImage`
-            Calibrated exposure.
-        """
-        bg = dataRef.get("skyCorr")
-        self.log.debug("Applying sky correction to %s", dataRef.dataId)
-        if isinstance(calexp, afwImage.Exposure):
-            calexp = calexp.getMaskedImage()
-        calexp -= bg.getImage()
-
 
 def reorderRefs(inputRefs, outputSortKeyOrder, dataIdKey):
     """Reorder inputRefs per outputSortKeyOrder

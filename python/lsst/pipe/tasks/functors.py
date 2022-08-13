@@ -31,7 +31,7 @@ import astropy.units as u
 from dustmaps.sfd import SFDQuery
 from astropy.coordinates import SkyCoord
 
-from lsst.daf.persistence import doImport
+from lsst.utils import doImport
 from lsst.daf.butler import DeferredDatasetHandle
 import lsst.geom as geom
 import lsst.sphgeom as sphgeom

@@ -17,8 +17,6 @@ It is the second of three postprocessing tasks to convert a `src` table to a
 per-visit Source Table that conforms to the standard data model. The first is
 :doc:`lsst.pipe.tasks.postprocess.WriteSourceTableTask`, and the third is :doc:`lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask`.
 
-``TransformSourceTableTask`` is available as a :ref:`command-line task <lsst.pipe.tasks-command-line-tasks>`, :command:`transformSourceTableTask.py`.
-
 .. _lsst.pipe.tasks.postprocess.TransformSourceTableTask-summary:
 
 Processing summary
@@ -33,29 +31,6 @@ from the yaml specification. Apply functors to the columns.
 
 #. Store output DataFrame in parquet-formatted `sourceTable`
 
-.. lsst.pipe.tasks.postprocess.TransformSourceTableTask-cli:
-
-transformSourceTableTask.py command-line interface
-==================================================
-
-.. code-block:: text
-
-   transformSourceTableTask.py REPOPATH [@file [@file2 ...]] [--output OUTPUTREPO | --rerun RERUN] [--id] [other options]
-
-Key arguments:
-
-:option:`REPOPATH`
-   The input Butler repository's URI or file path.
-
-Key options:
-
-:option:`--id`:
-   The data IDs to process.
-
-.. seealso::
-
-   See :ref:`command-line-task-argument-reference` for details and additional options.
-
 .. _lsst.pipe.tasks.postprocess.TransformSourceTableTask-api:
 
 Python API summary
@@ -68,7 +43,7 @@ Python API summary
 Butler datasets
 ===============
 
-When run as the ``transformSourceTableTask.py`` command-line task, or directly through the `~lsst.pipe.tasks.postprocess.TransformSourceTableTask.runDataRef` method, ``TransformSourceTableTask`` obtains datasets from the input Butler data repository and persists outputs to the output Butler data repository.
+When run through the `~lsst.pipe.tasks.postprocess.TransformSourceTableTask.runQuantum` method, ``TransformSourceTableTask`` obtains datasets from the input Butler data repository and persists outputs to the output Butler data repository.
 Note that configurations for ``TransformSourceTableTask``, and its subtasks, affect what datasets are persisted and what their content is.
 
 .. _lsst.pipe.tasks.postprocess.TransformSourceTableTask-butler-inputs:
@@ -108,20 +83,13 @@ Configuration fields
 Examples
 ========
 
-The following command shows an example of how to run the task on an example HSC repository.
-
-.. code-block:: bash
-
-    transformSourceTable.py /datasets/hsc/repo  --calib /datasets/hsc/repo/CALIB --rerun <rerun name> --id visit=30504  ccd=0..8^10..103
-
-
-Using the python API
+The following command shows an example of how to run the task on an example HSC repository using the python API
 
 .. code-block:: python
 
     import os
     from lsst.utils import getPackageDir
-    from lsst.daf.persistence import Butler
+    from lsst.daf.butler import Butler
     from lsst.pipe.tasks.postprocess import TransformSourceTableTask
 
     # get input catalogs

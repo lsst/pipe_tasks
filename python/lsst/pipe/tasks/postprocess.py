@@ -142,31 +142,6 @@ class WriteObjectTableTask(pipeBase.PipelineTask):
         outputs = pipeBase.Struct(outputCatalog=df)
         butlerQC.put(outputs, outputRefs)
 
-    def readCatalog(self, patchRef):
-        """Read input catalogs
-
-        Read all the input datasets given by the 'inputDatasets'
-        attribute.
-
-        Parameters
-        ----------
-        patchRef : `lsst.daf.persistence.ButlerDataRef`
-            Data reference for patch.
-
-        Returns
-        -------
-        Tuple consisting of band name and a dict of catalogs, keyed by
-        dataset name.
-        """
-        band = patchRef.get(self.config.coaddName + "Coadd_filter", immediate=True).bandLabel
-        catalogDict = {}
-        for dataset in self.inputDatasets:
-            catalog = patchRef.get(self.config.coaddName + "Coadd_" + dataset, immediate=True)
-            self.log.info("Read %d sources from %s for band %s: %s",
-                          len(catalog), dataset, band, patchRef.dataId)
-            catalogDict[dataset] = catalog
-        return band, catalogDict
-
     def run(self, catalogs, tract, patch):
         """Merge multiple catalogs.
 
@@ -203,30 +178,6 @@ class WriteObjectTableTask(pipeBase.PipelineTask):
 
         catalog = functools.reduce(lambda d1, d2: d1.join(d2), dfs)
         return catalog
-
-    def write(self, patchRef, catalog):
-        """Write the output.
-
-        Parameters
-        ----------
-        catalog : `ParquetTable`
-            Catalog to write.
-        patchRef : `lsst.daf.persistence.ButlerDataRef`
-            Data reference for patch.
-        """
-        patchRef.put(catalog, self.config.coaddName + "Coadd_" + self.outputDataset)
-        # since the filter isn't actually part of the data ID for the dataset
-        # we're saving, it's confusing to see it in the log message, even if
-        # the butler simply ignores it.
-        mergeDataId = patchRef.dataId.copy()
-        del mergeDataId["filter"]
-        self.log.info("Wrote merged catalog: %s", mergeDataId)
-
-    def writeMetadata(self, dataRefList):
-        """No metadata to write, and not sure how to write it for a list of
-        dataRefs.
-        """
-        pass
 
 
 class WriteSourceTableConnections(pipeBase.PipelineTaskConnections,
@@ -978,14 +929,6 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
             df=df,
             analysis=analysis
         )
-
-    def write(self, df, parqRef):
-        parqRef.put(ParquetTable(dataFrame=df), self.outputDataset)
-
-    def writeMetadata(self, dataRef):
-        """No metadata to write.
-        """
-        pass
 
 
 class TransformObjectCatalogConnections(pipeBase.PipelineTaskConnections,

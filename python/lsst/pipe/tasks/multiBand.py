@@ -671,9 +671,10 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             to the input visits. Used to put all coordinates to common system. If `None` and
             butler is `None` then the task cannot propagate visit flags to the output catalog.
             Deprecated, to be removed with PropagateVisitFlagsTask.
-        butler : `lsst.daf.persistence.Butler`
-            A gen2 butler used to load visit catalogs.
-            Deprecated, to be removed with Gen2.
+        butler : `None`
+            This was a Gen2 butler used to load visit catalogs.
+            No longer used and should not be set. Will be removed in the
+            future.
 
         Returns
         -------
@@ -683,6 +684,11 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             reference catalog in the matchResults attribute, and denormalized
             matches in the denormMatches attribute.
         """
+        if butler is not None:
+            warnings.warn("The 'butler' parameter is no longer used and can be safely removed.",
+                          category=FutureWarning, stacklevel=2)
+            butler = None
+
         self.measurement.run(sources, exposure, exposureId=exposureId)
 
         if self.config.doApCorr:

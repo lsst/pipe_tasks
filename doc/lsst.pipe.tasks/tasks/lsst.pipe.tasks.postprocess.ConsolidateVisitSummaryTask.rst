@@ -6,8 +6,6 @@ ConsolidateVisitSummaryTask
 
 ``ConsolidateVisitSummaryTask`` combines the non-trivial metadata, including the wcs, detector id, psf size and shape, filter, and bounding box corners into one per-visit exposure catalog (dataset `visitSummary`).
 
-``ConsolidateVisitSummaryTask`` is available as a :ref:`command-line task <lsst.pipe.tasks-command-line-tasks>`, :command:`consolidateVisitSummary.py`.
-
 .. _lsst.pipe.tasks.postprocess.ConsolidateVisitSummary-summary:
 
 Processing summary
@@ -27,31 +25,6 @@ Other quantities such as detector, PSF, aperture correction map, and
 transmission curve are not persisted because of storage concerns, and
 because of their limited utility as summary statistics.
 
-.. lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask-cli:
-
-consolidateVisitSummary.py command-line interface
-=================================================
-
-.. code-block:: text
-
-   consolidateVisitSummary.py REPOPATH [@file [@file2 ...]] [--output OUTPUTREPO | --rerun RERUN] [--id] [other options]
-
-Key arguments:
-
-.. option:: REPOPATH
-
-   The input Butler repository's URI or file path.
-
-Key options:
-
-.. option:: --id
-
-   The data IDs to process.
-
-.. seealso::
-
-   See :ref:`command-line-task-argument-reference` for details and additional options.
-
 .. _lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask-api:
 
 Python API summary
@@ -64,7 +37,7 @@ Python API summary
 Butler datasets
 ===============
 
-When run as the ``consolidateVisitSummary.py`` command-line task, or directly through the `~lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask.runDataRef` method, ``ConsolidateVisitSummaryTask`` obtains datasets from the input Butler data repository and persists outputs to the output Butler data repository.
+When run through the `~lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask.runQuantum` method, ``ConsolidateVisitSummaryTask`` obtains datasets from the input Butler data repository and persists outputs to the output Butler data repository.
 
 .. _lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask-butler-inputs:
 
