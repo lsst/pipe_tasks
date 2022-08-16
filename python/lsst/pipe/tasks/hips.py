@@ -27,9 +27,11 @@ __all__ = ["HighResolutionHipsTask", "HighResolutionHipsConfig", "HighResolution
 from collections import defaultdict
 import numpy as np
 import argparse
+import io
 import sys
 import re
 import warnings
+import math
 from datetime import datetime
 import healpy as hp
 import healsparse as hsp
@@ -764,6 +766,11 @@ class GenerateHipsConfig(pipeBase.PipelineTaskConfig,
         dtype=HipsPropertiesConfig,
         doc="Configuration for properties file.",
     )
+    allsky_tilesize = pexConfig.Field(
+        dtype=int,
+        doc="Allsky.png tile size. Must be power of 2.",
+        default=512,
+    )
     png_gray_asinh_minimum = pexConfig.Field(
         doc="AsinhMapping intensity to be mapped to black for grayscale png scaling.",
         dtype=float,
@@ -1022,6 +1029,10 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                     band,
                     False,
                 )
+                self._write_allsky_file(
+                    hips_base_path.join(f"band_{band}", forceDirectory=True),
+                    min_order,
+                )
         else:
             self._write_properties_and_moc(
                 hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
@@ -1031,6 +1042,10 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                 shift_order,
                 colorstr,
                 True,
+            )
+            self._write_allsky_file(
+                hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
+                min_order,
             )
 
     def _write_hips_image(self, hips_base_path, order, pixel, image, png_mapping, shift_order=9):
@@ -1440,6 +1455,53 @@ class GenerateHipsTask(pipeBase.PipelineTask):
 
         with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
             hdu.writeto(temporary_uri.ospath)
+
+            uri.transfer_from(temporary_uri, transfer="copy", overwrite=True)
+
+    def _write_allsky_file(self, hips_base_path, allsky_order):
+        """Write an Allsky.png file.
+
+        Parameters
+        ----------
+        hips_base_path : `lsst.resources.ResourcePath`
+            Resource path to the base of the HiPS directory tree.
+        allsky_order : `int`
+            HEALPix order of the minimum order to make allsky file.
+        """
+        tile_size = self.config.allsky_tilesize
+        n_tiles_per_side = int(np.sqrt(hp.order2npix(allsky_order)))
+
+        allsky_image = None
+
+        allsky_order_uri = hips_base_path.join(f"Norder{allsky_order}", forceDirectory=True)
+        pixel_regex = re.compile(r"Npix([0-9]+)\.png$")
+        png_uris = list(
+            ResourcePath.findFileResources(
+                candidates=[allsky_order_uri],
+                file_filter=pixel_regex,
+            )
+        )
+
+        for png_uri in png_uris:
+            matches = re.match(pixel_regex, png_uri.basename())
+            pix_num = int(matches.group(1))
+            tile_image = Image.open(io.BytesIO(png_uri.read()))
+            row = math.floor(pix_num//n_tiles_per_side)
+            column = pix_num % n_tiles_per_side
+            box = (column*tile_size, row*tile_size, (column + 1)*tile_size, (row + 1)*tile_size)
+            tile_image_shrunk = tile_image.resize((tile_size, tile_size))
+
+            if allsky_image is None:
+                allsky_image = Image.new(
+                    tile_image.mode,
+                    (n_tiles_per_side*tile_size, n_tiles_per_side*tile_size),
+                )
+            allsky_image.paste(tile_image_shrunk, box)
+
+        uri = allsky_order_uri.join("Allsky.png")
+
+        with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
+            allsky_image.save(temporary_uri.ospath)
 
             uri.transfer_from(temporary_uri, transfer="copy", overwrite=True)
 
