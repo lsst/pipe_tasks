@@ -79,12 +79,15 @@ class LoadReferenceCatalogTask(pipeBase.Task):
 
     Parameters
     ----------
-    dataIds : iterable of `lsst.daf.butler.dataId`, optional
+    dataIds : iterable of `lsst.daf.butler.dataId`
         An iterable object of dataIds which point to reference catalogs
         in a Gen3 repository.  Required for Gen3.
-    refCats : iterable of `lsst.daf.butler.DeferredDatasetHandle`, optional
+    refCats : iterable of `lsst.daf.butler.DeferredDatasetHandle`
         An iterable object of dataset refs for reference catalogs in
         a Gen3 repository.
+    name : `str`
+        The name of the refcat that this object will load. This name is used
+        for applying colorterms, for example.
 
     Raises
     ------
@@ -93,18 +96,14 @@ class LoadReferenceCatalogTask(pipeBase.Task):
     ConfigClass = LoadReferenceCatalogConfig
     _DefaultName = "loadReferenceCatalog"
 
-    def __init__(self, dataIds=None, refCats=None, name=None, **kwargs):
-        if dataIds is not None and refCats is not None and name is not None:
-            pipeBase.Task.__init__(self, **kwargs)
-            refConfig = self.config.refObjLoader
-            self.refObjLoader = ReferenceObjectLoader(dataIds=dataIds,
-                                                      refCats=refCats,
-                                                      name=name,
-                                                      config=refConfig,
-                                                      log=self.log)
-        else:
-            raise RuntimeError("Must instantiate LoadReferenceCatalogTask with "
-                               "dataIds and refCats and name (Gen3)")
+    def __init__(self, *, dataIds, refCats, name, **kwargs):
+        pipeBase.Task.__init__(self, **kwargs)
+        refConfig = self.config.refObjLoader
+        self.refObjLoader = ReferenceObjectLoader(dataIds=dataIds,
+                                                  refCats=refCats,
+                                                  name=name,
+                                                  config=refConfig,
+                                                  log=self.log)
 
         if self.config.doReferenceSelection:
             self.makeSubtask('referenceSelector')
