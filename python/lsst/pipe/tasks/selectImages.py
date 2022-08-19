@@ -81,7 +81,7 @@ class BaseSelectImagesTask(pipeBase.Task):
     def run(self, coordList):
         """Select images suitable for coaddition in a particular region
 
-        @param[in] coordList: list of coordinates defining region of interest; if None then select all images
+        @param[in] coordList list of coordinates defining region of interest; if None then select all images
         subclasses may add additional keyword arguments, as required
 
         @return a pipeBase Struct containing:

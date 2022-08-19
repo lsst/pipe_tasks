@@ -107,16 +107,16 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
 
     @timeMethod
     def run(self, maskedImage):
-        """Compute and return statistics for a masked image
+        """Compute and return statistics for a masked image.
 
         Parameters
         ----------
         maskedImage : `lsst.afw.MaskedImage`
-            masked image
+            Masked image to compute statistics on.
 
         Returns
         -------
-        retStruct : `~lsst.pipe.base.Struct`
+        stats : `~lsst.pipe.base.Struct`
             A struct containing following attributes
             - mean: mean of image plane
             - meanErr: uncertainty in mean
@@ -180,16 +180,16 @@ class ExampleSimpleStatsTask(pipeBase.Task):
     # for the task and all of its subtasks whenver the task is run.
     @timeMethod
     def run(self, maskedImage):
-        """Compute and return statistics for a masked image
+        """Compute and return statistics for a masked image.
 
         Parameters
         ----------
         maskedImage : `lsst.afw.MaskedImage`
-            masked image
+            Masked image to compute statistics on.
 
         Returns
         -------
-        retStruct : `~lsst.pipe.base.Struct`
+        stats : `~lsst.pipe.base.Struct`
             A struct containing following attributes
             - mean: mean of image plane
             - meanErr: uncertainty in mean

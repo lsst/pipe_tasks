@@ -271,9 +271,8 @@ class MergeDetectionsTask(PipelineTask):
         @ref \_\_init\_\_ is used to perform the actual merging. Finally, @ref cullPeaks is used to remove
         garbage peaks detected around bright objects.
 
-        @param[in]  catalogs
-        @param[in]  patchRef
-        @param[out] mergedList
+        @param[in] catalogs catalogs to be merged.
+        @param[out] mergedList merged catalogs.
         """
 
         # Convert distance to tract coordinate

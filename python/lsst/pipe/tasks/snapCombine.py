@@ -180,8 +180,8 @@ class SnapCombineTask(pipeBase.Task):
     def run(self, snap0, snap1, defects=None):
         """Combine two snaps
 
-        @param[in] snap0: snapshot exposure 0
-        @param[in] snap1: snapshot exposure 1
+        @param[in] snap0 snapshot exposure 0
+        @param[in] snap1 snapshot exposure 1
         @defects[in] defect list (for repair task)
         @return a pipe_base Struct with fields:
         - exposure: snap-combined exposure

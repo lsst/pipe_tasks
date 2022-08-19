@@ -38,14 +38,14 @@ class ImageScaler:
     def __init__(self, scale=1.0):
         """Construct an ImageScaler
 
-        @param[in] scale: scale correction to apply (see scaleMaskedImage);
+        @param[in] scale scale correction to apply (see scaleMaskedImage);
         """
         self._scale = scale
 
     def scaleMaskedImage(self, maskedImage):
         """Scale the specified image or masked image in place.
 
-        @param[in,out] maskedImage: masked image to scale
+        @param[in,out] maskedImage masked image to scale
         """
         maskedImage *= self._scale
 
@@ -62,10 +62,10 @@ class SpatialImageScaler(ImageScaler):
     def __init__(self, interpStyle, xList, yList, scaleList):
         """Constructor
 
-        @param[in] interpStyle: interpolation style (CONSTANT is only option)
-        @param[in] xList: list of X pixel positions
-        @param[in] yList: list of Y pixel positions
-        @param[in] scaleList: list of multiplicative scale factors at (x,y)
+        @param[in] interpStyle interpolation style (CONSTANT is only option)
+        @param[in] xList list of X pixel positions
+        @param[in] yList list of Y pixel positions
+        @param[in] scaleList list of multiplicative scale factors at (x,y)
 
         @raise RuntimeError if the lists have different lengths
         """
@@ -90,7 +90,7 @@ class SpatialImageScaler(ImageScaler):
     def getInterpImage(self, bbox):
         """Return an image containing the scale correction with same bounding box as supplied.
 
-        @param[in] bbox: integer bounding box for image (geom.Box2I)
+        @param[in] bbox integer bounding box for image (geom.Box2I)
         """
         npoints = len(self._xList)
 
@@ -149,8 +149,8 @@ class ScaleZeroPointTask(pipeBase.Task):
     def run(self, exposure, dataRef=None):
         """Scale the specified exposure to the desired photometric zeropoint
 
-        @param[in,out] exposure: exposure to scale; masked image is scaled in place
-        @param[in] dataRef: dataRef for exposure.
+        @param[in,out] exposure exposure to scale; masked image is scaled in place
+        @param[in] dataRef dataRef for exposure.
                                Not used, but in API so that users can switch between spatially variant
                                and invariant tasks
         @return a pipeBase.Struct containing:
@@ -166,8 +166,8 @@ class ScaleZeroPointTask(pipeBase.Task):
     def computeImageScaler(self, exposure, dataRef=None):
         """Compute image scaling object for a given exposure.
 
-        @param[in] exposure: exposure for which scaling is desired
-        @param[in] dataRef: dataRef for exposure.
+        @param[in] exposure exposure for which scaling is desired
+        @param[in] dataRef dataRef for exposure.
                                Not used, but in API so that users can switch between spatially variant
                                and invariant tasks
         """
@@ -204,7 +204,7 @@ class ScaleZeroPointTask(pipeBase.Task):
 
         This is a wrapper around scaleFromPhotoCalib, which see for more information
 
-        @param[in] fluxMag0
+        @param[in] fluxMag0 flux at magnitude zero
         @return a pipeBase.Struct containing:
         - scale, as described in scaleFromPhotoCalib.
         """
@@ -225,8 +225,8 @@ class SpatialScaleZeroPointTask(ScaleZeroPointTask):
     def run(self, exposure, dataRef):
         """Scale the specified exposure to the desired photometric zeropoint
 
-        @param[in,out] exposure: exposure to scale; masked image is scaled in place
-        @param[in] dataRef: dataRef for exposure
+        @param[in,out] exposure exposure to scale; masked image is scaled in place
+        @param[in] dataRef dataRef for exposure
 
         @return a pipeBase.Struct containing:
         - imageScaler: the image scaling object used to scale exposure
@@ -241,8 +241,8 @@ class SpatialScaleZeroPointTask(ScaleZeroPointTask):
     def computeImageScaler(self, exposure, dataRef):
         """Compute image scaling object for a given exposure.
 
-        @param[in] exposure: exposure for which scaling is desired. Only wcs and bbox are used.
-        @param[in] dataRef: dataRef of exposure
+        @param[in] exposure exposure for which scaling is desired. Only wcs and bbox are used.
+        @param[in] dataRef dataRef of exposure
                             dataRef.dataId used to retrieve all applicable fluxMag0's from a database.
         @return a SpatialImageScaler
         """
