@@ -562,6 +562,10 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         measureConfig = SingleFrameMeasurementTask.ConfigClass()
         measureConfig.doReplaceWithNoise = False
 
+        # Clear all slots, because we aren't running the relevant plugins.
+        for slot in measureConfig.slots:
+            setattr(measureConfig.slots, slot, None)
+
         measureConfig.plugins.names = []
         if self.config.doReevaluateSkyWcs:
             measureConfig.plugins.names.add('base_LocalWcs')

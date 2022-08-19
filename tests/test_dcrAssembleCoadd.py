@@ -39,6 +39,8 @@ class DcrAssembleCoaddCalculateGainTestCase(lsst.utils.tests.TestCase):
         self.nextGain = (1 + self.baseGain) / 2
 
         self.config = DcrAssembleCoaddConfig()
+        self.config.effectiveWavelength = 500.0
+        self.config.bandwidth = 100.0
         self.task = DcrAssembleCoaddTask(config=self.config)
 
     def testUnbalancedLists(self):

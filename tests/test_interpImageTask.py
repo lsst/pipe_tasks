@@ -122,6 +122,7 @@ class InterpolationTestCase(lsst.utils.tests.TestCase):
                         # Should raise if negative not allowed, but USER supplied negative value
                         if not negativeFallbackAllowed and fallbackValueType == "USER":
                             self.assertRaises(ValueError, config.validate)
+                            continue
 
                         interpTask = InterpImageTask(config)
                         fallbackValue = interpTask._setFallbackValue(mi)
