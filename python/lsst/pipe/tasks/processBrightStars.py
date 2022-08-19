@@ -174,9 +174,6 @@ class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
         doc="Reference object loader for astrometric calibration.",
     )
 
-    def setDefaults(self):
-        self.refObjLoader.ref_dataset_name = "gaia_dr2_20200414"
-
 
 class ProcessBrightStarsTask(pipeBase.PipelineTask):
     """The description of the parameters for this Task are detailed in

@@ -70,7 +70,6 @@ class LoadReferenceCatalogTestCase(lsst.utils.tests.TestCase):
         cls.config = LoadReferenceCatalogConfig()
         cls.config.refObjLoader.filterMap = {"filter1": "ref1",
                                              "filter2": "ref2"}
-        cls.config.refObjLoader.ref_dataset_name = 'synthCam'
         cls.config.colorterms = synthTerms
         cls.config.referenceSelector.doSignalToNoise = True
         cls.config.referenceSelector.signalToNoise.fluxField = 'ref1_flux'
@@ -192,7 +191,6 @@ class LoadReferenceCatalogTestCase(lsst.utils.tests.TestCase):
         """Get a reference catalog circle, using anyFilterMapsToThis."""
         config = LoadReferenceCatalogConfig()
         config.refObjLoader.anyFilterMapsToThis = 'ref1'
-        config.refObjLoader.ref_dataset_name = 'synthCam'
 
         config.doApplyColorTerms = False
         config.doReferenceSelection = False

@@ -265,7 +265,7 @@ class LoadReferenceCatalogTask(pipeBase.Task):
         npRefCat['refMagErr'][:, :] = 99.0
 
         if self.config.doApplyColorTerms:
-            refCatName = self.refObjLoader.config.ref_dataset_name
+            refCatName = self.refObjLoader.name
 
             for i, (filterName, fluxField) in enumerate(zip(self._fluxFilters, self._fluxFields)):
                 if fluxField is None:
