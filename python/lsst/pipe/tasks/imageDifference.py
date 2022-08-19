@@ -448,7 +448,10 @@ class ImageDifferenceTask(pipeBase.PipelineTask):
     def __init__(self, butler=None, **kwargs):
         """!Construct an ImageDifference Task
 
-        @param[in] butler  Butler object to use in constructing reference object loaders
+        Parameters
+        ----------
+        butler : `Unknown`
+            Butler object to use in constructing reference object loaders
         """
         super().__init__(**kwargs)
         self.makeSubtask("getTemplate")

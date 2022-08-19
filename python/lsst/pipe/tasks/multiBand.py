@@ -150,7 +150,10 @@ class DetectCoaddSourcesTask(PipelineTask):
 
     def __init__(self, schema=None, **kwargs):
         """
-        @param[in] schema initial schema for the output catalog, modified-in place to include all
+        Parameters
+        ----------
+        schema : `Unknown`
+            initial schema for the output catalog, modified-in place to include all
                           fields set by this task.  If None, the source minimal schema will be used.
         """
         # N.B. Super is used here to handle the multiple inheritance of PipelineTasks, the init tree
@@ -181,12 +184,24 @@ class DetectCoaddSourcesTask(PipelineTask):
         using @ref ScaleVarianceTask. Then invoke the @ref SourceDetectionTask_ "detection" subtask to
         detect sources.
 
-        @param[in,out] exposure Exposure on which to detect (may be backround-subtracted and scaled,
+        Parameters
+        ----------
+        exposure : `Unknown`
+            Exposure on which to detect (may be backround-subtracted and scaled,
                                  depending on configuration).
-        @param[in] idFactory IdFactory to set source identifiers
-        @param[in] expId Exposure identifier (integer) for RNG seed
+        Parameters
+        ----------
+        idFactory : `Unknown`
+            IdFactory to set source identifiers
+        Parameters
+        ----------
+        expId : `Unknown`
+            Exposure identifier (integer) for RNG seed
 
-        @return a pipe.base.Struct with fields
+        Returns
+        -------
+        Unknown: `Unknown`
+            a pipe.base.Struct with fields
         - sources: catalog of detections
         - backgrounds: list of backgrounds
         """
@@ -485,12 +500,24 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         @brief Initialize the task.
 
         Keyword arguments (in addition to those forwarded to PipelineTask.__init__):
-        @param[in] schema the schema of the merged detection catalog used as input to this one
-        @param[in] peakSchema the schema of the PeakRecords in the Footprints in the merged detection catalog
-        @param[in] refObjLoader an instance of LoadReferenceObjectsTasks that supplies an external reference
+        Parameters
+        ----------
+        schema : `Unknown`
+            the schema of the merged detection catalog used as input to this one
+        Parameters
+        ----------
+        peakSchema : `Unknown`
+            the schema of the PeakRecords in the Footprints in the merged detection catalog
+        Parameters
+        ----------
+        refObjLoader : `Unknown`
+            an instance of LoadReferenceObjectsTasks that supplies an external reference
             catalog. May be None if the loader can be constructed from the butler argument or all steps
             requiring a reference catalog are disabled.
-        @param[in] butler a butler used to read the input schemas from disk or construct the reference
+        Parameters
+        ----------
+        butler : `Unknown`
+            a butler used to read the input schemas from disk or construct the reference
             catalog loader, if schema or peakSchema or refObjLoader is None
 
         The task will set its own self.schema attribute to the schema of the output measurement catalog.

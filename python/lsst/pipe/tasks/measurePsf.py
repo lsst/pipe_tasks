@@ -251,19 +251,34 @@ into your debug.py file and run measurePsfTask.py with the @c --debug flag.
     def run(self, exposure, sources, expId=0, matches=None):
         """!Measure the PSF
 
-        @param[in,out]   exposure   Exposure to process; measured PSF will be added.
-        @param[in,out]   sources    Measured sources on exposure; flag fields will be set marking
+        Parameters
+        ----------
+        exposure : `Unknown`
+            Exposure to process; measured PSF will be added.
+        Parameters
+        ----------
+        sources : `Unknown`
+            Measured sources on exposure; flag fields will be set marking
                                     stars chosen by the star selector and the PSF determiner if a schema
                                     was passed to the task constructor.
-        @param[in]       expId      Exposure id used for generating random seed.
-        @param[in]  matches         A list of lsst.afw.table.ReferenceMatch objects
+        Parameters
+        ----------
+        expId : `Unknown`
+            Exposure id used for generating random seed.
+        Parameters
+        ----------
+        matches : `Unknown`
+            A list of lsst.afw.table.ReferenceMatch objects
                                     (@em i.e. of lsst.afw.table.Match
                                     with @c first being of type lsst.afw.table.SimpleRecord and @c second
                                     type lsst.afw.table.SourceRecord --- the reference object and detected
                                     object respectively) as returned by @em e.g. the AstrometryTask.
                                     Used by star selectors that choose to refer to an external catalog.
 
-        @return a pipe.base.Struct with fields:
+        Returns
+        -------
+        Unknown: `Unknown`
+            a pipe.base.Struct with fields:
          - psf: The measured PSF (also set in the input exposure)
          - cellSet: an lsst.afw.math.SpatialCellSet containing the PSF candidates
             as returned by the psf determiner.

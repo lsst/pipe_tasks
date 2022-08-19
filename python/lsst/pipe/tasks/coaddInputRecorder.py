@@ -87,12 +87,21 @@ class CoaddTempExpInputRecorder:
     def addCalExp(self, calExp, ccdId, nGoodPix):
         """Add a 'ccd' record for a calexp just added to the CoaddTempExp
 
-        @param[in] calExp   Calibrated exposure just added to the CoaddTempExp, or None in case of
+        Parameters
+        ----------
+        calExp : `Unknown`
+            Calibrated exposure just added to the CoaddTempExp, or None in case of
                             failures that should nonetheless be tracked.  Should be the original
                             calexp, in that it should contain the original Psf and Wcs, not the
                             warped and/or matched ones.
-        @param[in] ccdId    A unique numeric ID for the Exposure.
-        @param[in] nGoodPix Number of good pixels this image will contribute to the CoaddTempExp.
+        Parameters
+        ----------
+        ccdId : `Unknown`
+            A unique numeric ID for the Exposure.
+        Parameters
+        ----------
+        nGoodPix : `Unknown`
+            Number of good pixels this image will contribute to the CoaddTempExp.
                             If saveEmptyCcds is not set and this value is zero, no record will be
                             added.
         """
@@ -117,10 +126,16 @@ class CoaddTempExpInputRecorder:
     def finish(self, coaddTempExp, nGoodPix=None):
         """Finish creating the CoaddInputs for a CoaddTempExp.
 
-        @param[in,out] coaddTempExp   Exposure object from which to obtain the PSF, WCS, and bounding
+        Parameters
+        ----------
+        coaddTempExp : `Unknown`
+            Exposure object from which to obtain the PSF, WCS, and bounding
                                       box for the entry in the 'visits' table.  On return, the completed
                                       CoaddInputs object will be attached to it.
-        @param[in]     nGoodPix       Total number of good pixels in the CoaddTempExp; ignored unless
+        Parameters
+        ----------
+        nGoodPix : `Unknown`
+            Total number of good pixels in the CoaddTempExp; ignored unless
                                       saveVisitGoodPix is true.
         """
         self._setExposureInfoInRecord(exposure=coaddTempExp, record=self.visitRecord)
@@ -137,8 +152,14 @@ class CoaddTempExpInputRecorder:
     def _setExposureInfoInRecord(self, exposure, record):
         """Set exposure info and bbox in an ExposureTable record
 
-        @param[in] exposure  exposure whose info is to be recorded
-        @param[in,out] record  record of an ExposureTable to set
+        Parameters
+        ----------
+        exposure : `Unknown`
+            exposure whose info is to be recorded
+        Parameters
+        ----------
+        record : `Unknown`
+            record of an ExposureTable to set
         """
         info = exposure.getInfo()
         record.setPsf(info.getPsf())

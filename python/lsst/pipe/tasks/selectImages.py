@@ -81,10 +81,16 @@ class BaseSelectImagesTask(pipeBase.Task):
     def run(self, coordList):
         """Select images suitable for coaddition in a particular region
 
-        @param[in] coordList list of coordinates defining region of interest; if None then select all images
+        Parameters
+        ----------
+        coordList : `Unknown`
+            list of coordinates defining region of interest; if None then select all images
         subclasses may add additional keyword arguments, as required
 
-        @return a pipeBase Struct containing:
+        Returns
+        -------
+        Unknown: `Unknown`
+            a pipeBase Struct containing:
         - exposureInfoList: a list of exposure information objects (subclasses of BaseExposureInfo),
             which have at least the following fields:
             - dataId: data ID dictionary

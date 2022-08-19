@@ -146,9 +146,15 @@ class CoaddBaseTask(pipeBase.PipelineTask):
         tract and patch information, wcs and the outer bbox
         of the patch.
 
-        @param[in] patchRef  data reference for sky map. Must include keys "tract" and "patch"
+        Parameters
+        ----------
+        patchRef : `Unknown`
+            data reference for sky map. Must include keys "tract" and "patch"
 
-        @return pipe_base Struct containing:
+        Returns
+        -------
+        Unknown: `Unknown`
+            pipe_base Struct containing:
         - skyMap: sky map
         - tractInfo: information for chosen tract of sky map
         - patchInfo: information about chosen patch of tract
@@ -182,10 +188,19 @@ def getSkyInfo(coaddName, patchRef):
     """!
     @brief Return the SkyMap, tract and patch information, wcs, and outer bbox of the patch to be coadded.
 
-    @param[in]  coaddName  coadd name; typically one of deep or goodSeeing
-    @param[in]  patchRef   data reference for sky map. Must include keys "tract" and "patch"
+    Parameters
+    ----------
+    coaddName : `Unknown`
+        coadd name; typically one of deep or goodSeeing
+    Parameters
+    ----------
+    patchRef : `Unknown`
+        data reference for sky map. Must include keys "tract" and "patch"
 
-    @return pipe_base Struct containing:
+    Returns
+    -------
+    Unknown: `Unknown`
+        pipe_base Struct containing:
     - skyMap: sky map
     - tractInfo: information for chosen tract of sky map
     - patchInfo: information about chosen patch of tract
@@ -245,7 +260,10 @@ def scaleVariance(maskedImage, maskPlanes, log=None):
     @param maskedImage  MaskedImage to operate on; variance will be scaled
     @param maskPlanes  List of mask planes for pixels to reject
     @param log  Log for reporting the renormalization factor; or None
-    @return renormalisation factor
+    Returns
+    -------
+    Unknown: `Unknown`
+        renormalisation factor
     """
     config = ScaleVarianceTask.ConfigClass()
     config.maskPlanes = maskPlanes

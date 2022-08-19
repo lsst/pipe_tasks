@@ -289,11 +289,23 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
     def extractMagArrays(self, matches, filterLabel, sourceKeys):
         """!Extract magnitude and magnitude error arrays from the given matches.
 
-        @param[in] matches Reference/source matches, a @link lsst::afw::table::ReferenceMatchVector @endlink
-        @param[in] filterLabel Label of filter being calibrated
-        @param[in] sourceKeys  Struct of source catalog keys, as returned by getSourceKeys()
+        Parameters
+        ----------
+        matches : `Unknown`
+            Reference/source matches, a @link lsst::afw::table::ReferenceMatchVector @endlink
+        Parameters
+        ----------
+        filterLabel : `Unknown`
+            Label of filter being calibrated
+        Parameters
+        ----------
+        sourceKeys : `Unknown`
+            Struct of source catalog keys, as returned by getSourceKeys()
 
-        @return Struct containing srcMag, refMag, srcMagErr, refMagErr, and magErr numpy arrays
+        Returns
+        -------
+        Unknown: `Unknown`
+            Struct containing srcMag, refMag, srcMagErr, refMagErr, and magErr numpy arrays
         where magErr is an error in the magnitude; the error in srcMag - refMag
         If nonzero, config.magErrFloor will be added to magErr *only* (not srcMagErr or refMagErr), as
         magErr is what is later used to determine the zero point.
@@ -395,15 +407,27 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
         """!Do photometric calibration - select matches to use and (possibly iteratively) compute
         the zero point.
 
-        @param[in]  exposure  Exposure upon which the sources in the matches were detected.
-        @param[in]  sourceCat  A catalog of sources to use in the calibration
+        Parameters
+        ----------
+        exposure : `Unknown`
+            Exposure upon which the sources in the matches were detected.
+        Parameters
+        ----------
+        sourceCat : `Unknown`
+            A catalog of sources to use in the calibration
         (@em i.e. a list of lsst.afw.table.Match with
         @c first being of type lsst.afw.table.SimpleRecord and @c second type lsst.afw.table.SourceRecord ---
         the reference object and matched object respectively).
         (will not be modified  except to set the outputField if requested.).
-        @param[in]  expId Exposure identifier; used for seeding the random number generator.
+        Parameters
+        ----------
+        expId : `Unknown`
+            Exposure identifier; used for seeding the random number generator.
 
-        @return Struct of:
+        Returns
+        -------
+        Unknown: `Unknown`
+            Struct of:
          - photoCalib -- @link lsst::afw::image::PhotoCalib @endlink object containing the calibration
          - arrays ------ Magnitude arrays returned be PhotoCalTask.extractMagArrays
          - matches ----- Final ReferenceMatchVector, as returned by PhotoCalTask.selectMatches.
@@ -524,7 +548,10 @@ into your debug.py file and run photoCalTask.py with the @c --debug flag.
         residuals with a tight core and asymmetrical outliers will start in the core.  We use the width of
         this core to set our maximum sigma (see 2.)
 
-        @return Struct of:
+        Returns
+        -------
+        Unknown: `Unknown`
+            Struct of:
          - zp ---------- Photometric zero point (mag)
          - sigma ------- Standard deviation of fit of zero point (mag)
          - ngood ------- Number of sources used to fit zero point

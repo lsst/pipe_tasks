@@ -165,14 +165,32 @@ task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
         The relative occurrence accounts for the edge of the field-of-view of
         the camera, but does not include chip gaps, bad or saturated pixels, etc.
 
-        @param[in] butler  Data butler, for retrieving the input source catalogs
-        @param[in,out] coaddSources  Source catalog from the coadd
-        @param[in] ccdInputs  Table of CCDs that contribute to the coadd
-        @param[in] coaddWcs  Wcs for coadd
-        @param[in] visitCatalogs List of loaded source catalogs for each input ccd in
+        Parameters
+        ----------
+        butler : `Unknown`
+            Data butler, for retrieving the input source catalogs
+        Parameters
+        ----------
+        coaddSources : `Unknown`
+            Source catalog from the coadd
+        Parameters
+        ----------
+        ccdInputs : `Unknown`
+            Table of CCDs that contribute to the coadd
+        Parameters
+        ----------
+        coaddWcs : `Unknown`
+            Wcs for coadd
+        Parameters
+        ----------
+        visitCatalogs : `Unknown`
+            List of loaded source catalogs for each input ccd in
                                  the coadd. If provided this is used instead of this
                                  method loading in the catalogs itself
-        @param[in] wcsUpdates optional, If visitCatalogs is a list of ccd catalogs, this
+        Parameters
+        ----------
+        wcsUpdates : `Unknown`
+            optional, If visitCatalogs is a list of ccd catalogs, this
                               should be a list of updated wcs to apply
         """
         if len(self.config.flags) == 0:

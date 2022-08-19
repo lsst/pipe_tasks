@@ -67,7 +67,10 @@ class RegisterTask(Task):
         @param inputWcs: Wcs of input exposure
         @param inputBBox: Bounding box of input exposure
         @param templateSources: Sources from template exposure
-        @return Struct(matches: Matches between sources,
+        Returns
+        -------
+        Unknown: `Unknown`
+            Struct(matches: Matches between sources,
                        wcs: Wcs for input in frame of template,
                        )
         """
@@ -83,7 +86,10 @@ class RegisterTask(Task):
 
         @param inputSources: Source catalog of the input frame
         @param templateSources: Source of the target frame
-        @return Match list
+        Returns
+        -------
+        Unknown: `Unknown`
+            Match list
         """
         matches = afwTable.matchRaDec(templateSources, inputSources,
                                       self.config.matchRadius*geom.arcseconds)
@@ -101,7 +107,10 @@ class RegisterTask(Task):
         @param matches: List of matches (first is target, second is input)
         @param inputWcs: Original input Wcs
         @param inputBBox: Bounding box of input image
-        @return Wcs
+        Returns
+        -------
+        Unknown: `Unknown`
+            Wcs
         """
         copyMatches = type(matches)(matches)
         refCoordKey = copyMatches[0].first.getTable().getCoordKey()
@@ -145,7 +154,10 @@ class RegisterTask(Task):
         @param newWcs: Revised Wcs for input exposure
         @param templateWcs: Target Wcs
         @param templateBBox: Target bounding box
-        @return Warped exposure
+        Returns
+        -------
+        Unknown: `Unknown`
+            Warped exposure
         """
         warper = Warper.fromConfig(self.config.warper)
         copyExp = inputExp.Factory(inputExp.getMaskedImage(), newWcs)
@@ -163,7 +175,10 @@ class RegisterTask(Task):
         @param newWcs: Revised Wcs for input exposure
         @param templateWcs: Target Wcs
         @param templateBBox: Target bounding box
-        @return Warped sources
+        Returns
+        -------
+        Unknown: `Unknown`
+            Warped sources
         """
         alignedSources = inputSources.copy(True)
         if not isinstance(templateBBox, geom.Box2D):

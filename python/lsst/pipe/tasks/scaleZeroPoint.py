@@ -38,14 +38,20 @@ class ImageScaler:
     def __init__(self, scale=1.0):
         """Construct an ImageScaler
 
-        @param[in] scale scale correction to apply (see scaleMaskedImage);
+        Parameters
+        ----------
+        scale : `Unknown`
+            scale correction to apply (see scaleMaskedImage);
         """
         self._scale = scale
 
     def scaleMaskedImage(self, maskedImage):
         """Scale the specified image or masked image in place.
 
-        @param[in,out] maskedImage masked image to scale
+        Parameters
+        ----------
+        maskedImage : `Unknown`
+            masked image to scale
         """
         maskedImage *= self._scale
 
@@ -62,10 +68,22 @@ class SpatialImageScaler(ImageScaler):
     def __init__(self, interpStyle, xList, yList, scaleList):
         """Constructor
 
-        @param[in] interpStyle interpolation style (CONSTANT is only option)
-        @param[in] xList list of X pixel positions
-        @param[in] yList list of Y pixel positions
-        @param[in] scaleList list of multiplicative scale factors at (x,y)
+        Parameters
+        ----------
+        interpStyle : `Unknown`
+            interpolation style (CONSTANT is only option)
+        Parameters
+        ----------
+        xList : `Unknown`
+            list of X pixel positions
+        Parameters
+        ----------
+        yList : `Unknown`
+            list of Y pixel positions
+        Parameters
+        ----------
+        scaleList : `Unknown`
+            list of multiplicative scale factors at (x,y)
 
         @raise RuntimeError if the lists have different lengths
         """
@@ -82,7 +100,10 @@ class SpatialImageScaler(ImageScaler):
     def scaleMaskedImage(self, maskedImage):
         """Apply scale correction to the specified masked image
 
-        @param[in,out] image to scale; scale is applied in place
+        Parameters
+        ----------
+        image : `Unknown`
+            to scale; scale is applied in place
         """
         scale = self.getInterpImage(maskedImage.getBBox())
         maskedImage *= scale
@@ -90,7 +111,10 @@ class SpatialImageScaler(ImageScaler):
     def getInterpImage(self, bbox):
         """Return an image containing the scale correction with same bounding box as supplied.
 
-        @param[in] bbox integer bounding box for image (geom.Box2I)
+        Parameters
+        ----------
+        bbox : `Unknown`
+            integer bounding box for image (geom.Box2I)
         """
         npoints = len(self._xList)
 
@@ -149,11 +173,20 @@ class ScaleZeroPointTask(pipeBase.Task):
     def run(self, exposure, dataRef=None):
         """Scale the specified exposure to the desired photometric zeropoint
 
-        @param[in,out] exposure exposure to scale; masked image is scaled in place
-        @param[in] dataRef dataRef for exposure.
+        Parameters
+        ----------
+        exposure : `Unknown`
+            exposure to scale; masked image is scaled in place
+        Parameters
+        ----------
+        dataRef : `Unknown`
+            dataRef for exposure.
                                Not used, but in API so that users can switch between spatially variant
                                and invariant tasks
-        @return a pipeBase.Struct containing:
+        Returns
+        -------
+        Unknown: `Unknown`
+            a pipeBase.Struct containing:
         - imageScaler: the image scaling object used to scale exposure
         """
         imageScaler = self.computeImageScaler(exposure=exposure, dataRef=dataRef)
@@ -166,8 +199,14 @@ class ScaleZeroPointTask(pipeBase.Task):
     def computeImageScaler(self, exposure, dataRef=None):
         """Compute image scaling object for a given exposure.
 
-        @param[in] exposure exposure for which scaling is desired
-        @param[in] dataRef dataRef for exposure.
+        Parameters
+        ----------
+        exposure : `Unknown`
+            exposure for which scaling is desired
+        Parameters
+        ----------
+        dataRef : `Unknown`
+            dataRef for exposure.
                                Not used, but in API so that users can switch between spatially variant
                                and invariant tasks
         """
@@ -177,7 +216,10 @@ class ScaleZeroPointTask(pipeBase.Task):
     def getPhotoCalib(self):
         """Get desired PhotoCalib
 
-        @return calibration (lsst.afw.image.PhotoCalib) with fluxMag0 set appropriately for config.zeroPoint
+        Returns
+        -------
+        Unknown: `Unknown`
+            calibration (lsst.afw.image.PhotoCalib) with fluxMag0 set appropriately for config.zeroPoint
         """
         return self._photoCalib
 
@@ -189,7 +231,10 @@ class ScaleZeroPointTask(pipeBase.Task):
             scale = computeScale(pixelCalib)
             pixel *= scale
 
-        @return a pipeBase.Struct containing:
+        Returns
+        -------
+        Unknown: `Unknown`
+            a pipeBase.Struct containing:
         - scale, as described above.
 
         @note: returns a struct to leave room for scaleErr in a future implementation.
@@ -204,8 +249,14 @@ class ScaleZeroPointTask(pipeBase.Task):
 
         This is a wrapper around scaleFromPhotoCalib, which see for more information
 
-        @param[in] fluxMag0 flux at magnitude zero
-        @return a pipeBase.Struct containing:
+        Parameters
+        ----------
+        fluxMag0 : `Unknown`
+            flux at magnitude zero
+        Returns
+        -------
+        Unknown: `Unknown`
+            a pipeBase.Struct containing:
         - scale, as described in scaleFromPhotoCalib.
         """
         calib = afwImage.makePhotoCalibFromCalibZeroPoint(fluxMag0, 0.0)
@@ -225,10 +276,19 @@ class SpatialScaleZeroPointTask(ScaleZeroPointTask):
     def run(self, exposure, dataRef):
         """Scale the specified exposure to the desired photometric zeropoint
 
-        @param[in,out] exposure exposure to scale; masked image is scaled in place
-        @param[in] dataRef dataRef for exposure
+        Parameters
+        ----------
+        exposure : `Unknown`
+            exposure to scale; masked image is scaled in place
+        Parameters
+        ----------
+        dataRef : `Unknown`
+            dataRef for exposure
 
-        @return a pipeBase.Struct containing:
+        Returns
+        -------
+        Unknown: `Unknown`
+            a pipeBase.Struct containing:
         - imageScaler: the image scaling object used to scale exposure
         """
         imageScaler = self.computeImageScaler(exposure=exposure, dataRef=dataRef)
@@ -241,10 +301,19 @@ class SpatialScaleZeroPointTask(ScaleZeroPointTask):
     def computeImageScaler(self, exposure, dataRef):
         """Compute image scaling object for a given exposure.
 
-        @param[in] exposure exposure for which scaling is desired. Only wcs and bbox are used.
-        @param[in] dataRef dataRef of exposure
+        Parameters
+        ----------
+        exposure : `Unknown`
+            exposure for which scaling is desired. Only wcs and bbox are used.
+        Parameters
+        ----------
+        dataRef : `Unknown`
+            dataRef of exposure
                             dataRef.dataId used to retrieve all applicable fluxMag0's from a database.
-        @return a SpatialImageScaler
+        Returns
+        -------
+        Unknown: `Unknown`
+            a SpatialImageScaler
         """
 
         wcs = exposure.getWcs()

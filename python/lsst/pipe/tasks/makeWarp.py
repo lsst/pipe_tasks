@@ -361,7 +361,10 @@ class MakeWarpTask(CoaddBaseTask):
             information about the patch
         @param visitId: integer identifier for visit, for the table that will
             produce the CoaddPsf
-        @return a pipeBase Struct containing:
+        Returns
+        -------
+        Unknown: `Unknown`
+            a pipeBase Struct containing:
           - exposures: a dictionary containing the warps requested:
                 "direct": direct warp if config.makeDirect
                 "psfMatched": PSF-matched warp if config.makePsfMatched

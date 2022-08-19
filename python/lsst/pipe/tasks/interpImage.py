@@ -86,10 +86,16 @@ class InterpImageTask(pipeBase.Task):
     def _setFallbackValue(self, mi=None):
         """Set the edge fallbackValue for interpolation
 
-        @param[in] mi  input maksedImage on which to calculate the statistics
+        Parameters
+        ----------
+        mi : `Unknown`
+            input maksedImage on which to calculate the statistics
                        Must be provided if fallbackValueType != "USER".
 
-        @return fallbackValue  The value set/computed based on the fallbackValueType
+        Returns
+        -------
+        Unknown: `Unknown`
+            fallbackValue  The value set/computed based on the fallbackValueType
                                and negativeFallbackAllowed config parameters
         """
         if self.config.fallbackValueType != 'USER':
@@ -133,13 +139,25 @@ class InterpImageTask(pipeBase.Task):
         passed in by the caller, or the default defaultFwhm set in
         measAlg.GaussianPsfFactory if None).
 
-        @param[in,out] image       MaskedImage OR Exposure to be interpolated
-        @param[in]     planeName   name of mask plane over which to interpolate
+        Parameters
+        ----------
+        image : `Unknown`
+            MaskedImage OR Exposure to be interpolated
+        Parameters
+        ----------
+        planeName : `Unknown`
+            name of mask plane over which to interpolate
                                    If None, must provide a defects list.
-        @param[in]     fwhmPixels  FWHM of core star (pixels)
+        Parameters
+        ----------
+        fwhmPixels : `Unknown`
+            FWHM of core star (pixels)
                                    If None the default is used, where the default
                                    is set to the exposure psf if available
-        @param[in]     defects     List of defects of type ipIsr.Defects
+        Parameters
+        ----------
+        defects : `Unknown`
+            List of defects of type ipIsr.Defects
                                    over which to interpolate.
         """
         try:

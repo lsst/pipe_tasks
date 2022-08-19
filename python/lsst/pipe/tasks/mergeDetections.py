@@ -271,8 +271,14 @@ class MergeDetectionsTask(PipelineTask):
         @ref \_\_init\_\_ is used to perform the actual merging. Finally, @ref cullPeaks is used to remove
         garbage peaks detected around bright objects.
 
-        @param[in] catalogs catalogs to be merged.
-        @param[out] mergedList merged catalogs.
+        Parameters
+        ----------
+        catalogs : `Unknown`
+            catalogs to be merged.
+        Parameters
+        ----------
+        mergedList : `Unknown`
+            merged catalogs.
         """
 
         # Convert distance to tract coordinate
@@ -311,7 +317,10 @@ class MergeDetectionsTask(PipelineTask):
         """!
         @brief Attempt to remove garbage peaks (mostly on the outskirts of large blends).
 
-        @param[in] catalog Source catalog
+        Parameters
+        ----------
+        catalog : `Unknown`
+            Source catalog
         """
         keys = [item.key for item in self.merged.getPeakSchema().extract("merge_peak_*").values()]
         assert len(keys) > 0, "Error finding flags that associate peaks with their detection bands."
@@ -339,7 +348,10 @@ class MergeDetectionsTask(PipelineTask):
         """!
         Return a dict of empty catalogs for each catalog dataset produced by this task.
 
-        @param[out] dictionary of empty catalogs
+        Parameters
+        ----------
+        dictionary : `Unknown`
+            of empty catalogs
         """
         mergeDet = afwTable.SourceCatalog(self.schema)
         peak = afwDetect.PeakCatalog(self.merged.getPeakSchema())

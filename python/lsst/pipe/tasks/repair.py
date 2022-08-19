@@ -183,11 +183,20 @@ class RepairTask(pipeBase.Task):
     def run(self, exposure, defects=None, keepCRs=None):
         """!Repair an Exposure's defects and cosmic rays
 
-        @param[in, out] exposure  lsst.afw.image.Exposure to process.  Exposure must have a valid Psf.
+        Parameters
+        ----------
+        exposure : `Unknown`
+            lsst.afw.image.Exposure to process.  Exposure must have a valid Psf.
                                   Modified in place.
-        @param[in]      defects   an lsst.meas.algorithms.DefectListT object.  If None, do no
+        Parameters
+        ----------
+        defects : `Unknown`
+            an lsst.meas.algorithms.DefectListT object.  If None, do no
                                   defect correction.
-        @param[in]      keepCRs   don't interpolate over the CR pixels (defer to RepairConfig if None)
+        Parameters
+        ----------
+        keepCRs : `Unknown`
+            don't interpolate over the CR pixels (defer to RepairConfig if None)
 
         @throws AssertionError with the following strings:
 
@@ -219,8 +228,14 @@ class RepairTask(pipeBase.Task):
     def cosmicRay(self, exposure, keepCRs=None):
         """Mask cosmic rays
 
-        @param[in,out] exposure Exposure to process
-        @param[in]     keepCRs  Don't interpolate over the CR pixels (defer to pex_config if None)
+        Parameters
+        ----------
+        exposure : `Unknown`
+            Exposure to process
+        Parameters
+        ----------
+        keepCRs : `Unknown`
+            Don't interpolate over the CR pixels (defer to pex_config if None)
         """
         import lsstDebug
         display = lsstDebug.Info(__name__).display

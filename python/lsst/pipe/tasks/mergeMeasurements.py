@@ -202,7 +202,10 @@ class MergeMeasurementsTask(pipeBase.PipelineTask):
         """!
         Merge measurement catalogs to create a single reference catalog for forced photometry
 
-        @param[in] catalogs the catalogs to be merged
+        Parameters
+        ----------
+        catalogs : `Unknown`
+            the catalogs to be merged
 
         For parent sources, we choose the first band in config.priorityList for which the
         merge_footprint flag for that band is is True.

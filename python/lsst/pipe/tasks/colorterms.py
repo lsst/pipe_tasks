@@ -122,18 +122,33 @@ class Colorterm(Config):
     def transformSource(self, source):
         """!Transform the brightness of a source
 
-        @param[in] source  source whose brightness is to be converted; must support get(filterName)
+        Parameters
+        ----------
+        source : `Unknown`
+            source whose brightness is to be converted; must support get(filterName)
                     (e.g. source.get("r")) method, as do afw::table::Source and dicts.
-        @return the transformed source magnitude
+        Returns
+        -------
+        Unknown: `Unknown`
+            the transformed source magnitude
         """
         return self.transformMags(source.get(self.primary), source.get(self.secondary))
 
     def transformMags(self, primary, secondary):
         """!Transform brightness
 
-        @param[in] primary  brightness in primary filter (magnitude)
-        @param[in] secondary  brightness in secondary filter (magnitude)
-        @return the transformed brightness (as a magnitude)
+        Parameters
+        ----------
+        primary : `Unknown`
+            brightness in primary filter (magnitude)
+        Parameters
+        ----------
+        secondary : `Unknown`
+            brightness in secondary filter (magnitude)
+        Returns
+        -------
+        Unknown: `Unknown`
+            the transformed brightness (as a magnitude)
         """
         color = primary - secondary
         return primary + self.c0 + color*(self.c1 + color*self.c2)
@@ -217,9 +232,15 @@ class ColortermLibrary(Config):
         @param photoCatName  name of photometric reference catalog from which to retrieve the data.
             This argument is not glob-expanded (but the catalog names in the library are,
             if no exact match is found).
-        @param[in] doRaise  if True then raise ColortermNotFoundError if no suitable Colorterm found;
+        Parameters
+        ----------
+        doRaise : `Unknown`
+            if True then raise ColortermNotFoundError if no suitable Colorterm found;
             if False then return a null Colorterm with physicalFilter as the primary and secondary filter
-        @return the appropriate Colorterm
+        Returns
+        -------
+        Unknown: `Unknown`
+            the appropriate Colorterm
 
         @throw ColortermNotFoundError if no suitable Colorterm found and doRaise true;
         other exceptions may be raised for unexpected errors, regardless of the value of doRaise

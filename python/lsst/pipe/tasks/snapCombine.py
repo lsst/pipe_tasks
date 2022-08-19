@@ -180,10 +180,19 @@ class SnapCombineTask(pipeBase.Task):
     def run(self, snap0, snap1, defects=None):
         """Combine two snaps
 
-        @param[in] snap0 snapshot exposure 0
-        @param[in] snap1 snapshot exposure 1
+        Parameters
+        ----------
+        snap0 : `Unknown`
+            snapshot exposure 0
+        Parameters
+        ----------
+        snap1 : `Unknown`
+            snapshot exposure 1
         @defects[in] defect list (for repair task)
-        @return a pipe_base Struct with fields:
+        Returns
+        -------
+        Unknown: `Unknown`
+            a pipe_base Struct with fields:
         - exposure: snap-combined exposure
         - sources: detected sources, or None if detection not performed
         """
@@ -250,9 +259,18 @@ class SnapCombineTask(pipeBase.Task):
     def addSnaps(self, snap0, snap1):
         """Add two snap exposures together, returning a new exposure
 
-        @param[in] snap0 snap exposure 0
-        @param[in] snap1 snap exposure 1
-        @return combined exposure
+        Parameters
+        ----------
+        snap0 : `Unknown`
+            snap exposure 0
+        Parameters
+        ----------
+        snap1 : `Unknown`
+            snap exposure 1
+        Returns
+        -------
+        Unknown: `Unknown`
+            combined exposure
         """
         self.log.info("snapCombine addSnaps")
 
@@ -289,10 +307,19 @@ class SnapCombineTask(pipeBase.Task):
         which have data type restrictions. To handle other data types (such as sexagesimal
         positions and ISO dates) you must supplement this method with your own code.
 
-        @param[in,out] combinedMetadata metadata of combined exposure;
+        Parameters
+        ----------
+        combinedMetadata : `Unknown`
+            metadata of combined exposure;
             on input this is a deep copy of metadata0 (a PropertySet)
-        @param[in] metadata0 metadata of snap0 (a PropertySet)
-        @param[in] metadata1 metadata of snap1 (a PropertySet)
+        Parameters
+        ----------
+        metadata0 : `Unknown`
+            metadata of snap0 (a PropertySet)
+        Parameters
+        ----------
+        metadata1 : `Unknown`
+            metadata of snap1 (a PropertySet)
 
         @note the inputs are presently PropertySets due to ticket #2542. However, in some sense
         they are just PropertyLists that are missing some methods. In particular: comments and order
@@ -327,7 +354,10 @@ class SnapCombineTask(pipeBase.Task):
         """Initialise the detection procedure by setting the PSF and WCS
 
         @param exposure Exposure to process
-        @return PSF, WCS
+        Returns
+        -------
+        Unknown: `Unknown`
+            PSF, WCS
         """
         assert exposure, "No exposure provided"
         wcs = exposure.getWcs()

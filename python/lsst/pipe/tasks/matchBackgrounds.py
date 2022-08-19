@@ -153,15 +153,30 @@ class MatchBackgroundsTask(pipeBase.Task):
 
         Choose a refExpDataRef automatically if none supplied.
 
-        @param[in] expRefList list of data references to science exposures to be background-matched;
+        Parameters
+        ----------
+        expRefList : `Unknown`
+            list of data references to science exposures to be background-matched;
             all exposures must exist.
-        @param[in] expDatasetType dataset type of exposures, e.g. 'goodSeeingCoadd_tempExp'
-        @param[in] imageScalerList list of image scalers (coaddUtils.ImageScaler);
+        Parameters
+        ----------
+        expDatasetType : `Unknown`
+            dataset type of exposures, e.g. 'goodSeeingCoadd_tempExp'
+        Parameters
+        ----------
+        imageScalerList : `Unknown`
+            list of image scalers (coaddUtils.ImageScaler);
             if None then the images are not scaled
-        @param[in] refExpDataRef data reference for the reference exposure.
+        Parameters
+        ----------
+        refExpDataRef : `Unknown`
+            data reference for the reference exposure.
             If None, then this task selects the best exposures from expRefList.
             if not None then must be one of the exposures in expRefList.
-        @param[in] refImageScaler image scaler for reference image;
+        Parameters
+        ----------
+        refImageScaler : `Unknown`
+            image scaler for reference image;
             ignored if refExpDataRef is None, else scaling is not performed if None
 
         @return: a pipBase.Struct containing these fields:
@@ -274,12 +289,21 @@ class MatchBackgroundsTask(pipeBase.Task):
         - bestRefWeightVariance
         - bestRefWeightLevel
 
-        @param[in] expRefList list of data references to exposures.
+        Parameters
+        ----------
+        expRefList : `Unknown`
+            list of data references to exposures.
             Retrieves dataset type specified by expDatasetType.
             If an exposure is not found, it is skipped with a warning.
-        @param[in] imageScalerList list of image scalers (coaddUtils.ImageScaler);
+        Parameters
+        ----------
+        imageScalerList : `Unknown`
+            list of image scalers (coaddUtils.ImageScaler);
             must be the same length as expRefList
-        @param[in] expDatasetType dataset type of exposure: e.g. 'goodSeeingCoadd_tempExp'
+        Parameters
+        ----------
+        expDatasetType : `Unknown`
+            dataset type of exposure: e.g. 'goodSeeingCoadd_tempExp'
 
         @return: index of best exposure
 
@@ -342,10 +366,19 @@ class MatchBackgroundsTask(pipeBase.Task):
         is added to the science exposure in memory.
         Fit diagnostics are also calculated and returned.
 
-        @param[in] refExposure reference exposure
-        @param[in,out] sciExposure science exposure; modified by changing the background level
+        Parameters
+        ----------
+        refExposure : `Unknown`
+            reference exposure
+        Parameters
+        ----------
+        sciExposure : `Unknown`
+            science exposure; modified by changing the background level
             to match that of the reference exposure
-        @returns a pipBase.Struct with fields:
+        Returns
+        -------
+        Unknown: `Unknown`
+            a pipBase.Struct with fields:
             - backgroundModel: an afw.math.Approximate or an afw.math.Background.
             - fitRMS: rms of the fit. This is the sqrt(mean(residuals**2)).
             - matchedMSE: the MSE of the reference and matched images: mean((refImage - matchedSciImage)**2);
@@ -585,8 +618,14 @@ class DataRefMatcher:
     def __init__(self, butler, datasetType):
         """Construct a DataRefMatcher
 
-        @param[in] butler Butler to search for maches in.
-        @param[in] datasetType dataset type to match
+        Parameters
+        ----------
+        butler : `Unknown`
+            Butler to search for maches in.
+        Parameters
+        ----------
+        datasetType : `Unknown`
+            dataset type to match
         """
         self._datasetType = datasetType  # for diagnostics
         self._keyNames = butler.getKeys(datasetType)
@@ -594,7 +633,10 @@ class DataRefMatcher:
     def _makeKey(self, ref):
         """Return a tuple of values for the specified keyNames
 
-        @param[in] ref data reference
+        Parameters
+        ----------
+        ref : `Unknown`
+            data reference
 
         @raise KeyError if ref.dataId is missing a key in keyNames
         """
@@ -603,8 +645,14 @@ class DataRefMatcher:
     def isMatch(self, ref0, ref1):
         """Return True if ref0 == ref1
 
-        @param[in] ref0 data ref 0
-        @param[in] ref1 data ref 1
+        Parameters
+        ----------
+        ref0 : `Unknown`
+            data ref 0
+        Parameters
+        ----------
+        ref1 : `Unknown`
+            data ref 1
 
         @raise KeyError if either ID is missing a key in keyNames
         """
@@ -613,7 +661,10 @@ class DataRefMatcher:
     def matchList(self, ref0, refList):
         """Return a list of indices of matches
 
-        @return tuple of indices of matches
+        Returns
+        -------
+        Unknown: `Unknown`
+            tuple of indices of matches
 
         @raise KeyError if any ID is missing a key in keyNames
         """
