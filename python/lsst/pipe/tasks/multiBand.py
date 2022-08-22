@@ -532,7 +532,9 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         inputs = butlerQC.get(inputRefs)
 
         refObjLoader = ReferenceObjectLoader([ref.datasetRef.dataId for ref in inputRefs.refCat],
-                                             inputs.pop('refCat'), config=self.config.refObjLoader,
+                                             inputs.pop('refCat'),
+                                             name=self.config.connections.refCat,
+                                             config=self.config.refObjLoader,
                                              log=self.log)
         self.match.setRefObjLoader(refObjLoader)
 

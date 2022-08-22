@@ -326,25 +326,6 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         # The photoRefCat connection is the name to use for the colorterms.
         self.photoCal.photoCatName = self.connections.photoRefCat
 
-        # NOTE: these two lines are for gen2, and are only here for compatibility.
-        self.astromRefObjLoader.ref_dataset_name = "gaia_dr2_20200414"
-        self.photoRefObjLoader.ref_dataset_name = "ps1_pv3_3pi_20170110"
-
-    def validate(self):
-        super().validate()
-        astromRefCatGen2 = getattr(self.astromRefObjLoader, "ref_dataset_name", None)
-        if astromRefCatGen2 is not None and astromRefCatGen2 != self.connections.astromRefCat:
-            raise ValueError(
-                f"Gen2 ({astromRefCatGen2}) and Gen3 ({self.connections.astromRefCat}) astrometry reference "
-                f"catalogs are different.  These options must be kept in sync until Gen2 is retired."
-            )
-        photoRefCatGen2 = getattr(self.photoRefObjLoader, "ref_dataset_name", None)
-        if photoRefCatGen2 is not None and photoRefCatGen2 != self.connections.photoRefCat:
-            raise ValueError(
-                f"Gen2 ({photoRefCatGen2}) and Gen3 ({self.connections.photoRefCat}) photometry reference "
-                f"catalogs are different.  These options must be kept in sync until Gen2 is retired."
-            )
-
 
 class CalibrateTask(pipeBase.PipelineTask):
     """Task to calibrate an exposure.
@@ -464,6 +445,7 @@ class CalibrateTask(pipeBase.PipelineTask):
             refObjLoader = ReferenceObjectLoader(dataIds=[ref.datasetRef.dataId
                                                           for ref in inputRefs.astromRefCat],
                                                  refCats=inputs.pop('astromRefCat'),
+                                                 name=self.config.connections.astromRefCat,
                                                  config=self.config.astromRefObjLoader, log=self.log)
             self.astrometry.setRefObjLoader(refObjLoader)
 
@@ -471,6 +453,7 @@ class CalibrateTask(pipeBase.PipelineTask):
             photoRefObjLoader = ReferenceObjectLoader(dataIds=[ref.datasetRef.dataId
                                                       for ref in inputRefs.photoRefCat],
                                                       refCats=inputs.pop('photoRefCat'),
+                                                      name=self.config.connections.photoRefCat,
                                                       config=self.config.photoRefObjLoader,
                                                       log=self.log)
             self.photoCal.match.setRefObjLoader(photoRefObjLoader)

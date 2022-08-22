@@ -170,9 +170,7 @@ class CalibrateTaskTestCaseWithButler(lsst.utils.tests.TestCase):
         config.doAstrometry = doAstrometry
         config.doPhotoCal = doPhotoCal
         config.connections.photoRefCat = "cal_ref_cat"
-        config.photoRefObjLoader.ref_dataset_name = "cal_ref_cat"
         config.connections.astromRefCat = "cal_ref_cat"
-        config.astromRefObjLoader.ref_dataset_name = "cal_ref_cat"
         task = CalibrateTask(config=config)
         quantumId = ids["exposure"]
 
