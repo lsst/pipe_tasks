@@ -65,16 +65,3 @@ Configuration fields
 ====================
 
 .. lsst-task-config-fields:: lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask
-
-.. _lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask-examples:
-
-Examples
-========
-
-The following command shows an example of how to run the task on an example HSC repository.
-
-.. code-block:: bash
-
-    consolidateSourceTable.py /datasets/hsc/repo  --calib /datasets/hsc/repo/CALIB --rerun <rerun name> --id visit=30504
-
-.. _lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask-debug:
