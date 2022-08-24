@@ -1,10 +1,10 @@
 .. lsst-task-topic:: lsst.pipe.tasks.maskStreaks.MaskStreaksTask
 
-##################
+###############
 MaskStreaksTask
-##################
+###############
 
-.. _lsst.pipe.tasks.maskStreaks.MaskStreaksTask
+.. _lsst.pipe.tasks.maskStreaks.MaskStreaksTask:
 
 Python API summary
 ==================

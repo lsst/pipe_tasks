@@ -56,7 +56,7 @@ Output datasets
     Per-visit summary catalog of ccd/visit metadata.
 
 
-.. _lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask-subtasks:
+.. _lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask-subtasks:
 
 Examples
 ========

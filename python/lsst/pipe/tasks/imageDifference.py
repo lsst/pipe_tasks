@@ -525,8 +525,8 @@ class ImageDifferenceTask(pipeBase.PipelineTask):
         expBits: `int`
             Number of used bits in ``expId``.
 
-        Note
-        ----
+        Notes
+        -----
         The diasource id-s consists of the ``expId`` stored fixed in the highest value
         ``expBits`` of the 64-bit integer plus (bitwise or) a generated sequence number in the
         low value end of the integer.
@@ -1142,10 +1142,9 @@ class ImageDifferenceTask(pipeBase.PipelineTask):
     def fitAstrometry(self, templateSources, templateExposure, selectSources):
         """Fit the relative astrometry between templateSources and selectSources
 
-        Todo
-        ----
-
-        Remove this method. It originally fit a new WCS to the template before calling register.run
+        Notes
+        -----
+        TODO: Remove this method. It originally fit a new WCS to the template before calling register.run
         because our TAN-SIP fitter behaved badly for points far from CRPIX, but that's been fixed.
         It remains because a subtask overrides it.
         """
@@ -1156,9 +1155,9 @@ class ImageDifferenceTask(pipeBase.PipelineTask):
     def runDebug(self, exposure, subtractRes, selectSources, kernelSources, diaSources):
         """Make debug plots and displays.
 
-        Todo
-        ----
-        Test and update for current debug display and slot names
+        Notes
+        -----
+        TODO: Test and update for current debug display and slot names.
         """
         import lsstDebug
         display = lsstDebug.Info(__name__).display
