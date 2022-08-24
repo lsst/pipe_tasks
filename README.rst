@@ -3,7 +3,7 @@ pipe_tasks
 ##########
 ``pipe_tasks`` is a package in the `LSST Science Pipelines <https://pipelines.lsst.io>`_.
 
-``pipe_tasks`` provides many of the `Task <https://pipelines.lsst.io/py-api/lsst.pipe.base.Task.html#lsst.pipe.base.Task>`_ classes that drive the LSST Science Pipelines. The `command-line tasks listed here <https://pipelines.lsst.io/modules/lsst.pipe.tasks/index.html#lsst-pipe-tasks-command-line-tasks>`_ are useful data processing entry points for most users. These scripts can be found in the ``bin.src/`` folder. After building and installing the package, they can also be found in the created ``bin/`` folder.
+``pipe_tasks`` provides many of the `Task <https://pipelines.lsst.io/py-api/lsst.pipe.base.Task.html#lsst.pipe.base.Task>`_ classes that drive the LSST Science Pipelines. The `pipeline tasks listed here <https://pipelines.lsst.io/modules/lsst.pipe.tasks/index.html#lsst-pipe-tasks-pipeline-tasks>`_ are useful data processing entry points for most users.
 
 The repository also contains several Pipelines used for processing. You can also assemble your own pipelines by combining individual tasks through their Python APIs.
 
