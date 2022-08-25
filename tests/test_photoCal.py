@@ -34,7 +34,7 @@ import lsst.utils.tests
 from lsst.utils import getPackageDir
 from lsst.pipe.tasks.photoCal import PhotoCalTask, PhotoCalConfig
 from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary
-from lsst.pipe.base.task_logging import TRACE
+from lsst.utils.logging import TRACE
 from lsst.meas.algorithms.testUtils import MockReferenceObjectLoaderFromFiles
 
 RefCatDir = os.path.join(getPackageDir("pipe_tasks"), "tests", "data", "sdssrefcat")
