@@ -62,14 +62,3 @@ Configuration fields
 ====================
 
 .. lsst-task-config-fields:: lsst.pipe.tasks.postprocess.WriteSourceTableTask
-
-.. _lsst.pipe.tasks.postprocess.WriteSourceTableTask-examples:
-
-Examples
-========
-
-.. code-block:: bash
-
-    writeSourceTable.py /datasets/hsc/repo  --calib /datasets/hsc/repo/CALIB --rerun <rerun name> --id visit=30504 ccd=0..8^10..103
-
-.. _lsst.pipe.tasks.postprocess.WriteSourceTableTask-debug:

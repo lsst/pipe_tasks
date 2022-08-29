@@ -182,15 +182,13 @@ class ExampleSimpleStatsTask(pipeBase.Task):
     # Even a task with no configuration requires setting ConfigClass
     ConfigClass = pexConfig.Config
     # Having a default name simplifies construction of the task, since the parent task
-    # need not specify a name. Note: having a default name is required for command-line tasks.
+    # need not specify a name. Note: having a default name is required for pipeline tasks.
     # The name can be simple and need not be unique (except for multiple subtasks that will
     # be run by a parent task at the same time).
     _DefaultName = "exampleSimpleStats"
 
     # The `lsst.utils.timer.timeMethod` decorator measures how long a task method takes to run,
     # and the resources needed to run it. The information is recorded in the task's `metadata` field.
-    # Most command-line tasks (not including the example below) save metadata for the task
-    # and all of its subtasks whenver the task is run.
     @timeMethod
     def run(self, maskedImage):
         """!Compute and return statistics for a masked image

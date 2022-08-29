@@ -1026,8 +1026,8 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         goodVisit : `dict`
             Dictionary with good visitIds as the keys. Value ignored.
 
-        Returns:
-        --------
+        Returns
+        -------
         filteredInputs : `list`
             Filtered and sorted list of `lsst.pipe.base.connections.DeferredDatasetRef`
         """

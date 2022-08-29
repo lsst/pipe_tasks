@@ -480,7 +480,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
     @timeMethod
     def run(self, skyInfo, warpRefList, imageScalerList, weightList,
             supplementaryData=None):
-        """Assemble the coadd.
+        r"""Assemble the coadd.
 
         Requires additional inputs Struct ``supplementaryData`` to contain a
         ``templateCoadd`` that serves as the model of the static sky.
@@ -501,7 +501,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
 
         Once the ``DcrModel`` reaches convergence or the maximum number of
         iterations has been reached, fill the metadata for each subfilter
-        image and make them proper ``coaddExposure``s.
+        image and make them proper ``coaddExposure``\ s.
 
         Parameters
         ----------
