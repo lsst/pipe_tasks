@@ -61,11 +61,9 @@ class MergeMeasurementsConnections(PipelineTaskConnections,
 
 
 class MergeMeasurementsConfig(PipelineTaskConfig, pipelineConnections=MergeMeasurementsConnections):
-    """!
-    @anchor MergeMeasurementsConfig_
-
-    @brief Configuration parameters for the MergeMeasurementsTask
+    """Configuration parameters for the MergeMeasurementsTask.
     """
+    
     pseudoFilterList = pexConfig.ListField(
         dtype=str,
         default=["sky"],
@@ -127,14 +125,17 @@ class MergeMeasurementsTask(pipeBase.PipelineTask):
 
     Parameters
     ----------
-    butler : `None`
+    butler : `None`, optional
         Compatibility parameter. Should always be `None`.
     schema : `lsst.afw.table.Schema`, optional
         The schema of the detection catalogs used as input to this task.
     initInputs : `dict`, optional
         Dictionary that can contain a key ``inputSchema`` containing the
         input schema. If present will override the value of ``schema``.
+    **kwargs
+        Additional keyword arguments.
     """
+
     _DefaultName = "mergeCoaddMeasurements"
     ConfigClass = MergeMeasurementsConfig
 
@@ -199,14 +200,22 @@ class MergeMeasurementsTask(pipeBase.PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     def run(self, catalogs):
-        """!
-        Merge measurement catalogs to create a single reference catalog for forced photometry
+        """Merge measurement catalogs to create a single reference catalog for forced photometry.
 
         Parameters
         ----------
-        catalogs : `Unknown`
-            the catalogs to be merged
+        catalogs : `lsst.afw.table.SourceCatalog`
+            Catalogs to be merged.
 
+        Raises
+        ------
+        ValueError
+            Raised if no catalog records were found;
+            if there is no valid reference for the input record ID;
+            or if there is a mismatch between catalog sizes.
+
+        Notes
+        -----
         For parent sources, we choose the first band in config.priorityList for which the
         merge_footprint flag for that band is is True.
 

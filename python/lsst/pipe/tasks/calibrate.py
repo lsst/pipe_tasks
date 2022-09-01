@@ -152,7 +152,8 @@ class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instru
 
 
 class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=CalibrateConnections):
-    """Config for CalibrateTask"""
+    """Config for CalibrateTask."""
+
     doWrite = pexConfig.Field(
         dtype=bool,
         default=True,
@@ -345,7 +346,15 @@ class CalibrateTask(pipeBase.PipelineTask):
     initInputs : `dict`, optional
         Dictionary that can contain a key ``icSourceSchema`` containing the
         input schema. If present will override the value of ``icSourceSchema``.
+
+    Raises
+    ------
+    RuntimeError
+        Raised if any of the following occur:
+        - isSourceCat is missing fields specified in icSourceFieldsToCopy.
+        - PipelineTask form of this task is initialized with reference object loaders.
     """
+
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
 
@@ -489,7 +498,7 @@ class CalibrateTask(pipeBase.PipelineTask):
         Returns
         -------
         result : `lsst.pipe.base.Struct`
-            Result structure with the following attributes:
+            Results as a struct with attributes:
 
             ``exposure``
                Characterized exposure (`lsst.afw.image.ExposureF`).
@@ -677,10 +686,18 @@ class CalibrateTask(pipeBase.PipelineTask):
             Catalog from which to copy fields.
         sourceCat : `lsst.afw.table.SourceCatalog`
             Catalog to which to copy fields.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if any of the following occur:
+            - icSourceSchema and icSourceKeys are not specified.
+            - icSourceCat and sourceCat are not specified.
+            - icSourceFieldsToCopy is empty.
         """
         if self.schemaMapper is None:
             raise RuntimeError("To copy icSource fields you must specify "
-                               "icSourceSchema nd icSourceKeys when "
+                               "icSourceSchema and icSourceKeys when "
                                "constructing this task")
         if icSourceCat is None or sourceCat is None:
             raise RuntimeError("icSourceCat and sourceCat must both be "

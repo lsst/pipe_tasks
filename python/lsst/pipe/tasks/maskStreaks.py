@@ -39,7 +39,7 @@ from dataclasses import dataclass
 
 def setDetectionMask(maskedImage, forceSlowBin=False, binning=None, detectedPlane="DETECTED",
                      badMaskPlanes=("NO_DATA", "INTRP", "BAD", "SAT", "EDGE"), detectionThreshold=5):
-    """Make detection mask and set the mask plane
+    """Make detection mask and set the mask plane.
 
     Creat a binary image from a masked image by setting all data with signal-to-
     noise below some threshold to zero, and all data above the threshold to one.
@@ -51,19 +51,19 @@ def setDetectionMask(maskedImage, forceSlowBin=False, binning=None, detectedPlan
     Parameters
     ----------
     maskedImage : `lsst.afw.image.maskedImage`
-        Image to be (optionally) binned and converted
-    forceSlowBin : bool (optional)
+        Image to be (optionally) binned and converted.
+    forceSlowBin : `bool`, optional
         Force usage of slower binning method to check that the two methods
         give the same result.
-    binning : int (optional)
-        Number of pixels by which to bin image
-    detectedPlane : str (optional)
-        Name of mask with pixels that were detected above threshold in image
-    badMaskPlanes : set (optional)
-        Names of masks with pixels that are rejected
-    detectionThreshold : float (optional)
+    binning : `int`, optional
+        Number of pixels by which to bin image.
+    detectedPlane : `str`, optional
+        Name of mask with pixels that were detected above threshold in image.
+    badMaskPlanes : `set`, optional
+        Names of masks with pixels that are rejected.
+    detectionThreshold : `float`, optional
         Boundary in signal-to-noise between non-detections and detections for
-        making a binary image from the original input image
+        making a binary image from the original input image.
     """
     data = maskedImage.image.array
     weights = 1 / maskedImage.variance.array
@@ -129,6 +129,7 @@ class Line:
     describes the distance from the center of the image, `theta` describes
     the angle, and `sigma` describes the width of the line.
     """
+
     rho: float
     theta: float
     sigma: float = 0
@@ -139,12 +140,12 @@ class LineCollection:
 
     Parameters
     ----------
-    rhos : np.ndarray
-        Array of `Line` rho parameters
-    thetas : np.ndarray
-        Array  of `Line` theta parameters
-    sigmas : np.ndarray (optional)
-        Array of `Line` sigma parameters
+    rhos : `np.ndarray`
+        Array of `Line` rho parameters.
+    thetas : `np.ndarray`
+        Array  of `Line` theta parameters.
+    sigmas : `np.ndarray`, optional
+        Array of `Line` sigma parameters.
     """
 
     def __init__(self, rhos, thetas, sigmas=None):
@@ -200,11 +201,11 @@ class LineProfile:
 
     Parameters
     ----------
-    data : np.ndarray
-        2d array of data
-    weights : np.ndarray
-        2d array of weights
-    line : `Line` (optional)
+    data : `np.ndarray`
+        2d array of data.
+    weights : `np.ndarray`
+        2d array of weights.
+    line : `Line`, optional
         Guess for position of line. Data far from line guess is masked out.
         Defaults to None, in which case only data with `weights` = 0 is masked
         out.
@@ -225,12 +226,12 @@ class LineProfile:
         self.setLineMask(line)
 
     def setLineMask(self, line):
-        """Set mask around the image region near the line
+        """Set mask around the image region near the line.
 
         Parameters
         ----------
         line : `Line`
-            Parameters of line in the image
+            Parameters of line in the image.
         """
         if line:
             # Only fit pixels within 5 sigma of the estimated line
@@ -249,22 +250,22 @@ class LineProfile:
 
     def _makeMaskedProfile(self, line, fitFlux=True):
         """Construct the line model in the masked region and calculate its
-        derivatives
+        derivatives.
 
         Parameters
         ----------
         line : `Line`
             Parameters of line profile for which to make profile in the masked
-            region
-        fitFlux : bool
-            Fit the amplitude of the line profile to the data
+            region.
+        fitFlux : `bool`
+            Fit the amplitude of the line profile to the data.
 
         Returns
         -------
-        model : np.ndarray
-            Model in the masked region
-        dModel : np.ndarray
-            Derivative of the model in the masked region
+        model : `np.ndarray`
+            Model in the masked region.
+        dModel : `np.ndarray`
+            Derivative of the model in the masked region.
         """
         invSigma = line.sigma**-1
         # Calculate distance between pixels and line
@@ -306,19 +307,19 @@ class LineProfile:
         return model, dModel
 
     def makeProfile(self, line, fitFlux=True):
-        """Construct the line profile model
+        """Construct the line profile model.
 
         Parameters
         ----------
         line : `Line`
-            Parameters of the line profile to model
-        fitFlux : bool (optional)
-            Fit the amplitude of the line profile to the data
+            Parameters of the line profile to model.
+        fitFlux : `bool`, optional
+            Fit the amplitude of the line profile to the data.
 
         Returns
         -------
-        finalModel : np.ndarray
-            Model for line profile
+        finalModel : `np.ndarray`
+            Model for line profile.
         """
         model, _ = self._makeMaskedProfile(line, fitFlux=fitFlux)
         finalModel = np.zeros((self._ymax, self._xmax), dtype=self._dtype)
@@ -326,23 +327,23 @@ class LineProfile:
         return finalModel
 
     def _lineChi2(self, line, grad=True):
-        """Construct the chi2 between the data and the model
+        """Construct the chi2 between the data and the model.
 
         Parameters
         ----------
         line : `Line`
-            `Line` parameters for which to build model and calculate chi2
-        grad : bool (optional)
-            Whether or not to return the gradient and hessian
+            `Line` parameters for which to build model and calculate chi2.
+        grad : `bool`, optional
+            Whether or not to return the gradient and hessian.
 
         Returns
         -------
-        reducedChi : float
-            Reduced chi2 of the model
-        reducedDChi : np.ndarray
-            Derivative of the chi2 with respect to rho, theta, invSigma
-        reducedHessianChi : np.ndarray
-            Hessian of the chi2 with respect to rho, theta, invSigma
+        reducedChi : `float`
+            Reduced chi2 of the model.
+        reducedDChi : `np.ndarray`
+            Derivative of the chi2 with respect to rho, theta, invSigma.
+        reducedHessianChi : `np.ndarray`
+            Hessian of the chi2 with respect to rho, theta, invSigma.
         """
         # Calculate chi2
         model, dModel = self._makeMaskedProfile(line)
@@ -360,7 +361,7 @@ class LineProfile:
         return reducedChi, reducedDChi, reducedHessianChi
 
     def fit(self, dChi2Tol=0.1, maxIter=100):
-        """Perform Newton-Raphson minimization to find line parameters
+        """Perform Newton-Raphson minimization to find line parameters.
 
         This method takes advantage of having known derivative and Hessian of
         the multivariate function to quickly and efficiently find the minimum.
@@ -372,21 +373,21 @@ class LineProfile:
 
         Parameters
         ----------
-        dChi2Tol : float (optional)
-            Change in Chi2 tolerated for fit convergence
-        maxIter : int (optional)
+        dChi2Tol : `float`, optional
+            Change in Chi2 tolerated for fit convergence.
+        maxIter : `int`, optional
             Maximum number of fit iterations allowed. The fit should converge in
             ~10 iterations, depending on the value of dChi2Tol, but this
             maximum provides a backup.
 
         Returns
         -------
-        outline : np.ndarray
-            Coordinates and inverse width of fit line
-        chi2 : float
-            Reduced Chi2 of model fit to data
-        fitFailure : bool
-            Boolean where `False` corresponds to a successful  fit
+        outline : `np.ndarray`
+            Coordinates and inverse width of fit line.
+        chi2 : `float`
+            Reduced Chi2 of model fit to data.
+        fitFailure : `bool`
+            Boolean where `False` corresponds to a successful  fit.
         """
         # Do minimization on inverse of sigma to simplify derivatives:
         x = np.array([self._initLine.rho, self._initLine.theta, self._initLine.sigma**-1])
@@ -428,8 +429,9 @@ class LineProfile:
 
 
 class MaskStreaksConfig(pexConfig.Config):
-    """Configuration parameters for `MaskStreaksTask`
+    """Configuration parameters for `MaskStreaksTask`.
     """
+
     minimumKernelHeight = pexConfig.Field(
         doc="Minimum height of the streak-finding kernel relative to the tallest kernel",
         dtype=float,
@@ -528,7 +530,7 @@ class MaskStreaksTask(pipeBase.Task):
 
     @timeMethod
     def find(self, maskedImage):
-        """Find streaks in a masked image
+        """Find streaks in a masked image.
 
         Parameters
         ----------
@@ -538,12 +540,16 @@ class MaskStreaksTask(pipeBase.Task):
         Returns
         -------
         result : `lsst.pipe.base.Struct`
-            Result struct with components:
+            Results as a struct with attributes:
 
-            - ``originalLines``: lines identified by kernel hough transform
-            - ``lineClusters``:  lines grouped into clusters in rho-theta space
-            - ``lines``: final result for lines after line-profile fit
-            - ``mask``: 2-d boolean mask where detected lines are True
+            ``originalLines``
+                Lines identified by kernel hough transform.
+            ``lineClusters``
+                Lines grouped into clusters in rho-theta space.
+            ``lines``
+                Final result for lines after line-profile fit.
+            ``mask``
+                2-d boolean mask where detected lines are True.
         """
         mask = maskedImage.getMask()
         detectionMask = (mask.array & mask.getPlaneBitMask(self.config.detectedMaskPlane))
@@ -586,11 +592,14 @@ class MaskStreaksTask(pipeBase.Task):
         Returns
         -------
         result : `lsst.pipe.base.Struct`
-            Result struct with components:
+            Results as a struct with attributes:
 
-            - ``originalLines``: lines identified by kernel hough transform
-            - ``lineClusters``:  lines grouped into clusters in rho-theta space
-            - ``lines``: final result for lines after line-profile fit
+            ``originalLines``
+                Lines identified by kernel hough transform.
+            ``lineClusters``
+                Lines grouped into clusters in rho-theta space.
+            ``lines``
+                Final result for lines after line-profile fit.
         """
         streaks = self.find(maskedImage)
 
@@ -604,17 +613,17 @@ class MaskStreaksTask(pipeBase.Task):
         )
 
     def _cannyFilter(self, image):
-        """Apply a canny filter to the data in order to detect edges
+        """Apply a canny filter to the data in order to detect edges.
 
         Parameters
         ----------
         image : `np.ndarray`
-            2-d image data on which to run filter
+            2-d image data on which to run filter.
 
         Returns
         -------
         cannyData : `np.ndarray`
-            2-d image of edges found in input image
+            2-d image of edges found in input image.
         """
         filterData = image.astype(int)
         return canny(filterData, low_threshold=0, high_threshold=1, sigma=0.1)
@@ -625,7 +634,7 @@ class MaskStreaksTask(pipeBase.Task):
         Parameters
         ----------
         image : `np.ndarray`
-            2-d image data on which to detect lines
+            2-d image data on which to detect lines.
 
         Returns
         -------
@@ -647,13 +656,13 @@ class MaskStreaksTask(pipeBase.Task):
         Parameters
         ----------
         lines : `LineCollection`
-            Collection of lines to group into clusters
+            Collection of lines to group into clusters.
 
         Returns
         -------
         result : `LineCollection`
             Average `Line` for each cluster of `Line`s in the input
-            `LineCollection`
+            `LineCollection`.
         """
         # Scale variables by threshold bin-size variable so that rho and theta
         # are on the same scale. Since the clustering algorithm below stops when
@@ -700,14 +709,14 @@ class MaskStreaksTask(pipeBase.Task):
         Parameters
         ----------
         lines : `LineCollection`
-            Collection of guesses for `Line`s detected in the image
+            Collection of guesses for `Line`s detected in the image.
         maskedImage : `lsst.afw.image.maskedImage`
             Original image to be used to fit profile of streak.
 
         Returns
         -------
         lineFits : `LineCollection`
-            Collection of `Line` profiles fit to the data
+            Collection of `Line` profiles fit to the data.
         finalMask : `np.ndarray`
             2d mask array with detected streaks=1.
         """

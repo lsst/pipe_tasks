@@ -94,8 +94,8 @@ class CharacterizeImageConnections(pipeBase.PipelineTaskConnections,
 
 class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
                               pipelineConnections=CharacterizeImageConnections):
+    """Config for CharacterizeImageTask."""
 
-    """!Config for CharacterizeImageTask"""
     doMeasurePsf = pexConfig.Field(
         dtype=bool,
         default=True,
@@ -257,6 +257,8 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         Reference object loader if using a catalog-based star-selector.
     schema : `lsst.afw.table.Schema`, optional
         Initial schema for icSrc catalog.
+    **kwargs
+        Additional keyword arguments.
     """
 
     ConfigClass = CharacterizeImageConfig
@@ -324,7 +326,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         Returns
         -------
         result : `lsst.pipe.base.Struct`
-            Result structure with the following attributes:
+            Results as a struct with attributes:
 
             ``exposure``
                Characterized exposure (`lsst.afw.image.ExposureF`).
@@ -338,6 +340,11 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
                Another reference to ``exposure`` for compatibility.
             ``backgroundModel``
                Another reference to ``background`` for compatibility.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if PSF sigma is NaN.
         """
         self._frame = self._initialFrame  # reset debug display frame
 
@@ -423,7 +430,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         Returns
         -------
         result : `lsst.pipe.base.Struct`
-            Result structure with the following attributes:
+            Results as a struct with attributes:
 
             ``exposure``
                Characterized exposure (`lsst.afw.image.ExposureF`).
@@ -433,6 +440,11 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
                Model of subtracted background (`lsst.afw.math.BackgroundList`).
             ``psfCellSet``
                Spatial cells of PSF candidates (`lsst.afw.math.SpatialCellSet`).
+
+        Raises
+        ------
+        LengthError
+            Raised if there are too many CR pixels.
         """
         # install a simple PSF model, if needed or wanted
         if not exposure.hasPsf() or (self.config.doMeasurePsf and self.config.useSimplePsf):
@@ -503,8 +515,8 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
             Name of item in ``debugInfo``.
         exposure : `lsst.afw.image.ExposureF`
             Exposure to display.
-        sourceCat : `lsst.afw.table.SourceCatalog`
-            Exposure to display.
+        sourceCat : `lsst.afw.table.SourceCatalog`, optional
+            Catalog of sources detected on the exposure.
         """
         val = getDebugFrame(self._display, itemName)
         if not val:

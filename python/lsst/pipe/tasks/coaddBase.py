@@ -32,12 +32,11 @@ __all__ = ["CoaddBaseTask", "getSkyInfo", "makeSkyInfo"]
 
 
 class CoaddBaseConfig(pexConfig.Config):
-    """!Configuration parameters for CoaddBaseTask
+    """Configuration parameters for CoaddBaseTask
 
-    @anchor CoaddBaseConfig_
-
-    @brief Configuration parameters shared between MakeCoaddTempExp and AssembleCoadd
+    Configuration parameters shared between MakeCoaddTempExp and AssembleCoadd
     """
+
     coaddName = pexConfig.Field(
         doc="Coadd name: typically one of deep or goodSeeing.",
         dtype=str,
@@ -129,10 +128,11 @@ class CoaddBaseConfig(pexConfig.Config):
 
 
 class CoaddBaseTask(pipeBase.PipelineTask):
-    """!Base class for coaddition.
+    """Base class for coaddition.
 
     Subclasses must specify _DefaultName
     """
+
     ConfigClass = CoaddBaseConfig
 
     def __init__(self, **kwargs):
@@ -141,25 +141,29 @@ class CoaddBaseTask(pipeBase.PipelineTask):
         self.makeSubtask("inputRecorder")
 
     def getSkyInfo(self, patchRef):
-        """!
-        @brief Use @ref coaddBase::getSkyInfo "getSkyInfo" to return the skyMap,
-        tract and patch information, wcs and the outer bbox
+        """Use getSkyinfo to return the skyMap, tract and patch information, wcs and the outer bbox
         of the patch.
 
         Parameters
         ----------
         patchRef : `Unknown`
-            data reference for sky map. Must include keys "tract" and "patch"
+            Data reference for sky map. Must include keys "tract" and "patch".
 
         Returns
         -------
-        Unknown: `Unknown`
-            pipe_base Struct containing:
-        - skyMap: sky map
-        - tractInfo: information for chosen tract of sky map
-        - patchInfo: information about chosen patch of tract
-        - wcs: WCS of tract
-        - bbox: outer bbox of patch, as an geom Box2I
+        getSkyInfo : `lsst.pipe.base.Struct`
+            Sky Info as a struct with attributes:
+
+            ``skyMap``
+                sky map (`lsst.skyMap.SkyMap`).
+            ``tractInfo``
+                Information for chosen tract of sky map (`lsst.skymap.TractInfo`).
+            ``patchInfo``
+                Information about chosen patch of tract (`lsst.skymap.PatchInfo`).
+            ``wcs``
+                WCS of tract (`lsst.afw.image.SkyWcs`).
+            ``bbox``
+                Outer bbox of patch, as an geom Box2I (`lsst.afw.geom.Box2I`).
         """
         return getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
 
@@ -168,62 +172,80 @@ class CoaddBaseTask(pipeBase.PipelineTask):
 
         Parameters
         ----------
-        warpType : string
-            Either 'direct' or 'psfMatched'
+        warpType : `str`
+            Either 'direct' or 'psfMatched'.
 
         Returns
         -------
-        WarpDatasetName : `string`
+        WarpDatasetName : `str`
         """
         return self.config.coaddName + "Coadd_" + warpType + "Warp"
 
     def getBadPixelMask(self):
-        """!
-        @brief Convenience method to provide the bitmask from the mask plane names
+        """Convenience method to provide the bitmask from the mask plane names
         """
         return afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes)
 
 
 def getSkyInfo(coaddName, patchRef):
-    """!
-    @brief Return the SkyMap, tract and patch information, wcs, and outer bbox of the patch to be coadded.
+    """Return the SkyMap, tract and patch information, wcs, and outer bbox of the patch to be coadded.
 
     Parameters
     ----------
-    coaddName : `Unknown`
-        coadd name; typically one of deep or goodSeeing
-    Parameters
-    ----------
+    coaddName : `str`
+        Coadd name; typically one of deep or goodSeeing.
     patchRef : `Unknown`
-        data reference for sky map. Must include keys "tract" and "patch"
+        Data reference for sky map. Must include keys "tract" and "patch".
 
     Returns
     -------
-    Unknown: `Unknown`
-        pipe_base Struct containing:
-    - skyMap: sky map
-    - tractInfo: information for chosen tract of sky map
-    - patchInfo: information about chosen patch of tract
-    - wcs: WCS of tract
-    - bbox: outer bbox of patch, as an geom Box2I
+    makeSkyInfo : `lsst.pipe.base.Struct`
+        pipe_base Struct with attributes:
+
+        ``skyMap``
+            Sky map (`lsst.skyMap.SkyMap`).
+        ``tractInfo``
+            Information for chosen tract of sky map (`lsst.skyMap.TractInfo`).
+        ``patchInfo``
+            Information about chosen patch of tract (`lsst.skyMap.PatchInfo`).
+        ``wcs``
+            WCS of tract (`lsst.afw.image.SkyWcs`).
+        ``bbox``
+            Outer bbox of patch, as an geom Box2I (`lsst.afw.geom.Box2I`).
     """
     skyMap = patchRef.get(coaddName + "Coadd_skyMap")
     return makeSkyInfo(skyMap, patchRef.dataId["tract"], patchRef.dataId["patch"])
 
 
 def makeSkyInfo(skyMap, tractId, patchId):
-    """Return SkyInfo Struct
-
-    Constructs SkyInfo used by coaddition tasks for multiple
+    """Constructs SkyInfo used by coaddition tasks for multiple
     patchId formats.
 
     Parameters
     ----------
     skyMap : `lsst.skyMap.SkyMap`
-    tractId : int
-    patchId : str or int or tuple of int
+        Sky map.
+    tractId : `int`
+        The ID of the tract.
+    patchId : `str` or `int` or `tuple` of `int`
         Either Gen2-style comma delimited string (e.g. '4,5'),
         tuple of integers (e.g (4, 5), Gen3-style integer.
+
+    Returns
+    -------
+    makeSkyInfo : `lsst.pipe.base.Struct`
+        pipe_base Struct with attributes:
+
+        ``skyMap``
+            Sky map (`lsst.skyMap.SkyMap`).
+        ``tractInfo``
+            Information for chosen tract of sky map (`lsst.skyMap.TractInfo`).
+        ``patchInfo``
+            Information about chosen patch of tract (`lsst.skyMap.PatchInfo`).
+        ``wcs``
+            WCS of tract (`lsst.afw.image.SkyWcs`).
+        ``bbox``
+            Outer bbox of patch, as an geom Box2I (`lsst.afw.geom.Box2I`).
     """
     tractInfo = skyMap[tractId]
 
@@ -245,25 +267,32 @@ def makeSkyInfo(skyMap, tractId, patchId):
 
 
 def scaleVariance(maskedImage, maskPlanes, log=None):
-    """!
-    @brief Scale the variance in a maskedImage
+    """Scale the variance in a maskedImage
 
+    This is deprecated. Use the ScaleVarianceTask instead.
+
+    Parameters
+    ----------
+    maskedImage : `lsst.afw.image.MaskedImage`
+        MaskedImage to operate on; variance will be scaled.
+    maskPlanes : `list`
+        List of mask planes for pixels to reject.
+    log : `Unknown`
+        Log for reporting the renormalization factor; or None.
+
+    Returns
+    -------
+    task.run : `Unknown`
+        Renormalization factor.
+
+    Notes
+    -----
     The variance plane in a convolved or warped image (or a coadd derived
     from warped images) does not accurately reflect the noise properties of
     the image because variance has been lost to covariance. This function
     attempts to correct for this by scaling the variance plane to match
     the observed variance in the image. This is not perfect (because we're
     not tracking the covariance) but it's simple and is often good enough.
-
-    @deprecated Use the ScaleVarianceTask instead.
-
-    @param maskedImage  MaskedImage to operate on; variance will be scaled
-    @param maskPlanes  List of mask planes for pixels to reject
-    @param log  Log for reporting the renormalization factor; or None
-    Returns
-    -------
-    Unknown: `Unknown`
-        renormalisation factor
     """
     config = ScaleVarianceTask.ConfigClass()
     config.maskPlanes = maskPlanes
@@ -276,19 +305,18 @@ def reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):
 
     Parameters
     ----------
-    inputList : list
+    inputList : `list`
         List to be reordered and padded. Elements can be any type.
-    inputKeys :  iterable
-        Iterable of values to be compared with outputKeys.
-        Length must match `inputList`
-    outputKeys : iterable
+    inputKeys :  `iterable`
+        Iterable of values to be compared with outputKeys. Length must match `inputList`.
+    outputKeys : `iterable`
         Iterable of values to be compared with inputKeys.
-    padWith :
-        Any value to be inserted where inputKey not in outputKeys
+    padWith : `Unknown`
+        Any value to be inserted where inputKey not in outputKeys.
 
     Returns
     -------
-    list
+    outputList : `list`
         Copy of inputList reordered per outputKeys and padded with `padWith`
         so that the length matches length of outputKeys.
     """

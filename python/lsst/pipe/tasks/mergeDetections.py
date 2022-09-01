@@ -41,7 +41,7 @@ from lsst.obs.base import ExposureIdInfo
 
 
 def matchCatalogsExact(catalog1, catalog2, patch1=None, patch2=None):
-    """Match two catalogs derived from the same mergeDet catalog
+    """Match two catalogs derived from the same mergeDet catalog.
 
     When testing downstream features, like deblending methods/parameters
     and measurement algorithms/parameters, it is useful to to compare
@@ -59,13 +59,12 @@ def matchCatalogsExact(catalog1, catalog2, patch1=None, patch2=None):
     ----------
     catalog1, catalog2 : `lsst.afw.table.SourceCatalog`
         The two catalogs to merge
-
-    patch1, patch2 : array of int
+    patch1, patch2 : `array` of `int`
         Patch for each row, converted into an integer.
 
     Returns
     -------
-    result: list of `lsst.afw.table.SourceMatch`
+    result : `list` of `lsst.afw.table.SourceMatch`
         List of matches for each source (using an inner join).
     """
     # Only match the individual sources, the parents will
@@ -166,10 +165,7 @@ class MergeDetectionsConnections(PipelineTaskConnections,
 
 
 class MergeDetectionsConfig(PipelineTaskConfig, pipelineConnections=MergeDetectionsConnections):
-    """!
-    @anchor MergeDetectionsConfig_
-
-    @brief Configuration parameters for the MergeDetectionsTask.
+    """Configuration parameters for the MergeDetectionsTask.
     """
     minNewPeak = Field(dtype=float, default=1,
                        doc="Minimum distance from closest peak to create a new one (in arcsec).")
@@ -202,13 +198,15 @@ class MergeDetectionsTask(PipelineTask):
 
     Parameters
     ----------
-    butler : `None`
+    butler : `None`, optional
         Compatibility parameter. Should always be `None`.
     schema : `lsst.afw.table.Schema`, optional
         The schema of the detection catalogs used as input to this task.
     initInputs : `dict`, optional
         Dictionary that can contain a key ``schema`` containing the
         input schema. If present will override the value of ``schema``.
+    **kwargs
+        Additional keyword arguments.
     """
     ConfigClass = MergeDetectionsConfig
     _DefaultName = "mergeCoaddDetections"
@@ -263,24 +261,28 @@ class MergeDetectionsTask(PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     def run(self, catalogs, skyInfo, idFactory, skySeed):
-        r"""!
-        @brief Merge multiple catalogs.
+        """Merge multiple catalogs.
 
         After ordering the catalogs and filters in priority order,
-        @ref getMergedSourceCatalog of the @ref FootprintMergeList_ "FootprintMergeList" created by
-        @ref \_\_init\_\_ is used to perform the actual merging. Finally, @ref cullPeaks is used to remove
+        `getMergedSourceCatalog` of the `FootprintMergeList_` "FootprintMergeList" created by
+        `\_\_init\_\_` is used to perform the actual merging. Finally, `cullPeaks` is used to remove
         garbage peaks detected around bright objects.
 
         Parameters
         ----------
-        catalogs : `Unknown`
-            catalogs to be merged.
-        Parameters
-        ----------
-        mergedList : `Unknown`
-            merged catalogs.
-        """
+        catalogs : `lsst.afw.table.SourceCatalog`
+            Catalogs to be merged.
+        mergedList : `lsst.afw.table.SourceCatalog`
+            Merged catalogs.
 
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            Results as a struct with attributes:
+
+            ``outputCatalog``
+                Merged catalogs (`lsst.afw.table.SourceCatalog`).
+        """
         # Convert distance to tract coordinate
         tractWcs = skyInfo.wcs
         peakDistance = self.config.minNewPeak / tractWcs.getPixelScale().asArcseconds()
@@ -314,13 +316,12 @@ class MergeDetectionsTask(PipelineTask):
         return Struct(outputCatalog=mergedList)
 
     def cullPeaks(self, catalog):
-        """!
-        @brief Attempt to remove garbage peaks (mostly on the outskirts of large blends).
+        """Attempt to remove garbage peaks (mostly on the outskirts of large blends).
 
         Parameters
         ----------
-        catalog : `Unknown`
-            Source catalog
+        catalog : `lsst.afw.table.SourceCatalog`
+            Source catalog.
         """
         keys = [item.key for item in self.merged.getPeakSchema().extract("merge_peak_*").values()]
         assert len(keys) > 0, "Error finding flags that associate peaks with their detection bands."
@@ -345,13 +346,12 @@ class MergeDetectionsTask(PipelineTask):
         self.log.info("Culled %d of %d peaks", culledPeaks, totalPeaks)
 
     def getSchemaCatalogs(self):
-        """!
-        Return a dict of empty catalogs for each catalog dataset produced by this task.
+        """Return a dict of empty catalogs for each catalog dataset produced by this task.
 
-        Parameters
+        Returns
         ----------
-        dictionary : `Unknown`
-            of empty catalogs
+        dictionary : `dict`
+            Dictionary of empty catalogs.
         """
         mergeDet = afwTable.SourceCatalog(self.schema)
         peak = afwDetect.PeakCatalog(self.merged.getPeakSchema())
@@ -359,12 +359,16 @@ class MergeDetectionsTask(PipelineTask):
                 self.config.coaddName + "Coadd_peak": peak}
 
     def getSkySourceFootprints(self, mergedList, skyInfo, seed):
-        """!
-        @brief Return a list of Footprints of sky objects which don't overlap with anything in mergedList
+        """Return a list of Footprints of sky objects which don't overlap with anything in mergedList.
 
-        @param mergedList  The merged Footprints from all the input bands
-        @param skyInfo     A description of the patch
-        @param seed        Seed for the random number generator
+        Parameters
+        ----------
+        mergedList : `lsst.afw.table.SourceCatalog`
+            The merged Footprints from all the input bands.
+        skyInfo : `lsst.pipe.base.Struct`
+            A description of the patch.
+        seed : `int`
+            Seed for the random number generator.
         """
         mask = afwImage.Mask(skyInfo.patchInfo.getOuterBBox())
         detected = mask.getPlaneBitMask("DETECTED")

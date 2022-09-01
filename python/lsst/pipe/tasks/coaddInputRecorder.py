@@ -31,13 +31,6 @@ __all__ = ["CoaddInputRecorderTask"]
 
 
 class CoaddInputRecorderConfig(pexConfig.Config):
-    """Config for CoaddInputRecorderTask
-
-    The inputRecorder section of the various coadd tasks' configs should generally agree,
-    or the schemas created by earlier tasks (like MakeCoaddTempExpTask) will not contain
-    the fields filled by later tasks (like AssembleCoaddTask).
-    """
-
     saveEmptyCcds = pexConfig.Field(
         dtype=bool, default=False, optional=False,
         doc=("Add records for CCDs we iterated over but did not add a coaddTempExp"
@@ -66,16 +59,18 @@ class CoaddTempExpInputRecorder:
     records.
 
     Should generally be created by calling CoaddInputRecorderTask.makeCoaddTempExp().
+
+    Parameters
+    ----------
+    task : `lsst.pipe.tasks.coaddInputRecorder.CoaddInputRecorderTask`
+        The CoaddInputRecorderTask that is utilising us.
+    visitId : `int`
+        Identifier (integer) for the visit.
+    num : `int`
+        Number of CCDs for this visit that overlap this patch (for reserving memory).
     """
 
     def __init__(self, task, visitId, num=0):
-        """Constructor
-
-        @param task  The CoaddInputRecorderTask that is utilising us
-        @param visitId  Identifier (integer) for the visit
-        @param num  Number of CCDs for this visit that overlap this
-                        patch (for reserving memory)
-        """
         self.task = task
         self.coaddInputs = self.task.makeCoaddInputs()
         self.coaddInputs.visits.reserve(1)
@@ -85,25 +80,21 @@ class CoaddTempExpInputRecorder:
         self.visitRecord.setId(visitId)
 
     def addCalExp(self, calExp, ccdId, nGoodPix):
-        """Add a 'ccd' record for a calexp just added to the CoaddTempExp
+        """Add a 'ccd' record for a calexp just added to the CoaddTempExp.
 
         Parameters
         ----------
-        calExp : `Unknown`
+        calExp : `lsst.afw.image.Exposure`
             Calibrated exposure just added to the CoaddTempExp, or None in case of
-                            failures that should nonetheless be tracked.  Should be the original
-                            calexp, in that it should contain the original Psf and Wcs, not the
-                            warped and/or matched ones.
-        Parameters
-        ----------
-        ccdId : `Unknown`
+            failures that should nonetheless be tracked.  Should be the original
+            calexp, in that it should contain the original Psf and Wcs, not the
+            warped and/or matched ones.
+        ccdId : `int`
             A unique numeric ID for the Exposure.
-        Parameters
-        ----------
-        nGoodPix : `Unknown`
+        nGoodPix : `int`
             Number of good pixels this image will contribute to the CoaddTempExp.
-                            If saveEmptyCcds is not set and this value is zero, no record will be
-                            added.
+            If saveEmptyCcds is not set and this value is zero, no record will be
+            added.
         """
         if nGoodPix == 0 and not self.task.config.saveEmptyCcds:
             return
@@ -128,15 +119,13 @@ class CoaddTempExpInputRecorder:
 
         Parameters
         ----------
-        coaddTempExp : `Unknown`
+        coaddTempExp : `lsst.afw.image.Exposure`
             Exposure object from which to obtain the PSF, WCS, and bounding
-                                      box for the entry in the 'visits' table.  On return, the completed
-                                      CoaddInputs object will be attached to it.
-        Parameters
-        ----------
-        nGoodPix : `Unknown`
+            box for the entry in the 'visits' table.  On return, the completed
+            CoaddInputs object will be attached to it.
+        nGoodPix : `int`
             Total number of good pixels in the CoaddTempExp; ignored unless
-                                      saveVisitGoodPix is true.
+            saveVisitGoodPix is true.
         """
         self._setExposureInfoInRecord(exposure=coaddTempExp, record=self.visitRecord)
         if self.task.config.saveVisitGoodPix:
@@ -150,16 +139,14 @@ class CoaddTempExpInputRecorder:
         coaddTempExp.getInfo().setApCorrMap(apCorrMap)
 
     def _setExposureInfoInRecord(self, exposure, record):
-        """Set exposure info and bbox in an ExposureTable record
+        """Set exposure info and bbox in an ExposureTable record.
 
         Parameters
         ----------
-        exposure : `Unknown`
-            exposure whose info is to be recorded
-        Parameters
-        ----------
+        exposure : `lsst.afw.image.ExposureF`
+            Exposure whose info is to be recorded.
         record : `Unknown`
-            record of an ExposureTable to set
+            Record of an ExposureTable to set.
         """
         info = exposure.getInfo()
         record.setPsf(info.getPsf())
@@ -207,13 +194,21 @@ class CoaddInputRecorderTask(pipeBase.Task):
     def makeCoaddTempExpRecorder(self, visitId, num=0):
         """Return a CoaddTempExpInputRecorder instance to help with saving a CoaddTempExp's inputs.
 
-        The visitId may be any number that is unique for each CoaddTempExp that goes into a coadd,
+        Parameters
+        ----------
+        visitId : `Unknown`
+        num : `int`, optional
+            Number of CCDs for this visit that overlap this patch (for reserving memory).
+
+        Notes
+        -----
+        The visitId may be any number that is unique for each :that goes into a coadd,
         but ideally should be something more meaningful that can be used to reconstruct a data ID.
         """
         return CoaddTempExpInputRecorder(self, visitId, num=num)
 
     def makeCoaddInputs(self):
-        """Create a CoaddInputs object with schemas defined by the task configuration"""
+        """Create a CoaddInputs object with schemas defined by the task configuration."""
         return afwImage.CoaddInputs(self.visitSchema, self.ccdSchema)
 
     def addVisitToCoadd(self, coaddInputs, coaddTempExp, weight):
@@ -221,11 +216,26 @@ class CoaddInputRecorderTask(pipeBase.Task):
         base class impementation extracts the CoaddInputs from the coaddTempExp and appends
         them to the given coaddInputs, filling in the weight column(s).
 
-        Note that the passed coaddTempExp may be a subimage, but that this method will only be
-        called for the first subimage
+        Parameters
+        ----------
+        coaddInputs : `lsst.afw.Image.CoaddInputs`
+            A record of the observations that are included in the coadd.
+        coaddTempExp : `lsst.afw.image.Exposure`
+            Exposure object from which to obtain the PSF, WCS, and bounding
+            box for the entry in the 'visits' table.  On return, the completed
+            CoaddInputs object will be attached to it.
+        weight : `Unknown`
 
-        Returns the record for the visit to allow subclasses to fill in additional fields.
-        Warns and returns None if the inputRecorder catalogs for the coaddTempExp are not usable.
+        Returns
+        -------
+        inputVisitRecord : `Unknown`
+            The record for the visit to allow subclasses to fill in additional fields or
+            None if the inputRecorder catalogs for the coaddTempExp are not usable.
+
+        Notes
+        -----
+        Note that the passed coaddTempExp may be a subimage, but that this method will only be
+        called for the first subimage.
         """
         tempExpInputs = coaddTempExp.getInfo().getCoaddInputs()
         if len(tempExpInputs.visits) != 1:

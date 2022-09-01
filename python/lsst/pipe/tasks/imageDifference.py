@@ -168,8 +168,9 @@ class ImageDifferenceTaskConnections(pipeBase.PipelineTaskConnections,
 
 class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
                             pipelineConnections=ImageDifferenceTaskConnections):
-    """Config for ImageDifferenceTask
+    """Config for ImageDifferenceTask.
     """
+
     doAddCalexpBackground = pexConfig.Field(dtype=bool, default=False,
                                             doc="Add background to calexp before processing it.  "
                                                 "Useful as ipDiffim does background matching.")
@@ -440,19 +441,19 @@ class ImageDifferenceConfig(pipeBase.PipelineTaskConfig,
             " and lsst.ip.diffim.detectAndMeasure. Will be removed after v25.",
             version="v24.0", category=FutureWarning)
 class ImageDifferenceTask(pipeBase.PipelineTask):
-    """Subtract an image from a template and measure the result
+    """Subtract an image from a template and measure the result.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler` or `None`, optional
+        Butler object to use in constructing reference object loaders.
+    **kwargs
+        Additional keyword arguments.
     """
     ConfigClass = ImageDifferenceConfig
     _DefaultName = "imageDifference"
 
     def __init__(self, butler=None, **kwargs):
-        """!Construct an ImageDifference Task
-
-        Parameters
-        ----------
-        butler : `Unknown`
-            Butler object to use in constructing reference object loaders
-        """
         super().__init__(**kwargs)
         self.makeSubtask("getTemplate")
 
@@ -523,20 +524,21 @@ class ImageDifferenceTask(pipeBase.PipelineTask):
         Parameters
         ----------
         expId : `int`
-            Exposure id.
+            Exposure ID.
 
-        expBits: `int`
+        expBits : `int`
             Number of used bits in ``expId``.
+
+        Returns
+        -------
+        idFactory : `lsst.afw.table.IdFactory`
+            Generator object to assign ids to detected sources in the difference image.
 
         Notes
         -----
         The diasource id-s consists of the ``expId`` stored fixed in the highest value
         ``expBits`` of the 64-bit integer plus (bitwise or) a generated sequence number in the
         low value end of the integer.
-
-        Returns
-        -------
-        idFactory: `lsst.afw.table.IdFactory`
         """
         return ExposureIdInfo(expId, expBits).makeSourceIdFactory()
 
@@ -638,7 +640,7 @@ class ImageDifferenceTask(pipeBase.PipelineTask):
             Generator object to assign ids to detected sources in the difference image.
         calexpBackgroundExposure : `lsst.afw.image.ExposureF`, optional
             Background exposure to be added back to the science exposure
-            if ``config.doAddCalexpBackground==True``
+            if ``config.doAddCalexpBackground==True``.
         subtractedExposure : `lsst.afw.image.ExposureF`, optional
             If ``config.doSubtract==False`` and ``config.doDetection==True``,
             performs the post subtraction source detection only on this exposure.
@@ -647,18 +649,20 @@ class ImageDifferenceTask(pipeBase.PipelineTask):
         Returns
         -------
         results : `lsst.pipe.base.Struct`
-            ``subtractedExposure`` : `lsst.afw.image.ExposureF`
-                Difference image.
-            ``scoreExposure`` : `lsst.afw.image.ExposureF` or `None`
-                The zogy score exposure, if calculated.
-            ``matchedExposure`` : `lsst.afw.image.ExposureF`
-                The matched PSF exposure.
-            ``subtractRes`` : `lsst.pipe.base.Struct`
-                The returned result structure of the ImagePsfMatchTask subtask.
-            ``diaSources``  : `lsst.afw.table.SourceCatalog`
-                The catalog of detected sources.
-            ``selectSources`` : `lsst.afw.table.SourceCatalog`
-                The input source catalog with optionally added Qa information.
+            Results as a struct with attributes:
+
+            ``subtractedExposure``
+                Difference image (`lsst.afw.image.ExposureF`).
+            ``scoreExposure``
+                The zogy score exposure, if calculated (`lsst.afw.image.ExposureF` or `None`).
+            ``matchedExposure``
+                The matched PSF exposure (`lsst.afw.image.ExposureF`).
+            ``subtractRes``
+                The returned result structure of the ImagePsfMatchTask subtask (`lsst.pipe.base.Struct`).
+            ``diaSources``
+                The catalog of detected sources (`lsst.afw.table.SourceCatalog`).
+            ``selectSources``
+                The input source catalog with optionally added Qa information (`lsst.afw.table.SourceCatalog`).
 
         Notes
         -----
@@ -1158,6 +1162,19 @@ class ImageDifferenceTask(pipeBase.PipelineTask):
     def runDebug(self, exposure, subtractRes, selectSources, kernelSources, diaSources):
         """Make debug plots and displays.
 
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.exposure.Exposure`
+            Input exposure.
+        subtractRes : `lsst.pipe.base.Struct`
+            Returned result structure of the ImagePsfMatchTask subtask.
+        selectSources : `lsst.afw.table.SourceCatalog`
+            Input source catalog.
+        kernelSources : `lsst.afw.table.SourceCatalog`
+            unknown
+        diaSources : `lsst.afw.table.SourceCatalog`
+            The catalog of detected sources.
+
         Notes
         -----
         TODO: Test and update for current debug display and slot names.
@@ -1234,18 +1251,18 @@ class ImageDifferenceTask(pipeBase.PipelineTask):
             lsstDebug.frame += 1
 
     def checkTemplateIsSufficient(self, templateExposure):
-        """Raise NoWorkFound if template coverage < requiredTemplateFraction
+        """Raise NoWorkFound if template coverage < requiredTemplateFraction.
 
         Parameters
         ----------
         templateExposure : `lsst.afw.image.ExposureF`
-            The template exposure to check
+            The template exposure to check.
 
         Raises
         ------
         NoWorkFound
             Raised if fraction of good pixels, defined as not having NO_DATA
-            set, is less then the configured requiredTemplateFraction
+            set, is less then the configured requiredTemplateFraction.
         """
         # Count the number of pixels with the NO_DATA mask bit set
         # counting NaN pixels is insufficient because pixels without data are often intepolated over)

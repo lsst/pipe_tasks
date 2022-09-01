@@ -29,8 +29,9 @@ from lsst.utils.timer import timeMethod
 
 
 class MakeDiscreteSkyMapConfig(pexConfig.Config):
-    """Config for MakeDiscreteSkyMapTask
+    """Config for MakeDiscreteSkyMapTask.
     """
+
     coaddName = pexConfig.Field(
         doc="coadd name, e.g. deep, goodSeeing, chiSquared",
         dtype=str,
@@ -61,11 +62,12 @@ class MakeDiscreteSkyMapConfig(pexConfig.Config):
 
 
 class MakeDiscreteSkyMapTask(pipeBase.Task):
-    """!Make a DiscreteSkyMap in a repository, using the bounding box of a set of calexps.
+    """Make a DiscreteSkyMap in a repository, using the bounding box of a set of calexps.
 
     The command-line and run signatures and config are sufficiently different from MakeSkyMapTask
     that we don't inherit from it, but it is a replacement, so we use the same config/metadata names.
     """
+
     ConfigClass = MakeDiscreteSkyMapConfig
     _DefaultName = "makeDiscreteSkyMap"
 
@@ -75,14 +77,18 @@ class MakeDiscreteSkyMapTask(pipeBase.Task):
 
         Parameters
         ----------
-        wcs_bbox_tuple_list : iterable
-           A list of tuples with each element expected to be a (Wcs, Box2I) pair
-        oldSkyMap : `lsst.skymap.DiscreteSkyMap`, option
-           The SkyMap to extend if appending
+        wcs_bbox_tuple_list : `iterable`
+           A list of tuples with each element expected to be a (Wcs, Box2I) pair.
+        oldSkyMap : `lsst.skymap.DiscreteSkyMap`, optional
+           The SkyMap to extend if appending.
+
         Returns
         -------
-        struct : `lsst.pipe.base.Struct
-           The returned struct has one attribute, ``skyMap``, which holds the returned SkyMap
+        skyMap : `lsst.pipe.base.Struct`
+            Sky map returned as a struct with attributes:
+
+            ``skyMap``
+                The returned SkyMap (`lsst.skyMap.SkyMap`).
         """
         self.log.info("Extracting bounding boxes of %d images", len(wcs_bbox_tuple_list))
         points = []

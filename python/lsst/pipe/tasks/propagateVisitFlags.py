@@ -30,7 +30,8 @@ from deprecated.sphinx import deprecated
 
 
 class PropagateVisitFlagsConfig(Config):
-    """!Configuration for propagating flags to coadd"""
+    """Configuration for propagating flags to coadd."""
+
     flags = DictField(keytype=str, itemtype=float,
                       default={"calib_psf_candidate": 0.2, "calib_psf_used": 0.2, "calib_psf_reserved": 0.2,
                                "calib_astrometry_used": 0.2, "calib_photometry_used": 0.2,
@@ -52,85 +53,69 @@ class PropagateVisitFlagsConfig(Config):
 @deprecated(reason="This task has been replaced with PropagateSourceFlagsTask",
             version="v24.0", category=FutureWarning)
 class PropagateVisitFlagsTask(Task):
-    r"""!Task to propagate flags from single-frame measurements to coadd measurements
+    """Task to propagate flags from single-frame measurements to coadd measurements.
 
-\anchor PropagateVisitFlagsTask_
+    Parameters
+    ----------
+    schema : `lsst.afw.table.Schema`
+        The input schema for the reference source catalog, used to initialize
+        the output schema.
+    **kwargs
+        Additional keyword arguments.
 
-\brief Propagate flags from individual visit measurements to coadd measurements
+    Notes
+    -----
+    We want to be able to set a flag for sources on the coadds using flags
+    that were determined from the individual visits.  A common example is sources
+    that were used for PSF determination, since we do not do any PSF determination
+    on the coadd but use the individual visits.  This requires matching the coadd
+    source catalog to each of the catalogs from the inputs (see
+    PropagateVisitFlagsConfig.matchRadius), and thresholding on the number of
+    times a source is flagged on the input catalog.
 
-\section pipe_tasks_propagateVisitFlagsTask_Contents Contents
+    An important consideration in this is that the flagging of sources in the
+    individual visits can be somewhat stochastic, e.g., the same stars may not
+    always be used for PSF determination because the field of view moves slightly
+    between visits, or the seeing changed.  We there threshold on the relative
+    occurrence of the flag in the visits (see PropagateVisitFlagsConfig.flags).
+    Flagging a source that is always flagged in inputs corresponds to a threshold
+    of 1, while flagging a source that is flagged in any of the input corresponds
+    to a threshold of 0.  But neither of these extrema are really useful in
+    practise.
 
- - \ref pipe_tasks_propagateVisitFlagsTask_Description
- - \ref pipe_tasks_propagateVisitFlagsTask_Initialization
- - \ref pipe_tasks_propagateVisitFlagsTask_Config
- - \ref pipe_tasks_propagateVisitFlagsTask_Use
- - \ref pipe_tasks_propagateVisitFlagsTask_Example
+    Setting the threshold too high means that sources that are not consistently
+    flagged (e.g., due to chip gaps) will not have the flag propagated.  Setting
+    that threshold too low means that random sources which are falsely flagged in
+    the inputs will start to dominate.  If in doubt, we suggest making this
+    threshold relatively low, but not zero (e.g., 0.1 to 0.2 or so).  The more
+    confidence in the quality of the flagging, the lower the threshold can be.
+    The relative occurrence accounts for the edge of the field-of-view of the
+    camera, but does not include chip gaps, bad or saturated pixels, etc.
 
-\section pipe_tasks_propagateVisitFlagsTask_Description Description
+    Initialization
 
-\copybrief PropagateVisitFlagsTask
+    Beyond the usual Task initialization, PropagateVisitFlagsTask also requires
+    a schema for the catalog that is being constructed.
 
-We want to be able to set a flag for sources on the coadds using flags
-that were determined from the individual visits.  A common example is sources
-that were used for PSF determination, since we do not do any PSF determination
-on the coadd but use the individual visits.  This requires matching the coadd
-source catalog to each of the catalogs from the inputs (see
-PropagateVisitFlagsConfig.matchRadius), and thresholding on the number of
-times a source is flagged on the input catalog.
+    The 'run' method (described below) is the entry-point for operations.  The
+    'getCcdInputs' staticmethod is provided as a convenience for retrieving the
+    'ccdInputs' (CCD inputs table) from an Exposure.
 
-An important consideration in this is that the flagging of sources in the
-individual visits can be somewhat stochastic, e.g., the same stars may not
-always be used for PSF determination because the field of view moves slightly
-between visits, or the seeing changed.  We there threshold on the relative
-occurrence of the flag in the visits (see PropagateVisitFlagsConfig.flags).
-Flagging a source that is always flagged in inputs corresponds to a threshold
-of 1, while flagging a source that is flagged in any of the input corresponds
-to a threshold of 0.  But neither of these extrema are really useful in
-practise.
+    .. code-block :: none
 
-Setting the threshold too high means that sources that are not consistently
-flagged (e.g., due to chip gaps) will not have the flag propagated.  Setting
-that threshold too low means that random sources which are falsely flagged in
-the inputs will start to dominate.  If in doubt, we suggest making this
-threshold relatively low, but not zero (e.g., 0.1 to 0.2 or so).  The more
-confidence in the quality of the flagging, the lower the threshold can be.
+        # Requires:
+        # * butler: data butler, for retrieving the CCD catalogs
+        # * coaddCatalog: catalog of source measurements on the coadd (lsst.afw.table.SourceCatalog)
+        # * coaddExposure: coadd (lsst.afw.image.Exposure)
+        from lsst.pipe.tasks.propagateVisitFlags import PropagateVisitFlagsTask, PropagateVisitFlagsConfig
+        config = PropagateVisitFlagsConfig()
+        config.flags["calib_psf_used"] = 0.3 # Relative threshold for this flag
+        config.matchRadius = 0.5 # Matching radius in arcsec
+        task = PropagateVisitFlagsTask(coaddCatalog.schema, config=config)
+        ccdInputs = task.getCcdInputs(coaddExposure)
+        task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
+    """
 
-The relative occurrence accounts for the edge of the field-of-view of the
-camera, but does not include chip gaps, bad or saturated pixels, etc.
-
-\section pipe_tasks_propagateVisitFlagsTask_Initialization Initialization
-
-Beyond the usual Task initialization, PropagateVisitFlagsTask also requires
-a schema for the catalog that is being constructed.
-
-\section pipe_tasks_propagateVisitFlagsTask_Config Configuration parameters
-
-See \ref PropagateVisitFlagsConfig
-
-\section pipe_tasks_propagateVisitFlagsTask_Use Use
-
-The 'run' method (described below) is the entry-point for operations.  The
-'getCcdInputs' staticmethod is provided as a convenience for retrieving the
-'ccdInputs' (CCD inputs table) from an Exposure.
-
-\copydoc run
-
-\section pipe_tasks_propagateVisitFlagsTask_Example Example
-
-\code{.py}
-# Requires:
-# * butler: data butler, for retrieving the CCD catalogs
-# * coaddCatalog: catalog of source measurements on the coadd (lsst.afw.table.SourceCatalog)
-# * coaddExposure: coadd (lsst.afw.image.Exposure)
-from lsst.pipe.tasks.propagateVisitFlags import PropagateVisitFlagsTask, PropagateVisitFlagsConfig
-config = PropagateVisitFlagsConfig()
-config.flags["calib_psf_used"] = 0.3 # Relative threshold for this flag
-config.matchRadius = 0.5 # Matching radius in arcsec
-task = PropagateVisitFlagsTask(coaddCatalog.schema, config=config)
-ccdInputs = task.getCcdInputs(coaddExposure)
-task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
-\endcode
-"""
     ConfigClass = PropagateVisitFlagsConfig
 
     def __init__(self, schema, **kwargs):
@@ -141,11 +126,22 @@ task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
 
     @staticmethod
     def getCcdInputs(coaddExposure):
-        """!Convenience method to retrieve the CCD inputs table from a coadd exposure"""
+        """Convenience method to retrieve the CCD inputs table from a coadd exposure.
+
+        Parameters
+        ----------
+        coaddExposure : `lsst.afw.image.Exposure`
+            The exposure we need to retrieve the CCD inputs table from.
+
+        Returns
+        -------
+        ccdInputs : ``
+            CCD inputs table from a coadd exposure.
+        """
         return coaddExposure.getInfo().getCoaddInputs().ccds
 
     def run(self, butler, coaddSources, ccdInputs, coaddWcs, visitCatalogs=None, wcsUpdates=None):
-        """!Propagate flags from individual visit measurements to coadd
+        """Propagate flags from individual visit measurements to coadd.
 
         This requires matching the coadd source catalog to each of the catalogs
         from the inputs, and thresholding on the number of times a source is
@@ -168,30 +164,28 @@ task.run(butler, coaddCatalog, ccdInputs, coaddExposure.getWcs())
         Parameters
         ----------
         butler : `Unknown`
-            Data butler, for retrieving the input source catalogs
-        Parameters
-        ----------
-        coaddSources : `Unknown`
-            Source catalog from the coadd
-        Parameters
-        ----------
-        ccdInputs : `Unknown`
-            Table of CCDs that contribute to the coadd
-        Parameters
-        ----------
-        coaddWcs : `Unknown`
-            Wcs for coadd
-        Parameters
-        ----------
-        visitCatalogs : `Unknown`
+            Data butler, for retrieving the input source catalogs.
+        coaddSources : `lsst.afw.image.SourceCatalog`
+            Source catalog from the coadd.
+        ccdInputs : `lsst.afw.table.ExposureCatalog`
+            Table of CCDs that contribute to the coadd.
+        coaddWcs : `lsst.afw.geom.SkyWcs`
+            Wcs for coadd.
+        visitCatalogs : `list` of `lsst.afw.image.SourceCatalog`, optional
             List of loaded source catalogs for each input ccd in
-                                 the coadd. If provided this is used instead of this
-                                 method loading in the catalogs itself
-        Parameters
-        ----------
-        wcsUpdates : `Unknown`
-            optional, If visitCatalogs is a list of ccd catalogs, this
-                              should be a list of updated wcs to apply
+            the coadd. If provided this is used instead of this
+            method loading in the catalogs itself.
+        wcsUpdates : `list` of `lsst.afw.geom.SkyWcs`, optional
+            If visitCatalogs is a list of ccd catalogs, this
+            should be a list of updated wcs to apply.
+
+        Raises
+        ------
+        ValueError
+            Raised if any of the following occur:
+            - A list of wcs updates for each catalog is not supplied in the wcsUpdates parameter
+            and ccdInputs is a list of src catalogs.
+            - The visitCatalogs and ccdInput parameters are both `None`.
         """
         if len(self.config.flags) == 0:
             return

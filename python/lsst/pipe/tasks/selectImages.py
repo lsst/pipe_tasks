@@ -36,7 +36,8 @@ __all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "P
 
 
 class DatabaseSelectImagesConfig(pexConfig.Config):
-    """Base configuration for subclasses of BaseSelectImagesTask that use a database"""
+    """Base configuration for subclasses of BaseSelectImagesTask that use a database."""
+
     host = pexConfig.Field(
         doc="Database server host name",
         dtype=str,
@@ -57,54 +58,73 @@ class DatabaseSelectImagesConfig(pexConfig.Config):
 
 
 class BaseExposureInfo(pipeBase.Struct):
-    """Data about a selected exposure
+    """Data about a selected exposure.
+
+        Parameters
+        ----------
+        dataId : `dict` of dataId keys
+            Data ID of exposure.
+        coordList : `list` of `lsst.afw.geom.SpherePoint`
+            ICRS coordinates of the corners of the exposure
+            plus any others items that are desired.
     """
 
     def __init__(self, dataId, coordList):
-        """Create exposure information that can be used to generate data references
-
-        The object has the following fields:
-        - dataId: data ID of exposure (a dict)
-        - coordList: ICRS coordinates of the corners of the exposure (list of lsst.geom.SpherePoint)
-        plus any others items that are desired
-        """
         super(BaseExposureInfo, self).__init__(dataId=dataId, coordList=coordList)
 
 
 class BaseSelectImagesTask(pipeBase.Task):
-    """Base task for selecting images suitable for coaddition
+    """Base task for selecting images suitable for coaddition.
     """
+
     ConfigClass = pexConfig.Config
     _DefaultName = "selectImages"
 
     @timeMethod
     def run(self, coordList):
-        """Select images suitable for coaddition in a particular region
+        """Select images suitable for coaddition in a particular region.
 
         Parameters
         ----------
-        coordList : `Unknown`
-            list of coordinates defining region of interest; if None then select all images
-        subclasses may add additional keyword arguments, as required
+        coordList : `list` of `lsst.geom.SpherePoint` or `None`
+            List of coordinates defining region of interest; if None then select all images
+            subclasses may add additional keyword arguments, as required.
 
         Returns
         -------
-        Unknown: `Unknown`
-            a pipeBase Struct containing:
-        - exposureInfoList: a list of exposure information objects (subclasses of BaseExposureInfo),
-            which have at least the following fields:
-            - dataId: data ID dictionary
-            - coordList: ICRS coordinates of the corners of the exposure (list of lsst.geom.SpherePoint)
+        result : `pipeBase.Struct`
+            Results as a struct with attributes:
+
+            ``exposureInfoList``
+                A list of exposure information objects (subclasses of BaseExposureInfo),
+                which have at least the following fields:
+                - dataId: Data ID dictionary (`dict`).
+                - coordList: ICRS coordinates of the corners of the exposure. (`list` of `lsst.geom.SpherePoint`)
         """
         raise NotImplementedError()
 
 
 def _extractKeyValue(dataList, keys=None):
-    """Extract the keys and values from a list of dataIds
+    """Extract the keys and values from a list of dataIds.
 
     The input dataList is a list of objects that have 'dataId' members.
     This allows it to be used for both a list of data references and a
-    list of ExposureInfo
+    list of ExposureInfo.
+
+    Parameters
+    ----------
+    dataList : `Unknown`
+    keys : `Unknown`
+
+    Returns
+    -------
+    keys : `Unknown`
+    values : `Unknown`
+
+    Raises
+    ------
+    RuntimeError
+        Raised if DataId keys are inconsistent.
     """
     assert len(dataList) > 0
     if keys is None:
@@ -120,40 +140,54 @@ def _extractKeyValue(dataList, keys=None):
 
 
 class SelectStruct(pipeBase.Struct):
-    """A container for data to be passed to the WcsSelectImagesTask"""
+    """A container for data to be passed to the WcsSelectImagesTask.
+
+    Parameters
+    ----------
+    dataRef : `Unknown`
+        Data reference.
+    wcs : `lsst.afw.geom.SkyWcs`
+        Coordinate system definition (wcs).
+    bbox : `lsst.geom.box.Box2I`
+        Integer bounding box for image.
+    """
 
     def __init__(self, dataRef, wcs, bbox):
         super(SelectStruct, self).__init__(dataRef=dataRef, wcs=wcs, bbox=bbox)
 
 
 class WcsSelectImagesTask(BaseSelectImagesTask):
-    """Select images using their Wcs
+    """Select images using their Wcs.
 
-        We use the "convexHull" method of lsst.sphgeom.ConvexPolygon to define
-        polygons on the celestial sphere, and test the polygon of the
-        patch for overlap with the polygon of the image.
+    We use the "convexHull" method of lsst.sphgeom.ConvexPolygon to define
+    polygons on the celestial sphere, and test the polygon of the
+    patch for overlap with the polygon of the image.
 
-        We use "convexHull" instead of generating a ConvexPolygon
-        directly because the standard for the inputs to ConvexPolygon
-        are pretty high and we don't want to be responsible for reaching them.
-        """
+    We use "convexHull" instead of generating a ConvexPolygon
+    directly because the standard for the inputs to ConvexPolygon
+    are pretty high and we don't want to be responsible for reaching them.
+    """
 
     def run(self, wcsList, bboxList, coordList, dataIds=None, **kwargs):
-        """Return indices of provided lists that meet the selection criteria
+        """Return indices of provided lists that meet the selection criteria.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         wcsList : `list` of `lsst.afw.geom.SkyWcs`
-            specifying the WCS's of the input ccds to be selected
+            Specifying the WCS's of the input ccds to be selected.
         bboxList : `list` of `lsst.geom.Box2I`
-            specifying the bounding boxes of the input ccds to be selected
+            Specifying the bounding boxes of the input ccds to be selected.
         coordList : `list` of `lsst.geom.SpherePoint`
             ICRS coordinates specifying boundary of the patch.
+        dataIds : iterable of `lsst.daf.butler.dataId` or `None`, optional
+            An iterable object of dataIds which point to reference catalogs.
+        **kwargs
+            Additional keyword arguments.
 
-        Returns:
-        --------
-        result: `list` of `int`
-            of indices of selected ccds
+        Returns
+        -------
+        result : `list` of `int`
+            The indices of selected ccds.
         """
         if dataIds is None:
             dataIds = [None] * len(wcsList)
@@ -167,7 +201,15 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
         return result
 
     def getValidImageCorners(self, imageWcs, imageBox, patchPoly, dataId=None):
-        "Return corners or None if bad"
+        """Return corners or `None` if bad.
+
+        Parameters
+        ----------
+        imageWcs : `Unknown`
+        imageBox : `Unknown`
+        patchPoly : `Unknown`
+        dataId : `Unknown`
+        """
         try:
             imageCorners = [imageWcs.pixelToSky(pix) for pix in geom.Box2D(imageBox).getCorners()]
         except (pexExceptions.DomainError, pexExceptions.RuntimeError) as e:
@@ -214,39 +256,43 @@ class PsfWcsSelectImagesConfig(pipeBase.PipelineTaskConfig,
 
 
 class PsfWcsSelectImagesTask(WcsSelectImagesTask):
-    """Select images using their Wcs and cuts on the PSF properties
+    """Select images using their Wcs and cuts on the PSF properties.
 
         The PSF quality criteria are based on the size and ellipticity residuals from the
         adaptive second moments of the star and the PSF.
 
         The criteria are:
-          - the median of the ellipticty residuals
-          - the robust scatter of the size residuals (using the median absolute deviation)
+          - the median of the ellipticty residuals.
+          - the robust scatter of the size residuals (using the median absolute deviation).
           - the robust scatter of the size residuals scaled by the square of
-            the median size
+            the median size.
     """
 
     ConfigClass = PsfWcsSelectImagesConfig
     _DefaultName = "PsfWcsSelectImages"
 
     def run(self, wcsList, bboxList, coordList, visitSummary, dataIds=None, **kwargs):
-        """Return indices of provided lists that meet the selection criteria
+        """Return indices of provided lists that meet the selection criteria.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         wcsList : `list` of `lsst.afw.geom.SkyWcs`
-            specifying the WCS's of the input ccds to be selected
+            Specifying the WCS's of the input ccds to be selected.
         bboxList : `list` of `lsst.geom.Box2I`
-            specifying the bounding boxes of the input ccds to be selected
+            Specifying the bounding boxes of the input ccds to be selected.
         coordList : `list` of `lsst.geom.SpherePoint`
             ICRS coordinates specifying boundary of the patch.
         visitSummary : `list` of `lsst.afw.table.ExposureCatalog`
             containing the PSF shape information for the input ccds to be selected.
+        dataIds : iterable of `lsst.daf.butler.dataId` or `None`, optional
+            An iterable object of dataIds which point to reference catalogs.
+        **kwargs
+            Additional keyword arguments.
 
-        Returns:
-        --------
+        Returns
+        -------
         goodPsf: `list` of `int`
-            of indices of selected ccds
+            The indices of selected ccds.
         """
         goodWcs = super(PsfWcsSelectImagesTask, self).run(wcsList=wcsList, bboxList=bboxList,
                                                           coordList=coordList, dataIds=dataIds)
@@ -267,6 +313,7 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         Parameters
         ----------
         visitSummary : `lsst.afw.table.ExposureCatalog`
+            Exposure catalog with per-detector summary information.
         detectorId : `int`
             Detector identifier.
 
@@ -367,13 +414,14 @@ class BestSeeingSelectVisitsConfig(pipeBase.PipelineTaskConfig,
 
 
 class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
-    """Select up to a maximum number of the best-seeing visits
+    """Select up to a maximum number of the best-seeing visits.
 
     Don't exceed the FWHM range specified by configs min(max)PsfFwhm.
     This Task is a port of the Gen2 image-selector used in the AP pipeline:
     BestSeeingSelectImagesTask. This Task selects full visits based on the
     average PSF of the entire visit.
     """
+
     ConfigClass = BestSeeingSelectVisitsConfig
     _DefaultName = 'bestSeeingSelectVisits'
 
@@ -384,28 +432,28 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     def run(self, visitSummaries, skyMap, dataId):
-        """Run task
+        """Run task.
 
-        Parameters:
-        -----------
-        visitSummary : `list`
+        Parameters
+        ----------
+        visitSummary : `list` of `lsst.pipe.base.connections.DeferredDatasetRef`
             List of `lsst.pipe.base.connections.DeferredDatasetRef` of
-            visitSummary tables of type `lsst.afw.table.ExposureCatalog`
+            visitSummary tables of type `lsst.afw.table.ExposureCatalog`.
         skyMap : `lsst.skyMap.SkyMap`
-           SkyMap for checking visits overlap patch
+           SkyMap for checking visits overlap patch.
         dataId : `dict` of dataId keys
-            For retrieving patch info for checking visits overlap patch
+            For retrieving patch info for checking visits overlap patch.
 
         Returns
         -------
         result : `lsst.pipe.base.Struct`
-           Result struct with components:
+            Results as a struct with attributes:
 
-           - `goodVisits`: `dict` with selected visit ids as keys,
+            ``goodVisits``
+                A `dict` with selected visit ids as keys,
                 so that it can be be saved as a StructuredDataDict.
                 StructuredDataList's are currently limited.
         """
-
         if self.config.doConfirmOverlap:
             patchPolygon = self.makePatchPolygon(skyMap, dataId)
 
@@ -451,19 +499,19 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
         return pipeBase.Struct(goodVisits=goodVisits)
 
     def makePatchPolygon(self, skyMap, dataId):
-        """Return True if sky polygon overlaps visit
+        """Return True if sky polygon overlaps visit.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         skyMap : `lsst.afw.table.ExposureCatalog`
-            Exposure catalog with per-detector geometry
+            Exposure catalog with per-detector geometry.
         dataId : `dict` of dataId keys
-            For retrieving patch info
+            For retrieving patch info.
 
-        Returns:
-        --------
-        result  :` lsst.sphgeom.ConvexPolygon.convexHull`
-            Polygon of patch's outer bbox
+        Returns
+        -------
+        result : `lsst.sphgeom.ConvexPolygon.convexHull`
+            Polygon of patch's outer bbox.
         """
         wcs = skyMap[dataId['tract']].getWcs()
         bbox = skyMap[dataId['tract']][dataId['patch']].getOuterBBox()
@@ -472,19 +520,19 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
         return result
 
     def doesIntersectPolygon(self, visitSummary, polygon):
-        """Return True if sky polygon overlaps visit
+        """Return True if sky polygon overlaps visit.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         visitSummary : `lsst.afw.table.ExposureCatalog`
-            Exposure catalog with per-detector geometry
+            Exposure catalog with per-detector geometry.
         polygon :` lsst.sphgeom.ConvexPolygon.convexHull`
-            Polygon to check overlap
+            Polygon to check overlap.
 
-        Returns:
-        --------
-        doesIntersect: `bool`
-            Does the visit overlap the polygon
+        Returns
+        -------
+        doesIntersect : `bool`
+            True if the visit overlaps the polygon.
         """
         doesIntersect = False
         for detectorSummary in visitSummary:
@@ -542,7 +590,7 @@ class BestSeeingQuantileSelectVisitsConfig(pipeBase.PipelineTaskConfig,
 
 
 class BestSeeingQuantileSelectVisitsTask(BestSeeingSelectVisitsTask):
-    """Select a quantile of the best-seeing visits
+    """Select a quantile of the best-seeing visits.
 
     Selects the best (for example, third) full visits based on the average
     PSF width in the entire visit. It can also be used for difference imaging

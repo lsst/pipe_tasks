@@ -38,7 +38,7 @@ from .repair import RepairTask
 
 
 class InitialPsfConfig(pexConfig.Config):
-    """!Describes the initial PSF used for detection and measurement before we do PSF determination."""
+    """Describes the initial PSF used for detection and measurement before we do PSF determination."""
 
     model = pexConfig.ChoiceField(
         dtype=str,
@@ -134,35 +134,26 @@ class SnapCombineConfig(pexConfig.Config):
 
 
 class SnapCombineTask(pipeBase.Task):
-    r"""!
-    \anchor SnapCombineTask_
+    """The lsst.pipe.base.cmdLineTask.CmdLineTask command line task interface supports a
+    flag -d to import debug.py from your PYTHONPATH; see
+    "http://lsst-web.ncsa.illinois.edu/~buildbot/doxygen/x_masterDoxyDoc/base_debug.html"
+    Using lsstDebug to control debugging output for more about debug.py files.
 
-    \brief Combine snaps.
-
-    \section pipe_tasks_snapcombine_Contents Contents
-
-     - \ref pipe_tasks_snapcombine_Debug
-
-    \section pipe_tasks_snapcombine_Debug Debug variables
-
-    The command line task interface supports a
-    flag \c -d to import \b debug.py from your \c PYTHONPATH; see <a
-    href="https://developer.lsst.io/stack/debug.html">Debugging Tasks with lsstDebug</a> for more
-    about \b debug.py files.
-
+    Notes
+    -----
     The available variables in SnapCombineTask are:
-    <DL>
-      <DT> \c display
-      <DD> A dictionary containing debug point names as keys with frame number as value. Valid keys are:
-        <DL>
-          <DT> repair0
-          <DD> Display the first snap after repairing.
-          <DT> repair1
-          <DD> Display the second snap after repairing.
-        </DL>
-      </DD>
-    </DL>
+
+    display
+    A dictionary containing debug point names as keys with frame number as value. Valid keys are:
+
+    .. code-block:: none
+
+        repair0
+        Display the first snap after repairing.
+        repair1
+        Display the second snap after repairing.
     """
+
     ConfigClass = SnapCombineConfig
     _DefaultName = "snapCombine"
 
@@ -178,23 +169,26 @@ class SnapCombineTask(pipeBase.Task):
 
     @timeMethod
     def run(self, snap0, snap1, defects=None):
-        """Combine two snaps
+        """Combine two snaps.
 
         Parameters
         ----------
         snap0 : `Unknown`
-            snapshot exposure 0
-        Parameters
-        ----------
+            Snapshot exposure 0.
         snap1 : `Unknown`
-            snapshot exposure 1
-        @defects[in] defect list (for repair task)
+            Snapshot exposure 1.
+        defects : `list` or `None`, optional
+            Defect list (for repair task).
+
         Returns
         -------
-        Unknown: `Unknown`
-            a pipe_base Struct with fields:
-        - exposure: snap-combined exposure
-        - sources: detected sources, or None if detection not performed
+        result : `lsst.pipe.base.Struct`
+            Results as a struct with attributes:
+
+            ``exposure``
+                Snap-combined exposure.
+            ``sources``
+                Detected sources, or `None` if detection not performed.
         """
         # initialize optional outputs
         sources = None
@@ -257,20 +251,19 @@ class SnapCombineTask(pipeBase.Task):
         )
 
     def addSnaps(self, snap0, snap1):
-        """Add two snap exposures together, returning a new exposure
+        """Add two snap exposures together, returning a new exposure.
 
         Parameters
         ----------
         snap0 : `Unknown`
-            snap exposure 0
-        Parameters
-        ----------
+            Snap exposure 0.
         snap1 : `Unknown`
-            snap exposure 1
+            Snap exposure 1.
+
         Returns
         -------
-        Unknown: `Unknown`
-            combined exposure
+        combinedExp : `Unknown`
+            Combined exposure.
         """
         self.log.info("snapCombine addSnaps")
 
@@ -301,7 +294,7 @@ class SnapCombineTask(pipeBase.Task):
         return combinedExp
 
     def fixMetadata(self, combinedMetadata, metadata0, metadata1):
-        """Fix the metadata of the combined exposure (in place)
+        """Fix the metadata of the combined exposure (in place).
 
         This implementation handles items specified by config.averageKeys and config.sumKeys,
         which have data type restrictions. To handle other data types (such as sexagesimal
@@ -309,19 +302,17 @@ class SnapCombineTask(pipeBase.Task):
 
         Parameters
         ----------
-        combinedMetadata : `Unknown`
-            metadata of combined exposure;
-            on input this is a deep copy of metadata0 (a PropertySet)
-        Parameters
-        ----------
-        metadata0 : `Unknown`
-            metadata of snap0 (a PropertySet)
-        Parameters
-        ----------
-        metadata1 : `Unknown`
-            metadata of snap1 (a PropertySet)
+        combinedMetadata : `lsst.daf.base.PropertySet`
+            Metadata of combined exposure;
+            on input this is a deep copy of metadata0 (a PropertySet).
+        metadata0 : `lsst.daf.base.PropertySet`
+            Metadata of snap0 (a PropertySet).
+        metadata1 : `lsst.daf.base.PropertySet`
+            Metadata of snap1 (a PropertySet).
 
-        @note the inputs are presently PropertySets due to ticket #2542. However, in some sense
+        Notes
+        -----
+        The inputs are presently PropertySets due to ticket #2542. However, in some sense
         they are just PropertyLists that are missing some methods. In particular: comments and order
         are preserved if you alter an existing value with set(key, value).
         """
@@ -351,13 +342,20 @@ class SnapCombineTask(pipeBase.Task):
             combinedMetadata.set(key, combinedVal)
 
     def makeInitialPsf(self, exposure, fwhmPix=None):
-        """Initialise the detection procedure by setting the PSF and WCS
+        """Initialise the detection procedure by setting the PSF and WCS.
 
-        @param exposure Exposure to process
+        exposure : `lsst.afw.image.Exposure`
+            Exposure to process.
+
         Returns
         -------
-        Unknown: `Unknown`
+        psf : `Unknown`
             PSF, WCS
+
+        AssertionError
+            Raised if any of the following occur:
+            - No exposure provided.
+            - No wcs in exposure.
         """
         assert exposure, "No exposure provided"
         wcs = exposure.getWcs()

@@ -185,6 +185,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
 class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
                      pipelineConnections=MakeWarpConnections):
     """Config for MakeWarpTask."""
+
     warpAndPsfMatch = pexConfig.ConfigurableField(
         target=WarpAndPsfMatchTask,
         doc="Task to warp and PSF-match calexp",
@@ -251,8 +252,9 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
 
 
 class MakeWarpTask(CoaddBaseTask):
-    """Warp and optionally PSF-Match calexps onto an a common projection
+    """Warp and optionally PSF-Match calexps onto an a common projection.
     """
+
     ConfigClass = MakeWarpConfig
     _DefaultName = "makeWarp"
 
@@ -266,10 +268,25 @@ class MakeWarpTask(CoaddBaseTask):
 
     @utils.inheritDoc(pipeBase.PipelineTask)
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        """
+        """Method to do butler IO and or transforms to provide in memory objects for tasks run method.
+
+        Parameters
+        ----------
+        butlerQC : `lsst.pipe.base.butlerQuantumContext.ButlerQuantumContext`
+            A butler which is specialized to operate in the context of a ``lsst.daf.butler.Quantum``.
+        inputRefs : `lsst.pipe.base.connections.InputQuantizedConnection`
+            Datastructure whose attribute names are the names that identify connections defined in
+            corresponding ``PipelineTaskConnections`` class. The values of these attributes are the
+            ``lsst.daf.butler.DatasetRef`` objects associated with the defined input/prerequisite
+            connections.
+        outputRefs : `lsst.pipe.base.connections.OutputQuantizedConnection`
+            Datastructure whose attribute names are the names that identify connections defined in
+            corresponding ``PipelineTaskConnections`` class. The values of these attributes are the
+            ``lsst.daf.butler.DatasetRef`` objects associated with the defined output connections.
+
         Notes
         ----
-        Construct warps for requested warp type for single epoch
+        Construct warps for requested warp type for single epoch.
         """
         # Obtain the list of input detectors from calExpList.  Sort them by
         # detector order (to ensure reproducibility).  Then ensure all input
@@ -345,7 +362,7 @@ class MakeWarpTask(CoaddBaseTask):
 
     @timeMethod
     def run(self, calExpList, ccdIdList, skyInfo, visitId=0, dataIdList=None, **kwargs):
-        """Create a Warp from inputs
+        """Create a Warp from inputs.
 
         We iterate over the multiple calexps in a single exposure to construct
         the warp (previously called a coaddTempExp) of that exposure to the
@@ -355,19 +372,25 @@ class MakeWarpTask(CoaddBaseTask):
         (violates LSST algorithms group policy), but will be fixed up by
         interpolating after the coaddition.
 
-        @param calexpRefList: List of data references for calexps that (may)
-            overlap the patch of interest
-        @param skyInfo: Struct from CoaddBaseTask.getSkyInfo() with geometric
-            information about the patch
-        @param visitId: integer identifier for visit, for the table that will
-            produce the CoaddPsf
+        calexpRefList : `list`
+            List of data references for calexps that (may)
+            overlap the patch of interest.
+        skyInfo : `lsst.pipe.base.Struct`
+            Struct from CoaddBaseTask.getSkyInfo() with geometric
+            information about the patch.
+        visitId : `int`
+            Integer identifier for visit, for the table that will
+            produce the CoaddPsf.
+
         Returns
         -------
-        Unknown: `Unknown`
-            a pipeBase Struct containing:
-          - exposures: a dictionary containing the warps requested:
-                "direct": direct warp if config.makeDirect
-                "psfMatched": PSF-matched warp if config.makePsfMatched
+        result : `lsst.pipe.base.Struct`
+            Results as a struct with attributes:
+
+            ``exposures``
+                A dictionary containing the warps requested:
+                "direct": direct warp if ``config.makeDirect``
+                "psfMatched": PSF-matched warp if ``config.makePsfMatched`` (`dict`).
         """
         warpTypeList = self.getWarpTypeList()
 
@@ -448,12 +471,18 @@ class MakeWarpTask(CoaddBaseTask):
         return result
 
     def filterInputs(self, indices, inputs):
-        """Return task inputs with their lists filtered by indices
+        """Filter task inputs by their indices.
 
         Parameters
         ----------
-        indices : `list` of integers
-        inputs : `dict` of `list` of input connections to be passed to run
+        indices : `list` of `int`
+        inputs : `dict` of `list`
+            A dictionary of input connections to be passed to run.
+
+        Returns
+        -------
+        inputs : `dict` of `list`
+            Task inputs with their lists filtered by indices.
         """
         for key in inputs.keys():
             # Only down-select on list inputs
@@ -465,16 +494,16 @@ class MakeWarpTask(CoaddBaseTask):
                                    externalSkyWcsCatalog=None, externalPhotoCalibCatalog=None,
                                    finalizedPsfApCorrCatalog=None,
                                    **kwargs):
-        """Calibrate and add backgrounds to input calExpList in place
+        """Calibrate and add backgrounds to input calExpList in place.
 
         Parameters
         ----------
         calExpList : `list` of `lsst.afw.image.Exposure`
-            Sequence of calexps to be modified in place
+            Sequence of calexps to be modified in place.
         backgroundList : `list` of `lsst.afw.math.backgroundList`, optional
-            Sequence of backgrounds to be added back in if bgSubtracted=False
+            Sequence of backgrounds to be added back in if bgSubtracted=False.
         skyCorrList : `list` of `lsst.afw.math.backgroundList`, optional
-            Sequence of background corrections to be subtracted if doApplySkyCorr=True
+            Sequence of background corrections to be subtracted if doApplySkyCorr=True.
         externalSkyWcsCatalog : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with external skyWcs to be applied
             if config.doApplyExternalSkyWcs=True.  Catalog uses the detector id
@@ -487,11 +516,13 @@ class MakeWarpTask(CoaddBaseTask):
             Exposure catalog with finalized psf models and aperture correction
             maps to be applied if config.doApplyFinalizedPsf=True.  Catalog uses
             the detector id for the catalog id, sorted on id for fast lookup.
+        **kwargs
+            Additional keyword arguments.
 
         Returns
         -------
         indices : `list` [`int`]
-            Indices of calExpList and friends that have valid photoCalib/skyWcs
+            Indices of calExpList and friends that have valid photoCalib/skyWcs.
         """
         backgroundList = len(calExpList)*[None] if backgroundList is None else backgroundList
         skyCorrList = len(calExpList)*[None] if skyCorrList is None else skyCorrList
@@ -584,7 +615,19 @@ class MakeWarpTask(CoaddBaseTask):
 
     @staticmethod
     def _prepareEmptyExposure(skyInfo):
-        """Produce an empty exposure for a given patch"""
+        """Produce an empty exposure for a given patch.
+
+        Parameters
+        ----------
+        skyInfo : `lsst.pipe.base.Struct`
+            Struct from CoaddBaseTask.getSkyInfo() with geometric
+            information about the patch.
+
+        Returns
+        -------
+        exp : `lsst.afw.image.exposure.ExposureF`
+            An empty exposure for a given patch.
+        """
         exp = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
         exp.getMaskedImage().set(numpy.nan, afwImage.Mask
                                  .getPlaneBitMask("NO_DATA"), numpy.inf)
@@ -602,12 +645,13 @@ class MakeWarpTask(CoaddBaseTask):
 
 
 def reorderRefs(inputRefs, outputSortKeyOrder, dataIdKey):
-    """Reorder inputRefs per outputSortKeyOrder
+    """Reorder inputRefs per outputSortKeyOrder.
 
     Any inputRefs which are lists will be resorted per specified key e.g.,
     'detector.' Only iterables will be reordered, and values can be of type
     `lsst.pipe.base.connections.DeferredDatasetRef` or
     `lsst.daf.butler.core.datasets.ref.DatasetRef`.
+
     Returned lists of refs have the same length as the outputSortKeyOrder.
     If an outputSortKey not in the inputRef, then it will be padded with None.
     If an inputRef contains an inputSortKey that is not in the
@@ -617,13 +661,13 @@ def reorderRefs(inputRefs, outputSortKeyOrder, dataIdKey):
     ----------
     inputRefs : `lsst.pipe.base.connections.QuantizedConnection`
         Input references to be reordered and padded.
-    outputSortKeyOrder : iterable
-        Iterable of values to be compared with inputRef's dataId[dataIdKey]
-    dataIdKey :  `str`
-        dataIdKey in the dataRefs to compare with the outputSortKeyOrder.
+    outputSortKeyOrder : `iterable`
+        Iterable of values to be compared with inputRef's dataId[dataIdKey].
+    dataIdKey : `str`
+        The data ID key in the dataRefs to compare with the outputSortKeyOrder.
 
-    Returns:
-    --------
+    Returns
+    -------
     inputRefs: `lsst.pipe.base.connections.QuantizedConnection`
         Quantized Connection with sorted DatasetRef values sorted if iterable.
     """
