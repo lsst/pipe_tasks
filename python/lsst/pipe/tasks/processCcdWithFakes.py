@@ -312,16 +312,27 @@ class ProcessCcdWithFakesTask(PipelineTask):
             inputs['exposureIdInfo'] = ExposureIdInfo(expId, expBits)
 
         expWcs = inputs["exposure"].getWcs()
-        tractId = inputs["skyMap"].findTract(
-            expWcs.pixelToSky(inputs["exposure"].getBBox().getCenter())).tract_id
+        tractId = None
         if not self.config.doApplyExternalGlobalSkyWcs and not self.config.doApplyExternalTractSkyWcs:
-            inputs["wcs"] = expWcs
+            if expWcs is None:
+                self.log.info("No WCS for exposure %s so cannot insert fake sources.  Skipping detector.",
+                              butlerQC.quantum.dataId)
+                return None
+            else:
+                inputs["wcs"] = expWcs
         elif self.config.doApplyExternalGlobalSkyWcs:
             externalSkyWcsCatalog = inputs["externalSkyWcsGlobalCatalog"]
             row = externalSkyWcsCatalog.find(detectorId)
+            if row is None:
+                self.log.info("No %s external global sky WCS for exposure %s so cannot insert fake "
+                              "sources.  Skipping detector.", self.config.externalSkyWcsName,
+                              butlerQC.quantum.dataId)
+                return None
             inputs["wcs"] = row.getWcs()
         elif self.config.doApplyExternalTractSkyWcs:
             externalSkyWcsCatalogList = inputs["externalSkyWcsTractCatalog"]
+            if tractId is None:
+                tractId = externalSkyWcsCatalogList[0].dataId["tract"]
             externalSkyWcsCatalog = None
             for externalSkyWcsCatalogRef in externalSkyWcsCatalogList:
                 if externalSkyWcsCatalogRef.dataId["tract"] == tractId:
@@ -336,6 +347,11 @@ class ProcessCcdWithFakesTask(PipelineTask):
                 externalSkyWcsCatalog = externalSkyWcsCatalogList[-1].get(
                     datasetType=self.config.connections.externalSkyWcsTractCatalog)
             row = externalSkyWcsCatalog.find(detectorId)
+            if row is None:
+                self.log.info("No %s external tract sky WCS for exposure %s so cannot insert fake "
+                              "sources.  Skipping detector.", self.config.externalSkyWcsName,
+                              butlerQC.quantum.dataId)
+                return None
             inputs["wcs"] = row.getWcs()
 
         if not self.config.doApplyExternalGlobalPhotoCalib and not self.config.doApplyExternalTractPhotoCalib:
@@ -343,9 +359,16 @@ class ProcessCcdWithFakesTask(PipelineTask):
         elif self.config.doApplyExternalGlobalPhotoCalib:
             externalPhotoCalibCatalog = inputs["externalPhotoCalibGlobalCatalog"]
             row = externalPhotoCalibCatalog.find(detectorId)
+            if row is None:
+                self.log.info("No %s external global photoCalib for exposure %s so cannot insert fake "
+                              "sources.  Skipping detector.", self.config.externalPhotoCalibName,
+                              butlerQC.quantum.dataId)
+                return None
             inputs["photoCalib"] = row.getPhotoCalib()
         elif self.config.doApplyExternalTractPhotoCalib:
             externalPhotoCalibCatalogList = inputs["externalPhotoCalibTractCatalog"]
+            if tractId is None:
+                tractId = externalPhotoCalibCatalogList[0].dataId["tract"]
             externalPhotoCalibCatalog = None
             for externalPhotoCalibCatalogRef in externalPhotoCalibCatalogList:
                 if externalPhotoCalibCatalogRef.dataId["tract"] == tractId:
@@ -360,6 +383,11 @@ class ProcessCcdWithFakesTask(PipelineTask):
                 externalPhotoCalibCatalog = externalPhotoCalibCatalogList[-1].get(
                     datasetType=self.config.connections.externalPhotoCalibTractCatalog)
             row = externalPhotoCalibCatalog.find(detectorId)
+            if row is None:
+                self.log.info("No %s external tract photoCalib for exposure %s so cannot insert fake "
+                              "sources.  Skipping detector.", self.config.externalPhotoCalibName,
+                              butlerQC.quantum.dataId)
+                return None
             inputs["photoCalib"] = row.getPhotoCalib()
 
         outputs = self.run(**inputs)

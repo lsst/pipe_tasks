@@ -23,6 +23,7 @@ __all__ = ["CalibrateConfig", "CalibrateTask"]
 
 import math
 import warnings
+import numpy as np
 
 from lsstDebug import getDebugFrame
 import lsst.pex.config as pexConfig
@@ -498,12 +499,17 @@ class CalibrateTask(pipeBase.PipelineTask):
         outputs = self.run(**inputs)
 
         if self.config.doWriteMatches and self.config.doAstrometry:
-            normalizedMatches = afwTable.packMatches(outputs.astromMatches)
-            normalizedMatches.table.setMetadata(outputs.matchMeta)
-            if self.config.doWriteMatchesDenormalized:
-                denormMatches = denormalizeMatches(outputs.astromMatches, outputs.matchMeta)
-                outputs.matchesDenormalized = denormMatches
-            outputs.matches = normalizedMatches
+            if outputs.astromMatches is not None:
+                normalizedMatches = afwTable.packMatches(outputs.astromMatches)
+                normalizedMatches.table.setMetadata(outputs.matchMeta)
+                if self.config.doWriteMatchesDenormalized:
+                    denormMatches = denormalizeMatches(outputs.astromMatches, outputs.matchMeta)
+                    outputs.matchesDenormalized = denormMatches
+                outputs.matches = normalizedMatches
+            else:
+                del outputRefs.matches
+                if self.config.doWriteMatchesDenormalized:
+                    del outputRefs.matchesDenormalized
         butlerQC.put(outputs, outputRefs)
 
     @timeMethod
@@ -599,34 +605,47 @@ class CalibrateTask(pipeBase.PipelineTask):
         astromMatches = None
         matchMeta = None
         if self.config.doAstrometry:
-            try:
-                astromRes = self.astrometry.run(
-                    exposure=exposure,
-                    sourceCat=sourceCat,
-                )
-                astromMatches = astromRes.matches
-                matchMeta = astromRes.matchMeta
-            except Exception as e:
+            astromRes = self.astrometry.run(
+                exposure=exposure,
+                sourceCat=sourceCat,
+            )
+            astromMatches = astromRes.matches
+            matchMeta = astromRes.matchMeta
+            if exposure.getWcs() is None:
                 if self.config.requireAstrometry:
-                    raise
-                self.log.warning("Unable to perform astrometric calibration "
-                                 "(%s): attempting to proceed", e)
+                    raise RuntimeError(f"WCS fit failed for {exposureIdInfo.expId} and requireAstrometry "
+                                       "is True.")
+                else:
+                    self.log.warning("Unable to perform astrometric calibration for %r but "
+                                     "requireAstrometry is False: attempting to proceed...",
+                                     exposureIdInfo.expId)
 
         # compute photometric calibration
         if self.config.doPhotoCal:
-            try:
-                photoRes = self.photoCal.run(exposure, sourceCat=sourceCat, expId=exposureIdInfo.expId)
-                exposure.setPhotoCalib(photoRes.photoCalib)
-                # TODO: reword this to phrase it in terms of the calibration factor?
-                self.log.info("Photometric zero-point: %f",
-                              photoRes.photoCalib.instFluxToMagnitude(1.0))
-                self.setMetadata(exposure=exposure, photoRes=photoRes)
-            except Exception as e:
+            if np.all(np.isnan(sourceCat["coord_ra"])) or np.all(np.isnan(sourceCat["coord_dec"])):
                 if self.config.requirePhotoCal:
-                    raise
-                self.log.warning("Unable to perform photometric calibration "
-                                 "(%s): attempting to proceed", e)
+                    raise RuntimeError(f"Astrometry failed for {exposureIdInfo.expId}, so cannot do "
+                                       "photoCal, but requirePhotoCal is True.")
+                self.log.warning("Astrometry failed for %r, so cannot do photoCal. requirePhotoCal "
+                                 "is False, so skipping photometric calibration and setting photoCalib "
+                                 "to None.  Attempting to proceed...", exposureIdInfo.expId)
+                exposure.setPhotoCalib(None)
                 self.setMetadata(exposure=exposure, photoRes=None)
+            else:
+                try:
+                    photoRes = self.photoCal.run(exposure, sourceCat=sourceCat, expId=exposureIdInfo.expId)
+                    exposure.setPhotoCalib(photoRes.photoCalib)
+                    # TODO: reword this to phrase it in terms of the
+                    # calibration factor?
+                    self.log.info("Photometric zero-point: %f",
+                                  photoRes.photoCalib.instFluxToMagnitude(1.0))
+                    self.setMetadata(exposure=exposure, photoRes=photoRes)
+                except Exception as e:
+                    if self.config.requirePhotoCal:
+                        raise
+                    self.log.warning("Unable to perform photometric calibration "
+                                     "(%s): attempting to proceed", e)
+                    self.setMetadata(exposure=exposure, photoRes=None)
 
         self.postCalibrationMeasurement.run(
             measCat=sourceCat,

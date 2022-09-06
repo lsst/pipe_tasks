@@ -196,9 +196,12 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
         patchPoly = lsst.sphgeom.ConvexPolygon.convexHull(patchVertices)
         result = []
         for i, (imageWcs, imageBox, dataId) in enumerate(zip(wcsList, bboxList, dataIds)):
-            imageCorners = self.getValidImageCorners(imageWcs, imageBox, patchPoly, dataId)
-            if imageCorners:
-                result.append(i)
+            if imageWcs is None:
+                self.log.info("De-selecting exposure %s:  Exposure has no WCS.", dataId)
+            else:
+                imageCorners = self.getValidImageCorners(imageWcs, imageBox, patchPoly, dataId)
+                if imageCorners:
+                    result.append(i)
         return result
 
     def getValidImageCorners(self, imageWcs, imageBox, patchPoly, dataId=None):
@@ -469,9 +472,9 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
             mjd = visitSummary[0].getVisitInfo().getDate().get(system=DateTime.MJD)
 
             pixToArcseconds = [vs.getWcs().getPixelScale(vs.getBBox().getCenter()).asArcseconds()
-                               for vs in visitSummary]
+                               for vs in visitSummary if vs.getWcs()]
             # psfSigma is PSF model determinant radius at chip center in pixels
-            psfSigmas = np.array([vs['psfSigma'] for vs in visitSummary])
+            psfSigmas = np.array([vs['psfSigma'] for vs in visitSummary if vs.getWcs()])
             fwhm = np.nanmean(psfSigmas * pixToArcseconds) * np.sqrt(8.*np.log(2.))
 
             if self.config.maxPsfFwhm and fwhm > self.config.maxPsfFwhm:
@@ -537,12 +540,15 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
         """
         doesIntersect = False
         for detectorSummary in visitSummary:
-            corners = [lsst.geom.SpherePoint(ra, decl, units=lsst.geom.degrees).getVector() for (ra, decl) in
-                       zip(detectorSummary['raCorners'], detectorSummary['decCorners'])]
-            detectorPolygon = lsst.sphgeom.ConvexPolygon.convexHull(corners)
-            if detectorPolygon.intersects(polygon):
-                doesIntersect = True
-                break
+            if (np.all(np.isfinite(detectorSummary['raCorners']))
+                    and np.all(np.isfinite(detectorSummary['decCorners']))):
+                corners = [lsst.geom.SpherePoint(ra, decl, units=lsst.geom.degrees).getVector()
+                           for (ra, decl) in
+                           zip(detectorSummary['raCorners'], detectorSummary['decCorners'])]
+                detectorPolygon = lsst.sphgeom.ConvexPolygon.convexHull(corners)
+                if detectorPolygon.intersects(polygon):
+                    doesIntersect = True
+                    break
         return doesIntersect
 
 
