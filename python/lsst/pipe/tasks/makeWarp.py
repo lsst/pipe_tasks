@@ -21,6 +21,7 @@
 
 __all__ = ["MakeWarpTask", "MakeWarpConfig"]
 
+from deprecated.sphinx import deprecated
 import logging
 import numpy
 
@@ -31,6 +32,7 @@ import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as connectionTypes
 import lsst.utils as utils
 import lsst.geom
+from lsst.daf.butler import DeferredDatasetHandle
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
 from lsst.skymap import BaseSkyMap
 from lsst.utils.timer import timeMethod
@@ -349,20 +351,6 @@ class MakeWarpTask(CoaddBaseTask):
         # Construct list of packed integer IDs expected by `run`
         ccdIdList = [dataId.pack("visit_detector") for dataId in dataIdList]
 
-        # Run the selector and filter out calexps that were not selected
-        # primarily because they do not overlap the patch
-        cornerPosList = lsst.geom.Box2D(skyInfo.bbox).getCorners()
-        coordList = [skyInfo.wcs.pixelToSky(pos) for pos in cornerPosList]
-        goodIndices = self.select.run(**inputs, coordList=coordList, dataIds=dataIdList)
-        inputs = self.filterInputs(indices=goodIndices, inputs=inputs)
-
-        # Read from disk only the selected calexps
-        inputs['calExpList'] = [ref.get() for ref in inputs['calExpList']]
-
-        # Extract integer visitId requested by `run`
-        visits = [dataId['visit'] for dataId in dataIdList]
-        visitId = visits[0]
-
         if self.config.doApplyExternalSkyWcs:
             if self.config.useGlobalExternalSkyWcs:
                 externalSkyWcsCatalog = inputs.pop("externalSkyWcsGlobalCatalog")
@@ -384,12 +372,25 @@ class MakeWarpTask(CoaddBaseTask):
         else:
             finalizedPsfApCorrCatalog = None
 
-        completeIndices = self.prepareCalibratedExposures(**inputs,
-                                                          externalSkyWcsCatalog=externalSkyWcsCatalog,
-                                                          externalPhotoCalibCatalog=externalPhotoCalibCatalog,
-                                                          finalizedPsfApCorrCatalog=finalizedPsfApCorrCatalog)
-        # Redo the input selection with inputs with complete wcs/photocalib info.
+        # Do an initial selection on inputs with complete wcs/photoCalib info.
+        # Qualifying calexps will be read in the following call.
+        completeIndices = self._prepareCalibratedExposures(
+            **inputs,
+            externalSkyWcsCatalog=externalSkyWcsCatalog,
+            externalPhotoCalibCatalog=externalPhotoCalibCatalog,
+            finalizedPsfApCorrCatalog=finalizedPsfApCorrCatalog)
         inputs = self.filterInputs(indices=completeIndices, inputs=inputs)
+
+        # Do another selection based on the configured selection task
+        # (using updated WCSs to determine patch overlap if an external
+        # calibration was applied).
+        cornerPosList = lsst.geom.Box2D(skyInfo.bbox).getCorners()
+        coordList = [skyInfo.wcs.pixelToSky(pos) for pos in cornerPosList]
+        goodIndices = self.select.run(**inputs, coordList=coordList, dataIds=dataIdList)
+        inputs = self.filterInputs(indices=goodIndices, inputs=inputs)
+
+        # Extract integer visitId requested by `run`
+        visitId = dataIdList[0]["visit"]
 
         results = self.run(**inputs, visitId=visitId,
                            ccdIdList=[ccdIdList[i] for i in goodIndices],
@@ -447,7 +448,12 @@ class MakeWarpTask(CoaddBaseTask):
         for calExpInd, (calExp, ccdId, dataId) in enumerate(zip(calExpList, ccdIdList, dataIdList)):
             self.log.info("Processing calexp %d of %d for this Warp: id=%s",
                           calExpInd+1, len(calExpList), dataId)
-
+            # TODO: The following conditional is only required for backwards
+            # compatibility with the deprecated prepareCalibratedExposures()
+            # method.  Can remove with its removal after the deprecation
+            # period.
+            if isinstance(calExp, DeferredDatasetHandle):
+                calExp = calExp.get()
             try:
                 warpedAndMatched = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf,
                                                             wcs=skyInfo.wcs, maxBBox=skyInfo.bbox,
@@ -530,32 +536,64 @@ class MakeWarpTask(CoaddBaseTask):
                 inputs[key] = [inputs[key][ind] for ind in indices]
         return inputs
 
+    @deprecated(reason="This method is deprecated in favor of its leading underscore version, "
+                "_prepareCalibratedfExposures().  Will be removed after v25.",
+                version="v25.0", category=FutureWarning)
     def prepareCalibratedExposures(self, calExpList, backgroundList=None, skyCorrList=None,
                                    externalSkyWcsCatalog=None, externalPhotoCalibCatalog=None,
                                    finalizedPsfApCorrCatalog=None,
                                    **kwargs):
+        """Deprecated function.
+
+        Please use _prepareCalibratedExposure(), which this delegates to and
+        noting its slightly updated API, instead.
+        """
+        # Read in all calexps.
+        calExpList = [ref.get() for ref in calExpList]
+        # Populate wcsList as required by new underscored version of function.
+        wcsList = [calexp.getWcs() for calexp in calExpList]
+
+        indices = self._prepareCalibratedExposures(calExpList=calExpList, wcsList=wcsList,
+                                                   backgroundList=backgroundList, skyCorrList=skyCorrList,
+                                                   externalSkyWcsCatalog=externalSkyWcsCatalog,
+                                                   externalPhotoCalibCatalog=externalPhotoCalibCatalog,
+                                                   finalizedPsfApCorrCatalog=finalizedPsfApCorrCatalog)
+        return indices
+
+    def _prepareCalibratedExposures(self, calExpList=[], wcsList=None, backgroundList=None, skyCorrList=None,
+                                    externalSkyWcsCatalog=None, externalPhotoCalibCatalog=None,
+                                    finalizedPsfApCorrCatalog=None, **kwargs):
         """Calibrate and add backgrounds to input calExpList in place.
 
         Parameters
         ----------
-        calExpList : `list` of `lsst.afw.image.Exposure`
+        calExpList : `list` of `lsst.afw.image.Exposure` or
+                     `lsst.daf.butler.DeferredDatasetHandle`
             Sequence of calexps to be modified in place.
+        wcsList : `list` of `lsst.afw.geom.SkyWcs`
+            The WCSs of the calexps in ``calExpList``.  When
+            ``externalSkyCatalog`` is `None`, these are used to determine if
+            the calexp should be included in the warp, namely checking that it
+            is not `None`.  If ``externalSkyCatalog`` is not `None`, this list
+            will be dynamically updated with the external sky WCS.
         backgroundList : `list` of `lsst.afw.math.backgroundList`, optional
             Sequence of backgrounds to be added back in if bgSubtracted=False.
         skyCorrList : `list` of `lsst.afw.math.backgroundList`, optional
-            Sequence of background corrections to be subtracted if doApplySkyCorr=True.
+            Sequence of background corrections to be subtracted if
+            doApplySkyCorr=True.
         externalSkyWcsCatalog : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with external skyWcs to be applied
             if config.doApplyExternalSkyWcs=True.  Catalog uses the detector id
             for the catalog id, sorted on id for fast lookup.
         externalPhotoCalibCatalog : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with external photoCalib to be applied
-            if config.doApplyExternalPhotoCalib=True.  Catalog uses the detector
-            id for the catalog id, sorted on id for fast lookup.
+            if config.doApplyExternalPhotoCalib=True.  Catalog uses the
+            detector id for the catalog id, sorted on id for fast lookup.
         finalizedPsfApCorrCatalog : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with finalized psf models and aperture correction
-            maps to be applied if config.doApplyFinalizedPsf=True.  Catalog uses
-            the detector id for the catalog id, sorted on id for fast lookup.
+            maps to be applied if config.doApplyFinalizedPsf=True.  Catalog
+            uses the detector id for the catalog id, sorted on id for fast
+            lookup.
         **kwargs
             Additional keyword arguments.
 
@@ -564,15 +602,25 @@ class MakeWarpTask(CoaddBaseTask):
         indices : `list` [`int`]
             Indices of calExpList and friends that have valid photoCalib/skyWcs.
         """
+        wcsList = len(calExpList)*[None] if wcsList is None else wcsList
         backgroundList = len(calExpList)*[None] if backgroundList is None else backgroundList
         skyCorrList = len(calExpList)*[None] if skyCorrList is None else skyCorrList
 
         includeCalibVar = self.config.includeCalibVar
 
         indices = []
-        for index, (calexp, background, skyCorr) in enumerate(zip(calExpList,
-                                                                  backgroundList,
-                                                                  skyCorrList)):
+        for index, (calexp, wcs, background, skyCorr) in enumerate(zip(calExpList,
+                                                                       wcsList,
+                                                                       backgroundList,
+                                                                       skyCorrList)):
+            if externalSkyWcsCatalog is None and wcs is None:
+                self.log.warning("Detector id %d for visit %d has None for skyWcs and will not be "
+                                 "used in the warp", calexp.dataId["detector"], calexp.dataId["visit"])
+                continue
+
+            if isinstance(calexp, DeferredDatasetHandle):
+                calexp = calexp.get()
+
             if not self.config.bgSubtracted:
                 calexp.maskedImage += background.getImage()
 
@@ -606,6 +654,7 @@ class MakeWarpTask(CoaddBaseTask):
                                      "and will not be used in the warp.", detectorId)
                     continue
                 skyWcs = row.getWcs()
+                wcsList[index] = skyWcs
                 if skyWcs is None:
                     self.log.warning("Detector id %s has None for skyWcs in externalSkyWcsCatalog "
                                      "and will not be used in the warp.", detectorId)
@@ -613,6 +662,7 @@ class MakeWarpTask(CoaddBaseTask):
                 calexp.setWcs(skyWcs)
             else:
                 skyWcs = calexp.getWcs()
+                wcsList[index] = skyWcs
                 if skyWcs is None:
                     self.log.warning("Detector id %s has None for skyWcs in the calexp "
                                      "and will not be used in the warp.", detectorId)
@@ -650,6 +700,7 @@ class MakeWarpTask(CoaddBaseTask):
                 calexp.maskedImage -= skyCorr.getImage()
 
             indices.append(index)
+            calExpList[index] = calexp
 
         return indices
 
