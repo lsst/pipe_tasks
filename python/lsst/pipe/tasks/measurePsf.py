@@ -57,13 +57,6 @@ class MeasurePsfConfig(pexConfig.Config):
                    f" must be >= psf candidate kernelSize={self.makePsfCandidates.kernelSize}.")
             raise pexConfig.FieldValidationError(MeasurePsfConfig.makePsfCandidates, self, msg)
 
-## @addtogroup LSST_task_documentation
-## @{
-## @page page_MeasurePsfTask MeasurePsfTask
-## @ref MeasurePsfTask_ "MeasurePsfTask"
-## @copybrief MeasurePsfTask
-## @}
-
 
 class MeasurePsfTask(pipeBase.Task):
     """A task that selects stars from a catalog of sources and uses those to measure the PSF.

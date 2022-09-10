@@ -57,13 +57,6 @@ class RepairConfig(pexConfig.Config):
         self.interp.fallbackValueType = "MEANCLIP"
         self.interp.negativeFallbackAllowed = True
 
-## @addtogroup LSST_task_documentation
-## @{
-## @page page_RepairTask RepairTask
-## @ref RepairTask_ "RepairTask"
-## @copybrief RepairTask
-## @}
-
 
 class RepairTask(pipeBase.Task):
     """This task operates on an lsst.afw.image.Exposure in place to interpolate over a set of

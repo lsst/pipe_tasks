@@ -43,13 +43,6 @@ class PropagateVisitFlagsConfig(Config):
     ccdName = Field(dtype=str, default='ccd', doc="Name of ccd to give to butler")
 
 
-## \addtogroup LSST_task_documentation
-## \{
-## \page page_PropagateVisitFlagsTask PropagateVisitFlagsTask
-## \ref PropagateVisitFlagsTask_ "PropagateVisitFlagsTask"
-## \copybrief PropagateVisitFlagsTask
-## \}
-
 @deprecated(reason="This task has been replaced with PropagateSourceFlagsTask",
             version="v24.0", category=FutureWarning)
 class PropagateVisitFlagsTask(Task):

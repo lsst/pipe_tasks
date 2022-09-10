@@ -64,7 +64,6 @@ class MergeMeasurementsConnections(PipelineTaskConnections,
 class MergeMeasurementsConfig(PipelineTaskConfig, pipelineConnections=MergeMeasurementsConnections):
     """Configuration parameters for the MergeMeasurementsTask.
     """
-    
     pseudoFilterList = pexConfig.ListField(
         dtype=str,
         default=["sky"],
@@ -111,15 +110,6 @@ class MergeMeasurementsConfig(PipelineTaskConfig, pipelineConnections=MergeMeasu
         super().validate()
         if len(self.priorityList) == 0:
             raise RuntimeError("No priority list provided")
-
-
-## @addtogroup LSST_task_documentation
-## @{
-## @page page_MergeMeasurementsTask MergeMeasurementsTask
-## @ref MergeMeasurementsTask_ "MergeMeasurementsTask"
-## @copybrief MergeMeasurementsTask
-## @}
-
 
 class MergeMeasurementsTask(pipeBase.PipelineTask):
     """Merge measurements from multiple bands.

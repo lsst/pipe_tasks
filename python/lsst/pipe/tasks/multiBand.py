@@ -133,13 +133,6 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
         self.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
         self.detection.doTempWideBackground = True  # Suppress large footprints that overwhelm the deblender
 
-## @addtogroup LSST_task_documentation
-## @{
-## @page page_DetectCoaddSourcesTask DetectCoaddSourcesTask
-## @ref DetectCoaddSourcesTask_ "DetectCoaddSourcesTask"
-## @copybrief DetectCoaddSourcesTask
-## @}
-
 
 class DetectCoaddSourcesTask(PipelineTask):
     """Detect sources on a coadd.
@@ -476,13 +469,6 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
         self.measurement.plugins['base_PixelFlags'].masksFpCenter = ['CLIPPED', 'SENSOR_EDGE',
                                                                      'INEXACT_PSF']
 
-
-## @addtogroup LSST_task_documentation
-## @{
-## @page page_MeasureMergedCoaddSourcesTask MeasureMergedCoaddSourcesTask
-## @ref MeasureMergedCoaddSourcesTask_ "MeasureMergedCoaddSourcesTask"
-## @copybrief MeasureMergedCoaddSourcesTask
-## @}
 
 class MeasureMergedCoaddSourcesTask(PipelineTask):
     """Deblend sources from main catalog in each coadd seperately and measure.

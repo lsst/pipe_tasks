@@ -117,13 +117,6 @@ class PhotoCalConfig(pexConf.Config):
         self.match.sourceSelection.doUnresolved = True
 
 
-## @addtogroup LSST_task_documentation
-## @{
-## @page page_photoCalTask PhotoCalTask
-## @ref PhotoCalTask_ "PhotoCalTask"
-##      Detect positive and negative sources on an exposure and return a new SourceCatalog.
-## @}
-
 class PhotoCalTask(pipeBase.Task):
     """Calculate an Exposure's zero-point given a set of flux measurements
     of stars matched to an input catalogue.

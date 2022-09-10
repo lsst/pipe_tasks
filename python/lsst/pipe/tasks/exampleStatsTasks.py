@@ -25,20 +25,6 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.utils.timer import timeMethod
 
-# The following block adds links to these tasks from the Task Documentation
-#  page.
-# This works even for task(s) that are not in lsst.pipe.tasks.
-## \addtogroup LSST_task_documentation
-## \{
-## \page page_exampleStatsTasks ExampleStatsTasks
-## \ref ExampleSigmaClippedStatsTask "ExampleSigmaClippedStatsTask"
-##      A simple example subtask that computes sigma-clipped statistics of an
-##      image
-## <br>
-## \ref ExampleSimpleStatsTask "ExampleSimpleStatsTask"
-##      A very simple example subtask that computes statistics of an image.
-## \}
-
 
 class ExampleSigmaClippedStatsConfig(pexConfig.Config):
     """Configuration for ExampleSigmaClippedStatsTask

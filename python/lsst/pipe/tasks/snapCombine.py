@@ -127,13 +127,6 @@ class SnapCombineConfig(pexConfig.Config):
         if self.detection.thresholdPolarity != "both":
             raise ValueError("detection.thresholdPolarity must be 'both' for SnapCombineTask")
 
-## \addtogroup LSST_task_documentation
-## \{
-## \page page_SnapCombineTask SnapCombineTask
-## \ref SnapCombineTask_ "SnapCombineTask"
-## \copybrief SnapCombineTask
-## \}
-
 
 class SnapCombineTask(pipeBase.Task):
     """The lsst.pipe.base.cmdLineTask.CmdLineTask command line task interface supports a
