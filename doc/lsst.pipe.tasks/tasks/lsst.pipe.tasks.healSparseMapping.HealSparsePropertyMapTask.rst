@@ -51,7 +51,7 @@ Retargetable subtasks
 
 .. lsst-task-config-subtasks:: lsst.pipe.tasks.healSparseMapping.HealSparsePropertyMapTask
 
-.. _lsst.pipe.tasks.healSparseMapping.HealSparsePropertyMapTask-fields:
+.. _lsst.pipe.tasks.healSparseMapping.HealSparsePropertyMapTask-config:
 
 Configuration fields
 ====================
