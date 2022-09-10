@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["ImageDifferenceConfig", "ImageDifferenceTask"]
+
 import math
 import random
 import numpy
@@ -50,7 +52,6 @@ from lsst.utils.timer import timeMethod
 
 from deprecated.sphinx import deprecated
 
-__all__ = ["ImageDifferenceConfig", "ImageDifferenceTask"]
 FwhmPerSigma = 2*math.sqrt(2*math.log(2))
 IqrToSigma = 0.741
 

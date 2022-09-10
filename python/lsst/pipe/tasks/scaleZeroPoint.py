@@ -19,14 +19,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["ImageScaler", "SpatialImageScaler", "ScaleZeroPointTask"]
+
 import numpy
 import lsst.geom as geom
 import lsst.afw.image as afwImage
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.selectImages import BaseSelectImagesTask
-
-__all__ = ["ImageScaler", "SpatialImageScaler", "ScaleZeroPointTask"]
 
 
 class ImageScaler:

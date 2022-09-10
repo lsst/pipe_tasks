@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["WarpAndPsfMatchTask"]
+
 import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
 import lsst.geom as geom
@@ -26,8 +28,6 @@ import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
 from lsst.ip.diffim import ModelPsfMatchTask
 from lsst.meas.algorithms import WarpedPsf
-
-__all__ = ["WarpAndPsfMatchTask"]
 
 
 class WarpAndPsfMatchConfig(pexConfig.Config):

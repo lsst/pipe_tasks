@@ -36,9 +36,6 @@ from .background import (SkyMeasurementTask, FocalPlaneBackground,
                          FocalPlaneBackgroundConfig, MaskObjectsTask)
 
 
-__all__ = ["SkyCorrectionConfig", "SkyCorrectionTask"]
-
-
 def reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):
     """Match the order of one list to another, padding if necessary
 

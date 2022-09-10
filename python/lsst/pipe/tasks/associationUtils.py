@@ -23,6 +23,9 @@
 http://github.com/LSSTDESC/dia_pipe and then translated to hpgeom.
 """
 
+__all__ = ["toIndex", "toRaDec", "eq2xyz", "eq2xyzVec", "convert_spherical",
+           "convert_spherical_array", "query_disc"]
+
 import hpgeom as hpg
 import numpy as np
 

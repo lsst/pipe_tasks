@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["MeasurePsfConfig", "MeasurePsfTask"]
+
 import lsst.afw.display as afwDisplay
 import lsst.afw.math as afwMath
 import lsst.meas.algorithms as measAlg

@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["InterpImageConfig", "InterpImageTask"]
+
 from contextlib import contextmanager
 import lsst.pex.config as pexConfig
 import lsst.geom
@@ -28,8 +30,6 @@ import lsst.ip.isr as ipIsr
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
 from lsst.utils.timer import timeMethod
-
-__all__ = ["InterpImageConfig", "InterpImageTask"]
 
 
 class InterpImageConfig(pexConfig.Config):

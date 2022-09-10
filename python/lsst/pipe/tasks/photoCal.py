@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["PhotoCalTask", "PhotoCalConfig"]
+
 import math
 import sys
 
@@ -34,8 +36,6 @@ import lsst.afw.display as afwDisplay
 from lsst.meas.algorithms import getRefFluxField, ReserveSourcesTask
 from lsst.utils.timer import timeMethod
 from .colorterms import ColortermLibrary
-
-__all__ = ["PhotoCalTask", "PhotoCalConfig"]
 
 
 class PhotoCalConfig(pexConf.Config):

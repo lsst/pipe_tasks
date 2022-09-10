@@ -19,14 +19,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ['Statistic', 'Count', 'Median', 'Percentile', 'StandardDeviation', 'SigmaIQR', 'SigmaMAD',
+           'Statistics']
+
 from abc import ABCMeta, abstractmethod
 from astropy.stats import mad_std
 from dataclasses import dataclass
 import numpy as np
 from scipy.stats import iqr
-
-__all__ = ['Statistic', 'Count', 'Median', 'Percentile', 'StandardDeviation', 'SigmaIQR', 'SigmaMAD',
-           'Statistics']
 
 
 class Statistic(metaclass=ABCMeta):

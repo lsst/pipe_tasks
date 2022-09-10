@@ -19,6 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["MergeDetectionsConfig", "MergeDetectionsTask"]
 
 import numpy as np
 from numpy.lib.recfunctions import rec_join

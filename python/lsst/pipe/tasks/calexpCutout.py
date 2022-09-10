@@ -19,12 +19,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ['CalexpCutoutTaskConfig', 'CalexpCutoutTask']
+
 import lsst.pipe.base as pipeBase
 import lsst.geom as geom
 from lsst.pex.config import Field
 from lsst.meas.algorithms import Stamp, Stamps
 
-__all__ = ['CalexpCutoutTaskConfig', 'CalexpCutoutTask']
 DETECTOR_DIMENSIONS = ('instrument', 'visit', 'detector')
 
 

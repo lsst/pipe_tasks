@@ -22,6 +22,7 @@
 """Simple association algorithm for DRP.
 Adapted from http://github.com/LSSTDESC/dia_pipe
 """
+__all__ = ["SimpleAssociationConfig", "SimpleAssociationTask"]
 
 import numpy as np
 import pandas as pd

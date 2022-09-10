@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["CoaddBaseTask", "getSkyInfo", "makeSkyInfo"]
+
 import lsst.pex.config as pexConfig
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
@@ -27,8 +29,6 @@ import lsst.meas.algorithms as measAlg
 from lsst.meas.algorithms import ScaleVarianceTask
 from .selectImages import PsfWcsSelectImagesTask
 from .coaddInputRecorder import CoaddInputRecorderTask
-
-__all__ = ["CoaddBaseTask", "getSkyInfo", "makeSkyInfo"]
 
 
 class CoaddBaseConfig(pexConfig.Config):

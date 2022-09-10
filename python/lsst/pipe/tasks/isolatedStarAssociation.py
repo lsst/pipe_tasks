@@ -19,6 +19,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ['IsolatedStarAssociationConnections',
+           'IsolatedStarAssociationConfig',
+           'IsolatedStarAssociationTask']
+
 import numpy as np
 import pandas as pd
 from smatch.matcher import Matcher
@@ -27,11 +31,6 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.skymap import BaseSkyMap
 from lsst.meas.algorithms.sourceSelector import sourceSelectorRegistry
-
-
-__all__ = ['IsolatedStarAssociationConnections',
-           'IsolatedStarAssociationConfig',
-           'IsolatedStarAssociationTask']
 
 
 class IsolatedStarAssociationConnections(pipeBase.PipelineTaskConnections,

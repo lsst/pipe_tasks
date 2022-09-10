@@ -19,14 +19,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import numpy as np
-import healsparse as hsp
-
-import lsst.pex.config as pexConfig
-import lsst.geom
-from lsst.afw.math import ChebyshevBoundedField, ChebyshevBoundedFieldControl
-
-
 __all__ = ["BasePropertyMapConfig", "PropertyMapRegistry", "register_property_map",
            "PropertyMapMap", "BasePropertyMap", "ExposureTimePropertyMap",
            "PsfSizePropertyMap", "PsfE1PropertyMap", "PsfE2PropertyMap",
@@ -34,6 +26,13 @@ __all__ = ["BasePropertyMapConfig", "PropertyMapRegistry", "register_property_ma
            "PsfMaglimPropertyMap", "SkyBackgroundPropertyMap", "SkyNoisePropertyMap",
            "DcrDraPropertyMap", "DcrDdecPropertyMap", "DcrE1PropertyMap",
            "DcrE2PropertyMap", "compute_approx_psf_size_and_shape"]
+
+import numpy as np
+import healsparse as hsp
+
+import lsst.pex.config as pexConfig
+import lsst.geom
+from lsst.afw.math import ChebyshevBoundedField, ChebyshevBoundedFieldControl
 
 
 class BasePropertyMapConfig(pexConfig.Config):

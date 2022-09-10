@@ -19,6 +19,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["MatchFakesTask",
+           "MatchFakesConfig",
+           "MatchVariableFakesConfig",
+           "MatchVariableFakesTask"]
+
 import astropy.units as u
 import numpy as np
 import pandas as pd
@@ -31,11 +36,6 @@ import lsst.pipe.base.connectionTypes as connTypes
 from lsst.skymap import BaseSkyMap
 
 from lsst.pipe.tasks.insertFakes import InsertFakesConfig
-
-__all__ = ["MatchFakesTask",
-           "MatchFakesConfig",
-           "MatchVariableFakesConfig",
-           "MatchVariableFakesTask"]
 
 
 class MatchFakesConnections(PipelineTaskConnections,

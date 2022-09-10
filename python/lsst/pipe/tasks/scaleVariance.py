@@ -19,11 +19,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["ScaleVarianceConfig", "ScaleVarianceTask"]
+
 from deprecated.sphinx import deprecated
 
 import lsst.meas.algorithms
-
-__all__ = ["ScaleVarianceConfig", "ScaleVarianceTask"]
 
 
 class ScaleVarianceConfig(lsst.meas.algorithms.ScaleVarianceConfig):

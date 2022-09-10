@@ -23,6 +23,9 @@
 PSF model.
 """
 
+__all__ = ["FocalPlaneRegionExtendedPsf", "ExtendedPsf", "StackBrightStarsConfig",
+           "StackBrightStarsTask", "MeasureExtendedPsfConfig", "MeasureExtendedPsfTask"]
+
 from dataclasses import dataclass
 from typing import List
 

@@ -19,6 +19,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "PsfWcsSelectImagesTask",
+           "DatabaseSelectImagesConfig", "BestSeeingSelectVisitsTask",
+           "BestSeeingQuantileSelectVisitsTask"]
+
 import numpy as np
 import lsst.sphgeom
 import lsst.utils as utils
@@ -29,10 +33,6 @@ import lsst.pipe.base as pipeBase
 from lsst.skymap import BaseSkyMap
 from lsst.daf.base import DateTime
 from lsst.utils.timer import timeMethod
-
-__all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "PsfWcsSelectImagesTask",
-           "DatabaseSelectImagesConfig", "BestSeeingSelectVisitsTask",
-           "BestSeeingQuantileSelectVisitsTask"]
 
 
 class DatabaseSelectImagesConfig(pexConfig.Config):

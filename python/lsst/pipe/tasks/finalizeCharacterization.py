@@ -21,6 +21,11 @@
 
 """Task to run a finalized image characterization, using additional data.
 """
+
+__all__ = ['FinalizeCharacterizationConnections',
+           'FinalizeCharacterizationConfig',
+           'FinalizeCharacterizationTask']
+
 import numpy as np
 import esutil
 import pandas as pd
@@ -36,10 +41,6 @@ from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask
 from lsst.meas.algorithms.sourceSelector import sourceSelectorRegistry
 
 from .reserveIsolatedStars import ReserveIsolatedStarsTask
-
-__all__ = ['FinalizeCharacterizationConnections',
-           'FinalizeCharacterizationConfig',
-           'FinalizeCharacterizationTask']
 
 
 class FinalizeCharacterizationConnections(pipeBase.PipelineTaskConnections,

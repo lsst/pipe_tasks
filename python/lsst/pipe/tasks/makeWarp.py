@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["MakeWarpTask", "MakeWarpConfig"]
+
 import logging
 import numpy
 
@@ -35,8 +37,6 @@ from lsst.utils.timer import timeMethod
 from .coaddBase import CoaddBaseTask, makeSkyInfo, reorderAndPadList
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from collections.abc import Iterable
-
-__all__ = ["MakeWarpTask", "MakeWarpConfig"]
 
 log = logging.getLogger(__name__)
 

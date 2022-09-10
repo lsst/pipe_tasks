@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["DcrAssembleCoaddConnections", "DcrAssembleCoaddTask", "DcrAssembleCoaddConfig"]
+
 from math import ceil
 import numpy as np
 from scipy import ndimage
@@ -39,8 +41,6 @@ from .assembleCoadd import (AssembleCoaddConnections,
                             CompareWarpAssembleCoaddTask)
 from .coaddBase import makeSkyInfo
 from .measurePsf import MeasurePsfTask
-
-__all__ = ["DcrAssembleCoaddConnections", "DcrAssembleCoaddTask", "DcrAssembleCoaddConfig"]
 
 
 class DcrAssembleCoaddConnections(AssembleCoaddConnections,

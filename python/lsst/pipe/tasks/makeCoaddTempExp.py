@@ -19,13 +19,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["MakeWarpTask", "MakeWarpConfig"]
 
 from .makeWarp import MakeWarpTask as NewMakeWarpTask
 from .makeWarp import MakeWarpConfig as NewMakeWarpConfig
 from deprecated.sphinx import deprecated
-
-
-__all__ = ["MakeWarpTask", "MakeWarpConfig"]
 
 
 @deprecated(

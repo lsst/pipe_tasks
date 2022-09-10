@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["CharacterizeImageConfig", "CharacterizeImageTask"]
+
 import numpy as np
 import warnings
 
@@ -43,8 +45,6 @@ from .repair import RepairTask
 from .computeExposureSummaryStats import ComputeExposureSummaryStatsTask
 from lsst.pex.exceptions import LengthError
 from lsst.utils.timer import timeMethod
-
-__all__ = ["CharacterizeImageConfig", "CharacterizeImageTask"]
 
 
 class CharacterizeImageConnections(pipeBase.PipelineTaskConnections,

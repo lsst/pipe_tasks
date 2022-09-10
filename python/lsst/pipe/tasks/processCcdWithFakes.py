@@ -22,6 +22,10 @@
 """
 Insert fake sources into calexps
 """
+
+__all__ = ["ProcessCcdWithFakesConfig", "ProcessCcdWithFakesTask",
+           "ProcessCcdWithVariableFakesConfig", "ProcessCcdWithVariableFakesTask"]
+
 import numpy as np
 import pandas as pd
 
@@ -36,9 +40,6 @@ import lsst.pipe.base.connectionTypes as cT
 import lsst.afw.table as afwTable
 from lsst.skymap import BaseSkyMap
 from lsst.pipe.tasks.calibrate import CalibrateTask
-
-__all__ = ["ProcessCcdWithFakesConfig", "ProcessCcdWithFakesTask",
-           "ProcessCcdWithVariableFakesConfig", "ProcessCcdWithVariableFakesTask"]
 
 
 class ProcessCcdWithFakesConnections(PipelineTaskConnections,

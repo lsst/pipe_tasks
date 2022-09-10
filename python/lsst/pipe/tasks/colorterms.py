@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["ColortermNotFoundError", "Colorterm", "ColortermDict", "ColortermLibrary"]
+
 import fnmatch
 import warnings
 
@@ -27,8 +29,6 @@ import astropy.units as u
 
 from lsst.afw.image import abMagErrFromFluxErr
 from lsst.pex.config import Config, Field, ConfigDictField
-
-__all__ = ["ColortermNotFoundError", "Colorterm", "ColortermDict", "ColortermLibrary"]
 
 
 class ColortermNotFoundError(LookupError):

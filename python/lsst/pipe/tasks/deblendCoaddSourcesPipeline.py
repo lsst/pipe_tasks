@@ -19,6 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["DeblendCoaddSourcesSingleConfig", "DeblendCoaddSourcesSingleTask",
+           "DeblendCoaddSourcesMultiConfig", "DeblendCoaddSourcesMultiTask"]
+
 import numpy as np
 
 from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
@@ -33,9 +36,6 @@ import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 
 from .makeWarp import reorderRefs
-
-__all__ = ("DeblendCoaddSourcesSingleConfig", "DeblendCoaddSourcesSingleTask",
-           "DeblendCoaddSourcesMultiConfig", "DeblendCoaddSourcesMultiTask")
 
 
 deblendBaseTemplates = {"inputCoaddName": "deep", "outputCoaddName": "deep"}

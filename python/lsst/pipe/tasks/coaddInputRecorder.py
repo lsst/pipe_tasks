@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["CoaddInputRecorderTask"]
+
 import numpy
 
 import lsst.pex.config as pexConfig
@@ -26,8 +28,6 @@ import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
 from lsst.meas.algorithms import CoaddPsf, makeCoaddApCorrMap
-
-__all__ = ["CoaddInputRecorderTask"]
 
 
 class CoaddInputRecorderConfig(pexConfig.Config):

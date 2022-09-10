@@ -24,6 +24,9 @@
 This task will load multi-band reference objects, apply a reference selector,
 and apply color terms.
 """
+
+__all__ = ['LoadReferenceCatalogConfig', 'LoadReferenceCatalogTask']
+
 import numpy as np
 from astropy import units
 
@@ -36,8 +39,6 @@ from lsst.afw.image import abMagErrFromFluxErr
 from lsst.meas.algorithms import ReferenceObjectLoader, LoadReferenceObjectsConfig
 
 import lsst.geom
-
-__all__ = ['LoadReferenceCatalogConfig', 'LoadReferenceCatalogTask']
 
 
 class LoadReferenceCatalogConfig(pexConfig.Config):

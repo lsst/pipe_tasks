@@ -22,6 +22,10 @@
 """Pipeline for running DiaSource association in a DRP context.
 """
 
+__all__ = ["DrpAssociationPipeTask",
+           "DrpAssociationPipeConfig",
+           "DrpAssociationPipeConnections"]
+
 import numpy as np
 import pandas as pd
 
@@ -32,10 +36,6 @@ from lsst.skymap import BaseSkyMap
 
 from .coaddBase import makeSkyInfo
 from .simpleAssociation import SimpleAssociationTask
-
-__all__ = ["DrpAssociationPipeTask",
-           "DrpAssociationPipeConfig",
-           "DrpAssociationPipeConnections"]
 
 
 class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,

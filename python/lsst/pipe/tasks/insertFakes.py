@@ -22,6 +22,9 @@
 """
 Insert fakes into deepCoadds
 """
+
+__all__ = ["InsertFakesConfig", "InsertFakesTask"]
+
 import galsim
 import numpy as np
 from astropy import units as u
@@ -36,8 +39,6 @@ from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnect
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.exceptions import LogicError, InvalidParameterError
 from lsst.geom import SpherePoint, radians, Box2D, Point2D
-
-__all__ = ["InsertFakesConfig", "InsertFakesTask"]
 
 
 def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):

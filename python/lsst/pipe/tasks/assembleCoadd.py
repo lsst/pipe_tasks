@@ -19,6 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["AssembleCoaddTask", "AssembleCoaddConnections", "AssembleCoaddConfig",
+           "CompareWarpAssembleCoaddTask", "CompareWarpAssembleCoaddConfig"]
+
 import copy
 import numpy
 import warnings
@@ -44,9 +47,6 @@ from .healSparseMapping import HealSparseInputMapTask
 from lsst.meas.algorithms import SourceDetectionTask, AccumulatorMeanStack, ScaleVarianceTask
 from lsst.utils.timer import timeMethod
 from deprecated.sphinx import deprecated
-
-__all__ = ["AssembleCoaddTask", "AssembleCoaddConnections", "AssembleCoaddConfig",
-           "CompareWarpAssembleCoaddTask", "CompareWarpAssembleCoaddConfig"]
 
 log = logging.getLogger(__name__)
 

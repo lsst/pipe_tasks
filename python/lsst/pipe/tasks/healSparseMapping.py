@@ -19,6 +19,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["HealSparseInputMapTask", "HealSparseInputMapConfig",
+           "HealSparseMapFormatter", "HealSparsePropertyMapConnections",
+           "HealSparsePropertyMapConfig", "HealSparsePropertyMapTask",
+           "ConsolidateHealSparsePropertyMapConnections",
+           "ConsolidateHealSparsePropertyMapConfig",
+           "ConsolidateHealSparsePropertyMapTask"]
+
 from collections import defaultdict
 import warnings
 import numbers
@@ -35,14 +42,6 @@ from lsst.skymap import BaseSkyMap
 from lsst.utils.timer import timeMethod
 from .healSparseMappingProperties import (BasePropertyMap, BasePropertyMapConfig,
                                           PropertyMapMap, compute_approx_psf_size_and_shape)
-
-
-__all__ = ["HealSparseInputMapTask", "HealSparseInputMapConfig",
-           "HealSparseMapFormatter", "HealSparsePropertyMapConnections",
-           "HealSparsePropertyMapConfig", "HealSparsePropertyMapTask",
-           "ConsolidateHealSparsePropertyMapConnections",
-           "ConsolidateHealSparsePropertyMapConfig",
-           "ConsolidateHealSparsePropertyMapTask"]
 
 
 class HealSparseMapFormatter(Formatter):
