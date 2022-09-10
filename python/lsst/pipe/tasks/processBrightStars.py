@@ -18,7 +18,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+
 """Extract small cutouts around bright stars, normalize and warp them to the
 same arbitrary pixel grid.
 """

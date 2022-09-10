@@ -1,5 +1,3 @@
-# See COPYRIGHT file at the top of the source tree.
-#
 # This file is part of pipe_tasks.
 #
 # Developed for the LSST Data Management System.
@@ -20,6 +18,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 """Load a full reference catalog in numpy/table/dataframe format.
 
 This task will load multi-band reference objects, apply a reference selector,
