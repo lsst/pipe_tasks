@@ -410,8 +410,11 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         """Perform one iteration of detect, measure, and estimate PSF.
 
         Performs the following operations:
+
         - if config.doMeasurePsf or not exposure.hasPsf():
+
             - install a simple PSF model (replacing the existing one, if need be)
+
         - interpolate over cosmic rays with keepCRs=True
         - estimate background and subtract it from the exposure
         - detect, deblend and measure sources, and subtract a refined background model;

@@ -1069,7 +1069,7 @@ class InsertFakesTask(PipelineTask):
                     Photometric calibration to be used to calibrate the fake sources
 
         Yields
-        -------
+        ------
         galImages : `generator`
                     A generator of tuples of `lsst.afw.image.exposure.exposure.ExposureF` and
                     `lsst.geom.Point2D` of their locations.
@@ -1147,7 +1147,7 @@ class InsertFakesTask(PipelineTask):
                     Photometric calibration to be used to calibrate the fake sources
 
         Yields
-        -------
+        ------
         starImages : `generator`
                     A generator of tuples of `lsst.afw.image.ImageF` of fake stars and
                     `lsst.geom.Point2D` of their locations.

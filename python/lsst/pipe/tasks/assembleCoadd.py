@@ -277,9 +277,10 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
     source calExps. We interpolate over these bad (NaN) pixels.
 
     `AssembleCoaddTask` uses several sub-tasks. These are
-    - `ScaleZeroPointTask`
+
+    - `~lsst.pipe.tasks.ScaleZeroPointTask`
     - create and use an ``imageScaler`` object to scale the photometric zeropoint for each Warp
-    - `InterpImageTask`
+    - `~lsst.pipe.tasks.InterpImageTask`
     - interpolate across bad pixels (NaN) in the final coadd
 
     You can retarget these subtasks if you wish.
@@ -333,7 +334,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
     obs_subaru and ``ci_hsc`` packages. This defines the environment variable
     ``$CI_HSC_DIR`` and points at the location of the package. The raw HSC
     data live in the ``$CI_HSC_DIR/raw directory``. To begin assembling the
-    coadds, we must first
+    coadds, we must first run:
 
     - processCcd
     - process the individual ccds in $CI_HSC_RAW to produce calibrated exposures
@@ -479,14 +480,14 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         Parameters
         ----------
-        butlerQC : `lsst.pipe.base.ButlerQuantumContext`
+        butlerQC : `~lsst.pipe.base.ButlerQuantumContext`
             Gen3 Butler object for fetching additional data products before
             running the Task specialized for quantum being processed.
-        inputRefs : `lsst.pipe.base.InputQuantizedConnection`
+        inputRefs : `~lsst.pipe.base.InputQuantizedConnection`
             Attributes are the names of the connections describing input dataset types.
             Values are DatasetRefs that task consumes for corresponding dataset type.
             DataIds are guaranteed to match data objects in ``inputData``.
-        outputRefs : `lsst.pipe.base.OutputQuantizedConnection`
+        outputRefs : `~lsst.pipe.base.OutputQuantizedConnection`
             Attributes are the names of the connections describing output dataset types.
             Values are DatasetRefs that task is to produce
             for corresponding dataset type.
@@ -516,7 +517,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         Returns
         -------
-        result : `lsst.pipe.base.Struct`
+        result : `~lsst.pipe.base.Struct`
             Results as a struct with attributes:
 
             ``tempExprefList``
@@ -582,13 +583,13 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         Returns
         -------
-        stats : `lsst.pipe.base.Struct`
+        stats : `~lsst.pipe.base.Struct`
             Statistics as a struct with attributes:
 
             ``statsCtrl``
-                Statistics control object for coadd (`lsst.afw.math.StatisticsControl`).
+                Statistics control object for coadd (`~lsst.afw.math.StatisticsControl`).
             ``statsFlags``
-                Statistic for coadd (`lsst.afw.math.Property`).
+                Statistic for coadd (`~lsst.afw.math.Property`).
         """
         if mask is None:
             mask = self.getBadPixelMask()
@@ -620,7 +621,7 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         Parameters
         ----------
-        skyInfo : `lsst.pipe.base.Struct`
+        skyInfo : `~lsst.pipe.base.Struct`
             Struct with geometric information about the patch.
         tempExpRefList : `list`
             List of data references to Warps (previously called CoaddTempExps).
@@ -633,14 +634,14 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             tempExp.
         mask : `int`, optional
             Bit mask value to exclude from coaddition.
-        supplementaryData : `lsst.pipe.base.Struct`, optional
+        supplementaryData : `~lsst.pipe.base.Struct`, optional
             Struct with additional data products needed to assemble coadd.
-            Only used by subclasses that implement `_makeSupplementaryData`
+            Only used by subclasses that implement ``_makeSupplementaryData``
             and override `run`.
 
         Returns
         -------
-        result : `lsst.pipe.base.Struct`
+        result : `~lsst.pipe.base.Struct`
             Results as a struct with attributes:
 
             ``coaddExposure``
@@ -1019,7 +1020,6 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
         ----------
         coaddInputs : `lsst.afw.image.coaddInputs`
             Original mask.
-
         """
         for ccd in coaddInputs.ccds:
             polyOrig = ccd.getValidPolygon()
@@ -1138,14 +1138,14 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         Parameters
         ----------
-        inputs : `list` of `lsst.pipe.base.connections.DeferredDatasetRef`
+        inputs : `list` of `~lsst.pipe.base.connections.DeferredDatasetRef`
             List of `lsst.pipe.base.connections.DeferredDatasetRef` with dataId containing visit.
         goodVisit : `dict`
             Dictionary with good visitIds as the keys. Value ignored.
 
         Returns
         -------
-        filteredInputs : `list` of `lsst.pipe.base.connections.DeferredDatasetRef`
+        filteredInputs : `list` of `~lsst.pipe.base.connections.DeferredDatasetRef`
             Filtered and sorted list of inputRefs with visitId in goodVisits ordered by goodVisit.
         """
         inputWarpDict = {inputRef.ref.dataId['visit']: inputRef for inputRef in inputs}
@@ -1426,7 +1426,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
         Returns
         -------
-        result : `lsst.pipe.base.Struct`
+        result : `~lsst.pipe.base.Struct`
             Results as a struct with attributes:
 
             ``templateCoadd``
@@ -1491,26 +1491,8 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
 
         Find artifacts and apply them to the warps' masks creating a list of
         alternative masks with a new "CLIPPED" plane and updated "NO_DATA"
-        plane. Then pass these alternative masks to the base class's `run`
+        plane. Then pass these alternative masks to the base class's ``run``
         method.
-
-        Parameters
-        ----------
-        skyInfo : `lsst.pipe.base.Struct`
-            Struct with geometric information about the patch.
-        tempExpRefList : `list`
-            List of data references to Warps (previously called CoaddTempExps).
-        imageScalerList : `list`
-            List of image scalers.
-        weightList : `list`
-            List of weights.
-        supplementaryData : `lsst.pipe.base.Struct`
-            A struct that must contain a ``templateCoadd`` that serves as the
-            model of the static sky.
-        *args
-            Additional positional arguments.
-        **kwargs
-            Additional keyword arguments.
         """
         # Check and match the order of the supplementaryData
         # (PSF-matched) inputs to the order of the direct inputs,

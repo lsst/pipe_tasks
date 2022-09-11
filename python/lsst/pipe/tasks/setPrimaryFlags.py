@@ -38,7 +38,7 @@ def getPatchInner(sources, patchInfo):
         Information about a `SkyMap` `Patch`.
 
     Returns
-    --------
+    -------
     isPatchInner : array-like of `bool`
         `True` for each source that has a centroid
         in the inner region of a patch.

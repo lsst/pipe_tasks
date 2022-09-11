@@ -622,50 +622,50 @@ class PostprocessAnalysis(object):
 
     This object manages and organizes an arbitrary set of computations
     on a catalog.  The catalog is defined by a
-    `lsst.pipe.tasks.parquetTable.ParquetTable` object (or list thereof), such
-     as a `deepCoadd_obj` dataset, and the computations are defined by a
+    `~lsst.pipe.tasks.parquetTable.ParquetTable` object (or list thereof), such
+     as a ``deepCoadd_obj`` dataset, and the computations are defined by a
     collection of `lsst.pipe.tasks.functor.Functor` objects (or, equivalently,
-    a `CompositeFunctor`).
+    a ``CompositeFunctor``).
 
-    After the object is initialized, accessing the `.df` attribute (which
+    After the object is initialized, accessing the ``.df`` attribute (which
     holds the `pandas.DataFrame` containing the results of the calculations)
     triggers computation of said dataframe.
 
     One of the conveniences of using this object is the ability to define a
     desired common filter for all functors.  This enables the same functor
     collection to be passed to several different `PostprocessAnalysis` objects
-    without having to change the original functor collection, since the `filt`
-    keyword argument of this object triggers an overwrite of the `filt`
+    without having to change the original functor collection, since the ``filt``
+    keyword argument of this object triggers an overwrite of the ``filt``
     property for all functors in the collection.
 
     This object also allows a list of refFlags to be passed, and defines a set
     of default refFlags that are always included even if not requested.
 
-    If a list of `ParquetTable` object is passed, rather than a single one,
+    If a list of `~lsst.pipe.tasks.ParquetTable` object is passed, rather than a single one,
     then the calculations will be mapped over all the input catalogs.  In
     principle, it should be straightforward to parallelize this activity, but
     initial tests have failed (see TODO in code comments).
 
     Parameters
     ----------
-    parq : `lsst.pipe.tasks.ParquetTable` (or list of such)
+    parq : `~lsst.pipe.tasks.ParquetTable` (or list of such)
         Source catalog(s) for computation.
 
-    functors : `list`, `dict`, or `lsst.pipe.tasks.functors.CompositeFunctor`
-        Computations to do (functors that act on `parq`).
+    functors : `list`, `dict`, or `~lsst.pipe.tasks.functors.CompositeFunctor`
+        Computations to do (functors that act on ``parq``).
         If a dict, the output
         DataFrame will have columns keyed accordingly.
         If a list, the column keys will come from the
-        `.shortname` attribute of each functor.
+        ``.shortname`` attribute of each functor.
 
     filt : `str`, optional
         Filter in which to calculate.  If provided,
-        this will overwrite any existing `.filt` attribute
+        this will overwrite any existing ``.filt`` attribute
         of the provided functors.
 
     flags : `list`, optional
         List of flags (per-band) to include in output table.
-        Taken from the `meas` dataset if applied to a multilevel Object Table.
+        Taken from the ``meas`` dataset if applied to a multilevel Object Table.
 
     refFlags : `list`, optional
         List of refFlags (only reference band) to include in output table.
@@ -785,13 +785,13 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
 
     by applying functors that convert units and apply calibrations.
     The purpose of this task is to perform a set of computations on
-    an input `ParquetTable` dataset (such as `deepCoadd_obj`) and write the
-    results to a new dataset (which needs to be declared in an `outputDataset`
+    an input `ParquetTable` dataset (such as ``deepCoadd_obj``) and write the
+    results to a new dataset (which needs to be declared in an ``outputDataset``
     attribute).
 
     The calculations to be performed are defined in a YAML file that specifies
     a set of functors to be computed, provided as
-    a `--functorFile` config parameter.  An example of such a YAML file
+    a ``--functorFile`` config parameter.  An example of such a YAML file
     is the following:
 
         funcs:
@@ -836,7 +836,7 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
     the output dataset.  All the functors referenced are defined in
     `lsst.pipe.tasks.functors`.  Positional arguments to be passed to each
     functor are in the `args` list, and any additional entries for each column
-    other than "functor" or "args" (e.g., `'filt'`, `'dataset'`) are treated as
+    other than "functor" or "args" (e.g., ``'filt'``, ``'dataset'``) are treated as
     keyword arguments to be passed to the functor initialization.
 
     The "flags" entry is the default shortcut for `Column` functors.
@@ -1047,7 +1047,7 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
 
     This is identical to `TransformCatalogBaseTask`, except for that it does
     the specified functor calculations for all filters present in the
-    input `deepCoadd_obj` table.  Any specific `"filt"` keywords specified
+    input `deepCoadd_obj` table.  Any specific ``"filt"`` keywords specified
     by the YAML file will be superceded.
     """
     _DefaultName = "transformObjectCatalog"

@@ -268,26 +268,6 @@ class MakeWarpTask(CoaddBaseTask):
 
     @utils.inheritDoc(pipeBase.PipelineTask)
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        """Method to do butler IO and or transforms to provide in memory objects for tasks run method.
-
-        Parameters
-        ----------
-        butlerQC : `lsst.pipe.base.butlerQuantumContext.ButlerQuantumContext`
-            A butler which is specialized to operate in the context of a ``lsst.daf.butler.Quantum``.
-        inputRefs : `lsst.pipe.base.connections.InputQuantizedConnection`
-            Datastructure whose attribute names are the names that identify connections defined in
-            corresponding ``PipelineTaskConnections`` class. The values of these attributes are the
-            ``lsst.daf.butler.DatasetRef`` objects associated with the defined input/prerequisite
-            connections.
-        outputRefs : `lsst.pipe.base.connections.OutputQuantizedConnection`
-            Datastructure whose attribute names are the names that identify connections defined in
-            corresponding ``PipelineTaskConnections`` class. The values of these attributes are the
-            ``lsst.daf.butler.DatasetRef`` objects associated with the defined output connections.
-
-        Notes
-        ----
-        Construct warps for requested warp type for single epoch.
-        """
         # Obtain the list of input detectors from calExpList.  Sort them by
         # detector order (to ensure reproducibility).  Then ensure all input
         # lists are in the same sorted detector order.
