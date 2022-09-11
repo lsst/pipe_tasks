@@ -20,7 +20,7 @@ Python API summary
 
 .. lsst-task-api-summary:: lsst.pipe.tasks.healSparseMapping.ConsolidateHealSparsePropertyMapTask
 
-.. _lsst.pipe.tasks.healSparseMapping.ConsolidateHealSparsePropertyMapTask-subtasks:
+.. _lsst.pipe.tasks.healSparseMapping.ConsolidateHealSparsePropertyMapTask-config:
 
 Configuration fields
 ====================
