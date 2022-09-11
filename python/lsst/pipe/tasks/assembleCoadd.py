@@ -1486,7 +1486,7 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
     @utils.inheritDoc(AssembleCoaddTask)
     @timeMethod
     def run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
-            supplementaryData, *args, **kwargs):
+            supplementaryData):
         """Assemble the coadd.
 
         Find artifacts and apply them to the warps' masks creating a list of
