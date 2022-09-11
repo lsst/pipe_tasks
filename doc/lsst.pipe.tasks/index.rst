@@ -73,8 +73,197 @@ Python API reference
 ====================
 
 .. automodapi:: lsst.pipe.tasks.assembleCoadd
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.associationUtils
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.background
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.calexpCutout
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.calibrate
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.characterizeImage
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.coaddBase
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.coaddInputRecorder
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.colorterms
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.computeExposureSummaryStats
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.cosmicRayPostDiff
+   :no-inheritance-diagram:
+
 .. automodapi:: lsst.pipe.tasks.dcrAssembleCoadd
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.deblendCoaddSourcesPipeline
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.diff_matched_tract_catalog
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.drpAssociationPipe
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.drpDiaCalculationPipe
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.exampleStatsTasks
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.extended_psf
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.fakes
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.finalizeCharacterization
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.fit_multiband
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.functors
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.healSparseMapping
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.healSparseMappingProperties
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.hips
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.insertFakes
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.interpImage
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.isolatedStarAssociation
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.loadReferenceCatalog
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.makeCoaddTempExp
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.makeDiscreteSkyMap
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.makeWarp
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.maskStreaks
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.matchBackgrounds
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.matchFakes
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.match_tract_catalog
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.match_tract_catalog_probabilistic
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.measurePsf
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.mergeDetections
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.mergeMeasurements
+   :no-inheritance-diagram:
 
 .. automodapi:: lsst.pipe.tasks.metrics
-   :no-main-docstr:
    :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.multiBand
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.multiBandUtils
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.objectMasks
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.parquetTable
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.photoCal
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.postprocess
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.processBrightStars
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.processCcdWithFakes
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.propagateSourceFlags
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.propagateVisitFlags
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.quickFrameMeasurement
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.read_curated_calibs
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.registerImage
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.repair
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.reserveIsolatedStars
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.scaleZeroPoint
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.selectImages
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.setPrimaryFlags
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.simpleAssociation
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.skyCorrection
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.snapCombine
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.statistic
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.visualizeVisit
+   :no-inheritance-diagram:
+
+.. automodapi:: lsst.pipe.tasks.warpAndPsfMatch
+   :no-inheritance-diagram:
+
