@@ -182,12 +182,6 @@ class TestNumDeblended(MetricTaskTestCase):
         meas = result.measurement
         self.assertIsNone(meas)
 
-    def testMissingData(self):
-        result = self.task.run(None)
-        lsst.pipe.base.testUtils.assertValidOutput(self.task, result)
-        meas = result.measurement
-        self.assertIsNone(meas)
-
 
 class TestNumDeblendChild(MetricTaskTestCase):
 
@@ -246,12 +240,6 @@ class TestNumDeblendChild(MetricTaskTestCase):
     def testNoDeblending(self):
         catalog = _makeDummyCatalog(3, deblendFlags=False)
         result = self.task.run(catalog)
-        lsst.pipe.base.testUtils.assertValidOutput(self.task, result)
-        meas = result.measurement
-        self.assertIsNone(meas)
-
-    def testMissingData(self):
-        result = self.task.run(None)
         lsst.pipe.base.testUtils.assertValidOutput(self.task, result)
         meas = result.measurement
         self.assertIsNone(meas)

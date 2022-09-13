@@ -76,8 +76,8 @@ class NumberDeblendedSourcesMetricTask(MetricTask):
 
         Parameters
         ----------
-        sources : `lsst.afw.table.SourceCatalog` or `None`
-            A science source catalog, which may be empty or `None`.
+        sources : `lsst.afw.table.SourceCatalog`
+            A science source catalog, which may be empty.
 
         Returns
         -------
@@ -95,10 +95,7 @@ class NumberDeblendedSourcesMetricTask(MetricTask):
             Raised if ``sources`` is missing mandatory keys for
             source catalogs.
         """
-        if sources is None:
-            self.log.info("Nothing to do: no catalogs found.")
-            meas = None
-        elif "deblend_nChild" not in sources.schema:
+        if "deblend_nChild" not in sources.schema:
             self.log.info("Nothing to do: no deblending performed.")
             meas = None
         else:
@@ -159,8 +156,8 @@ class NumberDeblendChildSourcesMetricTask(MetricTask):
 
         Parameters
         ----------
-        sources : `lsst.afw.table.SourceCatalog` or `None`
-            A science source catalog, which may be empty or `None`.
+        sources : `lsst.afw.table.SourceCatalog`
+            A science source catalog, which may be empty.
 
         Returns
         -------
@@ -178,12 +175,9 @@ class NumberDeblendChildSourcesMetricTask(MetricTask):
             Raised if ``sources`` is missing mandatory keys for
             source catalogs.
         """
-        if sources is None:
-            self.log.info("Nothing to do: no catalogs found.")
-            meas = None
         # Use deblend_parentNChild rather than detect_fromBlend because the
         # latter need not be defined in post-deblending catalogs.
-        elif "deblend_parentNChild" not in sources.schema or "deblend_nChild" not in sources.schema:
+        if "deblend_parentNChild" not in sources.schema or "deblend_nChild" not in sources.schema:
             self.log.info("Nothing to do: no deblending performed.")
             meas = None
         else:
