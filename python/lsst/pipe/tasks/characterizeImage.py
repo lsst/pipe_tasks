@@ -247,7 +247,15 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
 
 
 class CharacterizeImageTask(pipeBase.PipelineTask):
-    """Measure bright sources and use this to estimate background and PSF of an exposure.
+    """Measure bright sources and use this to estimate background and PSF of
+    an exposure.
+
+    Given an exposure with defects repaired (masked and interpolated over,
+    e.g. as output by `~lsst.ip.isr.IsrTask`):
+    - detect and measure bright sources
+    - repair cosmic rays
+    - measure and subtract background
+    - measure PSF
 
     Parameters
     ----------
@@ -259,6 +267,28 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         Initial schema for icSrc catalog.
     **kwargs
         Additional keyword arguments.
+
+    Notes
+    -----
+    Debugging:
+    CharacterizeImageTask has a debug dictionary with the following keys:
+
+    frame
+        int: if specified, the frame of first debug image displayed (defaults to 1)
+    repair_iter
+        bool; if True display image after each repair in the measure PSF loop
+    background_iter
+        bool; if True display image after each background subtraction in the measure PSF loop
+    measure_iter
+        bool; if True display image and sources at the end of each iteration of the measure PSF loop
+        See `~lsst.meas.astrom.displayAstrometry` for the meaning of the various symbols.
+    psf
+        bool; if True display image and sources after PSF is measured;
+        this will be identical to the final image displayed by measure_iter if measure_iter is true
+    repair
+        bool; if True display image and sources after final repair
+    measure
+        bool; if True display image and sources after final measurement
     """
 
     ConfigClass = CharacterizeImageConfig

@@ -135,7 +135,23 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
 
 
 class DetectCoaddSourcesTask(PipelineTask):
-    """Detect sources on a coadd.
+    """Detect sources on a single filter coadd.
+
+    Coadding individual visits requires each exposure to be warped. This
+    introduces covariance in the noise properties across pixels. Before
+    detection, we correct the coadd variance by scaling the variance plane in
+    the coadd to match the observed variance. This is an approximate
+    approach -- strictly, we should propagate the full covariance matrix --
+    but it is simple and works well in practice.
+
+    After scaling the variance plane, we detect sources and generate footprints
+    by delegating to the @ref SourceDetectionTask_ "detection" subtask.
+
+    DetectCoaddSourcesTask is meant to be run after assembling a coadded image
+    in a given band. The purpose of the task is to update the background,
+    detect all sources in a single band and generate a set of parent
+    footprints. Subsequent tasks in the multi-band processing procedure will
+    merge sources across bands and, eventually, perform forced photometry.
 
     Parameters
     ----------
@@ -472,6 +488,27 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
 
 class MeasureMergedCoaddSourcesTask(PipelineTask):
     """Deblend sources from main catalog in each coadd seperately and measure.
+
+    Use peaks and footprints from a master catalog to perform deblending and
+    measurement in each coadd.
+
+    Given a master input catalog of sources (peaks and footprints) or deblender
+    outputs(including a HeavyFootprint in each band), measure each source on
+    the coadd. Repeating this procedure with the same master catalog across
+    multiple coadds will generate a consistent set of child sources.
+
+    The deblender retains all peaks and deblends any missing peaks (dropouts in
+    that band) as PSFs. Source properties are measured and the @c is-primary
+    flag (indicating sources with no children) is set. Visit flags are
+    propagated to the coadd sources.
+
+    Optionally, we can match the coadd sources to an external reference
+    catalog.
+
+    After MeasureMergedCoaddSourcesTask has been run on multiple coadds, we
+    have a set of per-band catalogs. The next stage in the multi-band
+    processing procedure will merge these measurements into a suitable catalog
+    for driving forced photometry.
 
     Parameters
     ----------

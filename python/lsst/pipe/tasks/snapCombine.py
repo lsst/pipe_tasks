@@ -129,14 +129,12 @@ class SnapCombineConfig(pexConfig.Config):
 
 
 class SnapCombineTask(pipeBase.Task):
-    """The lsst.pipe.base.cmdLineTask.CmdLineTask command line task interface supports a
-    flag -d to import debug.py from your PYTHONPATH; see
-    "http://lsst-web.ncsa.illinois.edu/~buildbot/doxygen/x_masterDoxyDoc/base_debug.html"
-    Using lsstDebug to control debugging output for more about debug.py files.
+    """Combine two snaps into a single visit image.
 
     Notes
     -----
-    The available variables in SnapCombineTask are:
+    Debugging:
+    The `~lsst.base.lsstDebug` variables in SnapCombineTask are:
 
     display
     A dictionary containing debug point names as keys with frame number as value. Valid keys are:

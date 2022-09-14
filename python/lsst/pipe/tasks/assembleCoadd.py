@@ -299,11 +299,10 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
     Notes
     -----
-    The `lsst.pipe.base.cmdLineTask.CmdLineTask` interface supports a
-    flag ``-d`` to import ``debug.py`` from your ``PYTHONPATH``; see
-    `baseDebug` for more about ``debug.py`` files. `AssembleCoaddTask` has
-    no debug variables of its own. Some of the subtasks may support debug
-    variables. See the documentation for the subtasks for further information.
+    Debugging:
+    `AssembleCoaddTask` has no debug variables of its own. Some of the
+    subtasks may support `~lsst.base.lsstDebug` variables. See the
+    documentation for the subtasks for further information.
 
     Examples
     --------
@@ -1402,6 +1401,15 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
     ``CompareWarpAssembleCoaddTask`` sub-classes
     ``AssembleCoaddTask`` and instantiates ``AssembleCoaddTask``
     as a subtask to generate the TemplateCoadd (the model of the static sky).
+
+    Notes
+    -----
+    Debugging:
+    This task supports the following debug variables:
+    - ``saveCountIm``
+        If True then save the Epoch Count Image as a fits file in the `figPath`
+    - ``figPath``
+        Path to save the debug fits images and figures
     """
 
     ConfigClass = CompareWarpAssembleCoaddConfig

@@ -194,7 +194,24 @@ class MergeDetectionsConfig(PipelineTaskConfig, pipelineConnections=MergeDetecti
 
 
 class MergeDetectionsTask(PipelineTask):
-    """Task to merge coadd tetections from multiple bands.
+    """Merge sources detected in coadds of exposures obtained with different filters.
+
+    Merge sources detected in coadds of exposures obtained with different
+    filters. To perform photometry consistently across coadds in multiple
+    filter bands, we create a master catalog of sources from all bands by
+    merging the sources (peaks & footprints) detected in each coadd, while
+    keeping track of which band each source originates in. The catalog merge
+    is performed by
+    `~lsst.afw.detection.FootprintMergeList.getMergedSourceCatalog`. Spurious
+    peaks detected around bright objects are culled as described in
+    `~lsst.pipe.tasks.multiBandUtils.CullPeaksConfig`.
+
+    MergeDetectionsTask is meant to be run after detecting sources in coadds
+    generated for the chosen subset of the available bands. The purpose of the
+    task is to merge sources (peaks & footprints) detected in the coadds
+    generated from the chosen subset of filters. Subsequent tasks in the
+    multi-band processing procedure will deblend the generated master list of
+    sources and, eventually, perform forced photometry.
 
     Parameters
     ----------

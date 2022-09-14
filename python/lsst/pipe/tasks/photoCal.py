@@ -140,9 +140,9 @@ class PhotoCalTask(pipeBase.Task):
     This task can adds fields to the schema, so any code calling this task must ensure that
     these columns are indeed present in the input match list; see `pipe_tasks_photocal_Example`.
 
-    Debug variables
+    Debugging:
 
-    The available variables in PhotoCalTask are:
+    The available `~lsst.base.lsstDebug` variables in PhotoCalTask are:
 
     display :
         If True enable other debug outputs.

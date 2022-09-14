@@ -65,6 +65,7 @@ class RepairTask(pipeBase.Task):
 
     Notes
     -----
+    Debugging:
     The available debug variables in RepairTask are:
 
     display :

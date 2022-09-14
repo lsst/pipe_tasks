@@ -328,7 +328,15 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
 
 
 class CalibrateTask(pipeBase.PipelineTask):
-    """Task to calibrate an exposure.
+    """Calibrate an exposure: measure sources and perform astrometric and
+    photometric calibration.
+
+    Given an exposure with a good PSF model and aperture correction map(e.g. as
+    provided by `~lsst.pipe.tasks.characterizeImage.CharacterizeImageTask`),
+    perform the following operations:
+    - Run detection and measurement
+    - Run astrometry subtask to fit an improved WCS
+    - Run photoCal subtask to fit the exposure's photometric zero-point
 
     Parameters
     ----------
@@ -352,6 +360,29 @@ class CalibrateTask(pipeBase.PipelineTask):
         Raised if any of the following occur:
         - isSourceCat is missing fields specified in icSourceFieldsToCopy.
         - PipelineTask form of this task is initialized with reference object loaders.
+
+    Notes
+    -----
+    Quantities set in exposure Metadata:
+
+    MAGZERO_RMS
+        MAGZERO's RMS == sigma reported by photoCal task
+    MAGZERO_NOBJ
+        Number of stars used == ngood reported by photoCal task
+    COLORTERM1
+        ?? (always 0.0)
+    COLORTERM2
+        ?? (always 0.0)
+    COLORTERM3
+        ?? (always 0.0)
+
+    Debugging:
+    CalibrateTask has a debug dictionary containing one key:
+
+    calibrate
+        frame (an int; <= 0 to not display) in which to display the exposure,
+        sources and matches. See @ref lsst.meas.astrom.displayAstrometry for
+        the meaning of the various symbols.
     """
 
     ConfigClass = CalibrateConfig

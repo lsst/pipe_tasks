@@ -84,8 +84,7 @@ class MeasurePsfTask(pipeBase.Task):
     There is no establised set of configuration parameters for these algorithms, so once you start modifying
     parameters (as we do in @ref pipe_tasks_measurePsf_Example) your code is no longer portable.
 
-    @section pipe_tasks_measurePsf_Debug		Debug variables
-
+    Debugging:
     The  ``lsst.pipe.base.cmdLineTask.CmdLineTask`` command line task interface supports a
     flag -d to import debug.py from your PYTHONPATH; see baseDebug for more about debug.py files.
 

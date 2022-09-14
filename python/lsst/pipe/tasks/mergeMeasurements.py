@@ -114,6 +114,16 @@ class MergeMeasurementsConfig(PipelineTaskConfig, pipelineConnections=MergeMeasu
 class MergeMeasurementsTask(pipeBase.PipelineTask):
     """Merge measurements from multiple bands.
 
+    Combines consistent (i.e. with the same peaks and footprints) catalogs of
+    sources from multiple filter bands to construct a unified catalog that is
+    suitable for driving forced photometry. Every source is required to have
+    centroid, shape and flux measurements in each band.
+
+    MergeMeasurementsTask is meant to be run after deblending & measuring
+    sources in every band. The purpose of the task is to generate a catalog of
+    sources suitable for driving forced photometry in coadds and individual
+    exposures.
+
     Parameters
     ----------
     butler : `None`, optional
