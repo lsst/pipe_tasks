@@ -231,7 +231,8 @@ class PhotoCalTask(pipeBase.Task):
                 Reference magnitude error (`np.array`).
             ``magErr``
                 An error in the magnitude; the error in ``srcMag`` - ``refMag``.
-                If nonzero, ``config.magErrFloor`` will be added to ``magErr`` only (not ``srcMagErr`` or ``refMagErr``), as
+                If nonzero, ``config.magErrFloor`` will be added to ``magErr`` only
+                (not ``srcMagErr`` or ``refMagErr``), as
                 ``magErr`` is what is later used to determine the zero point (`np.array`).
             ``refFluxFieldList``
                 A list of field names of the reference catalog used for fluxes (1 or 2 strings) (`list`).

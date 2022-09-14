@@ -99,7 +99,8 @@ class BaseSelectImagesTask(pipeBase.Task):
                 A list of exposure information objects (subclasses of BaseExposureInfo),
                 which have at least the following fields:
                 - dataId: Data ID dictionary (`dict`).
-                - coordList: ICRS coordinates of the corners of the exposure. (`list` of `lsst.geom.SpherePoint`)
+                - coordList: ICRS coordinates of the corners of the exposure.
+                             (`list` of `lsst.geom.SpherePoint`)
         """
         raise NotImplementedError()
 

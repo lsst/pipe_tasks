@@ -229,10 +229,11 @@ class ScaleZeroPointTask(pipeBase.Task):
             Results as a struct with attributes:
 
             `scale`
-                Scale, such that if pixelCalib describes the photometric zeropoint of a pixel
-                then the following scales that pixel to the photometric zeropoint specified by config.zeroPoint:
-                    scale = computeScale(pixelCalib)
-                    pixel *= scale
+
+                Scale, such that if pixelCalib describes the photometric
+                zeropoint of a pixel then the following scales that pixel to
+                the photometric zeropoint specified by config.zeroPoint:
+                    ``scale = computeScale(pixelCalib) pixel *= scale``
 
         Notes
         -----
@@ -259,10 +260,12 @@ class ScaleZeroPointTask(pipeBase.Task):
             Results as a struct with attributes:
 
             `scale`
-                Scale, such that if pixelCalib describes the photometric zeropoint of a pixel
-                then the following scales that pixel to the photometric zeropoint specified by config.zeroPoint:
-                    scale = computeScale(pixelCalib)
-                    pixel *= scale
+
+            Scale, such that if pixelCalib describes the photometric zeropoint
+            of a pixel then the following scales that pixel to the photometric
+            zeropoint specified by config.zeroPoint:
+                ``scale = computeScale(pixelCalib)``
+                ``pixel *= scale``
         """
         calib = afwImage.makePhotoCalibFromCalibZeroPoint(fluxMag0, 0.0)
         return self.scaleFromPhotoCalib(calib)

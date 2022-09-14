@@ -663,7 +663,8 @@ class ImageDifferenceTask(pipeBase.PipelineTask):
             ``diaSources``
                 The catalog of detected sources (`lsst.afw.table.SourceCatalog`).
             ``selectSources``
-                The input source catalog with optionally added Qa information (`lsst.afw.table.SourceCatalog`).
+                The input source catalog with optionally added Qa information
+                (`lsst.afw.table.SourceCatalog`).
 
         Notes
         -----

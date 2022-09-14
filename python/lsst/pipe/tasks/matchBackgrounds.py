@@ -182,12 +182,15 @@ class MatchBackgroundsTask(pipeBase.Task):
             ``backgroundInfoList``
                 A `list` of `pipeBase.Struct`, one per exposure in expRefList,
                 each of which contains these fields:
-                - ``isReference``: This is the reference exposure (only one returned Struct will
-                    contain True for this value, unless the ref exposure is listed multiple times).
-                - ``backgroundModel``: Differential background model (afw.Math.Background or afw.Math.Approximate).
-                    Add this to the science exposure to match the reference exposure.
+                - ``isReference``: This is the reference exposure (only one
+                                   returned Struct will contain True for this
+                                   value, unless the ref exposure is listed multiple times).
+                - ``backgroundModel``: Differential background model
+                                       (afw.Math.Background or afw.Math.Approximate).
+                                       Add this to the science exposure to match the reference exposure.
                 - ``fitRMS``: The RMS of the fit. This is the sqrt(mean(residuals**2)).
-                - ``matchedMSE``: The MSE of the reference and matched images: mean((refImage - matchedSciImage)**2);
+                - ``matchedMSE``: The MSE of the reference and matched images:
+                                  mean((refImage - matchedSciImage)**2);
                     should be comparable to difference image's mean variance.
                 - ``diffImVar``: The mean variance of the difference image.
                 All fields except isReference will be None if isReference True or the fit failed.

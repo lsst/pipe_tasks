@@ -281,9 +281,10 @@ class MergeDetectionsTask(PipelineTask):
         """Merge multiple catalogs.
 
         After ordering the catalogs and filters in priority order,
-        `getMergedSourceCatalog` of the `FootprintMergeList_` "FootprintMergeList" created by
-        `\_\_init\_\_` is used to perform the actual merging. Finally, `cullPeaks` is used to remove
-        garbage peaks detected around bright objects.
+        ``getMergedSourceCatalog`` of the
+        `~lsst.afw.detection.FootprintMergeList` created by ``__init__`` is
+        used to perform the actual merging. Finally, `cullPeaks` is used to
+        remove garbage peaks detected around bright objects.
 
         Parameters
         ----------

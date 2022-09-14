@@ -218,19 +218,26 @@ class ColortermLibrary(Config):
 
     .. code-block:: none
 
-        For example:
-            ColortermLibrary(data = {
-                "hsc": ColortermDict(data={
-                    'g': Colorterm(primary="g", secondary="g"),
-                    'r': Colorterm(primary="r", secondary="r"),
-                    ...
-                }),
-                "sdss": ColortermDict(data={
-                    'g':    Colorterm(primary="g", secondary="r", c0=-0.00816446, c1=-0.08366937, c2=-0.00726883),
-                    'r':    Colorterm(primary="r", secondary="i", c0= 0.00231810, c1= 0.01284177, c2=-0.03068248),
-                    ...
-                }),
-            })
+        ColortermLibrary(data = {
+            "hsc": ColortermDict(data={
+                'g': Colorterm(primary="g", secondary="g"),
+                'r': Colorterm(primary="r", secondary="r"),
+                ...
+            }),
+            "sdss": ColortermDict(data={
+                'g':    Colorterm(primary="g",
+                                  secondary="r",
+                                  c0=-0.00816446,
+                                  c1=-0.08366937,
+                                  c2=-0.00726883),
+                'r':    Colorterm(primary="r",
+                                  secondary="i",
+                                  c0= 0.00231810,
+                                  c1= 0.01284177,
+                                  c2=-0.03068248),
+                ...
+            }),
+        })
 
     This is subclass of Config. That is a bit of a hack to make it easy to store the data
     in an appropriate obs package as a config override file. In the long term some other
