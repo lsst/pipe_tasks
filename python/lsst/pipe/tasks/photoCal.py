@@ -161,22 +161,6 @@ class PhotoCalTask(pipeBase.Task):
         - rejected objects in red
 
     (if scatterPlot is 2 or more, prompt to continue after each iteration)
-
-    To investigate the @ref pipe_tasks_photocal_Debug, put something like
-
-    .. code-block:: none
-
-        import lsstDebug
-        def DebugInfo(name):
-            di = lsstDebug.getInfo(name)        # N.b. lsstDebug.Info(name) would call us recursively
-            if name.endswith(".PhotoCal"):
-                di.display = 1
-
-            return di
-
-        lsstDebug.Info = DebugInfo
-
-    into your debug.py file and run photoCalTask.py with the ``--debug`` flag.
     """
 
     ConfigClass = PhotoCalConfig

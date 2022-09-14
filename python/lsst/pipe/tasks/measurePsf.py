@@ -85,62 +85,25 @@ class MeasurePsfTask(pipeBase.Task):
     parameters (as we do in @ref pipe_tasks_measurePsf_Example) your code is no longer portable.
 
     Debugging:
-    The  ``lsst.pipe.base.cmdLineTask.CmdLineTask`` command line task interface supports a
-    flag -d to import debug.py from your PYTHONPATH; see baseDebug for more about debug.py files.
 
     .. code-block:: none
 
-        display
+    display
         If True, display debugging plots
-        displayExposure
+    displayExposure
         display the Exposure + spatialCells
-        displayPsfCandidates
+    displayPsfCandidates
         show mosaic of candidates
-        showBadCandidates
+    showBadCandidates
         Include bad candidates
-        displayPsfMosaic
+    displayPsfMosaic
         show mosaic of reconstructed PSF(xy)
-        displayResiduals
+    displayResiduals
         show residuals
-        normalizeResiduals
+    normalizeResiduals
         Normalise residuals by object amplitude
 
     Additionally you can enable any debug outputs that your chosen star selector and psf determiner support.
-
-    A complete example of using MeasurePsfTask
-
-    This code is in ``measurePsfTask.py`` in the examples directory, and can be run as e.g.
-
-    .. code-block:: none
-
-        examples/measurePsfTask.py --ds9
-
-    The example also runs SourceDetectionTask and SourceMeasurementTask;
-    see ``meas_algorithms_measurement_Example`` for more explanation.
-
-    Import the tasks (there are some other standard imports; read the file to see them all):
-
-    To investigate the @ref pipe_tasks_measurePsf_Debug, put something like
-
-    .. code-block :: none
-
-        import lsstDebug
-        def DebugInfo(name):
-            di = lsstDebug.getInfo(name)        # N.b. lsstDebug.Info(name) would call us recursively
-            if name == "lsst.pipe.tasks.measurePsf" :
-                di.display = True
-                di.displayExposure = False          # display the Exposure + spatialCells
-                di.displayPsfCandidates = True      # show mosaic of candidates
-                di.displayPsfMosaic = True          # show mosaic of reconstructed PSF(xy)
-                di.displayResiduals = True          # show residuals
-                di.showBadCandidates = True         # Include bad candidates
-                di.normalizeResiduals = False       # Normalise residuals by object amplitude
-
-            return di
-
-        lsstDebug.Info = DebugInfo
-
-    into your debug.py file and run measurePsfTask.py with the --debug flag.
     """
     ConfigClass = MeasurePsfConfig
     _DefaultName = "measurePsf"

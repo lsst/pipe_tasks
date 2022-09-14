@@ -343,11 +343,9 @@ class CalibrateTask(pipeBase.PipelineTask):
     butler : `None`
         Compatibility parameter. Should always be `None`.
     astromRefObjLoader : `lsst.meas.algorithms.ReferenceObjectLoader`, optional
-        Reference object loader for astrometry task. Must be None if
-        run as part of PipelineTask.
+        Unused in gen3: must be `None`.
     photoRefObjLoader : `lsst.meas.algorithms.ReferenceObjectLoader`, optional
-        Reference object loader for photometry task. Must be None if
-        run as part of PipelineTask.
+        Unused in gen3: must be `None`.
     icSourceSchema : `lsst.afw.table.Schema`, optional
         Schema for the icSource catalog.
     initInputs : `dict`, optional

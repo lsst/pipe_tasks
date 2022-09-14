@@ -54,16 +54,8 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
     ExampleCmdLineTask. See also ExampleSimpleStatsTask as a variant that is
     even simpler.
 
-    The main method is ExampleSigmaClippedStatsTask.run "run".
-
-    pipeTasks_ExampleSigmaClippedStatsTask_Config  Configuration parameters
-
-    See ExampleSigmaClippedStatsConfig
-
-    pipeTasks_ExampleSigmaClippedStatsTask_Debug   Debug variables
-
-    This task has no debug variables.
-
+    Examples
+    --------
     pipeTasks_ExampleSigmaClippedStatsTask_Example A complete example
     of using ExampleSigmaClippedStatsTask
 

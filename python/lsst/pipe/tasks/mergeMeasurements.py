@@ -111,6 +111,7 @@ class MergeMeasurementsConfig(PipelineTaskConfig, pipelineConnections=MergeMeasu
         if len(self.priorityList) == 0:
             raise RuntimeError("No priority list provided")
 
+
 class MergeMeasurementsTask(pipeBase.PipelineTask):
     """Merge measurements from multiple bands.
 

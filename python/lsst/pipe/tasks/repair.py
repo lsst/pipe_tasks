@@ -59,8 +59,11 @@ class RepairConfig(pexConfig.Config):
 
 
 class RepairTask(pipeBase.Task):
-    """This task operates on an lsst.afw.image.Exposure in place to interpolate over a set of
-    lsst.meas.algorithms.Defect objects.
+    """Repair an exposures defects and cosmic rays via interpolation.
+
+    This task operates on an lsst.afw.image.Exposure in place to
+    interpolate over a set of `~lsst.meas.algorithms.Defect` objects.
+
     It will also, optionally, find and interpolate any cosmic rays in the lsst.afw.image.Exposure.
 
     Notes
@@ -77,8 +80,6 @@ class RepairTask(pipeBase.Task):
     displayCR :
         If True, display the exposure on ds9's frame 1 and overlay bounding boxes around detects CRs.
 
-    Examples
-    --------
     To investigate the pipe_tasks_repair_Debug, put something like
 
     .. code-block :: none

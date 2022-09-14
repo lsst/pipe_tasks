@@ -285,13 +285,6 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
     You can retarget these subtasks if you wish.
 
-    Parameters
-    ----------
-    *args
-        Additional positional arguments.
-    **kwargs
-        Additional keyword arguments.
-
     Raises
     ------
     RuntimeError
