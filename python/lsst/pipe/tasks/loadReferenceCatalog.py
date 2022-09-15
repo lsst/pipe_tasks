@@ -1,5 +1,3 @@
-# See COPYRIGHT file at the top of the source tree.
-#
 # This file is part of pipe_tasks.
 #
 # Developed for the LSST Data Management System.
@@ -20,11 +18,15 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 """Load a full reference catalog in numpy/table/dataframe format.
 
 This task will load multi-band reference objects, apply a reference selector,
 and apply color terms.
 """
+
+__all__ = ['LoadReferenceCatalogConfig', 'LoadReferenceCatalogTask']
+
 import numpy as np
 from astropy import units
 
@@ -37,8 +39,6 @@ from lsst.afw.image import abMagErrFromFluxErr
 from lsst.meas.algorithms import ReferenceObjectLoader, LoadReferenceObjectsConfig
 
 import lsst.geom
-
-__all__ = ['LoadReferenceCatalogConfig', 'LoadReferenceCatalogTask']
 
 
 class LoadReferenceCatalogConfig(pexConfig.Config):
@@ -201,8 +201,8 @@ class LoadReferenceCatalogTask(pipeBase.Task):
             Epoch to which to correct proper motion and parallax
             (if available), or `None` to not apply such corrections.
 
-        Parameters
-        ----------
+        Returns
+        -------
         refCat : `numpy.ndarray`
             Reference catalog.
         """

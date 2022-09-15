@@ -1,9 +1,10 @@
 # This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
-# See COPYRIGHT file at the top of the source tree.
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,10 +16,22 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <https://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+__all__ = ["Functor", "CompositeFunctor", "CustomFunctor", "Column", "Index",
+           "IDColumn", "FootprintNPix", "CoordColumn", "RAColumn", "DecColumn",
+           "HtmIndex20", "Mag", "MagErr", "NanoMaggie", "MagDiff", "Color",
+           "Labeller", "StarGalaxyLabeller", "NumStarLabeller", "DeconvolvedMoments",
+           "SdssTraceSize", "PsfSdssTraceSizeDiff", "HsmTraceSize", "PsfHsmTraceSizeDiff",
+           "HsmFwhm", "E1", "E2", "RadiusFromQuadrupole", "LocalWcs", "ComputePixelScale",
+           "ConvertPixelToArcseconds", "ConvertPixelSqToArcsecondsSq", "ReferenceBand",
+           "Photometry", "NanoJansky", "NanoJanskyErr", "Magnitude", "MagnitudeErr",
+           "LocalPhotometry", "LocalNanojansky", "LocalNanojanskyErr",
+           "LocalMagnitude", "LocalMagnitudeErr", "LocalDipoleMeanFlux",
+           "LocalDipoleMeanFluxErr", "LocalDipoleDiffFlux", "LocalDipoleDiffFluxErr",
+           "Ratio", "Ebv"]
+
 import yaml
 import re
 from itertools import product

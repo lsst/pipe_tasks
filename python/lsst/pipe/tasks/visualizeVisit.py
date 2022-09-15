@@ -17,7 +17,11 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+__all__ = ['VisualizeBinExpConfig', 'VisualizeBinExpTask',
+           'VisualizeMosaicExpConfig', 'VisualizeMosaicExpTask']
+
 import numpy as np
 
 import lsst.pex.config as pexConfig
@@ -26,10 +30,6 @@ import lsst.pipe.base.connectionTypes as cT
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
 import lsst.afw.cameraGeom.utils as afwUtils
-
-
-__all__ = ['VisualizeBinExpConfig', 'VisualizeBinExpTask',
-           'VisualizeMosaicExpConfig', 'VisualizeMosaicExpTask']
 
 
 class VisualizeBinExpConnections(pipeBase.PipelineTaskConnections,

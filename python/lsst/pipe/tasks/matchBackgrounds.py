@@ -1,9 +1,10 @@
+# This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# Copyright 2008, 2009, 2010 LSST Corporation.
-#
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -12,12 +13,14 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILIY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+__all__ = ["MatchBackgroundsConfig", "MatchBackgroundsTask"]
+
 import numpy
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
@@ -153,33 +156,50 @@ class MatchBackgroundsTask(pipeBase.Task):
 
         Choose a refExpDataRef automatically if none supplied.
 
-        @param[in] expRefList: list of data references to science exposures to be background-matched;
+        Parameters
+        ----------
+        expRefList : `list`
+            List of data references to science exposures to be background-matched;
             all exposures must exist.
-        @param[in] expDatasetType: dataset type of exposures, e.g. 'goodSeeingCoadd_tempExp'
-        @param[in] imageScalerList: list of image scalers (coaddUtils.ImageScaler);
-            if None then the images are not scaled
-        @param[in] refExpDataRef: data reference for the reference exposure.
+        expDatasetType : `str`
+            Dataset type of exposures, e.g. 'goodSeeingCoadd_tempExp'.
+        imageScalerList : `list`, optional
+            List of image scalers (coaddUtils.ImageScaler);
+            if None then the images are not scaled.
+        refExpDataRef : `Unknown`, optional
+            Data reference for the reference exposure.
             If None, then this task selects the best exposures from expRefList.
-            if not None then must be one of the exposures in expRefList.
-        @param[in] refImageScaler: image scaler for reference image;
-            ignored if refExpDataRef is None, else scaling is not performed if None
+            If not None then must be one of the exposures in expRefList.
+        refImageScaler : `Unknown`, optional
+            Image scaler for reference image;
+            ignored if refExpDataRef is None, else scaling is not performed if None.
 
-        @return: a pipBase.Struct containing these fields:
-        - backgroundInfoList: a list of pipeBase.Struct, one per exposure in expRefList,
-            each of which contains these fields:
-            - isReference: this is the reference exposure (only one returned Struct will
-                contain True for this value, unless the ref exposure is listed multiple times)
-            - backgroundModel: differential background model (afw.Math.Background or afw.Math.Approximate).
-                Add this to the science exposure to match the reference exposure.
-            - fitRMS: rms of the fit. This is the sqrt(mean(residuals**2)).
-            - matchedMSE: the MSE of the reference and matched images: mean((refImage - matchedSciImage)**2);
-              should be comparable to difference image's mean variance.
-            - diffImVar: the mean variance of the difference image.
-            All fields except isReference will be None if isReference True or the fit failed.
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            Results as a struct with attributes:
 
-        @warning: all exposures must exist on disk
+            ``backgroundInfoList``
+                A `list` of `pipeBase.Struct`, one per exposure in expRefList,
+                each of which contains these fields:
+                - ``isReference``: This is the reference exposure (only one
+                                   returned Struct will contain True for this
+                                   value, unless the ref exposure is listed multiple times).
+                - ``backgroundModel``: Differential background model
+                                       (afw.Math.Background or afw.Math.Approximate).
+                                       Add this to the science exposure to match the reference exposure.
+                - ``fitRMS``: The RMS of the fit. This is the sqrt(mean(residuals**2)).
+                - ``matchedMSE``: The MSE of the reference and matched images:
+                                  mean((refImage - matchedSciImage)**2);
+                    should be comparable to difference image's mean variance.
+                - ``diffImVar``: The mean variance of the difference image.
+                All fields except isReference will be None if isReference True or the fit failed.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if an exposure does not exist on disk.
         """
-
         numExp = len(expRefList)
         if numExp < 1:
             raise pipeBase.TaskError("No exposures to match")
@@ -266,7 +286,7 @@ class MatchBackgroundsTask(pipeBase.Task):
 
     @timeMethod
     def selectRefExposure(self, expRefList, imageScalerList, expDatasetType):
-        """Find best exposure to use as the reference exposure
+        """Find best exposure to use as the reference exposure.
 
         Calculate an appropriate reference exposure by minimizing a cost function that penalizes
         high variance,  high background level, and low coverage. Use the following config parameters:
@@ -274,16 +294,27 @@ class MatchBackgroundsTask(pipeBase.Task):
         - bestRefWeightVariance
         - bestRefWeightLevel
 
-        @param[in] expRefList: list of data references to exposures.
+        Parameters
+        ----------
+        expRefList : `list`
+            List of data references to exposures.
             Retrieves dataset type specified by expDatasetType.
             If an exposure is not found, it is skipped with a warning.
-        @param[in] imageScalerList: list of image scalers (coaddUtils.ImageScaler);
-            must be the same length as expRefList
-        @param[in] expDatasetType: dataset type of exposure: e.g. 'goodSeeingCoadd_tempExp'
+        imageScalerList : `list`
+            List of image scalers (coaddUtils.ImageScaler);
+            must be the same length as expRefList.
+        expDatasetType : `str`
+            Dataset type of exposure: e.g. 'goodSeeingCoadd_tempExp'.
 
-        @return: index of best exposure
+        Returns
+        -------
+        bestIdx : `int`
+            Index of best exposure.
 
-        @raise pipeBase.TaskError if none of the exposures in expRefList are found.
+        Raises
+        ------
+        RuntimeError
+            Raised if none of the exposures in expRefList are found.
         """
         self.log.info("Calculating best reference visit")
         varList = []
@@ -330,29 +361,42 @@ class MatchBackgroundsTask(pipeBase.Task):
 
     @timeMethod
     def matchBackgrounds(self, refExposure, sciExposure):
-        """
-        Match science exposure's background level to that of reference exposure.
+        """Match science exposure's background level to that of reference exposure.
 
         Process creates a difference image of the reference exposure minus the science exposure, and then
         generates an afw.math.Background object. It assumes (but does not require/check) that the mask plane
         already has detections set. If detections have not been set/masked, sources will bias the
         background estimation.
+
         The 'background' of the difference image is smoothed by spline interpolation (by the Background class)
         or by polynomial interpolation by the Approximate class. This model of difference image
         is added to the science exposure in memory.
+
         Fit diagnostics are also calculated and returned.
 
-        @param[in] refExposure: reference exposure
-        @param[in,out] sciExposure: science exposure; modified by changing the background level
-            to match that of the reference exposure
-        @returns a pipBase.Struct with fields:
-            - backgroundModel: an afw.math.Approximate or an afw.math.Background.
-            - fitRMS: rms of the fit. This is the sqrt(mean(residuals**2)).
-            - matchedMSE: the MSE of the reference and matched images: mean((refImage - matchedSciImage)**2);
-              should be comparable to difference image's mean variance.
-            - diffImVar: the mean variance of the difference image.
-        """
+        Parameters
+        ----------
+        refExposure : `lsst.afw.image.Exposure`
+            Reference exposure.
+        sciExposure : `lsst.afw.image.Exposure`
+            Science exposure; modified by changing the background level
+            to match that of the reference exposure.
 
+        Returns
+        -------
+        model : `lsst.pipe.base.Struct`
+            Background model as a struct with attributes:
+
+            ``backgroundModel``
+                An afw.math.Approximate or an afw.math.Background.
+            ``fitRMS``
+                RMS of the fit. This is the sqrt(mean(residuals**2)), (`float`).
+            ``matchedMSE``
+                The MSE of the reference and matched images: mean((refImage - matchedSciImage)**2);
+                should be comparable to difference image's mean variance (`float`).
+            ``diffImVar``
+                The mean variance of the difference image (`float`).
+        """
         if lsstDebug.Info(__name__).savefits:
             refExposure.writeFits(lsstDebug.Info(__name__).figpath + 'refExposure.fits')
             sciExposure.writeFits(lsstDebug.Info(__name__).figpath + 'sciExposure.fits')
@@ -485,17 +529,26 @@ class MatchBackgroundsTask(pipeBase.Task):
     def _debugPlot(self, X, Y, Z, dZ, modelImage, bbox, model, resids):
         """Generate a plot showing the background fit and residuals.
 
-        It is called when lsstDebug.Info(__name__).savefig = True
-        Saves the fig to lsstDebug.Info(__name__).figpath
-        Displays on screen if lsstDebug.Info(__name__).display = True
+        It is called when lsstDebug.Info(__name__).savefig = True.
+        Saves the fig to lsstDebug.Info(__name__).figpath.
+        Displays on screen if lsstDebug.Info(__name__).display = True.
 
-        @param X: array of x positions
-        @param Y: array of y positions
-        @param Z: array of the grid values that were interpolated
-        @param dZ: array of the error on the grid values
-        @param modelImage: image ofthe model of the fit
-        @param model: array of len(Z) containing the grid values predicted by the model
-        @param resids: Z - model
+        Parameters
+        ----------
+        X : `numpy.ndarray`, (N,)
+            Array of x positions.
+        Y : `numpy.ndarray`, (N,)
+            Array of y positions.
+        Z : `numpy.ndarray`
+            Array of the grid values that were interpolated.
+        dZ : `numpy.ndarray`, (len(Z),)
+            Array of the error on the grid values.
+        modelImage : `Unknown`
+            Image of the model of the fit.
+        model : `numpy.ndarray`, (len(Z),)
+            Array of len(Z) containing the grid values predicted by the model.
+        resids : `Unknown`
+            Z - model.
         """
         import matplotlib.pyplot as plt
         import matplotlib.colors
@@ -537,7 +590,7 @@ class MatchBackgroundsTask(pipeBase.Task):
             plt.clf()
 
     def _gridImage(self, maskedImage, binsize, statsFlag):
-        """Private method to grid an image for debugging"""
+        """Private method to grid an image for debugging."""
         width, height = maskedImage.getDimensions()
         x0, y0 = maskedImage.getXY0()
         xedges = numpy.arange(0, width, binsize)
@@ -576,46 +629,73 @@ class MatchBackgroundsTask(pipeBase.Task):
 
 
 class DataRefMatcher:
-    """Match data references for a specified dataset type
+    """Match data references for a specified dataset type.
 
     Note that this is not exact, but should suffice for this task
     until there is better support for this kind of thing in the butler.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        Butler to search for maches in.
+    datasetType : `str`
+        Dataset type to match.
     """
 
     def __init__(self, butler, datasetType):
-        """Construct a DataRefMatcher
-
-        @param[in] butler
-        @param[in] datasetType: dataset type to match
-        """
         self._datasetType = datasetType  # for diagnostics
         self._keyNames = butler.getKeys(datasetType)
 
     def _makeKey(self, ref):
-        """Return a tuple of values for the specified keyNames
+        """Return a tuple of values for the specified keyNames.
 
-        @param[in] ref: data reference
+        Parameters
+        ----------
+        ref : `Unknown`
+            Data reference.
 
-        @raise KeyError if ref.dataId is missing a key in keyNames
+        Raises
+        ------
+        KeyError
+            Raised if ref.dataId is missing a key in keyNames.
         """
         return tuple(ref.dataId[key] for key in self._keyNames)
 
     def isMatch(self, ref0, ref1):
-        """Return True if ref0 == ref1
+        """Return True if ref0 == ref1.
 
-        @param[in] ref0: data ref 0
-        @param[in] ref1: data ref 1
+        Parameters
+        ----------
+        ref0 : `Unknown`
+            Data for ref 0.
+        ref1 : `Unknown`
+            Data for ref 1.
 
-        @raise KeyError if either ID is missing a key in keyNames
+        Raises
+        ------
+        KeyError
+            Raised if either ID is missing a key in keyNames.
         """
         return self._makeKey(ref0) == self._makeKey(ref1)
 
     def matchList(self, ref0, refList):
-        """Return a list of indices of matches
+        """Return a list of indices of matches.
 
-        @return tuple of indices of matches
+        Parameters
+        ----------
+        ref0 : `Unknown`
+            Data for ref 0.
+        `refList` : `list`
 
-        @raise KeyError if any ID is missing a key in keyNames
+        Returns
+        -------
+        matches : `tuple`
+            Tuple of indices of matches.
+
+        Raises
+        ------
+        KeyError
+            Raised if any ID is missing a key in keyNames.
         """
         key0 = self._makeKey(ref0)
         return tuple(ind for ind, ref in enumerate(refList) if self._makeKey(ref) == key0)

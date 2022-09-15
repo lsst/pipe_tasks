@@ -1,9 +1,10 @@
+# This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# Copyright 2008-2016 AURA/LSST.
-#
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,10 +16,11 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <https://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+__all__ = ["CalibrateConfig", "CalibrateTask"]
+
 import math
 import warnings
 
@@ -43,9 +45,6 @@ from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
 from .fakes import BaseFakeSourcesTask
 from .photoCal import PhotoCalTask
 from .computeExposureSummaryStats import ComputeExposureSummaryStatsTask
-
-
-__all__ = ["CalibrateConfig", "CalibrateTask"]
 
 
 class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instrument", "visit", "detector"),
@@ -152,7 +151,8 @@ class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instru
 
 
 class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=CalibrateConnections):
-    """Config for CalibrateTask"""
+    """Config for CalibrateTask."""
+
     doWrite = pexConfig.Field(
         dtype=bool,
         default=True,
@@ -328,24 +328,61 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
 
 
 class CalibrateTask(pipeBase.PipelineTask):
-    """Task to calibrate an exposure.
+    """Calibrate an exposure: measure sources and perform astrometric and
+    photometric calibration.
+
+    Given an exposure with a good PSF model and aperture correction map(e.g. as
+    provided by `~lsst.pipe.tasks.characterizeImage.CharacterizeImageTask`),
+    perform the following operations:
+    - Run detection and measurement
+    - Run astrometry subtask to fit an improved WCS
+    - Run photoCal subtask to fit the exposure's photometric zero-point
 
     Parameters
     ----------
     butler : `None`
         Compatibility parameter. Should always be `None`.
     astromRefObjLoader : `lsst.meas.algorithms.ReferenceObjectLoader`, optional
-        Reference object loader for astrometry task. Must be None if
-        run as part of PipelineTask.
+        Unused in gen3: must be `None`.
     photoRefObjLoader : `lsst.meas.algorithms.ReferenceObjectLoader`, optional
-        Reference object loader for photometry task. Must be None if
-        run as part of PipelineTask.
+        Unused in gen3: must be `None`.
     icSourceSchema : `lsst.afw.table.Schema`, optional
         Schema for the icSource catalog.
     initInputs : `dict`, optional
         Dictionary that can contain a key ``icSourceSchema`` containing the
         input schema. If present will override the value of ``icSourceSchema``.
+
+    Raises
+    ------
+    RuntimeError
+        Raised if any of the following occur:
+        - isSourceCat is missing fields specified in icSourceFieldsToCopy.
+        - PipelineTask form of this task is initialized with reference object loaders.
+
+    Notes
+    -----
+    Quantities set in exposure Metadata:
+
+    MAGZERO_RMS
+        MAGZERO's RMS == sigma reported by photoCal task
+    MAGZERO_NOBJ
+        Number of stars used == ngood reported by photoCal task
+    COLORTERM1
+        ?? (always 0.0)
+    COLORTERM2
+        ?? (always 0.0)
+    COLORTERM3
+        ?? (always 0.0)
+
+    Debugging:
+    CalibrateTask has a debug dictionary containing one key:
+
+    calibrate
+        frame (an int; <= 0 to not display) in which to display the exposure,
+        sources and matches. See @ref lsst.meas.astrom.displayAstrometry for
+        the meaning of the various symbols.
     """
+
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
 
@@ -489,7 +526,7 @@ class CalibrateTask(pipeBase.PipelineTask):
         Returns
         -------
         result : `lsst.pipe.base.Struct`
-            Result structure with the following attributes:
+            Results as a struct with attributes:
 
             ``exposure``
                Characterized exposure (`lsst.afw.image.ExposureF`).
@@ -677,10 +714,18 @@ class CalibrateTask(pipeBase.PipelineTask):
             Catalog from which to copy fields.
         sourceCat : `lsst.afw.table.SourceCatalog`
             Catalog to which to copy fields.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if any of the following occur:
+            - icSourceSchema and icSourceKeys are not specified.
+            - icSourceCat and sourceCat are not specified.
+            - icSourceFieldsToCopy is empty.
         """
         if self.schemaMapper is None:
             raise RuntimeError("To copy icSource fields you must specify "
-                               "icSourceSchema nd icSourceKeys when "
+                               "icSourceSchema and icSourceKeys when "
                                "constructing this task")
         if icSourceCat is None or sourceCat is None:
             raise RuntimeError("icSourceCat and sourceCat must both be "

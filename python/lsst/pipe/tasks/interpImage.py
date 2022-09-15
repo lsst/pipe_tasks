@@ -1,9 +1,10 @@
+# This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# Copyright 2008-2015 AURA/LSST.
-#
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,10 +16,11 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <https://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+__all__ = ["InterpImageConfig", "InterpImageTask"]
+
 from contextlib import contextmanager
 import lsst.pex.config as pexConfig
 import lsst.geom
@@ -28,8 +30,6 @@ import lsst.ip.isr as ipIsr
 import lsst.meas.algorithms as measAlg
 import lsst.pipe.base as pipeBase
 from lsst.utils.timer import timeMethod
-
-__all__ = ["InterpImageConfig", "InterpImageTask"]
 
 
 class InterpImageConfig(pexConfig.Config):
@@ -86,11 +86,17 @@ class InterpImageTask(pipeBase.Task):
     def _setFallbackValue(self, mi=None):
         """Set the edge fallbackValue for interpolation
 
-        @param[in] mi  input maksedImage on which to calculate the statistics
-                       Must be provided if fallbackValueType != "USER".
+        Parameters
+        ----------
+        mi : `lsst.afw.image.MaskedImage`, optional
+            Input maskedImage on which to calculate the statistics
+            Must be provided if fallbackValueType != "USER".
 
-        @return fallbackValue  The value set/computed based on the fallbackValueType
-                               and negativeFallbackAllowed config parameters
+        Returns
+        -------
+        fallbackValue : `float`
+            The value set/computed based on the fallbackValueType
+            and negativeFallbackAllowed config parameters.
         """
         if self.config.fallbackValueType != 'USER':
             assert mi, "No maskedImage provided"
@@ -118,7 +124,7 @@ class InterpImageTask(pipeBase.Task):
 
     @timeMethod
     def run(self, image, planeName=None, fwhmPixels=None, defects=None):
-        """!Interpolate in place over pixels in a maskedImage marked as bad
+        """Interpolate in place over pixels in a maskedImage marked as bad
 
         Pixels to be interpolated are set by either a mask planeName provided
         by the caller OR a defects list of type `~lsst.meas.algorithms.Defects`
@@ -133,14 +139,20 @@ class InterpImageTask(pipeBase.Task):
         passed in by the caller, or the default defaultFwhm set in
         measAlg.GaussianPsfFactory if None).
 
-        @param[in,out] image       MaskedImage OR Exposure to be interpolated
-        @param[in]     planeName   name of mask plane over which to interpolate
-                                   If None, must provide a defects list.
-        @param[in]     fwhmPixels  FWHM of core star (pixels)
-                                   If None the default is used, where the default
-                                   is set to the exposure psf if available
-        @param[in]     defects     List of defects of type ipIsr.Defects
-                                   over which to interpolate.
+        Parameters
+        ----------
+        image : `lsst.afw.image.MaskedImage` or `lsst.afw.image.exposure.Exposure`
+            MaskedImage OR Exposure to be interpolated.
+        planeName : `str`, optional
+            Name of mask plane over which to interpolate.
+            If None, must provide a defects list.
+        fwhmPixels : `int`, optional
+            FWHM of core star (pixels).
+            If None the default is used, where the default
+            is set to the exposure psf if available.
+        defects : `lsst.meas.algorithms.Defects`, optional
+            List of defects of type ipIsr.Defects
+            over which to interpolate.
         """
         try:
             maskedImage = image.getMaskedImage()
@@ -209,7 +221,12 @@ class InterpImageTask(pipeBase.Task):
             transposed.
         """
         def transposeImage(image):
-            """Transpose an image"""
+            """Transpose an image
+
+            Parameters
+            ----------
+            image : `Unknown`
+            """
             transposed = image.array.T.copy()  # Copy to force row-major; required for ndarray+pybind
             return image.Factory(transposed, False, lsst.geom.Point2I(*reversed(image.getXY0())))
 

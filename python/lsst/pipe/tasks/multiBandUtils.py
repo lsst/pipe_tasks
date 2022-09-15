@@ -18,6 +18,9 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+__all__ = ["CullPeaksConfig"]
+
 import lsst.afw.table as afwTable
 
 from lsst.pex.config import Config, RangeField
@@ -42,10 +45,7 @@ def _makeGetSchemaCatalogs(datasetSuffix):
 
 
 class CullPeaksConfig(Config):
-    """!
-    @anchor CullPeaksConfig_
-
-    @brief Configuration for culling garbage peaks after merging footprints.
+    """Configuration for culling garbage peaks after merging footprints.
 
     Peaks may also be culled after detection or during deblending; this configuration object
     only deals with culling after merging Footprints.
@@ -63,7 +63,6 @@ class CullPeaksConfig(Config):
 
     To disable peak culling, simply set nBandsSufficient=1.
     """
-
     nBandsSufficient = RangeField(dtype=int, default=2, min=1,
                                   doc="Always keep peaks detected in this many bands")
     rankSufficient = RangeField(dtype=int, default=20, min=1,

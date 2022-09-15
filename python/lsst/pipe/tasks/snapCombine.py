@@ -1,9 +1,10 @@
+# This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# Copyright 2008-2016 AURA/LSST.
-#
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,10 +16,11 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+__all__ = ["InitialPsfConfig", "SnapCombineConfig", "SnapCombineTask"]
+
 import numpy as num
 import lsst.pex.config as pexConfig
 import lsst.daf.base as dafBase
@@ -38,7 +40,7 @@ from .repair import RepairTask
 
 
 class InitialPsfConfig(pexConfig.Config):
-    """!Describes the initial PSF used for detection and measurement before we do PSF determination."""
+    """Describes the initial PSF used for detection and measurement before we do PSF determination."""
 
     model = pexConfig.ChoiceField(
         dtype=str,
@@ -125,44 +127,26 @@ class SnapCombineConfig(pexConfig.Config):
         if self.detection.thresholdPolarity != "both":
             raise ValueError("detection.thresholdPolarity must be 'both' for SnapCombineTask")
 
-## \addtogroup LSST_task_documentation
-## \{
-## \page page_SnapCombineTask SnapCombineTask
-## \ref SnapCombineTask_ "SnapCombineTask"
-## \copybrief SnapCombineTask
-## \}
-
 
 class SnapCombineTask(pipeBase.Task):
-    r"""!
-    \anchor SnapCombineTask_
+    """Combine two snaps into a single visit image.
 
-    \brief Combine snaps.
+    Notes
+    -----
+    Debugging:
+    The `~lsst.base.lsstDebug` variables in SnapCombineTask are:
 
-    \section pipe_tasks_snapcombine_Contents Contents
+    display
+    A dictionary containing debug point names as keys with frame number as value. Valid keys are:
 
-     - \ref pipe_tasks_snapcombine_Debug
+    .. code-block:: none
 
-    \section pipe_tasks_snapcombine_Debug Debug variables
-
-    The command line task interface supports a
-    flag \c -d to import \b debug.py from your \c PYTHONPATH; see <a
-    href="https://developer.lsst.io/stack/debug.html">Debugging Tasks with lsstDebug</a> for more
-    about \b debug.py files.
-
-    The available variables in SnapCombineTask are:
-    <DL>
-      <DT> \c display
-      <DD> A dictionary containing debug point names as keys with frame number as value. Valid keys are:
-        <DL>
-          <DT> repair0
-          <DD> Display the first snap after repairing.
-          <DT> repair1
-          <DD> Display the second snap after repairing.
-        </DL>
-      </DD>
-    </DL>
+        repair0
+        Display the first snap after repairing.
+        repair1
+        Display the second snap after repairing.
     """
+
     ConfigClass = SnapCombineConfig
     _DefaultName = "snapCombine"
 
@@ -178,14 +162,26 @@ class SnapCombineTask(pipeBase.Task):
 
     @timeMethod
     def run(self, snap0, snap1, defects=None):
-        """Combine two snaps
+        """Combine two snaps.
 
-        @param[in] snap0: snapshot exposure 0
-        @param[in] snap1: snapshot exposure 1
-        @defects[in] defect list (for repair task)
-        @return a pipe_base Struct with fields:
-        - exposure: snap-combined exposure
-        - sources: detected sources, or None if detection not performed
+        Parameters
+        ----------
+        snap0 : `Unknown`
+            Snapshot exposure 0.
+        snap1 : `Unknown`
+            Snapshot exposure 1.
+        defects : `list` or `None`, optional
+            Defect list (for repair task).
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            Results as a struct with attributes:
+
+            ``exposure``
+                Snap-combined exposure.
+            ``sources``
+                Detected sources, or `None` if detection not performed.
         """
         # initialize optional outputs
         sources = None
@@ -248,11 +244,19 @@ class SnapCombineTask(pipeBase.Task):
         )
 
     def addSnaps(self, snap0, snap1):
-        """Add two snap exposures together, returning a new exposure
+        """Add two snap exposures together, returning a new exposure.
 
-        @param[in] snap0 snap exposure 0
-        @param[in] snap1 snap exposure 1
-        @return combined exposure
+        Parameters
+        ----------
+        snap0 : `Unknown`
+            Snap exposure 0.
+        snap1 : `Unknown`
+            Snap exposure 1.
+
+        Returns
+        -------
+        combinedExp : `Unknown`
+            Combined exposure.
         """
         self.log.info("snapCombine addSnaps")
 
@@ -283,18 +287,25 @@ class SnapCombineTask(pipeBase.Task):
         return combinedExp
 
     def fixMetadata(self, combinedMetadata, metadata0, metadata1):
-        """Fix the metadata of the combined exposure (in place)
+        """Fix the metadata of the combined exposure (in place).
 
         This implementation handles items specified by config.averageKeys and config.sumKeys,
         which have data type restrictions. To handle other data types (such as sexagesimal
         positions and ISO dates) you must supplement this method with your own code.
 
-        @param[in,out] combinedMetadata metadata of combined exposure;
-            on input this is a deep copy of metadata0 (a PropertySet)
-        @param[in] metadata0 metadata of snap0 (a PropertySet)
-        @param[in] metadata1 metadata of snap1 (a PropertySet)
+        Parameters
+        ----------
+        combinedMetadata : `lsst.daf.base.PropertySet`
+            Metadata of combined exposure;
+            on input this is a deep copy of metadata0 (a PropertySet).
+        metadata0 : `lsst.daf.base.PropertySet`
+            Metadata of snap0 (a PropertySet).
+        metadata1 : `lsst.daf.base.PropertySet`
+            Metadata of snap1 (a PropertySet).
 
-        @note the inputs are presently PropertySets due to ticket #2542. However, in some sense
+        Notes
+        -----
+        The inputs are presently PropertySets due to ticket #2542. However, in some sense
         they are just PropertyLists that are missing some methods. In particular: comments and order
         are preserved if you alter an existing value with set(key, value).
         """
@@ -324,10 +335,20 @@ class SnapCombineTask(pipeBase.Task):
             combinedMetadata.set(key, combinedVal)
 
     def makeInitialPsf(self, exposure, fwhmPix=None):
-        """Initialise the detection procedure by setting the PSF and WCS
+        """Initialise the detection procedure by setting the PSF and WCS.
 
-        @param exposure Exposure to process
-        @return PSF, WCS
+        exposure : `lsst.afw.image.Exposure`
+            Exposure to process.
+
+        Returns
+        -------
+        psf : `Unknown`
+            PSF, WCS
+
+        AssertionError
+            Raised if any of the following occur:
+            - No exposure provided.
+            - No wcs in exposure.
         """
         assert exposure, "No exposure provided"
         wcs = exposure.getWcs()

@@ -18,7 +18,7 @@ Retargetable subtasks
 
 .. lsst-task-config-subtasks:: lsst.pipe.tasks.interpImage.InterpImageTask
 
-.. _lsst.pipe.tasks.interpImage.InterpImageTask-fields:
+.. _lsst.pipe.tasks.interpImage.InterpImageTask-config:
 
 Configuration fields
 ====================

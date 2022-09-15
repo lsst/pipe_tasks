@@ -1,10 +1,10 @@
-#!/usr/bin/env python
+# This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# Copyright 2008-2015 AURA/LSST.
-#
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,10 +16,11 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <https://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+__all__ = ["DetectCoaddSourcesConfig", "DetectCoaddSourcesTask"]
+
 import warnings
 
 from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
@@ -99,11 +100,9 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
 
 
 class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoaddSourcesConnections):
-    """!
-    @anchor DetectCoaddSourcesConfig_
-
-    @brief Configuration parameters for the DetectCoaddSourcesTask
+    """Configuration parameters for the DetectCoaddSourcesTask
     """
+
     doScaleVariance = Field(dtype=bool, default=True, doc="Scale variance plane using empirical noise?")
     scaleVariance = ConfigurableField(target=ScaleVarianceTask, doc="Variance rescaling")
     detection = ConfigurableField(target=DynamicDetectionTask, doc="Source detection")
@@ -134,30 +133,40 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
         self.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
         self.detection.doTempWideBackground = True  # Suppress large footprints that overwhelm the deblender
 
-## @addtogroup LSST_task_documentation
-## @{
-## @page page_DetectCoaddSourcesTask DetectCoaddSourcesTask
-## @ref DetectCoaddSourcesTask_ "DetectCoaddSourcesTask"
-## @copybrief DetectCoaddSourcesTask
-## @}
-
 
 class DetectCoaddSourcesTask(PipelineTask):
-    """Detect sources on a coadd."""
+    """Detect sources on a single filter coadd.
+
+    Coadding individual visits requires each exposure to be warped. This
+    introduces covariance in the noise properties across pixels. Before
+    detection, we correct the coadd variance by scaling the variance plane in
+    the coadd to match the observed variance. This is an approximate
+    approach -- strictly, we should propagate the full covariance matrix --
+    but it is simple and works well in practice.
+
+    After scaling the variance plane, we detect sources and generate footprints
+    by delegating to the @ref SourceDetectionTask_ "detection" subtask.
+
+    DetectCoaddSourcesTask is meant to be run after assembling a coadded image
+    in a given band. The purpose of the task is to update the background,
+    detect all sources in a single band and generate a set of parent
+    footprints. Subsequent tasks in the multi-band processing procedure will
+    merge sources across bands and, eventually, perform forced photometry.
+
+    Parameters
+    ----------
+    schema : `lsst.afw.table.Schema`, optional
+        Initial schema for the output catalog, modified-in place to include all
+        fields set by this task.  If None, the source minimal schema will be used.
+    **kwargs
+        Additional keyword arguments.
+    """
+
     _DefaultName = "detectCoaddSources"
     ConfigClass = DetectCoaddSourcesConfig
     getSchemaCatalogs = _makeGetSchemaCatalogs("det")
 
     def __init__(self, schema=None, **kwargs):
-        """!
-        @brief Initialize the task. Create the @ref SourceDetectionTask_ "detection" subtask.
-
-        Keyword arguments (in addition to those forwarded to PipelineTask.__init__):
-
-        @param[in] schema:   initial schema for the output catalog, modified-in place to include all
-                             fields set by this task.  If None, the source minimal schema will be used.
-        @param[in] **kwargs: keyword arguments to be passed to lsst.pipe.base.task.Task.__init__
-        """
         # N.B. Super is used here to handle the multiple inheritance of PipelineTasks, the init tree
         # call structure has been reviewed carefully to be sure super will work as intended.
         super().__init__(**kwargs)
@@ -179,21 +188,31 @@ class DetectCoaddSourcesTask(PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     def run(self, exposure, idFactory, expId):
-        """!
-        @brief Run detection on an exposure.
+        """Run detection on an exposure.
 
         First scale the variance plane to match the observed variance
-        using @ref ScaleVarianceTask. Then invoke the @ref SourceDetectionTask_ "detection" subtask to
+        using ``ScaleVarianceTask``. Then invoke the ``SourceDetectionTask_`` "detection" subtask to
         detect sources.
 
-        @param[in,out] exposure: Exposure on which to detect (may be backround-subtracted and scaled,
-                                 depending on configuration).
-        @param[in] idFactory: IdFactory to set source identifiers
-        @param[in] expId: Exposure identifier (integer) for RNG seed
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
+            Exposure on which to detect (may be backround-subtracted and scaled,
+            depending on configuration).
+        idFactory : `lsst.afw.table.IdFactory`
+            IdFactory to set source identifiers.
+        expId : `int`
+            Exposure identifier (integer) for RNG seed.
 
-        @return a pipe.base.Struct with fields
-        - sources: catalog of detections
-        - backgrounds: list of backgrounds
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            Results as a struct with attributes:
+
+            ``sources``
+                Catalog of detections (`lsst.afw.table.SourceCatalog`).
+            ``backgrounds``
+                List of backgrounds (`list`).
         """
         if self.config.doScaleVariance:
             varScale = self.scaleVariance.run(exposure.maskedImage)
@@ -213,10 +232,9 @@ class DetectCoaddSourcesTask(PipelineTask):
 
 
 class DeblendCoaddSourcesConfig(Config):
-    """DeblendCoaddSourcesConfig
-
-    Configuration parameters for the `DeblendCoaddSourcesTask`.
+    """Configuration parameters for the `DeblendCoaddSourcesTask`.
     """
+
     singleBandDeblend = ConfigurableField(target=SourceDeblendTask,
                                           doc="Deblend sources separately in each band")
     multiBandDeblend = ConfigurableField(target=ScarletDeblendTask,
@@ -380,10 +398,7 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
 
 class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
                                       pipelineConnections=MeasureMergedCoaddSourcesConnections):
-    """!
-    @anchor MeasureMergedCoaddSourcesConfig_
-
-    @brief Configuration parameters for the MeasureMergedCoaddSourcesTask
+    """Configuration parameters for the MeasureMergedCoaddSourcesTask
     """
     inputCatalog = ChoiceField(
         dtype=str,
@@ -471,37 +486,56 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
                                                                      'INEXACT_PSF']
 
 
-## @addtogroup LSST_task_documentation
-## @{
-## @page page_MeasureMergedCoaddSourcesTask MeasureMergedCoaddSourcesTask
-## @ref MeasureMergedCoaddSourcesTask_ "MeasureMergedCoaddSourcesTask"
-## @copybrief MeasureMergedCoaddSourcesTask
-## @}
-
 class MeasureMergedCoaddSourcesTask(PipelineTask):
-    """Deblend sources from main catalog in each coadd seperately and measure."""
+    """Deblend sources from main catalog in each coadd seperately and measure.
+
+    Use peaks and footprints from a master catalog to perform deblending and
+    measurement in each coadd.
+
+    Given a master input catalog of sources (peaks and footprints) or deblender
+    outputs(including a HeavyFootprint in each band), measure each source on
+    the coadd. Repeating this procedure with the same master catalog across
+    multiple coadds will generate a consistent set of child sources.
+
+    The deblender retains all peaks and deblends any missing peaks (dropouts in
+    that band) as PSFs. Source properties are measured and the @c is-primary
+    flag (indicating sources with no children) is set. Visit flags are
+    propagated to the coadd sources.
+
+    Optionally, we can match the coadd sources to an external reference
+    catalog.
+
+    After MeasureMergedCoaddSourcesTask has been run on multiple coadds, we
+    have a set of per-band catalogs. The next stage in the multi-band
+    processing procedure will merge these measurements into a suitable catalog
+    for driving forced photometry.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler` or `None`, optional
+        A butler used to read the input schemas from disk or construct the reference
+        catalog loader, if schema or peakSchema or refObjLoader is None.
+    schema : ``lsst.afw.table.Schema`, optional
+        The schema of the merged detection catalog used as input to this one.
+    peakSchema : ``lsst.afw.table.Schema`, optional
+        The schema of the PeakRecords in the Footprints in the merged detection catalog.
+    refObjLoader : `lsst.meas.algorithms.ReferenceObjectLoader`, optional
+        An instance of LoadReferenceObjectsTasks that supplies an external reference
+        catalog. May be None if the loader can be constructed from the butler argument or all steps
+        requiring a reference catalog are disabled.
+    initInputs : `dict`, optional
+        Dictionary that can contain a key ``inputSchema`` containing the
+        input schema. If present will override the value of ``schema``.
+    **kwargs
+        Additional keyword arguments.
+    """
+
     _DefaultName = "measureCoaddSources"
     ConfigClass = MeasureMergedCoaddSourcesConfig
     getSchemaCatalogs = _makeGetSchemaCatalogs("meas")
 
     def __init__(self, butler=None, schema=None, peakSchema=None, refObjLoader=None, initInputs=None,
                  **kwargs):
-        """!
-        @brief Initialize the task.
-
-        Keyword arguments (in addition to those forwarded to PipelineTask.__init__):
-        @param[in] schema: the schema of the merged detection catalog used as input to this one
-        @param[in] peakSchema: the schema of the PeakRecords in the Footprints in the merged detection catalog
-        @param[in] refObjLoader: an instance of LoadReferenceObjectsTasks that supplies an external reference
-            catalog. May be None if the loader can be constructed from the butler argument or all steps
-            requiring a reference catalog are disabled.
-        @param[in] butler: a butler used to read the input schemas from disk or construct the reference
-            catalog loader, if schema or peakSchema or refObjLoader is None
-
-        The task will set its own self.schema attribute to the schema of the output measurement catalog.
-        This will include all fields from the input schema, as well as additional fields for all the
-        measurements.
-        """
         super().__init__(**kwargs)
         self.deblended = self.config.inputCatalog.startswith("deblended")
         self.inputCatalog = "Coadd_" + self.config.inputCatalog
@@ -643,40 +677,40 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         Parameters
         ----------
         exposure : `lsst.afw.exposure.Exposure`
-            The input exposure on which measurements are to be performed
+            The input exposure on which measurements are to be performed.
         sources :  `lsst.afw.table.SourceCatalog`
             A catalog built from the results of merged detections, or
             deblender outputs.
         skyInfo : `lsst.pipe.base.Struct`
             A struct containing information about the position of the input exposure within
-            a `SkyMap`, the `SkyMap`, its `Wcs`, and its bounding box
+            a `SkyMap`, the `SkyMap`, its `Wcs`, and its bounding box.
         exposureId : `int` or `bytes`
-            packed unique number or bytes unique to the input exposure
-        ccdInputs : `lsst.afw.table.ExposureCatalog`
+            Packed unique number or bytes unique to the input exposure.
+        ccdInputs : `lsst.afw.table.ExposureCatalog`, optional
             Catalog containing information on the individual visits which went into making
             the coadd.
-        sourceTableHandleDict : `dict` [`int`: `lsst.daf.butler.DeferredDatasetHandle`]
-            Dict for sourceTable_visit handles (key is visit) for propagating flags.
-            These tables are derived from the ``CalibrateTask`` sources, and contain
-            astrometry and photometry flags, and optionally PSF flags.
-        finalizedSourceTableHandleDict : `dict` [`int`: `lsst.daf.butler.DeferredDatasetHandle`], optional
-            Dict for finalized_src_table handles (key is visit) for propagating flags.
-            These tables are derived from ``FinalizeCalibrationTask`` and contain
-            PSF flags from the finalized PSF estimation.
-        visitCatalogs : list of `lsst.afw.table.SourceCatalogs`
+        visitCatalogs : `list` of `lsst.afw.table.SourceCatalogs`, optional
             A list of source catalogs corresponding to measurements made on the individual
             visits which went into the input exposure. If None and butler is `None` then
             the task cannot propagate visit flags to the output catalog.
             Deprecated, to be removed with PropagateVisitFlagsTask.
-        wcsUpdates : list of `lsst.afw.geom.SkyWcs`
+        wcsUpdates : `list` of `lsst.afw.geom.SkyWcs`, optional
             If visitCatalogs is not `None` this should be a list of wcs objects which correspond
             to the input visits. Used to put all coordinates to common system. If `None` and
             butler is `None` then the task cannot propagate visit flags to the output catalog.
             Deprecated, to be removed with PropagateVisitFlagsTask.
-        butler : `None`
+        butler : `None`, optional
             This was a Gen2 butler used to load visit catalogs.
             No longer used and should not be set. Will be removed in the
             future.
+        sourceTableHandleDict : `dict` [`int`, `lsst.daf.butler.DeferredDatasetHandle`], optional
+            Dict for sourceTable_visit handles (key is visit) for propagating flags.
+            These tables are derived from the ``CalibrateTask`` sources, and contain
+            astrometry and photometry flags, and optionally PSF flags.
+        finalizedSourceTableHandleDict : `dict` [`int`, `lsst.daf.butler.DeferredDatasetHandle`], optional
+            Dict for finalized_src_table handles (key is visit) for propagating flags.
+            These tables are derived from ``FinalizeCalibrationTask`` and contain
+            PSF flags from the finalized PSF estimation.
 
         Returns
         -------

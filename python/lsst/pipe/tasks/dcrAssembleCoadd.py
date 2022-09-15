@@ -1,9 +1,10 @@
 # This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
-# See COPYRIGHT file at the top of the source tree.
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -12,13 +13,13 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <https://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+__all__ = ["DcrAssembleCoaddConnections", "DcrAssembleCoaddTask", "DcrAssembleCoaddConfig"]
 
 from math import ceil
 import numpy as np
@@ -40,8 +41,6 @@ from .assembleCoadd import (AssembleCoaddConnections,
                             CompareWarpAssembleCoaddTask)
 from .coaddBase import makeSkyInfo
 from .measurePsf import MeasurePsfTask
-
-__all__ = ["DcrAssembleCoaddConnections", "DcrAssembleCoaddTask", "DcrAssembleCoaddConfig"]
 
 
 class DcrAssembleCoaddConnections(AssembleCoaddConnections,
@@ -375,9 +374,10 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         Returns
         -------
         templateCoadd : `lsst.pipe.base.Struct`
-           Result struct with components:
+            Results as a struct with attributes:
 
-           - ``templateCoadd``: coadded exposure (`lsst.afw.image.ExposureF`)
+            ``templateCoadd``
+                Coadded exposure (`lsst.afw.image.ExposureF`).
         """
         templateCoadd = butlerQC.get(inputRefs.templateExposure)
 
@@ -421,7 +421,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             The data references to the input warped exposures.
         weightList : `list` of `float`
-            The weight to give each input exposure in the coadd
+            The weight to give each input exposure in the coadd.
             Will be modified in place if ``doAirmassWeight`` is set.
 
         Returns
@@ -514,19 +514,24 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         weightList : `list` of `float`
             The weight to give each input exposure in the coadd
         supplementaryData : `lsst.pipe.base.Struct`
-            Result struct returned by ``_makeSupplementaryData`` with components:
+            Result struct returned by ``_makeSupplementaryData`` with attributes:
 
-            - ``templateCoadd``: coadded exposure (`lsst.afw.image.Exposure`)
+            ``templateCoadd``
+                Coadded exposure (`lsst.afw.image.Exposure`).
 
         Returns
         -------
         result : `lsst.pipe.base.Struct`
-           Result struct with components:
+            Results as a struct with attributes:
 
-            - ``coaddExposure``: coadded exposure (`lsst.afw.image.Exposure`)
-            - ``nImage``: exposure count image (`lsst.afw.image.ImageU`)
-            - ``dcrCoadds``: `list` of coadded exposures for each subfilter
-            - ``dcrNImages``: `list` of exposure count images for each subfilter
+            ``coaddExposure``
+                Coadded exposure (`lsst.afw.image.Exposure`).
+            ``nImage``
+                Exposure count image (`lsst.afw.image.ImageU`).
+            ``dcrCoadds``
+                `list` of coadded exposures for each subfilter.
+            ``dcrNImages``
+                `list` of exposure count images for each subfilter.
         """
         minNumIter = self.config.minNumIter or self.config.dcrNumSubfilters
         maxNumIter = self.config.maxNumIter or self.config.dcrNumSubfilters*3
@@ -649,7 +654,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Bounding box of the patch to coadd.
         warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             The data references to the input warped exposures.
-        spanSetMaskList : `list` of `dict` containing spanSet lists, or None
+        spanSetMaskList : `list` of `dict` containing spanSet lists, or `None`
             Each element of the `dict` contains the new mask plane name
             (e.g. "CLIPPED and/or "NO_DATA") as the key,
             and the list of SpanSets to apply to the mask.
@@ -659,7 +664,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         Returns
         -------
         dcrNImages : `list` of `lsst.afw.image.ImageU`
-            List of exposure count images for each subfilter
+            List of exposure count images for each subfilter.
         dcrWeights : `list` of `lsst.afw.image.ImageF`
             Per-pixel weights for each subfilter.
             Equal to 1/(number of unmasked images contributing to each pixel).
@@ -723,7 +728,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             The data references to the input warped exposures.
         statsCtrl : `lsst.afw.math.StatisticsControl`
-            Statistics control object for coadd
+            Statistics control object for coadd.
         convergenceMetric : `float`
             Quality of fit metric for the matched templates of the input images.
         gain : `float`, optional
@@ -774,7 +779,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         ----------
         residual : `numpy.ndarray`
             The residual masked image for one exposure,
-            after subtracting the matched template
+            after subtracting the matched template.
         visitInfo : `lsst.afw.image.VisitInfo`
             Metadata for the exposure.
         wcs : `lsst.afw.geom.SkyWcs`
@@ -813,7 +818,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         dcrBBox : `lsst.geom.box.Box2I`
             Sub-region of the coadd which includes a buffer to allow for DCR.
         statsCtrl : `lsst.afw.math.StatisticsControl`
-            Statistics control object for coadd
+            Statistics control object for coadd.
         gain : `float`
             Relative weight to give the new solution when updating the model.
         modelWeights : `numpy.ndarray` or `float`
@@ -866,18 +871,18 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         subExposures : `dict` of `lsst.afw.image.ExposureF`
             The pre-loaded exposures for the current subregion.
         bbox : `lsst.geom.box.Box2I`
-            Sub-region to coadd
+            Sub-region to coadd.
         warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             The data references to the input warped exposures.
         weightList : `list` of `float`
-            The weight to give each input exposure in the coadd
+            The weight to give each input exposure in the coadd.
         statsCtrl : `lsst.afw.math.StatisticsControl`
-            Statistics control object for coadd
+            Statistics control object for coadd.
 
         Returns
         -------
         convergenceMetric : `float`
-            Quality of fit metric for all input exposures, within the sub-region
+            Quality of fit metric for all input exposures, within the sub-region.
         """
         significanceImage = np.abs(dcrModels.getReferenceImage(bbox))
         nSigma = 3.
@@ -911,7 +916,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
             Array of weights for each pixel corresponding to its significance
             for the convergence calculation.
         statsCtrl : `lsst.afw.math.StatisticsControl`
-            Statistics control object for coadd
+            Statistics control object for coadd.
 
         Returns
         -------
@@ -968,11 +973,11 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         dcrModels : `lsst.pipe.tasks.DcrModel`
             Best fit model of the true sky after correcting chromatic effects.
         skyInfo : `lsst.pipe.base.Struct`
-            Patch geometry information, from getSkyInfo
+            Patch geometry information, from getSkyInfo.
         warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             The data references to the input warped exposures.
         weightList : `list` of `float`
-            The weight to give each input exposure in the coadd
+            The weight to give each input exposure in the coadd.
         calibration : `lsst.afw.Image.PhotoCalib`, optional
             Scale factor to set the photometric calibration of an exposure.
         coaddInputs : `lsst.afw.Image.CoaddInputs`, optional
@@ -1156,15 +1161,15 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         Parameters
         ----------
         bbox : `lsst.geom.box.Box2I`
-            Sub-region to coadd
+            Sub-region to coadd.
         statsCtrl : `lsst.afw.math.StatisticsControl`
-            Statistics control object for coadd
+            Statistics control object for coadd.
         warpRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             The data references to the input warped exposures.
         imageScalerList : `list` of `lsst.pipe.task.ImageScaler`
             The image scalars correct for the zero point of the exposures.
-        spanSetMaskList : `list` of `dict` containing spanSet lists, or None
-            Each element is dict with keys = mask plane name to add the spans to
+        spanSetMaskList : `list` of `dict` containing spanSet lists, or `None`
+            Each element is dict with keys = mask plane name to add the spans to.
 
         Returns
         -------

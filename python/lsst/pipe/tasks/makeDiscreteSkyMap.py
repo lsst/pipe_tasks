@@ -1,9 +1,10 @@
+# This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# Copyright 2008-2015 AURA/LSST.
-#
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,10 +16,11 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <https://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+__all__ = ["MakeDiscreteSkyMapConfig", "MakeDiscreteSkyMapTask"]
+
 import lsst.sphgeom
 
 import lsst.geom as geom
@@ -29,8 +31,9 @@ from lsst.utils.timer import timeMethod
 
 
 class MakeDiscreteSkyMapConfig(pexConfig.Config):
-    """Config for MakeDiscreteSkyMapTask
+    """Config for MakeDiscreteSkyMapTask.
     """
+
     coaddName = pexConfig.Field(
         doc="coadd name, e.g. deep, goodSeeing, chiSquared",
         dtype=str,
@@ -61,11 +64,12 @@ class MakeDiscreteSkyMapConfig(pexConfig.Config):
 
 
 class MakeDiscreteSkyMapTask(pipeBase.Task):
-    """!Make a DiscreteSkyMap in a repository, using the bounding box of a set of calexps.
+    """Make a DiscreteSkyMap in a repository, using the bounding box of a set of calexps.
 
     The command-line and run signatures and config are sufficiently different from MakeSkyMapTask
     that we don't inherit from it, but it is a replacement, so we use the same config/metadata names.
     """
+
     ConfigClass = MakeDiscreteSkyMapConfig
     _DefaultName = "makeDiscreteSkyMap"
 
@@ -75,14 +79,18 @@ class MakeDiscreteSkyMapTask(pipeBase.Task):
 
         Parameters
         ----------
-        wcs_bbox_tuple_list : iterable
-           A list of tuples with each element expected to be a (Wcs, Box2I) pair
-        oldSkyMap : `lsst.skymap.DiscreteSkyMap`, option
-           The SkyMap to extend if appending
+        wcs_bbox_tuple_list : `iterable`
+           A list of tuples with each element expected to be a (Wcs, Box2I) pair.
+        oldSkyMap : `lsst.skymap.DiscreteSkyMap`, optional
+           The SkyMap to extend if appending.
+
         Returns
         -------
-        struct : `lsst.pipe.base.Struct
-           The returned struct has one attribute, ``skyMap``, which holds the returned SkyMap
+        skyMap : `lsst.pipe.base.Struct`
+            Sky map returned as a struct with attributes:
+
+            ``skyMap``
+                The returned SkyMap (`lsst.skyMap.SkyMap`).
         """
         self.log.info("Extracting bounding boxes of %d images", len(wcs_bbox_tuple_list))
         points = []

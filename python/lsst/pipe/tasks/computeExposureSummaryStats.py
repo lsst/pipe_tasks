@@ -18,6 +18,9 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+__all__ = ["ComputeExposureSummaryStatsTask", "ComputeExposureSummaryStatsConfig"]
+
 import warnings
 import numpy as np
 from scipy.stats import median_abs_deviation as sigmaMad
@@ -32,9 +35,6 @@ import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
 import lsst.geom
 from lsst.utils.timer import timeMethod
-
-
-__all__ = ("ComputeExposureSummaryStatsTask", "ComputeExposureSummaryStatsConfig")
 
 
 class ComputeExposureSummaryStatsConfig(pexConfig.Config):

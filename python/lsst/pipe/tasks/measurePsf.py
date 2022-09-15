@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["MeasurePsfConfig", "MeasurePsfTask"]
+
 import lsst.afw.display as afwDisplay
 import lsst.afw.math as afwMath
 import lsst.meas.algorithms as measAlg
@@ -55,177 +57,58 @@ class MeasurePsfConfig(pexConfig.Config):
                    f" must be >= psf candidate kernelSize={self.makePsfCandidates.kernelSize}.")
             raise pexConfig.FieldValidationError(MeasurePsfConfig.makePsfCandidates, self, msg)
 
-## @addtogroup LSST_task_documentation
-## @{
-## @page page_MeasurePsfTask MeasurePsfTask
-## @ref MeasurePsfTask_ "MeasurePsfTask"
-## @copybrief MeasurePsfTask
-## @}
-
 
 class MeasurePsfTask(pipeBase.Task):
-    r"""!
-@anchor MeasurePsfTask_
+    """A task that selects stars from a catalog of sources and uses those to measure the PSF.
 
-@brief Measure the PSF
+    Parameters
+    ----------
+    schema : `lsst.sfw.table.Schema`
+        An `lsst.afw.table.Schema` used to create the output `lsst.afw.table.SourceCatalog`.
+    **kwargs :
+        Keyword arguments passed to lsst.pipe.base.task.Task.__init__.
 
-@section pipe_tasks_measurePsf_Contents Contents
+    Notes
+    -----
+    If schema is not None, 'calib_psf_candidate' and 'calib_psf_used' fields will be added to
+    identify which stars were employed in the PSF estimation.
 
- - @ref pipe_tasks_measurePsf_Purpose
- - @ref pipe_tasks_measurePsf_Initialize
- - @ref pipe_tasks_measurePsf_IO
- - @ref pipe_tasks_measurePsf_Config
- - @ref pipe_tasks_measurePsf_Debug
- - @ref pipe_tasks_measurePsf_Example
+    This task can add fields to the schema, so any code calling this task must ensure that
+    these fields are indeed present in the input table.
 
-@section pipe_tasks_measurePsf_Purpose	Description
+    The star selector is a subclass of
+    ``lsst.meas.algorithms.starSelector.BaseStarSelectorTask`` "lsst.meas.algorithms.BaseStarSelectorTask"
+    and the PSF determiner is a sublcass of
+    ``lsst.meas.algorithms.psfDeterminer.BasePsfDeterminerTask`` "lsst.meas.algorithms.BasePsfDeterminerTask"
 
-A task that selects stars from a catalog of sources and uses those to measure the PSF.
+    There is no establised set of configuration parameters for these algorithms, so once you start modifying
+    parameters (as we do in @ref pipe_tasks_measurePsf_Example) your code is no longer portable.
 
-The star selector is a subclass of
-@ref lsst.meas.algorithms.starSelector.BaseStarSelectorTask "lsst.meas.algorithms.BaseStarSelectorTask"
-and the PSF determiner is a sublcass of
-@ref lsst.meas.algorithms.psfDeterminer.BasePsfDeterminerTask "lsst.meas.algorithms.BasePsfDeterminerTask"
+    Debugging:
 
-@warning
-There is no establised set of configuration parameters for these algorithms, so once you start modifying
-parameters (as we do in @ref pipe_tasks_measurePsf_Example) your code is no longer portable.
+    .. code-block:: none
 
-@section pipe_tasks_measurePsf_Initialize	Task initialisation
+    display
+        If True, display debugging plots
+    displayExposure
+        display the Exposure + spatialCells
+    displayPsfCandidates
+        show mosaic of candidates
+    showBadCandidates
+        Include bad candidates
+    displayPsfMosaic
+        show mosaic of reconstructed PSF(xy)
+    displayResiduals
+        show residuals
+    normalizeResiduals
+        Normalise residuals by object amplitude
 
-@copydoc \_\_init\_\_
-
-@section pipe_tasks_measurePsf_IO		Invoking the Task
-
-@copydoc run
-
-@section pipe_tasks_measurePsf_Config       Configuration parameters
-
-See @ref MeasurePsfConfig.
-
-@section pipe_tasks_measurePsf_Debug		Debug variables
-
-The command line task interface supports a
-flag @c -d to import @b debug.py from your @c PYTHONPATH; see
-<a href="https://pipelines.lsst.io/modules/lsstDebug/">the lsstDebug documentation</a>
-for more about @b debug.py files.
-
-<DL>
-  <DT> @c display
-  <DD> If True, display debugging plots
-  <DT> displayExposure
-  <DD> display the Exposure + spatialCells
-  <DT> displayPsfCandidates
-  <DD> show mosaic of candidates
-  <DT> showBadCandidates
-  <DD> Include bad candidates
-  <DT> displayPsfMosaic
-  <DD> show mosaic of reconstructed PSF(xy)
-  <DT> displayResiduals
-  <DD> show residuals
-  <DT> normalizeResiduals
-  <DD> Normalise residuals by object amplitude
-</DL>
-
-Additionally you can enable any debug outputs that your chosen star selector and psf determiner support.
-
-@section pipe_tasks_measurePsf_Example	A complete example of using MeasurePsfTask
-
-This code is in `measurePsfTask.py` in the examples directory, and can be run as @em e.g.
-@code
-examples/measurePsfTask.py --doDisplay
-@endcode
-@dontinclude measurePsfTask.py
-
-The example also runs SourceDetectionTask and SingleFrameMeasurementTask.
-
-Import the tasks (there are some other standard imports; read the file to see them all):
-
-@skip SourceDetectionTask
-@until MeasurePsfTask
-
-We need to create the tasks before processing any data as the task constructor
-can add an extra column to the schema, but first we need an almost-empty
-Schema:
-
-@skipline makeMinimalSchema
-
-We can now call the constructors for the tasks we need to find and characterize candidate
-PSF stars:
-
-@skip SourceDetectionTask.ConfigClass
-@until measureTask
-
-Note that we've chosen a minimal set of measurement plugins: we need the
-outputs of @c base_SdssCentroid, @c base_SdssShape and @c base_CircularApertureFlux as
-inputs to the PSF measurement algorithm, while @c base_PixelFlags identifies
-and flags bad sources (e.g. with pixels too close to the edge) so they can be
-removed later.
-
-Now we can create and configure the task that we're interested in:
-
-@skip MeasurePsfTask
-@until measurePsfTask
-
-We're now ready to process the data (we could loop over multiple exposures/catalogues using the same
-task objects).  First create the output table:
-
-@skipline afwTable
-
-And process the image:
-
-@skip sources =
-@until result
-
-We can then unpack and use the results:
-
-@skip psf
-@until cellSet
-
-If you specified @c  --doDisplay you can see the PSF candidates:
-
-@skip display
-@until RED
-
-<HR>
-
-To investigate the @ref pipe_tasks_measurePsf_Debug, put something like
-@code{.py}
-    import lsstDebug
-    def DebugInfo(name):
-        di = lsstDebug.getInfo(name)        # N.b. lsstDebug.Info(name) would call us recursively
-
-        if name == "lsst.pipe.tasks.measurePsf" :
-            di.display = True
-            di.displayExposure = False          # display the Exposure + spatialCells
-            di.displayPsfCandidates = True      # show mosaic of candidates
-            di.displayPsfMosaic = True          # show mosaic of reconstructed PSF(xy)
-            di.displayResiduals = True          # show residuals
-            di.showBadCandidates = True         # Include bad candidates
-            di.normalizeResiduals = False       # Normalise residuals by object amplitude
-
-        return di
-
-    lsstDebug.Info = DebugInfo
-@endcode
-into your debug.py file and run measurePsfTask.py with the @c --debug flag.
+    Additionally you can enable any debug outputs that your chosen star selector and psf determiner support.
     """
     ConfigClass = MeasurePsfConfig
     _DefaultName = "measurePsf"
 
     def __init__(self, schema=None, **kwargs):
-        """!Create the detection task.  Most arguments are simply passed onto pipe.base.Task.
-
-        @param schema An lsst::afw::table::Schema used to create the output lsst.afw.table.SourceCatalog
-        @param **kwargs Keyword arguments passed to lsst.pipe.base.task.Task.__init__.
-
-        If schema is not None, 'calib_psf_candidate' and 'calib_psf_used' fields will be added to
-        identify which stars were employed in the PSF estimation.
-
-        @note This task can add fields to the schema, so any code calling this task must ensure that
-        these fields are indeed present in the input table.
-        """
-
         pipeBase.Task.__init__(self, **kwargs)
         if schema is not None:
             self.candidateKey = schema.addField(
@@ -249,24 +132,36 @@ into your debug.py file and run measurePsfTask.py with the @c --debug flag.
 
     @timeMethod
     def run(self, exposure, sources, expId=0, matches=None):
-        """!Measure the PSF
+        """Measure the PSF.
 
-        @param[in,out]   exposure   Exposure to process; measured PSF will be added.
-        @param[in,out]   sources    Measured sources on exposure; flag fields will be set marking
-                                    stars chosen by the star selector and the PSF determiner if a schema
-                                    was passed to the task constructor.
-        @param[in]       expId      Exposure id used for generating random seed.
-        @param[in]  matches         A list of lsst.afw.table.ReferenceMatch objects
-                                    (@em i.e. of lsst.afw.table.Match
-                                    with @c first being of type lsst.afw.table.SimpleRecord and @c second
-                                    type lsst.afw.table.SourceRecord --- the reference object and detected
-                                    object respectively) as returned by @em e.g. the AstrometryTask.
-                                    Used by star selectors that choose to refer to an external catalog.
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
+            Exposure to process; measured PSF will be added.
+        sources : `Unknown`
+            Measured sources on exposure; flag fields will be set marking
+            stars chosen by the star selector and the PSF determiner if a schema
+            was passed to the task constructor.
+        expId : `int`, optional
+            Exposure id used for generating random seed.
+        matches : `list`, optional
+            A list of ``lsst.afw.table.ReferenceMatch`` objects
+            (i.e. of ``lsst.afw.table.Match`` with @c first being
+            of type ``lsst.afw.table.SimpleRecord`` and @c second
+            type lsst.afw.table.SourceRecord --- the reference object and detected
+            object respectively) as returned by @em e.g. the AstrometryTask.
+            Used by star selectors that choose to refer to an external catalog.
 
-        @return a pipe.base.Struct with fields:
-         - psf: The measured PSF (also set in the input exposure)
-         - cellSet: an lsst.afw.math.SpatialCellSet containing the PSF candidates
-            as returned by the psf determiner.
+        Returns
+        -------
+        measurement : `lsst.pipe.base.Struct`
+             PSF measurement as a struct with attributes:
+
+            ``psf``
+                The measured PSF (also set in the input exposure).
+            ``cellSet``
+                An `lsst.afw.math.SpatialCellSet` containing the PSF candidates
+                as returned by the psf determiner.
         """
         self.log.info("Measuring PSF")
 

@@ -18,6 +18,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 __all__ = ["SkyCorrectionTask", "SkyCorrectionConfig"]
 
 import numpy as np
@@ -33,9 +34,6 @@ import lsst.pipe.base.connectionTypes as cT
 
 from .background import (SkyMeasurementTask, FocalPlaneBackground,
                          FocalPlaneBackgroundConfig, MaskObjectsTask)
-
-
-__all__ = ["SkyCorrectionConfig", "SkyCorrectionTask"]
 
 
 def reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):

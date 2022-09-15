@@ -1,10 +1,10 @@
-#!/usr/bin/env python
+# This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# Copyright 2008-2015 AURA/LSST.
-#
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,10 +16,11 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <https://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+__all__ = ["MergeMeasurementsConfig", "MergeMeasurementsTask"]
+
 import numpy
 import warnings
 
@@ -61,10 +62,7 @@ class MergeMeasurementsConnections(PipelineTaskConnections,
 
 
 class MergeMeasurementsConfig(PipelineTaskConfig, pipelineConnections=MergeMeasurementsConnections):
-    """!
-    @anchor MergeMeasurementsConfig_
-
-    @brief Configuration parameters for the MergeMeasurementsTask
+    """Configuration parameters for the MergeMeasurementsTask.
     """
     pseudoFilterList = pexConfig.ListField(
         dtype=str,
@@ -114,27 +112,32 @@ class MergeMeasurementsConfig(PipelineTaskConfig, pipelineConnections=MergeMeasu
             raise RuntimeError("No priority list provided")
 
 
-## @addtogroup LSST_task_documentation
-## @{
-## @page page_MergeMeasurementsTask MergeMeasurementsTask
-## @ref MergeMeasurementsTask_ "MergeMeasurementsTask"
-## @copybrief MergeMeasurementsTask
-## @}
-
-
 class MergeMeasurementsTask(pipeBase.PipelineTask):
     """Merge measurements from multiple bands.
 
+    Combines consistent (i.e. with the same peaks and footprints) catalogs of
+    sources from multiple filter bands to construct a unified catalog that is
+    suitable for driving forced photometry. Every source is required to have
+    centroid, shape and flux measurements in each band.
+
+    MergeMeasurementsTask is meant to be run after deblending & measuring
+    sources in every band. The purpose of the task is to generate a catalog of
+    sources suitable for driving forced photometry in coadds and individual
+    exposures.
+
     Parameters
     ----------
-    butler : `None`
+    butler : `None`, optional
         Compatibility parameter. Should always be `None`.
     schema : `lsst.afw.table.Schema`, optional
         The schema of the detection catalogs used as input to this task.
     initInputs : `dict`, optional
         Dictionary that can contain a key ``inputSchema`` containing the
         input schema. If present will override the value of ``schema``.
+    **kwargs
+        Additional keyword arguments.
     """
+
     _DefaultName = "mergeCoaddMeasurements"
     ConfigClass = MergeMeasurementsConfig
 
@@ -199,11 +202,22 @@ class MergeMeasurementsTask(pipeBase.PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     def run(self, catalogs):
-        """!
-        Merge measurement catalogs to create a single reference catalog for forced photometry
+        """Merge measurement catalogs to create a single reference catalog for forced photometry.
 
-        @param[in] catalogs: the catalogs to be merged
+        Parameters
+        ----------
+        catalogs : `lsst.afw.table.SourceCatalog`
+            Catalogs to be merged.
 
+        Raises
+        ------
+        ValueError
+            Raised if no catalog records were found;
+            if there is no valid reference for the input record ID;
+            or if there is a mismatch between catalog sizes.
+
+        Notes
+        -----
         For parent sources, we choose the first band in config.priorityList for which the
         merge_footprint flag for that band is is True.
 

@@ -1,9 +1,10 @@
+# This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# Copyright 2008, 2009, 2010, 2011 LSST Corporation.
-#
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,10 +16,11 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+__all__ = ["ColortermNotFoundError", "Colorterm", "ColortermDict", "ColortermLibrary"]
+
 import fnmatch
 import warnings
 
@@ -28,8 +30,6 @@ import astropy.units as u
 from lsst.afw.image import abMagErrFromFluxErr
 from lsst.pex.config import Config, Field, ConfigDictField
 
-__all__ = ["ColortermNotFoundError", "Colorterm", "ColortermDict", "ColortermLibrary"]
-
 
 class ColortermNotFoundError(LookupError):
     """Exception class indicating we couldn't find a colorterm
@@ -38,10 +38,12 @@ class ColortermNotFoundError(LookupError):
 
 
 class Colorterm(Config):
-    """!Colorterm correction for one pair of filters
+    """Colorterm correction for one pair of filters
 
-    The transformed magnitude p' is given by
-        p' = primary + c0 + c1*(primary - secondary) + c2*(primary - secondary)**2
+    Notes
+    -----
+    The transformed magnitude p' is given by:
+    p' = primary + c0 + c1*(primary - secondary) + c2*(primary - secondary)**2
 
     To construct a Colorterm, use keyword arguments:
     Colorterm(primary=primaryFilterName, secondary=secondaryFilterName, c0=c0value, c1=c1Coeff, c2=c2Coeff)
@@ -72,9 +74,9 @@ class Colorterm(Config):
 
         Returns
         -------
-        RefMag : `np.ndarray`
+        refMag : `np.ndarray`
             The corrected AB magnitudes.
-        RefMagErr : `np.ndarray`
+        refMagErr : `np.ndarray`
             The corrected AB magnitude errors.
 
         Raises
@@ -88,13 +90,28 @@ class Colorterm(Config):
         WARNING: I do not know that we can trust the propagation of magnitude
         errors returned by this method. They need more thorough tests.
         """
-
         if filterName != "deprecatedArgument":
             msg = "Colorterm.getCorrectedMagnitudes() `filterName` arg is unused and will be removed in v23."
             warnings.warn(msg, category=FutureWarning)
 
         def getFluxes(fluxField):
-            """Get the flux and fluxErr of this field from refCat."""
+            """Get the flux and fluxErr of this field from refCat.
+
+            Parameters
+            ----------
+            fluxField : `str`
+                Name of the source flux field to use.
+
+            Returns
+            -------
+            refFlux : `Unknown`
+            refFluxErr : `Unknown`
+
+            Raises
+            ------
+            KeyError
+                Raised if reference catalog does not have flux uncertainties for the given flux field.
+            """
             fluxKey = refCat.schema.find(fluxField).key
             refFlux = refCat[fluxKey]
             try:
@@ -120,20 +137,35 @@ class Colorterm(Config):
         return refMag, refMagErr
 
     def transformSource(self, source):
-        """!Transform the brightness of a source
+        """Transform the brightness of a source
 
-        @param[in] source  source whose brightness is to be converted; must support get(filterName)
-                    (e.g. source.get("r")) method, as do afw::table::Source and dicts.
-        @return the transformed source magnitude
+        Parameters
+        ----------
+        source : `Unknown`
+            Source whose brightness is to be converted; must support get(filterName)
+            (e.g. source.get("r")) method, as do afw::table::Source and dicts.
+
+        Returns
+        -------
+        transformed : `float`
+            The transformed source magnitude.
         """
         return self.transformMags(source.get(self.primary), source.get(self.secondary))
 
     def transformMags(self, primary, secondary):
-        """!Transform brightness
+        """Transform brightness
 
-        @param[in] primary  brightness in primary filter (magnitude)
-        @param[in] secondary  brightness in secondary filter (magnitude)
-        @return the transformed brightness (as a magnitude)
+        Parameters
+        ----------
+        primary : `float`
+            Brightness in primary filter (magnitude).
+        secondary : `float`
+            Brightness in secondary filter (magnitude).
+
+        Returns
+        -------
+        transformed : `float`
+            The transformed brightness (as a magnitude).
         """
         color = primary - secondary
         return primary + self.c0 + color*(self.c1 + color*self.c2)
@@ -171,30 +203,44 @@ class ColortermDict(Config):
 
 
 class ColortermLibrary(Config):
-    """!A mapping of photometric reference catalog name or glob to ColortermDict
+    """A mapping of photometric reference catalog name or glob to ColortermDict
 
+    Notes
+    -----
     This allows photometric calibration using a variety of reference catalogs.
 
     To construct a ColortermLibrary, use keyword arguments:
     ColortermLibrary(data=dataDict)
     where dataDict is a Python dict of catalog_name_or_glob: ColortermDict
 
-    For example:
-    ColortermLibrary(data = {
-        "hsc*": ColortermDict(data={
-            'g': Colorterm(primary="g", secondary="g"),
-            'r': Colorterm(primary="r", secondary="r"),
-            ...
-        }),
-        "sdss*": ColortermDict(data={
-            'g':    Colorterm(primary="g", secondary="r", c0=-0.00816446, c1=-0.08366937, c2=-0.00726883),
-            'r':    Colorterm(primary="r", secondary="i", c0= 0.00231810, c1= 0.01284177, c2=-0.03068248),
-            ...
-        }),
-    })
+    Examples
+    --------
+
+    .. code-block:: none
+
+        ColortermLibrary(data = {
+            "hsc": ColortermDict(data={
+                'g': Colorterm(primary="g", secondary="g"),
+                'r': Colorterm(primary="r", secondary="r"),
+                ...
+            }),
+            "sdss": ColortermDict(data={
+                'g':    Colorterm(primary="g",
+                                  secondary="r",
+                                  c0=-0.00816446,
+                                  c1=-0.08366937,
+                                  c2=-0.00726883),
+                'r':    Colorterm(primary="r",
+                                  secondary="i",
+                                  c0= 0.00231810,
+                                  c1= 0.01284177,
+                                  c2=-0.03068248),
+                ...
+            }),
+        })
 
     This is subclass of Config. That is a bit of a hack to make it easy to store the data
-    in an appropriate obs_* package as a config override file. In the long term some other
+    in an appropriate obs package as a config override file. In the long term some other
     means of persistence will be used, at which point the constructor can be made saner.
     """
     data = ConfigDictField(
@@ -205,7 +251,7 @@ class ColortermLibrary(Config):
     )
 
     def getColorterm(self, physicalFilter, photoCatName, doRaise=True):
-        """!Get the appropriate Colorterm from the library
+        """Get the appropriate Colorterm from the library
 
         Use dict of color terms in the library that matches the photoCatName.
         If the photoCatName exactly matches an entry in the library, that
@@ -213,16 +259,28 @@ class ColortermLibrary(Config):
         e.g., "sdss-*" will match "sdss-dr8"), then that is used. If there is no
         exact match and no unique match to the globs, raise an exception.
 
-        @param physicalFilter  Label of physical filter to correct to.
-        @param photoCatName  name of photometric reference catalog from which to retrieve the data.
+        Parameters
+        ----------
+        physicalFilter : `str`
+            Label of physical filter to correct to.
+        photoCatName : `str`
+            Name of photometric reference catalog from which to retrieve the data.
             This argument is not glob-expanded (but the catalog names in the library are,
             if no exact match is found).
-        @param[in] doRaise  if True then raise ColortermNotFoundError if no suitable Colorterm found;
-            if False then return a null Colorterm with physicalFilter as the primary and secondary filter
-        @return the appropriate Colorterm
+        doRaise : `bool`
+            If True then raise ColortermNotFoundError if no suitable Colorterm found;
+            If False then return a null Colorterm with physicalFilter as the primary and secondary filter.
 
-        @throw ColortermNotFoundError if no suitable Colorterm found and doRaise true;
-        other exceptions may be raised for unexpected errors, regardless of the value of doRaise
+        Returns
+        -------
+        ctDict : `Unknown`
+            The appropriate Colorterm.
+
+        Raises
+        ------
+        ColortermNotFoundError
+            If no suitable Colorterm found and doRaise true;
+            other exceptions may be raised for unexpected errors, regardless of the value of doRaise.
         """
         try:
             trueRefCatName = None

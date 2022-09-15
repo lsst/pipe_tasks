@@ -18,7 +18,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+
 """Extract small cutouts around bright stars, normalize and warp them to the
 same arbitrary pixel grid.
 """
@@ -81,8 +81,9 @@ class ProcessBrightStarsConnections(pipeBase.PipelineTaskConnections,
 
 class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
                                pipelineConnections=ProcessBrightStarsConnections):
-    """Configuration parameters for ProcessBrightStarsTask
+    """Configuration parameters for ProcessBrightStarsTask.
     """
+
     magLimit = pexConfig.Field(
         dtype=float,
         doc="Magnitude limit, in Gaia G; all stars brighter than this value will be processed",
@@ -179,6 +180,14 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask):
     """The description of the parameters for this Task are detailed in
     :lsst-task:`~lsst.pipe.base.PipelineTask`.
 
+    Parameters
+    ----------
+    initInputs : `Unknown`
+    *args
+        Additional positional arguments.
+    **kwargs
+        Additional keyword arguments.
+
     Notes
     -----
     `ProcessBrightStarsTask` is used to extract, process, and store small
@@ -228,7 +237,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask):
         ----------
         calexp : `lsst.afw.image.Exposure` or `lsst.afw.image.MaskedImage`
             Calibrated exposure.
-        skyCorr : `lsst.afw.math.backgroundList.BackgroundList` or None,
+        skyCorr : `lsst.afw.math.backgroundList.BackgroundList` or `None`,
                   optional
             Full focal plane sky correction, obtained by running
             `lsst.pipe.drivers.skyCorrection.SkyCorrectionTask`.
@@ -251,14 +260,16 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask):
         Returns
         -------
         result : `lsst.pipe.base.Struct`
-            Result struct with components:
+            Results as a struct with attributes:
 
-            - ``starIms``: `list` of stamps
-            - ``pixCenters``: `list` of corresponding coordinates to each
-                star's center, in pixels.
-            - ``GMags``: `list` of corresponding (Gaia) G magnitudes.
-            - ``gaiaIds``: `np.ndarray` of corresponding unique Gaia
-                identifiers.
+            ``starIms``
+                List of stamps (`list`).
+            ``pixCenters``
+                List of corresponding coordinates to each star's center, in pixels (`list`).
+            ``GMags``
+                List of corresponding (Gaia) G magnitudes (`list`).
+            ``gaiaIds``
+                Array of corresponding unique Gaia identifiers (`np.ndarray`).
         """
         if refObjLoader is None:
             refObjLoader = self.refObjLoader
@@ -352,20 +363,19 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask):
         Returns
         -------
         result : `lsst.pipe.base.Struct`
-            Result struct with components:
+            Results as a struct with attributes:
 
-            - ``warpedStars``:
-                  `list` [`afwImage.maskedImage.maskedImage.MaskedImage`] of
-                  stamps of warped stars
-            - ``warpTransforms``:
-                  `list` [`afwGeom.TransformPoint2ToPoint2`] of
-                  the corresponding Transform from the initial star stamp to
-                  the common model grid
-            - ``xy0s``:
-                  `list` [`geom.Point2I`] of coordinates of the bottom-left
-                  pixels of each stamp, before rotation
-            - ``nb90Rots``: `int`, the number of 90 degrees rotations required
-                  to compensate for detector orientation
+            ``warpedStars``
+                List of stamps of warped stars (`list` of `afwImage.maskedImage.maskedImage.MaskedImage`).
+            ``warpTransforms``
+                List of the corresponding Transform from the initial star stamp
+                to the common model grid (`list` of `afwGeom.TransformPoint2ToPoint2`).
+            ``xy0s``
+                List of coordinates of the bottom-left
+                pixels of each stamp, before rotation (`list` of `geom.Point2I`).
+            ``nb90Rots``
+                The number of 90 degrees rotations required
+                to compensate for detector orientation (`int`).
         """
         # warping control; only contains shiftingALg provided in config
         warpCont = afwMath.WarpingControl(self.config.warpingKernelName)
@@ -444,7 +454,7 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask):
         dataId : `dict` or `lsst.daf.butler.DataCoordinate`
             The dataId of the exposure (and detector) bright stars should be
             extracted from.
-        skyCorr : `lsst.afw.math.backgroundList.BackgroundList` or ``None``,
+        skyCorr : `lsst.afw.math.backgroundList.BackgroundList` or `None`,
                   optional
             Full focal plane sky correction, obtained by running
             `lsst.pipe.drivers.skyCorrection.SkyCorrectionTask`.
@@ -452,9 +462,10 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask):
         Returns
         -------
         result :  `lsst.pipe.base.Struct`
-            Result struct with component:
+            Results as a struct with attributes:
 
-            - ``brightStarStamps``: ``bSS.BrightStarStamps``
+            ``brightStarStamps``
+                (`bSS.BrightStarStamps`)
         """
         if self.config.doApplySkyCorr:
             self.log.info("Applying sky correction to exposure %s (exposure will be modified in-place).",

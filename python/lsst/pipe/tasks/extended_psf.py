@@ -18,10 +18,13 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+
 """Read preprocessed bright stars and stack them to build an extended
 PSF model.
 """
+
+__all__ = ["FocalPlaneRegionExtendedPsf", "ExtendedPsf", "StackBrightStarsConfig",
+           "StackBrightStarsTask", "MeasureExtendedPsfConfig", "MeasureExtendedPsfTask"]
 
 from dataclasses import dataclass
 from typing import List

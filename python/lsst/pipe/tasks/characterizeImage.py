@@ -1,9 +1,10 @@
+# This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# Copyright 2008-2015 AURA/LSST.
-#
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,10 +16,11 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <https://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+__all__ = ["CharacterizeImageConfig", "CharacterizeImageTask"]
+
 import numpy as np
 import warnings
 
@@ -43,8 +45,6 @@ from .repair import RepairTask
 from .computeExposureSummaryStats import ComputeExposureSummaryStatsTask
 from lsst.pex.exceptions import LengthError
 from lsst.utils.timer import timeMethod
-
-__all__ = ["CharacterizeImageConfig", "CharacterizeImageTask"]
 
 
 class CharacterizeImageConnections(pipeBase.PipelineTaskConnections,
@@ -94,8 +94,8 @@ class CharacterizeImageConnections(pipeBase.PipelineTaskConnections,
 
 class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
                               pipelineConnections=CharacterizeImageConnections):
+    """Config for CharacterizeImageTask."""
 
-    """!Config for CharacterizeImageTask"""
     doMeasurePsf = pexConfig.Field(
         dtype=bool,
         default=True,
@@ -247,7 +247,15 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
 
 
 class CharacterizeImageTask(pipeBase.PipelineTask):
-    """Measure bright sources and use this to estimate background and PSF of an exposure.
+    """Measure bright sources and use this to estimate background and PSF of
+    an exposure.
+
+    Given an exposure with defects repaired (masked and interpolated over,
+    e.g. as output by `~lsst.ip.isr.IsrTask`):
+    - detect and measure bright sources
+    - repair cosmic rays
+    - measure and subtract background
+    - measure PSF
 
     Parameters
     ----------
@@ -257,6 +265,30 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         Reference object loader if using a catalog-based star-selector.
     schema : `lsst.afw.table.Schema`, optional
         Initial schema for icSrc catalog.
+    **kwargs
+        Additional keyword arguments.
+
+    Notes
+    -----
+    Debugging:
+    CharacterizeImageTask has a debug dictionary with the following keys:
+
+    frame
+        int: if specified, the frame of first debug image displayed (defaults to 1)
+    repair_iter
+        bool; if True display image after each repair in the measure PSF loop
+    background_iter
+        bool; if True display image after each background subtraction in the measure PSF loop
+    measure_iter
+        bool; if True display image and sources at the end of each iteration of the measure PSF loop
+        See `~lsst.meas.astrom.displayAstrometry` for the meaning of the various symbols.
+    psf
+        bool; if True display image and sources after PSF is measured;
+        this will be identical to the final image displayed by measure_iter if measure_iter is true
+    repair
+        bool; if True display image and sources after final repair
+    measure
+        bool; if True display image and sources after final measurement
     """
 
     ConfigClass = CharacterizeImageConfig
@@ -324,7 +356,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         Returns
         -------
         result : `lsst.pipe.base.Struct`
-            Result structure with the following attributes:
+            Results as a struct with attributes:
 
             ``exposure``
                Characterized exposure (`lsst.afw.image.ExposureF`).
@@ -338,6 +370,11 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
                Another reference to ``exposure`` for compatibility.
             ``backgroundModel``
                Another reference to ``background`` for compatibility.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if PSF sigma is NaN.
         """
         self._frame = self._initialFrame  # reset debug display frame
 
@@ -403,8 +440,11 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         """Perform one iteration of detect, measure, and estimate PSF.
 
         Performs the following operations:
+
         - if config.doMeasurePsf or not exposure.hasPsf():
+
             - install a simple PSF model (replacing the existing one, if need be)
+
         - interpolate over cosmic rays with keepCRs=True
         - estimate background and subtract it from the exposure
         - detect, deblend and measure sources, and subtract a refined background model;
@@ -423,7 +463,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         Returns
         -------
         result : `lsst.pipe.base.Struct`
-            Result structure with the following attributes:
+            Results as a struct with attributes:
 
             ``exposure``
                Characterized exposure (`lsst.afw.image.ExposureF`).
@@ -433,6 +473,11 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
                Model of subtracted background (`lsst.afw.math.BackgroundList`).
             ``psfCellSet``
                Spatial cells of PSF candidates (`lsst.afw.math.SpatialCellSet`).
+
+        Raises
+        ------
+        LengthError
+            Raised if there are too many CR pixels.
         """
         # install a simple PSF model, if needed or wanted
         if not exposure.hasPsf() or (self.config.doMeasurePsf and self.config.useSimplePsf):
@@ -503,8 +548,8 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
             Name of item in ``debugInfo``.
         exposure : `lsst.afw.image.ExposureF`
             Exposure to display.
-        sourceCat : `lsst.afw.table.SourceCatalog`
-            Exposure to display.
+        sourceCat : `lsst.afw.table.SourceCatalog`, optional
+            Catalog of sources detected on the exposure.
         """
         val = getDebugFrame(self._display, itemName)
         if not val:

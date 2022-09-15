@@ -1,8 +1,8 @@
-# This file is part of pipe tasks
+# This file is part of pipe_tasks.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
-# (http://www.lsst.org).
+# (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
 # for details of code ownership.
 #
@@ -17,11 +17,14 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 Insert fakes into deepCoadds
 """
+
+__all__ = ["InsertFakesConfig", "InsertFakesTask"]
+
 import galsim
 import numpy as np
 from astropy import units as u
@@ -36,8 +39,6 @@ from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnect
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.exceptions import LogicError, InvalidParameterError
 from lsst.geom import SpherePoint, radians, Box2D, Point2D
-
-__all__ = ["InsertFakesConfig", "InsertFakesTask"]
 
 
 def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
@@ -1068,7 +1069,7 @@ class InsertFakesTask(PipelineTask):
                     Photometric calibration to be used to calibrate the fake sources
 
         Yields
-        -------
+        ------
         galImages : `generator`
                     A generator of tuples of `lsst.afw.image.exposure.exposure.ExposureF` and
                     `lsst.geom.Point2D` of their locations.
@@ -1146,7 +1147,7 @@ class InsertFakesTask(PipelineTask):
                     Photometric calibration to be used to calibrate the fake sources
 
         Yields
-        -------
+        ------
         starImages : `generator`
                     A generator of tuples of `lsst.afw.image.ImageF` of fake stars and
                     `lsst.geom.Point2D` of their locations.

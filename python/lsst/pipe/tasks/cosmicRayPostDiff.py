@@ -19,14 +19,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["CosmicRayPostDiffConfig", "CosmicRayPostDiffTask"]
+
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
 from lsst.utils.timer import timeMethod
 from .repair import RepairTask
-
-
-__all__ = ["CosmicRayPostDiffConfig", "CosmicRayPostDiffTask"]
 
 
 class CosmicRayPostDiffConnections(pipeBase.PipelineTaskConnections,

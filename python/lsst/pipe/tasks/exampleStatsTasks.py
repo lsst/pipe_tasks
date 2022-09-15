@@ -1,9 +1,10 @@
+# This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# Copyright 2014 LSST Corporation.
-#
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -12,38 +13,21 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.    See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.utils.timer import timeMethod
 
-__all__ = ["ExampleSigmaClippedStatsConfig", "ExampleSigmaClippedStatsTask", "ExampleSimpleStatsTask"]
-
-# The following block adds links to these tasks from the Task Documentation
-#  page.
-# This works even for task(s) that are not in lsst.pipe.tasks.
-## \addtogroup LSST_task_documentation
-## \{
-## \page page_exampleStatsTasks ExampleStatsTasks
-## \ref ExampleSigmaClippedStatsTask "ExampleSigmaClippedStatsTask"
-##      A simple example subtask that computes sigma-clipped statistics of an
-##      image
-## <br>
-## \ref ExampleSimpleStatsTask "ExampleSimpleStatsTask"
-##      A very simple example subtask that computes statistics of an image.
-## \}
-
 
 class ExampleSigmaClippedStatsConfig(pexConfig.Config):
-    """!Configuration for ExampleSigmaClippedStatsTask
+    """Configuration for ExampleSigmaClippedStatsTask
     """
     badMaskPlanes = pexConfig.ListField(
         dtype=str,
@@ -64,23 +48,14 @@ class ExampleSigmaClippedStatsConfig(pexConfig.Config):
 
 
 class ExampleSigmaClippedStatsTask(pipeBase.Task):
-    r"""Example task to compute sigma-clipped mean and standard deviation of an
-    image
+    """Example task to compute sigma-clipped mean and standard deviation of an image.
 
     This is a simple example task designed to be run as a subtask by
     ExampleCmdLineTask. See also ExampleSimpleStatsTask as a variant that is
     even simpler.
 
-    The main method is ExampleSigmaClippedStatsTask.run "run".
-
-    pipeTasks_ExampleSigmaClippedStatsTask_Config  Configuration parameters
-
-    See ExampleSigmaClippedStatsConfig
-
-    pipeTasks_ExampleSigmaClippedStatsTask_Debug   Debug variables
-
-    This task has no debug variables.
-
+    Examples
+    --------
     pipeTasks_ExampleSigmaClippedStatsTask_Example A complete example
     of using ExampleSigmaClippedStatsTask
 
@@ -107,21 +82,26 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
 
     @timeMethod
     def run(self, maskedImage):
-        """Compute and return statistics for a masked image
+        """Compute and return statistics for a masked image.
 
         Parameters
         ----------
-        maskedImage : `lsst.afw.MaskedImage`
-            masked image
+        maskedImage : `lsst.afw.image.MaskedImage`
+            Masked image to compute statistics on.
 
         Returns
         -------
-        retStruct : `~lsst.pipe.base.Struct`
-            A struct containing following attributes
-            - mean: mean of image plane
-            - meanErr: uncertainty in mean
-            - stdDev: standard deviation of image plane
-            - stdDevErr: uncertainty in standard deviation
+        stats : `lsst.pipe.base.Struct`
+            Statistics as a struct with attributes:
+
+            ``mean``
+                Mean of image plane (`float`).
+            ``meanErr``
+                Uncertainty in mean (`float`).
+            ``stdDev``
+                Standard deviation of image plane (`float`).
+            ``stdDevErr``
+                Uncertainty in standard deviation (`float`).
         """
         statObj = afwMath.makeStatistics(maskedImage, afwMath.MEANCLIP | afwMath.STDEVCLIP | afwMath.ERRORS,
                                          self._statsControl)
@@ -138,8 +118,7 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
 
 
 class ExampleSimpleStatsTask(pipeBase.Task):
-    r"""
-    Example task to compute mean and standard deviation of an image
+    """Example task to compute mean and standard deviation of an image.
 
     This was designed to be run as a subtask by ExampleCmdLineTask.
     It is about as simple as a task can be; it has no configuration parameters
@@ -180,21 +159,26 @@ class ExampleSimpleStatsTask(pipeBase.Task):
     # for the task and all of its subtasks whenver the task is run.
     @timeMethod
     def run(self, maskedImage):
-        """Compute and return statistics for a masked image
+        """Compute and return statistics for a masked image.
 
         Parameters
         ----------
         maskedImage : `lsst.afw.MaskedImage`
-            masked image
+            Masked image to compute statistics on.
 
         Returns
         -------
-        retStruct : `~lsst.pipe.base.Struct`
-            A struct containing following attributes
-            - mean: mean of image plane
-            - meanErr: uncertainty in mean
-            - stdDev: standard deviation of image plane
-            - stdDevErr: uncertainty in standard deviation
+        stats : `lsst.pipe.base.Struct`
+            Statistics as a struct with attributes:
+
+            ``mean``
+                Mean of image plane (`float`).
+            ``meanErr``
+                Uncertainty in mean (`float`).
+            ``stdDev``
+                Standard deviation of image plane (`float`).
+            ``stdDevErr``
+                Uncertainty in standard deviation (`float`).
         """
         self._statsControl = afwMath.StatisticsControl()
         statObj = afwMath.makeStatistics(maskedImage, afwMath.MEAN | afwMath.STDEV | afwMath.ERRORS,

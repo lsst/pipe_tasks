@@ -1,9 +1,10 @@
+# This file is part of pipe_tasks.
 #
-# LSST Data Management System
-# Copyright 2008-2013 LSST Corporation.
-#
-# This product includes software developed by the
-# LSST Project (http://www.lsst.org/).
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,10 +16,8 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 #
-# You should have received a copy of the LSST License Statement and
-# the GNU General Public License along with this program.  If not,
-# see <http://www.lsstcorp.org/LegalNotices/>.
-#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
 This module contains a Task to register (align) multiple images.
@@ -38,7 +37,8 @@ import lsst.afw.table as afwTable
 
 
 class RegisterConfig(Config):
-    """Configuration for RegisterTask"""
+    """Configuration for RegisterTask."""
+
     matchRadius = Field(dtype=float, default=1.0, doc="Matching radius (arcsec)", check=lambda x: x > 0)
     sipOrder = Field(dtype=int, default=4, doc="Order for SIP WCS", check=lambda x: x > 1)
     sipIter = Field(dtype=int, default=3, doc="Rejection iterations for SIP WCS", check=lambda x: x > 0)
@@ -47,43 +47,63 @@ class RegisterConfig(Config):
 
 
 class RegisterTask(Task):
-    """
-    Task to register (align) multiple images.
+    """Task to register (align) multiple images.
 
     The 'run' method provides a revised Wcs from matches and fitting sources.
     Additional methods are provided as a convenience to warp an exposure
     ('warpExposure') and sources ('warpSources') with the new Wcs.
     """
+
     ConfigClass = RegisterConfig
 
     def run(self, inputSources, inputWcs, inputBBox, templateSources):
         """Register (align) an input exposure to the template
-
         The sources must have RA,Dec set, and accurate to within the
         'matchRadius' of the configuration in order to facilitate source
         matching.  We fit a new Wcs, but do NOT set it in the input exposure.
 
-        @param inputSources: Sources from input exposure
-        @param inputWcs: Wcs of input exposure
-        @param inputBBox: Bounding box of input exposure
-        @param templateSources: Sources from template exposure
-        @return Struct(matches: Matches between sources,
-                       wcs: Wcs for input in frame of template,
-                       )
+        Parameters
+        ----------
+        inputSources : `lsst.afw.table.SourceCatalog`
+            Sources from input exposure.
+        inputWcs : `lsst.afw.geom.SkyWcs`
+            Wcs of input exposure.
+        inputBBox : `lsst.geom.Box`
+            Bounding box of input exposure.
+        templateSources : `lsst.afw.table.SourceCatalog`
+            Sources from template exposure.
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            Results as a struct with attributes:
+
+            ``matches``
+                Matches between sources (`list`).
+            ``wcs``
+                Wcs for input in frame of template (`lsst.afw.geom.SkyWcs`).
         """
         matches = self.matchSources(inputSources, templateSources)
         wcs = self.fitWcs(matches, inputWcs, inputBBox)
         return Struct(matches=matches, wcs=wcs)
 
     def matchSources(self, inputSources, templateSources):
-        """Match sources between the input and template
+        """Match sources between the input and template.
 
         The order of the input arguments matters (because the later Wcs
         fitting assumes a particular order).
 
-        @param inputSources: Source catalog of the input frame
-        @param templateSources: Source of the target frame
-        @return Match list
+        Parameters
+        ----------
+        inputSources : `lsst.afw.table.SourceCatalog`
+            Source catalog of the input frame.
+        templateSources : `lsst.afw.table.SourceCatalog`
+            Source of the target frame.
+
+        Returns
+        -------
+        matches: `list`
+            Match list.
         """
         matches = afwTable.matchRaDec(templateSources, inputSources,
                                       self.config.matchRadius*geom.arcseconds)
@@ -94,14 +114,23 @@ class RegisterTask(Task):
         return matches
 
     def fitWcs(self, matches, inputWcs, inputBBox):
-        """Fit Wcs to matches
+        """Fit Wcs to matches.
 
         The fitting includes iterative sigma-clipping.
 
-        @param matches: List of matches (first is target, second is input)
-        @param inputWcs: Original input Wcs
-        @param inputBBox: Bounding box of input image
-        @return Wcs
+        Parameters
+        ----------
+        matches : `list`
+            List of matches (first is target, second is input).
+        inputWcs : `lsst.afw.geom.SkyWcs`
+            Original input Wcs.
+        inputBBox : `lsst.geom.Box`
+            Bounding box of input exposure.
+
+        Returns
+        -------
+        wcs: `lsst.afw.geom.SkyWcs`
+            Wcs fitted to matches.
         """
         copyMatches = type(matches)(matches)
         refCoordKey = copyMatches[0].first.getTable().getCoordKey()
@@ -135,17 +164,27 @@ class RegisterTask(Task):
         return wcs
 
     def warpExposure(self, inputExp, newWcs, templateWcs, templateBBox):
-        """Warp input exposure to template frame
+        """Warp input exposure to template frame.
 
         There are a variety of data attached to the exposure (e.g., PSF, PhotoCalib
         and other metadata), but we do not attempt to warp these to the template
         frame.
 
-        @param inputExp: Input exposure, to be warped
-        @param newWcs: Revised Wcs for input exposure
-        @param templateWcs: Target Wcs
-        @param templateBBox: Target bounding box
-        @return Warped exposure
+        Parameters
+        ----------
+        inputExp : `lsst.afw.image.Exposure`
+            Input exposure, to be warped.
+        newWcs : `lsst.afw.geom.SkyWcs`
+            Revised Wcs for input exposure.
+        templateWcs : `lsst.afw.geom.SkyWcs`
+            Target Wcs.
+        templateBBox : `lsst.geom.Box`
+            Target bounding box.
+
+        Returns
+        -------
+        alignedExp : `lsst.afw.image.Exposure`
+            Warped exposure.
         """
         warper = Warper.fromConfig(self.config.warper)
         copyExp = inputExp.Factory(inputExp.getMaskedImage(), newWcs)
@@ -153,17 +192,27 @@ class RegisterTask(Task):
         return alignedExp
 
     def warpSources(self, inputSources, newWcs, templateWcs, templateBBox):
-        """Warp sources to the new frame
+        """Warp sources to the new frame.
 
         It would be difficult to transform all possible quantities of potential
         interest between the two frames.  We therefore update only the sky and
         pixel coordinates.
 
-        @param inputSources: Sources on input exposure, to be warped
-        @param newWcs: Revised Wcs for input exposure
-        @param templateWcs: Target Wcs
-        @param templateBBox: Target bounding box
-        @return Warped sources
+        Parameters
+        ----------
+        inputSources : `lsst.afw.table.SourceCatalog`
+            Sources on input exposure, to be warped.
+        newWcs : `lsst.afw.geom.SkyWcs`
+            Revised Wcs for input exposure.
+        templateWcs : `lsst.afw.geom.SkyWcs`
+            Target Wcs.
+        templateBBox : `lsst.geom.Box`
+            Target bounding box.
+
+        Returns
+        -------
+        alignedSources : `lsst.afw.table.SourceCatalog`
+            Warped sources.
         """
         alignedSources = inputSources.copy(True)
         if not isinstance(templateBBox, geom.Box2D):

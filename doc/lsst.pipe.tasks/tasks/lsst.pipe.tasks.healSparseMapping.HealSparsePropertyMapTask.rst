@@ -20,7 +20,7 @@ Truncation to the inner region is performed when tract maps are consoldated in :
 
 Supported Map Types
 ===================
-The following map types are supported, and it is possible to add more by subclassing ``lsst.pipe.tasks.healSparseMappingProperties.BasePropertyMap``.
+The following map types are supported, and it is possible to add more by subclassing `~lsst.pipe.tasks.healSparseMappingProperties.BasePropertyMap`.
 All values are sampled at the center of each map pixel.
 All PSF properties are estimated by realizing the PSF model over a grid of points on each detector and approximating the variation with a second-order Chebyshev polynomial.
 
@@ -51,7 +51,7 @@ Retargetable subtasks
 
 .. lsst-task-config-subtasks:: lsst.pipe.tasks.healSparseMapping.HealSparsePropertyMapTask
 
-.. _lsst.pipe.tasks.healSparseMapping.HealSparsePropertyMapTask-fields:
+.. _lsst.pipe.tasks.healSparseMapping.HealSparsePropertyMapTask-config:
 
 Configuration fields
 ====================
