@@ -358,7 +358,8 @@ class CalibrateTask(pipeBase.PipelineTask):
     RuntimeError
         Raised if any of the following occur:
         - isSourceCat is missing fields specified in icSourceFieldsToCopy.
-        - PipelineTask form of this task is initialized with reference object loaders.
+        - PipelineTask form of this task is initialized with reference object
+          loaders.
 
     Notes
     -----
@@ -522,12 +523,13 @@ class CalibrateTask(pipeBase.PipelineTask):
         exposure : `lsst.afw.image.ExposureF`
             Exposure to calibrate.
         exposureIdInfo : `lsst.obs.baseExposureIdInfo`, optional
-            Exposure ID info. If not provided, returned SourceCatalog IDs will not
-            be globally unique.
+            Exposure ID info. If not provided, returned SourceCatalog IDs will
+            not be globally unique.
         background : `lsst.afw.math.BackgroundList`, optional
             Initial model of background already subtracted from exposure.
         icSourceCat : `lsst.afw.image.SourceCatalog`, optional
-            SourceCatalog from CharacterizeImageTask from which we can copy some fields.
+            SourceCatalog from CharacterizeImageTask from which we can copy
+            some fields.
 
         Returns
         -------
@@ -725,7 +727,8 @@ class CalibrateTask(pipeBase.PipelineTask):
     def copyIcSourceFields(self, icSourceCat, sourceCat):
         """Match sources in an icSourceCat and a sourceCat and copy fields.
 
-        The fields copied are those specified by ``config.icSourceFieldsToCopy``.
+        The fields copied are those specified by
+        ``config.icSourceFieldsToCopy``.
 
         Parameters
         ----------
