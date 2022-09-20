@@ -1456,7 +1456,7 @@ class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
     )
     outputCatalog = connectionTypes.Output(
         doc="CCD and Visit metadata table",
-        name="ccdVisitTable",
+        name="{calexpType}ccdVisitTable",
         storageClass="DataFrame",
         dimensions=("instrument",)
     )
@@ -1561,7 +1561,7 @@ class MakeVisitTableConnections(pipeBase.PipelineTaskConnections,
     )
     outputCatalog = connectionTypes.Output(
         doc="Visit metadata table",
-        name="visitTable",
+        name="{calexpType}visitTable",
         storageClass="DataFrame",
         dimensions=("instrument",)
     )
