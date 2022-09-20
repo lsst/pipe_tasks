@@ -28,7 +28,7 @@ __all__ = [
 import numpy as np
 import astropy.units as u
 
-from lsst.pipe.base import Struct, connectionTypes
+from lsst.pipe.base import NoWorkFound, Struct, connectionTypes
 from lsst.verify import Measurement
 from lsst.verify.tasks import MetricTask, MetricConfig, MetricConnections, MetricComputationError
 
@@ -76,8 +76,8 @@ class NumberDeblendedSourcesMetricTask(MetricTask):
 
         Parameters
         ----------
-        sources : `lsst.afw.table.SourceCatalog` or `None`
-            A science source catalog, which may be empty or `None`.
+        sources : `lsst.afw.table.SourceCatalog`
+            A science source catalog, which may be empty.
 
         Returns
         -------
@@ -95,12 +95,8 @@ class NumberDeblendedSourcesMetricTask(MetricTask):
             Raised if ``sources`` is missing mandatory keys for
             source catalogs.
         """
-        if sources is None:
-            self.log.info("Nothing to do: no catalogs found.")
-            meas = None
-        elif "deblend_nChild" not in sources.schema:
-            self.log.info("Nothing to do: no deblending performed.")
-            meas = None
+        if "deblend_nChild" not in sources.schema:
+            raise NoWorkFound("Nothing to do: no deblending performed.")
         else:
             try:
                 deblended = ((sources["parent"] == 0)           # top-level source
@@ -112,9 +108,8 @@ class NumberDeblendedSourcesMetricTask(MetricTask):
                 raise MetricComputationError("Invalid input catalog") from e
             else:
                 nDeblended = np.count_nonzero(deblended)
-                meas = Measurement(self.config.metricName, nDeblended * u.dimensionless_unscaled)
-
-        return Struct(measurement=meas)
+                return Struct(measurement=Measurement(self.config.metricName,
+                                                      nDeblended * u.dimensionless_unscaled))
 
 
 class NumberDeblendChildSourcesMetricConnections(
@@ -159,8 +154,8 @@ class NumberDeblendChildSourcesMetricTask(MetricTask):
 
         Parameters
         ----------
-        sources : `lsst.afw.table.SourceCatalog` or `None`
-            A science source catalog, which may be empty or `None`.
+        sources : `lsst.afw.table.SourceCatalog`
+            A science source catalog, which may be empty.
 
         Returns
         -------
@@ -178,14 +173,10 @@ class NumberDeblendChildSourcesMetricTask(MetricTask):
             Raised if ``sources`` is missing mandatory keys for
             source catalogs.
         """
-        if sources is None:
-            self.log.info("Nothing to do: no catalogs found.")
-            meas = None
         # Use deblend_parentNChild rather than detect_fromBlend because the
         # latter need not be defined in post-deblending catalogs.
-        elif "deblend_parentNChild" not in sources.schema or "deblend_nChild" not in sources.schema:
-            self.log.info("Nothing to do: no deblending performed.")
-            meas = None
+        if "deblend_parentNChild" not in sources.schema or "deblend_nChild" not in sources.schema:
+            raise NoWorkFound("Nothing to do: no deblending performed.")
         else:
             try:
                 children = ((sources["deblend_parentNChild"] > 1)  # deblend child
@@ -197,9 +188,8 @@ class NumberDeblendChildSourcesMetricTask(MetricTask):
                 raise MetricComputationError("Invalid input catalog") from e
             else:
                 nChildren = np.count_nonzero(children)
-                meas = Measurement(self.config.metricName, nChildren * u.dimensionless_unscaled)
-
-        return Struct(measurement=meas)
+                return Struct(measurement=Measurement(self.config.metricName,
+                                                      nChildren * u.dimensionless_unscaled))
 
 
 def _filterSkySources(catalog, selection):
