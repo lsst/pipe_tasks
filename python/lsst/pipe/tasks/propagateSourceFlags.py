@@ -190,6 +190,10 @@ class PropagateSourceFlagsTask(pipeBase.Task):
                     for row in ccd_inputs[ccd_inputs["visit"] == visit]:
                         detector = row["ccd"]
                         wcs = row.getWcs()
+                        if wcs is None:
+                            self.log.info("No WCS for visit %d detector %d, so can't match sources to "
+                                          "propagate flags.  Skipping...", visit, detector)
+                            continue
 
                         df_det = df[df["detector"] == detector]
 

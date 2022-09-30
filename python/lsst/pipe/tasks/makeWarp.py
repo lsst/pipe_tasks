@@ -21,6 +21,7 @@
 
 __all__ = ["MakeWarpTask", "MakeWarpConfig"]
 
+from deprecated.sphinx import deprecated
 import logging
 import numpy
 
@@ -31,6 +32,7 @@ import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as connectionTypes
 import lsst.utils as utils
 import lsst.geom
+from lsst.daf.butler import DeferredDatasetHandle
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
 from lsst.skymap import BaseSkyMap
 from lsst.utils.timer import timeMethod
@@ -127,7 +129,8 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "visit", "instrument"),
     )
-    # TODO DM-28769, have selectImages subtask indicate which connections they need:
+    # TODO DM-28769, have selectImages subtask indicate which connections they
+    # need:
     wcsList = connectionTypes.Input(
         doc="WCSs of calexps used by SelectImages subtask to determine if the calexp overlaps the patch",
         name="{calexpType}calexp.wcs",
@@ -272,48 +275,69 @@ class MakeWarpTask(CoaddBaseTask):
 
     To make `psfMatchedWarps`, select `config.makePsfMatched=True`. The subtask
     `~lsst.ip.diffim.modelPsfMatch.ModelPsfMatchTask`
-    is responsible for the PSF-Matching, and its config is accessed via `config.warpAndPsfMatch.psfMatch`.
-    The optimal configuration depends on aspects of dataset: the pixel scale, average PSF FWHM and
-    dimensions of the PSF kernel. These configs include the requested model PSF, the matching kernel size,
-    padding of the science PSF thumbnail and spatial sampling frequency of the PSF.
-    *Config Guidelines*: The user must specify the size of the model PSF to which to match by setting
-    `config.modelPsf.defaultFwhm` in units of pixels. The appropriate values depends on science case.
-    In general, for a set of input images, this config should equal the FWHM of the visit
-    with the worst seeing. The smallest it should be set to is the median FWHM. The defaults
+    is responsible for the PSF-Matching, and its config is accessed via
+    `config.warpAndPsfMatch.psfMatch`.
+
+    The optimal configuration depends on aspects of dataset: the pixel scale,
+    average PSF FWHM and dimensions of the PSF kernel. These configs include
+    the requested model PSF, the matching kernel size, padding of the science
+    PSF thumbnail and spatial sampling frequency of the PSF.
+
+    *Config Guidelines*: The user must specify the size of the model PSF to
+    which to match by setting `config.modelPsf.defaultFwhm` in units of pixels.
+    The appropriate values depends on science case. In general, for a set of
+    input images, this config should equal the FWHM of the visit with the worst
+    seeing. The smallest it should be set to is the median FWHM. The defaults
     of the other config options offer a reasonable starting point.
-    The following list presents the most common problems that arise from a misconfigured
-    @link ip::diffim::modelPsfMatch::ModelPsfMatchTask ModelPsfMatchTask @endlink
-    and corresponding solutions. All assume the default Alard-Lupton kernel, with configs accessed via
-    ```config.warpAndPsfMatch.psfMatch.kernel['AL']```. Each item in the list is formatted as:
+
+    The following list presents the most common problems that arise from a
+    misconfigured
+    @link ip::diffim::modelPsfMatch::ModelPsfMatchTask ModelPsfMatchTask
+    @endlink
+    and corresponding solutions. All assume the default Alard-Lupton kernel,
+    with configs accessed via
+    ```config.warpAndPsfMatch.psfMatch.kernel['AL']```. Each item in the list
+    is formatted as:
     Problem: Explanation. *Solution*
+
     *Troublshooting PSF-Matching Configuration:*
-    - Matched PSFs look boxy: The matching kernel is too small. _Increase the matching kernel size.
+    - Matched PSFs look boxy: The matching kernel is too small.
+      _Increase the matching kernel size.
         For example:_
-            config.warpAndPsfMatch.psfMatch.kernel['AL'].kernelSize=27  # default 21
+            config.warpAndPsfMatch.psfMatch.kernel['AL'].kernelSize=27
+            # default 21
         Note that increasing the kernel size also increases runtime.
-    - Matched PSFs look ugly (dipoles, quadropoles, donuts): unable to find good solution
-        for matching kernel. _Provide the matcher with more data by either increasing
+    - Matched PSFs look ugly (dipoles, quadropoles, donuts): unable to find
+      good solution for matching kernel.
+      _Provide the matcher with more data by either increasing
         the spatial sampling by decreasing the spatial cell size,_
-            config.warpAndPsfMatch.psfMatch.kernel['AL'].sizeCellX = 64  # default 128
-            config.warpAndPsfMatch.psfMatch.kernel['AL'].sizeCellY = 64  # default 128
+            config.warpAndPsfMatch.psfMatch.kernel['AL'].sizeCellX = 64
+            # default 128
+            config.warpAndPsfMatch.psfMatch.kernel['AL'].sizeCellY = 64
+            # default 128
         _or increasing the padding around the Science PSF, for example:_
             config.warpAndPsfMatch.psfMatch.autoPadPsfTo=1.6  # default 1.4
-        Increasing `autoPadPsfTo` increases the minimum ratio of input PSF dimensions to the
-        matching kernel dimensions, thus increasing the number of pixels available to fit
-        after convolving the PSF with the matching kernel.
-        Optionally, for debugging the effects of padding, the level of padding may be manually
-        controlled by setting turning off the automatic padding and setting the number
-        of pixels by which to pad the PSF:
-            config.warpAndPsfMatch.psfMatch.doAutoPadPsf = False  # default True
-            config.warpAndPsfMatch.psfMatch.padPsfBy = 6  # pixels. default 0
+        Increasing `autoPadPsfTo` increases the minimum ratio of input PSF
+        dimensions to the matching kernel dimensions, thus increasing the
+        number of pixels available to fit after convolving the PSF with the
+        matching kernel. Optionally, for debugging the effects of padding, the
+        level of padding may be manually controlled by setting turning off the
+        automatic padding and setting the number of pixels by which to pad the
+        PSF:
+            config.warpAndPsfMatch.psfMatch.doAutoPadPsf = False
+            # default True
+            config.warpAndPsfMatch.psfMatch.padPsfBy = 6
+            # pixels. default 0
     - Deconvolution: Matching a large PSF to a smaller PSF produces
         a telltale noise pattern which looks like ripples or a brain.
         _Increase the size of the requested model PSF. For example:_
-            config.modelPsf.defaultFwhm = 11  # Gaussian sigma in units of pixels.
-    - High frequency (sometimes checkered) noise: The matching basis functions are too small.
+            config.modelPsf.defaultFwhm = 11  # Gaussian sigma in units of
+                                                pixels.
+    - High frequency (sometimes checkered) noise: The matching basis functions
+      are too small.
         _Increase the width of the Gaussian basis functions. For example:_
-            config.warpAndPsfMatch.psfMatch.kernel['AL'].alardSigGauss=[1.5, 3.0, 6.0]
-            # from default [0.7, 1.5, 3.0]
+            config.warpAndPsfMatch.psfMatch.kernel['AL'].alardSigGauss=
+            [1.5, 3.0, 6.0]  # from default [0.7, 1.5, 3.0]
     """
     ConfigClass = MakeWarpConfig
     _DefaultName = "makeWarp"
@@ -344,24 +368,10 @@ class MakeWarpTask(CoaddBaseTask):
         quantumDataId = butlerQC.quantum.dataId
         skyInfo = makeSkyInfo(skyMap, tractId=quantumDataId['tract'], patchId=quantumDataId['patch'])
 
-        # Construct list of input DataIds expected by `run`
+        # Construct list of input DataIds expected by `run`.
         dataIdList = [ref.datasetRef.dataId for ref in inputRefs.calExpList]
-        # Construct list of packed integer IDs expected by `run`
+        # Construct list of packed integer IDs expected by `run`.
         ccdIdList = [dataId.pack("visit_detector") for dataId in dataIdList]
-
-        # Run the selector and filter out calexps that were not selected
-        # primarily because they do not overlap the patch
-        cornerPosList = lsst.geom.Box2D(skyInfo.bbox).getCorners()
-        coordList = [skyInfo.wcs.pixelToSky(pos) for pos in cornerPosList]
-        goodIndices = self.select.run(**inputs, coordList=coordList, dataIds=dataIdList)
-        inputs = self.filterInputs(indices=goodIndices, inputs=inputs)
-
-        # Read from disk only the selected calexps
-        inputs['calExpList'] = [ref.get() for ref in inputs['calExpList']]
-
-        # Extract integer visitId requested by `run`
-        visits = [dataId['visit'] for dataId in dataIdList]
-        visitId = visits[0]
 
         if self.config.doApplyExternalSkyWcs:
             if self.config.useGlobalExternalSkyWcs:
@@ -384,12 +394,25 @@ class MakeWarpTask(CoaddBaseTask):
         else:
             finalizedPsfApCorrCatalog = None
 
-        completeIndices = self.prepareCalibratedExposures(**inputs,
-                                                          externalSkyWcsCatalog=externalSkyWcsCatalog,
-                                                          externalPhotoCalibCatalog=externalPhotoCalibCatalog,
-                                                          finalizedPsfApCorrCatalog=finalizedPsfApCorrCatalog)
-        # Redo the input selection with inputs with complete wcs/photocalib info.
+        # Do an initial selection on inputs with complete wcs/photoCalib info.
+        # Qualifying calexps will be read in the following call.
+        completeIndices = self._prepareCalibratedExposures(
+            **inputs,
+            externalSkyWcsCatalog=externalSkyWcsCatalog,
+            externalPhotoCalibCatalog=externalPhotoCalibCatalog,
+            finalizedPsfApCorrCatalog=finalizedPsfApCorrCatalog)
         inputs = self.filterInputs(indices=completeIndices, inputs=inputs)
+
+        # Do another selection based on the configured selection task
+        # (using updated WCSs to determine patch overlap if an external
+        # calibration was applied).
+        cornerPosList = lsst.geom.Box2D(skyInfo.bbox).getCorners()
+        coordList = [skyInfo.wcs.pixelToSky(pos) for pos in cornerPosList]
+        goodIndices = self.select.run(**inputs, coordList=coordList, dataIds=dataIdList)
+        inputs = self.filterInputs(indices=goodIndices, inputs=inputs)
+
+        # Extract integer visitId requested by `run`.
+        visitId = dataIdList[0]["visit"]
 
         results = self.run(**inputs, visitId=visitId,
                            ccdIdList=[ccdIdList[i] for i in goodIndices],
@@ -430,7 +453,8 @@ class MakeWarpTask(CoaddBaseTask):
             ``exposures``
                 A dictionary containing the warps requested:
                 "direct": direct warp if ``config.makeDirect``
-                "psfMatched": PSF-matched warp if ``config.makePsfMatched`` (`dict`).
+                "psfMatched": PSF-matched warp if ``config.makePsfMatched``
+                (`dict`).
         """
         warpTypeList = self.getWarpTypeList()
 
@@ -447,7 +471,12 @@ class MakeWarpTask(CoaddBaseTask):
         for calExpInd, (calExp, ccdId, dataId) in enumerate(zip(calExpList, ccdIdList, dataIdList)):
             self.log.info("Processing calexp %d of %d for this Warp: id=%s",
                           calExpInd+1, len(calExpList), dataId)
-
+            # TODO: The following conditional is only required for backwards
+            # compatibility with the deprecated prepareCalibratedExposures()
+            # method.  Can remove with its removal after the deprecation
+            # period.
+            if isinstance(calExp, DeferredDatasetHandle):
+                calExp = calExp.get()
             try:
                 warpedAndMatched = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf,
                                                             wcs=skyInfo.wcs, maxBBox=skyInfo.bbox,
@@ -479,11 +508,13 @@ class MakeWarpTask(CoaddBaseTask):
                         warp.setPhotoCalib(exposure.getPhotoCalib())
                         warp.setFilter(exposure.getFilter())
                         warp.getInfo().setVisitInfo(exposure.getInfo().getVisitInfo())
-                        # PSF replaced with CoaddPsf after loop if and only if creating direct warp
+                        # PSF replaced with CoaddPsf after loop if and only if
+                        # creating direct warp.
                         warp.setPsf(exposure.getPsf())
                         didSetMetadata[warpType] = True
 
-                    # Need inputRecorder for CoaddApCorrMap for both direct and PSF-matched
+                    # Need inputRecorder for CoaddApCorrMap for both direct and
+                    # PSF-matched.
                     inputRecorder[warpType].addCalExp(calExp, ccdId, numGoodPix[warpType])
 
             except Exception as e:
@@ -502,7 +533,7 @@ class MakeWarpTask(CoaddBaseTask):
                                  self.config.coaddPsf.makeControl()))
             else:
                 if not self.config.doWriteEmptyWarps:
-                    # No good pixels. Exposure still empty
+                    # No good pixels. Exposure still empty.
                     warps[warpType] = None
                     # NoWorkFound is unnecessary as the downstream tasks will
                     # adjust the quantum accordingly.
@@ -515,13 +546,13 @@ class MakeWarpTask(CoaddBaseTask):
 
         Parameters
         ----------
-        indices : `list` of `int`
-        inputs : `dict` of `list`
+        indices : `list` [`int`]
+        inputs : `dict` [`list`]
             A dictionary of input connections to be passed to run.
 
         Returns
         -------
-        inputs : `dict` of `list`
+        inputs : `dict` [`list`]
             Task inputs with their lists filtered by indices.
         """
         for key in inputs.keys():
@@ -530,55 +561,98 @@ class MakeWarpTask(CoaddBaseTask):
                 inputs[key] = [inputs[key][ind] for ind in indices]
         return inputs
 
+    @deprecated(reason="This method is deprecated in favor of its leading underscore version, "
+                "_prepareCalibratedfExposures().  Will be removed after v25.",
+                version="v25.0", category=FutureWarning)
     def prepareCalibratedExposures(self, calExpList, backgroundList=None, skyCorrList=None,
                                    externalSkyWcsCatalog=None, externalPhotoCalibCatalog=None,
                                    finalizedPsfApCorrCatalog=None,
                                    **kwargs):
+        """Deprecated function.
+
+        Please use _prepareCalibratedExposure(), which this delegates to and
+        noting its slightly updated API, instead.
+        """
+        # Read in all calexps.
+        calExpList = [ref.get() for ref in calExpList]
+        # Populate wcsList as required by new underscored version of function.
+        wcsList = [calexp.getWcs() for calexp in calExpList]
+
+        indices = self._prepareCalibratedExposures(calExpList=calExpList, wcsList=wcsList,
+                                                   backgroundList=backgroundList, skyCorrList=skyCorrList,
+                                                   externalSkyWcsCatalog=externalSkyWcsCatalog,
+                                                   externalPhotoCalibCatalog=externalPhotoCalibCatalog,
+                                                   finalizedPsfApCorrCatalog=finalizedPsfApCorrCatalog)
+        return indices
+
+    def _prepareCalibratedExposures(self, calExpList=[], wcsList=None, backgroundList=None, skyCorrList=None,
+                                    externalSkyWcsCatalog=None, externalPhotoCalibCatalog=None,
+                                    finalizedPsfApCorrCatalog=None, **kwargs):
         """Calibrate and add backgrounds to input calExpList in place.
 
         Parameters
         ----------
-        calExpList : `list` of `lsst.afw.image.Exposure`
+        calExpList : `list` [`lsst.afw.image.Exposure` or
+                     `lsst.daf.butler.DeferredDatasetHandle`]
             Sequence of calexps to be modified in place.
-        backgroundList : `list` of `lsst.afw.math.backgroundList`, optional
+        wcsList : `list` [`lsst.afw.geom.SkyWcs`]
+            The WCSs of the calexps in ``calExpList``.  When
+            ``externalSkyCatalog`` is `None`, these are used to determine if
+            the calexp should be included in the warp, namely checking that it
+            is not `None`.  If ``externalSkyCatalog`` is not `None`, this list
+            will be dynamically updated with the external sky WCS.
+        backgroundList : `list` [`lsst.afw.math.backgroundList`], optional
             Sequence of backgrounds to be added back in if bgSubtracted=False.
-        skyCorrList : `list` of `lsst.afw.math.backgroundList`, optional
-            Sequence of background corrections to be subtracted if doApplySkyCorr=True.
+        skyCorrList : `list` [`lsst.afw.math.backgroundList`], optional
+            Sequence of background corrections to be subtracted if
+            doApplySkyCorr=True.
         externalSkyWcsCatalog : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with external skyWcs to be applied
             if config.doApplyExternalSkyWcs=True.  Catalog uses the detector id
             for the catalog id, sorted on id for fast lookup.
         externalPhotoCalibCatalog : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with external photoCalib to be applied
-            if config.doApplyExternalPhotoCalib=True.  Catalog uses the detector
-            id for the catalog id, sorted on id for fast lookup.
+            if config.doApplyExternalPhotoCalib=True.  Catalog uses the
+            detector id for the catalog id, sorted on id for fast lookup.
         finalizedPsfApCorrCatalog : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with finalized psf models and aperture correction
-            maps to be applied if config.doApplyFinalizedPsf=True.  Catalog uses
-            the detector id for the catalog id, sorted on id for fast lookup.
+            maps to be applied if config.doApplyFinalizedPsf=True.  Catalog
+            uses the detector id for the catalog id, sorted on id for fast
+            lookup.
         **kwargs
             Additional keyword arguments.
 
         Returns
         -------
         indices : `list` [`int`]
-            Indices of calExpList and friends that have valid photoCalib/skyWcs.
+            Indices of ``calExpList`` and friends that have valid
+            photoCalib/skyWcs.
         """
+        wcsList = len(calExpList)*[None] if wcsList is None else wcsList
         backgroundList = len(calExpList)*[None] if backgroundList is None else backgroundList
         skyCorrList = len(calExpList)*[None] if skyCorrList is None else skyCorrList
 
         includeCalibVar = self.config.includeCalibVar
 
         indices = []
-        for index, (calexp, background, skyCorr) in enumerate(zip(calExpList,
-                                                                  backgroundList,
-                                                                  skyCorrList)):
+        for index, (calexp, wcs, background, skyCorr) in enumerate(zip(calExpList,
+                                                                       wcsList,
+                                                                       backgroundList,
+                                                                       skyCorrList)):
+            if externalSkyWcsCatalog is None and wcs is None:
+                self.log.warning("Detector id %d for visit %d has None for skyWcs and will not be "
+                                 "used in the warp", calexp.dataId["detector"], calexp.dataId["visit"])
+                continue
+
+            if isinstance(calexp, DeferredDatasetHandle):
+                calexp = calexp.get()
+
             if not self.config.bgSubtracted:
                 calexp.maskedImage += background.getImage()
 
             detectorId = calexp.getInfo().getDetector().getId()
 
-            # Find the external photoCalib
+            # Find the external photoCalib.
             if externalPhotoCalibCatalog is not None:
                 row = externalPhotoCalibCatalog.find(detectorId)
                 if row is None:
@@ -598,7 +672,7 @@ class MakeWarpTask(CoaddBaseTask):
                                      "and will not be used in the warp.", detectorId)
                     continue
 
-            # Find and apply external skyWcs
+            # Find and apply external skyWcs.
             if externalSkyWcsCatalog is not None:
                 row = externalSkyWcsCatalog.find(detectorId)
                 if row is None:
@@ -606,6 +680,7 @@ class MakeWarpTask(CoaddBaseTask):
                                      "and will not be used in the warp.", detectorId)
                     continue
                 skyWcs = row.getWcs()
+                wcsList[index] = skyWcs
                 if skyWcs is None:
                     self.log.warning("Detector id %s has None for skyWcs in externalSkyWcsCatalog "
                                      "and will not be used in the warp.", detectorId)
@@ -613,12 +688,13 @@ class MakeWarpTask(CoaddBaseTask):
                 calexp.setWcs(skyWcs)
             else:
                 skyWcs = calexp.getWcs()
+                wcsList[index] = skyWcs
                 if skyWcs is None:
                     self.log.warning("Detector id %s has None for skyWcs in the calexp "
                                      "and will not be used in the warp.", detectorId)
                     continue
 
-            # Find and apply finalized psf and aperture correction
+            # Find and apply finalized psf and aperture correction.
             if finalizedPsfApCorrCatalog is not None:
                 row = finalizedPsfApCorrCatalog.find(detectorId)
                 if row is None:
@@ -638,11 +714,12 @@ class MakeWarpTask(CoaddBaseTask):
                     continue
                 calexp.info.setApCorrMap(apCorrMap)
 
-            # Calibrate the image
+            # Calibrate the image.
             calexp.maskedImage = photoCalib.calibrateImage(calexp.maskedImage,
                                                            includeScaleUncertainty=includeCalibVar)
             calexp.maskedImage /= photoCalib.getCalibrationMean()
-            # TODO: The images will have a calibration of 1.0 everywhere once RFC-545 is implemented.
+            # TODO: The images will have a calibration of 1.0 everywhere once
+            # RFC-545 is implemented.
             # exposure.setCalib(afwImage.Calib(1.0))
 
             # Apply skycorr
@@ -650,6 +727,7 @@ class MakeWarpTask(CoaddBaseTask):
                 calexp.maskedImage -= skyCorr.getImage()
 
             indices.append(index)
+            calExpList[index] = calexp
 
         return indices
 
@@ -708,7 +786,7 @@ def reorderRefs(inputRefs, outputSortKeyOrder, dataIdKey):
 
     Returns
     -------
-    inputRefs: `lsst.pipe.base.connections.QuantizedConnection`
+    inputRefs : `lsst.pipe.base.connections.QuantizedConnection`
         Quantized Connection with sorted DatasetRef values sorted if iterable.
     """
     for connectionName, refs in inputRefs:

@@ -36,7 +36,9 @@ from lsst.utils.timer import timeMethod
 
 
 class DatabaseSelectImagesConfig(pexConfig.Config):
-    """Base configuration for subclasses of BaseSelectImagesTask that use a database."""
+    """Base configuration for subclasses of BaseSelectImagesTask that use a
+    database.
+    """
 
     host = pexConfig.Field(
         doc="Database server host name",
@@ -62,9 +64,9 @@ class BaseExposureInfo(pipeBase.Struct):
 
         Parameters
         ----------
-        dataId : `dict` of dataId keys
-            Data ID of exposure.
-        coordList : `list` of `lsst.afw.geom.SpherePoint`
+        dataId : `dict`
+            Data ID keys of exposure.
+        coordList : `list` [`lsst.afw.geom.SpherePoint`]
             ICRS coordinates of the corners of the exposure
             plus any others items that are desired.
     """
@@ -86,9 +88,10 @@ class BaseSelectImagesTask(pipeBase.Task):
 
         Parameters
         ----------
-        coordList : `list` of `lsst.geom.SpherePoint` or `None`
-            List of coordinates defining region of interest; if None then select all images
-            subclasses may add additional keyword arguments, as required.
+        coordList : `list` [`lsst.geom.SpherePoint`] or `None`
+            List of coordinates defining region of interest; if `None`, then
+            select all images subclasses may add additional keyword arguments,
+            as required.
 
         Returns
         -------
@@ -96,11 +99,11 @@ class BaseSelectImagesTask(pipeBase.Task):
             Results as a struct with attributes:
 
             ``exposureInfoList``
-                A list of exposure information objects (subclasses of BaseExposureInfo),
-                which have at least the following fields:
+                A list of exposure information objects (subclasses of
+                BaseExposureInfo), which have at least the following fields:
                 - dataId: Data ID dictionary (`dict`).
                 - coordList: ICRS coordinates of the corners of the exposure.
-                             (`list` of `lsst.geom.SpherePoint`)
+                (`list` [`lsst.geom.SpherePoint`])
         """
         raise NotImplementedError()
 
@@ -174,20 +177,20 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
 
         Parameters
         ----------
-        wcsList : `list` of `lsst.afw.geom.SkyWcs`
+        wcsList : `list` [`lsst.afw.geom.SkyWcs`]
             Specifying the WCS's of the input ccds to be selected.
-        bboxList : `list` of `lsst.geom.Box2I`
+        bboxList : `list` [`lsst.geom.Box2I`]
             Specifying the bounding boxes of the input ccds to be selected.
-        coordList : `list` of `lsst.geom.SpherePoint`
+        coordList : `list` [`lsst.geom.SpherePoint`]
             ICRS coordinates specifying boundary of the patch.
-        dataIds : iterable of `lsst.daf.butler.dataId` or `None`, optional
+        dataIds : iterable [`lsst.daf.butler.dataId`] or `None`, optional
             An iterable object of dataIds which point to reference catalogs.
         **kwargs
             Additional keyword arguments.
 
         Returns
         -------
-        result : `list` of `int`
+        result : `list` [`int`]
             The indices of selected ccds.
         """
         if dataIds is None:
@@ -196,9 +199,12 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
         patchPoly = lsst.sphgeom.ConvexPolygon.convexHull(patchVertices)
         result = []
         for i, (imageWcs, imageBox, dataId) in enumerate(zip(wcsList, bboxList, dataIds)):
-            imageCorners = self.getValidImageCorners(imageWcs, imageBox, patchPoly, dataId)
-            if imageCorners:
-                result.append(i)
+            if imageWcs is None:
+                self.log.info("De-selecting exposure %s:  Exposure has no WCS.", dataId)
+            else:
+                imageCorners = self.getValidImageCorners(imageWcs, imageBox, patchPoly, dataId)
+                if imageCorners:
+                    result.append(i)
         return result
 
     def getValidImageCorners(self, imageWcs, imageBox, patchPoly, dataId=None):
@@ -216,17 +222,19 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
         except (pexExceptions.DomainError, pexExceptions.RuntimeError) as e:
             # Protecting ourselves from awful Wcs solutions in input images
             self.log.debug("WCS error in testing calexp %s (%s): deselecting", dataId, e)
-            return
+            return None
 
         imagePoly = lsst.sphgeom.ConvexPolygon.convexHull([coord.getVector() for coord in imageCorners])
         if imagePoly is None:
             self.log.debug("Unable to create polygon from image %s: deselecting", dataId)
-            return
+            return None
 
         if patchPoly.intersects(imagePoly):
             # "intersects" also covers "contains" or "is contained by"
             self.log.info("Selecting calexp %s", dataId)
             return imageCorners
+
+        return None
 
 
 class PsfWcsSelectImagesConnections(pipeBase.PipelineTaskConnections,
@@ -259,12 +267,13 @@ class PsfWcsSelectImagesConfig(pipeBase.PipelineTaskConfig,
 class PsfWcsSelectImagesTask(WcsSelectImagesTask):
     """Select images using their Wcs and cuts on the PSF properties.
 
-        The PSF quality criteria are based on the size and ellipticity residuals from the
-        adaptive second moments of the star and the PSF.
+        The PSF quality criteria are based on the size and ellipticity
+        residuals from the adaptive second moments of the star and the PSF.
 
         The criteria are:
           - the median of the ellipticty residuals.
-          - the robust scatter of the size residuals (using the median absolute deviation).
+          - the robust scatter of the size residuals (using the median absolute
+            deviation).
           - the robust scatter of the size residuals scaled by the square of
             the median size.
     """
@@ -277,22 +286,23 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
 
         Parameters
         ----------
-        wcsList : `list` of `lsst.afw.geom.SkyWcs`
+        wcsList : `list` [`lsst.afw.geom.SkyWcs`]
             Specifying the WCS's of the input ccds to be selected.
-        bboxList : `list` of `lsst.geom.Box2I`
+        bboxList : `list` [`lsst.geom.Box2I`]
             Specifying the bounding boxes of the input ccds to be selected.
-        coordList : `list` of `lsst.geom.SpherePoint`
+        coordList : `list` [`lsst.geom.SpherePoint`]
             ICRS coordinates specifying boundary of the patch.
-        visitSummary : `list` of `lsst.afw.table.ExposureCatalog`
-            containing the PSF shape information for the input ccds to be selected.
-        dataIds : iterable of `lsst.daf.butler.dataId` or `None`, optional
+        visitSummary : `list` [`lsst.afw.table.ExposureCatalog`]
+            containing the PSF shape information for the input ccds to be
+            selected.
+        dataIds : iterable [`lsst.daf.butler.dataId`] or `None`, optional
             An iterable object of dataIds which point to reference catalogs.
         **kwargs
             Additional keyword arguments.
 
         Returns
         -------
-        goodPsf: `list` of `int`
+        goodPsf : `list` [`int`]
             The indices of selected ccds.
         """
         goodWcs = super(PsfWcsSelectImagesTask, self).run(wcsList=wcsList, bboxList=bboxList,
@@ -437,7 +447,7 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
 
         Parameters
         ----------
-        visitSummary : `list` of `lsst.pipe.base.connections.DeferredDatasetRef`
+        visitSummary : `list` [`lsst.pipe.base.connections.DeferredDatasetRef`]
             List of `lsst.pipe.base.connections.DeferredDatasetRef` of
             visitSummary tables of type `lsst.afw.table.ExposureCatalog`.
         skyMap : `lsst.skyMap.SkyMap`
@@ -465,13 +475,14 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
             # read in one-by-one and only once. There may be hundreds
             visitSummary = visitSummary.get()
 
-            # mjd is guaranteed to be the same for every detector in the visitSummary.
+            # mjd is guaranteed to be the same for every detector in the
+            # visitSummary.
             mjd = visitSummary[0].getVisitInfo().getDate().get(system=DateTime.MJD)
 
             pixToArcseconds = [vs.getWcs().getPixelScale(vs.getBBox().getCenter()).asArcseconds()
-                               for vs in visitSummary]
+                               for vs in visitSummary if vs.getWcs()]
             # psfSigma is PSF model determinant radius at chip center in pixels
-            psfSigmas = np.array([vs['psfSigma'] for vs in visitSummary])
+            psfSigmas = np.array([vs['psfSigma'] for vs in visitSummary if vs.getWcs()])
             fwhm = np.nanmean(psfSigmas * pixToArcseconds) * np.sqrt(8.*np.log(2.))
 
             if self.config.maxPsfFwhm and fwhm > self.config.maxPsfFwhm:
@@ -537,12 +548,15 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
         """
         doesIntersect = False
         for detectorSummary in visitSummary:
-            corners = [lsst.geom.SpherePoint(ra, decl, units=lsst.geom.degrees).getVector() for (ra, decl) in
-                       zip(detectorSummary['raCorners'], detectorSummary['decCorners'])]
-            detectorPolygon = lsst.sphgeom.ConvexPolygon.convexHull(corners)
-            if detectorPolygon.intersects(polygon):
-                doesIntersect = True
-                break
+            if (np.all(np.isfinite(detectorSummary['raCorners']))
+                    and np.all(np.isfinite(detectorSummary['decCorners']))):
+                corners = [lsst.geom.SpherePoint(ra, decl, units=lsst.geom.degrees).getVector()
+                           for (ra, decl) in
+                           zip(detectorSummary['raCorners'], detectorSummary['decCorners'])]
+                detectorPolygon = lsst.sphgeom.ConvexPolygon.convexHull(corners)
+                if detectorPolygon.intersects(polygon):
+                    doesIntersect = True
+                    break
         return doesIntersect
 
 
@@ -618,7 +632,8 @@ class BestSeeingQuantileSelectVisitsTask(BestSeeingSelectVisitsTask):
             if self.config.doConfirmOverlap:
                 intersects[i] = self.doesIntersectPolygon(visitSummary, patchPolygon)
             if self.config.minMJD or self.config.maxMJD:
-                # mjd is guaranteed to be the same for every detector in the visitSummary.
+                # mjd is guaranteed to be the same for every detector in the
+                # visitSummary.
                 mjd = visitSummary[0].getVisitInfo().getDate().get(system=DateTime.MJD)
                 aboveMin = mjd > self.config.minMJD if self.config.minMJD else True
                 belowMax = mjd < self.config.maxMJD if self.config.maxMJD else True

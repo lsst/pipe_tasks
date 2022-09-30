@@ -111,9 +111,11 @@ class CalexpCutoutTask(pipeBase.PipelineTask):
             raise ValueError('Required column missing from the input table.  '
                              'Required columns are "position", "xspan", and "yspan".  '
                              f'The column names are: {in_table.colnames}')
+        wcs = calexp.getWcs()
+        if wcs is None:
+            raise RuntimeError("Calexp has no WCS, so cannot compute sky positions.")
         max_idx = self.config.max_cutouts
         cutout_list = []
-        wcs = calexp.getWcs()
         mim = calexp.getMaskedImage()
         ras = []
         decs = []

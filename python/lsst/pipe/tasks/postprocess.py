@@ -442,6 +442,8 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
                 ind = 0
                 self.log.info('Applying tract-level SkyWcs from tract %s', tracts[ind])
             else:
+                if exposure.getWcs() is None:  # TODO: could this look-up use the externalPhotoCalib?
+                    raise ValueError("Trying to locate nearest tract, but exposure.wcs is None.")
                 ind = self.getClosestTract(tracts, skyMap,
                                            exposure.getBBox(), exposure.getWcs())
                 self.log.info('Multiple overlapping externalSkyWcsTractCatalogs found (%s). '
@@ -609,7 +611,7 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         # update here. LocalPhotoCalibs are applied during transform tasks.
         # Update coord_ra/coord_dec, which are expected to be positions on the
         # sky and are used as such in sdm tables without transform
-        if self.config.doReevaluateSkyWcs:
+        if self.config.doReevaluateSkyWcs and exposure.wcs is not None:
             afwTable.updateSourceCoords(exposure.wcs, newCat)
 
         measurement.run(measCat=newCat, exposure=exposure, exposureId=exposureIdInfo.expId)
@@ -1516,7 +1518,8 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
             ccdVisitIds = [packer.pack(dataId) for dataId in dataIds]
             ccdEntry['ccdVisitId'] = ccdVisitIds
             ccdEntry['detector'] = summaryTable['id']
-            pixToArcseconds = np.array([vR.getWcs().getPixelScale().asArcseconds() for vR in visitSummary])
+            pixToArcseconds = np.array([vR.getWcs().getPixelScale().asArcseconds() if vR.getWcs()
+                                        else np.nan for vR in visitSummary])
             ccdEntry["seeing"] = visitSummary['psfSigma'] * np.sqrt(8 * np.log(2)) * pixToArcseconds
 
             ccdEntry["skyRotation"] = visitInfo.getBoresightRotAngle().asDegrees()
