@@ -554,8 +554,14 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
             patch_radec = self._vertices_to_radec(poly_vertices)
             patch_poly = hsp.Polygon(ra=patch_radec[:, 0], dec=patch_radec[:, 1],
                                      value=np.arange(input_map.wide_mask_maxbits))
-            patch_poly_map = patch_poly.get_map_like(input_map)
-            input_map = hsp.and_intersection([input_map, patch_poly_map])
+            with warnings.catch_warnings():
+                # Healsparse will emit a warning if nside coverage is greater than
+                # 128.  In the case of generating patch input maps, and not global
+                # maps, high nside coverage works fine, so we can suppress this
+                # warning.
+                warnings.simplefilter("ignore")
+                patch_poly_map = patch_poly.get_map_like(input_map)
+                input_map = hsp.and_intersection([input_map, patch_poly_map])
 
             if not tract_maps_initialized:
                 # We use the first input map nside information to initialize
