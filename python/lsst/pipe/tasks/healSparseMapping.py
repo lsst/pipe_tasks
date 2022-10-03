@@ -435,7 +435,8 @@ class HealSparsePropertyMapConfig(pipeBase.PipelineTaskConfig,
                  "dcr_dra",
                  "dcr_ddec",
                  "dcr_e1",
-                 "dcr_e2"],
+                 "dcr_e2",
+                 "epoch"],
         doc="Property map computation objects",
     )
 
@@ -451,6 +452,9 @@ class HealSparsePropertyMapConfig(pipeBase.PipelineTaskConfig,
         self.property_maps["dcr_ddec"].do_weighted_mean = True
         self.property_maps["dcr_e1"].do_weighted_mean = True
         self.property_maps["dcr_e2"].do_weighted_mean = True
+        self.property_maps["epoch"].do_mean = True
+        self.property_maps["epoch"].do_min = True
+        self.property_maps["epoch"].do_max = True
 
 
 class HealSparsePropertyMapTask(pipeBase.PipelineTask):
@@ -847,7 +851,8 @@ class ConsolidateHealSparsePropertyMapConfig(pipeBase.PipelineTaskConfig,
                  "dcr_dra",
                  "dcr_ddec",
                  "dcr_e1",
-                 "dcr_e2"],
+                 "dcr_e2",
+                 "epoch"],
         doc="Property map computation objects",
     )
     nside_coverage = pexConfig.Field(
@@ -869,6 +874,9 @@ class ConsolidateHealSparsePropertyMapConfig(pipeBase.PipelineTaskConfig,
         self.property_maps["dcr_ddec"].do_weighted_mean = True
         self.property_maps["dcr_e1"].do_weighted_mean = True
         self.property_maps["dcr_e2"].do_weighted_mean = True
+        self.property_maps["epoch"].do_mean = True
+        self.property_maps["epoch"].do_min = True
+        self.property_maps["epoch"].do_max = True
 
 
 class ConsolidateHealSparsePropertyMapTask(pipeBase.PipelineTask):

@@ -25,7 +25,7 @@ __all__ = ["BasePropertyMapConfig", "PropertyMapRegistry", "register_property_ma
            "NExposurePropertyMap", "PsfMaglimPropertyMapConfig",
            "PsfMaglimPropertyMap", "SkyBackgroundPropertyMap", "SkyNoisePropertyMap",
            "DcrDraPropertyMap", "DcrDdecPropertyMap", "DcrE1PropertyMap",
-           "DcrE2PropertyMap", "compute_approx_psf_size_and_shape"]
+           "DcrE2PropertyMap", "EpochPropertyMap", "compute_approx_psf_size_and_shape"]
 
 import numpy as np
 import healsparse as hsp
@@ -496,3 +496,11 @@ class DcrE2PropertyMap(BasePropertyMap):
     def _compute(self, row, ra, dec, scalings, psf_array=None):
         par_angle = row.getVisitInfo().getBoresightParAngle().asRadians()
         return (np.tan(np.deg2rad(row["zenithDistance"]))**2.)*np.sin(2.*par_angle)
+
+
+@register_property_map("epoch")
+class EpochPropertyMap(BasePropertyMap):
+    """Observation epoch (mjd) property map."""
+    def _compute(self, row, ra, dec, scalings, psf_array=None):
+        date = row.getVisitInfo().getDate()
+        return date.get(date.MJD)
