@@ -435,7 +435,8 @@ class HealSparsePropertyMapConfig(pipeBase.PipelineTaskConfig,
                  "dcr_dra",
                  "dcr_ddec",
                  "dcr_e1",
-                 "dcr_e2"],
+                 "dcr_e2",
+                 "epoch"],
         doc="Property map computation objects",
     )
 
@@ -451,6 +452,9 @@ class HealSparsePropertyMapConfig(pipeBase.PipelineTaskConfig,
         self.property_maps["dcr_ddec"].do_weighted_mean = True
         self.property_maps["dcr_e1"].do_weighted_mean = True
         self.property_maps["dcr_e2"].do_weighted_mean = True
+        self.property_maps["epoch"].do_mean = True
+        self.property_maps["epoch"].do_min = True
+        self.property_maps["epoch"].do_max = True
 
 
 class HealSparsePropertyMapTask(pipeBase.PipelineTask):
@@ -550,8 +554,14 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
             patch_radec = self._vertices_to_radec(poly_vertices)
             patch_poly = hsp.Polygon(ra=patch_radec[:, 0], dec=patch_radec[:, 1],
                                      value=np.arange(input_map.wide_mask_maxbits))
-            patch_poly_map = patch_poly.get_map_like(input_map)
-            input_map = hsp.and_intersection([input_map, patch_poly_map])
+            with warnings.catch_warnings():
+                # Healsparse will emit a warning if nside coverage is greater than
+                # 128.  In the case of generating patch input maps, and not global
+                # maps, high nside coverage works fine, so we can suppress this
+                # warning.
+                warnings.simplefilter("ignore")
+                patch_poly_map = patch_poly.get_map_like(input_map)
+                input_map = hsp.and_intersection([input_map, patch_poly_map])
 
             if not tract_maps_initialized:
                 # We use the first input map nside information to initialize
@@ -847,7 +857,8 @@ class ConsolidateHealSparsePropertyMapConfig(pipeBase.PipelineTaskConfig,
                  "dcr_dra",
                  "dcr_ddec",
                  "dcr_e1",
-                 "dcr_e2"],
+                 "dcr_e2",
+                 "epoch"],
         doc="Property map computation objects",
     )
     nside_coverage = pexConfig.Field(
@@ -869,6 +880,9 @@ class ConsolidateHealSparsePropertyMapConfig(pipeBase.PipelineTaskConfig,
         self.property_maps["dcr_ddec"].do_weighted_mean = True
         self.property_maps["dcr_e1"].do_weighted_mean = True
         self.property_maps["dcr_e2"].do_weighted_mean = True
+        self.property_maps["epoch"].do_mean = True
+        self.property_maps["epoch"].do_min = True
+        self.property_maps["epoch"].do_max = True
 
 
 class ConsolidateHealSparsePropertyMapTask(pipeBase.PipelineTask):

@@ -25,6 +25,7 @@ import unittest
 import numpy as np
 import healsparse as hsp
 import esutil
+import warnings
 
 import lsst.utils.tests
 import lsst.daf.butler
@@ -98,10 +99,17 @@ class HealSparsePropertyMapTaskTestCase(lsst.utils.tests.TestCase):
 
         # Generate an input map.  Note that this does not need to be consistent
         # with the visit_summary projections, we're just tracking values.
-        input_map = hsp.HealSparseMap.make_empty(nside_coverage=256,
-                                                 nside_sparse=32768,
-                                                 dtype=hsp.WIDE_MASK,
-                                                 wide_mask_maxbits=len(visits)*2)
+        with warnings.catch_warnings():
+            # Healsparse will emit a warning if nside coverage is greater than
+            # 128.  In the case of generating patch input maps, and not global
+            # maps, high nside coverage works fine, so we can suppress this
+            # warning.
+            warnings.simplefilter("ignore")
+            input_map = hsp.HealSparseMap.make_empty(nside_coverage=256,
+                                                     nside_sparse=32768,
+                                                     dtype=hsp.WIDE_MASK,
+                                                     wide_mask_maxbits=len(visits)*2)
+
         patch_poly = afwGeom.Polygon(geom.Box2D(sky_map[tract][patch].getOuterBBox()))
         sph_pts = sky_map[tract].getWcs().pixelToSky(patch_poly.convexHull().getVertices())
         patch_poly_radec = np.array([(sph.getRa().asDegrees(), sph.getDec().asDegrees())
