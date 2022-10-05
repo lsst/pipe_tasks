@@ -402,27 +402,24 @@ class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
     doReevaluatePhotoCalib = pexConfig.Field(
         dtype=bool,
         default=True,
-        doc=("Add or replace local photoCalib columns from either the calexp.photoCalib or jointcal/FGCM")
+        doc=("Add or replace local photoCalib columns")
     )
     doReevaluateSkyWcs = pexConfig.Field(
         dtype=bool,
         default=True,
-        doc=("Add or replace local WCS columns from either the calexp.wcs or  or jointcal")
+        doc=("Add or replace local WCS columns and update the coord columns, coord_ra and coord_dec")
     )
     doApplyExternalPhotoCalib = pexConfig.Field(
         dtype=bool,
         default=True,
-        doc=("Whether to apply external photometric calibration via an "
-             "`lsst.afw.image.PhotoCalib` object. Uses the "
-             "``externalPhotoCalibName`` field to determine which calibration "
-             "to load."),
+        doc=("If and only if doReevaluatePhotoCalib, apply the photometric calibrations from an external ",
+             "algorithm such as FGCM or jointcal, else use the photoCalib already attached to the exposure."),
     )
     doApplyExternalSkyWcs = pexConfig.Field(
         dtype=bool,
         default=True,
-        doc=("Whether to apply external astrometric calibration via an "
-             "`lsst.afw.geom.SkyWcs` object. Uses ``externalSkyWcsName`` "
-             "field to determine which calibration to load."),
+        doc=("if and only if doReevaluateSkyWcs, apply the WCS from an external algorithm such as jointcal, ",
+             "else use the wcs already attached to the exposure."),
     )
     useGlobalExternalPhotoCalib = pexConfig.Field(
         dtype=bool,
@@ -672,6 +669,13 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         schema.setAliasMap(aliasMap)
         newCat = afwTable.SourceCatalog(schema)
         newCat.extend(catalog, mapper=mapper)
+
+        # Fluxes in sourceCatalogs are in counts, so there are no fluxes to
+        # update here. LocalPhotoCalibs are applied during transform tasks.
+        # Update coord_ra/coord_dec, which are expected to be positions on the
+        # sky and are used as such in sdm tables without transform
+        if self.config.doReevaluateSkyWcs:
+            afwTable.updateSourceCoords(exposure.wcs, newCat)
 
         measurement.run(measCat=newCat, exposure=exposure, exposureId=exposureIdInfo.expId)
 
