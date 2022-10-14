@@ -51,9 +51,9 @@ class MeasurePsfConfig(pexConfig.Config):
 
     def validate(self):
         super().validate()
-        if (self.psfDeterminer.name == "piff"
-                and self.psfDeterminer["piff"].kernelSize > self.makePsfCandidates.kernelSize):
-            msg = (f"PIFF kernelSize={self.psfDeterminer['piff'].kernelSize}"
+        if (self.psfDeterminer.name == "piff" and self.psfDeterminer["piff"].stampSize
+                and self.psfDeterminer["piff"].stampSize > self.makePsfCandidates.kernelSize):
+            msg = (f"PIFF kernelSize={self.psfDeterminer['piff'].stampSize}"
                    f" must be >= psf candidate kernelSize={self.makePsfCandidates.kernelSize}.")
             raise pexConfig.FieldValidationError(MeasurePsfConfig.makePsfCandidates, self, msg)
 
