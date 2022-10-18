@@ -82,13 +82,13 @@ class PhotoCalConfig(pexConf.Config):
     )
     colorterms = pexConf.ConfigField(
         dtype=ColortermLibrary,
-        doc="Library of photometric reference catalog name: color term dict",
+        doc="Library of photometric reference catalog name: color term dict (see also applyColorTerms).",
     )
     photoCatName = pexConf.Field(
         dtype=str,
         optional=True,
         doc=("Name of photometric reference catalog; used to select a color term dict in colorterms."
-             " see also applyColorTerms"),
+             " See also applyColorTerms"),
     )
     magErrFloor = pexConf.RangeField(
         dtype=float,
