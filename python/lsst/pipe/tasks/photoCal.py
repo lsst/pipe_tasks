@@ -52,13 +52,11 @@ class PhotoCalConfig(pexConf.Config):
     )
     applyColorTerms = pexConf.Field(
         dtype=bool,
-        default=None,
-        doc=("Apply photometric color terms to reference stars? One of:\n"
-             "None: apply if colorterms and photoCatName are not None;\n"
-             "      fail if color term data is not available for the specified ref catalog and filter.\n"
-             "True: always apply colorterms; fail if color term data is not available for the\n"
-             "      specified reference catalog and filter.\n"
-             "False: do not apply."),
+        default=False,
+        doc=("Apply photometric color terms to reference stars?\n"
+             "`True`: attempt to apply color terms; fail if color term data is "
+             "not available for the specified reference catalog and filter.\n"
+             "`False`: do not apply color terms."),
         optional=True,
     )
     sigmaMax = pexConf.Field(
@@ -253,19 +251,9 @@ class PhotoCalTask(pipeBase.Task):
             raise RuntimeError("No reference stars are available")
         refSchema = matches[0].first.schema
 
-        applyColorTerms = self.config.applyColorTerms
-        applyCTReason = "config.applyColorTerms is %s" % (self.config.applyColorTerms,)
-        if self.config.applyColorTerms is None:
-            # apply color terms if color term data is available and photoCatName specified
-            ctDataAvail = len(self.config.colorterms.data) > 0
-            photoCatSpecified = self.config.photoCatName is not None
-            applyCTReason += " and data %s available" % ("is" if ctDataAvail else "is not")
-            applyCTReason += " and photoRefCat %s provided" % ("is" if photoCatSpecified else "is not")
-            applyColorTerms = ctDataAvail and photoCatSpecified
-
-        if applyColorTerms:
-            self.log.info("Applying color terms for filter=%r, config.photoCatName=%s because %s",
-                          filterLabel.physicalLabel, self.config.photoCatName, applyCTReason)
+        if self.config.applyColorTerms:
+            self.log.info("Applying color terms for filter=%r, config.photoCatName=%s",
+                          filterLabel.physicalLabel, self.config.photoCatName)
             colorterm = self.config.colorterms.getColorterm(filterLabel.physicalLabel,
                                                             self.config.photoCatName,
                                                             doRaise=True)
@@ -281,8 +269,7 @@ class PhotoCalTask(pipeBase.Task):
             fluxFieldList = [getRefFluxField(refSchema, filt) for filt in (colorterm.primary,
                                                                            colorterm.secondary)]
         else:
-            # no colorterms to apply
-            self.log.info("Not applying color terms because %s", applyCTReason)
+            self.log.info("Not applying color terms.")
             colorterm = None
 
             fluxFieldList = [getRefFluxField(refSchema, filterLabel.bandLabel)]
