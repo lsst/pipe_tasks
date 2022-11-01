@@ -47,7 +47,7 @@ class PhotoCalConfig(pexConf.Config):
     fluxField = pexConf.Field(
         dtype=str,
         default="slot_CalibFlux_instFlux",
-        doc=("Name of the source instFlux field to use.  The associated flag field\n"
+        doc=("Name of the source instFlux field to use.\nThe associated flag field "
              "('<name>_flags') will be implicitly included in badFlags."),
     )
     applyColorTerms = pexConf.Field(
@@ -87,8 +87,8 @@ class PhotoCalConfig(pexConf.Config):
     photoCatName = pexConf.Field(
         dtype=str,
         optional=True,
-        doc=("Name of photometric reference catalog; used to select a color term dict in colorterms."
-             " See also applyColorTerms"),
+        doc=("Name of photometric reference catalog; used to select a color term dict in colorterms.\n"
+             "See also applyColorTerms."),
     )
     magErrFloor = pexConf.RangeField(
         dtype=float,
