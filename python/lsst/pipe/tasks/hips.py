@@ -33,7 +33,7 @@ import re
 import warnings
 import math
 from datetime import datetime
-import healpy as hp
+import hpgeom as hpg
 import healsparse as hsp
 from astropy.io import fits
 from astropy.visualization.lupton_rgb import AsinhMapping
@@ -1193,7 +1193,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         multiband : `bool`
             Is band multiband / color?
         """
-        area = hp.nside2pixarea(2**max_order, degrees=True)*len(pixels)
+        area = hpg.nside_to_pixel_area(2**max_order, degrees=True)*len(pixels)
 
         initial_ra = self.config.properties.initial_ra
         initial_dec = self.config.properties.initial_dec
@@ -1206,8 +1206,8 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             if temp_pixels.size % 2 == 0:
                 temp_pixels = np.append(temp_pixels, [temp_pixels[0]])
             medpix = int(np.median(temp_pixels))
-            _initial_ra, _initial_dec = hp.pix2ang(2**max_order, medpix, lonlat=True, nest=True)
-            _initial_fov = hp.nside2resol(2**max_order, arcmin=True)/60.
+            _initial_ra, _initial_dec = hpg.pixel_to_angle(2**max_order, medpix)
+            _initial_fov = hpg.nside_to_resolution(2**max_order, units='arcminutes')/60.
 
             if initial_ra is None or initial_dec is None:
                 initial_ra = _initial_ra
@@ -1311,7 +1311,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             bitpix = 32
 
         date_iso8601 = datetime.utcnow().isoformat(timespec="seconds") + "Z"
-        pixel_scale = np.rad2deg(hp.nside2resol(2**(max_order + shift_order)))
+        pixel_scale = hpg.nside_to_resolution(2**(max_order + shift_order), units='degrees')
 
         uri = hips_base_path.join("properties")
         with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
@@ -1469,7 +1469,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             HEALPix order of the minimum order to make allsky file.
         """
         tile_size = self.config.allsky_tilesize
-        n_tiles_per_side = int(np.sqrt(hp.order2npix(allsky_order)))
+        n_tiles_per_side = int(np.sqrt(hpg.nside_to_npixel(hpg.order_to_nside(allsky_order))))
 
         allsky_image = None
 
