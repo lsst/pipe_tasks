@@ -78,7 +78,7 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
         posd = galsim.PositionD(pt.x, pt.y)
         posi = galsim.PositionI(pt.x//1, pt.y//1)
         if logger:
-            logger.debug(f"Adding fake source at {pt}")
+            logger.debug("Adding fake source %s at %s", gsObj, pt)
 
         mat = wcs.linearizePixelToSky(spt, geom.arcseconds).getMatrix()
         gsWCS = galsim.JacobianWCS(mat[0, 0], mat[0, 1], mat[1, 0], mat[1, 1])
@@ -371,7 +371,8 @@ class InsertFakesConfig(PipelineTaskConfig,
     )
 
     bulge_disk_flux_ratio_col = pexConfig.Field(
-        doc="Source catalog column name for the bulge/disk flux ratio.",
+        doc="Source catalog column name for the bulge/disk flux ratio.  See "
+            "also: ``bulge_flux_fraction_col``.",
         dtype=str,
         default="bulge_disk_flux_ratio",
     )
@@ -383,6 +384,20 @@ class InsertFakesConfig(PipelineTaskConfig,
             "``i_mag`` column of the source catalog.",
         dtype=str,
         default="%s_mag"
+    )
+
+    bulge_flux_fraction_col = pexConfig.Field(
+        doc="Source catalog column name for fraction of flux in bulge "
+            "component, in the format ``filter name``_bulge_flux_fraction. "
+            "E.g., if this config variable is set to ``%s_bulge_flux_fraction,"
+            "then the i-band bulge flux fraction will be search for in the "
+            "``i_bulge_flux_fraction`` column of the source catalog. "
+            "Note that if the source catalog contains both the config values "
+            "for bulge_flux_fraction_col and bulge_disk_flux_ratio_col, then "
+            "the fluxes will be determined from bulge_flux_fraction_col and "
+            "the bulge_disk_flux_ratio_col column will be ignored.",
+        dtype=str,
+        default="%s_bulge_flux_fraction"
     )
 
     select_col = pexConfig.Field(
@@ -706,6 +721,8 @@ class InsertFakesTask(PipelineTask):
                 cfg.sourceSelectionColName,
                 'select'
             )
+        if replace_dict:
+            self.log.debug("Replacing columns: %s", replace_dict)
         fakeCat = fakeCat.rename(columns=replace_dict, copy=False)
 
         # Handling the half-light radius and axis-ratio are trickier, since we
@@ -716,15 +733,18 @@ class InsertFakesTask(PipelineTask):
                 cfg.bulge_semimajor_col in fakeCat.columns
                 and cfg.bulge_axis_ratio_col in fakeCat.columns
             ):
+                replace_dict = {
+                    cfg.bulge_semimajor_col: 'bulge_semimajor',
+                    cfg.bulge_axis_ratio_col: 'bulge_axis_ratio',
+                    cfg.disk_semimajor_col: 'disk_semimajor',
+                    cfg.disk_axis_ratio_col: 'disk_axis_ratio',
+                }
                 fakeCat = fakeCat.rename(
-                    columns={
-                        cfg.bulge_semimajor_col: 'bulge_semimajor',
-                        cfg.bulge_axis_ratio_col: 'bulge_axis_ratio',
-                        cfg.disk_semimajor_col: 'disk_semimajor',
-                        cfg.disk_axis_ratio_col: 'disk_axis_ratio',
-                    },
+                    columns=replace_dict,
                     copy=False
                 )
+                if replace_dict:
+                    self.log.debug("Replacing columns: %s", replace_dict)
             elif (
                 cfg.bulgeHLR in fakeCat.columns
                 and cfg.aBulge in fakeCat.columns
@@ -742,22 +762,44 @@ class InsertFakesTask(PipelineTask):
                 fakeCat['disk_semimajor'] = (
                     fakeCat[cfg.diskHLR]/np.sqrt(fakeCat['disk_axis_ratio'])
                 )
+                self.log.debug(
+                    "Replacing (%s, %s, %s, %s, %s, %s) with "
+                    "(bulge_axis_ratio, bulge_semimajor, disk_axis_ratio, "
+                    "disk_semimajor)",
+                    cfg.bBulge, cfg.aBulge, cfg.bulgeHLR,
+                    cfg.bDisk, cfg.aDisk, cfg.diskHLR
+                )
             else:
                 raise ValueError(
                     "Could not determine columns for half-light radius and "
                     "axis ratio."
                 )
 
-            # Process the bulge/disk flux ratio if possible.
-            if cfg.bulge_disk_flux_ratio_col in fakeCat.columns:
+            # Standardize flux apportionment between bulge and disk using
+            #  `bulge_flux_fraction`.  Prefer, in order:
+            #   - `bulge_flux_fraction_col`
+            #   - `bulge_disk_flux_ratio_col`
+            #   - bd_flux_ratio = 1.0, which is equivalent to bulge_flux_fraction=0.5
+            if cfg.bulge_flux_fraction_col%band in fakeCat.columns:
                 fakeCat = fakeCat.rename(
                     columns={
-                        cfg.bulge_disk_flux_ratio_col: 'bulge_disk_flux_ratio'
+                        cfg.bulge_flux_fraction_col%band: 'bulge_flux_fraction'
                     },
                     copy=False
                 )
+                self.log.debug(
+                    "Replacing %s with bulge_flux_fraction.",
+                    cfg.bulge_flux_fraction_col%band
+                )
+            elif cfg.bulge_disk_flux_ratio_col in fakeCat.columns:
+                bdfr = cfg.bulge_disk_flux_ratio_col
+                fakeCat['bulge_flux_fraction'] = (
+                    fakeCat[bdfr] / (1 + fakeCat[bdfr])
+                )
+                self.log.debug("Replacing %s with bulge_flux_fraction.", bdfr)
             else:
-                fakeCat['bulge_disk_flux_ratio'] = 1.0
+                fakeCat['bulge_flux_fraction'] = 0.5
+                self.log.debug("Asserting bulge_flux_fraction = 0.5")
 
         return fakeCat
 
@@ -809,7 +851,7 @@ class InsertFakesTask(PipelineTask):
                 disk = galsim.Sersic(n=row['disk_n'], half_light_radius=disk_gs_HLR)
                 disk = disk.shear(q=row['disk_axis_ratio'], beta=((90 - row['disk_pa'])*galsim.degrees))
 
-                gal = bulge*row['bulge_disk_flux_ratio'] + disk
+                gal = bulge*row['bulge_flux_fraction'] + disk*(1-row['bulge_flux_fraction'])
                 gal = gal.withFlux(flux)
 
                 yield skyCoord, gal
@@ -1118,7 +1160,7 @@ class InsertFakesTask(PipelineTask):
             disk = galsim.Sersic(n=row['disk_n'], half_light_radius=disk_gs_HLR)
             disk = disk.shear(q=row['disk_axis_ratio'], beta=((90 - row['disk_pa'])*galsim.degrees))
 
-            gal = bulge*row['bulge_disk_flux_ratio'] + disk
+            gal = bulge*row['bulge_flux_fraction'] + disk*(1-row['bulge_flux_fraction'])
             gal = gal.withFlux(flux)
 
             psfIm = galsim.InterpolatedImage(galsim.Image(psfKernel), scale=pixelScale)
