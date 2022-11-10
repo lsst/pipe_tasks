@@ -147,7 +147,9 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
     doApCorr = pexConfig.Field(
         dtype=bool,
         default=True,
-        doc="Run subtasks to measure and apply aperture corrections"
+        doc="Run subtasks to measure and apply aperture corrections. "
+            "Note: measuring and applying aperture correction are disabled until "
+            "the final measurement, after the PSF is measured."
     )
     measureApCorr = pexConfig.ConfigurableField(
         target=MeasureApCorrTask,
@@ -225,9 +227,6 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
         self.detection.thresholdValue = 5.0
         self.detection.includeThresholdMultiplier = 10.0
         self.detection.doTempLocalBackground = False
-        # measure and apply aperture correction; note: measuring and applying aperture
-        # correction are disabled until the final measurement, after PSF is measured
-        self.doApCorr = True
         # minimal set of measurements needed to determine PSF
         self.measurement.plugins.names = [
             "base_PixelFlags",
