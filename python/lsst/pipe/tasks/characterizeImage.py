@@ -548,6 +548,9 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
 
         if self.config.doDeblend:
             self.deblend.run(exposure=exposure, sources=sourceCat)
+            # We need the output catalog to be contiguous for further processing.
+            if not sourceCat.isContiguous():
+                sourceCat = sourceCat.copy(deep=True)
 
         self.measurement.run(measCat=sourceCat, exposure=exposure, exposureId=idGenerator.catalog_id)
 
