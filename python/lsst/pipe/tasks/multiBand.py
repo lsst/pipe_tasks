@@ -258,8 +258,6 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
                                            defaultTemplates={"inputCoaddName": "deep",
                                                              "outputCoaddName": "deep",
                                                              "deblendedCatalog": "deblendedFlux"}):
-    warnings.warn("MeasureMergedCoaddSourcesConnections.defaultTemplates is deprecated and no longer used. "
-                  "Use MeasureMergedCoaddSourcesConfig.inputCatalog.")
     inputSchema = cT.InitInput(
         doc="Input schema for measure merged task produced by a deblender or detection task",
         name="{inputCoaddName}Coadd_deblendedFlux_schema",
