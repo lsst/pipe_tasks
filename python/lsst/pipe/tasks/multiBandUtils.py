@@ -21,27 +21,7 @@
 
 __all__ = ["CullPeaksConfig"]
 
-import lsst.afw.table as afwTable
-
 from lsst.pex.config import Config, RangeField
-
-
-def _makeGetSchemaCatalogs(datasetSuffix):
-    """Construct a getSchemaCatalogs instance method
-
-    These are identical for most of the classes here, so we'll consolidate
-    the code.
-
-    datasetSuffix:  Suffix of dataset name, e.g., "src" for "deepCoadd_src"
-    """
-
-    def getSchemaCatalogs(self):
-        """Return a dict of empty catalogs for each catalog dataset produced by this task."""
-        src = afwTable.SourceCatalog(self.schema)
-        if hasattr(self, "algMetadata"):
-            src.getTable().setMetadata(self.algMetadata)
-        return {self.config.coaddName + "Coadd_" + datasetSuffix: src}
-    return getSchemaCatalogs
 
 
 class CullPeaksConfig(Config):

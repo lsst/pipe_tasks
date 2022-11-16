@@ -680,14 +680,6 @@ class CalibrateTask(pipeBase.PipelineTask):
             outputBackground=background,
         )
 
-    def getSchemaCatalogs(self):
-        """Return a dict of empty catalogs for each catalog dataset produced
-        by this task.
-        """
-        sourceCat = afwTable.SourceCatalog(self.schema)
-        sourceCat.getTable().setMetadata(self.algMetadata)
-        return {"src": sourceCat}
-
     def setMetadata(self, exposure, photoRes=None):
         """Set task and exposure metadata.
 

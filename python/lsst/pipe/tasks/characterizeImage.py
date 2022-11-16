@@ -31,7 +31,7 @@ import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.pipe.base.connectionTypes as cT
 from lsst.afw.math import BackgroundList
-from lsst.afw.table import SourceTable, SourceCatalog
+from lsst.afw.table import SourceTable
 from lsst.meas.algorithms import SubtractBackgroundTask, SourceDetectionTask, MeasureApCorrTask
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
 from lsst.meas.astrom import RefMatchTask, displayAstrometry
@@ -531,13 +531,6 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
             background=background,
             psfCellSet=measPsfRes.cellSet,
         )
-
-    def getSchemaCatalogs(self):
-        """Return a dict of empty catalogs for each catalog dataset produced by this task.
-        """
-        sourceCat = SourceCatalog(self.schema)
-        sourceCat.getTable().setMetadata(self.algMetadata)
-        return {"icSrc": sourceCat}
 
     def display(self, itemName, exposure, sourceCat=None):
         """Display exposure and sources on next frame (for debugging).
