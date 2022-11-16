@@ -20,106 +20,82 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = [
-    "CatalogExposure", "MultibandFitConfig", "MultibandFitSubConfig", "MultibandFitSubTask",
-    "MultibandFitTask",
+    "CoaddMultibandFitConfig", "CoaddMultibandFitSubConfig", "CoaddMultibandFitSubTask",
+    "CoaddMultibandFitTask",
 ]
 
-from abc import ABC, abstractmethod
-from functools import cached_property
-from pydantic import Field
-from pydantic.dataclasses import dataclass
-from typing import Iterable
+from .fit_multiband import CatalogExposure, CatalogExposureConfig
 
-import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
-import lsst.daf.butler as dafButler
 from lsst.obs.base import ExposureIdInfo
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
 
+import astropy
+from abc import ABC, abstractmethod
+from pydantic import Field
+from pydantic.dataclasses import dataclass
+from typing import Iterable
 
-class CatalogExposureConfig:
-    arbitrary_types_allowed = True
-
-
-@dataclass(frozen=True, kw_only=True, config=CatalogExposureConfig)
-class CatalogExposure:
-    """A class to store a catalog, exposure, and metadata for a given dataId.
-
-    The intent is to store an exposure and an associated measurement catalog.
-    Users may omit one but not both (e.g. if the intent is just to attach
-    a dataId and metadata to a catalog or exposure).
-    """
-    @cached_property
-    def band(self) -> str:
-        return self.dataId['band']
-
-    @cached_property
-    def calib(self) -> afwImage.PhotoCalib | None:
-        return None if self.exposure is None else self.exposure.getPhotoCalib()
-
-    dataId: dafButler.DataCoordinate | dict = Field(
-        title="A DataCoordinate or dict containing a 'band' item")
-    catalog: afwTable.SourceCatalog | None = Field(None, title="The measurement catalog, if any")
-    exposure: afwImage.Exposure | None = Field(None, title="The exposure, if any")
-    id_tract_patch: int = Field(0, title="A unique ID for this tract-patch pair")
-    metadata: dict = Field(default_factory=dict, title="Arbitrary metadata")
-
-    def __post_init__(self):
-        if self.catalog is None and self.exposure is None:
-            raise ValueError("Must specify at least one of catalog/exposure")
-        if 'band' not in self.dataId:
-            raise ValueError(f"dataId={self.dataId} must have a band")
-
-
-multibandFitBaseTemplates = {
-    "name_input_coadd": "deep",
-    "name_output_coadd": "deep",
-    "name_output_cat": "fit",
+CoaddMultibandFitBaseTemplates = {
+    "name_coadd": "deep",
+    "name_method": "multiprofit",
 }
 
 
-class MultibandFitConnections(
+@dataclass(frozen=True, kw_only=True, config=CatalogExposureConfig)
+class CatalogExposureInputs(CatalogExposure):
+    table_psf_fits: astropy.table.Table = Field(title="A table of PSF fit parameters for each source")
+
+    def get_catalog(self):
+        return self.catalog
+
+
+class CoaddMultibandFitConnections(
     pipeBase.PipelineTaskConnections,
     dimensions=("tract", "patch", "skymap"),
-    defaultTemplates=multibandFitBaseTemplates,
+    defaultTemplates=CoaddMultibandFitBaseTemplates,
 ):
     cat_ref = cT.Input(
         doc="Reference multiband source catalog",
-        name="{name_input_coadd}Coadd_ref",
+        name="{name_coadd}Coadd_ref",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "skymap"),
     )
     cats_meas = cT.Input(
         doc="Deblended single-band source catalogs",
-        name="{name_input_coadd}Coadd_meas",
+        name="{name_coadd}Coadd_meas",
         storageClass="SourceCatalog",
-        multiple=True,
         dimensions=("tract", "patch", "band", "skymap"),
+        multiple=True,
     )
     coadds = cT.Input(
         doc="Exposures on which to run fits",
-        name="{name_input_coadd}Coadd_calexp",
+        name="{name_coadd}Coadd_calexp",
         storageClass="ExposureF",
-        multiple=True,
         dimensions=("tract", "patch", "band", "skymap"),
+        multiple=True,
     )
-    cat_output = cT.Output(
-        doc="Measurement multi-band catalog",
-        name="{name_output_coadd}Coadd_{name_output_cat}",
-        storageClass="SourceCatalog",
+    models_psf = cT.Input(
+        doc="Input PSF model parameter catalog",
+        # Consider allowing independent psf fit method
+        name="{name_coadd}Coadd_psfs_{name_method}",
+        storageClass="ArrowAstropy",
+        dimensions=("tract", "patch", "band", "skymap"),
+        multiple=True,
+    )
+    models_scarlet = pipeBase.connectionTypes.Input(
+        doc="Multiband scarlet models produced by the deblender",
+        name="{name_coadd}Coadd_scarletModelData",
+        storageClass="ScarletModelData",
         dimensions=("tract", "patch", "skymap"),
     )
-    cat_ref_schema = cT.InitInput(
-        doc="Schema associated with a ref source catalog",
-        storageClass="SourceCatalog",
-        name="{name_input_coadd}Coadd_ref_schema",
-    )
-    cat_output_schema = cT.InitOutput(
-        doc="Output of the schema used in deblending task",
-        name="{name_output_coadd}Coadd_{name_output_cat}_schema",
-        storageClass="SourceCatalog"
+    cat_output = cT.Output(
+        doc="Output source model fit parameter catalog",
+        name="{name_coadd}Coadd_objects_{name_method}",
+        storageClass="ArrowTable",
+        dimensions=("tract", "patch", "skymap"),
     )
 
     def adjustQuantum(self, inputs, outputs, label, data_id):
@@ -177,8 +153,8 @@ class MultibandFitConnections(
                         f'DatasetRefs={dataset_refs} have data with bands in the'
                         f' set={set(datasets_by_band.keys())},'
                         f' which is not a superset of the required bands={bands_needed} defined by'
-                        f' {self.config.__class__}.fit_multiband='
-                        f'{self.config.fit_multiband._value.__class__}\'s attributes'
+                        f' {self.config.__class__}.fit_coadd_multiband='
+                        f'{self.config.fit_coadd_multiband._value.__class__}\'s attributes'
                         f' bands_fit={bands_fit} and bands_read_only()={bands_read_only}.'
                         f' Add the required bands={bands_needed.difference(datasets_by_band.keys())}.'
                     )
@@ -195,11 +171,10 @@ class MultibandFitConnections(
         return adjusted_inputs, {}
 
 
-class MultibandFitSubConfig(pexConfig.Config):
-    """Config class for the MultibandFitTask to define methods returning
-    values that depend on multiple config settings.
-
+class CoaddMultibandFitSubConfig(pexConfig.Config):
+    """Configuration for implementing fitter subtasks.
     """
+    @abstractmethod
     def bands_read_only(self) -> set:
         """Return the set of bands that the Task needs to read (e.g. for
         defining priors) but not necessarily fit.
@@ -208,38 +183,32 @@ class MultibandFitSubConfig(pexConfig.Config):
         -------
         The set of such bands.
         """
-        return set()
 
 
-class MultibandFitSubTask(pipeBase.Task, ABC):
-    """An abstract interface for subtasks of MultibandFitTask to perform
-    multiband fitting of deblended sources.
+class CoaddMultibandFitSubTask(pipeBase.Task, ABC):
+    """Subtask interface for multiband fitting of deblended sources.
 
     Parameters
     ----------
-    schema : `lsst.afw.table.Schema`
-        The input schema for the reference source catalog, used to initialize
-        the output schema.
     **kwargs
         Additional arguments to be passed to the `lsst.pipe.base.Task`
         constructor.
     """
-    ConfigClass = MultibandFitSubConfig
+    ConfigClass = CoaddMultibandFitSubConfig
 
-    def __init__(self, schema: afwTable.Schema, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
     @abstractmethod
     def run(
-        self, catexps: Iterable[CatalogExposure], cat_ref: afwTable.SourceCatalog
+        self, catexps: Iterable[CatalogExposureInputs], cat_ref: afwTable.SourceCatalog
     ) -> pipeBase.Struct:
-        """Fit sources from a reference catalog using data from multiple
-        exposures in the same patch.
+        """Fit models to deblended sources from multi-band inputs.
 
         Parameters
         ----------
-        catexps : `typing.List [CatalogExposure]`
-            A list of catalog-exposure pairs in a given band.
+        catexps : `typing.List [CatalogExposureInputs]`
+            A list of catalog-exposure pairs with metadata in a given band.
         cat_ref : `lsst.afw.table.SourceCatalog`
             A reference source catalog to fit.
 
@@ -259,27 +228,21 @@ class MultibandFitSubTask(pipeBase.Task, ABC):
         If any requirements are not met, the subtask should fail as soon as
         possible.
         """
-        raise NotImplementedError()
-
-    @property
-    @abstractmethod
-    def schema(self) -> afwTable.Schema:
-        raise NotImplementedError()
 
 
-class MultibandFitConfig(
+class CoaddMultibandFitConfig(
     pipeBase.PipelineTaskConfig,
-    pipelineConnections=MultibandFitConnections,
+    pipelineConnections=CoaddMultibandFitConnections,
 ):
-    """Configure a MultibandFitTask, including a configurable fitting subtask.
+    """Configure a CoaddMultibandFitTask, including a configurable fitting subtask.
     """
-    fit_multiband = pexConfig.ConfigurableField(
-        target=MultibandFitSubTask,
+    fit_coadd_multiband = pexConfig.ConfigurableField(
+        target=CoaddMultibandFitSubTask,
         doc="Task to fit sources using multiple bands",
     )
 
     def get_band_sets(self):
-        """Get the set of bands required by the fit_multiband subtask.
+        """Get the set of bands required by the fit_coadd_multiband subtask.
 
         Returns
         -------
@@ -290,49 +253,57 @@ class MultibandFitConfig(
             (measurement catalog and exposure) for.
         """
         try:
-            bands_fit = self.fit_multiband.bands_fit
+            bands_fit = self.fit_coadd_multiband.bands_fit
         except AttributeError:
-            raise RuntimeError(f'{__class__}.fit_multiband must have bands_fit attribute') from None
-        bands_read_only = self.fit_multiband.bands_read_only()
+            raise RuntimeError(f'{__class__}.fit_coadd_multiband must have bands_fit attribute') from None
+        bands_read_only = self.fit_coadd_multiband.bands_read_only()
         return set(bands_fit), set(bands_read_only)
 
 
-class MultibandFitTask(pipeBase.PipelineTask):
+class CoaddMultibandFitTask(pipeBase.PipelineTask):
     """Fit deblended exposures in multiple bands simultaneously.
 
     It is generally assumed but not enforced (except optionally by the
-    configurable `fit_multiband` subtask) that there is only one exposure
+    configurable `fit_coadd_multiband` subtask) that there is only one exposure
     per band, presumably a coadd.
     """
-    ConfigClass = MultibandFitConfig
-    _DefaultName = "multibandFit"
+    ConfigClass = CoaddMultibandFitConfig
+    _DefaultName = "CoaddMultibandFit"
 
     def __init__(self, initInputs, **kwargs):
         super().__init__(initInputs=initInputs, **kwargs)
-        self.makeSubtask("fit_multiband", schema=initInputs["cat_ref_schema"].schema)
-        self.cat_output_schema = afwTable.SourceCatalog(self.fit_multiband.schema)
+        self.makeSubtask("fit_coadd_multiband")
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         id_tp = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "tract_patch").expId
-        input_refs_objs = [(inputRefs.cats_meas, inputs['cats_meas']), (inputRefs.coadds, inputs['coadds'])]
-        cats, exps = [
+        # This is a roundabout way of ensuring all inputs get sorted and matched
+        input_refs_objs = [(getattr(inputRefs, key), inputs[key])
+                           for key in ("cats_meas", "coadds", "models_psf")]
+        cats, exps, models_psf = [
             {dRef.dataId: obj for dRef, obj in zip(refs, objs)}
             for refs, objs in input_refs_objs
         ]
         dataIds = set(cats).union(set(exps))
-        catexps = [
-            CatalogExposure(
-                catalog=cats.get(dataId), exposure=exps.get(dataId), dataId=dataId, id_tract_patch=id_tp,
+        models_scarlet = inputs["models_scarlet"]
+        catexps = [None]*len(dataIds)
+        for idx, dataId in enumerate(dataIds):
+            catalog = cats[dataId]
+            exposure = exps[dataId]
+            models_scarlet.updateCatalogFootprints(
+                catalog=catalog,
+                band=dataId['band'],
+                psfModel=exposure.getPsf(),
+                redistributeImage=exposure.image,
+                removeScarletData=True,
+                updateFluxColumns=False,
             )
-            for dataId in dataIds
-        ]
+            catexps[idx] = CatalogExposureInputs(
+                catalog=catalog, exposure=exposure, table_psf_fits=models_psf[dataId],
+                dataId=dataId, id_tract_patch=id_tp,
+            )
         outputs = self.run(catexps=catexps, cat_ref=inputs['cat_ref'])
         butlerQC.put(outputs, outputRefs)
-        # Validate the output catalog's schema and raise if inconsistent (after output to allow debugging)
-        if outputs.cat_output.schema != self.cat_output_schema.schema:
-            raise RuntimeError(f'{__class__}.config.fit_multiband.run schema != initOutput schema:'
-                               f' {outputs.cat_output.schema} vs {self.cat_output_schema.schema}')
 
     def run(self, catexps: list[CatalogExposure], cat_ref: afwTable.SourceCatalog) -> pipeBase.Struct:
         """Fit sources from a reference catalog using data from multiple
@@ -353,8 +324,8 @@ class MultibandFitTask(pipeBase.PipelineTask):
 
         Notes
         -----
-        Subtasks may have further requirements; see `MultibandFitSubTask.run`.
+        Subtasks may have further requirements; see `CoaddMultibandFitSubTask.run`.
         """
-        cat_output = self.fit_multiband.run(catexps, cat_ref).output
+        cat_output = self.fit_coadd_multiband.run(catalog_multi=cat_ref, catexps=catexps).output
         retStruct = pipeBase.Struct(cat_output=cat_output)
         return retStruct
