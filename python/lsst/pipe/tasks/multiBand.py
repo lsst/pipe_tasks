@@ -43,7 +43,7 @@ from lsst.obs.base import ExposureIdInfo
 # NOTE: these imports are a convenience so multiband users only have to import this file.
 from .mergeDetections import MergeDetectionsConfig, MergeDetectionsTask  # noqa: F401
 from .mergeMeasurements import MergeMeasurementsConfig, MergeMeasurementsTask  # noqa: F401
-from .multiBandUtils import CullPeaksConfig, _makeGetSchemaCatalogs  # noqa: F401
+from .multiBandUtils import CullPeaksConfig  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesSingleConfig  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesSingleTask  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesMultiConfig  # noqa: F401
@@ -164,7 +164,6 @@ class DetectCoaddSourcesTask(PipelineTask):
 
     _DefaultName = "detectCoaddSources"
     ConfigClass = DetectCoaddSourcesConfig
-    getSchemaCatalogs = _makeGetSchemaCatalogs("det")
 
     def __init__(self, schema=None, **kwargs):
         # N.B. Super is used here to handle the multiple inheritance of PipelineTasks, the init tree
@@ -530,7 +529,6 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
 
     _DefaultName = "measureCoaddSources"
     ConfigClass = MeasureMergedCoaddSourcesConfig
-    getSchemaCatalogs = _makeGetSchemaCatalogs("meas")
 
     def __init__(self, butler=None, schema=None, peakSchema=None, refObjLoader=None, initInputs=None,
                  **kwargs):

@@ -363,19 +363,6 @@ class MergeDetectionsTask(PipelineTask):
                     culledPeaks += 1
         self.log.info("Culled %d of %d peaks", culledPeaks, totalPeaks)
 
-    def getSchemaCatalogs(self):
-        """Return a dict of empty catalogs for each catalog dataset produced by this task.
-
-        Returns
-        ----------
-        dictionary : `dict`
-            Dictionary of empty catalogs.
-        """
-        mergeDet = afwTable.SourceCatalog(self.schema)
-        peak = afwDetect.PeakCatalog(self.merged.getPeakSchema())
-        return {self.config.coaddName + "Coadd_mergeDet": mergeDet,
-                self.config.coaddName + "Coadd_peak": peak}
-
     def getSkySourceFootprints(self, mergedList, skyInfo, seed):
         """Return a list of Footprints of sky objects which don't overlap with anything in mergedList.
 
