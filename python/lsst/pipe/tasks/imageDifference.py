@@ -740,14 +740,21 @@ class ImageDifferenceTask(pipeBase.PipelineTask):
                             "AL likelihood image: Using Gaussian (sigma=%.2f) PSF estimation "
                             "for science image pre-convolution", scienceSigmaOrig)
                         # convolve with a simplified PSF model: a double Gaussian
-                        kWidth, kHeight = sciencePsf.getLocalKernel().getDimensions()
+                        kWidth, kHeight = sciencePsf.getLocalKernel(
+                            sciencePsf.getAveragePosition()
+                        ).getDimensions()
                         preConvPsf = SingleGaussianPsf(kWidth, kHeight, scienceSigmaOrig)
                     else:
                         # convolve with science exposure's PSF model
                         self.log.info(
                             "AL likelihood image: Using the science image PSF for pre-convolution.")
                         preConvPsf = srcPsf
-                    afwMath.convolve(exposure.maskedImage, srcMI, preConvPsf.getLocalKernel(), convControl)
+                    afwMath.convolve(
+                        exposure.maskedImage,
+                        srcMI,
+                        preConvPsf.getLocalKernel(preConvPsf.getAveragePosition()),
+                        convControl
+                    )
                     scienceSigmaPost = scienceSigmaOrig*math.sqrt(2)
                 else:
                     scienceSigmaPost = scienceSigmaOrig
@@ -951,7 +958,7 @@ class ImageDifferenceTask(pipeBase.PipelineTask):
                 if self.config.doDecorrelation and self.config.doSubtract:
                     preConvKernel = None
                     if self.config.useGaussianForPreConvolution:
-                        preConvKernel = preConvPsf.getLocalKernel()
+                        preConvKernel = preConvPsf.getLocalKernel(preConvPsf.getAveragePosition())
                     if self.config.useScoreImageDetection:
                         scoreExposure = self.decorrelate.run(exposureOrig, subtractRes.warpedExposure,
                                                              scoreExposure,

@@ -92,6 +92,7 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
 
         try:
             psfArr = psf.computeKernelImage(pt).array
+            apCorr = psf.computeApertureFlux(calibFluxRadius, pt)
         except InvalidParameterError:
             # Try mapping to nearest point contained in bbox.
             contained_pt = Point2D(
@@ -108,6 +109,7 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
             # otherwise, try again with new point
             try:
                 psfArr = psf.computeKernelImage(contained_pt).array
+                apCorr = psf.computeApertureFlux(calibFluxRadius, contained_pt)
             except InvalidParameterError:
                 if logger:
                     logger.infof(
@@ -116,7 +118,6 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
                     )
                 continue
 
-        apCorr = psf.computeApertureFlux(calibFluxRadius)
         psfArr /= apCorr
         gsPSF = galsim.InterpolatedImage(galsim.Image(psfArr), wcs=gsWCS)
 
