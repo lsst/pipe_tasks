@@ -201,8 +201,8 @@ class LoadReferenceCatalogTask(pipeBase.Task):
             Epoch to which to correct proper motion and parallax
             (if available), or `None` to not apply such corrections.
 
-        Parameters
-        ----------
+        Returns
+        -------
         refCat : `numpy.ndarray`
             Reference catalog.
         """
