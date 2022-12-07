@@ -131,12 +131,14 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
     )
     doDeblend = pexConfig.Field(
         dtype=bool,
-        default=True,
-        doc="Run deblender input exposure"
+        default=False,
+        doc="Run deblender input exposure",
+        deprecated="This field is no longer used and will be removed after v25."
     )
     deblend = pexConfig.ConfigurableField(
         target=SourceDeblendTask,
-        doc="Split blended source into their components"
+        doc="Split blended source into their components",
+        deprecated="This field is no longer used and will be removed after v25."
     )
     measurement = pexConfig.ConfigurableField(
         target=SingleFrameMeasurementTask,
@@ -145,7 +147,9 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
     doApCorr = pexConfig.Field(
         dtype=bool,
         default=True,
-        doc="Run subtasks to measure and apply aperture corrections"
+        doc="Run subtasks to measure and apply aperture corrections. "
+            "Note: measuring and applying aperture correction are disabled until "
+            "the final measurement, after the PSF is measured."
     )
     measureApCorr = pexConfig.ConfigurableField(
         target=MeasureApCorrTask,
@@ -223,11 +227,6 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
         self.detection.thresholdValue = 5.0
         self.detection.includeThresholdMultiplier = 10.0
         self.detection.doTempLocalBackground = False
-        # do not deblend, as it makes a mess
-        self.doDeblend = False
-        # measure and apply aperture correction; note: measuring and applying aperture
-        # correction are disabled until the final measurement, after PSF is measured
-        self.doApCorr = True
         # minimal set of measurements needed to determine PSF
         self.measurement.plugins.names = [
             "base_PixelFlags",
@@ -314,8 +313,6 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
             self.makeSubtask("ref_match", refObjLoader=refObjLoader)
         self.algMetadata = dafBase.PropertyList()
         self.makeSubtask('detection', schema=self.schema)
-        if self.config.doDeblend:
-            self.makeSubtask("deblend", schema=self.schema)
         self.makeSubtask('measurement', schema=self.schema, algMetadata=self.algMetadata)
         if self.config.doApCorr:
             self.makeSubtask('measureApCorr', schema=self.schema)
@@ -508,9 +505,6 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         if detRes.fpSets.background:
             for bg in detRes.fpSets.background:
                 background.append(bg)
-
-        if self.config.doDeblend:
-            self.deblend.run(exposure=exposure, sources=sourceCat)
 
         self.measurement.run(measCat=sourceCat, exposure=exposure, exposureId=exposureIdInfo.expId)
 
