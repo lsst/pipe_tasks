@@ -38,6 +38,7 @@ import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
 import lsstDebug
 import lsst.utils as utils
+from lsst.daf.butler import DatasetRef
 from lsst.skymap import BaseSkyMap
 from .coaddBase import CoaddBaseTask, makeSkyInfo, reorderAndPadList
 from .interpImage import InterpImageTask
@@ -50,6 +51,25 @@ from deprecated.sphinx import deprecated
 
 log = logging.getLogger(__name__)
 
+
+def _lookupDataset(datasetType, registry, quantumDataId, collections) -> list[DatasetRef]:
+    """A basic lookup function that returns a list of DatasetRef"""
+    result = registry.findDataset(
+        datasetType,
+        collections=collections,
+        dataId=quantumDataId,
+        timespan=quantumDataId.timespan,
+    )
+
+    if result is None:
+        log.warning(
+            "%s dataset not found for %s. Proceeding without it.",
+            datasetType.name,
+            quantumDataId,
+        )
+        return []
+
+    return [result]
 
 class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
                                dimensions=("tract", "patch", "band", "skymap"),
@@ -85,6 +105,8 @@ class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
         name="brightObjectMask",
         storageClass="ObjectMaskCatalog",
         dimensions=("tract", "patch", "skymap", "band"),
+        lookupFunction=_lookupDataset,
+        minimum=0,
     )
     coaddExposure = pipeBase.connectionTypes.Output(
         doc="Output coadded exposure, produced by stacking input warps",
