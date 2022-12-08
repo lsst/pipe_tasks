@@ -77,6 +77,7 @@ def _lookupDataset(
 
     return [result]
 
+
 class AssembleCoaddConnections(pipeBase.PipelineTaskConnections,
                                dimensions=("tract", "patch", "band", "skymap"),
                                defaultTemplates={"inputCoaddName": "deep",
