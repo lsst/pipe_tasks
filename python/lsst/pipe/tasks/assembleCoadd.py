@@ -37,7 +37,8 @@ import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
 import lsstDebug
 import lsst.utils as utils
-from lsst.daf.butler import DatasetRef
+from lsst.daf.butler import DataCoordinate, DatasetRef, DatasetType, Registry
+from lsst.daf.butler.registry import CollectionSearch
 from lsst.skymap import BaseSkyMap
 from .coaddBase import CoaddBaseTask, SelectDataIdContainer, makeSkyInfo, makeCoaddSuffix, reorderAndPadList
 from .interpImage import InterpImageTask
@@ -56,7 +57,12 @@ __all__ = ["AssembleCoaddTask", "AssembleCoaddConnections", "AssembleCoaddConfig
 log = logging.getLogger(__name__)
 
 
-def _lookupDataset(datasetType, registry, quantumDataId, collections) -> list[DatasetRef]:
+def _lookupDataset(
+    datasetType: DatasetType,
+    registry: Registry,
+    quantumDataId: DataCoordinate,
+    collections: CollectionSearch
+) -> list[DatasetRef]:
     """A basic lookup function that returns a list of DatasetRef"""
     result = registry.findDataset(
         datasetType,
