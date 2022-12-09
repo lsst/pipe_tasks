@@ -21,131 +21,24 @@
 
 __all__ = ["SkyCorrectionTask", "SkyCorrectionConfig"]
 
-import numpy as np
-
-import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
-import lsst.pipe.base as pipeBase
-
-from lsst.afw.cameraGeom.utils import makeImageFromCamera
-from lsst.daf.butler import DimensionGraph
-from lsst.pex.config import Config, Field, ConfigurableField, ConfigField
+import lsst.afw.math as afwMath
 import lsst.pipe.base.connectionTypes as cT
-
-from .background import (SkyMeasurementTask, FocalPlaneBackground,
-                         FocalPlaneBackgroundConfig, MaskObjectsTask)
-
-
-def reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):
-    """Match the order of one list to another, padding if necessary
-
-    Parameters
-    ----------
-    inputList : list
-        List to be reordered and padded. Elements can be any type.
-    inputKeys :  iterable
-        Iterable of values to be compared with outputKeys.
-        Length must match `inputList`
-    outputKeys : iterable
-        Iterable of values to be compared with inputKeys.
-    padWith :
-        Any value to be inserted where inputKey not in outputKeys
-
-    Returns
-    -------
-    list
-        Copy of inputList reordered per outputKeys and padded with `padWith`
-        so that the length matches length of outputKeys.
-    """
-    outputList = []
-    for d in outputKeys:
-        if d in inputKeys:
-            outputList.append(inputList[inputKeys.index(d)])
-        else:
-            outputList.append(padWith)
-    return outputList
+import numpy as np
+from lsst.daf.butler import DimensionGraph
+from lsst.pex.config import Config, ConfigField, ConfigurableField, Field, FieldValidationError
+from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
+from lsst.pipe.tasks.background import (
+    FocalPlaneBackground,
+    FocalPlaneBackgroundConfig,
+    MaskObjectsTask,
+    SkyMeasurementTask,
+)
+from lsst.pipe.tasks.visualizeVisit import VisualizeMosaicExpConfig, VisualizeMosaicExpTask
 
 
-def _makeCameraImage(camera, exposures, binning):
-    """Make and write an image of an entire focal plane
-
-    Parameters
-    ----------
-    camera : `lsst.afw.cameraGeom.Camera`
-        Camera description.
-    exposures : `dict` mapping detector ID to `lsst.afw.image.Exposure`
-        CCD exposures, binned by `binning`.
-    binning : `int`
-        Binning size that has been applied to images.
-    """
-    class ImageSource:
-        """Source of images for makeImageFromCamera"""
-        def __init__(self, exposures):
-            """Constructor
-
-            Parameters
-            ----------
-            exposures : `dict` mapping detector ID to `lsst.afw.image.Exposure`
-                CCD exposures, already binned.
-            """
-            self.isTrimmed = True
-            self.exposures = exposures
-            self.background = np.nan
-
-        def getCcdImage(self, detector, imageFactory, binSize):
-            """Provide image of CCD to makeImageFromCamera"""
-            detId = detector.getId()
-            if detId not in self.exposures:
-                dims = detector.getBBox().getDimensions()/binSize
-                image = imageFactory(*[int(xx) for xx in dims])
-                image.set(self.background)
-            else:
-                image = self.exposures[detector.getId()]
-            if hasattr(image, "getMaskedImage"):
-                image = image.getMaskedImage()
-            if hasattr(image, "getMask"):
-                mask = image.getMask()
-                isBad = mask.getArray() & mask.getPlaneBitMask("NO_DATA") > 0
-                image = image.clone()
-                image.getImage().getArray()[isBad] = self.background
-            if hasattr(image, "getImage"):
-                image = image.getImage()
-
-            image = afwMath.rotateImageBy90(image, detector.getOrientation().getNQuarter())
-
-            return image, detector
-
-    image = makeImageFromCamera(
-        camera,
-        imageSource=ImageSource(exposures),
-        imageFactory=afwImage.ImageF,
-        binSize=binning
-    )
-    return image
-
-
-def makeCameraImage(camera, exposures, filename=None, binning=8):
-    """Make and write an image of an entire focal plane
-
-    Parameters
-    ----------
-    camera : `lsst.afw.cameraGeom.Camera`
-        Camera description.
-    exposures : `list` of `tuple` of `int` and `lsst.afw.image.Exposure`
-        List of detector ID and CCD exposures (binned by `binning`).
-    filename : `str`, optional
-        Output filename.
-    binning : `int`
-        Binning size that has been applied to images.
-    """
-    image = _makeCameraImage(camera, dict(exp for exp in exposures if exp is not None), binning)
-    if filename is not None:
-        image.writeFits(filename)
-    return image
-
-
-def _skyLookup(datasetType, registry, quantumDataId, collections):
-    """Lookup function to identify sky frames
+def _skyFrameLookup(datasetType, registry, quantumDataId, collections):
+    """Lookup function to identify sky frames.
 
     Parameters
     ----------
@@ -162,19 +55,49 @@ def _skyLookup(datasetType, registry, quantumDataId, collections):
     Returns
     -------
     results : `list` [`lsst.daf.butler.DatasetRef`]
-        List of datasets that will be used as sky calibration frames
+        List of datasets that will be used as sky calibration frames.
     """
     newDataId = quantumDataId.subset(DimensionGraph(registry.dimensions, names=["instrument", "visit"]))
     skyFrames = []
     for dataId in registry.queryDataIds(["visit", "detector"], dataId=newDataId).expanded():
-        skyFrame = registry.findDataset(datasetType, dataId, collections=collections,
-                                        timespan=dataId.timespan)
+        skyFrame = registry.findDataset(
+            datasetType, dataId, collections=collections, timespan=dataId.timespan
+        )
         skyFrames.append(skyFrame)
-
     return skyFrames
 
 
-class SkyCorrectionConnections(pipeBase.PipelineTaskConnections, dimensions=("instrument", "visit")):
+def _reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):
+    """Match the order of one list to another, padding if necessary.
+
+    Parameters
+    ----------
+    inputList : `list`
+        List to be reordered and padded. Elements can be any type.
+    inputKeys :  iterable
+        Iterable of values to be compared with outputKeys.
+        Length must match `inputList`.
+    outputKeys : iterable
+        Iterable of values to be compared with inputKeys.
+    padWith :
+        Any value to be inserted where one of inputKeys is not in outputKeys.
+
+    Returns
+    -------
+    outputList : `list`
+        Copy of inputList reordered per outputKeys and padded with `padWith`
+        so that the length matches length of outputKeys.
+    """
+    outputList = []
+    for outputKey in outputKeys:
+        if outputKey in inputKeys:
+            outputList.append(inputList[inputKeys.index(outputKey)])
+        else:
+            outputList.append(padWith)
+    return outputList
+
+
+class SkyCorrectionConnections(PipelineTaskConnections, dimensions=("instrument", "visit")):
     rawLinker = cT.Input(
         doc="Raw data to provide exp-visit linkage to connect calExp inputs to camera/sky calibs.",
         name="raw",
@@ -183,64 +106,112 @@ class SkyCorrectionConnections(pipeBase.PipelineTaskConnections, dimensions=("in
         storageClass="Exposure",
         dimensions=["instrument", "exposure", "detector"],
     )
-    calExpArray = cT.Input(
-        doc="Input exposures to process",
+    calExps = cT.Input(
+        doc="Background-subtracted calibrated exposures.",
         name="calexp",
         multiple=True,
         storageClass="ExposureF",
         dimensions=["instrument", "visit", "detector"],
     )
-    calBkgArray = cT.Input(
-        doc="Input background files to use",
+    calBkgs = cT.Input(
+        doc="Subtracted backgrounds for input calibrated exposures.",
         multiple=True,
         name="calexpBackground",
         storageClass="Background",
         dimensions=["instrument", "visit", "detector"],
     )
-    camera = cT.PrerequisiteInput(
-        doc="Input camera to use.",
-        name="camera",
-        storageClass="Camera",
-        dimensions=["instrument"],
-        isCalibration=True,
-    )
-    skyCalibs = cT.PrerequisiteInput(
-        doc="Input sky calibrations to use.",
+    skyFrames = cT.PrerequisiteInput(
+        doc="Calibration sky frames.",
         name="sky",
         multiple=True,
         storageClass="ExposureF",
         dimensions=["instrument", "physical_filter", "detector"],
         isCalibration=True,
-        lookupFunction=_skyLookup,
+        lookupFunction=_skyFrameLookup,
     )
-    calExpCamera = cT.Output(
-        doc="Output camera image.",
-        name='calexp_camera',
-        storageClass="ImageF",
-        dimensions=["instrument", "visit"],
+    camera = cT.PrerequisiteInput(
+        doc="Input camera.",
+        name="camera",
+        storageClass="Camera",
+        dimensions=["instrument"],
+        isCalibration=True,
     )
     skyCorr = cT.Output(
-        doc="Output sky corrected images.",
-        name='skyCorr',
+        doc="Sky correction data, to be subtracted from the calibrated exposures.",
+        name="skyCorr",
         multiple=True,
         storageClass="Background",
         dimensions=["instrument", "visit", "detector"],
     )
+    calExpMosaic = cT.Output(
+        doc="Full focal plane mosaicked image of the sky corrected calibrated exposures.",
+        name="calexp_skyCorr_visit_mosaic",
+        storageClass="ImageF",
+        dimensions=["instrument", "visit"],
+    )
+    calBkgMosaic = cT.Output(
+        doc="Full focal plane mosaicked image of the sky corrected calibrated exposure backgrounds.",
+        name="calexpBackground_skyCorr_visit_mosaic",
+        storageClass="ImageF",
+        dimensions=["instrument", "visit"],
+    )
 
 
-class SkyCorrectionConfig(pipeBase.PipelineTaskConfig, pipelineConnections=SkyCorrectionConnections):
-    """Configuration for SkyCorrectionTask"""
-    bgModel = ConfigField(dtype=FocalPlaneBackgroundConfig, doc="Background model")
-    bgModel2 = ConfigField(dtype=FocalPlaneBackgroundConfig, doc="2nd Background model")
-    sky = ConfigurableField(target=SkyMeasurementTask, doc="Sky measurement")
-    maskObjects = ConfigurableField(target=MaskObjectsTask, doc="Mask Objects")
-    doMaskObjects = Field(dtype=bool, default=True, doc="Mask objects to find good sky?")
-    doBgModel = Field(dtype=bool, default=True, doc="Do background model subtraction?")
-    doBgModel2 = Field(dtype=bool, default=True, doc="Do cleanup background model subtraction?")
-    doSky = Field(dtype=bool, default=True, doc="Do sky frame subtraction?")
-    binning = Field(dtype=int, default=8, doc="Binning factor for constructing focal-plane images")
-    calexpType = Field(dtype=str, default="calexp",
-                       doc="Should be set to fakes_calexp if you want to process calexps with fakes in.")
+class SkyCorrectionConfig(PipelineTaskConfig, pipelineConnections=SkyCorrectionConnections):
+    maskObjects = ConfigurableField(
+        target=MaskObjectsTask,
+        doc="Mask Objects",
+    )
+    doMaskObjects = Field(
+        dtype=bool,
+        default=True,
+        doc="Iteratively mask objects to find good sky?",
+    )
+    bgModel = ConfigField(
+        dtype=Config,
+        doc="Initial background model, prior to sky frame subtraction",
+        deprecated="This field is deprecated and will be removed after v26. Please use bgModel1 instead.",
+    )
+    doBgModel = Field(
+        dtype=bool,
+        default=None,
+        doc="Do initial background model subtraction (prior to sky frame subtraction)?",
+        optional=True,
+        deprecated="This field is deprecated and will be removed after v26. See RFC-898 for further details.",
+    )
+    bgModel1 = ConfigField(
+        dtype=FocalPlaneBackgroundConfig,
+        doc="Initial background model, prior to sky frame subtraction",
+    )
+    doBgModel1 = Field(
+        dtype=bool,
+        default=True,
+        doc="Do initial background model subtraction (prior to sky frame subtraction)?",
+        deprecated="This field is deprecated and will be removed after v26. See RFC-898 for further details.",
+    )
+    sky = ConfigurableField(
+        target=SkyMeasurementTask,
+        doc="Sky measurement",
+    )
+    doSky = Field(
+        dtype=bool,
+        default=True,
+        doc="Do sky frame subtraction?",
+    )
+    bgModel2 = ConfigField(
+        dtype=FocalPlaneBackgroundConfig,
+        doc="Final (cleanup) background model, after sky frame subtraction",
+    )
+    doBgModel2 = Field(
+        dtype=bool,
+        default=True,
+        doc="Do final (cleanup) background model subtraction, after sky frame subtraction?",
+    )
+    binning = Field(
+        dtype=int,
+        default=8,
+        doc="Binning factor for constructing full focal plane '*_camera' output datasets",
+    )
 
     def setDefaults(self):
         Config.setDefaults(self)
@@ -250,251 +221,370 @@ class SkyCorrectionConfig(pipeBase.PipelineTaskConfig, pipelineConnections=SkyCo
         self.bgModel2.ySize = 256
         self.bgModel2.smoothScale = 1.0
 
+    def validate(self):
+        # TODO: Entire validate method may be removed after v26 (a la DM-37242)
+        super().validate()
+        if self.doBgModel is not None and self.doBgModel != self.doBgModel1:
+            msg = "The doBgModel field will be removed after v26."
+            raise FieldValidationError(self.__class__.doBgModel, self, msg)
 
-class SkyCorrectionTask(pipeBase.PipelineTask):
-    """Correct sky over entire focal plane"""
+
+class SkyCorrectionTask(PipelineTask):
+    """Perform a full focal plane sky correction."""
+
     ConfigClass = SkyCorrectionConfig
     _DefaultName = "skyCorr"
 
-    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+    def __init__(self, *args, **kwargs):
+        super().__init__(**kwargs)
+        self.makeSubtask("sky")
+        self.makeSubtask("maskObjects")
 
-        # Reorder the skyCalibs, calBkgArray, and calExpArray inputRefs and the
-        # skyCorr outputRef sorted by detector id to ensure reproducibility.
-        detectorOrder = [ref.dataId['detector'] for ref in inputRefs.calExpArray]
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        # Sort the calExps, calBkgs and skyFrames inputRefs and the
+        # skyCorr outputRef by detector ID to ensure reproducibility.
+        detectorOrder = [ref.dataId["detector"] for ref in inputRefs.calExps]
         detectorOrder.sort()
-        inputRefs.calExpArray = reorderAndPadList(inputRefs.calExpArray,
-                                                  [ref.dataId['detector'] for ref in inputRefs.calExpArray],
-                                                  detectorOrder)
-        inputRefs.skyCalibs = reorderAndPadList(inputRefs.skyCalibs,
-                                                [ref.dataId['detector'] for ref in inputRefs.skyCalibs],
-                                                detectorOrder)
-        inputRefs.calBkgArray = reorderAndPadList(inputRefs.calBkgArray,
-                                                  [ref.dataId['detector'] for ref in inputRefs.calBkgArray],
-                                                  detectorOrder)
-        outputRefs.skyCorr = reorderAndPadList(outputRefs.skyCorr,
-                                               [ref.dataId['detector'] for ref in outputRefs.skyCorr],
-                                               detectorOrder)
+        inputRefs.calExps = _reorderAndPadList(
+            inputRefs.calExps, [ref.dataId["detector"] for ref in inputRefs.calExps], detectorOrder
+        )
+        inputRefs.calBkgs = _reorderAndPadList(
+            inputRefs.calBkgs, [ref.dataId["detector"] for ref in inputRefs.calBkgs], detectorOrder
+        )
+        inputRefs.skyFrames = _reorderAndPadList(
+            inputRefs.skyFrames, [ref.dataId["detector"] for ref in inputRefs.skyFrames], detectorOrder
+        )
+        outputRefs.skyCorr = _reorderAndPadList(
+            outputRefs.skyCorr, [ref.dataId["detector"] for ref in outputRefs.skyCorr], detectorOrder
+        )
         inputs = butlerQC.get(inputRefs)
         inputs.pop("rawLinker", None)
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(**kwargs)
+    def run(self, calExps, calBkgs, skyFrames, camera):
+        """Perform sky correction on a visit.
 
-        self.makeSubtask("sky")
-        self.makeSubtask("maskObjects")
+        The original visit-level background is first restored to the calibrated
+        exposure and the existing background model is inverted in-place. If
+        doMaskObjects is True, the mask map associated with this exposure will
+        be iteratively updated (over nIter loops) by re-estimating the
+        background each iteration and redetecting footprints.
 
-    def focalPlaneBackgroundRun(self, camera, cacheExposures, idList, config):
-        """Perform full focal-plane background subtraction
+        If doBgModel1 is True, an initial full focal plane sky subtraction will
+        take place prior to scaling and subtracting the sky frame.
 
-        This method runs on the master node.
+        If doSky is True, the sky frame will be scaled to the flux in the input
+        visit.
 
-        Parameters
-        ----------
-        camera : `lsst.afw.cameraGeom.Camera`
-            Camera description.
-        cacheExposures : `list` of `lsst.afw.image.Exposures`
-            List of loaded and processed input calExp.
-        idList : `list` of `int`
-            List of detector ids to iterate over.
-        config : `lsst.pipe.drivers.background.FocalPlaneBackgroundConfig`
-            Configuration to use for background subtraction.
+        If doBgModel2 is True, a final full focal plane sky subtraction will
+        take place after the sky frame has been subtracted.
 
-        Returns
-        -------
-        exposures : `list` of `lsst.afw.image.Image`
-            List of binned images, for creating focal plane image.
-        newCacheBgList : `list` of `lsst.afwMath.backgroundList`
-            Background lists generated.
-        cacheBgModel : `FocalPlaneBackground`
-            Full focal plane background model.
-        """
-        bgModel = FocalPlaneBackground.fromCamera(config, camera)
-        data = [pipeBase.Struct(id=id, bgModel=bgModel.clone()) for id in idList]
-
-        bgModelList = []
-        for nodeData, cacheExp in zip(data, cacheExposures):
-            nodeData.bgModel.addCcd(cacheExp)
-            bgModelList.append(nodeData.bgModel)
-
-        for ii, bg in enumerate(bgModelList):
-            self.log.info("Background %d: %d pixels", ii, bg._numbers.getArray().sum())
-            bgModel.merge(bg)
-
-        exposures = []
-        newCacheBgList = []
-        cacheBgModel = []
-        for cacheExp in cacheExposures:
-            nodeExp, nodeBgModel, nodeBgList = self.subtractModelRun(cacheExp, bgModel)
-            exposures.append(afwMath.binImage(nodeExp.getMaskedImage(), self.config.binning))
-            cacheBgModel.append(nodeBgModel)
-            newCacheBgList.append(nodeBgList)
-
-        return exposures, newCacheBgList, cacheBgModel
-
-    def run(self, calExpArray, calBkgArray, skyCalibs, camera):
-        """Performa sky correction on an exposure.
+        The first N elements of the returned skyCorr will consist of inverted
+        elements of the calexpBackground model (i.e., subtractive). All
+        subsequent elements appended to skyCorr thereafter will be additive
+        such that, when skyCorr is subtracted from a calexp, the net result
+        will be to undo the initial per-detector background solution and then
+        apply the skyCorr model thereafter. Adding skyCorr to a
+        calexpBackground will effectively negate the calexpBackground,
+        returning only the additive background components of the skyCorr
+        background model.
 
         Parameters
         ----------
-        calExpArray : `list` of `lsst.afw.image.Exposure`
-            Array of detector input calExp images for the exposure to
-            process.
-        calBkgArray : `list` of `lsst.afw.math.BackgroundList`
-            Array of detector input background lists matching the
-            calExps to process.
-        skyCalibs : `list` of `lsst.afw.image.Exposure`
-            Array of SKY calibrations for the input detectors to be
-            processed.
+        calExps : `list` [`lsst.afw.image.exposure.ExposureF`]
+            Detector calibrated exposure images for the visit.
+        calBkgs : `list` [`lsst.afw.math.BackgroundList`]
+            Detector background lists matching the calibrated exposures.
+        skyFrames : `list` [`lsst.afw.image.exposure.ExposureF`]
+            Sky frame calibration data for the input detectors.
         camera : `lsst.afw.cameraGeom.Camera`
             Camera matching the input data to process.
 
         Returns
         -------
-        results : `pipeBase.Struct` containing
-            calExpCamera : `lsst.afw.image.Exposure`
-                Full camera image of the sky-corrected data.
-            skyCorr : `list` of `lsst.afw.math.BackgroundList`
-                Detector-level sky-corrected background lists.
+        results : `Struct` containing:
+            skyCorr : `list` [`lsst.afw.math.BackgroundList`]
+                Detector-level sky correction background lists.
+            calExpMosaic : `lsst.afw.image.exposure.ExposureF`
+                Visit-level mosaic of the sky corrected data, binned.
+                Analogous to `calexp - skyCorr`.
+            calBkgMosaic : `lsst.afw.image.exposure.ExposureF`
+                Visit-level mosaic of the sky correction background, binned.
+                Analogous to `calexpBackground + skyCorr`.
         """
-        # To allow SkyCorrectionTask to run in the Gen3 butler
-        # environment, a new run() method was added that performs the
-        # same operations in a serial environment (pipetask processing
-        # does not support MPI processing as of 2019-05-03). Methods
-        # used in runDataRef() are used as appropriate in run(), but
-        # some have been rewritten in serial form. Please ensure that
-        # any updates to runDataRef() or the methods it calls with
-        # pool.mapToPrevious() are duplicated in run() and its
-        # methods.
-        #
-        # Variable names here should match those in runDataRef() as
-        # closely as possible. Variables matching data stored in the
-        # pool cache have a prefix indicating this.  Variables that
-        # would be local to an MPI processing client have a prefix
-        # "node".
-        idList = [exp.getDetector().getId() for exp in calExpArray]
+        # Restore original backgrounds in-place; optionally refine mask maps
+        numOrigBkgElements = [len(calBkg) for calBkg in calBkgs]
+        _ = self._restoreBackgroundRefineMask(calExps, calBkgs)
 
-        # Construct arrays that match the cache in self.runDataRef() after
-        # self.loadImage() is map/reduced.
-        cacheExposures = []
-        cacheBgList = []
-        exposures = []
-        for calExp, calBgModel in zip(calExpArray, calBkgArray):
-            nodeExp, nodeBgList = self.loadImageRun(calExp, calBgModel)
-            cacheExposures.append(nodeExp)
-            cacheBgList.append(nodeBgList)
-            exposures.append(afwMath.binImage(nodeExp.getMaskedImage(), self.config.binning))
+        # Bin exposures, generate full-fp bg, map to CCDs and subtract in-place
+        if self.config.doBgModel1:
+            _ = self._subtractVisitBackground(calExps, calBkgs, camera, self.config.bgModel1)
 
-        if self.config.doBgModel:
-            # Generate focal plane background, updating backgrounds in the "cache".
-            exposures, newCacheBgList, cacheBgModel = self.focalPlaneBackgroundRun(
-                camera, cacheExposures, idList, self.config.bgModel
-            )
-            for cacheBg, newBg in zip(cacheBgList, newCacheBgList):
-                cacheBg.append(newBg)
-
+        # Subtract a scaled sky frame from all input exposures
         if self.config.doSky:
-            # Measure the sky frame scale on all inputs.  Results in
-            # values equal to self.measureSkyFrame() and
-            # self.sky.solveScales() in runDataRef().
-            cacheSky = []
-            measScales = []
-            for cacheExp, skyCalib in zip(cacheExposures, skyCalibs):
-                skyExp = self.sky.exposureToBackground(skyCalib)
-                cacheSky.append(skyExp)
-                scale = self.sky.measureScale(cacheExp.getMaskedImage(), skyExp)
-                measScales.append(scale)
+            self._subtractSkyFrame(calExps, skyFrames, calBkgs)
 
-            scale = self.sky.solveScales(measScales)
-            self.log.info("Sky frame scale: %s" % (scale, ))
-
-            # Subtract sky frame, as in self.subtractSkyFrame(), with
-            # appropriate scale from the "cache".
-            exposures = []
-            newBgList = []
-            for cacheExp, nodeSky, nodeBgList in zip(cacheExposures, cacheSky, cacheBgList):
-                self.sky.subtractSkyFrame(cacheExp.getMaskedImage(), nodeSky, scale, nodeBgList)
-                exposures.append(afwMath.binImage(cacheExp.getMaskedImage(), self.config.binning))
-
+        # Bin exposures, generate full-fp bg, map to CCDs and subtract in-place
         if self.config.doBgModel2:
-            # As above, generate a focal plane background model and
-            # update the cache models.
-            exposures, newBgList, cacheBgModel = self.focalPlaneBackgroundRun(
-                camera, cacheExposures, idList, self.config.bgModel2
-            )
-            for cacheBg, newBg in zip(cacheBgList, newBgList):
-                cacheBg.append(newBg)
+            _ = self._subtractVisitBackground(calExps, calBkgs, camera, self.config.bgModel2)
 
-        # Generate camera-level image of calexp and return it along
-        # with the list of sky corrected background models.
-        image = makeCameraImage(camera, zip(idList, exposures))
-
-        return pipeBase.Struct(
-            calExpCamera=image,
-            skyCorr=cacheBgList,
+        # Make camera-level images of bg subtracted calexps and subtracted bgs
+        calExpIds = [exp.getDetector().getId() for exp in calExps]
+        skyCorrExtras = []
+        for calBkg, num in zip(calBkgs, numOrigBkgElements):
+            skyCorrExtra = calBkg.clone()
+            skyCorrExtra._backgrounds = skyCorrExtra._backgrounds[num:]
+            skyCorrExtras.append(skyCorrExtra)
+        calExpMosaic = self._binAndMosaic(calExps, camera, self.config.binning, ids=calExpIds, refExps=None)
+        calBkgMosaic = self._binAndMosaic(
+            skyCorrExtras, camera, self.config.binning, ids=calExpIds, refExps=calExps
         )
 
-    def loadImageRun(self, calExp, calExpBkg):
-        """Serial implementation of self.loadImage() for Gen3.
+        return Struct(skyCorr=calBkgs, calExpMosaic=calExpMosaic, calBkgMosaic=calBkgMosaic)
 
-        Load and restore background to calExp and calExpBkg.
+    def _restoreBackgroundRefineMask(self, calExps, calBkgs):
+        """Restore original background to each calexp and invert the related
+        background model; optionally refine the mask plane.
+
+        The original visit-level background is restored to each calibrated
+        exposure and the existing background model is inverted in-place. If
+        doMaskObjects is True, the mask map associated with the exposure will
+        be iteratively updated (over nIter loops) by re-estimating the
+        background each iteration and redetecting footprints.
+
+        The background model modified in-place in this method will comprise the
+        first N elements of the skyCorr dataset type, i.e., these N elements
+        are the inverse of the calexpBackground model. All subsequent elements
+        appended to skyCorr will be additive such that, when skyCorr is
+        subtracted from a calexp, the net result will be to undo the initial
+        per-detector background solution and then apply the skyCorr model
+        thereafter. Adding skyCorr to a calexpBackground will effectively
+        negate the calexpBackground, returning only the additive background
+        components of the skyCorr background model.
 
         Parameters
         ----------
-        calExp : `lsst.afw.image.Exposure`
-            Detector level calExp image to process.
-        calExpBkg : `lsst.afw.math.BackgroundList`
-            Detector level background list associated with the calExp.
+        calExps : `lsst.afw.image.exposure.ExposureF`
+            Detector level calexp images to process.
+        calBkgs : `lsst.afw.math._backgroundList.BackgroundList`
+            Detector level background lists associated with the calexps.
 
         Returns
         -------
-        calExp : `lsst.afw.image.Exposure`
-            Background restored calExp.
-        bgList : `lsst.afw.math.BackgroundList`
-            New background list containing the restoration background.
+        calExps : `lsst.afw.image.exposure.ExposureF`
+            The calexps with the initially subtracted background restored.
+        skyCorrBases : `lsst.afw.math._backgroundList.BackgroundList`
+            The inverted initial background models; the genesis for skyCorrs.
+        """
+        skyCorrBases = []
+        for calExp, calBkg in zip(calExps, calBkgs):
+            image = calExp.getMaskedImage()
+
+            # Invert all elements of the existing bg model; restore in calexp
+            for calBkgElement in calBkg:
+                statsImage = calBkgElement[0].getStatsImage()
+                statsImage *= -1
+            skyCorrBase = calBkg.getImage()
+            image -= skyCorrBase
+
+            # Iteratively subtract bg, re-detect sources, and add bg back on
+            if self.config.doMaskObjects:
+                self.maskObjects.findObjects(calExp)
+
+            stats = np.nanpercentile(skyCorrBase.array, [50, 75, 25])
+            self.log.info(
+                "Detector %d: Initial background restored; BG median = %.1f counts, BG IQR = %.1f counts",
+                calExp.getDetector().getId(),
+                -stats[0],
+                np.subtract(*stats[1:]),
+            )
+            skyCorrBases.append(skyCorrBase)
+        return calExps, skyCorrBases
+
+    def _subtractVisitBackground(self, calExps, calBkgs, camera, config):
+        """Perform a full focal-plane background subtraction for a visit.
+
+        Generate a full focal plane background model, binning all masked
+        detectors into bins of [bgModelN.xSize, bgModelN.ySize]. After,
+        subtract the resultant background model (translated back into CCD
+        coordinates) from the original detector exposure.
+
+        Return a list of background subtracted images and a list of full focal
+        plane background parameters.
+
+        Parameters
+        ----------
+        calExps : `list` [`lsst.afw.image.exposure.ExposureF`]
+            Calibrated exposures to be background subtracted.
+        calBkgs : `list` [`lsst.afw.math._backgroundList.BackgroundList`]
+            Background lists associated with the input calibrated exposures.
+        camera : `lsst.afw.cameraGeom.Camera`
+            Camera description.
+        config : `lsst.pipe.tasks.background.FocalPlaneBackgroundConfig`
+            Configuration to use for background subtraction.
+
+        Returns
+        -------
+        calExps : `list` [`lsst.afw.image.maskedImage.MaskedImageF`]
+            Background subtracted exposures for creating a focal plane image.
+        calBkgs : `list` [`lsst.afw.math._backgroundList.BackgroundList`]
+            Updated background lists with a visit-level model appended.
+        """
+        # Set up empty full focal plane background model object
+        bgModelBase = FocalPlaneBackground.fromCamera(config, camera)
+
+        # Loop over each detector, bin into [xSize, ySize] bins, and update
+        # summed flux (_values) and number of contributing pixels (_numbers)
+        # in focal plane coordinates. Append outputs to bgModels.
+        bgModels = []
+        for calExp in calExps:
+            bgModel = bgModelBase.clone()
+            bgModel.addCcd(calExp)
+            bgModels.append(bgModel)
+
+        # Merge detector models to make a single full focal plane bg model
+        for bgModel, calExp in zip(bgModels, calExps):
+            msg = (
+                "Detector %d: Merging %d unmasked pixels (%.1f%s of detector area) into focal plane "
+                "background model"
+            )
+            self.log.debug(
+                msg,
+                calExp.getDetector().getId(),
+                bgModel._numbers.getArray().sum(),
+                100 * bgModel._numbers.getArray().sum() / calExp.getBBox().getArea(),
+                "%",
+            )
+            bgModelBase.merge(bgModel)
+
+        # Map full focal plane bg solution to detector; subtract from exposure
+        calBkgElements = []
+        for calExp in calExps:
+            _, calBkgElement = self._subtractDetectorBackground(calExp, bgModelBase)
+            calBkgElements.append(calBkgElement)
+
+        msg = (
+            "Focal plane background model constructed using %.2f x %.2f mm (%d x %d pixel) superpixels; "
+            "FP BG median = %.1f counts, FP BG IQR = %.1f counts"
+        )
+        with np.warnings.catch_warnings():
+            np.warnings.filterwarnings("ignore", r"invalid value encountered")
+            stats = np.nanpercentile(bgModelBase.getStatsImage().array, [50, 75, 25])
+        self.log.info(
+            msg,
+            config.xSize,
+            config.ySize,
+            int(config.xSize / config.pixelSize),
+            int(config.ySize / config.pixelSize),
+            stats[0],
+            np.subtract(*stats[1:]),
+        )
+
+        for calBkg, calBkgElement in zip(calBkgs, calBkgElements):
+            calBkg.append(calBkgElement[0])
+        return calExps, calBkgs
+
+    def _subtractDetectorBackground(self, calExp, bgModel):
+        """Generate CCD background model and subtract from image.
+
+        Translate the full focal plane background into CCD coordinates and
+        subtract from the original science exposure image.
+
+        Parameters
+        ----------
+        calExp : `lsst.afw.image.exposure.ExposureF`
+            Exposure to subtract the background model from.
+        bgModel : `lsst.pipe.tasks.background.FocalPlaneBackground`
+            Full focal plane camera-level background model.
+
+        Returns
+        -------
+        calExp : `lsst.afw.image.exposure.ExposureF`
+            Background subtracted input exposure.
+        calBkgElement : `lsst.afw.math._backgroundList.BackgroundList`
+            Detector level realization of the full focal plane bg model.
         """
         image = calExp.getMaskedImage()
+        with np.warnings.catch_warnings():
+            np.warnings.filterwarnings("ignore", r"invalid value encountered")
+            calBkgElement = bgModel.toCcdBackground(calExp.getDetector(), image.getBBox())
+        image -= calBkgElement.getImage()
+        return calExp, calBkgElement
 
-        for bgOld in calExpBkg:
-            statsImage = bgOld[0].getStatsImage()
-            statsImage *= -1
+    def _subtractSkyFrame(self, calExps, skyFrames, calBkgs):
+        """Determine the full focal plane sky frame scale factor relative to
+        an input list of calibrated exposures and subtract.
 
-        image -= calExpBkg.getImage()
-        bgList = afwMath.BackgroundList()
-        for bgData in calExpBkg:
-            bgList.append(bgData)
+        This method measures the sky frame scale on all inputs, resulting in
+        values equal to the background method solveScales(). The sky frame is
+        then subtracted as in subtractSkyFrame() using the appropriate scale.
 
-        if self.config.doMaskObjects:
-            self.maskObjects.findObjects(calExp)
-
-        return (calExp, bgList)
-
-    def subtractModelRun(self, exposure, bgModel):
-        """Serial implementation of self.subtractModel() for Gen3.
-
-        Load and restore background to calExp and calExpBkg.
+        Input calExps and calBkgs are updated in-place, returning sky frame
+        subtracted calExps and sky frame updated calBkgs, respectively.
 
         Parameters
         ----------
-        exposure : `lsst.afw.image.Exposure`
-            Exposure to subtract the background model from.
-        bgModel : `lsst.pipe.drivers.background.FocalPlaneBackground`
-            Full camera level background model.
+        calExps : `list` [`lsst.afw.image.exposure.ExposureF`]
+            Calibrated exposures to be background subtracted.
+        skyFrames : `list` [`lsst.afw.image.exposure.ExposureF`]
+            Sky frame calibration data for the input detectors.
+        calBkgs : `list` [`lsst.afw.math._backgroundList.BackgroundList`]
+            Background lists associated with the input calibrated exposures.
+        """
+        skyFrameBgModels = []
+        scales = []
+        for calExp, skyFrame in zip(calExps, skyFrames):
+            skyFrameBgModel = self.sky.exposureToBackground(skyFrame)
+            skyFrameBgModels.append(skyFrameBgModel)
+            # return a tuple of gridded image and sky frame clipped means
+            samples = self.sky.measureScale(calExp.getMaskedImage(), skyFrameBgModel)
+            scales.append(samples)
+        scale = self.sky.solveScales(scales)
+        for calExp, skyFrameBgModel, calBkg in zip(calExps, skyFrameBgModels, calBkgs):
+            # subtract the scaled sky frame model from each calExp in-place,
+            # also updating the calBkg list in-place
+            self.sky.subtractSkyFrame(calExp.getMaskedImage(), skyFrameBgModel, scale, calBkg)
+        self.log.info("Sky frame subtracted with a scale factor of %.5f", scale)
 
+    def _binAndMosaic(self, exposures, camera, binning, ids=None, refExps=None):
+        """Bin input exposures and mosaic across the entire focal plane.
+
+        Input exposures are binned and then mosaicked at the position of
+        the detector in the focal plane of the camera.
+
+        Parameters
+        ----------
+        exposures : `list`
+            Detector level list of either calexp `ExposureF` types or
+            calexpBackground `BackgroundList` types.
+        camera : `lsst.afw.cameraGeom.Camera`
+            Camera matching the input data to process.
+        binning : `int`
+            Binning size to be applied to input images.
+        ids : `list` [`int`], optional
+            List of detector ids to iterate over.
+        refExps : `list` [`lsst.afw.image.exposure.ExposureF`], optional
+            If supplied, mask planes from these reference images will be used.
         Returns
         -------
-        exposure : `lsst.afw.image.Exposure`
-            Background subtracted input exposure.
-        bgModelCcd : `lsst.afw.math.BackgroundList`
-            Detector level realization of the full background model.
-        bgModelMaskedImage : `lsst.afw.image.MaskedImage`
-            Background model from the bgModelCcd realization.
+        mosaicImage : `lsst.afw.image.exposure.ExposureF`
+            Mosaicked full focal plane image.
         """
-        image = exposure.getMaskedImage()
-        detector = exposure.getDetector()
-        bbox = image.getBBox()
-        bgModelCcd = bgModel.toCcdBackground(detector, bbox)
-        image -= bgModelCcd.getImage()
-
-        return (exposure, bgModelCcd, bgModelCcd[0])
+        refExps = np.resize(refExps, len(exposures))  # type: ignore
+        binnedImages = []
+        for exp, refExp in zip(exposures, refExps):
+            try:
+                nativeImage = exp.getMaskedImage()
+            except AttributeError:
+                nativeImage = afwImage.makeMaskedImage(exp.getImage())
+                if refExp:
+                    nativeImage.setMask(refExp.getMask())
+            binnedImage = afwMath.binImage(nativeImage, binning)
+            binnedImages.append(binnedImage)
+        mosConfig = VisualizeMosaicExpConfig()
+        mosConfig.binning = binning
+        mosTask = VisualizeMosaicExpTask(config=mosConfig)
+        imageStruct = mosTask.run(binnedImages, camera, inputIds=ids)
+        mosaicImage = imageStruct.outputData
+        return mosaicImage
