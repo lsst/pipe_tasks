@@ -6,7 +6,7 @@ import astropy.units as u
 import lsst.utils.tests
 import lsst.afw.geom
 import lsst.pipe.base as pipeBase
-from lsst.meas.algorithms import (LoadReferenceObjectsTask,
+from lsst.meas.algorithms import (convertReferenceCatalog,
                                   getRefFluxField,
                                   ReferenceObjectLoader)
 from lsst.pipe.tasks.loadReferenceCatalog import LoadReferenceCatalogConfig, LoadReferenceCatalogTask
@@ -34,7 +34,7 @@ class TrivialLoader(ReferenceObjectLoader):
     def make_synthetic_refcat(self, center, flux):
         """Make a synthetic reference catalog."""
         filters = ["ref1", "ref2", "ref3"]
-        schema = LoadReferenceObjectsTask.makeMinimalSchema(filters)
+        schema = convertReferenceCatalog._makeSchema(filters)
         schema.addField('pm_ra', 'D')
         schema.addField('pm_dec', 'D')
 
