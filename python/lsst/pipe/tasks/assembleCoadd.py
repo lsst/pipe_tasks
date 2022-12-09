@@ -435,6 +435,8 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                              inputs.weightList, supplementaryData=supplementaryData)
 
         inputData.setdefault('brightObjectMask', None)
+        if self.config.doMaskBrightObjects and inputData["brightObjectMask"] is None:
+            log.warning("doMaskBrightObjects is set to True, but brightObjectMask not loaded")
         self.processResults(retStruct.coaddExposure, inputData['brightObjectMask'], outputDataId)
 
         if self.config.doWrite:
