@@ -26,7 +26,7 @@ import pickle
 import astropy.units as u
 
 import lsst.utils.tests
-from lsst.meas.algorithms import LoadReferenceObjectsTask
+from lsst.meas.algorithms import convertReferenceCatalog
 from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary, ColortermNotFoundError
 
 # From the last page of http://www.naoj.org/staff/nakata/suprime/illustration/colorterm_report_ver3.pdf
@@ -113,7 +113,7 @@ class ColortermTestCase(unittest.TestCase):
 def make_fake_refcat(center, flux):
     """Make a fake reference catalog."""
     filters = ['f1', 'f2']
-    schema = LoadReferenceObjectsTask.makeMinimalSchema(filters)
+    schema = convertReferenceCatalog._makeSchema(filters)
     catalog = lsst.afw.table.SimpleCatalog(schema)
     record = catalog.addNew()
     record.setCoord(center)
