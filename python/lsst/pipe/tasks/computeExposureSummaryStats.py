@@ -121,167 +121,85 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         """
         self.log.info("Measuring exposure statistics")
 
+        summary = afwImage.ExposureSummaryStats()
+
         bbox = exposure.getBBox()
 
         psf = exposure.getPsf()
-        if psf is not None:
-            shape = psf.computeShape(bbox.getCenter())
-            psfSigma = shape.getDeterminantRadius()
-            psfIxx = shape.getIxx()
-            psfIyy = shape.getIyy()
-            psfIxy = shape.getIxy()
-            im = psf.computeKernelImage(bbox.getCenter())
-            # The calculation of effective psf area is taken from
-            # meas_base/src/PsfFlux.cc#L112. See
-            # https://github.com/lsst/meas_base/blob/
-            # 750bffe6620e565bda731add1509507f5c40c8bb/src/PsfFlux.cc#L112
-            psfArea = np.sum(im.array)/np.sum(im.array**2.)
-        else:
-            psfSigma = np.nan
-            psfIxx = np.nan
-            psfIyy = np.nan
-            psfIxy = np.nan
-            psfArea = np.nan
+        self.update_psf_stats(summary, psf, bbox, sources)
 
         wcs = exposure.getWcs()
-        if wcs is not None:
-            sph_pts = wcs.pixelToSky(lsst.geom.Box2D(bbox).getCorners())
-            raCorners = [float(sph.getRa().asDegrees()) for sph in sph_pts]
-            decCorners = [float(sph.getDec().asDegrees()) for sph in sph_pts]
-
-            sph_pt = wcs.pixelToSky(bbox.getCenter())
-            ra = sph_pt.getRa().asDegrees()
-            decl = sph_pt.getDec().asDegrees()
-        else:
-            raCorners = [float(np.nan)]*4
-            decCorners = [float(np.nan)]*4
-            ra = np.nan
-            decl = np.nan
+        visitInfo = exposure.getInfo().getVisitInfo()
+        self.update_wcs_stats(summary, wcs, bbox, visitInfo)
 
         photoCalib = exposure.getPhotoCalib()
-        if photoCalib is not None:
-            zeroPoint = 2.5*np.log10(photoCalib.getInstFluxAtZeroMagnitude())
-        else:
-            zeroPoint = np.nan
+        self.update_photo_calib_stats(summary, photoCalib)
 
-        visitInfo = exposure.getInfo().getVisitInfo()
-        date = visitInfo.getDate()
+        self.update_background_stats(summary, background)
 
-        if date.isValid():
-            # We compute the zenithDistance at the center of the detector rather
-            # than use the boresight value available via the visitInfo, because
-            # the zenithDistance may vary significantly over a large field of view.
-            observatory = visitInfo.getObservatory()
-            loc = EarthLocation(lat=observatory.getLatitude().asDegrees()*units.deg,
-                                lon=observatory.getLongitude().asDegrees()*units.deg,
-                                height=observatory.getElevation()*units.m)
-            obstime = Time(visitInfo.getDate().get(system=DateTime.MJD),
-                           location=loc, format='mjd')
-            coord = SkyCoord(ra*units.degree, decl*units.degree, obstime=obstime, location=loc)
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore')
-                altaz = coord.transform_to(AltAz)
-
-            zenithDistance = 90.0 - altaz.alt.degree
-        else:
-            zenithDistance = np.nan
-
-        if background is not None:
-            bgStats = (bg[0].getStatsImage().getImage().array
-                       for bg in background)
-            skyBg = sum(np.median(bg[np.isfinite(bg)]) for bg in bgStats)
-        else:
-            skyBg = np.nan
-
-        statsCtrl = afwMath.StatisticsControl()
-        statsCtrl.setNumSigmaClip(self.config.sigmaClip)
-        statsCtrl.setNumIter(self.config.clipIter)
-        statsCtrl.setAndMask(afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes))
-        statsCtrl.setNanSafe(True)
-
-        statObj = afwMath.makeStatistics(exposure.getMaskedImage(), afwMath.STDEVCLIP,
-                                         statsCtrl)
-        skyNoise, _ = statObj.getResult(afwMath.STDEVCLIP)
-
-        statObj = afwMath.makeStatistics(exposure.getMaskedImage().getVariance(),
-                                         exposure.getMaskedImage().getMask(),
-                                         afwMath.MEANCLIP, statsCtrl)
-        meanVar, _ = statObj.getResult(afwMath.MEANCLIP)
+        self.update_masked_image_stats(summary, exposure.getMaskedImage())
 
         md = exposure.getMetadata()
         if 'SFM_ASTROM_OFFSET_MEAN' in md:
-            astromOffsetMean = md['SFM_ASTROM_OFFSET_MEAN']
-            astromOffsetStd = md['SFM_ASTROM_OFFSET_STD']
-        else:
-            astromOffsetMean = np.nan
-            astromOffsetStd = np.nan
-
-        psfStats = self._computePsfStats(sources)
-
-        # Note that all numpy values have to be explicitly converted to
-        # python floats for yaml serialization.
-        summary = afwImage.ExposureSummaryStats(
-            psfSigma=float(psfSigma),
-            psfArea=float(psfArea),
-            psfIxx=float(psfIxx),
-            psfIyy=float(psfIyy),
-            psfIxy=float(psfIxy),
-            ra=float(ra),
-            decl=float(decl),
-            zenithDistance=float(zenithDistance),
-            zeroPoint=float(zeroPoint),
-            skyBg=float(skyBg),
-            skyNoise=float(skyNoise),
-            meanVar=float(meanVar),
-            raCorners=raCorners,
-            decCorners=decCorners,
-            astromOffsetMean=astromOffsetMean,
-            astromOffsetStd=astromOffsetStd,
-            nPsfStar=psfStats.nPsfStar,
-            psfStarDeltaE1Median=psfStats.psfStarDeltaE1Median,
-            psfStarDeltaE2Median=psfStats.psfStarDeltaE2Median,
-            psfStarDeltaE1Scatter=psfStats.psfStarDeltaE1Scatter,
-            psfStarDeltaE2Scatter=psfStats.psfStarDeltaE2Scatter,
-            psfStarDeltaSizeMedian=psfStats.psfStarDeltaSizeMedian,
-            psfStarDeltaSizeScatter=psfStats.psfStarDeltaSizeScatter,
-            psfStarScaledDeltaSizeScatter=psfStats.psfStarScaledDeltaSizeScatter
-        )
+            summary.astromOffsetMean = md['SFM_ASTROM_OFFSET_MEAN']
+            summary.astromOffsetStd = md['SFM_ASTROM_OFFSET_STD']
 
         return summary
 
-    def _computePsfStats(self, sources):
-        """Compute psf residual statistics.
-
-        All residuals are computed using median statistics on the difference
-        between the sources and the models.
+    def update_psf_stats(self, summary, psf, bbox, sources=None):
+        """Compute all summary-statistic fields that depend on the PSF model.
 
         Parameters
         ----------
-        sources : `lsst.afw.table.SourceCatalog`
-            Source catalog on which to measure the PSF statistics.
-
-        Returns
-        -------
-        psfStats : `lsst.pipe.base.Struct`
-            Struct with various psf stats.
+        summary : `lsst.afw.image.ExposureSummaryStats`
+            Summary object to update in-place.
+        psf : `lsst.afw.detection.Psf` or `None`
+            Point spread function model.  If `None`, all fields that depend on
+            the PSF will be reset (generally to NaN).
+        bbox : `lsst.geom.Box2I`
+            Bounding box of the image for which summary stats are being
+            computed.
+        sources : `lsst.afw.table.SourceCatalog`, optional
+            Catalog for quantities that are computed from source table columns.
+            If `None`, these quantities will be reset (generally to NaN).
         """
-        psfStats = pipeBase.Struct(nPsfStar=0,
-                                   psfStarDeltaE1Median=float(np.nan),
-                                   psfStarDeltaE2Median=float(np.nan),
-                                   psfStarDeltaE1Scatter=float(np.nan),
-                                   psfStarDeltaE2Scatter=float(np.nan),
-                                   psfStarDeltaSizeMedian=float(np.nan),
-                                   psfStarDeltaSizeScatter=float(np.nan),
-                                   psfStarScaledDeltaSizeScatter=float(np.nan))
+        nan = float("nan")
+        summary.psfSigma = nan
+        summary.psfIxx = nan
+        summary.psfIyy = nan
+        summary.psfIxy = nan
+        summary.psfArea = nan
+        summary.nPsfStar = 0
+        summary.psfStarDeltaE1Median = nan
+        summary.psfStarDeltaE2Median = nan
+        summary.psfStarDeltaE1Scatter = nan
+        summary.psfStarDeltaE2Scatter = nan
+        summary.psfStarDeltaSizeMedian = nan
+        summary.psfStarDeltaSizeScatter = nan
+        summary.psfStarScaledDeltaSizeScatter = nan
+
+        if psf is None:
+            return
+        shape = psf.computeShape(bbox.getCenter())
+        summary.psfSigma = shape.getDeterminantRadius()
+        summary.psfIxx = shape.getIxx()
+        summary.psfIyy = shape.getIyy()
+        summary.psfIxy = shape.getIxy()
+        im = psf.computeKernelImage(bbox.getCenter())
+        # The calculation of effective psf area is taken from
+        # meas_base/src/PsfFlux.cc#L112. See
+        # https://github.com/lsst/meas_base/blob/
+        # 750bffe6620e565bda731add1509507f5c40c8bb/src/PsfFlux.cc#L112
+        summary.psfArea = float(np.sum(im.array)/np.sum(im.array**2.))
 
         if sources is None:
             # No sources are available (as in some tests)
-            return psfStats
+            return
 
         names = sources.schema.getNames()
         if self.config.starSelection not in names or self.config.starShape + '_flag' not in names:
             # The source catalog does not have the necessary fields (as in some tests)
-            return psfStats
+            return
 
         mask = sources[self.config.starSelection] & (~sources[self.config.starShape + '_flag'])
         nPsfStar = mask.sum()
@@ -289,7 +207,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         if nPsfStar == 0:
             # No stars to measure statistics, so we must return the defaults
             # of 0 stars and NaN values.
-            return psfStats
+            return
 
         starXX = sources[self.config.starShape + '_xx'][mask]
         starYY = sources[self.config.starShape + '_yy'][mask]
@@ -316,13 +234,145 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         psfStarDeltaSizeScatter = sigmaMad(starSize - psfSize, scale='normal')
         psfStarScaledDeltaSizeScatter = psfStarDeltaSizeScatter/starSizeMedian**2.
 
-        psfStats.nPsfStar = int(nPsfStar)
-        psfStats.psfStarDeltaE1Median = float(psfStarDeltaE1Median)
-        psfStats.psfStarDeltaE2Median = float(psfStarDeltaE2Median)
-        psfStats.psfStarDeltaE1Scatter = float(psfStarDeltaE1Scatter)
-        psfStats.psfStarDeltaE2Scatter = float(psfStarDeltaE2Scatter)
-        psfStats.psfStarDeltaSizeMedian = float(psfStarDeltaSizeMedian)
-        psfStats.psfStarDeltaSizeScatter = float(psfStarDeltaSizeScatter)
-        psfStats.psfStarScaledDeltaSizeScatter = float(psfStarScaledDeltaSizeScatter)
+        summary.nPsfStar = int(nPsfStar)
+        summary.psfStarDeltaE1Median = float(psfStarDeltaE1Median)
+        summary.psfStarDeltaE2Median = float(psfStarDeltaE2Median)
+        summary.psfStarDeltaE1Scatter = float(psfStarDeltaE1Scatter)
+        summary.psfStarDeltaE2Scatter = float(psfStarDeltaE2Scatter)
+        summary.psfStarDeltaSizeMedian = float(psfStarDeltaSizeMedian)
+        summary.psfStarDeltaSizeScatter = float(psfStarDeltaSizeScatter)
+        summary.psfStarScaledDeltaSizeScatter = float(psfStarScaledDeltaSizeScatter)
 
-        return psfStats
+    def update_wcs_stats(self, summary, wcs, bbox, visitInfo):
+        """Compute all summary-statistic fields that depend on the WCS model.
+
+        Parameters
+        ----------
+        summary : `lsst.afw.image.ExposureSummaryStats`
+            Summary object to update in-place.
+        wcs : `lsst.afw.geom.SkyWcs` or `None`
+            Astrometric calibration model.  If `None`, all fields that depend
+            on the WCS will be reset (generally to NaN).
+        bbox : `lsst.geom.Box2I`
+            Bounding box of the image for which summary stats are being
+            computed.
+        visitInfo : `lsst.afw.image.VisitInfo`
+            Observation information used in together with ``wcs`` to compute
+            the zenith distance.
+        """
+        nan = float("nan")
+        summary.raCorners = [nan]*4
+        summary.decCorners = [nan]*4
+        summary.ra = nan
+        summary.decl = nan
+        summary.zenithDistance = nan
+
+        if wcs is None:
+            return
+
+        sph_pts = wcs.pixelToSky(lsst.geom.Box2D(bbox).getCorners())
+        summary.raCorners = [float(sph.getRa().asDegrees()) for sph in sph_pts]
+        summary.decCorners = [float(sph.getDec().asDegrees()) for sph in sph_pts]
+
+        sph_pt = wcs.pixelToSky(bbox.getCenter())
+        summary.ra = sph_pt.getRa().asDegrees()
+        summary.decl = sph_pt.getDec().asDegrees()
+
+        date = visitInfo.getDate()
+
+        if date.isValid():
+            # We compute the zenithDistance at the center of the detector rather
+            # than use the boresight value available via the visitInfo, because
+            # the zenithDistance may vary significantly over a large field of view.
+            observatory = visitInfo.getObservatory()
+            loc = EarthLocation(lat=observatory.getLatitude().asDegrees()*units.deg,
+                                lon=observatory.getLongitude().asDegrees()*units.deg,
+                                height=observatory.getElevation()*units.m)
+            obstime = Time(visitInfo.getDate().get(system=DateTime.MJD),
+                           location=loc, format='mjd')
+            coord = SkyCoord(
+                summary.ra*units.degree,
+                summary.decl*units.degree,
+                obstime=obstime,
+                location=loc,
+            )
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore')
+                altaz = coord.transform_to(AltAz)
+
+            summary.zenithDistance = float(90.0 - altaz.alt.degree)
+
+    def update_photo_calib_stats(self, summary, photo_calib):
+        """Compute all summary-statistic fields that depend on the photometric
+        calibration model.
+
+        Parameters
+        ----------
+        summary : `lsst.afw.image.ExposureSummaryStats`
+            Summary object to update in-place.
+        photo_calib : `lsst.afw.image.PhotoCalib` or `None`
+            Photometric calibration model.  If `None`, all fields that depend
+            on the photometric calibration will be reset (generally to NaN).
+        """
+        if photo_calib is not None:
+            summary.zeroPoint = float(2.5*np.log10(photo_calib.getInstFluxAtZeroMagnitude()))
+        else:
+            summary.zeroPoint = float("nan")
+
+    def update_background_stats(self, summary, background):
+        """Compute summary-statistic fields that depend only on the
+        background model.
+
+        Parameters
+        ----------
+        summary : `lsst.afw.image.ExposureSummaryStats`
+            Summary object to update in-place.
+        background : `lsst.afw.math.BackgroundList` or `None`
+            Background model.  If `None`, all fields that depend on the
+            background will be reset (generally to NaN).
+
+        Notes
+        -----
+        This does not include fields that depend on the background-subtracted
+        masked image; when the background changes, it should generally be
+        applied to the image and `update_masked_image_stats` should be called
+        as well.
+        """
+        if background is not None:
+            bgStats = (bg[0].getStatsImage().getImage().array
+                       for bg in background)
+            summary.skyBg = float(sum(np.median(bg[np.isfinite(bg)]) for bg in bgStats))
+        else:
+            summary.skyBg = float("nan")
+
+    def update_masked_image_stats(self, summary, masked_image):
+        """Compute summary-statistic fields that depend on the masked image
+        itself.
+
+        Parameters
+        ----------
+        summary : `lsst.afw.image.ExposureSummaryStats`
+            Summary object to update in-place.
+        masked_image : `lsst.afw.image.MaskedImage` or `None`
+            Masked image.  If `None`, all fields that depend
+            on the masked image will be reset (generally to NaN).
+        """
+        nan = float("nan")
+        if masked_image is None:
+            summary.skyNoise = nan
+            summary.meanVar = nan
+            return
+        statsCtrl = afwMath.StatisticsControl()
+        statsCtrl.setNumSigmaClip(self.config.sigmaClip)
+        statsCtrl.setNumIter(self.config.clipIter)
+        statsCtrl.setAndMask(afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes))
+        statsCtrl.setNanSafe(True)
+
+        statObj = afwMath.makeStatistics(masked_image, afwMath.STDEVCLIP, statsCtrl)
+        skyNoise, _ = statObj.getResult(afwMath.STDEVCLIP)
+        summary.skyNoise = skyNoise
+
+        statObj = afwMath.makeStatistics(masked_image.variance, masked_image.mask, afwMath.MEANCLIP,
+                                         statsCtrl)
+        meanVar, _ = statObj.getResult(afwMath.MEANCLIP)
+        summary.meanVar = meanVar
