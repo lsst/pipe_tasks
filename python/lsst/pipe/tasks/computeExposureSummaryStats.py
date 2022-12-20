@@ -126,7 +126,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         bbox = exposure.getBBox()
 
         psf = exposure.getPsf()
-        self.update_psf_stats(summary, psf, bbox, sources)
+        self.update_psf_stats(summary, psf, bbox, sources, mask=exposure.mask)
 
         wcs = exposure.getWcs()
         visitInfo = exposure.getInfo().getVisitInfo()
@@ -146,7 +146,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
         return summary
 
-    def update_psf_stats(self, summary, psf, bbox, sources=None):
+    def update_psf_stats(self, summary, psf, bbox, sources=None, mask=None):
         """Compute all summary-statistic fields that depend on the PSF model.
 
         Parameters
@@ -162,6 +162,9 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         sources : `lsst.afw.table.SourceCatalog`, optional
             Catalog for quantities that are computed from source table columns.
             If `None`, these quantities will be reset (generally to NaN).
+        mask : `lsst.afw.image.Mask`, optional
+            Mask image that may be used to compute distance-to-nearest-star
+            metrics.
         """
         nan = float("nan")
         summary.psfSigma = nan
