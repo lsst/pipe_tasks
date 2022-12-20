@@ -146,7 +146,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
         return summary
 
-    def update_psf_stats(self, summary, psf, bbox, sources=None, mask=None):
+    def update_psf_stats(self, summary, psf, bbox, sources=None, mask=None, sources_columns=None):
         """Compute all summary-statistic fields that depend on the PSF model.
 
         Parameters
@@ -165,6 +165,11 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         mask : `lsst.afw.image.Mask`, optional
             Mask image that may be used to compute distance-to-nearest-star
             metrics.
+        sources_columns : `collections.abc.Set` [ `str` ], optional
+            Set of all column names in ``sources``.  If provided, ``sources``
+            may be any table type for which string indexes yield column arrays.
+            If not provided, ``sources`` is assumed to be an
+            `lsst.afw.table.SourceCatalog`.
         """
         nan = float("nan")
         summary.psfSigma = nan
@@ -199,8 +204,12 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             # No sources are available (as in some tests)
             return
 
-        names = sources.schema.getNames()
-        if self.config.starSelection not in names or self.config.starShape + '_flag' not in names:
+        if sources_columns is None:
+            sources_columns = sources.schema.getNames()
+        if (
+            self.config.starSelection not in sources_columns
+            or self.config.starShape + '_flag' not in sources_columns
+        ):
             # The source catalog does not have the necessary fields (as in some tests)
             return
 
