@@ -19,21 +19,23 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ['VisualizeBinExpConfig', 'VisualizeBinExpTask',
-           'VisualizeMosaicExpConfig', 'VisualizeMosaicExpTask']
+__all__ = [
+    "VisualizeBinExpConfig",
+    "VisualizeBinExpTask",
+    "VisualizeMosaicExpConfig",
+    "VisualizeMosaicExpTask",
+]
 
-import numpy as np
-
+import lsst.afw.cameraGeom.utils as afwUtils
+import lsst.afw.image as afwImage
+import lsst.afw.math as afwMath
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
-import lsst.afw.math as afwMath
-import lsst.afw.image as afwImage
-import lsst.afw.cameraGeom.utils as afwUtils
+import numpy as np
 
 
-class VisualizeBinExpConnections(pipeBase.PipelineTaskConnections,
-                                 dimensions=("instrument", "detector")):
+class VisualizeBinExpConnections(pipeBase.PipelineTaskConnections, dimensions=("instrument", "detector")):
     inputExp = cT.Input(
         name="calexp",
         doc="Input exposure data to mosaic.",
@@ -56,10 +58,9 @@ class VisualizeBinExpConnections(pipeBase.PipelineTaskConnections,
     )
 
 
-class VisualizeBinExpConfig(pipeBase.PipelineTaskConfig,
-                            pipelineConnections=VisualizeBinExpConnections):
-    """Configuration for focal plane visualization.
-    """
+class VisualizeBinExpConfig(pipeBase.PipelineTaskConfig, pipelineConnections=VisualizeBinExpConnections):
+    """Configuration for focal plane visualization."""
+
     binning = pexConfig.Field(
         dtype=int,
         default=8,
@@ -67,7 +68,7 @@ class VisualizeBinExpConfig(pipeBase.PipelineTaskConfig,
     )
     detectorKeyword = pexConfig.Field(
         dtype=str,
-        default='DET-ID',
+        default="DET-ID",
         doc="Metadata keyword to use to find detector if not available from input.",
     )
 
@@ -79,8 +80,9 @@ class VisualizeBinExpTask(pipeBase.PipelineTask):
     VisualizeMosaicExpTask to be mosaicked into a full focal plane
     visualization image.
     """
+
     ConfigClass = VisualizeBinExpConfig
-    _DefaultName = 'VisualizeBinExp'
+    _DefaultName = "VisualizeBinExp"
 
     def run(self, inputExp, camera):
         """Bin input image, attach associated detector.
@@ -111,13 +113,10 @@ class VisualizeBinExpTask(pipeBase.PipelineTask):
 
         outputExp.setInfo(inputExp.getInfo())
 
-        return pipeBase.Struct(
-            outputExp=outputExp,
-        )
+        return pipeBase.Struct(outputExp=outputExp)
 
 
-class VisualizeMosaicExpConnections(pipeBase.PipelineTaskConnections,
-                                    dimensions=("instrument", )):
+class VisualizeMosaicExpConnections(pipeBase.PipelineTaskConnections, dimensions=("instrument",)):
     inputExps = cT.Input(
         name="calexpBin",
         doc="Input binned images mosaic.",
@@ -137,14 +136,15 @@ class VisualizeMosaicExpConnections(pipeBase.PipelineTaskConnections,
         name="calexpFocalPlane",
         doc="Output binned mosaicked frame.",
         storageClass="ImageF",
-        dimensions=("instrument", ),
+        dimensions=("instrument",),
     )
 
 
-class VisualizeMosaicExpConfig(pipeBase.PipelineTaskConfig,
-                               pipelineConnections=VisualizeMosaicExpConnections):
-    """Configuration for focal plane visualization.
-    """
+class VisualizeMosaicExpConfig(
+    pipeBase.PipelineTaskConfig, pipelineConnections=VisualizeMosaicExpConnections
+):
+    """Configuration for focal plane visualization."""
+
     binning = pexConfig.Field(
         dtype=int,
         default=8,
@@ -160,8 +160,9 @@ class VisualizeMosaicExpTask(pipeBase.PipelineTask):
     the input image size and the expected size of that image in the
     full focal plane frame.
     """
+
     ConfigClass = VisualizeMosaicExpConfig
-    _DefaultName = 'VisualizeMosaicExp'
+    _DefaultName = "VisualizeMosaicExp"
 
     def makeCameraImage(self, inputExps, camera, binning):
         """Make an image of an entire focal plane.
@@ -179,22 +180,23 @@ class VisualizeMosaicExpTask(pipeBase.PipelineTask):
             detector.
         """
         image = afwUtils.makeImageFromCamera(
-            camera,
-            imageSource=ImageSource(inputExps),
-            imageFactory=afwImage.ImageF,
-            binSize=binning
+            camera, imageSource=ImageSource(inputExps), imageFactory=afwImage.ImageF, binSize=binning
         )
         return image
 
-    def run(self, inputExps, camera):
+    def run(self, inputExps, camera, inputIds=None):
         """Mosaic inputs together to create focal plane image.
 
         Parameters
         ----------
-        inputExp : `list` [`lsst.afw.image.Exposure`]
+        inputExps : `list` [`lsst.afw.image.Exposure`]
             Input exposure data to bin.
         camera : `lsst.afw.cameraGeom.Camera`
             Input camera to use for mosaic geometry.
+        inputIds : `list` [`int`], optional
+            Optional list providing exposure IDs corresponding to input
+            exposures. Will be generated via the exposure data `getDetector`
+            method if not provided.
 
         Returns
         -------
@@ -204,16 +206,17 @@ class VisualizeMosaicExpTask(pipeBase.PipelineTask):
             ``outputExp``
                 Binned version of input image (`lsst.afw.image.Exposure`).
         """
-        expDict = {exp.getDetector().getId(): exp for exp in inputExps}
+        if not inputIds:
+            inputIds = [exp.getDetector().getId() for exp in inputExps]
+        expDict = {id: exp for id, exp in zip(inputIds, inputExps)}
         image = self.makeCameraImage(expDict, camera, self.config.binning)
 
-        return pipeBase.Struct(
-            outputData=image,
-        )
+        return pipeBase.Struct(outputData=image)
 
 
 class ImageSource:
     """Source of images for makeImageFromCamera"""
+
     def __init__(self, exposures):
         self.exposures = exposures
         self.isTrimmed = True
@@ -243,7 +246,7 @@ class ImageSource:
         detId = detector.getId()
 
         if detId not in self.exposures:
-            dims = detector.getBBox().getDimensions()/binSize
+            dims = detector.getBBox().getDimensions() / binSize
             image = imageFactory(*[int(xx) for xx in dims])
             image.set(self.background)
         else:
