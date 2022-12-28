@@ -107,7 +107,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
     @timeMethod
     def run(self, exposure, sources, background):
-        """Measure exposure statistics from the exposure, sources, and background.
+        """Measure exposure statistics from the exposure, sources, and
+        background.
 
         Parameters
         ----------
@@ -210,7 +211,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             self.config.starSelection not in sources_columns
             or self.config.starShape + '_flag' not in sources_columns
         ):
-            # The source catalog does not have the necessary fields (as in some tests)
+            # The source catalog does not have the necessary fields (as in some
+            # tests).
             return
 
         mask = sources[self.config.starSelection] & (~sources[self.config.starShape + '_flag'])
@@ -293,9 +295,10 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         date = visitInfo.getDate()
 
         if date.isValid():
-            # We compute the zenithDistance at the center of the detector rather
-            # than use the boresight value available via the visitInfo, because
-            # the zenithDistance may vary significantly over a large field of view.
+            # We compute the zenithDistance at the center of the detector
+            # rather than use the boresight value available via the visitInfo,
+            # because the zenithDistance may vary significantly over a large
+            # field of view.
             observatory = visitInfo.getObservatory()
             loc = EarthLocation(lat=observatory.getLatitude().asDegrees()*units.deg,
                                 lon=observatory.getLongitude().asDegrees()*units.deg,
