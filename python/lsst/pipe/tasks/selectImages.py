@@ -262,6 +262,13 @@ class PsfWcsSelectImagesConfig(pipeBase.PipelineTaskConfig,
         default=0.009,
         optional=True,
     )
+    maxPsfTraceRadiusDelta = pexConfig.Field(
+        doc="Maximum delta (max - min) of model PSF trace radius values evaluated on a grid on "
+        "the unmasked detector pixels (pixel).",
+        dtype=float,
+        default=0.7,
+        optional=True,
+    )
 
 
 class PsfWcsSelectImagesTask(WcsSelectImagesTask):
@@ -342,6 +349,7 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         medianE = np.sqrt(row["psfStarDeltaE1Median"]**2. + row["psfStarDeltaE2Median"]**2.)
         scatterSize = row["psfStarDeltaSizeScatter"]
         scaledScatterSize = row["psfStarScaledDeltaSizeScatter"]
+        psfTraceRadiusDelta = row["psfTraceRadiusDelta"]
 
         valid = True
         if self.config.maxEllipResidual and medianE > self.config.maxEllipResidual:
@@ -355,6 +363,19 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         elif self.config.maxScaledSizeScatter and scaledScatterSize > self.config.maxScaledSizeScatter:
             self.log.info("Removing visit %d detector %d because scaled size scatter too large: %f vs %f",
                           row["visit"], detectorId, scaledScatterSize, self.config.maxScaledSizeScatter)
+            valid = False
+        elif (
+                self.config.maxPsfTraceRadiusDelta
+                and (
+                    psfTraceRadiusDelta > self.config.maxPsfTraceRadiusDelta
+                    or ~np.isfinite(psfTraceRadiusDelta)
+                )
+        ):
+            self.log.info(
+                "Removing visit %d detector %d because max-min delta of model PSF trace radius values "
+                "across the unmasked detector pixels is not finite or too large: %.3f vs %.3f (pixels)",
+                row["visit"], detectorId, psfTraceRadiusDelta, self.config.maxPsfTraceRadiusDelta
+            )
             valid = False
 
         return valid
