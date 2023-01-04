@@ -1353,6 +1353,11 @@ class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
     )
+    visitSummarySchema = connectionTypes.InitOutput(
+        doc="Schema of the visitSummary catalog",
+        name="{calexpType}visitSummary_schema",
+        storageClass="ExposureCatalog",
+    )
 
 
 class ConsolidateVisitSummaryConfig(pipeBase.PipelineTaskConfig,
@@ -1390,6 +1395,15 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                                help="data ID, e.g. --id visit=12345",
                                ContainerClass=VisitDataIdContainer)
         return parser
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.schema = afwTable.ExposureTable.makeMinimalSchema()
+        self.schema.addField('visit', type='L', doc='Visit number')
+        self.schema.addField('physical_filter', type='String', size=32, doc='Physical filter')
+        self.schema.addField('band', type='String', size=32, doc='Name of band')
+        ExposureSummaryStats.update_schema(self.schema)
+        self.visitSummarySchema = afwTable.ExposureCatalog(self.schema)
 
     def writeMetadata(self, dataRef):
         """No metadata to persist, so override to remove metadata persistance.
@@ -1443,8 +1457,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         visitSummary : `lsst.afw.table.ExposureCatalog`
             Exposure catalog with per-detector summary information.
         """
-        schema = self._makeVisitSummarySchema()
-        cat = afwTable.ExposureCatalog(schema)
+        cat = afwTable.ExposureCatalog(self.schema)
         cat.resize(len(dataRefs))
 
         cat['visit'] = visit
@@ -1494,15 +1507,6 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
         cat.sort()
         return cat
-
-    def _makeVisitSummarySchema(self):
-        """Make the schema for the visitSummary catalog."""
-        schema = afwTable.ExposureTable.makeMinimalSchema()
-        schema.addField('visit', type='L', doc='Visit number')
-        schema.addField('physical_filter', type='String', size=32, doc='Physical filter')
-        schema.addField('band', type='String', size=32, doc='Name of band')
-        ExposureSummaryStats.update_schema(schema)
-        return schema
 
 
 class VisitDataIdContainer(DataIdContainer):

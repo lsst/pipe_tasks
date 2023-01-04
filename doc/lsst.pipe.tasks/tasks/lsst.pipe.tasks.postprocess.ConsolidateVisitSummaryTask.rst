@@ -81,3 +81,5 @@ Output datasets
 
 ``visitSummary``
     Per-visit summary catalog of ccd/visit metadata.
+``visitSummary_schema``
+    Catalog with no rows with the same schema as ``visitSummary``.
