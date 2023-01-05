@@ -1212,7 +1212,7 @@ class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
                                          defaultTemplates={"calexpType": ""}):
     calexp = connectionTypes.Input(
         doc="Processed exposures used for metadata",
-        name="{calexpType}calexp",
+        name="calexp",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
         deferLoad=True,
@@ -1222,13 +1222,13 @@ class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
         doc=("Per-visit consolidated exposure metadata.  These catalogs use "
              "detector id for the id and are sorted for fast lookups of a "
              "detector."),
-        name="{calexpType}visitSummary",
+        name="visitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
     )
     visitSummarySchema = connectionTypes.InitOutput(
         doc="Schema of the visitSummary catalog",
-        name="{calexpType}visitSummary_schema",
+        name="visitSummary_schema",
         storageClass="ExposureCatalog",
     )
 
@@ -1385,7 +1385,7 @@ class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
                                    defaultTemplates={"calexpType": ""}):
     visitSummaryRefs = connectionTypes.Input(
         doc="Data references for per-visit consolidated exposure metadata",
-        name="{calexpType}finalVisitSummary",
+        name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
         multiple=True,
@@ -1393,7 +1393,7 @@ class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
     )
     outputCatalog = connectionTypes.Output(
         doc="CCD and Visit metadata table",
-        name="{calexpType}ccdVisitTable",
+        name="ccdVisitTable",
         storageClass="DataFrame",
         dimensions=("instrument",)
     )
@@ -1492,7 +1492,7 @@ class MakeVisitTableConnections(pipeBase.PipelineTaskConnections,
                                 defaultTemplates={"calexpType": ""}):
     visitSummaries = connectionTypes.Input(
         doc="Per-visit consolidated exposure metadata",
-        name="{calexpType}finalVisitSummary",
+        name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit",),
         multiple=True,
@@ -1500,7 +1500,7 @@ class MakeVisitTableConnections(pipeBase.PipelineTaskConnections,
     )
     outputCatalog = connectionTypes.Output(
         doc="Visit metadata table",
-        name="{calexpType}visitTable",
+        name="visitTable",
         storageClass="DataFrame",
         dimensions=("instrument",)
     )

@@ -342,7 +342,7 @@ class HealSparsePropertyMapConnections(pipeBase.PipelineTaskConnections,
     )
     visit_summaries = pipeBase.connectionTypes.Input(
         doc="Visit summary tables with aggregated statistics",
-        name="{calexpType}finalVisitSummary",
+        name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
         multiple=True,
