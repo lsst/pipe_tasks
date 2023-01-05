@@ -107,7 +107,7 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
     externalPhotoCalibGlobalCatalog = cT.Input(
         doc=("Per-visit photometric calibrations. These catalogs use the "
              "detector id for the catalog id, sorted on id for fast lookup."),
-        name="{photoCalibName}PhotoCalibCatalog",
+        name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
     )

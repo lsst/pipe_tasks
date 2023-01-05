@@ -370,7 +370,7 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
         doc=("Per-visit photometric calibrations computed globally (with no tract "
              "information).  These catalogs use the detector id for the catalog id, "
              "sorted on id for fast lookup."),
-        name="{photoCalibName}PhotoCalibCatalog",
+        name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=["instrument", "visit"],
     )
