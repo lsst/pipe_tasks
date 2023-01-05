@@ -10,7 +10,7 @@ One map is created per map type per tract per band.
 The resolution of the maps is set by the resolution configured for :doc:`lsst.pipe.tasks.healSparseMapping.HealSparseInputMapTask` and run during the coadd assembly.
 
 The maps to be run are configured through the "property map registry", and new maps can be defined via the ``lsst.pipe.tasks.healSparseMappingProperties.register_property_map`` decorator.
-Maps can do computations with any values that are available via the visit summaries produced by :doc:`lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask`.
+Maps can do computations with any values that are available via the visit summary datasets.
 
 Each map type can be configured to compute the minimum value at each position (``do_min``, dataset type ``{name}_map_min``); the maximum value (``do_max``, dataset type ``{name}_map_max``); the mean value (``do_mean``, dataset type ``{name}_map_mean``); the weighted mean, using the coadd weights (``do_weighted_mean``, dataset type ``{name}_map_weighted_mean``); and the sum (``do_sum``, dataset type ``{name}_map_sum``).
 In each case ``{name}`` refers to the registered name of the map.
