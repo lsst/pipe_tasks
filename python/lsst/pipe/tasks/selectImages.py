@@ -552,8 +552,8 @@ class BestSeeingSelectVisitsConnections(pipeBase.PipelineTaskConnections,
         dimensions=("skymap",),
     )
     visitSummaries = pipeBase.connectionTypes.Input(
-        doc="Per-visit consolidated exposure metadata from ConsolidateVisitSummaryTask",
-        name="visitSummary",
+        doc="Per-visit consolidated exposure metadata",
+        name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit",),
         multiple=True,
