@@ -285,7 +285,7 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
         doc=("Per-visit wcs calibrations computed globally (with no tract information). "
              "These catalogs use the detector id for the catalog id, sorted on id for "
              "fast lookup."),
-        name="{skyWcsName}SkyWcsCatalog",
+        name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=["instrument", "visit"],
     )
@@ -362,7 +362,7 @@ class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
     )
     useGlobalExternalSkyWcs = pexConfig.Field(
         dtype=bool,
-        default=False,
+        default=True,
         doc=("When using doApplyExternalSkyWcs, use 'global' calibrations "
              "that are not run per-tract.  When False, use per-tract wcs "
              "files.")
