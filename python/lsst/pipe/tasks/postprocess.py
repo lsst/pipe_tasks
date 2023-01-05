@@ -1384,8 +1384,8 @@ class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
                                    dimensions=("instrument",),
                                    defaultTemplates={"calexpType": ""}):
     visitSummaryRefs = connectionTypes.Input(
-        doc="Data references for per-visit consolidated exposure metadata from ConsolidateVisitSummaryTask",
-        name="{calexpType}visitSummary",
+        doc="Data references for per-visit consolidated exposure metadata",
+        name="{calexpType}finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
         multiple=True,
@@ -1405,13 +1405,13 @@ class MakeCcdVisitTableConfig(pipeBase.PipelineTaskConfig,
 
 
 class MakeCcdVisitTableTask(pipeBase.PipelineTask):
-    """Produce a `ccdVisitTable` from the `visitSummary` exposure catalogs.
+    """Produce a `ccdVisitTable` from the visit summary exposure catalogs.
     """
     _DefaultName = 'makeCcdVisitTable'
     ConfigClass = MakeCcdVisitTableConfig
 
     def run(self, visitSummaryRefs):
-        """Make a table of ccd information from the `visitSummary` catalogs.
+        """Make a table of ccd information from the visit summary catalogs.
 
         Parameters
         ----------
@@ -1491,8 +1491,8 @@ class MakeVisitTableConnections(pipeBase.PipelineTaskConnections,
                                 dimensions=("instrument",),
                                 defaultTemplates={"calexpType": ""}):
     visitSummaries = connectionTypes.Input(
-        doc="Per-visit consolidated exposure metadata from ConsolidateVisitSummaryTask",
-        name="{calexpType}visitSummary",
+        doc="Per-visit consolidated exposure metadata",
+        name="{calexpType}finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit",),
         multiple=True,
@@ -1512,13 +1512,13 @@ class MakeVisitTableConfig(pipeBase.PipelineTaskConfig,
 
 
 class MakeVisitTableTask(pipeBase.PipelineTask):
-    """Produce a `visitTable` from the `visitSummary` exposure catalogs.
+    """Produce a `visitTable` from the visit summary exposure catalogs.
     """
     _DefaultName = 'makeVisitTable'
     ConfigClass = MakeVisitTableConfig
 
     def run(self, visitSummaries):
-        """Make a table of visit information from the `visitSummary` catalogs.
+        """Make a table of visit information from the visit summary catalogs.
 
         Parameters
         ----------
