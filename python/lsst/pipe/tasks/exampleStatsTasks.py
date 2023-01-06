@@ -54,15 +54,8 @@ class ExampleSigmaClippedStatsTask(pipeBase.Task):
     ExampleCmdLineTask. See also ExampleSimpleStatsTask as a variant that is
     even simpler.
 
-    Examples
-    --------
-    pipeTasks_ExampleSigmaClippedStatsTask_Example A complete example
-    of using ExampleSigmaClippedStatsTask
-
-    This code is in examples/exampleStatsTask.py (this one example runs both
-    ExampleSigmaClippedStatsTask and ExampleSimpleStatsTask), and can be run
-    as: examples/exampleStatsTask.py [fitsFile]
-
+    Notes
+    -----
     The init method may compute anything that that does not require data.
     In this case we create a statistics control object using the config
     (which cannot change once the task is created).
@@ -135,13 +128,6 @@ class ExampleSimpleStatsTask(pipeBase.Task):
     pipeTasks_ExampleSimpleStatsTask_Debug     Debug variables
 
     This task has no debug variables.
-
-    pipeTasks_ExampleSimpleStatsTask_Example A complete example of using
-    ExampleSimpleStatsTask
-
-    This code is in examples/exampleStatsTask.py (this one example runs both
-    ExampleSigmaClippedStatsTask and ExampleSimpleStatsTask), and can be run
-    as: examples/exampleStatsTask.py [fitsFile]
     """
     # Even a task with no configuration requires setting ConfigClass
     ConfigClass = pexConfig.Config
