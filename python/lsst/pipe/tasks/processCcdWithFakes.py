@@ -255,6 +255,7 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig,
         self.calibrate.doAstrometry = False
         self.calibrate.doWriteMatches = False
         self.calibrate.doPhotoCal = False
+        self.calibrate.doComputeSummaryStats = False
         self.calibrate.detection.reEstimateBackground = False
 
 
