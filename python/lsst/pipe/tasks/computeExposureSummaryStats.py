@@ -62,12 +62,12 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
     starShape = pexConfig.Field(
         doc="Base name of columns to use for the source shape in the PSF statistics computation.",
         dtype=str,
-        default="base_SdssShape"
+        default="slot_Shape"
     )
     psfShape = pexConfig.Field(
         doc="Base name of columns to use for the PSF shape in the PSF statistics computation.",
         dtype=str,
-        default="base_SdssShape_psf"
+        default="slot_PsfShape"
     )
     psfSampling = pexConfig.Field(
         dtype=int,
