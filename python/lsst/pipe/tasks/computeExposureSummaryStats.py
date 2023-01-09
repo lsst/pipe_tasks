@@ -171,7 +171,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
         return summary
 
-    def update_psf_stats(self, summary, psf, bbox, sources=None, image_mask=None, sources_columns=None):
+    def update_psf_stats(self, summary, psf, bbox, sources=None, image_mask=None, sources_is_astropy=False):
         """Compute all summary-statistic fields that depend on the PSF model.
 
         Parameters
@@ -184,17 +184,18 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         bbox : `lsst.geom.Box2I`
             Bounding box of the image for which summary stats are being
             computed.
-        sources : `lsst.afw.table.SourceCatalog`, optional
+        sources : `lsst.afw.table.SourceCatalog` or `astropy.table.Table`
             Catalog for quantities that are computed from source table columns.
             If `None`, these quantities will be reset (generally to NaN).
+            The type of this table must correspond to the
+            ``sources_is_astropy`` argument.
         image_mask : `lsst.afw.image.Mask`, optional
             Mask image that may be used to compute distance-to-nearest-star
             metrics.
-        sources_columns : `collections.abc.Set` [ `str` ], optional
-            Set of all column names in ``sources``.  If provided, ``sources``
-            may be any table type for which string indexes yield column arrays.
-            If not provided, ``sources`` is assumed to be an
-            `lsst.afw.table.SourceCatalog`.
+        sources_is_astropy : `bool`, optional
+            Whether ``sources`` is an `astropy.table.Table` instance instead
+            of an `lsst.afw.table.Catalog` instance.  Default is `False` (the
+            latter).
         """
         nan = float("nan")
         summary.psfSigma = nan
@@ -240,8 +241,11 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             # No sources are available (as in some tests)
             return
 
-        if sources_columns is None:
+        if sources_is_astropy:
+            sources_columns = sources.keys()
+        else:
             sources_columns = sources.schema.getNames()
+
         if (
             self.config.starSelection not in sources_columns
             or self.config.starShape + '_flag' not in sources_columns
@@ -257,7 +261,11 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             # No stars to measure statistics, so we must return the defaults
             # of 0 stars and NaN values.
             return
-        psf_cat = sources[psf_mask].copy(deep=True)
+
+        if sources_is_astropy:
+            psf_cat = sources[psf_mask]
+        else:
+            psf_cat = sources[psf_mask].copy(deep=True)
 
         starXX = psf_cat[self.config.starShape + '_xx']
         starYY = psf_cat[self.config.starShape + '_yy']
@@ -449,8 +457,8 @@ def maximum_nearest_psf_distance(
     Parameters
     ----------
     image_mask : `lsst.afw.image.Mask`
-        The mask plane assosiated with the exposure.
-    psf_cat : `lsst.afw.table.SourceCatalog`
+        The mask plane associated with the exposure.
+    psf_cat : `lsst.afw.table.SourceCatalog` or `astropy.table.Table`
         Catalog containing only the stars used in the PSF modeling.
     sampling : `int`
         Sampling rate in each dimension to create the grid of points on which
@@ -476,8 +484,8 @@ def maximum_nearest_psf_distance(
 
     dist_to_nearest_psf = np.full(good.shape, np.inf)
     for psf in psf_cat:
-        x_psf = psf.getX()
-        y_psf = psf.getY()
+        x_psf = psf["slot_Centroid_x"]
+        y_psf = psf["slot_Centroid_y"]
         dist_to_nearest_psf = np.minimum(dist_to_nearest_psf, np.hypot(xx - x_psf, yy - y_psf))
         unmasked_dists = dist_to_nearest_psf * good
         max_dist_to_nearest_psf = np.max(unmasked_dists)
@@ -498,9 +506,9 @@ def psf_trace_radius_delta(
     Parameters
     ----------
     image_mask : `lsst.afw.image.Mask`
-        The mask plane assosiated with the exposure.
+        The mask plane associated with the exposure.
     image_psf : `lsst.afw.detection.Psf`
-        The PSF model assosiated with the exposure.
+        The PSF model associated with the exposure.
     sampling : `int`
         Sampling rate in each dimension to create the grid of points at which
         to evaluate ``image_psf``s trace radius value. The tradeoff is between
