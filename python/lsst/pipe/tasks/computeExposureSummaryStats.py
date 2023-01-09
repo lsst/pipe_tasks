@@ -241,19 +241,6 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             # No sources are available (as in some tests)
             return
 
-        if sources_is_astropy:
-            sources_columns = sources.keys()
-        else:
-            sources_columns = sources.schema.getNames()
-
-        if (
-            self.config.starSelection not in sources_columns
-            or self.config.starShape + '_flag' not in sources_columns
-        ):
-            # The source catalog does not have the necessary fields (as in some
-            # tests).
-            return
-
         psf_mask = sources[self.config.starSelection] & (~sources[self.config.starShape + '_flag'])
         nPsfStar = psf_mask.sum()
 
