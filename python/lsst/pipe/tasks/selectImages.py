@@ -352,24 +352,21 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         psfTraceRadiusDelta = row["psfTraceRadiusDelta"]
 
         valid = True
-        if self.config.maxEllipResidual and medianE > self.config.maxEllipResidual:
+        if self.config.maxEllipResidual and not (medianE <= self.config.maxEllipResidual):
             self.log.info("Removing visit %d detector %d because median e residual too large: %f vs %f",
                           row["visit"], detectorId, medianE, self.config.maxEllipResidual)
             valid = False
-        elif self.config.maxSizeScatter and scatterSize > self.config.maxSizeScatter:
+        elif self.config.maxSizeScatter and not (scatterSize <= self.config.maxSizeScatter):
             self.log.info("Removing visit %d detector %d because size scatter too large: %f vs %f",
                           row["visit"], detectorId, scatterSize, self.config.maxSizeScatter)
             valid = False
-        elif self.config.maxScaledSizeScatter and scaledScatterSize > self.config.maxScaledSizeScatter:
+        elif self.config.maxScaledSizeScatter and not (scaledScatterSize <= self.config.maxScaledSizeScatter):
             self.log.info("Removing visit %d detector %d because scaled size scatter too large: %f vs %f",
                           row["visit"], detectorId, scaledScatterSize, self.config.maxScaledSizeScatter)
             valid = False
         elif (
-                self.config.maxPsfTraceRadiusDelta
-                and (
-                    psfTraceRadiusDelta > self.config.maxPsfTraceRadiusDelta
-                    or ~np.isfinite(psfTraceRadiusDelta)
-                )
+                self.config.maxPsfTraceRadiusDelta is not None
+                and not (psfTraceRadiusDelta <= self.config.maxPsfTraceRadiusDelta)
         ):
             self.log.info(
                 "Removing visit %d detector %d because max-min delta of model PSF trace radius values "
