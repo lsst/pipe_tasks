@@ -178,6 +178,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         calibConfig = CalibrateConfig()
         calibConfig.doAstrometry = False
         calibConfig.doPhotoCal = False
+        calibConfig.doComputeSummaryStats = False
         calibTask = CalibrateTask(config=calibConfig)
         calibResults = calibTask.run(self.charImResults.exposure)
         outputCat = calibResults.outputCat
