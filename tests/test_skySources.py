@@ -65,6 +65,7 @@ class SkySourcesTestCase(lsst.utils.tests.TestCase):
         calibConfig.doAstrometry = False
         calibConfig.doPhotoCal = False
         calibConfig.doSkySources = doSkySources
+        calibConfig.doComputeSummaryStats = False
         calibTask = CalibrateTask(config=calibConfig)
         calibResults = calibTask.run(charImResults.exposure)
         if doSkySources:

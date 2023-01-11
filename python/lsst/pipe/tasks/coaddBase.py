@@ -98,7 +98,7 @@ class CoaddBaseConfig(pexConfig.Config):
     )
     useGlobalExternalSkyWcs = pexConfig.Field(
         dtype=bool,
-        default=False,
+        default=True,
         doc=("When using doApplyExternalSkyWcs, use 'global' calibrations "
              "that are not run per-tract.  When False, use per-tract wcs "
              "files.")
