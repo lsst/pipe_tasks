@@ -33,7 +33,7 @@ import lsst.pipe.base as pipeBase
 import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
-import lsst.geom
+import lsst.geom as geom
 from lsst.utils.timer import timeMethod
 
 
@@ -69,6 +69,24 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         dtype=str,
         default="base_SdssShape_psf"
     )
+    psfSampling = pexConfig.Field(
+        dtype=int,
+        doc="Sampling rate in pixels in each dimension for the maxDistToNearestPsf metric "
+        "caclulation grid (the tradeoff is between adequate sampling versus speed).",
+        default=8,
+    )
+    psfGridSampling = pexConfig.Field(
+        dtype=int,
+        doc="Sampling rate in pixels in each dimension for PSF model robustness metric "
+        "caclulations grid (the tradeoff is between adequate sampling versus speed).",
+        default=96,
+    )
+    psfBadMaskPlanes = pexConfig.ListField(
+        dtype=str,
+        doc="Mask planes that, if set, the associated pixel should not be included in the PSF model "
+        "robutsness metric calculations (namely, maxDistToNearestPsf and psfTraceRadiusDelta).",
+        default=("BAD", "CR", "EDGE", "INTRP", "NO_DATA", "SAT", "SUSPECT"),
+    )
 
 
 class ComputeExposureSummaryStatsTask(pipeBase.Task):
@@ -101,13 +119,20 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     - psfStarDeltaSizeMedian
     - psfStarDeltaSizeScatter
     - psfStarScaledDeltaSizeScatter
+
+    These quantities are computed based on the PSF model and image mask
+    to assess the robustness of the PSF model across a given detector
+    (against, e.g., extrapolation instability):
+    - maxDistToNearestPsf
+    - psfTraceRadiusDelta
     """
     ConfigClass = ComputeExposureSummaryStatsConfig
     _DefaultName = "computeExposureSummaryStats"
 
     @timeMethod
     def run(self, exposure, sources, background):
-        """Measure exposure statistics from the exposure, sources, and background.
+        """Measure exposure statistics from the exposure, sources, and
+        background.
 
         Parameters
         ----------
@@ -126,7 +151,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         bbox = exposure.getBBox()
 
         psf = exposure.getPsf()
-        self.update_psf_stats(summary, psf, bbox, sources, mask=exposure.mask)
+        self.update_psf_stats(summary, psf, bbox, sources, image_mask=exposure.mask)
 
         wcs = exposure.getWcs()
         visitInfo = exposure.getInfo().getVisitInfo()
@@ -146,7 +171,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
         return summary
 
-    def update_psf_stats(self, summary, psf, bbox, sources=None, mask=None, sources_columns=None):
+    def update_psf_stats(self, summary, psf, bbox, sources=None, image_mask=None, sources_columns=None):
         """Compute all summary-statistic fields that depend on the PSF model.
 
         Parameters
@@ -162,7 +187,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         sources : `lsst.afw.table.SourceCatalog`, optional
             Catalog for quantities that are computed from source table columns.
             If `None`, these quantities will be reset (generally to NaN).
-        mask : `lsst.afw.image.Mask`, optional
+        image_mask : `lsst.afw.image.Mask`, optional
             Mask image that may be used to compute distance-to-nearest-star
             metrics.
         sources_columns : `collections.abc.Set` [ `str` ], optional
@@ -185,6 +210,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.psfStarDeltaSizeMedian = nan
         summary.psfStarDeltaSizeScatter = nan
         summary.psfStarScaledDeltaSizeScatter = nan
+        summary.maxDistToNearestPsf = nan
+        summary.psfTraceRadiusDelta = nan
 
         if psf is None:
             return
@@ -200,6 +227,15 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         # 750bffe6620e565bda731add1509507f5c40c8bb/src/PsfFlux.cc#L112
         summary.psfArea = float(np.sum(im.array)/np.sum(im.array**2.))
 
+        if image_mask is not None:
+            psfTraceRadiusDelta = psf_trace_radius_delta(
+                image_mask,
+                psf,
+                sampling=self.config.psfGridSampling,
+                bad_mask_bits=self.config.psfBadMaskPlanes
+            )
+            summary.psfTraceRadiusDelta = float(psfTraceRadiusDelta)
+
         if sources is None:
             # No sources are available (as in some tests)
             return
@@ -210,23 +246,25 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             self.config.starSelection not in sources_columns
             or self.config.starShape + '_flag' not in sources_columns
         ):
-            # The source catalog does not have the necessary fields (as in some tests)
+            # The source catalog does not have the necessary fields (as in some
+            # tests).
             return
 
-        mask = sources[self.config.starSelection] & (~sources[self.config.starShape + '_flag'])
-        nPsfStar = mask.sum()
+        psf_mask = sources[self.config.starSelection] & (~sources[self.config.starShape + '_flag'])
+        nPsfStar = psf_mask.sum()
 
         if nPsfStar == 0:
             # No stars to measure statistics, so we must return the defaults
             # of 0 stars and NaN values.
             return
+        psf_cat = sources[psf_mask].copy(deep=True)
 
-        starXX = sources[self.config.starShape + '_xx'][mask]
-        starYY = sources[self.config.starShape + '_yy'][mask]
-        starXY = sources[self.config.starShape + '_xy'][mask]
-        psfXX = sources[self.config.psfShape + '_xx'][mask]
-        psfYY = sources[self.config.psfShape + '_yy'][mask]
-        psfXY = sources[self.config.psfShape + '_xy'][mask]
+        starXX = psf_cat[self.config.starShape + '_xx']
+        starYY = psf_cat[self.config.starShape + '_yy']
+        starXY = psf_cat[self.config.starShape + '_xy']
+        psfXX = psf_cat[self.config.psfShape + '_xx']
+        psfYY = psf_cat[self.config.psfShape + '_yy']
+        psfXY = psf_cat[self.config.psfShape + '_xy']
 
         starSize = (starXX*starYY - starXY**2.)**0.25
         starE1 = (starXX - starYY)/(starXX + starYY)
@@ -255,6 +293,15 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.psfStarDeltaSizeScatter = float(psfStarDeltaSizeScatter)
         summary.psfStarScaledDeltaSizeScatter = float(psfStarScaledDeltaSizeScatter)
 
+        if image_mask is not None:
+            maxDistToNearestPsf = maximum_nearest_psf_distance(
+                image_mask,
+                psf_cat,
+                sampling=self.config.psfSampling,
+                bad_mask_bits=self.config.psfBadMaskPlanes
+            )
+            summary.maxDistToNearestPsf = float(maxDistToNearestPsf)
+
     def update_wcs_stats(self, summary, wcs, bbox, visitInfo):
         """Compute all summary-statistic fields that depend on the WCS model.
 
@@ -282,7 +329,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         if wcs is None:
             return
 
-        sph_pts = wcs.pixelToSky(lsst.geom.Box2D(bbox).getCorners())
+        sph_pts = wcs.pixelToSky(geom.Box2D(bbox).getCorners())
         summary.raCorners = [float(sph.getRa().asDegrees()) for sph in sph_pts]
         summary.decCorners = [float(sph.getDec().asDegrees()) for sph in sph_pts]
 
@@ -293,9 +340,10 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         date = visitInfo.getDate()
 
         if date.isValid():
-            # We compute the zenithDistance at the center of the detector rather
-            # than use the boresight value available via the visitInfo, because
-            # the zenithDistance may vary significantly over a large field of view.
+            # We compute the zenithDistance at the center of the detector
+            # rather than use the boresight value available via the visitInfo,
+            # because the zenithDistance may vary significantly over a large
+            # field of view.
             observatory = visitInfo.getObservatory()
             loc = EarthLocation(lat=observatory.getLatitude().asDegrees()*units.deg,
                                 lon=observatory.getLongitude().asDegrees()*units.deg,
@@ -388,3 +436,105 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
                                          statsCtrl)
         meanVar, _ = statObj.getResult(afwMath.MEANCLIP)
         summary.meanVar = meanVar
+
+
+def maximum_nearest_psf_distance(
+    image_mask,
+    psf_cat,
+    sampling=8,
+    bad_mask_bits=["BAD", "CR", "INTRP", "SAT", "SUSPECT", "NO_DATA", "EDGE"],
+):
+    """Compute the maximum distance of an unmasked pixel to its nearest PSF.
+
+    Parameters
+    ----------
+    image_mask : `lsst.afw.image.Mask`
+        The mask plane assosiated with the exposure.
+    psf_cat : `lsst.afw.table.SourceCatalog`
+        Catalog containing only the stars used in the PSF modeling.
+    sampling : `int`
+        Sampling rate in each dimension to create the grid of points on which
+        to evaluate the distance to the nearest PSF star. The tradeoff is
+        between adequate sampling versus speed.
+    bad_mask_bits : `list` [`str`]
+        Mask bits required to be absent for a pixel to be considered
+        "unmasked".
+
+    Returns
+    -------
+    max_dist_to_nearest_psf : `float`
+        The maximum distance (in pixels) of an unmasked pixel to its nearest
+        PSF model star.
+    """
+    mask_arr = image_mask.array[::sampling, ::sampling]
+    bitmask = image_mask.getPlaneBitMask(bad_mask_bits)
+    good = ((mask_arr & bitmask) == 0)
+
+    x = np.arange(good.shape[1]) * sampling
+    y = np.arange(good.shape[0]) * sampling
+    xx, yy = np.meshgrid(x, y)
+
+    dist_to_nearest_psf = np.full(good.shape, np.inf)
+    for psf in psf_cat:
+        x_psf = psf.getX()
+        y_psf = psf.getY()
+        dist_to_nearest_psf = np.minimum(dist_to_nearest_psf, np.hypot(xx - x_psf, yy - y_psf))
+        unmasked_dists = dist_to_nearest_psf * good
+        max_dist_to_nearest_psf = np.max(unmasked_dists)
+
+    return max_dist_to_nearest_psf
+
+
+def psf_trace_radius_delta(
+    image_mask,
+    image_psf,
+    sampling=96,
+    bad_mask_bits=["BAD", "CR", "INTRP", "SAT", "SUSPECT", "NO_DATA", "EDGE"],
+):
+    """Compute the delta between the maximum and minimum model PSF trace radius
+    values evaluated on a grid of points lying in the unmasked region of the
+    image.
+
+    Parameters
+    ----------
+    image_mask : `lsst.afw.image.Mask`
+        The mask plane assosiated with the exposure.
+    image_psf : `lsst.afw.detection.Psf`
+        The PSF model assosiated with the exposure.
+    sampling : `int`
+        Sampling rate in each dimension to create the grid of points at which
+        to evaluate ``image_psf``s trace radius value. The tradeoff is between
+        adequate sampling versus speed.
+    bad_mask_bits : `list` [`str`]
+        Mask bits required to be absent for a pixel to be considered
+        "unmasked".
+
+    Returns
+    -------
+    psf_trace_radius_delta : `float`
+        The delta (in pixels) between the maximum and minimum model PSF trace
+        radius values evaluated on the x,y-grid subsampled on the unmasked
+        detector pixels by a factor of ``sampling``.  If any model PSF trace
+        radius value on the grid evaluates to NaN, then NaN is returned
+        immediately.
+    """
+    psf_trace_radius_list = []
+    mask_arr = image_mask.array[::sampling, ::sampling]
+    bitmask = image_mask.getPlaneBitMask(bad_mask_bits)
+    good = ((mask_arr & bitmask) == 0)
+
+    x = np.arange(good.shape[1]) * sampling
+    y = np.arange(good.shape[0]) * sampling
+    xx, yy = np.meshgrid(x, y)
+
+    for x_mesh, y_mesh, good_mesh in zip(xx, yy, good):
+        for x_point, y_point, is_good in zip(x_mesh, y_mesh, good_mesh):
+            if is_good:
+                psf_trace_radius = image_psf.computeShape(geom.Point2D(x_point, y_point)).getTraceRadius()
+                if ~np.isfinite(psf_trace_radius):
+                    return float("nan")
+                psf_trace_radius_list.append(psf_trace_radius)
+
+    psf_trace_radius_delta = np.max(psf_trace_radius_list) - np.min(psf_trace_radius_list)
+
+    return psf_trace_radius_delta
