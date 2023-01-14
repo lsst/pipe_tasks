@@ -461,7 +461,7 @@ def compute_stats(values_ref, values_target, errors_target, row, stats, suffixes
 
 @dataclass(frozen=True)
 class SourceTypeInfo:
-    is_extended: [bool, None]
+    is_extended: bool | None
     label: str
 
 

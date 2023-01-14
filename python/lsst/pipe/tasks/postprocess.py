@@ -34,6 +34,7 @@ import lsst.daf.base as dafBase
 from lsst.obs.base import ExposureIdInfo
 from lsst.pipe.base import connectionTypes
 import lsst.afw.table as afwTable
+from lsst.afw.image import ExposureSummaryStats
 from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.pipe.base import CmdLineTask, ArgumentParser, DataIdContainer
 from lsst.coadd.utils.coaddDataIdContainer import CoaddDataIdContainer
@@ -1483,30 +1484,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             rec['physical_filter'] = filterLabel.physicalLabel if filterLabel.hasPhysicalLabel() else ""
             rec['band'] = filterLabel.bandLabel if filterLabel.hasBandLabel() else ""
             rec.setId(detector.getId())
-            rec['psfSigma'] = summaryStats.psfSigma
-            rec['psfIxx'] = summaryStats.psfIxx
-            rec['psfIyy'] = summaryStats.psfIyy
-            rec['psfIxy'] = summaryStats.psfIxy
-            rec['psfArea'] = summaryStats.psfArea
-            rec['raCorners'][:] = summaryStats.raCorners
-            rec['decCorners'][:] = summaryStats.decCorners
-            rec['ra'] = summaryStats.ra
-            rec['decl'] = summaryStats.decl
-            rec['zenithDistance'] = summaryStats.zenithDistance
-            rec['zeroPoint'] = summaryStats.zeroPoint
-            rec['skyBg'] = summaryStats.skyBg
-            rec['skyNoise'] = summaryStats.skyNoise
-            rec['meanVar'] = summaryStats.meanVar
-            rec['astromOffsetMean'] = summaryStats.astromOffsetMean
-            rec['astromOffsetStd'] = summaryStats.astromOffsetStd
-            rec['nPsfStar'] = summaryStats.nPsfStar
-            rec['psfStarDeltaE1Median'] = summaryStats.psfStarDeltaE1Median
-            rec['psfStarDeltaE2Median'] = summaryStats.psfStarDeltaE2Median
-            rec['psfStarDeltaE1Scatter'] = summaryStats.psfStarDeltaE1Scatter
-            rec['psfStarDeltaE2Scatter'] = summaryStats.psfStarDeltaE2Scatter
-            rec['psfStarDeltaSizeMedian'] = summaryStats.psfStarDeltaSizeMedian
-            rec['psfStarDeltaSizeScatter'] = summaryStats.psfStarDeltaSizeScatter
-            rec['psfStarScaledDeltaSizeScatter'] = summaryStats.psfStarScaledDeltaSizeScatter
+            summaryStats.update_record(rec)
 
         metadata = dafBase.PropertyList()
         metadata.add("COMMENT", "Catalog id is detector id, sorted.")
@@ -1523,54 +1501,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         schema.addField('visit', type='L', doc='Visit number')
         schema.addField('physical_filter', type='String', size=32, doc='Physical filter')
         schema.addField('band', type='String', size=32, doc='Name of band')
-        schema.addField('psfSigma', type='F',
-                        doc='PSF model second-moments determinant radius (center of chip) (pixel)')
-        schema.addField('psfArea', type='F',
-                        doc='PSF model effective area (center of chip) (pixel**2)')
-        schema.addField('psfIxx', type='F',
-                        doc='PSF model Ixx (center of chip) (pixel**2)')
-        schema.addField('psfIyy', type='F',
-                        doc='PSF model Iyy (center of chip) (pixel**2)')
-        schema.addField('psfIxy', type='F',
-                        doc='PSF model Ixy (center of chip) (pixel**2)')
-        schema.addField('raCorners', type='ArrayD', size=4,
-                        doc='Right Ascension of bounding box corners (degrees)')
-        schema.addField('decCorners', type='ArrayD', size=4,
-                        doc='Declination of bounding box corners (degrees)')
-        schema.addField('ra', type='D',
-                        doc='Right Ascension of bounding box center (degrees)')
-        schema.addField('decl', type='D',
-                        doc='Declination of bounding box center (degrees)')
-        schema.addField('zenithDistance', type='F',
-                        doc='Zenith distance of bounding box center (degrees)')
-        schema.addField('zeroPoint', type='F',
-                        doc='Mean zeropoint in detector (mag)')
-        schema.addField('skyBg', type='F',
-                        doc='Average sky background (ADU)')
-        schema.addField('skyNoise', type='F',
-                        doc='Average sky noise (ADU)')
-        schema.addField('meanVar', type='F',
-                        doc='Mean variance of the weight plane (ADU**2)')
-        schema.addField('astromOffsetMean', type='F',
-                        doc='Mean offset of astrometric calibration matches (arcsec)')
-        schema.addField('astromOffsetStd', type='F',
-                        doc='Standard deviation of offsets of astrometric calibration matches (arcsec)')
-        schema.addField('nPsfStar', type='I', doc='Number of stars used for PSF model')
-        schema.addField('psfStarDeltaE1Median', type='F',
-                        doc='Median E1 residual (starE1 - psfE1) for psf stars')
-        schema.addField('psfStarDeltaE2Median', type='F',
-                        doc='Median E2 residual (starE2 - psfE2) for psf stars')
-        schema.addField('psfStarDeltaE1Scatter', type='F',
-                        doc='Scatter (via MAD) of E1 residual (starE1 - psfE1) for psf stars')
-        schema.addField('psfStarDeltaE2Scatter', type='F',
-                        doc='Scatter (via MAD) of E2 residual (starE2 - psfE2) for psf stars')
-        schema.addField('psfStarDeltaSizeMedian', type='F',
-                        doc='Median size residual (starSize - psfSize) for psf stars (pixel)')
-        schema.addField('psfStarDeltaSizeScatter', type='F',
-                        doc='Scatter (via MAD) of size residual (starSize - psfSize) for psf stars (pixel)')
-        schema.addField('psfStarScaledDeltaSizeScatter', type='F',
-                        doc='Scatter (via MAD) of size residual scaled by median size squared')
-
+        ExposureSummaryStats.update_schema(schema)
         return schema
 
 
