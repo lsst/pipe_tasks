@@ -25,7 +25,7 @@ import lsst.meas.algorithms as measAlg
 import lsst.meas.algorithms.utils as maUtils
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
-import lsst.meas.extensions.piff.piffPsfDeterminer  # noqa: F401
+import lsst.meas.extensions.psfex.psfexPsfDeterminer  # noqa: F401
 from lsst.utils.timer import timeMethod
 
 
@@ -40,7 +40,7 @@ class MeasurePsfConfig(pexConfig.Config):
     )
     psfDeterminer = measAlg.psfDeterminerRegistry.makeField(
         "PSF Determination algorithm",
-        default="piff"
+        default="psfex"
     )
     reserve = pexConfig.ConfigurableField(
         target=measAlg.ReserveSourcesTask,
