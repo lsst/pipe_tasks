@@ -285,7 +285,7 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
         doc=("Per-visit wcs calibrations computed globally (with no tract information). "
              "These catalogs use the detector id for the catalog id, sorted on id for "
              "fast lookup."),
-        name="{skyWcsName}SkyWcsCatalog",
+        name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=["instrument", "visit"],
     )
@@ -301,7 +301,7 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
         doc=("Per-visit photometric calibrations computed globally (with no tract "
              "information).  These catalogs use the detector id for the catalog id, "
              "sorted on id for fast lookup."),
-        name="{photoCalibName}PhotoCalibCatalog",
+        name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=["instrument", "visit"],
     )
@@ -362,7 +362,7 @@ class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
     )
     useGlobalExternalSkyWcs = pexConfig.Field(
         dtype=bool,
-        default=False,
+        default=True,
         doc=("When using doApplyExternalSkyWcs, use 'global' calibrations "
              "that are not run per-tract.  When False, use per-tract wcs "
              "files.")
@@ -1212,7 +1212,7 @@ class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
                                          defaultTemplates={"calexpType": ""}):
     calexp = connectionTypes.Input(
         doc="Processed exposures used for metadata",
-        name="{calexpType}calexp",
+        name="calexp",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
         deferLoad=True,
@@ -1222,9 +1222,14 @@ class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
         doc=("Per-visit consolidated exposure metadata.  These catalogs use "
              "detector id for the id and are sorted for fast lookups of a "
              "detector."),
-        name="{calexpType}visitSummary",
+        name="visitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
+    )
+    visitSummarySchema = connectionTypes.InitOutput(
+        doc="Schema of the visitSummary catalog",
+        name="visitSummary_schema",
+        storageClass="ExposureCatalog",
     )
 
 
@@ -1255,6 +1260,15 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
     _DefaultName = "consolidateVisitSummary"
     ConfigClass = ConsolidateVisitSummaryConfig
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.schema = afwTable.ExposureTable.makeMinimalSchema()
+        self.schema.addField('visit', type='L', doc='Visit number')
+        self.schema.addField('physical_filter', type='String', size=32, doc='Physical filter')
+        self.schema.addField('band', type='String', size=32, doc='Name of band')
+        ExposureSummaryStats.update_schema(self.schema)
+        self.visitSummarySchema = afwTable.ExposureCatalog(self.schema)
+
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         dataRefs = butlerQC.get(inputRefs.calexp)
         visit = dataRefs[0].dataId.byName()['visit']
@@ -1283,8 +1297,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
         visitSummary : `lsst.afw.table.ExposureCatalog`
             Exposure catalog with per-detector summary information.
         """
-        schema = self._makeVisitSummarySchema()
-        cat = afwTable.ExposureCatalog(schema)
+        cat = afwTable.ExposureCatalog(self.schema)
         cat.resize(len(dataRefs))
 
         cat['visit'] = visit
@@ -1320,15 +1333,6 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
 
         cat.sort()
         return cat
-
-    def _makeVisitSummarySchema(self):
-        """Make the schema for the visitSummary catalog."""
-        schema = afwTable.ExposureTable.makeMinimalSchema()
-        schema.addField('visit', type='L', doc='Visit number')
-        schema.addField('physical_filter', type='String', size=32, doc='Physical filter')
-        schema.addField('band', type='String', size=32, doc='Name of band')
-        ExposureSummaryStats.update_schema(schema)
-        return schema
 
 
 class ConsolidateSourceTableConnections(pipeBase.PipelineTaskConnections,
@@ -1380,8 +1384,8 @@ class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
                                    dimensions=("instrument",),
                                    defaultTemplates={"calexpType": ""}):
     visitSummaryRefs = connectionTypes.Input(
-        doc="Data references for per-visit consolidated exposure metadata from ConsolidateVisitSummaryTask",
-        name="{calexpType}visitSummary",
+        doc="Data references for per-visit consolidated exposure metadata",
+        name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
         multiple=True,
@@ -1389,7 +1393,7 @@ class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
     )
     outputCatalog = connectionTypes.Output(
         doc="CCD and Visit metadata table",
-        name="{calexpType}ccdVisitTable",
+        name="ccdVisitTable",
         storageClass="DataFrame",
         dimensions=("instrument",)
     )
@@ -1401,13 +1405,13 @@ class MakeCcdVisitTableConfig(pipeBase.PipelineTaskConfig,
 
 
 class MakeCcdVisitTableTask(pipeBase.PipelineTask):
-    """Produce a `ccdVisitTable` from the `visitSummary` exposure catalogs.
+    """Produce a `ccdVisitTable` from the visit summary exposure catalogs.
     """
     _DefaultName = 'makeCcdVisitTable'
     ConfigClass = MakeCcdVisitTableConfig
 
     def run(self, visitSummaryRefs):
-        """Make a table of ccd information from the `visitSummary` catalogs.
+        """Make a table of ccd information from the visit summary catalogs.
 
         Parameters
         ----------
@@ -1487,8 +1491,8 @@ class MakeVisitTableConnections(pipeBase.PipelineTaskConnections,
                                 dimensions=("instrument",),
                                 defaultTemplates={"calexpType": ""}):
     visitSummaries = connectionTypes.Input(
-        doc="Per-visit consolidated exposure metadata from ConsolidateVisitSummaryTask",
-        name="{calexpType}visitSummary",
+        doc="Per-visit consolidated exposure metadata",
+        name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit",),
         multiple=True,
@@ -1496,7 +1500,7 @@ class MakeVisitTableConnections(pipeBase.PipelineTaskConnections,
     )
     outputCatalog = connectionTypes.Output(
         doc="Visit metadata table",
-        name="{calexpType}visitTable",
+        name="visitTable",
         storageClass="DataFrame",
         dimensions=("instrument",)
     )
@@ -1508,13 +1512,13 @@ class MakeVisitTableConfig(pipeBase.PipelineTaskConfig,
 
 
 class MakeVisitTableTask(pipeBase.PipelineTask):
-    """Produce a `visitTable` from the `visitSummary` exposure catalogs.
+    """Produce a `visitTable` from the visit summary exposure catalogs.
     """
     _DefaultName = 'makeVisitTable'
     ConfigClass = MakeVisitTableConfig
 
     def run(self, visitSummaries):
-        """Make a table of visit information from the `visitSummary` catalogs.
+        """Make a table of visit information from the visit summary catalogs.
 
         Parameters
         ----------
