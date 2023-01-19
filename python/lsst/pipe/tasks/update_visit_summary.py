@@ -42,7 +42,6 @@ from lsst.afw.image import ExposureSummaryStats
 from lsst.afw.math import BackgroundList
 from lsst.afw.table import ExposureCatalog, ExposureRecord, SchemaMapper
 from lsst.daf.butler import Butler, DatasetRef, DeferredDatasetHandle
-from lsst.daf.butler.formatters.parquet import pandas_to_astropy
 from lsst.geom import Angle, Box2I, SpherePoint, degrees
 from lsst.pex.config import ChoiceField, ConfigurableField
 from lsst.pipe.base import (
@@ -581,7 +580,7 @@ class UpdateVisitSummaryTask(PipelineTask):
         # using ArrowAstropy as the storage class in the connection, but QG
         # generation apparently doesn't fully support those yet, as it leads to
         # problems in ci_hsc.
-        inputs["psf_star_catalog"] = pandas_to_astropy(inputs["psf_star_catalog"])
+        inputs["psf_star_catalog"] = astropy.table.Table.from_pandas(inputs["psf_star_catalog"], index=True)
         # Actually run the task and write the results.
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
