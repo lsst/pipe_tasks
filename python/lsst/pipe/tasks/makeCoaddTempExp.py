@@ -639,7 +639,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         doc=("Per-visit wcs calibrations computed globally (with no tract information). "
              "These catalogs use the detector id for the catalog id, sorted on id for "
              "fast lookup."),
-        name="{skyWcsName}SkyWcsCatalog",
+        name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
     )
@@ -654,7 +654,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         doc=("Per-visit photometric calibrations computed globally (with no tract "
              "information).  These catalogs use the detector id for the catalog id, "
              "sorted on id for fast lookup."),
-        name="{photoCalibName}PhotoCalibCatalog",
+        name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
     )
@@ -662,7 +662,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         doc=("Per-visit finalized psf models and aperture correction maps. "
              "These catalogs use the detector id for the catalog id, "
              "sorted on id for fast lookup."),
-        name="finalized_psf_ap_corr_catalog",
+        name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
     )
@@ -696,8 +696,8 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         multiple=True,
     )
     visitSummary = connectionTypes.Input(
-        doc="Consolidated exposure metadata from ConsolidateVisitSummaryTask",
-        name="{calexpType}visitSummary",
+        doc="Consolidated exposure metadata",
+        name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit",),
     )

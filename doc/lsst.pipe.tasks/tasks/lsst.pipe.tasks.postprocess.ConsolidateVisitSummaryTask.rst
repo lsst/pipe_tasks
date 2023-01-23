@@ -81,17 +81,5 @@ Output datasets
 
 ``visitSummary``
     Per-visit summary catalog of ccd/visit metadata.
-
-
-.. _lsst.pipe.tasks.postprocess.ConsolidateSourceTableTask-subtasks:
-
-Examples
-========
-
-The following command shows an example of how to run the task on an example HSC repository.
-
-.. code-block:: bash
-
-    consolidateVisitSummary.py /datasets/hsc/repo --rerun <rerun name> --id visit=30504
-
-.. _lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask-debug:
+``visitSummary_schema``
+    Catalog with no rows with the same schema as ``visitSummary``.

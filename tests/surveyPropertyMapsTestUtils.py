@@ -99,7 +99,7 @@ def makeMockVisitSummary(visit,
     # We are making a 2 detector "camera"
     n_detector = 2
 
-    schema = ConsolidateVisitSummaryTask()._makeVisitSummarySchema()
+    schema = ConsolidateVisitSummaryTask().schema
     visit_summary = afwTable.ExposureCatalog(schema)
     visit_summary.resize(n_detector)
 

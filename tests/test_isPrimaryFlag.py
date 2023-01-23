@@ -161,8 +161,6 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
 
         # Characterize the image (create PSF, etc.)
         charImConfig = CharacterizeImageConfig()
-        charImConfig.measurePsf.psfDeterminer = "piff"
-        charImConfig.measurePsf.psfDeterminer["piff"].spatialOrder = 0
         charImTask = CharacterizeImageTask(config=charImConfig)
         self.charImResults = charImTask.run(self.exposure)
 
@@ -180,6 +178,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         calibConfig = CalibrateConfig()
         calibConfig.doAstrometry = False
         calibConfig.doPhotoCal = False
+        calibConfig.doComputeSummaryStats = False
         calibTask = CalibrateTask(config=calibConfig)
         calibResults = calibTask.run(self.charImResults.exposure)
         outputCat = calibResults.outputCat
