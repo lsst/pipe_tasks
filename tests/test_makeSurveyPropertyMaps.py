@@ -26,6 +26,7 @@ import numpy as np
 import healsparse as hsp
 import esutil
 import warnings
+import logging
 
 import lsst.utils.tests
 import lsst.daf.butler
@@ -213,6 +214,31 @@ class HealSparsePropertyMapTaskTestCase(lsst.utils.tests.TestCase):
                 np.testing.assert_array_equal(property_map.sum_map.valid_pixels, valid_pixels)
             else:
                 self.assertFalse(hasattr(property_map, 'sum_map'))
+
+    def testPropertyMapCreationEmptyInputMap(self):
+        """Test creation of maps with an empty input map (DM-37837)."""
+        # Replace the input map with an empty one.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.input_map_dict[0].input_map = hsp.HealSparseMap.make_empty_like(
+                self.input_map_dict[0].input_map
+            )
+
+        config = HealSparsePropertyMapTask.ConfigClass()
+
+        property_task = HealSparsePropertyMapTask(config=config)
+
+        with self.assertLogs(level=logging.WARNING) as cm:
+            property_task.run(self.sky_map,
+                              self.tract,
+                              self.band,
+                              self.coadd_dict,
+                              self.input_map_dict,
+                              self.visit_summary_dict)
+        self.assertIn("No valid pixels", cm.output[0])
+
+        # Ensure we have no valid pixels output.
+        self.assertEqual(property_task.property_maps["exposure_time"].sum_map.valid_pixels.size, 0)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
