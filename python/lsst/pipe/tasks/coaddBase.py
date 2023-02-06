@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["CoaddBaseTask", "getSkyInfo", "makeSkyInfo"]
+__all__ = ["CoaddBaseTask", "makeSkyInfo"]
 
 import lsst.pex.config as pexConfig
 import lsst.afw.image as afwImage
@@ -140,33 +140,6 @@ class CoaddBaseTask(pipeBase.PipelineTask):
         self.makeSubtask("select")
         self.makeSubtask("inputRecorder")
 
-    def getSkyInfo(self, patchRef):
-        """Use getSkyinfo to return the skyMap, tract and patch information, wcs and the outer bbox
-        of the patch.
-
-        Parameters
-        ----------
-        patchRef : `Unknown`
-            Data reference for sky map. Must include keys "tract" and "patch".
-
-        Returns
-        -------
-        getSkyInfo : `lsst.pipe.base.Struct`
-            Sky Info as a struct with attributes:
-
-            ``skyMap``
-                sky map (`lsst.skyMap.SkyMap`).
-            ``tractInfo``
-                Information for chosen tract of sky map (`lsst.skymap.TractInfo`).
-            ``patchInfo``
-                Information about chosen patch of tract (`lsst.skymap.PatchInfo`).
-            ``wcs``
-                WCS of tract (`lsst.afw.image.SkyWcs`).
-            ``bbox``
-                Outer bbox of patch, as an geom Box2I (`lsst.afw.geom.Box2I`).
-        """
-        return getSkyInfo(coaddName=self.config.coaddName, patchRef=patchRef)
-
     def getTempExpDatasetName(self, warpType="direct"):
         """Return warp name for given warpType and task config
 
@@ -185,36 +158,6 @@ class CoaddBaseTask(pipeBase.PipelineTask):
         """Convenience method to provide the bitmask from the mask plane names
         """
         return afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes)
-
-
-def getSkyInfo(coaddName, patchRef):
-    """Return the SkyMap, tract and patch information, wcs, and outer bbox of the patch to be coadded.
-
-    Parameters
-    ----------
-    coaddName : `str`
-        Coadd name; typically one of deep or goodSeeing.
-    patchRef : `Unknown`
-        Data reference for sky map. Must include keys "tract" and "patch".
-
-    Returns
-    -------
-    makeSkyInfo : `lsst.pipe.base.Struct`
-        pipe_base Struct with attributes:
-
-        ``skyMap``
-            Sky map (`lsst.skyMap.SkyMap`).
-        ``tractInfo``
-            Information for chosen tract of sky map (`lsst.skyMap.TractInfo`).
-        ``patchInfo``
-            Information about chosen patch of tract (`lsst.skyMap.PatchInfo`).
-        ``wcs``
-            WCS of tract (`lsst.afw.image.SkyWcs`).
-        ``bbox``
-            Outer bbox of patch, as an geom Box2I (`lsst.afw.geom.Box2I`).
-    """
-    skyMap = patchRef.get(coaddName + "Coadd_skyMap")
-    return makeSkyInfo(skyMap, patchRef.dataId["tract"], patchRef.dataId["patch"])
 
 
 def makeSkyInfo(skyMap, tractId, patchId):
