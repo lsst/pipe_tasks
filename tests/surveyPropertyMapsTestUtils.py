@@ -195,14 +195,8 @@ class MockVisitSummaryReference(lsst.daf.butler.DeferredDatasetHandle):
         self.visit_summary = visit_summary
         self.visit = visit
 
-    def get(self, **kwargs):
+    def get(self):
         """Retrieve the specified dataset using the API of the Gen3 Butler.
-
-        Parameters
-        ----------
-        **kwargs :
-            Additional keyword arguments such as `immediate=True` that would
-            control internal butler behavior.
 
         Returns
         -------
@@ -232,7 +226,7 @@ class MockCoaddReference(lsst.daf.butler.DeferredDatasetHandle):
         self.tract = tract
         self.patch = patch
 
-    def get(self, component=None, **kwargs):
+    def get(self, component=None):
         """Retrieve the specified dataset using the API of the Gen 3 Butler.
 
         Parameters
@@ -240,9 +234,6 @@ class MockCoaddReference(lsst.daf.butler.DeferredDatasetHandle):
         component : `str`, optional
             If supplied, return the named metadata of the exposure.  Allowed
             components are "photoCalib" or "coaddInputs".
-        **kwargs
-            Additional keyword arguments such as `immediate=True` that would
-            control internal butler behavior.
 
         Returns
         -------
@@ -276,15 +267,9 @@ class MockInputMapReference(lsst.daf.butler.DeferredDatasetHandle):
         self.tract = tract
         self.patch = patch
 
-    def get(self, **kwargs):
+    def get(self):
         """
         Retrieve the specified dataset using the API of the Gen 3 Butler.
-
-        Parameters
-        ----------
-        **kwargs
-            Additional keyword arguments such as `immediate=True` that would
-            control internal butler behavior.
 
         Returns
         -------

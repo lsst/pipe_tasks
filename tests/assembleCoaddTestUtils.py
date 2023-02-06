@@ -71,7 +71,7 @@ class MockWarpReference(lsst.daf.butler.DeferredDatasetHandle):
         self.patch = patch
         self.visit = visit
 
-    def get(self, bbox=None, component=None, parameters=None, **kwargs):
+    def get(self, bbox=None, component=None, parameters=None):
         """Retrieve the specified dataset using the API of the Gen 3 Butler.
 
         Parameters
@@ -83,9 +83,6 @@ class MockWarpReference(lsst.daf.butler.DeferredDatasetHandle):
         parameters : `dict`, optional
             If supplied, use the parameters to modify the exposure,
             typically by taking a subset.
-        **kwargs
-            Additional keyword arguments such as `immediate=True` that would
-            control internal butler behavior.
 
         Returns
         -------
