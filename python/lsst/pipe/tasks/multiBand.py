@@ -539,7 +539,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             schema = initInputs['inputSchema'].schema
         if schema is None:
             assert butler is not None, "Neither butler nor schema is defined"
-            schema = butler.get(self.config.coaddName + self.inputCatalog + "_schema", immediate=True).schema
+            schema = butler.get(self.config.coaddName + self.inputCatalog + "_schema").schema
         self.schemaMapper = afwTable.SchemaMapper(schema)
         self.schemaMapper.addMinimalSchema(schema)
         self.schema = self.schemaMapper.getOutputSchema()

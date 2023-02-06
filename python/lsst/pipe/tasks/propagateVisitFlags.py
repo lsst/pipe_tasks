@@ -223,7 +223,7 @@ class PropagateVisitFlagsTask(Task):
                 v = ccdRecord.get(visitKey)
                 c = ccdRecord.get(ccdKey)
                 dataId = {"visit": int(v), self.config.ccdName: int(c)}
-                ccdSources = butler.get("src", dataId=dataId, immediate=True)
+                ccdSources = butler.get("src", dataId=dataId)
                 processCcd(ccdSources, ccdRecord.getWcs())
 
         # Apply threshold
