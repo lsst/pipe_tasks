@@ -544,6 +544,9 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
             patch_info = tract_info[patch]
 
             input_map = input_map_dict[patch].get()
+            if input_map.valid_pixels.size == 0:
+                self.log.warning("No valid pixels for band %s, tract %d, patch %d; skipping.",
+                                 band, tract, patch)
             coadd_photo_calib = coadd_dict[patch].get(component="photoCalib")
             coadd_inputs = coadd_dict[patch].get(component="coaddInputs")
 
