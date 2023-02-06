@@ -337,16 +337,14 @@ class ProcessCcdWithFakesTask(PipelineTask):
             externalSkyWcsCatalog = None
             for externalSkyWcsCatalogRef in externalSkyWcsCatalogList:
                 if externalSkyWcsCatalogRef.dataId["tract"] == tractId:
-                    externalSkyWcsCatalog = externalSkyWcsCatalogRef.get(
-                        datasetType=self.config.connections.externalSkyWcsTractCatalog)
+                    externalSkyWcsCatalog = externalSkyWcsCatalogRef.get()
                     break
             if externalSkyWcsCatalog is None:
                 usedTract = externalSkyWcsCatalogList[-1].dataId["tract"]
                 self.log.warn(
                     f"Warning, external SkyWcs for tract {tractId} not found. Using tract {usedTract} "
                     "instead.")
-                externalSkyWcsCatalog = externalSkyWcsCatalogList[-1].get(
-                    datasetType=self.config.connections.externalSkyWcsTractCatalog)
+                externalSkyWcsCatalog = externalSkyWcsCatalogList[-1].get()
             row = externalSkyWcsCatalog.find(detectorId)
             if row is None:
                 self.log.info("No %s external tract sky WCS for exposure %s so cannot insert fake "
@@ -373,16 +371,14 @@ class ProcessCcdWithFakesTask(PipelineTask):
             externalPhotoCalibCatalog = None
             for externalPhotoCalibCatalogRef in externalPhotoCalibCatalogList:
                 if externalPhotoCalibCatalogRef.dataId["tract"] == tractId:
-                    externalPhotoCalibCatalog = externalPhotoCalibCatalogRef.get(
-                        datasetType=self.config.connections.externalPhotoCalibTractCatalog)
+                    externalPhotoCalibCatalog = externalPhotoCalibCatalogRef.get()
                     break
             if externalPhotoCalibCatalog is None:
                 usedTract = externalPhotoCalibCatalogList[-1].dataId["tract"]
                 self.log.warn(
                     f"Warning, external PhotoCalib for tract {tractId} not found. Using tract {usedTract} "
                     "instead.")
-                externalPhotoCalibCatalog = externalPhotoCalibCatalogList[-1].get(
-                    datasetType=self.config.connections.externalPhotoCalibTractCatalog)
+                externalPhotoCalibCatalog = externalPhotoCalibCatalogList[-1].get()
             row = externalPhotoCalibCatalog.find(detectorId)
             if row is None:
                 self.log.info("No %s external tract photoCalib for exposure %s so cannot insert fake "
@@ -484,12 +480,10 @@ class ProcessCcdWithFakesTask(PipelineTask):
             quantum.
         """
         if len(fakeCats) == 1:
-            return fakeCats[0].get(
-                datasetType=self.config.connections.fakeCats)
+            return fakeCats[0].get()
         outputCat = []
         for fakeCatRef in fakeCats:
-            cat = fakeCatRef.get(
-                datasetType=self.config.connections.fakeCats)
+            cat = fakeCatRef.get()
             tractId = fakeCatRef.dataId["tract"]
             # Make sure all data is within the inner part of the tract.
             outputCat.append(cat[

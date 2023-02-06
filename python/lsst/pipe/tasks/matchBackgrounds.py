@@ -236,7 +236,7 @@ class MatchBackgroundsTask(pipeBase.Task):
         if refInd is not None and refInd not in refIndSet:
             raise RuntimeError("Internal error: selected reference %s not found in expRefList")
 
-        refExposure = refExpDataRef.get(expDatasetType, immediate=True)
+        refExposure = refExpDataRef.get()
         if refImageScaler is not None:
             refMI = refExposure.getMaskedImage()
             refImageScaler.scaleMaskedImage(refMI)
@@ -258,7 +258,7 @@ class MatchBackgroundsTask(pipeBase.Task):
             else:
                 self.log.info("Matching background of %s to %s", toMatchRef.dataId, refExpDataRef.dataId)
                 try:
-                    toMatchExposure = toMatchRef.get(expDatasetType, immediate=True)
+                    toMatchExposure = toMatchRef.get()
                     if imageScaler is not None:
                         toMatchMI = toMatchExposure.getMaskedImage()
                         imageScaler.scaleMaskedImage(toMatchMI)
@@ -326,7 +326,7 @@ class MatchBackgroundsTask(pipeBase.Task):
                                (len(expRefList), len(imageScalerList)))
 
         for expRef, imageScaler in zip(expRefList, imageScalerList):
-            exposure = expRef.get(expDatasetType, immediate=True)
+            exposure = expRef.get()
             maskedImage = exposure.getMaskedImage()
             if imageScaler is not None:
                 try:
