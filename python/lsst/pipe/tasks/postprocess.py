@@ -258,7 +258,7 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
 
 class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
                                               defaultTemplates={"catalogType": "",
-                                                                "skyWcsName": "jointcal",
+                                                                "skyWcsName": "gbdesAstrometricFit",
                                                                 "photoCalibName": "fgcm"},
                                               dimensions=("instrument", "visit", "detector", "skymap")):
     skyMap = connectionTypes.Input(
