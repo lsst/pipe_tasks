@@ -212,12 +212,10 @@ class MatchFakesTask(PipelineTask):
             quantum.
         """
         if len(fakeCats) == 1:
-            return fakeCats[0].get(
-                datasetType=self.config.connections.fakeCats)
+            return fakeCats[0].get()
         outputCat = []
         for fakeCatRef in fakeCats:
-            cat = fakeCatRef.get(
-                datasetType=self.config.connections.fakeCats)
+            cat = fakeCatRef.get()
             tractId = fakeCatRef.dataId["tract"]
             # Make sure all data is within the inner part of the tract.
             outputCat.append(cat[

@@ -354,7 +354,7 @@ class StackBrightStarsTask(pipeBase.Task):
         self.log.info('Building extended PSF from stamps extracted from %d detector images%s',
                       len(bss_ref_list), region_message)
         # read in example set of full stamps
-        example_bss = bss_ref_list[0].get(datasetType="brightStarStamps", immediate=True)
+        example_bss = bss_ref_list[0].get()
         example_stamp = example_bss[0].stamp_im
         # create model image
         ext_psf = afwImage.MaskedImageF(example_stamp.getBBox())
@@ -372,7 +372,7 @@ class StackBrightStarsTask(pipeBase.Task):
         for jbbox, bbox in enumerate(sub_bboxes):
             all_stars = None
             for bss_ref in bss_ref_list:
-                read_stars = bss_ref.get(datasetType="brightStarStamps", parameters={'bbox': bbox})
+                read_stars = bss_ref.get(parameters={'bbox': bbox})
                 if self.config.do_mag_cut:
                     read_stars = read_stars.selectByMag(magMax=self.config.mag_limit)
                 if all_stars:

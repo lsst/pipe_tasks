@@ -166,9 +166,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
 
         diaSourceHistory = []
         for catRef in diaSourceTables:
-            cat = catRef.get(
-                datasetType=self.config.connections.diaSourceTables,
-                immediate=True)
+            cat = catRef.get()
 
             isInTractPatch = self._trimToPatch(cat,
                                                innerPatchBox,

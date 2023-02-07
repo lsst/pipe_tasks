@@ -439,8 +439,8 @@ class MakeWarpTask(CoaddBaseTask):
             List of data references for calexps that (may)
             overlap the patch of interest.
         skyInfo : `lsst.pipe.base.Struct`
-            Struct from CoaddBaseTask.getSkyInfo() with geometric
-            information about the patch.
+            Struct from `~lsst.pipe.base.coaddBase.makeSkyInfo()` with
+            geometric information about the patch.
         visitId : `int`
             Integer identifier for visit, for the table that will
             produce the CoaddPsf.
@@ -738,8 +738,8 @@ class MakeWarpTask(CoaddBaseTask):
         Parameters
         ----------
         skyInfo : `lsst.pipe.base.Struct`
-            Struct from CoaddBaseTask.getSkyInfo() with geometric
-            information about the patch.
+            Struct from `~lsst.pipe.base.coaddBase.makeSkyInfo()` with
+            geometric information about the patch.
 
         Returns
         -------
