@@ -62,7 +62,7 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
     exposure.mask.addMaskPlane("FAKE")
     bitmask = exposure.mask.getPlaneBitMask("FAKE")
     if logger:
-        logger.info(f"Adding mask plane with bitmask {bitmask}")
+        logger.info("Adding mask plane with bitmask %s", bitmask)
 
     wcs = exposure.getWcs()
     psf = exposure.getPsf()
@@ -78,7 +78,7 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
         posd = galsim.PositionD(pt.x, pt.y)
         posi = galsim.PositionI(pt.x//1, pt.y//1)
         if logger:
-            logger.debug(f"Adding fake source at {pt}")
+            logger.debug("Adding fake source at %s", pt)
 
         mat = wcs.linearizePixelToSky(spt, geom.arcseconds).getMatrix()
         gsWCS = galsim.JacobianWCS(mat[0, 0], mat[0, 1], mat[1, 0], mat[1, 1])
@@ -101,10 +101,7 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
             )
             if pt == contained_pt:  # no difference, so skip immediately
                 if logger:
-                    logger.infof(
-                        "Cannot compute Psf for object at {}; skipping",
-                        pt
-                    )
+                    logger.info("Cannot compute Psf for object at %s; skipping", pt)
                 continue
             # otherwise, try again with new point
             try:
@@ -112,10 +109,7 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
                 apCorr = psf.computeApertureFlux(calibFluxRadius, contained_pt)
             except InvalidParameterError:
                 if logger:
-                    logger.infof(
-                        "Cannot compute Psf for object at {}; skipping",
-                        pt
-                    )
+                    logger.info("Cannot compute Psf for object at %s; skipping", pt)
                 continue
 
         psfArr /= apCorr
