@@ -380,7 +380,8 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
 
 class BestSeeingSelectVisitsConnections(pipeBase.PipelineTaskConnections,
                                         dimensions=("tract", "patch", "skymap", "band", "instrument"),
-                                        defaultTemplates={"coaddName": "goodSeeing"}):
+                                        defaultTemplates={"coaddName": "goodSeeing",
+                                                          "calexpType": ""}):
     skyMap = pipeBase.connectionTypes.Input(
         doc="Input definition of geometry/bbox and projection/wcs for coadded exposures",
         name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
