@@ -47,6 +47,7 @@ class PsfFlagTestCase(lsst.utils.tests.TestCase):
         config = CharacterizeImageConfig()
         config.measurePsf.psfDeterminer = 'piff'
         config.measurePsf.psfDeterminer['piff'].spatialOrder = 0
+        config.measureApCorr.sourceSelector["science"].doSignalToNoise = False
         task = CharacterizeImageTask(config=config)
         results = task.run(self.exposure)
         used = 0

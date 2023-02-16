@@ -161,6 +161,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
 
         # Characterize the image (create PSF, etc.)
         charImConfig = CharacterizeImageConfig()
+        charImConfig.measureApCorr.sourceSelector["science"].doSignalToNoise = False
         charImTask = CharacterizeImageTask(config=charImConfig)
         self.charImResults = charImTask.run(self.exposure)
 
