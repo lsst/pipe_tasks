@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 
 import lsst.utils.tests
-import lsst.daf.butler
+import lsst.pipe.base
 import lsst.skymap
 
 from lsst.pipe.tasks.isolatedStarAssociation import (IsolatedStarAssociationConfig,
@@ -34,7 +34,7 @@ from lsst.pipe.tasks.isolatedStarAssociation import (IsolatedStarAssociationConf
 from smatch.matcher import Matcher
 
 
-class MockSourceTableReference(lsst.daf.butler.DeferredDatasetHandle):
+class MockSourceTableReference(lsst.pipe.base.InMemoryDatasetHandle):
     """Very simple object that looks like a Gen3 data reference to
     a sourceTable_visit.
 
@@ -43,10 +43,7 @@ class MockSourceTableReference(lsst.daf.butler.DeferredDatasetHandle):
     source_table : `pandas.DataFrame`
         Dataframe of the source table.
     """
-    def __init__(self, source_table):
-        self.source_table = source_table
-
-    def get(self, parameters={}, **kwargs):
+    def get(self, *, parameters={}):
         """Retrieve the specified dataset using the API of the Gen3 Butler.
 
         Parameters
@@ -65,9 +62,9 @@ class MockSourceTableReference(lsst.daf.butler.DeferredDatasetHandle):
                 # Treat the index separately
                 _columns.remove('sourceId')
 
-            return self.source_table[_columns]
+            return self.inMemoryDataset[_columns]
         else:
-            return self.source_table.copy()
+            return self.inMemoryDataset.copy()
 
 
 class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):

@@ -22,7 +22,7 @@
 """Utilities for HealSparsePropertyMapTask and others."""
 import numpy as np
 
-import lsst.daf.butler
+import lsst.pipe.base
 import lsst.geom as geom
 from lsst.daf.base import DateTime
 from lsst.afw.coord import Observatory
@@ -180,53 +180,42 @@ def makeMockVisitSummary(visit,
     return visit_summary
 
 
-class MockVisitSummaryReference(lsst.daf.butler.DeferredDatasetHandle):
+class MockVisitSummaryReference(lsst.pipe.base.InMemoryDatasetHandle):
     """Very simple object that looks like a Gen3 data reference to
     a visit summary.
 
     Parameters
     ----------
     visit_summary : `lsst.afw.table.ExposureCatalog`
-        Visit summary catalog.
+        Visit summary catalog. Can be accessed through ``inMemoryDataset``
+        property.
     visit : `int`
-        Visit number.
+        Visit number. Is converted to a dataId.
     """
     def __init__(self, visit_summary, visit):
-        self.visit_summary = visit_summary
-        self.visit = visit
-
-    def get(self):
-        """Retrieve the specified dataset using the API of the Gen3 Butler.
-
-        Returns
-        -------
-        visit_summary : `lsst.afw.table.ExposureCatalog`
-        """
-        return self.visit_summary
+        super().__init__(visit_summary, dataId={"visit": visit})
 
 
-class MockCoaddReference(lsst.daf.butler.DeferredDatasetHandle):
+class MockCoaddReference(lsst.pipe.base.InMemoryDatasetHandle):
     """Very simple object that looks like a Gen3 data reference to
     a coadd.
 
     Parameters
     ----------
     exposure : `lsst.afw.image.Exposure`
-        The exposure to be retrieved by the data reference.
-    coaddName : `str`
-        The type of coadd produced.  Typically "deep".
+        The exposure to be retrieved by the data reference. Can be accessed
+        through ``inMemoryDataset`` property.
     patch : `int`
-        Unique identifier for a subdivision of a tract.
+        Unique identifier for a subdivision of a tract. Is converted to a
+        dataId
     tract : `int`
-        Unique identifier for a tract of a skyMap
+        Unique identifier for a tract of a skyMap. Is converted to a dataId.
     """
-    def __init__(self, exposure, coaddName="deep", patch=0, tract=0):
-        self.coaddName = coaddName
+    def __init__(self, exposure, patch=0, tract=0):
         self.exposure = exposure
-        self.tract = tract
-        self.patch = patch
+        super().__init__(exposure, dataId={"tract": tract, "patch": patch}, storageClass="ExposureF")
 
-    def get(self, component=None):
+    def get(self, *, component=None):
         """Retrieve the specified dataset using the API of the Gen 3 Butler.
 
         Parameters
@@ -240,39 +229,33 @@ class MockCoaddReference(lsst.daf.butler.DeferredDatasetHandle):
         `lsst.afw.image.Exposure` ('component=None') or
         `lsst.afw.image.PhotoCalib` ('component="photoCalib") or
         `lsst.afw.image.CoaddInputs` ('component="coaddInputs")
+
+        Notes
+        -----
+        This implementation returns a clone of the in-memory dataset to
+        allow for it to be modified after retrieval.
         """
         if component == "photoCalib":
-            return self.exposure.getPhotoCalib()
+            return self.inMemoryDataset.getPhotoCalib()
         elif component == "coaddInputs":
-            return self.exposure.getInfo().getCoaddInputs()
+            return self.inMemoryDataset.getInfo().getCoaddInputs()
 
         return self.exposure.clone()
 
 
-class MockInputMapReference(lsst.daf.butler.DeferredDatasetHandle):
+class MockInputMapReference(lsst.pipe.base.InMemoryDatasetHandle):
     """Very simple object that looks like a Gen3 data reference to
     an input map.
 
     Parameters
     ----------
     input_map : `healsparse.HealSparseMap`
-        Bitwise input map.
+        Bitwise input map. Can be accessed through ``inMemoryDataset``
+        property.
     patch : `int`
-        Patch number.
+        Patch number. Is converted to a dataId.
     tract : `int`
-        Tract number.
+        Tract number. Is converted to a dataId.
     """
     def __init__(self, input_map, patch=0, tract=0):
-        self.input_map = input_map
-        self.tract = tract
-        self.patch = patch
-
-    def get(self):
-        """
-        Retrieve the specified dataset using the API of the Gen 3 Butler.
-
-        Returns
-        -------
-        input_map : `healsparse.HealSparseMap`
-        """
-        return self.input_map
+        super().__init__(input_map, dataId={"tract": tract, "patch": patch})

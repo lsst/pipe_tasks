@@ -25,7 +25,7 @@ import numpy as np
 import hpgeom as hpg
 
 import lsst.utils.tests
-import lsst.daf.butler
+import lsst.pipe.base
 import lsst.afw.image
 import lsst.skymap
 import lsst.geom
@@ -37,7 +37,7 @@ from lsst.pipe.tasks.hips import (
 )
 
 
-class MockCoaddImageHandle(lsst.daf.butler.DeferredDatasetHandle):
+class MockCoaddImageHandle(lsst.pipe.base.InMemoryDatasetHandle):
     """Simple object that looks like a Gen3 deferred dataset handle
     to an exposure.
 
@@ -46,22 +46,8 @@ class MockCoaddImageHandle(lsst.daf.butler.DeferredDatasetHandle):
     exposure : `lsst.afw.image.ExposureF`
         Exposure to hold.
     """
-    def __init__(self, exposure):
-        self.exposure = exposure
-
-    def get(self, **kwargs):
-        """Retrieve the dataset using the API of the Gen3 Butler.
-
-        Returns
-        -------
-        exposure : `lsst.afw.image.ExposureF`
-            Exposure held in mock handle.
-        """
-        return self.exposure
-
-    @property
-    def dataId(self):
-        return {'visit': 0, 'detector': 0}
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, dataId={"visit": 0, "detector": 0}, **kwargs)
 
 
 class HipsTestCase(unittest.TestCase):

@@ -220,9 +220,9 @@ class HealSparsePropertyMapTaskTestCase(lsst.utils.tests.TestCase):
         # Replace the input map with an empty one.
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            self.input_map_dict[0].input_map = hsp.HealSparseMap.make_empty_like(
-                self.input_map_dict[0].input_map
-            )
+            self.input_map_dict[0] = MockInputMapReference(hsp.HealSparseMap.make_empty_like(
+                self.input_map_dict[0].inMemoryDataset
+            ), **self.input_map_dict[0].dataId)
 
         config = HealSparsePropertyMapTask.ConfigClass()
 

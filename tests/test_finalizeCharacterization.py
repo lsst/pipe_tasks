@@ -26,21 +26,17 @@ import numpy as np
 import pandas as pd
 
 import lsst.utils.tests
-import lsst.daf.butler
 import lsst.pipe.base as pipeBase
 
 from lsst.pipe.tasks.finalizeCharacterization import (FinalizeCharacterizationConfig,
                                                       FinalizeCharacterizationTask)
 
 
-class MockDataFrameReference(lsst.daf.butler.DeferredDatasetHandle):
+class MockDataFrameReference(pipeBase.InMemoryDatasetHandle):
     """Very simple object that looks like a Gen3 data reference to
     a dataframe.
     """
-    def __init__(self, df):
-        self.df = df
-
-    def get(self, parameters={}, **kwargs):
+    def get(self, *, parameters={}):
         """Retrieve the specified dataset using the API of the Gen3 Butler.
 
         Parameters
@@ -56,9 +52,9 @@ class MockDataFrameReference(lsst.daf.butler.DeferredDatasetHandle):
         if 'columns' in parameters:
             _columns = parameters['columns']
 
-            return self.df[_columns]
+            return self.inMemoryDataset[_columns]
         else:
-            return self.df.copy()
+            return self.inMemoryDataset.copy()
 
 
 class TestFinalizeCharacterizationTask(FinalizeCharacterizationTask):
