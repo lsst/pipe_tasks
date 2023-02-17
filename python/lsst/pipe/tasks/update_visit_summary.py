@@ -47,6 +47,7 @@ from lsst.pex.config import ChoiceField, ConfigurableField
 from lsst.pipe.base import (
     ButlerQuantumContext,
     InputQuantizedConnection,
+    InvalidQuantumError,
     OutputQuantizedConnection,
     PipelineTask,
     PipelineTaskConfig,
@@ -573,6 +574,17 @@ class UpdateVisitSummaryTask(PipelineTask):
             inputs[name] = {
                 handle.dataId["detector"]: handle for handle in handles_list
             }
+            for record in inputs["input_summary_catalog"]:
+                detector_id = record.getId()
+                if detector_id not in inputs[name]:
+                    raise InvalidQuantumError(
+                        f"No {name!r} with detector {detector_id} for visit "
+                        f"{butlerQC.quantum.dataId['visit']} even though this detector is present "
+                        "in the input visit summary catalog. "
+                        "This is most likely to occur when the QuantumGraph that includes this task "
+                        "was incorrectly generated with an explicit or implicit (from datasets) tract "
+                        "constraint."
+                    )
         # Convert the psf_star_catalog datasets from DataFrame to Astropy so
         # they can be handled by ComputeExposureSummaryStatsTask (which was
         # actually written to work with afw.table, but Astropy is similar
