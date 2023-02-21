@@ -59,6 +59,7 @@ class MockCoaddImageHandle(lsst.daf.butler.DeferredDatasetHandle):
         """
         return self.exposure
 
+    @property
     def dataId(self):
         return {'visit': 0, 'detector': 0}
 

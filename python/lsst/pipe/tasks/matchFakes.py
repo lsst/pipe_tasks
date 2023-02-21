@@ -200,7 +200,7 @@ class MatchFakesTask(PipelineTask):
 
         Parameters
         ----------
-        fakeCats : `list` of `lst.daf.butler.DeferredDatasetHandle`
+        fakeCats : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             Set of fake cats to concatenate.
         skyMap : `lsst.skymap.SkyMap`
             SkyMap defining the geometry of the tracts and patches.

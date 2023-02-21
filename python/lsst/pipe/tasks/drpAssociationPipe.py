@@ -135,7 +135,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
 
         Parameters
         ----------
-        diaSourceTables : `list` of `lst.daf.butler.DeferredDatasetHandle`
+        diaSourceTables : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             Set of DiaSource catalogs potentially covering this patch/tract.
         skyMap : `lsst.skymap.BaseSkyMap`
             SkyMap defining the patch/tract
