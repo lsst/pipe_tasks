@@ -1016,8 +1016,8 @@ class ImageDifferenceTask(pipeBase.PipelineTask):
             )
 
             if self.config.doMerge:
-                fpSet = results.fpSets.positive
-                fpSet.merge(results.fpSets.negative, self.config.growFootprint,
+                fpSet = results.positive
+                fpSet.merge(results.negative, self.config.growFootprint,
                             self.config.growFootprint, False)
                 diaSources = afwTable.SourceCatalog(table)
                 fpSet.makeSources(diaSources)

@@ -564,8 +564,8 @@ class CalibrateTask(pipeBase.PipelineTask):
         detRes = self.detection.run(table=table, exposure=exposure,
                                     doSmooth=True)
         sourceCat = detRes.sources
-        if detRes.fpSets.background:
-            for bg in detRes.fpSets.background:
+        if detRes.background:
+            for bg in detRes.background:
                 background.append(bg)
         if self.config.doSkySources:
             skySourceFootprints = self.skySources.run(mask=exposure.mask, seed=exposureIdInfo.expId)

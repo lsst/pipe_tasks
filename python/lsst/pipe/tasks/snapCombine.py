@@ -223,18 +223,17 @@ class SnapCombineTask(pipeBase.Task):
             table.setMetadata(self.algMetadata)
             detRet = self.detection.run(table, diffExp)
             sources = detRet.sources
-            fpSets = detRet.fpSets
             if self.config.doMeasurement:
                 self.measurement.measure(diffExp, sources)
 
             mask0 = snap0.getMaskedImage().getMask()
             mask1 = snap1.getMaskedImage().getMask()
-            fpSets.positive.setMask(mask0, "DETECTED")
-            fpSets.negative.setMask(mask1, "DETECTED")
+            detRet.positive.setMask(mask0, "DETECTED")
+            detRet.negative.setMask(mask1, "DETECTED")
 
             maskD = diffExp.getMaskedImage().getMask()
-            fpSets.positive.setMask(maskD, "DETECTED")
-            fpSets.negative.setMask(maskD, "DETECTED_NEGATIVE")
+            detRet.positive.setMask(maskD, "DETECTED")
+            detRet.negative.setMask(maskD, "DETECTED_NEGATIVE")
 
         combinedExp = self.addSnaps(snap0, snap1)
 
