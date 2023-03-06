@@ -228,6 +228,14 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
         # measure and apply aperture correction; note: measuring and applying aperture
         # correction are disabled until the final measurement, after PSF is measured
         self.doApCorr = True
+        # During characterization, we don't have full source measurement information,
+        # so must do the aperture correction with only psf stars, combined with the
+        # default signal-to-noise cuts in MeasureApCorrTask.
+        selector = self.measureApCorr.sourceSelector["science"]
+        selector.doUnresolved = False
+        selector.flags.good = ["calib_psf_used"]
+        selector.flags.bad = []
+
         # minimal set of measurements needed to determine PSF
         self.measurement.plugins.names = [
             "base_PixelFlags",
