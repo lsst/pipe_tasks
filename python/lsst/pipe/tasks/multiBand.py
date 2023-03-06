@@ -220,9 +220,8 @@ class DetectCoaddSourcesTask(PipelineTask):
         table = afwTable.SourceTable.make(self.schema, idFactory)
         detections = self.detection.run(table, exposure, expId=expId)
         sources = detections.sources
-        fpSets = detections.fpSets
-        if hasattr(fpSets, "background") and fpSets.background:
-            for bg in fpSets.background:
+        if hasattr(detections, "background") and detections.background:
+            for bg in detections.background:
                 backgrounds.append(bg)
         return Struct(outputSources=sources, outputBackgrounds=backgrounds, outputExposure=exposure)
 
