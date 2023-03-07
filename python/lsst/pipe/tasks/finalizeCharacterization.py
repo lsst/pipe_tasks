@@ -176,17 +176,10 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
         self.measure_ap_corr.sourceSelector = 'science'
 
         ap_selector = self.measure_ap_corr.sourceSelector['science']
-        ap_selector.doFluxLimit = False
-        ap_selector.doFlags = True
+        # We do not need to filter flags or unresolved because we have used
+        # the filtered isolated stars as an input
+        ap_selector.doFlags = False
         ap_selector.doUnresolved = False
-        ap_selector.doSignalToNoise = True
-        ap_selector.doIsolated = False
-        ap_selector.flags.good = ['calib_psf_used']
-        ap_selector.flags.bad = []
-        ap_selector.signalToNoise.minimum = 200.0
-        ap_selector.signalToNoise.maximum = None
-        ap_selector.signalToNoise.fluxField = 'base_PsfFlux_instFlux'
-        ap_selector.signalToNoise.errField = 'base_PsfFlux_instFluxErr'
 
         import lsst.meas.modelfit  # noqa: F401
         import lsst.meas.extensions.photometryKron  # noqa: F401

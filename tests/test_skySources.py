@@ -59,6 +59,7 @@ class SkySourcesTestCase(lsst.utils.tests.TestCase):
         charImConfig = CharacterizeImageConfig()
         charImConfig.measurePsf.psfDeterminer = 'piff'
         charImConfig.measurePsf.psfDeterminer['piff'].spatialOrder = 0
+        charImConfig.measureApCorr.sourceSelector["science"].doSignalToNoise = False
         charImTask = CharacterizeImageTask(config=charImConfig)
         charImResults = charImTask.run(self.exposure)
         calibConfig = CalibrateConfig()
