@@ -46,7 +46,7 @@ log = logging.getLogger(__name__)
 class MakeWarpConnections(pipeBase.PipelineTaskConnections,
                           dimensions=("tract", "patch", "skymap", "instrument", "visit"),
                           defaultTemplates={"coaddName": "deep",
-                                            "skyWcsName": "jointcal",
+                                            "skyWcsName": "gbdesAstrometricFit",
                                             "photoCalibName": "fgcm",
                                             "calexpType": ""}):
     calExpList = connectionTypes.Input(

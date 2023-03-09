@@ -45,7 +45,7 @@ from lsst.pipe.tasks.calibrate import CalibrateTask
 class ProcessCcdWithFakesConnections(PipelineTaskConnections,
                                      dimensions=("instrument", "visit", "detector"),
                                      defaultTemplates={"coaddName": "deep",
-                                                       "wcsName": "jointcal",
+                                                       "wcsName": "gbdesAstrometricFit",
                                                        "photoCalibName": "jointcal",
                                                        "fakesType": "fakes_"}):
     skyMap = cT.Input(
@@ -210,8 +210,8 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig,
     externalSkyWcsName = pexConfig.ChoiceField(
         doc="What type of updated WCS calib to use.",
         dtype=str,
-        default="jointcal",
-        allowed={"jointcal": "Use jointcal_wcs"}
+        default="gbdesAstrometricFit",
+        allowed={"gbdesAstrometricFit": "Use gbdesAstrometricFit_wcs"}
     )
 
     coaddName = pexConfig.Field(
