@@ -42,9 +42,6 @@ class ImportTestCase(unittest.TestCase):
     def test_import_dataFrameActions(self):
         self.assertImport("lsst.pipe.tasks.dataFrameActions")
 
-    def test_import_configurableActions(self):
-        self.assertImport("lsst.pipe.tasks.configurableActions")
-
     def assertImport(self, root_pkg):
         for file in importlib.resources.contents(root_pkg):
             if not file.endswith(".py"):
