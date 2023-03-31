@@ -78,10 +78,6 @@ class DeblendCoaddSourceSingleConnections(PipelineTaskConnections,
         storageClass="SourceCatalog"
     )
 
-    def setDefaults(self):
-        super().setDefaults()
-        self.singleBandDeblend.propagateAllPeaks = True
-
 
 class DeblendCoaddSourcesSingleConfig(PipelineTaskConfig,
                                       pipelineConnections=DeblendCoaddSourceSingleConnections):
@@ -89,6 +85,10 @@ class DeblendCoaddSourcesSingleConfig(PipelineTaskConfig,
         target=SourceDeblendTask,
         doc="Task to deblend an image in one band"
     )
+
+    def setDefaults(self):
+        super().setDefaults()
+        self.singleBandDeblend.propagateAllPeaks = True
 
 
 class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
