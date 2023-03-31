@@ -25,11 +25,9 @@ import warnings
 
 from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
 import lsst.pipe.base.connectionTypes as cT
-from lsst.pex.config import Config, Field, ConfigurableField, ChoiceField
+from lsst.pex.config import Field, ConfigurableField, ChoiceField
 from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader, ScaleVarianceTask
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
-from lsst.meas.deblender import SourceDeblendTask
-from lsst.meas.extensions.scarlet import ScarletDeblendTask
 from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
 from lsst.pipe.tasks.fakes import BaseFakeSourcesTask
 from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
@@ -224,31 +222,6 @@ class DetectCoaddSourcesTask(PipelineTask):
             for bg in detections.background:
                 backgrounds.append(bg)
         return Struct(outputSources=sources, outputBackgrounds=backgrounds, outputExposure=exposure)
-
-
-##############################################################################################################
-
-
-class DeblendCoaddSourcesConfig(Config):
-    """Configuration parameters for the `DeblendCoaddSourcesTask`.
-    """
-
-    singleBandDeblend = ConfigurableField(target=SourceDeblendTask,
-                                          doc="Deblend sources separately in each band")
-    multiBandDeblend = ConfigurableField(target=ScarletDeblendTask,
-                                         doc="Deblend sources simultaneously across bands")
-    simultaneous = Field(dtype=bool,
-                         default=True,
-                         doc="Simultaneously deblend all bands? "
-                             "True uses `multibandDeblend` while False uses `singleBandDeblend`")
-    coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
-    hasFakes = Field(dtype=bool,
-                     default=False,
-                     doc="Should be set to True if fake sources have been inserted into the input data.")
-
-    def setDefaults(self):
-        Config.setDefaults(self)
-        self.singleBandDeblend.propagateAllPeaks = True
 
 
 class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
