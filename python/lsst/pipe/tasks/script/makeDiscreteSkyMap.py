@@ -20,6 +20,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from lsst.daf.butler import Butler
+from lsst.resources import ResourcePath
 from lsst.skymap import BaseSkyMap
 from lsst.pipe.tasks.makeDiscreteSkyMap import MakeDiscreteSkyMapTask, MakeDiscreteSkyMapConfig
 from lsst.pipe.base import Instrument
@@ -38,7 +39,7 @@ def makeDiscreteSkyMap(repo, config_file, collections, instrument,
     repo : `str`
         URI to the location to read the repo.
     config_file : `str` or `None`
-        Path to a config file that contains overrides to the skymap config.
+        URI to a config file that contains overrides to the skymap config.
     collections : `list` [`str`]
         An expression specifying the collections to be searched (in order) when
         reading datasets, and optionally dataset type restrictions on them.
@@ -58,7 +59,10 @@ def makeDiscreteSkyMap(repo, config_file, collections, instrument,
     instr.applyConfigOverrides(MakeDiscreteSkyMapTask._DefaultName, config)
 
     if config_file is not None:
-        config.load(config_file)
+        resource = ResourcePath(config_file)
+        with resource.as_local() as local_config:
+            config.load(local_config.ospath)
+
     # The coaddName for a SkyMap is only relevant in Gen2, and we completely
     # ignore it here; once Gen2 is gone it can be removed.
     oldSkyMap = None

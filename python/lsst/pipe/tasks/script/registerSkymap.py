@@ -22,6 +22,7 @@
 import logging
 
 from lsst.daf.butler import Butler
+from lsst.resources import ResourcePath
 import lsst.pex.config as pexConfig
 from lsst.skymap import skyMapRegistry
 
@@ -74,7 +75,7 @@ def registerSkymap(repo, config, config_file):
     config : `dict` [`str`, `str`] or `None`
         Key-value pairs to apply as overrides to the ingest config.
     config_file : `str` or `None`
-        Path to a config overrides file.
+        Path to a config overrides file. Can be a URI.
 
     Raises
     ------
@@ -84,7 +85,12 @@ def registerSkymap(repo, config, config_file):
 
     skyMapConfig = MakeSkyMapConfig()
     if config_file:
-        skyMapConfig.load(config_file)
+        # pex_config can not support URIs but in the script interface
+        # we trust that the caller trusts the remote resource they are
+        # specifying (configs allow arbitrary python code to run).
+        resource = ResourcePath(config_file)
+        with resource.as_local() as local_config:
+            skyMapConfig.load(local_config.ospath)
 
     if config:
         skyMapConfig.update(**config)

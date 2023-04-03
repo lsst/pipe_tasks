@@ -40,7 +40,7 @@ from ... import script
 @click.command(cls=ButlerCommand, short_help="Define a discrete skymap from calibrated exposures.")
 @repo_argument(required=True)
 @instrument_argument(required=True)
-@config_file_option(help="Path to a pex_config override to be included after the Instrument config overrides"
+@config_file_option(help="URI to a pex_config override to be included after the Instrument config overrides"
                          "are applied.")
 @collections_option(help="The collections to be searched (in order) when reading datasets. "
                          "This includes the seed skymap if --append is specified.",
@@ -60,7 +60,7 @@ def make_discrete_skymap(*args, **kwargs):
 @click.command(cls=ButlerCommand)
 @repo_argument(required=True)
 @config_option()
-@config_file_option(help="Path to a config file overrides file.")
+@config_file_option(help="URI to a config file overrides file.")
 @options_file_option()
 def register_skymap(*args, **kwargs):
     """Make a SkyMap and add it to a repository."""
