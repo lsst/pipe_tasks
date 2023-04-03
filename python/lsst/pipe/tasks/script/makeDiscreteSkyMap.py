@@ -75,8 +75,8 @@ def makeDiscreteSkyMap(repo, config_file, collections, instrument,
             raise LookupError(msg, *e.args[1:])
 
     datasets = butler.registry.queryDatasets('calexp', collections=collections)
-    wcs_bbox_tuple_list = [(butler.getDirect(ref.makeComponentRef("wcs")),
-                            butler.getDirect(ref.makeComponentRef("bbox")))
+    wcs_bbox_tuple_list = [(butler.get(ref.makeComponentRef("wcs")),
+                            butler.get(ref.makeComponentRef("bbox")))
                            for ref in datasets]
     task = MakeDiscreteSkyMapTask(config=config)
     result = task.run(wcs_bbox_tuple_list, oldSkyMap)
