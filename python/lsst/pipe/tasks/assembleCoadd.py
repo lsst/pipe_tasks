@@ -386,7 +386,8 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
             argNames = ["config", "name", "parentTask", "log"]
             kwargs.update({k: v for k, v in zip(argNames, args)})
             warnings.warn("AssembleCoadd received positional args, and casting them as kwargs: %s. "
-                          "PipelineTask will not take positional args" % argNames, FutureWarning)
+                          "PipelineTask will not take positional args" % argNames, FutureWarning,
+                          stacklevel=2)
 
         super().__init__(**kwargs)
         self.makeSubtask("interpImage")
