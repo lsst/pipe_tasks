@@ -720,7 +720,7 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
             exposureIdInfo = ExposureIdInfo()
 
         band = exposure.getFilter().bandLabel
-        ccdVisitMagnitudes = self.addVariablity(fakeCat, band, exposure, photoCalib, exposureIdInfo)
+        ccdVisitMagnitudes = self.addVariability(fakeCat, band, exposure, photoCalib, exposureIdInfo)
 
         self.insertFakes.run(fakeCat, exposure, wcs, photoCalib)
 
@@ -735,7 +735,7 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
                                        ccdVisitFakeMagnitudes=ccdVisitMagnitudes)
         return resultStruct
 
-    def addVariablity(self, fakeCat, band, exposure, photoCalib, exposureIdInfo):
+    def addVariability(self, fakeCat, band, exposure, photoCalib, exposureIdInfo):
         """Add scatter to the fake catalog visit magnitudes.
 
         Currently just adds a simple Gaussian scatter around the static fake
