@@ -142,7 +142,12 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         tractId : `int`
             Id of current tract being processed.
         patchId : `int`
-            Id of current patch being processed
+            Id of current patch being processed.
+        tractPatchId : `int`, optional
+            Unique identifier for the tract patch.
+        skymapBits : `int`
+            Maximum number of bits used the ``tractPatchId`` integer
+            identifier.
 
         Returns
         -------
