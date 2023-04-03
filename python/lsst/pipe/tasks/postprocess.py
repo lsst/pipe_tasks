@@ -243,6 +243,10 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
             catalog to be converted
         ccdVisitId: `int`
             ccdVisitId to be added as a column
+        **kwargs
+            Additional keyword arguments are ignored as a convenience for
+            subclasses that pass the same arguments to several different
+            methods.
 
         Returns
         -------
@@ -367,6 +371,7 @@ class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
              "that are not run per-tract.  When False, use per-tract wcs "
              "files.")
     )
+    idGenerator = CatalogIdGenerator.make_config_field(
 
     def validate(self):
         super().validate()
@@ -421,7 +426,10 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         externalPhotoCalibGlobalCatalog : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with external photoCalib to be applied per config
         externalPhotoCalibTractCatalog : `lsst.afw.table.ExposureCatalog`, optional
-
+            Exposure catalog with external photoCalib to be applied per config
+        **kwargs
+            Additional keyword arguments are ignored to facilitate passing the
+            same arguments to several methods.
 
         Returns
         -------
@@ -572,6 +580,10 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
             Exposure with attached PhotoCalibs and SkyWcs attributes to be
             reevaluated at local centroids. Pixels are not required.
         exposureIdInfo : `lsst.obs.base.ExposureIdInfo`
+            ID information for this image and catalog.
+        **kwargs
+            Additional keyword arguments are ignored to facilitate passing the
+            same arguments to several methods.
 
         Returns
         -------
