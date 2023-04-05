@@ -144,6 +144,7 @@ class IsolatedStarAssociationConfig(pipeBase.PipelineTaskConfig,
         source_selector.doUnresolved = True
         source_selector.doSignalToNoise = True
         source_selector.doIsolated = True
+        source_selector.doRequireFiniteRaDec = True
 
         source_selector.signalToNoise.minimum = 10.0
         source_selector.signalToNoise.maximum = 1000.0
@@ -168,6 +169,9 @@ class IsolatedStarAssociationConfig(pipeBase.PipelineTaskConfig,
 
         source_selector.unresolved.maximum = 0.5
         source_selector.unresolved.name = 'extendedness'
+
+        source_selector.requireFiniteRaDec.raColName = self.ra_column
+        source_selector.requireFiniteRaDec.decColName = self.dec_column
 
 
 class IsolatedStarAssociationTask(pipeBase.PipelineTask):
