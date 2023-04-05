@@ -624,8 +624,10 @@ class MaskStreaksTask(pipeBase.Task):
         cannyData : `np.ndarray`
             2-d image of edges found in input image.
         """
-        filterData = image.astype(int)
-        return canny(filterData, low_threshold=0, high_threshold=1, sigma=0.1)
+        # Ensure that the pixels are zero or one. Change the datatype to
+        # np.float64 to be compatible with the Canny filter routine.
+        filterData = (image > 0).astype(np.float64)
+        return canny(filterData, use_quantiles=True, sigma=0.1)
 
     def _runKHT(self, image):
         """Run Kernel Hough Transform on image.
@@ -678,7 +680,7 @@ class MaskStreaksTask(pipeBase.Task):
         # the standard deviations of each cluster must be zero and the loop
         # is guaranteed to stop.
         while True:
-            kmeans = KMeans(n_clusters=nClusters).fit(X)
+            kmeans = KMeans(n_clusters=nClusters, n_init='auto').fit(X)
             clusterStandardDeviations = np.zeros((nClusters, 2))
             for c in range(nClusters):
                 inCluster = X[kmeans.labels_ == c]
