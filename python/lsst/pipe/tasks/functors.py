@@ -293,6 +293,7 @@ class Functor(object):
                 return self._colsFromDict(columnDict, columnIndex=columnIndex)
             else:
                 return columnDict
+        raise RuntimeError(f"Unexpected data type. Got {get_full_type_name}.")
 
     def _func(self, df, dropna=True):
         raise NotImplementedError('Must define calculation on dataframe')
