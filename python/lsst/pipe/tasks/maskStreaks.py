@@ -92,7 +92,7 @@ def setDetectionMask(maskedImage, forceSlowBin=False, binning=None, detectedPlan
             # Slower binning method when (image shape mod binsize) != 0
             warnings.warn('Using slow binning method--consider choosing a binsize that evenly divides '
                           f'into the image size, so that {ymax} mod binning == 0 '
-                          f'and {xmax} mod binning == 0')
+                          f'and {xmax} mod binning == 0', stacklevel=2)
             xarray = np.arange(xmax)
             yarray = np.arange(ymax)
             xmesh, ymesh = np.meshgrid(xarray, yarray)

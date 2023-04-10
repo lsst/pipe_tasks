@@ -92,7 +92,7 @@ class Colorterm(Config):
         """
         if filterName != "deprecatedArgument":
             msg = "Colorterm.getCorrectedMagnitudes() `filterName` arg is unused and will be removed in v23."
-            warnings.warn(msg, category=FutureWarning)
+            warnings.warn(msg, category=FutureWarning, stacklevel=2)
 
         def getFluxes(fluxField):
             """Get the flux and fluxErr of this field from refCat.
