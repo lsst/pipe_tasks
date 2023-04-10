@@ -44,6 +44,7 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord
 
 from lsst.utils import doImport
+from lsst.utils.introspection import get_full_type_name
 from lsst.daf.butler import DeferredDatasetHandle
 import lsst.geom as geom
 import lsst.sphgeom as sphgeom
@@ -339,6 +340,8 @@ class Functor(object):
         elif isinstance(data, DeferredDatasetHandle):
             # Load in-memory dataframe with appropriate columns the gen3 way
             df = data.get(parameters={"columns": columns})
+        else:
+            raise RuntimeError(f"Unexpected type provided for data. Got {get_full_type_name(data)}.")
 
         # Drop unnecessary column levels
         if is_multiLevel:
@@ -355,8 +358,8 @@ class Functor(object):
         return vals.dropna()
 
     def __call__(self, data, dropna=False):
+        df = self._get_data(data)
         try:
-            df = self._get_data(data)
             vals = self._func(df)
         except Exception as e:
             self.log.error("Exception in %s call: %s: %s", self.name, type(e).__name__, e)
