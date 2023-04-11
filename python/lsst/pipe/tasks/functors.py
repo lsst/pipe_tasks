@@ -46,6 +46,7 @@ from astropy.coordinates import SkyCoord
 from lsst.utils import doImport
 from lsst.utils.introspection import get_full_type_name
 from lsst.daf.butler import DeferredDatasetHandle
+from lsst.pipe.base import InMemoryDatasetHandle
 import lsst.geom as geom
 import lsst.sphgeom as sphgeom
 
@@ -95,7 +96,7 @@ class Functor(object):
     """Define and execute a calculation on a ParquetTable
 
     The `__call__` method accepts either a `ParquetTable` object or a
-    `DeferredDatasetHandle`, and returns the
+    `DeferredDatasetHandle` or `InMemoryDatasetHandle`, and returns the
     result of the calculation as a single column.  Each functor defines what
     columns are needed for the calculation, and only these columns are read
     from the `ParquetTable`.
@@ -185,12 +186,14 @@ class Functor(object):
 
         Parameters
         ----------
-        data : `MultilevelParquetTable` or `DeferredDatasetHandle`
-
+        data : various
+            The data to be read, can be a `MultilevelParquetTable`,
+            `DeferredDatasetHandle`, or `InMemoryDatasetHandle`.
         columnnIndex (optional): pandas `Index` object
-            if not passed, then it is read from the `DeferredDatasetHandle`
+            If not passed, then it is read from the `DeferredDatasetHandle`
+            for `InMemoryDatasetHandle`.
         """
-        if isinstance(data, DeferredDatasetHandle):
+        if isinstance(data, (DeferredDatasetHandle, InMemoryDatasetHandle)):
             if columnIndex is None:
                 columnIndex = data.get(component="columns")
         if columnIndex is not None:
@@ -203,11 +206,13 @@ class Functor(object):
     def _get_data_columnLevelNames(self, data, columnIndex=None):
         """Gets the content of each of the column levels for a multilevel table
 
-        Similar to `_get_data_columnLevels`, this enables backward compatibility with gen2.
+        Similar to `_get_data_columnLevels`, this enables backward
+        compatibility with gen2.
 
-        Mirrors original gen2 implementation within `pipe.tasks.parquetTable.MultilevelParquetTable`
+        Mirrors original gen2 implementation within
+        `pipe.tasks.parquetTable.MultilevelParquetTable`
         """
-        if isinstance(data, DeferredDatasetHandle):
+        if isinstance(data, (DeferredDatasetHandle, InMemoryDatasetHandle)):
             if columnIndex is None:
                 columnIndex = data.get(component="columns")
         if columnIndex is not None:
@@ -253,18 +258,18 @@ class Functor(object):
 
         Parameters
         ----------
-        data : `MultilevelParquetTable` or `DeferredDatasetHandle`
-
+        data : various
+            The data as either `MultilevelParquetTable`,
+            `DeferredDatasetHandle`, or `InMemoryDatasetHandle`.
         columnIndex (optional): pandas `Index` object
             either passed or read in from `DeferredDatasetHandle`.
-
-        `returnTuple` : bool
+        `returnTuple` : `bool`
             If true, then return a list of tuples rather than the column dictionary
             specification.  This is set to `True` by `CompositeFunctor` in order to be able to
             combine columns from the various component functors.
 
         """
-        if isinstance(data, DeferredDatasetHandle) and columnIndex is None:
+        if isinstance(data, (DeferredDatasetHandle, InMemoryDatasetHandle)) and columnIndex is None:
             columnIndex = data.get(component="columns")
 
         # Confirm that the dataset has the column levels the functor is expecting it to have.
@@ -288,7 +293,7 @@ class Functor(object):
 
         if isinstance(data, MultilevelParquetTable):
             return data._colsFromDict(columnDict)
-        elif isinstance(data, DeferredDatasetHandle):
+        elif isinstance(data, (DeferredDatasetHandle, InMemoryDatasetHandle)):
             if returnTuple:
                 return self._colsFromDict(columnDict, columnIndex=columnIndex)
             else:
@@ -302,7 +307,7 @@ class Functor(object):
         """Return columnIndex
         """
 
-        if isinstance(data, DeferredDatasetHandle):
+        if isinstance(data, (DeferredDatasetHandle, InMemoryDatasetHandle)):
             return data.get(component="columns")
         else:
             return None
@@ -338,7 +343,7 @@ class Functor(object):
         if isinstance(data, MultilevelParquetTable):
             # Load in-memory dataframe with appropriate columns the gen2 way
             df = data.toDataFrame(columns=columns, droplevels=False)
-        elif isinstance(data, DeferredDatasetHandle):
+        elif isinstance(data, (DeferredDatasetHandle, InMemoryDatasetHandle)):
             # Load in-memory dataframe with appropriate columns the gen3 way
             df = data.get(parameters={"columns": columns})
         else:
@@ -479,10 +484,12 @@ class CompositeFunctor(Functor):
 
         Parameters
         ----------
-        data : `lsst.daf.butler.DeferredDatasetHandle`,
-               `lsst.pipe.tasks.parquetTable.MultilevelParquetTable`,
-               `lsst.pipe.tasks.parquetTable.ParquetTable`,
-               or `pandas.DataFrame`.
+        data : various
+            The data represented as `lsst.daf.butler.DeferredDatasetHandle`,
+            `lsst.pipe.tasks.parquetTable.MultilevelParquetTable`,
+            `lsst.pipe.tasks.parquetTable.ParquetTable`,
+            `lsst.pipe.base.InMemoryDatasetHandle`,
+            or `pandas.DataFrame`.
             The table or a pointer to a table on disk from which columns can
             be accessed
         """
@@ -498,7 +505,7 @@ class CompositeFunctor(Functor):
             if isinstance(data, MultilevelParquetTable):
                 # Read data into memory the gen2 way
                 df = data.toDataFrame(columns=columns, droplevels=False)
-            elif isinstance(data, DeferredDatasetHandle):
+            elif isinstance(data, (DeferredDatasetHandle, InMemoryDatasetHandle)):
                 # Read data into memory the gen3 way
                 df = data.get(parameters={"columns": columns})
 
@@ -517,7 +524,7 @@ class CompositeFunctor(Functor):
                         raise e
 
         else:
-            if isinstance(data, DeferredDatasetHandle):
+            if isinstance(data, (DeferredDatasetHandle, InMemoryDatasetHandle)):
                 # input if Gen3 deferLoad=True
                 df = data.get(parameters={"columns": self.columns})
             elif isinstance(data, pd.DataFrame):
