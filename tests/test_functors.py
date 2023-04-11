@@ -26,8 +26,6 @@ import numpy as np
 import os
 import pandas as pd
 import unittest
-import tempfile
-import shutil
 
 import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
@@ -35,8 +33,8 @@ import lsst.geom as geom
 from lsst.sphgeom import HtmPixelization
 import lsst.meas.base as measBase
 import lsst.utils.tests
+from lsst.pipe.base import InMemoryDatasetHandle
 from lsst.pipe.tasks.parquetTable import MultilevelParquetTable, ParquetTable
-from lsst.daf.butler import Butler, DatasetType
 from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, RAColumn,
                                       DecColumn, Mag, MagDiff, Color, StarGalaxyLabeller,
                                       DeconvolvedMoments, SdssTraceSize, PsfSdssTraceSizeDiff,
@@ -81,8 +79,7 @@ class FunctorTestCase(unittest.TestCase):
         df = parq._df
         lo, hi = HtmPixelization(7).universe().ranges()[0]
         value = np.random.randint(lo, hi)
-        ref = self.butler.put(df, self.datasetType, dataId={'htm7': value})
-        return self.butler.getDeferred(ref)
+        return InMemoryDatasetHandle(df, storageClass="DataFrame", dataId={"htm7": value})
 
     def setUp(self):
         np.random.seed(12345)
@@ -93,18 +90,6 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict = {
             "coord_ra": [3.77654137, 3.77643059, 3.77621148, 3.77611944, 3.77610396],
             "coord_dec": [0.01127624, 0.01127787, 0.01127543, 0.01127543, 0.01127543]}
-
-        # Set up butler
-        self.root = tempfile.mkdtemp(dir=ROOT)
-        Butler.makeRepo(self.root)
-        self.butler = Butler(self.root, run="test_run")
-        self.datasetType = DatasetType("data", dimensions=('htm7',), storageClass="DataFrame",
-                                       universe=self.butler.registry.dimensions)
-        self.butler.registry.registerDatasetType(self.datasetType)
-
-    def tearDown(self):
-        if os.path.exists(self.root):
-            shutil.rmtree(self.root, ignore_errors=True)
 
     def _funcVal(self, functor, parq):
         self.assertIsInstance(functor.name, str)
@@ -604,7 +589,6 @@ class FunctorTestCase(unittest.TestCase):
                                       "base_LocalPhotoCalib",
                                       "base_LocalPhotoCalibErr")
         val = self._funcVal(func, parq)
-        print(val.values[0])
         self.assertTrue(np.allclose(val.values,
                                     absDiffErr,
                                     atol=1e-13,
