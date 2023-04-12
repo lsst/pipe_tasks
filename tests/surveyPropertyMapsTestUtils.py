@@ -22,7 +22,6 @@
 """Utilities for HealSparsePropertyMapTask and others."""
 import numpy as np
 
-import lsst.pipe.base
 import lsst.geom as geom
 from lsst.daf.base import DateTime
 from lsst.afw.coord import Observatory
@@ -33,8 +32,7 @@ import lsst.afw.geom as afwGeom
 from lsst.afw.detection import GaussianPsf
 
 
-__all__ = ['makeMockVisitSummary', 'MockVisitSummaryReference', 'MockCoaddReference',
-           'MockInputMapReference']
+__all__ = ['makeMockVisitSummary']
 
 
 def makeMockVisitSummary(visit,
@@ -178,84 +176,3 @@ def makeMockVisitSummary(visit,
         row['psfArea'] = shape.getArea()
 
     return visit_summary
-
-
-class MockVisitSummaryReference(lsst.pipe.base.InMemoryDatasetHandle):
-    """Very simple object that looks like a Gen3 data reference to
-    a visit summary.
-
-    Parameters
-    ----------
-    visit_summary : `lsst.afw.table.ExposureCatalog`
-        Visit summary catalog. Can be accessed through ``inMemoryDataset``
-        property.
-    visit : `int`
-        Visit number. Is converted to a dataId.
-    """
-    def __init__(self, visit_summary, visit):
-        super().__init__(visit_summary, dataId={"visit": visit})
-
-
-class MockCoaddReference(lsst.pipe.base.InMemoryDatasetHandle):
-    """Very simple object that looks like a Gen3 data reference to
-    a coadd.
-
-    Parameters
-    ----------
-    exposure : `lsst.afw.image.Exposure`
-        The exposure to be retrieved by the data reference. Can be accessed
-        through ``inMemoryDataset`` property.
-    patch : `int`
-        Unique identifier for a subdivision of a tract. Is converted to a
-        dataId
-    tract : `int`
-        Unique identifier for a tract of a skyMap. Is converted to a dataId.
-    """
-    def __init__(self, exposure, patch=0, tract=0):
-        self.exposure = exposure
-        super().__init__(exposure, dataId={"tract": tract, "patch": patch}, storageClass="ExposureF")
-
-    def get(self, *, component=None):
-        """Retrieve the specified dataset using the API of the Gen 3 Butler.
-
-        Parameters
-        ----------
-        component : `str`, optional
-            If supplied, return the named metadata of the exposure.  Allowed
-            components are "photoCalib" or "coaddInputs".
-
-        Returns
-        -------
-        `lsst.afw.image.Exposure` ('component=None') or
-        `lsst.afw.image.PhotoCalib` ('component="photoCalib") or
-        `lsst.afw.image.CoaddInputs` ('component="coaddInputs")
-
-        Notes
-        -----
-        This implementation returns a clone of the in-memory dataset to
-        allow for it to be modified after retrieval.
-        """
-        if component == "photoCalib":
-            return self.inMemoryDataset.getPhotoCalib()
-        elif component == "coaddInputs":
-            return self.inMemoryDataset.getInfo().getCoaddInputs()
-
-        return self.exposure.clone()
-
-
-class MockInputMapReference(lsst.pipe.base.InMemoryDatasetHandle):
-    """Very simple object that looks like a Gen3 data reference to
-    an input map.
-
-    Parameters
-    ----------
-    input_map : `healsparse.HealSparseMap`
-        Bitwise input map. Can be accessed through ``inMemoryDataset``
-        property.
-    patch : `int`
-        Patch number. Is converted to a dataId.
-    tract : `int`
-        Tract number. Is converted to a dataId.
-    """
-    def __init__(self, input_map, patch=0, tract=0):
-        super().__init__(input_map, dataId={"tract": tract, "patch": patch})
