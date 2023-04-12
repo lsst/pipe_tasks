@@ -171,6 +171,7 @@ class CalibrateTaskTestCaseWithButler(lsst.utils.tests.TestCase):
         config.doPhotoCal = doPhotoCal
         config.connections.photoRefCat = "cal_ref_cat"
         config.connections.astromRefCat = "cal_ref_cat"
+        config.idGenerator.packer.name = "observation"
         task = CalibrateTask(config=config)
         quantumId = ids["exposure"]
 
@@ -182,7 +183,7 @@ class CalibrateTaskTestCaseWithButler(lsst.utils.tests.TestCase):
         # Some arguments unprintable because we don't have a full environment
         #     So just check which ones were passed in
         self.assertEqual(run.call_args[1].keys(),
-                         {"exposure", "exposureIdInfo", "background", "icSourceCat"})
+                         {"exposure", "idGenerator", "background", "icSourceCat"})
 
 
 def setup_module(module):

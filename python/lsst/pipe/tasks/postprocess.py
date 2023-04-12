@@ -46,12 +46,10 @@ import lsst.geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
-from lsst.obs.base import ExposureIdInfo
 from lsst.pipe.base import connectionTypes
 import lsst.afw.table as afwTable
 from lsst.afw.image import ExposureSummaryStats
-from lsst.meas.base import SingleFrameMeasurementTask
-from lsst.daf.butler import DataCoordinate
+from lsst.meas.base import SingleFrameMeasurementTask, DetectorVisitIdGeneratorConfig
 from lsst.skymap import BaseSkyMap
 
 from .functors import CompositeFunctor, Column
@@ -218,7 +216,7 @@ class WriteSourceTableConnections(pipeBase.PipelineTaskConnections,
 
 class WriteSourceTableConfig(pipeBase.PipelineTaskConfig,
                              pipelineConnections=WriteSourceTableConnections):
-    pass
+    idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
 
 class WriteSourceTableTask(pipeBase.PipelineTask):
@@ -229,7 +227,7 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        inputs['ccdVisitId'] = butlerQC.quantum.dataId.pack("visit_detector")
+        inputs['ccdVisitId'] = self.config.idGenerator.apply(butlerQC.quantum.dataId).catalog_id
         result = self.run(**inputs)
         outputs = pipeBase.Struct(outputCatalog=result.table)
         butlerQC.put(outputs, outputRefs)
@@ -371,7 +369,7 @@ class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
              "that are not run per-tract.  When False, use per-tract wcs "
              "files.")
     )
-    idGenerator = CatalogIdGenerator.make_config_field(
+    idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
     def validate(self):
         super().validate()
@@ -391,8 +389,10 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        inputs['ccdVisitId'] = butlerQC.quantum.dataId.pack("visit_detector")
-        inputs['exposureIdInfo'] = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "visit_detector")
+
+        idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
+        inputs['idGenerator'] = idGenerator
+        inputs['ccdVisitId'] = idGenerator.catalog_id
 
         if self.config.doReevaluatePhotoCalib or self.config.doReevaluateSkyWcs:
             if self.config.doApplyExternalPhotoCalib or self.config.doApplyExternalSkyWcs:
@@ -566,7 +566,7 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
 
         return exposure
 
-    def addCalibColumns(self, catalog, exposure, exposureIdInfo, **kwargs):
+    def addCalibColumns(self, catalog, exposure, idGenerator, **kwargs):
         """Add replace columns with calibs evaluated at each centroid
 
         Add or replace 'base_LocalWcs' `base_LocalPhotoCalib' columns in a
@@ -579,8 +579,8 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         exposure : `lsst.afw.image.exposure.Exposure`
             Exposure with attached PhotoCalibs and SkyWcs attributes to be
             reevaluated at local centroids. Pixels are not required.
-        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`
-            ID information for this image and catalog.
+        idGenerator : `lsst.meas.base.IdGenerator`
+            Object that generates Source IDs and random seeds.
         **kwargs
             Additional keyword arguments are ignored to facilitate passing the
             same arguments to several methods.
@@ -627,7 +627,7 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         if self.config.doReevaluateSkyWcs and exposure.wcs is not None:
             afwTable.updateSourceCoords(exposure.wcs, newCat)
 
-        measurement.run(measCat=newCat, exposure=exposure, exposureId=exposureIdInfo.expId)
+        measurement.run(measCat=newCat, exposure=exposure, exposureId=idGenerator.catalog_id)
 
         return newCat
 
@@ -1415,7 +1415,7 @@ class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
 
 class MakeCcdVisitTableConfig(pipeBase.PipelineTaskConfig,
                               pipelineConnections=MakeCcdVisitTableConnections):
-    pass
+    idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
 
 class MakeCcdVisitTableTask(pipeBase.PipelineTask):
@@ -1462,11 +1462,18 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
             # Technically you should join to get the visit from the visit
             # table.
             ccdEntry = ccdEntry.rename(columns={"visit": "visitId"})
-            dataIds = [DataCoordinate.standardize(visitSummaryRef.dataId, detector=id) for id in
-                       summaryTable['id']]
-            packer = visitSummaryRef.dataId.universe.makePacker('visit_detector', visitSummaryRef.dataId)
-            ccdVisitIds = [packer.pack(dataId) for dataId in dataIds]
-            ccdEntry['ccdVisitId'] = ccdVisitIds
+            ccdEntry['ccdVisitId'] = [
+                self.config.idGenerator.apply(
+                    visitSummaryRef.dataId,
+                    detector=detector_id,
+                    is_exposure=False,
+                ).catalog_id  # The "catalog ID" here is the ccdVisit ID
+                              # because it's usually the ID for a whole catalog
+                              # with a {visit, detector}, and that's the main
+                              # use case for IdGenerator.  This usage for a
+                              # summary table is rare.
+                for detector_id in summaryTable['id']
+            ]
             ccdEntry['detector'] = summaryTable['id']
             pixToArcseconds = np.array([vR.getWcs().getPixelScale().asArcseconds() if vR.getWcs()
                                         else np.nan for vR in visitSummary])
@@ -1616,6 +1623,7 @@ class WriteForcedSourceTableConfig(pipeBase.PipelineTaskConfig,
         dtype=str,
         default="objectId",
     )
+    idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
 
 class WriteForcedSourceTableTask(pipeBase.PipelineTask):
@@ -1635,7 +1643,8 @@ class WriteForcedSourceTableTask(pipeBase.PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         # Add ccdVisitId to allow joining with CcdVisitTable
-        inputs['ccdVisitId'] = butlerQC.quantum.dataId.pack("visit_detector")
+        idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
+        inputs['ccdVisitId'] = idGenerator.catalog_id
         inputs['band'] = butlerQC.quantum.dataId.full['band']
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)

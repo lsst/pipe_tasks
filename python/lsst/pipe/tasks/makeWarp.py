@@ -33,6 +33,7 @@ import lsst.pipe.base.connectionTypes as connectionTypes
 import lsst.utils as utils
 import lsst.geom
 from lsst.daf.butler import DeferredDatasetHandle
+from lsst.meas.base import DetectorVisitIdGeneratorConfig
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
 from lsst.skymap import BaseSkyMap
 from lsst.utils.timer import timeMethod
@@ -237,6 +238,7 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
         dtype=bool,
         default=True,
     )
+    idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
     def validate(self):
         CoaddBaseTask.ConfigClass.validate(self)
@@ -371,7 +373,10 @@ class MakeWarpTask(CoaddBaseTask):
         # Construct list of input DataIds expected by `run`.
         dataIdList = [ref.datasetRef.dataId for ref in inputRefs.calExpList]
         # Construct list of packed integer IDs expected by `run`.
-        ccdIdList = [dataId.pack("visit_detector") for dataId in dataIdList]
+        ccdIdList = [
+            self.config.idGenerator.apply(dataId).catalog_id
+            for dataId in dataIdList
+        ]
 
         if self.config.doApplyExternalSkyWcs:
             if self.config.useGlobalExternalSkyWcs:

@@ -27,7 +27,12 @@ from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTa
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.config import Field, ConfigurableField, ChoiceField
 from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader, ScaleVarianceTask
-from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
+from lsst.meas.base import (
+    SingleFrameMeasurementTask,
+    ApplyApCorrTask,
+    CatalogCalculationTask,
+    SkyMapIdGeneratorConfig,
+)
 from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
 from lsst.pipe.tasks.fakes import BaseFakeSourcesTask
 from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
@@ -36,7 +41,6 @@ import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
 from lsst.daf.base import PropertyList
 from lsst.skymap import BaseSkyMap
-from lsst.obs.base import ExposureIdInfo
 
 # NOTE: these imports are a convenience so multiband users only have to import this file.
 from .mergeDetections import MergeDetectionsConfig, MergeDetectionsTask  # noqa: F401
@@ -119,6 +123,7 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
         default=False,
         doc="Should be set to True if fake sources have been inserted into the input data.",
     )
+    idGenerator = SkyMapIdGeneratorConfig.make_field()
 
     def setDefaults(self):
         super().setDefaults()
@@ -130,6 +135,9 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
         self.detection.background.binSize = 4096
         self.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
         self.detection.doTempWideBackground = True  # Suppress large footprints that overwhelm the deblender
+        # Include band in packed data IDs that go into object IDs (None -> "as
+        # many bands as are defined", rather than the default of zero).
+        self.idGenerator.packer.n_bands = None
 
 
 class DetectCoaddSourcesTask(PipelineTask):
@@ -178,9 +186,9 @@ class DetectCoaddSourcesTask(PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        exposureIdInfo = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "tract_patch_band")
-        inputs["idFactory"] = exposureIdInfo.makeSourceIdFactory()
-        inputs["expId"] = exposureIdInfo.expId
+        idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
+        inputs["idFactory"] = idGenerator.make_table_id_factory()
+        inputs["expId"] = idGenerator.catalog_id
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
@@ -438,6 +446,7 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
         default=False,
         doc="Should be set to True if fake sources have been inserted into the input data."
     )
+    idGenerator = SkyMapIdGeneratorConfig.make_field()
 
     @property
     def refObjLoader(self):
@@ -544,12 +553,13 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         # move this to run after gen2 deprecation
         inputs['exposure'].getPsf().setCacheCapacity(self.config.psfCache)
 
-        # Get unique integer ID for IdFactory and RNG seeds
-        exposureIdInfo = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "tract_patch")
-        inputs['exposureId'] = exposureIdInfo.expId
-        idFactory = exposureIdInfo.makeSourceIdFactory()
+        # Get unique integer ID for IdFactory and RNG seeds; only the latter
+        # should really be used as the IDs all come from the input catalog.
+        idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
+        inputs['exposureId'] = idGenerator.catalog_id
+
         # Transform inputCatalog
-        table = afwTable.SourceTable.make(self.schema, idFactory)
+        table = afwTable.SourceTable.make(self.schema, idGenerator.make_table_id_factory())
         sources = afwTable.SourceCatalog(table)
         # Load the correct input catalog
         if "scarletCatalog" in inputs:

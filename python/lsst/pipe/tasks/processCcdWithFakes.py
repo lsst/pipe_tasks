@@ -34,7 +34,7 @@ import lsst.pipe.base as pipeBase
 
 from .insertFakes import InsertFakesTask
 from lsst.afw.table import SourceTable
-from lsst.obs.base import ExposureIdInfo
+from lsst.meas.base import IdGenerator, DetectorVisitIdGeneratorConfig
 from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections
 import lsst.pipe.base.connectionTypes as cT
 import lsst.afw.table as afwTable
@@ -247,6 +247,8 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig,
     insertFakes = pexConfig.ConfigurableField(target=InsertFakesTask,
                                               doc="Configuration for the fake sources")
 
+    idGenerator = DetectorVisitIdGeneratorConfig.make_field()
+
     def setDefaults(self):
         super().setDefaults()
         self.calibrate.measurement.plugins["base_PixelFlags"].masksFpAnywhere.append("FAKE")
@@ -308,9 +310,8 @@ class ProcessCcdWithFakesTask(PipelineTask):
         inputs = butlerQC.get(inputRefs)
         detectorId = inputs["exposure"].getInfo().getDetector().getId()
 
-        if 'exposureIdInfo' not in inputs.keys():
-            expId, expBits = butlerQC.quantum.dataId.pack("visit_detector", returnMaxBits=True)
-            inputs['exposureIdInfo'] = ExposureIdInfo(expId, expBits)
+        if 'idGenerator' not in inputs.keys():
+            inputs['idGenerator'] = self.config.idGenerator.apply(butlerQC.quantum.dataId)
 
         expWcs = inputs["exposure"].getWcs()
         tractId = None
@@ -393,7 +394,7 @@ class ProcessCcdWithFakesTask(PipelineTask):
     def run(self, fakeCats, exposure, skyMap, wcs=None, photoCalib=None, exposureIdInfo=None,
             icSourceCat=None, sfdSourceCat=None, externalSkyWcsGlobalCatalog=None,
             externalSkyWcsTractCatalog=None, externalPhotoCalibGlobalCatalog=None,
-            externalPhotoCalibTractCatalog=None):
+            externalPhotoCalibTractCatalog=None, idGenerator=None):
         """Add fake sources to a calexp and then run detection, deblending and
         measurement.
 
@@ -411,8 +412,8 @@ class ProcessCcdWithFakesTask(PipelineTask):
         photoCalib : `lsst.afw.image.photoCalib.PhotoCalib`, optional
             Photometric calibration to be used to calibrate the fake sources.
         exposureIdInfo : `lsst.obs.base.ExposureIdInfo`, optional
-            Object that carries ID information for this image/catalog.  If not
-            provided the SourceCatalog IDs will not be globally unique.
+            Object that carries ID information for this image/catalog.
+            Deprecated in favor of ``idGenerator``.
         icSourceCat : `lsst.afw.table.SourceCatalog`, optional
             Catalog to take the information about which sources were used for
             calibration from.
@@ -430,6 +431,8 @@ class ProcessCcdWithFakesTask(PipelineTask):
         externalPhotoCalibTractCatalog : `lsst.afw.table.ExposureCatalog`, \
                 optional
             Exposure catalog with external photoCalib to be applied per config.
+        idGenerator : `lsst.meas.base.IdGenerator`, optional
+            Object that generates Source IDs and random seeds.
 
         Returns
         -------
@@ -470,9 +473,12 @@ class ProcessCcdWithFakesTask(PipelineTask):
         self.insertFakes.run(fakeCat, exposure, wcs, photoCalib)
 
         # detect, deblend and measure sources
-        if exposureIdInfo is None:
-            exposureIdInfo = ExposureIdInfo()
-        returnedStruct = self.calibrate.run(exposure, exposureIdInfo=exposureIdInfo)
+        if idGenerator is None:
+            if exposureIdInfo is not None:
+                idGenerator = IdGenerator._from_exposure_id_info(exposureIdInfo)
+            else:
+                idGenerator = IdGenerator()
+        returnedStruct = self.calibrate.run(exposure, idGenerator=idGenerator)
         sourceCat = returnedStruct.sourceCat
 
         sourceCat = self.copyCalibrationFields(sfdSourceCat, sourceCat, self.config.srcFieldsToCopy)
@@ -652,8 +658,9 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
     ConfigClass = ProcessCcdWithVariableFakesConfig
 
     def run(self, fakeCats, exposure, skyMap, wcs=None, photoCalib=None, exposureIdInfo=None,
-            icSourceCat=None, sfdSourceCat=None):
-        """Add fake sources to a calexp and then run detection, deblending and measurement.
+            icSourceCat=None, sfdSourceCat=None, idGenerator=None):
+        """Add fake sources to a calexp and then run detection, deblending and
+        measurement.
 
         Parameters
         ----------
@@ -668,14 +675,16 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
         photoCalib : `lsst.afw.image.photoCalib.PhotoCalib`, optional
             Photometric calibration to be used to calibrate the fake sources.
         exposureIdInfo : `lsst.obs.base.ExposureIdInfo`, optional
-            Object that carries ID information for this image/catalog.  If not
-            provided the SourceCatalog IDs will not globally unique.
+            Object that carries ID information for this image/catalog.
+            Deprecated in favor of ``idGenerator``.
         icSourceCat : `lsst.afw.table.SourceCatalog`, optional
             Catalog to take the information about which sources were used for
             calibration from.
         sfdSourceCat : `lsst.afw.table.SourceCatalog`, optional
             Catalog produced by singleFrameDriver, needed to copy some
             calibration flags from.
+        idGenerator : `lsst.meas.base.IdGenerator`, optional
+            Object that generates Source IDs and random seeds.
 
         Returns
         -------
@@ -716,16 +725,25 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
         if photoCalib is None:
             photoCalib = exposure.getPhotoCalib()
 
-        if exposureIdInfo is None:
-            exposureIdInfo = ExposureIdInfo()
+        if idGenerator is None:
+            if exposureIdInfo is not None:
+                idGenerator = IdGenerator._from_exposure_id_info(exposureIdInfo)
+            else:
+                idGenerator = IdGenerator()
 
         band = exposure.getFilter().bandLabel
-        ccdVisitMagnitudes = self.addVariability(fakeCat, band, exposure, photoCalib, exposureIdInfo)
+        ccdVisitMagnitudes = self.addVariability(
+            fakeCat,
+            band,
+            exposure,
+            photoCalib,
+            idGenerator.catalog_id,
+        )
 
         self.insertFakes.run(fakeCat, exposure, wcs, photoCalib)
 
         # detect, deblend and measure sources
-        returnedStruct = self.calibrate.run(exposure, exposureIdInfo=exposureIdInfo)
+        returnedStruct = self.calibrate.run(exposure, idGenerator=idGenerator)
         sourceCat = returnedStruct.sourceCat
 
         sourceCat = self.copyCalibrationFields(sfdSourceCat, sourceCat, self.config.srcFieldsToCopy)
@@ -735,7 +753,7 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
                                        ccdVisitFakeMagnitudes=ccdVisitMagnitudes)
         return resultStruct
 
-    def addVariability(self, fakeCat, band, exposure, photoCalib, exposureIdInfo):
+    def addVariability(self, fakeCat, band, exposure, photoCalib, rngSeed):
         """Add scatter to the fake catalog visit magnitudes.
 
         Currently just adds a simple Gaussian scatter around the static fake
@@ -752,8 +770,8 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
             Exposure fakes will be added to.
         photoCalib : `lsst.afw.image.PhotoCalib`
             Photometric calibration object of ``exposure``.
-        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`
-            Exposure id information and metadata.
+        rngSeed : `int`
+            Random number generator seed.
 
         Returns
         -------
@@ -761,8 +779,7 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
             DataFrame containing the values of the magnitudes to that will
             be inserted into this ccdVisit.
         """
-        expId = exposureIdInfo.expId
-        rng = np.random.default_rng(expId)
+        rng = np.random.default_rng(rngSeed)
         magScatter = rng.normal(loc=0,
                                 scale=self.config.scatterSize,
                                 size=len(fakeCat))
