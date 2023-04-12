@@ -1184,6 +1184,8 @@ def countMaskFromFootprint(mask, footprint, bitmask, ignoreMask):
                              (subMask.getArray() & ignoreMask) == 0).sum()
 
 
+@deprecated(reason="CompareWarpAssembleCoaddTask has been superceded by the CompareWarpPipeline in drp_pipe.",
+            version="v26.0", category=FutureWarning)
 class CompareWarpAssembleCoaddConnections(AssembleCoaddConnections):
     psfMatchedWarps = pipeBase.connectionTypes.Input(
         doc=("PSF-Matched Warps are required by CompareWarp regardless of the coadd type requested. "
@@ -1210,6 +1212,8 @@ class CompareWarpAssembleCoaddConnections(AssembleCoaddConnections):
         config.validate()
 
 
+@deprecated(reason="CompareWarpAssembleCoaddTask has been superceded by the CompareWarpPipeline in drp_pipe.",
+            version="v26.0", category=FutureWarning)
 class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig,
                                      pipelineConnections=CompareWarpAssembleCoaddConnections):
     assembleStaticSkyModel = pexConfig.ConfigurableField(
@@ -1363,6 +1367,8 @@ class CompareWarpAssembleCoaddConfig(AssembleCoaddConfig,
                              "'PsfMatched'" % (self.warpType, self.assembleStaticSkyModel.warpType))
 
 
+@deprecated(reason="CompareWarpAssembleCoaddTask has been superceded by the CompareWarpPipeline in drp_pipe.",
+            version="v26.0", category=FutureWarning)
 class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
     """Assemble a compareWarp coadded image from a set of warps
     by masking artifacts detected by comparing PSF-matched warps.
@@ -1790,3 +1796,521 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
                 self.log.warning("Unable to rescale variance of warp (%s); leaving it as-is", exc)
         mi -= templateCoadd.getMaskedImage()
         return warp
+
+
+class BackgroundMatchAndRejectConnections(pipeBase.PipelineTaskConnections,
+                                          dimensions=("tract", "patch", "band", "skymap"),
+                                          defaultTemplates={"inputCoaddName": "deep",
+                                                            "outputCoaddName": "deep",
+                                                            "warpType": "direct",
+                                                            "warpTypeSuffix": ""}):
+    psfMatchedWarps = pipeBase.connectionTypes.Input(
+        doc=("PSF-Matched Warps are required by CompareWarp regardless of the coadd type requested. "
+             "Only PSF-Matched Warps make sense for image subtraction. "
+             "Therefore, they must be an additional declared input."),
+        name="{inputCoaddName}Coadd_psfMatchedWarp",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "skymap", "visit"),
+        deferLoad=True,
+        multiple=True
+    )
+    templateCoadd = pipeBase.connectionTypes.Input(
+        doc=("Model of the static sky, used to find temporal artifacts. Typically a PSF-Matched, "
+             "sigma-clipped coadd."),
+        name="{outputCoaddName}CoaddPsfMatched",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "skymap", "band"),
+    )
+    outputMasks = pipeBase.connectionTypes.Output(
+        doc=("Extra Masks"),
+        name="{inputCoaddName}Coadd_psfMatchedWarp_extraMask",
+        storageClass="Mask",
+        dimensions=("tract", "patch", "skymap", "visit"),
+        multiple=True
+    )
+    #outputBackgroundModels = pipeBase.connectionTypes.Output(
+    #    doc=("Extra Masks"),
+    #    name="{inputCoaddName}Coadd_psfMatchedWarp_mask",
+    #    storageClass="Mask",
+    #    dimensions=("tract", "patch", "skymap", "visit"),
+    #    multiple=True
+    #)
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        #if not config.doBackgroundMatch:
+        #    self.outputs.remove("outputBackgroundModels")
+        config.validate()
+
+
+class BackgroundMatchAndRejectConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig,
+                                     pipelineConnections=BackgroundMatchAndRejectConnections):
+    detect = pexConfig.ConfigurableField(
+        target=SourceDetectionTask,
+        doc="Detect outlier sources on difference between each psfMatched warp and static sky model"
+    )
+    detectTemplate = pexConfig.ConfigurableField(
+        target=SourceDetectionTask,
+        doc="Detect sources on static sky model. Only used if doPreserveContainedBySource is True"
+    )
+    maskStreaks = pexConfig.ConfigurableField(
+        target=MaskStreaksTask,
+        doc="Detect streaks on difference between each psfMatched warp and static sky model. Only used if "
+            "doFilterMorphological is True. Adds a mask plane to an exposure, with the mask plane name set by"
+            "streakMaskName"
+    )
+    streakMaskName = pexConfig.Field(
+        dtype=str,
+        default="STREAK",
+        doc="Name of mask bit used for streaks"
+    )
+    maxNumEpochs = pexConfig.Field(
+        doc="Charactistic maximum local number of epochs/visits in which an artifact candidate can appear  "
+            "and still be masked.  The effective maxNumEpochs is a broken linear function of local "
+            "number of epochs (N): min(maxFractionEpochsLow*N, maxNumEpochs + maxFractionEpochsHigh*N). "
+            "For each footprint detected on the image difference between the psfMatched warp and static sky "
+            "model, if a significant fraction of pixels (defined by spatialThreshold) are residuals in more "
+            "than the computed effective maxNumEpochs, the artifact candidate is deemed persistant rather "
+            "than transient and not masked.",
+        dtype=int,
+        default=2
+    )
+    maxFractionEpochsLow = pexConfig.RangeField(
+        doc="Fraction of local number of epochs (N) to use as effective maxNumEpochs for low N. "
+            "Effective maxNumEpochs = "
+            "min(maxFractionEpochsLow * N, maxNumEpochs + maxFractionEpochsHigh * N)",
+        dtype=float,
+        default=0.4,
+        min=0., max=1.,
+    )
+    maxFractionEpochsHigh = pexConfig.RangeField(
+        doc="Fraction of local number of epochs (N) to use as effective maxNumEpochs for high N. "
+            "Effective maxNumEpochs = "
+            "min(maxFractionEpochsLow * N, maxNumEpochs + maxFractionEpochsHigh * N)",
+        dtype=float,
+        default=0.03,
+        min=0., max=1.,
+    )
+    spatialThreshold = pexConfig.RangeField(
+        doc="Unitless fraction of pixels defining how much of the outlier region has to meet the "
+            "temporal criteria. If 0, clip all. If 1, clip none.",
+        dtype=float,
+        default=0.5,
+        min=0., max=1.,
+        inclusiveMin=True, inclusiveMax=True
+    )
+    doScaleWarpVariance = pexConfig.Field(
+        doc="Rescale Warp variance plane using empirical noise?",
+        dtype=bool,
+        default=True,
+    )
+    scaleWarpVariance = pexConfig.ConfigurableField(
+        target=ScaleVarianceTask,
+        doc="Rescale variance on warps",
+    )
+    doPreserveContainedBySource = pexConfig.Field(
+        doc="Rescue artifacts from clipping that completely lie within a footprint detected"
+            "on the PsfMatched Template Coadd. Replicates a behavior of SafeClip.",
+        dtype=bool,
+        default=True,
+    )
+    doPrefilterArtifacts = pexConfig.Field(
+        doc="Ignore artifact candidates that are mostly covered by the bad pixel mask, "
+            "because they will be excluded anyway. This prevents them from contributing "
+            "to the outlier epoch count image and potentially being labeled as persistant."
+            "'Mostly' is defined by the config 'prefilterArtifactsRatio'.",
+        dtype=bool,
+        default=True
+    )
+    prefilterArtifactsMaskPlanes = pexConfig.ListField(
+        doc="Prefilter artifact candidates that are mostly covered by these bad mask planes.",
+        dtype=str,
+        default=('NO_DATA', 'BAD', 'SAT', 'SUSPECT'),
+    )
+    prefilterArtifactsRatio = pexConfig.Field(
+        doc="Prefilter artifact candidates with less than this fraction overlapping good pixels",
+        dtype=float,
+        default=0.05
+    )
+    doFilterMorphological = pexConfig.Field(
+        doc="Filter artifact candidates based on morphological criteria, i.g. those that appear to "
+            "be streaks.",
+        dtype=bool,
+        default=False
+    )
+    growStreakFp = pexConfig.Field(
+        doc="Grow streak footprints by this number multiplied by the PSF width",
+        dtype=float,
+        default=5
+    )
+    scaleZeroPoint = pexConfig.ConfigurableField(
+        target=ScaleZeroPointTask,
+        doc="Task to adjust the photometric zero point of the coadd temp exposures",
+    )
+
+    def setDefaults(self):
+        super().setDefaults()
+        # Real EDGE removed by psfMatched NO_DATA border half the width of the matching kernel
+        # CompareWarp applies psfMatched EDGE pixels to directWarps before assembling
+        #if "EDGE" in self.badMaskPlanes:
+        #    self.badMaskPlanes.remove('EDGE')
+        #self.removeMaskPlanes.append('EDGE')
+
+        self.detect.doTempLocalBackground = False
+        self.detect.reEstimateBackground = False
+        self.detect.returnOriginalFootprints = False
+        self.detect.thresholdPolarity = "both"
+        self.detect.thresholdValue = 5
+        self.detect.minPixels = 4
+        self.detect.isotropicGrow = True
+        self.detect.thresholdType = "pixel_stdev"
+        self.detect.nSigmaToGrow = 0.4
+        # The default nSigmaToGrow for SourceDetectionTask is already 2.4,
+        # Explicitly restating because ratio with detect.nSigmaToGrow matters
+        self.detectTemplate.nSigmaToGrow = 2.4
+        self.detectTemplate.doTempLocalBackground = False
+        self.detectTemplate.reEstimateBackground = False
+        self.detectTemplate.returnOriginalFootprints = False
+
+
+class BackgroundMatchAndRejectTask(CoaddBaseTask, pipeBase.PipelineTask):
+    """
+
+    """
+    ConfigClass = BackgroundMatchAndRejectConfig
+    _DefaultName = "backgroundMatchAndReject"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        detectionSchema = afwTable.SourceTable.makeMinimalSchema()
+        self.makeSubtask("scaleZeroPoint")
+        self.makeSubtask("detect", schema=detectionSchema)
+        if self.config.doPreserveContainedBySource:
+            self.makeSubtask("detectTemplate", schema=afwTable.SourceTable.makeMinimalSchema())
+        if self.config.doScaleWarpVariance:
+            self.makeSubtask("scaleWarpVariance")
+        if self.config.doFilterMorphological:
+            self.makeSubtask("maskStreaks")
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        # Need a runQuantum to write out multiple masks
+        inputs = butlerQC.get(inputRefs)
+        outputs = self.run(**inputs)
+
+        visitOrder = [ref.dataId['visit'] for ref in inputs['psfMatchedWarps']]
+        # write out the per-visit masks
+        for ref in outputRefs.outputMasks:
+            visit = ref.dataId['visit']
+            spanSetMask = outputs.spanSetMaskList[visitOrder.index(visit)]
+            mask = self.convertSpansToMask(spanSetMask, inputs['templateCoadd'].getBBox())
+            butlerQC.put(mask, ref)
+
+    @timeMethod
+    def run(self, templateCoadd, psfMatchedWarps):
+        """Assemble the coadd.
+
+        Find artifacts and apply them to the warps' masks creating a list of
+        alternative masks with a new "CLIPPED" plane and updated "NO_DATA"
+        plane. Then pass these alternative masks to the base class's ``run``
+        method.
+        """
+        # Use PSF-Matched Warps (and corresponding scalers) and coadd to find artifacts
+        spanSetMaskList = self.findArtifacts(templateCoadd, psfMatchedWarps)
+        return pipeBase.Struct(spanSetMaskList=spanSetMaskList)
+
+    def convertSpansToMask(self, spanSets, bbox):
+        """Convert a list of spans to a mask.
+
+        Parameters
+        ----------
+        spanSets : `dict`
+            Dicts containing ``lsst.afw.geom.SpanSets`` lists.
+            keys are the new mask plane name (e.g. "CLIPPED
+            and/or "NO_DATA") as the key, and the value, is the list of
+            ``SpanSets`` to apply to the mask.
+        bbox : `lsst.afw.geom.Box2I`
+            Bounding box.
+
+        Returns
+        -------
+        mask : `lsst.afw.image.Mask`
+            Mask with the spans set.
+        """
+        mask = afwImage.MaskX(bbox)
+        for maskName, spanSets in spanSets.items():
+            # for each mask plane, CLIPPED, NO_DATA, EDGE, add it to the MASK
+            maskValue = mask.getPlaneBitMask(maskName)
+            for spanSet in spanSets:
+                spanSet.clippedTo(mask.getBBox()).setMask(mask, maskValue)
+        return mask
+
+    def applyAltEdgeMask(self, mask, altMaskList):
+        """Propagate alt EDGE mask to SENSOR_EDGE AND INEXACT_PSF planes.
+
+        Parameters
+        ----------
+        mask : `lsst.afw.image.Mask`
+            Original mask.
+        altMaskList : `list` of `dict`
+            List of Dicts containing ``spanSet`` lists.
+            Each element contains the new mask plane name (e.g. "CLIPPED
+            and/or "NO_DATA") as the key, and list of ``SpanSets`` to apply to
+            the mask.
+        """
+        maskValue = mask.getPlaneBitMask(["SENSOR_EDGE", "INEXACT_PSF"])
+        for visitMask in altMaskList:
+            if "EDGE" in visitMask:
+                for spanSet in visitMask['EDGE']:
+                    spanSet.clippedTo(mask.getBBox()).setMask(mask, maskValue)
+
+    def findArtifacts(self, templateCoadd, tempExpRefList, imageScalerList=None):
+        """Find artifacts.
+
+        Loop through warps twice. The first loop builds a map with the count
+        of how many epochs each pixel deviates from the templateCoadd by more
+        than ``config.chiThreshold`` sigma. The second loop takes each
+        difference image and filters the artifacts detected in each using
+        count map to filter out variable sources and sources that are
+        difficult to subtract cleanly.
+
+        Parameters
+        ----------
+        templateCoadd : `lsst.afw.image.Exposure`
+            Exposure to serve as model of static sky.
+        tempExpRefList : `list`
+            List of data references to warps.
+        imageScalerList : `list`
+            List of image scalers.
+
+        Returns
+        -------
+        altMasks : `list` of `dict`
+            List of dicts containing information about CLIPPED
+            (i.e., artifacts), NO_DATA, and EDGE pixels.
+        """
+        self.log.debug("Generating Count Image, and mask lists.")
+        coaddBBox = templateCoadd.getBBox()
+        slateIm = afwImage.ImageU(coaddBBox)
+        epochCountImage = afwImage.ImageU(coaddBBox)
+        nImage = afwImage.ImageU(coaddBBox)
+        spanSetArtifactList = []
+        spanSetNoDataMaskList = []
+        spanSetEdgeList = []
+        spanSetBadMorphoList = []
+        badPixelMask = afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes)
+
+        # mask of the warp diffs should = that of only the warp
+        templateCoadd.mask.clearAllMaskPlanes()
+
+        if self.config.doPreserveContainedBySource:
+            templateFootprints = self.detectTemplate.detectFootprints(templateCoadd)
+        else:
+            templateFootprints = None
+
+        if imageScalerList is None:
+            imageScalerList = [None]*len(tempExpRefList)
+
+        for warpRef, imageScaler in zip(tempExpRefList, imageScalerList):
+            warpDiffExp = self._readAndComputeWarpDiff(warpRef, imageScaler, templateCoadd)
+            if warpDiffExp is not None:
+                # This nImage only approximates the final nImage because it uses the PSF-matched mask
+                nImage.array += (numpy.isfinite(warpDiffExp.image.array)
+                                 * ((warpDiffExp.mask.array & badPixelMask) == 0)).astype(numpy.uint16)
+                fpSet = self.detect.detectFootprints(warpDiffExp, doSmooth=False, clearMask=True)
+                fpSet.positive.merge(fpSet.negative)
+                footprints = fpSet.positive
+                slateIm.set(0)
+                spanSetList = [footprint.spans for footprint in footprints.getFootprints()]
+
+                # Remove artifacts due to defects before they contribute to the epochCountImage
+                if self.config.doPrefilterArtifacts:
+                    spanSetList = self.prefilterArtifacts(spanSetList, warpDiffExp)
+
+                # Clear mask before adding prefiltered spanSets
+                self.detect.clearMask(warpDiffExp.mask)
+                for spans in spanSetList:
+                    spans.setImage(slateIm, 1, doClip=True)
+                    spans.setMask(warpDiffExp.mask, warpDiffExp.mask.getPlaneBitMask("DETECTED"))
+                epochCountImage += slateIm
+
+                if self.config.doFilterMorphological:
+                    maskName = self.config.streakMaskName
+                    _ = self.maskStreaks.run(warpDiffExp)
+                    streakMask = warpDiffExp.mask
+                    spanSetStreak = afwGeom.SpanSet.fromMask(streakMask,
+                                                             streakMask.getPlaneBitMask(maskName)).split()
+                    # Pad the streaks to account for low-surface brightness wings
+                    psf = warpDiffExp.getPsf()
+                    for s, sset in enumerate(spanSetStreak):
+                        psfShape = psf.computeShape(sset.computeCentroid())
+                        dilation = self.config.growStreakFp * psfShape.getDeterminantRadius()
+                        sset_dilated = sset.dilated(int(dilation))
+                        spanSetStreak[s] = sset_dilated
+
+                # PSF-Matched warps have less available area (~the matching kernel) because the calexps
+                # undergo a second convolution. Pixels with data in the direct warp
+                # but not in the PSF-matched warp will not have their artifacts detected.
+                # NaNs from the PSF-matched warp therefore must be masked in the direct warp
+                nans = numpy.where(numpy.isnan(warpDiffExp.maskedImage.image.array), 1, 0)
+                nansMask = afwImage.makeMaskFromArray(nans.astype(afwImage.MaskPixel))
+                nansMask.setXY0(warpDiffExp.getXY0())
+                edgeMask = warpDiffExp.mask
+                spanSetEdgeMask = afwGeom.SpanSet.fromMask(edgeMask,
+                                                           edgeMask.getPlaneBitMask("EDGE")).split()
+            else:
+                # If the directWarp has <1% coverage, the psfMatchedWarp can have 0% and not exist
+                # In this case, mask the whole epoch
+                nansMask = afwImage.MaskX(coaddBBox, 1)
+                spanSetList = []
+                spanSetEdgeMask = []
+                spanSetStreak = []
+
+            spanSetNoDataMask = afwGeom.SpanSet.fromMask(nansMask).split()
+
+            spanSetNoDataMaskList.append(spanSetNoDataMask)
+            spanSetArtifactList.append(spanSetList)
+            spanSetEdgeList.append(spanSetEdgeMask)
+            if self.config.doFilterMorphological:
+                spanSetBadMorphoList.append(spanSetStreak)
+
+        if lsstDebug.Info(__name__).saveCountIm:
+            path = self._dataRef2DebugPath("epochCountIm", tempExpRefList[0], coaddLevel=True)
+            epochCountImage.writeFits(path)
+
+        for i, spanSetList in enumerate(spanSetArtifactList):
+            if spanSetList:
+                filteredSpanSetList = self.filterArtifacts(spanSetList, epochCountImage, nImage,
+                                                           templateFootprints)
+                spanSetArtifactList[i] = filteredSpanSetList
+            if self.config.doFilterMorphological:
+                spanSetArtifactList[i] += spanSetBadMorphoList[i]
+
+        altMasks = []
+        for artifacts, noData, edge in zip(spanSetArtifactList, spanSetNoDataMaskList, spanSetEdgeList):
+            altMasks.append({'CLIPPED': artifacts,
+                             'NO_DATA': noData,
+                             'EDGE': edge})
+        return altMasks
+
+    def prefilterArtifacts(self, spanSetList, exp):
+        """Remove artifact candidates covered by bad mask plane.
+
+        Any future editing of the candidate list that does not depend on
+        temporal information should go in this method.
+
+        Parameters
+        ----------
+        spanSetList : `list` of `lsst.afw.geom.SpanSet`
+            List of SpanSets representing artifact candidates.
+        exp : `lsst.afw.image.Exposure`
+            Exposure containing mask planes used to prefilter.
+
+        Returns
+        -------
+        returnSpanSetList : `list` of `lsst.afw.geom.SpanSet`
+            List of SpanSets with artifacts.
+        """
+        badPixelMask = exp.mask.getPlaneBitMask(self.config.prefilterArtifactsMaskPlanes)
+        goodArr = (exp.mask.array & badPixelMask) == 0
+        returnSpanSetList = []
+        bbox = exp.getBBox()
+        x0, y0 = exp.getXY0()
+        for i, span in enumerate(spanSetList):
+            y, x = span.clippedTo(bbox).indices()
+            yIndexLocal = numpy.array(y) - y0
+            xIndexLocal = numpy.array(x) - x0
+            goodRatio = numpy.count_nonzero(goodArr[yIndexLocal, xIndexLocal])/span.getArea()
+            if goodRatio > self.config.prefilterArtifactsRatio:
+                returnSpanSetList.append(span)
+        return returnSpanSetList
+
+    def filterArtifacts(self, spanSetList, epochCountImage, nImage, footprintsToExclude=None):
+        """Filter artifact candidates.
+
+        Parameters
+        ----------
+        spanSetList : `list` of `lsst.afw.geom.SpanSet`
+            List of SpanSets representing artifact candidates.
+        epochCountImage : `lsst.afw.image.Image`
+            Image of accumulated number of warpDiff detections.
+        nImage : `lsst.afw.image.ImageU`
+            Image of the accumulated number of total epochs contributing.
+
+        Returns
+        -------
+        maskSpanSetList : `list`
+            List of SpanSets with artifacts.
+        """
+        maskSpanSetList = []
+        x0, y0 = epochCountImage.getXY0()
+        for i, span in enumerate(spanSetList):
+            y, x = span.indices()
+            yIdxLocal = [y1 - y0 for y1 in y]
+            xIdxLocal = [x1 - x0 for x1 in x]
+            outlierN = epochCountImage.array[yIdxLocal, xIdxLocal]
+            totalN = nImage.array[yIdxLocal, xIdxLocal]
+
+            # effectiveMaxNumEpochs is broken line (fraction of N) with characteristic config.maxNumEpochs
+            effMaxNumEpochsHighN = (self.config.maxNumEpochs
+                                    + self.config.maxFractionEpochsHigh*numpy.mean(totalN))
+            effMaxNumEpochsLowN = self.config.maxFractionEpochsLow * numpy.mean(totalN)
+            effectiveMaxNumEpochs = int(min(effMaxNumEpochsLowN, effMaxNumEpochsHighN))
+            nPixelsBelowThreshold = numpy.count_nonzero((outlierN > 0)
+                                                        & (outlierN <= effectiveMaxNumEpochs))
+            percentBelowThreshold = nPixelsBelowThreshold / len(outlierN)
+            if percentBelowThreshold > self.config.spatialThreshold:
+                maskSpanSetList.append(span)
+
+        if self.config.doPreserveContainedBySource and footprintsToExclude is not None:
+            # If a candidate is contained by a footprint on the template coadd, do not clip
+            filteredMaskSpanSetList = []
+            for span in maskSpanSetList:
+                doKeep = True
+                for footprint in footprintsToExclude.positive.getFootprints():
+                    if footprint.spans.contains(span):
+                        doKeep = False
+                        break
+                if doKeep:
+                    filteredMaskSpanSetList.append(span)
+            maskSpanSetList = filteredMaskSpanSetList
+
+        return maskSpanSetList
+
+    def _readAndComputeWarpDiff(self, warpRef, imageScaler, templateCoadd):
+        """Fetch a warp from the butler and return a warpDiff.
+
+        Parameters
+        ----------
+        warpRef : `lsst.daf.butler.DeferredDatasetHandle`
+            Handle for the warp.
+        imageScaler : `lsst.pipe.tasks.scaleZeroPoint.ImageScaler`
+            An image scaler object.
+        templateCoadd : `lsst.afw.image.Exposure`
+            Exposure to be substracted from the scaled warp.
+
+        Returns
+        -------
+        warp : `lsst.afw.image.Exposure`
+            Exposure of the image difference between the warp and template.
+        """
+        # If the PSF-Matched warp did not exist for this direct warp
+        # None is holding its place to maintain order in Gen 3
+        if warpRef is None:
+            return None
+
+        warp = warpRef.get()
+
+        if imageScaler is None:
+            imageScaler = self.scaleZeroPoint.computeImageScaler(exposure=warp, dataRef=warpRef,)
+
+        # direct image scaler OK for PSF-matched Warp
+        imageScaler.scaleMaskedImage(warp.getMaskedImage())
+        mi = warp.getMaskedImage()
+        if self.config.doScaleWarpVariance:
+            try:
+                self.scaleWarpVariance.run(mi)
+            except Exception as exc:
+                self.log.warning("Unable to rescale variance of warp (%s); leaving it as-is", exc)
+        mi -= templateCoadd.getMaskedImage()
+        return warp
+
