@@ -38,7 +38,7 @@ class TestMaskStreaks(lsst.utils.tests.TestCase):
         self.testx = 500
         self.testy = 600
         self.exposure = lsst.afw.image.ExposureF(self.testy, self.testx)
-        rand = lsst.afw.math.Random()
+        rand = lsst.afw.math.Random(seed=98765)
         lsst.afw.math.randomGaussianImage(self.exposure.image, rand)
         self.exposure.maskedImage.variance.set(1)
         self.maskName = "STREAK"
