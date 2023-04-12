@@ -34,39 +34,6 @@ from lsst.pipe.tasks.isolatedStarAssociation import (IsolatedStarAssociationConf
 from smatch.matcher import Matcher
 
 
-class MockSourceTableReference(lsst.pipe.base.InMemoryDatasetHandle):
-    """Very simple object that looks like a Gen3 data reference to
-    a sourceTable_visit.
-
-    Parameters
-    ----------
-    source_table : `pandas.DataFrame`
-        Dataframe of the source table.
-    """
-    def get(self, *, parameters={}):
-        """Retrieve the specified dataset using the API of the Gen3 Butler.
-
-        Parameters
-        ----------
-        parameters : `dict`, optional
-            Parameter dictionary.  Supported key is ``columns``.
-
-        Returns
-        -------
-        dataframe : `pandas.DataFrame`
-            dataframe, cut to the specified columns.
-        """
-        if 'columns' in parameters:
-            _columns = parameters['columns']
-            if 'sourceId' in parameters['columns']:
-                # Treat the index separately
-                _columns.remove('sourceId')
-
-            return self.inMemoryDataset[_columns]
-        else:
-            return self.inMemoryDataset.copy()
-
-
 class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
     """Tests of IsolatedStarAssociationTask.
 
@@ -120,7 +87,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
 
         Returns
         -------
-        data_refs : `list` [`MockSourceTableReference`]
+        data_refs : `list` [`InMemoryDatasetHandle`]
             List of mock references.
         """
         np.random.seed(12345)
@@ -218,7 +185,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
 
                 df = pd.DataFrame(table)
                 df.set_index('sourceId', inplace=True)
-                data_refs.append(MockSourceTableReference(df))
+                data_refs.append(lsst.pipe.base.InMemoryDatasetHandle(df, storageClass="DataFrame"))
 
                 id_counter += nstar
                 visit_counter += 1
