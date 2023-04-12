@@ -37,19 +37,6 @@ from lsst.pipe.tasks.hips import (
 )
 
 
-class MockCoaddImageHandle(lsst.pipe.base.InMemoryDatasetHandle):
-    """Simple object that looks like a Gen3 deferred dataset handle
-    to an exposure.
-
-    Parameters
-    ----------
-    exposure : `lsst.afw.image.ExposureF`
-        Exposure to hold.
-    """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, dataId={"visit": 0, "detector": 0}, **kwargs)
-
-
 class HipsTestCase(unittest.TestCase):
     def test_hips_single(self):
         """Test creating a single HIPS image."""
@@ -65,7 +52,7 @@ class HipsTestCase(unittest.TestCase):
         patch_info = tract_info[patch]
 
         exposure = self._make_noise_exposure(patch_info)
-        handles = [MockCoaddImageHandle(exposure)]
+        handles = [lsst.pipe.base.InMemoryDatasetHandle(exposure)]
 
         center = patch_info.wcs.pixelToSky(patch_info.inner_bbox.getCenter())
         pixel = self._get_pixel(2**config.hips_order, center)
@@ -98,7 +85,7 @@ class HipsTestCase(unittest.TestCase):
         for patch in patches:
             patch_info = tract_info[patch]
             exposure = self._make_noise_exposure(patch_info)
-            handles.append(MockCoaddImageHandle(exposure))
+            handles.append(lsst.pipe.base.InMemoryDatasetHandle(exposure))
             centers.append(patch_info.wcs.pixelToSky(patch_info.inner_bbox.getCenter()))
 
         center = lsst.geom.SpherePoint(
@@ -137,7 +124,7 @@ class HipsTestCase(unittest.TestCase):
         patch_info = tract_info[patch]
 
         exposure = self._make_noise_exposure(patch_info)
-        handles = [MockCoaddImageHandle(exposure)]
+        handles = [lsst.pipe.base.InMemoryDatasetHandle(exposure)]
 
         pixel = 0
 
