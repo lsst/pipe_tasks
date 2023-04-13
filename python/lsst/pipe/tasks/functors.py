@@ -322,32 +322,25 @@ class Functor(object):
         N.B. while passing a raw pandas `DataFrame` *should* work here, it has not been tested.
         """
         if isinstance(data, pd.DataFrame):
-            return data
+            _data = InMemoryDatasetHandle(data, storageClass="DataFrame")
+        else:
+            _data = data
 
         # First thing to do: check to see if the data source has a multilevel column index or not.
-        columnIndex = self._get_columnIndex(data)
-        is_multiLevel = isinstance(data, MultilevelParquetTable) or isinstance(columnIndex, pd.MultiIndex)
-
-        # Simple single-level parquet table, gen2
-        if isinstance(data, ParquetTable) and not is_multiLevel:
-            columns = self.columns
-            df = data.toDataFrame(columns=columns)
-            return df
+        columnIndex = self._get_columnIndex(_data)
+        is_multiLevel = isinstance(columnIndex, pd.MultiIndex)
 
         # Get proper columns specification for this functor
         if is_multiLevel:
-            columns = self.multilevelColumns(data, columnIndex=columnIndex)
+            columns = self.multilevelColumns(_data, columnIndex=columnIndex)
         else:
             columns = self.columns
 
-        if isinstance(data, MultilevelParquetTable):
-            # Load in-memory dataframe with appropriate columns the gen2 way
-            df = data.toDataFrame(columns=columns, droplevels=False)
-        elif isinstance(data, (DeferredDatasetHandle, InMemoryDatasetHandle)):
+        if isinstance(_data, (DeferredDatasetHandle, InMemoryDatasetHandle)):
             # Load in-memory dataframe with appropriate columns the gen3 way
-            df = data.get(parameters={"columns": columns})
+            df = _data.get(parameters={"columns": columns})
         else:
-            raise RuntimeError(f"Unexpected type provided for data. Got {get_full_type_name(data)}.")
+            raise RuntimeError(f"Unexpected type provided for data. Got {get_full_type_name(_data)}.")
 
         # Drop unnecessary column levels
         if is_multiLevel:

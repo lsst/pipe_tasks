@@ -34,7 +34,7 @@ from lsst.sphgeom import HtmPixelization
 import lsst.meas.base as measBase
 import lsst.utils.tests
 from lsst.pipe.base import InMemoryDatasetHandle
-from lsst.pipe.tasks.parquetTable import MultilevelParquetTable, ParquetTable
+# from lsst.pipe.tasks.parquetTable import MultilevelParquetTable, ParquetTable
 from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, RAColumn,
                                       DecColumn, Mag, MagDiff, Color, StarGalaxyLabeller,
                                       DeconvolvedMoments, SdssTraceSize, PsfSdssTraceSizeDiff,
@@ -69,14 +69,17 @@ class FunctorTestCase(unittest.TestCase):
 
         df = functools.reduce(lambda d1, d2: d1.join(d2), dfFilterDSCombos)
 
-        return MultilevelParquetTable(dataFrame=df)
+        # return MultilevelParquetTable(dataFrame=df)
+        return df
 
     def simulateParquet(self, dataDict):
         df = pd.DataFrame(dataDict)
-        return ParquetTable(dataFrame=df)
+        # return ParquetTable(dataFrame=df)
+        return df
 
     def getDatasetHandle(self, parq):
-        df = parq._df
+        # df = parq._df
+        df = parq
         lo, hi = HtmPixelization(7).universe().ranges()[0]
         value = np.random.randint(lo, hi)
         return InMemoryDatasetHandle(df, storageClass="DataFrame", dataId={"htm7": value})
@@ -99,6 +102,7 @@ class FunctorTestCase(unittest.TestCase):
 
         val = functor(parq)
         val2 = functor(handle)
+
         self.assertTrue((val == val2).all())
         self.assertIsInstance(val, pd.Series)
 
@@ -193,7 +197,8 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 10)
         parq = self.simulateMultiParquet(self.dataDict)
         # Change one dataset filter combinations value.
-        parq._df[("meas", "g", "base_PsfFlux_instFlux")] -= 1
+        # parq._df[("meas", "g", "base_PsfFlux_instFlux")] -= 1
+        parq[("meas", "g", "base_PsfFlux_instFlux")] -= 1
 
         fluxName = 'base_PsfFlux'
 
@@ -347,7 +352,8 @@ class FunctorTestCase(unittest.TestCase):
 
         parq = self.simulateMultiParquet(self.dataDict)
         # Modify r band value slightly.
-        parq._df[("meas", "r", "base_PsfFlux_instFlux")] -= 0.1
+        # parq._df[("meas", "r", "base_PsfFlux_instFlux")] -= 0.1
+        parq[("meas", "r", "base_PsfFlux_instFlux")] -= 0.1
 
         filt = 'g'
         funcDict = {'psfMag_ref': Mag('base_PsfFlux', dataset='ref'),
