@@ -33,7 +33,6 @@ import numpy as np
 from lsst.afw.cameraGeom.testUtils import DetectorWrapper
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
-import lsst.daf.butler
 import lsst.geom as geom
 from lsst.geom import arcseconds, degrees
 from lsst.meas.algorithms.testUtils import plantSources
@@ -436,11 +435,7 @@ class MockCoaddTestData:
                 exposure = matchedExposures[expId]
             else:
                 raise ValueError("warpType must be one of 'direct' or 'psfMatched'")
-            dataId = lsst.daf.butler.DataCoordinate.standardize(
-                tract=tract, patch=patch, visit=expId,
-                instrument="DummyCam", skymap="Skymap",
-                universe=lsst.daf.butler.DimensionUniverse(),
-            )
-            dataRef = MockWarpReference(exposure, dataId=dataId, storageClass="ExposureF")
+            dataRef = MockWarpReference(exposure, storageClass="ExposureF",
+                                        tract=tract, patch=patch, visit=expId, coaddName=coaddName)
             dataRefList.append(dataRef)
         return dataRefList
