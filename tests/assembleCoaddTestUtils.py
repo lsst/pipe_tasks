@@ -70,20 +70,13 @@ class MockWarpReference(pipeBase.InMemoryDatasetHandle):
         -------
         `lsst.afw.image.Exposure` or `lsst.afw.image.VisitInfo`
         or `lsst.meas.algorithms.SingleGaussianPsf`
-            Either the exposure or its metadata, depending on the datasetType.
+            Either the exposure or its metadata, depending on the component
+            requested.
         """
-        if component == 'psf':
-            return self.inMemoryDataset.getPsf()
-        elif component == 'visitInfo':
-            return self.inMemoryDataset.getInfo().getVisitInfo()
-        bbox = None
-        if parameters is not None:
-            bbox = parameters.get("bbox")
-        exp = self.inMemoryDataset.clone()
-        if bbox is not None:
-            return exp[bbox]
-        else:
-            return exp
+        exp = super().get(component=component, parameters=parameters)
+        if isinstance(exp, afwImage.ExposureF):
+            exp = exp.clone()
+        return exp
 
 
 def makeMockSkyInfo(bbox, wcs, patch):
@@ -448,6 +441,6 @@ class MockCoaddTestData:
                 instrument="DummyCam", skymap="Skymap",
                 universe=lsst.daf.butler.DimensionUniverse(),
             )
-            dataRef = MockWarpReference(exposure, dataId=dataId)
+            dataRef = MockWarpReference(exposure, dataId=dataId, storageClass="ExposureF")
             dataRefList.append(dataRef)
         return dataRefList
