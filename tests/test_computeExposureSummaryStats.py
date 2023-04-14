@@ -108,7 +108,7 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
             self.assertFloatsAlmostEqual(a, b, atol=1e-10)
 
         self.assertFloatsAlmostEqual(summary.ra, raCenter.asDegrees(), atol=1e-10)
-        self.assertFloatsAlmostEqual(summary.decl, decCenter.asDegrees(), atol=1e-10)
+        self.assertFloatsAlmostEqual(summary.dec, decCenter.asDegrees(), atol=1e-10)
 
         self.assertFloatsAlmostEqual(summary.zeroPoint, zp)
 

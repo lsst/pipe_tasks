@@ -115,7 +115,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         # Create the r-band datarefs
         dtype = [('sourceId', 'i8'),
                  ('ra', 'f8'),
-                 ('decl', 'f8'),
+                 ('dec', 'f8'),
                  ('apFlux_12_0_instFlux', 'f4'),
                  ('apFlux_12_0_instFluxErr', 'f4'),
                  ('apFlux_12_0_instFlux_flag', '?'),
@@ -171,7 +171,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                 table = np.zeros(nstar, dtype=dtype)
                 table['sourceId'] = np.arange(nstar) + id_counter
                 table['ra'] = ras
-                table['decl'] = decs
+                table['dec'] = decs
                 table['apFlux_12_0_instFlux'] = 100.0
                 table['apFlux_12_0_instFluxErr'] = 1.0
                 table['physical_filter'] = filtername
@@ -218,11 +218,11 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
     def test_remove_neighbors(self):
         """Test removing close neighbors."""
         primary_star_cat = np.zeros(3, dtype=[('ra', 'f8'),
-                                              ('decl', 'f8')])
+                                              ('dec', 'f8')])
 
         # Put two stars < 2" apart, and across the 0/360 boundary.
         primary_star_cat['ra'] = [0.7/3600., 360.0 - 0.7/3600., 1.0]
-        primary_star_cat['decl'] = [5.0, 5.0, 5.0]
+        primary_star_cat['dec'] = [5.0, 5.0, 5.0]
 
         cut_cat = self.isolatedStarAssociationTask._remove_neighbors(primary_star_cat)
 
@@ -250,7 +250,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         # Ensure that these stars all match to input stars within 1 arcsec.
         with Matcher(self.star_ras, self.star_decs) as matcher:
             idx, i1, i2, d = matcher.query_radius(primary_star_cat['ra'],
-                                                  primary_star_cat['decl'],
+                                                  primary_star_cat['dec'],
                                                   1./3600.,
                                                   return_indices=True)
         self.assertEqual(i1.size, self.star_ras.size)
@@ -286,7 +286,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         primary_cat = np.zeros(self.star_ras.size,
                                dtype=self.isolatedStarAssociationTask._get_primary_dtype(primary_bands))
         primary_cat['ra'] = self.star_ras
-        primary_cat['decl'] = self.star_decs
+        primary_cat['dec'] = self.star_decs
 
         source_cat_sorted, primary_star_cat = self.isolatedStarAssociationTask._match_sources(['i', 'r'],
                                                                                               source_cat,
@@ -307,7 +307,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
 
         # And make sure they are all within the tract outer boundary.
         poly = self.skymap[self.tract].outer_sky_polygon
-        use = poly.contains(np.deg2rad(source_cat['ra']), np.deg2rad(source_cat['decl']))
+        use = poly.contains(np.deg2rad(source_cat['ra']), np.deg2rad(source_cat['dec']))
         self.assertEqual(use.sum(), len(source_cat))
 
     def test_run_isolated_star_association_task(self):
@@ -341,9 +341,9 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
 
             # Check these are all pointing to the same star position
             with Matcher(np.atleast_1d(star_cat['ra'][i]),
-                         np.atleast_1d(star_cat['decl'][i])) as matcher:
+                         np.atleast_1d(star_cat['dec'][i])) as matcher:
                 idx = matcher.query_radius(all_source_star['ra'],
-                                           all_source_star['decl'],
+                                           all_source_star['dec'],
                                            1./3600.)
             self.assertEqual(len(idx[0]), star_cat['nsource'][i])
 
@@ -353,9 +353,9 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                                                    star_cat[f'source_cat_index_{band}'][i]
                                                    + star_cat[f'nsource_{band}'][i]]
                 with Matcher(np.atleast_1d(star_cat['ra'][i]),
-                             np.atleast_1d(star_cat['decl'][i])) as matcher:
+                             np.atleast_1d(star_cat['dec'][i])) as matcher:
                     idx = matcher.query_radius(band_source_star['ra'],
-                                               band_source_star['decl'],
+                                               band_source_star['dec'],
                                                1./3600.)
                 self.assertEqual(len(idx[0]), star_cat[f'nsource_{band}'][i])
 

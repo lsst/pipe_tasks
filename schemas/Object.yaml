@@ -22,7 +22,7 @@ funcs:
         functor: CoordColumn
         args: coord_ra
         dataset: meas
-    decl:
+    dec:
         functor: CoordColumn
         args: coord_dec
         dataset: meas

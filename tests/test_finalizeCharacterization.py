@@ -72,7 +72,7 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
         """
         dtype_cat = [('isolated_star_id', 'i8'),
                      ('ra', 'f8'),
-                     ('decl', 'f8'),
+                     ('dec', 'f8'),
                      ('primary_band', 'U2'),
                      ('source_cat_index', 'i4'),
                      ('nsource', 'i4'),
@@ -105,7 +105,7 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
             cat = np.zeros(nstar, dtype=dtype_cat)
             cat['isolated_star_id'] = tract*nstar + np.arange(nstar)
             cat['ra'] = ra
-            cat['decl'] = dec
+            cat['dec'] = dec
             if tract < 2:
                 cat['primary_band'][0: 100] = 'i'
                 cat['primary_band'][100:] = 'r'

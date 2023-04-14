@@ -143,7 +143,7 @@ class SimpleAssociationTask(pipeBase.Task):
             for diaSourceId, diaSrc in ccdVisitSources.iterrows():
                 # Find matches.
                 matchResult = self.findMatches(diaSrc["ra"],
-                                               diaSrc["decl"],
+                                               diaSrc["dec"],
                                                2*self.config.tolerance,
                                                healPixIndices,
                                                diaObjectCat)
@@ -204,7 +204,7 @@ class SimpleAssociationTask(pipeBase.Task):
 
         objs = diaObjectCat if diaObjectCat else np.array([], dtype=[('diaObjectId', 'int64'),
                                                                      ('ra', 'float64'),
-                                                                     ('decl', 'float64'),
+                                                                     ('dec', 'float64'),
                                                                      ('nDiaSources', 'int64')])
         diaObjects = pd.DataFrame(data=objs)
 
@@ -251,18 +251,18 @@ class SimpleAssociationTask(pipeBase.Task):
         """
         hpIndex = toIndex(self.config.nside,
                           diaSrc["ra"],
-                          diaSrc["decl"])
+                          diaSrc["dec"])
         healPixIndices.append(hpIndex)
 
         sphPoint = geom.SpherePoint(diaSrc["ra"],
-                                    diaSrc["decl"],
+                                    diaSrc["dec"],
                                     geom.degrees)
         diaObjCoords.append([sphPoint])
 
         diaObjId = idCat.addNew().get("id")
         diaObjCat.append(self.createDiaObject(diaObjId,
                                               diaSrc["ra"],
-                                              diaSrc["decl"]))
+                                              diaSrc["dec"]))
         diaSources.loc[(ccdVisit, diaSourceId), "diaObjectId"] = diaObjId
 
     def updateCatalogs(self,
@@ -301,17 +301,17 @@ class SimpleAssociationTask(pipeBase.Task):
         """
         # Update location and healPix index.
         sphPoint = geom.SpherePoint(diaSrc["ra"],
-                                    diaSrc["decl"],
+                                    diaSrc["dec"],
                                     geom.degrees)
         diaObjCoords[matchIndex].append(sphPoint)
         aveCoord = geom.averageSpherePoint(diaObjCoords[matchIndex])
         diaObjCat[matchIndex]["ra"] = aveCoord.getRa().asDegrees()
-        diaObjCat[matchIndex]["decl"] = aveCoord.getDec().asDegrees()
+        diaObjCat[matchIndex]["dec"] = aveCoord.getDec().asDegrees()
         nSources = diaObjCat[matchIndex]["nDiaSources"]
         diaObjCat[matchIndex]["nDiaSources"] = nSources + 1
         healPixIndices[matchIndex] = toIndex(self.config.nside,
                                              diaObjCat[matchIndex]["ra"],
-                                             diaObjCat[matchIndex]["decl"])
+                                             diaObjCat[matchIndex]["dec"])
         # Update DiaObject Id that this source is now associated to.
         diaSources.loc[(ccdVisit, diaSourceId), "diaObjectId"] = \
             diaObjCat[matchIndex]["diaObjectId"]
@@ -358,13 +358,13 @@ class SimpleAssociationTask(pipeBase.Task):
         dists = np.array(
             [np.sqrt(np.sum((eq2xyz(src_ra, src_dec)
                              - eq2xyz(diaObjs[match]["ra"],
-                                      diaObjs[match]["decl"]))**2))
+                                      diaObjs[match]["dec"]))**2))
              for match in matchIndices])
         return pipeBase.Struct(
             dists=dists,
             matches=matchIndices)
 
-    def createDiaObject(self, objId, ra, decl):
+    def createDiaObject(self, objId, ra, dec):
         """Create a simple empty DiaObject with location and id information.
 
         Parameters
@@ -373,7 +373,7 @@ class SimpleAssociationTask(pipeBase.Task):
             Unique ID for this new DiaObject.
         ra : `float`
             RA location of this DiaObject.
-        decl : `float`
+        dec : `float`
             Dec location of this DiaObject
 
         Returns
@@ -383,6 +383,6 @@ class SimpleAssociationTask(pipeBase.Task):
         """
         new_dia_object = {"diaObjectId": objId,
                           "ra": ra,
-                          "decl": decl,
+                          "dec": dec,
                           "nDiaSources": 1}
         return new_dia_object

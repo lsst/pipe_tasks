@@ -43,15 +43,15 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
         self.diaObjRas[3] = self.diaObjRas[2] + 0.1/3600
         self.diaObjDecs[3] = self.diaObjDecs[2] + 0.1/3600
         self.diaObjects = [
-            simpleAssoc.createDiaObject(objId, ra, decl)
-            for objId, ra, decl in zip(
+            simpleAssoc.createDiaObject(objId, ra, dec)
+            for objId, ra, dec in zip(
                 np.arange(self.nDiaObjects, dtype=int),
                 self.diaObjRas,
                 self.diaObjDecs)]
 
         self.hpIndices = [toIndex(simpleAssoc.config.nside,
                                   diaObj["ra"],
-                                  diaObj["decl"])
+                                  diaObj["dec"])
                           for diaObj in self.diaObjects]
 
         self.newDiaObjectVisit = 1236
@@ -61,24 +61,24 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
              "diaSourceId": idx,
              "diaObjectId": 0,
              "ra": ra,
-             "decl": decl}
-            for idx, (ra, decl) in enumerate(zip(self.diaObjRas,
-                                                 self.diaObjDecs))]
+             "dec": dec}
+            for idx, (ra, dec) in enumerate(zip(self.diaObjRas,
+                                                self.diaObjDecs))]
         self.coordList = [
-            [geom.SpherePoint(diaSrc["ra"], diaSrc["decl"], geom.degrees)]
+            [geom.SpherePoint(diaSrc["ra"], diaSrc["dec"], geom.degrees)]
             for diaSrc in diaSourceList]
         moreDiaSources = [
             {"ccdVisitId": 1235,
              "diaSourceId": idx + self.nDiaObjects,
              "diaObjectId": 0,
              "ra": ra,
-             "decl": decl}
-            for idx, (ra, decl) in enumerate(zip(self.diaObjRas,
-                                                 self.diaObjDecs))]
+             "dec": dec}
+            for idx, (ra, dec) in enumerate(zip(self.diaObjRas,
+                                                self.diaObjDecs))]
         for idx in range(self.nDiaObjects):
             self.coordList[idx].append(
                 geom.SpherePoint(moreDiaSources[idx]["ra"],
-                                 moreDiaSources[idx]["decl"],
+                                 moreDiaSources[idx]["dec"],
                                  geom.degrees))
         diaSourceList.extend(moreDiaSources)
 
@@ -88,12 +88,12 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
                               "diaSourceId": len(diaSourceList),
                               "diaObjectId": 0,
                               "ra": 0.0,
-                              "decl": 0.0})
+                              "dec": 0.0})
         diaSourceList.append({"ccdVisitId": 1236,
                               "diaSourceId": len(diaSourceList),
                               "diaObjectId": 0,
                               "ra": 1.0,
-                              "decl": 89.0})
+                              "dec": 89.0})
         self.diaSources = pd.DataFrame(data=diaSourceList)
 
     def tearDown(self):

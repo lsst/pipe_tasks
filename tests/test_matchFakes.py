@@ -97,12 +97,12 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
         extraColumnData = self.rng.integers(0, 100, size=len(tmpCat))
         self.sourceCat = pd.DataFrame(
             data={"ra": np.degrees(tmpCat["ra"]),
-                  "decl": np.degrees(tmpCat["dec"]),
+                  "dec": np.degrees(tmpCat["dec"]),
                   "diaObjectId": np.arange(1, len(tmpCat) + 1, dtype=int),
-                  "filterName": "g",
+                  "band": "g",
                   "diaSourceId": np.arange(1, len(tmpCat) + 1, dtype=int),
                   "extraColumn": extraColumnData})
-        self.sourceCat.set_index(["diaObjectId", "filterName", "extraColumn"],
+        self.sourceCat.set_index(["diaObjectId", "band", "extraColumn"],
                                  drop=False,
                                  inplace=True)
 

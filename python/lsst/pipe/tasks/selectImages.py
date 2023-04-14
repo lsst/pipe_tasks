@@ -569,8 +569,8 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
         for detectorSummary in visitSummary:
             if (np.all(np.isfinite(detectorSummary['raCorners']))
                     and np.all(np.isfinite(detectorSummary['decCorners']))):
-                corners = [lsst.geom.SpherePoint(ra, decl, units=lsst.geom.degrees).getVector()
-                           for (ra, decl) in
+                corners = [lsst.geom.SpherePoint(ra, dec, units=lsst.geom.degrees).getVector()
+                           for (ra, dec) in
                            zip(detectorSummary['raCorners'], detectorSummary['decCorners'])]
                 detectorPolygon = lsst.sphgeom.ConvexPolygon.convexHull(corners)
                 if detectorPolygon.intersects(polygon):

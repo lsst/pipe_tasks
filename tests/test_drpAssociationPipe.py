@@ -62,9 +62,9 @@ class TestDrpAssociationPipe(lsst.utils.tests.TestCase):
                 x + 10 * self.innerPatchBox.getWidth(),
                 y + 10 * self.innerPatchBox.getHeight())
             dataIn.append({"ra": coordIn.getRa().asDegrees(),
-                           "decl": coordIn.getDec().asDegrees()})
+                           "dec": coordIn.getDec().asDegrees()})
             dataOut.append({"ra": coordOut.getRa().asDegrees(),
-                            "decl": coordOut.getDec().asDegrees()})
+                            "dec": coordOut.getDec().asDegrees()})
 
         self.diaSrcCatIn = pd.DataFrame(data=dataIn)
         self.diaSrcCatOut = pd.DataFrame(data=dataOut)

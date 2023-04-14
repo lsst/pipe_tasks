@@ -1448,7 +1448,7 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
 
             ccdEntry = {}
             summaryTable = visitSummary.asAstropy()
-            selectColumns = ['id', 'visit', 'physical_filter', 'band', 'ra', 'decl', 'zenithDistance',
+            selectColumns = ['id', 'visit', 'physical_filter', 'band', 'ra', 'dec', 'zenithDistance',
                              'zeroPoint', 'psfSigma', 'skyBg', 'skyNoise',
                              'astromOffsetMean', 'astromOffsetStd', 'nPsfStar',
                              'psfStarDeltaE1Median', 'psfStarDeltaE2Median',
@@ -1566,7 +1566,7 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
             visitEntry["band"] = visitRow['band']
             raDec = visitInfo.getBoresightRaDec()
             visitEntry["ra"] = raDec.getRa().asDegrees()
-            visitEntry["decl"] = raDec.getDec().asDegrees()
+            visitEntry["dec"] = raDec.getDec().asDegrees()
             visitEntry["skyRotation"] = visitInfo.getBoresightRotAngle().asDegrees()
             azAlt = visitInfo.getBoresightAzAlt()
             visitEntry["azimuth"] = azAlt.getLongitude().asDegrees()

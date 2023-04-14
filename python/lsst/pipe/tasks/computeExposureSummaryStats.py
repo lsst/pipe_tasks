@@ -100,7 +100,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     - psfIyy
     - psfIxy
     - ra
-    - decl
+    - dec
     - zenithDistance
     - zeroPoint
     - skyBg
@@ -318,7 +318,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.raCorners = [nan]*4
         summary.decCorners = [nan]*4
         summary.ra = nan
-        summary.decl = nan
+        summary.dec = nan
         summary.zenithDistance = nan
 
         if wcs is None:
@@ -330,7 +330,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
         sph_pt = wcs.pixelToSky(bbox.getCenter())
         summary.ra = sph_pt.getRa().asDegrees()
-        summary.decl = sph_pt.getDec().asDegrees()
+        summary.dec = sph_pt.getDec().asDegrees()
 
         date = visitInfo.getDate()
 
@@ -347,7 +347,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
                            location=loc, format='mjd')
             coord = SkyCoord(
                 summary.ra*units.degree,
-                summary.decl*units.degree,
+                summary.dec*units.degree,
                 obstime=obstime,
                 location=loc,
             )
