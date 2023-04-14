@@ -41,7 +41,7 @@ from PIL import Image
 
 from lsst.sphgeom import RangeSet, HealpixPixelization
 from lsst.utils.timer import timeMethod
-from lsst.daf.butler import Butler, DatasetRef, Quantum, SkyPixDimension
+from lsst.daf.butler import Butler, DatasetRef, Quantum, SkyPixDimension, UnresolvedRefWarning
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.geom as afwGeom
@@ -598,9 +598,11 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
                         output_data_ids.append(
                             registry.expandDataId({hpx_output_dimension: hpx_output_index, "band": band})
                         )
-                outputs = {dt: [DatasetRef(dt, data_id)] for dt in incidental_output_dataset_types}
-                outputs[output_dataset_type] = [DatasetRef(output_dataset_type, data_id)
-                                                for data_id in output_data_ids]
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", category=UnresolvedRefWarning)
+                    outputs = {dt: [DatasetRef(dt, data_id)] for dt in incidental_output_dataset_types}
+                    outputs[output_dataset_type] = [DatasetRef(output_dataset_type, data_id)
+                                                    for data_id in output_data_ids]
                 quanta.append(
                     Quantum(
                         taskName=task_def.taskName,
