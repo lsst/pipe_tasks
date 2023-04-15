@@ -26,39 +26,10 @@ import numpy as np
 import pandas as pd
 
 import lsst.utils.tests
-import lsst.daf.butler
 import lsst.pipe.base as pipeBase
 
 from lsst.pipe.tasks.finalizeCharacterization import (FinalizeCharacterizationConfig,
                                                       FinalizeCharacterizationTask)
-
-
-class MockDataFrameReference(lsst.daf.butler.DeferredDatasetHandle):
-    """Very simple object that looks like a Gen3 data reference to
-    a dataframe.
-    """
-    def __init__(self, df):
-        self.df = df
-
-    def get(self, parameters={}, **kwargs):
-        """Retrieve the specified dataset using the API of the Gen3 Butler.
-
-        Parameters
-        ----------
-        parameters : `dict`, optional
-            Parameter dictionary.  Supported key is ``columns``.
-
-        Returns
-        -------
-        dataframe : `pandas.DataFrame`
-            dataframe, cut to the specified columns.
-        """
-        if 'columns' in parameters:
-            _columns = parameters['columns']
-
-            return self.df[_columns]
-        else:
-            return self.df.copy()
 
 
 class TestFinalizeCharacterizationTask(FinalizeCharacterizationTask):
@@ -176,8 +147,10 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
 
             source_cat = np.concatenate(source_cats)
 
-            isolated_star_cat_dict[tract] = MockDataFrameReference(pd.DataFrame(cat))
-            isolated_star_source_dict[tract] = MockDataFrameReference(pd.DataFrame(source_cat))
+            isolated_star_cat_dict[tract] = pipeBase.InMemoryDatasetHandle(pd.DataFrame(cat),
+                                                                           storageClass="DataFrame")
+            isolated_star_source_dict[tract] = pipeBase.InMemoryDatasetHandle(pd.DataFrame(source_cat),
+                                                                              storageClass="DataFrame")
 
         return isolated_star_cat_dict, isolated_star_source_dict
 

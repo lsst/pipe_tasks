@@ -25,7 +25,7 @@ import numpy as np
 import hpgeom as hpg
 
 import lsst.utils.tests
-import lsst.daf.butler
+import lsst.pipe.base
 import lsst.afw.image
 import lsst.skymap
 import lsst.geom
@@ -35,33 +35,6 @@ from lsst.pipe.tasks.hips import (
     HighResolutionHipsConfig,
     HighResolutionHipsConnections
 )
-
-
-class MockCoaddImageHandle(lsst.daf.butler.DeferredDatasetHandle):
-    """Simple object that looks like a Gen3 deferred dataset handle
-    to an exposure.
-
-    Parameters
-    ----------
-    exposure : `lsst.afw.image.ExposureF`
-        Exposure to hold.
-    """
-    def __init__(self, exposure):
-        self.exposure = exposure
-
-    def get(self, **kwargs):
-        """Retrieve the dataset using the API of the Gen3 Butler.
-
-        Returns
-        -------
-        exposure : `lsst.afw.image.ExposureF`
-            Exposure held in mock handle.
-        """
-        return self.exposure
-
-    @property
-    def dataId(self):
-        return {'visit': 0, 'detector': 0}
 
 
 class HipsTestCase(unittest.TestCase):
@@ -79,7 +52,7 @@ class HipsTestCase(unittest.TestCase):
         patch_info = tract_info[patch]
 
         exposure = self._make_noise_exposure(patch_info)
-        handles = [MockCoaddImageHandle(exposure)]
+        handles = [lsst.pipe.base.InMemoryDatasetHandle(exposure)]
 
         center = patch_info.wcs.pixelToSky(patch_info.inner_bbox.getCenter())
         pixel = self._get_pixel(2**config.hips_order, center)
@@ -112,7 +85,7 @@ class HipsTestCase(unittest.TestCase):
         for patch in patches:
             patch_info = tract_info[patch]
             exposure = self._make_noise_exposure(patch_info)
-            handles.append(MockCoaddImageHandle(exposure))
+            handles.append(lsst.pipe.base.InMemoryDatasetHandle(exposure))
             centers.append(patch_info.wcs.pixelToSky(patch_info.inner_bbox.getCenter()))
 
         center = lsst.geom.SpherePoint(
@@ -151,7 +124,7 @@ class HipsTestCase(unittest.TestCase):
         patch_info = tract_info[patch]
 
         exposure = self._make_noise_exposure(patch_info)
-        handles = [MockCoaddImageHandle(exposure)]
+        handles = [lsst.pipe.base.InMemoryDatasetHandle(exposure)]
 
         pixel = 0
 

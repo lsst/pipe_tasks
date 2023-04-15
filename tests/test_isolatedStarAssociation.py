@@ -26,48 +26,12 @@ import numpy as np
 import pandas as pd
 
 import lsst.utils.tests
-import lsst.daf.butler
+import lsst.pipe.base
 import lsst.skymap
 
 from lsst.pipe.tasks.isolatedStarAssociation import (IsolatedStarAssociationConfig,
                                                      IsolatedStarAssociationTask)
 from smatch.matcher import Matcher
-
-
-class MockSourceTableReference(lsst.daf.butler.DeferredDatasetHandle):
-    """Very simple object that looks like a Gen3 data reference to
-    a sourceTable_visit.
-
-    Parameters
-    ----------
-    source_table : `pandas.DataFrame`
-        Dataframe of the source table.
-    """
-    def __init__(self, source_table):
-        self.source_table = source_table
-
-    def get(self, parameters={}, **kwargs):
-        """Retrieve the specified dataset using the API of the Gen3 Butler.
-
-        Parameters
-        ----------
-        parameters : `dict`, optional
-            Parameter dictionary.  Supported key is ``columns``.
-
-        Returns
-        -------
-        dataframe : `pandas.DataFrame`
-            dataframe, cut to the specified columns.
-        """
-        if 'columns' in parameters:
-            _columns = parameters['columns']
-            if 'sourceId' in parameters['columns']:
-                # Treat the index separately
-                _columns.remove('sourceId')
-
-            return self.source_table[_columns]
-        else:
-            return self.source_table.copy()
 
 
 class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
@@ -123,7 +87,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
 
         Returns
         -------
-        data_refs : `list` [`MockSourceTableReference`]
+        data_refs : `list` [`InMemoryDatasetHandle`]
             List of mock references.
         """
         np.random.seed(12345)
@@ -221,7 +185,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
 
                 df = pd.DataFrame(table)
                 df.set_index('sourceId', inplace=True)
-                data_refs.append(MockSourceTableReference(df))
+                data_refs.append(lsst.pipe.base.InMemoryDatasetHandle(df, storageClass="DataFrame"))
 
                 id_counter += nstar
                 visit_counter += 1

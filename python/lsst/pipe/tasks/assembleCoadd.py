@@ -653,9 +653,17 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
                 Input list of image scalers (`list`) (unmodified).
             ``weightList``
                 Input list of weights (`list`) (unmodified).
+
+        Raises
+        ------
+        lsst.pipe.base.NoWorkFound
+            Raised if no data references are provided.
         """
         tempExpName = self.getTempExpDatasetName(self.warpType)
         self.log.info("Assembling %s %s", len(tempExpRefList), tempExpName)
+        if not tempExpRefList:
+            raise pipeBase.NoWorkFound("No exposures provided for co-addition.")
+
         stats = self.prepareStats(mask=mask)
 
         if altMaskList is None:

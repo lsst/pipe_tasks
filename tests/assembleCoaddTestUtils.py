@@ -33,7 +33,6 @@ import numpy as np
 from lsst.afw.cameraGeom.testUtils import DetectorWrapper
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
-import lsst.daf.butler
 import lsst.geom as geom
 from lsst.geom import arcseconds, degrees
 from lsst.meas.algorithms.testUtils import plantSources
@@ -46,7 +45,7 @@ from astro_metadata_translator import makeObservationInfo
 __all__ = ["MockWarpReference", "makeMockSkyInfo", "MockCoaddTestData"]
 
 
-class MockWarpReference(lsst.daf.butler.DeferredDatasetHandle):
+class MockWarpReference(pipeBase.InMemoryDatasetHandle):
     """Very simple object that looks like a Gen 3 data reference to a warped
     exposure.
 
@@ -54,30 +53,12 @@ class MockWarpReference(lsst.daf.butler.DeferredDatasetHandle):
     ----------
     exposure : `lsst.afw.image.Exposure`
         The exposure to be retrieved by the data reference.
-    coaddName : `str`
-        The type of coadd being produced. Typically 'deep'.
-    patch : `int`
-        Unique identifier for a subdivision of a tract.
-    tract : `int`
-        Unique identifier for a tract of a skyMap
-    visit : `int`
-        Unique identifier for an observation,
-        potentially consisting of multiple ccds.
     """
-    def __init__(self, exposure, coaddName='deep', patch=42, tract=0, visit=100):
-        self.coaddName = coaddName
-        self.exposure = exposure
-        self.tract = tract
-        self.patch = patch
-        self.visit = visit
-
-    def get(self, bbox=None, component=None, parameters=None):
+    def get(self, *, component=None, parameters=None):
         """Retrieve the specified dataset using the API of the Gen 3 Butler.
 
         Parameters
         ----------
-        bbox : `lsst.geom.box.Box2I`, optional
-            If supplied, retrieve only a subregion of the exposure.
         component : `str`, optional
             If supplied, return the named metadata of the exposure.
         parameters : `dict`, optional
@@ -88,38 +69,13 @@ class MockWarpReference(lsst.daf.butler.DeferredDatasetHandle):
         -------
         `lsst.afw.image.Exposure` or `lsst.afw.image.VisitInfo`
         or `lsst.meas.algorithms.SingleGaussianPsf`
-            Either the exposure or its metadata, depending on the datasetType.
+            Either the exposure or its metadata, depending on the component
+            requested.
         """
-        if component == 'psf':
-            return self.exposure.getPsf()
-        elif component == 'visitInfo':
-            return self.exposure.getInfo().getVisitInfo()
-        if parameters is not None:
-            if "bbox" in parameters:
-                bbox = parameters["bbox"]
-        exp = self.exposure.clone()
-        if bbox is not None:
-            return exp[bbox]
-        else:
-            return exp
-
-    @property
-    def dataId(self):
-        """Generate a valid data identifier.
-
-        Returns
-        -------
-        dataId : `lsst.daf.butler.DataCoordinate`
-            Data identifier dict for the patch.
-        """
-        return lsst.daf.butler.DataCoordinate.standardize(
-            tract=self.tract,
-            patch=self.patch,
-            visit=self.visit,
-            instrument="DummyCam",
-            skymap="Skymap",
-            universe=lsst.daf.butler.DimensionUniverse(),
-        )
+        exp = super().get(component=component, parameters=parameters)
+        if isinstance(exp, afwImage.ExposureF):
+            exp = exp.clone()
+        return exp
 
 
 def makeMockSkyInfo(bbox, wcs, patch):
@@ -479,7 +435,7 @@ class MockCoaddTestData:
                 exposure = matchedExposures[expId]
             else:
                 raise ValueError("warpType must be one of 'direct' or 'psfMatched'")
-            dataRef = MockWarpReference(exposure, coaddName=coaddName,
-                                        tract=tract, patch=patch, visit=expId)
+            dataRef = MockWarpReference(exposure, storageClass="ExposureF",
+                                        tract=tract, patch=patch, visit=expId, coaddName=coaddName)
             dataRefList.append(dataRef)
         return dataRefList

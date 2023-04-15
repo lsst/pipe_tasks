@@ -22,7 +22,6 @@
 """Utilities for HealSparsePropertyMapTask and others."""
 import numpy as np
 
-import lsst.daf.butler
 import lsst.geom as geom
 from lsst.daf.base import DateTime
 from lsst.afw.coord import Observatory
@@ -33,8 +32,7 @@ import lsst.afw.geom as afwGeom
 from lsst.afw.detection import GaussianPsf
 
 
-__all__ = ['makeMockVisitSummary', 'MockVisitSummaryReference', 'MockCoaddReference',
-           'MockInputMapReference']
+__all__ = ['makeMockVisitSummary']
 
 
 def makeMockVisitSummary(visit,
@@ -178,101 +176,3 @@ def makeMockVisitSummary(visit,
         row['psfArea'] = shape.getArea()
 
     return visit_summary
-
-
-class MockVisitSummaryReference(lsst.daf.butler.DeferredDatasetHandle):
-    """Very simple object that looks like a Gen3 data reference to
-    a visit summary.
-
-    Parameters
-    ----------
-    visit_summary : `lsst.afw.table.ExposureCatalog`
-        Visit summary catalog.
-    visit : `int`
-        Visit number.
-    """
-    def __init__(self, visit_summary, visit):
-        self.visit_summary = visit_summary
-        self.visit = visit
-
-    def get(self):
-        """Retrieve the specified dataset using the API of the Gen3 Butler.
-
-        Returns
-        -------
-        visit_summary : `lsst.afw.table.ExposureCatalog`
-        """
-        return self.visit_summary
-
-
-class MockCoaddReference(lsst.daf.butler.DeferredDatasetHandle):
-    """Very simple object that looks like a Gen3 data reference to
-    a coadd.
-
-    Parameters
-    ----------
-    exposure : `lsst.afw.image.Exposure`
-        The exposure to be retrieved by the data reference.
-    coaddName : `str`
-        The type of coadd produced.  Typically "deep".
-    patch : `int`
-        Unique identifier for a subdivision of a tract.
-    tract : `int`
-        Unique identifier for a tract of a skyMap
-    """
-    def __init__(self, exposure, coaddName="deep", patch=0, tract=0):
-        self.coaddName = coaddName
-        self.exposure = exposure
-        self.tract = tract
-        self.patch = patch
-
-    def get(self, component=None):
-        """Retrieve the specified dataset using the API of the Gen 3 Butler.
-
-        Parameters
-        ----------
-        component : `str`, optional
-            If supplied, return the named metadata of the exposure.  Allowed
-            components are "photoCalib" or "coaddInputs".
-
-        Returns
-        -------
-        `lsst.afw.image.Exposure` ('component=None') or
-        `lsst.afw.image.PhotoCalib` ('component="photoCalib") or
-        `lsst.afw.image.CoaddInputs` ('component="coaddInputs")
-        """
-        if component == "photoCalib":
-            return self.exposure.getPhotoCalib()
-        elif component == "coaddInputs":
-            return self.exposure.getInfo().getCoaddInputs()
-
-        return self.exposure.clone()
-
-
-class MockInputMapReference(lsst.daf.butler.DeferredDatasetHandle):
-    """Very simple object that looks like a Gen3 data reference to
-    an input map.
-
-    Parameters
-    ----------
-    input_map : `healsparse.HealSparseMap`
-        Bitwise input map.
-    patch : `int`
-        Patch number.
-    tract : `int`
-        Tract number.
-    """
-    def __init__(self, input_map, patch=0, tract=0):
-        self.input_map = input_map
-        self.tract = tract
-        self.patch = patch
-
-    def get(self):
-        """
-        Retrieve the specified dataset using the API of the Gen 3 Butler.
-
-        Returns
-        -------
-        input_map : `healsparse.HealSparseMap`
-        """
-        return self.input_map

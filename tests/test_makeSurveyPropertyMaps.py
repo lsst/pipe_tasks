@@ -36,14 +36,12 @@ import lsst.afw.image as afwImage
 from lsst.skymap.discreteSkyMap import DiscreteSkyMap
 import lsst.geom as geom
 
+from lsst.pipe.base import InMemoryDatasetHandle
 from lsst.pipe.tasks.healSparseMapping import HealSparsePropertyMapTask
 from lsst.pipe.tasks.healSparseMappingProperties import (register_property_map,
                                                          BasePropertyMap)
 
-from surveyPropertyMapsTestUtils import (makeMockVisitSummary,
-                                         MockVisitSummaryReference,
-                                         MockCoaddReference,
-                                         MockInputMapReference)
+from surveyPropertyMapsTestUtils import makeMockVisitSummary
 
 
 # Test creation of an arbitrary new property map by registering it here
@@ -93,7 +91,7 @@ class HealSparsePropertyMapTaskTestCase(lsst.utils.tests.TestCase):
                                                 ra_center=ra_center,
                                                 dec_center=dec_center)
                            for visit in visits]
-        visit_summary_refs = [MockVisitSummaryReference(visit_summary, visit)
+        visit_summary_refs = [InMemoryDatasetHandle(visit_summary, visit=visit)
                               for visit_summary, visit in zip(visit_summaries, visits)]
         self.visit_summary_dict = {visit: ref.get()
                                    for ref, visit in zip(visit_summary_refs, visits)}
@@ -123,7 +121,7 @@ class HealSparsePropertyMapTaskTestCase(lsst.utils.tests.TestCase):
         input_map.set_bits_pix(poly_pixels, [0])
         input_map.set_bits_pix(poly_pixels, [1])
 
-        input_map_ref = MockInputMapReference(input_map, patch=patch, tract=tract)
+        input_map_ref = InMemoryDatasetHandle(input_map, patch=patch, tract=tract)
         self.input_map_dict = {patch: input_map_ref}
 
         coadd = afwImage.ExposureF(sky_map[tract][patch].getOuterBBox(),
@@ -156,7 +154,7 @@ class HealSparsePropertyMapTaskTestCase(lsst.utils.tests.TestCase):
         inputs.ccds = ccds
         coadd.getInfo().setCoaddInputs(inputs)
 
-        coadd_ref = MockCoaddReference(coadd, patch=patch, tract=tract)
+        coadd_ref = InMemoryDatasetHandle(coadd, patch=patch, tract=tract, storageClass="ExposureF")
         self.coadd_dict = {patch: coadd_ref}
 
         self.tract = tract
@@ -220,9 +218,9 @@ class HealSparsePropertyMapTaskTestCase(lsst.utils.tests.TestCase):
         # Replace the input map with an empty one.
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            self.input_map_dict[0].input_map = hsp.HealSparseMap.make_empty_like(
-                self.input_map_dict[0].input_map
-            )
+            self.input_map_dict[0] = InMemoryDatasetHandle(hsp.HealSparseMap.make_empty_like(
+                self.input_map_dict[0].inMemoryDataset
+            ), **self.input_map_dict[0].dataId)
 
         config = HealSparsePropertyMapTask.ConfigClass()
 
