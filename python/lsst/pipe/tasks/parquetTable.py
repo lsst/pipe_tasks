@@ -33,7 +33,11 @@ import pyarrow.parquet
 import numpy as np
 import pandas as pd
 
+from deprecated.sphinx import deprecated
 
+
+@deprecated(reason="The ParquetTable interface is from Gen2 i/o and will be removed after v26.",
+            version="v25", category=FutureWarning)
 class ParquetTable(object):
     """Thin wrapper to pyarrow's ParquetFile object
 
@@ -148,6 +152,8 @@ class ParquetTable(object):
         return df
 
 
+@deprecated(reason="The MultilevelParquetTable interface is from Gen2 i/o and will be removed after v26.",
+            version="v25", category=FutureWarning)
 class MultilevelParquetTable(ParquetTable):
     """Wrapper to access dataframe with multi-level column index from Parquet
 
