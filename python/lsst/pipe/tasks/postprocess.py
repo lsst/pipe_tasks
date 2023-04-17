@@ -51,10 +51,9 @@ from lsst.pipe.base import connectionTypes
 import lsst.afw.table as afwTable
 from lsst.afw.image import ExposureSummaryStats
 from lsst.meas.base import SingleFrameMeasurementTask
-from lsst.daf.butler import DeferredDatasetHandle, DataCoordinate
+from lsst.daf.butler import DataCoordinate
 from lsst.skymap import BaseSkyMap
 
-from .parquetTable import ParquetTable
 from .functors import CompositeFunctor, Column
 
 log = logging.getLogger(__name__)
@@ -120,7 +119,8 @@ class WriteObjectTableConfig(pipeBase.PipelineTaskConfig,
     engine = pexConfig.Field(
         dtype=str,
         default="pyarrow",
-        doc="Parquet engine for writing (pyarrow or fastparquet)"
+        doc="Parquet engine for writing (pyarrow or fastparquet)",
+        deprecated="This config is no longer used, and will be removed after v26."
     )
     coaddName = pexConfig.Field(
         dtype=str,
@@ -130,7 +130,7 @@ class WriteObjectTableConfig(pipeBase.PipelineTaskConfig,
 
 
 class WriteObjectTableTask(pipeBase.PipelineTask):
-    """Write filter-merged source tables to parquet
+    """Write filter-merged source tables as a DataFrame in parquet format.
     """
     _DefaultName = "writeObjectTable"
     ConfigClass = WriteObjectTableConfig
@@ -208,7 +208,7 @@ class WriteSourceTableConnections(pipeBase.PipelineTaskConnections,
         dimensions=("instrument", "visit", "detector")
     )
     outputCatalog = connectionTypes.Output(
-        doc="Catalog of sources, `src` in Parquet format. The 'id' column is "
+        doc="Catalog of sources, `src` in DataFrame/Parquet format. The 'id' column is "
             "replaced with an index; all other columns are unchanged.",
         name="{catalogType}source",
         storageClass="DataFrame",
@@ -222,7 +222,7 @@ class WriteSourceTableConfig(pipeBase.PipelineTaskConfig,
 
 
 class WriteSourceTableTask(pipeBase.PipelineTask):
-    """Write source table to parquet.
+    """Write source table to DataFrame Parquet format.
     """
     _DefaultName = "writeSourceTable"
     ConfigClass = WriteSourceTableConfig
@@ -230,12 +230,12 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         inputs['ccdVisitId'] = butlerQC.quantum.dataId.pack("visit_detector")
-        result = self.run(**inputs).table
-        outputs = pipeBase.Struct(outputCatalog=result.toDataFrame())
+        result = self.run(**inputs)
+        outputs = pipeBase.Struct(outputCatalog=result.table)
         butlerQC.put(outputs, outputRefs)
 
     def run(self, catalog, ccdVisitId=None, **kwargs):
-        """Convert `src` catalog to parquet
+        """Convert `src` catalog to DataFrame
 
         Parameters
         ----------
@@ -248,12 +248,12 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
         -------
         result : `lsst.pipe.base.Struct`
             ``table``
-                `ParquetTable` version of the input catalog
+                `DataFrame` version of the input catalog
         """
-        self.log.info("Generating parquet table from src catalog ccdVisitId=%s", ccdVisitId)
+        self.log.info("Generating DataFrame from src catalog ccdVisitId=%s", ccdVisitId)
         df = catalog.asAstropy().to_pandas().set_index('id', drop=True)
         df['ccdVisitId'] = ccdVisitId
-        return pipeBase.Struct(table=ParquetTable(dataFrame=df))
+        return pipeBase.Struct(table=df)
 
 
 class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
@@ -379,7 +379,7 @@ class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
 
 
 class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
-    """Write source table to parquet
+    """Write source table to DataFrame Parquet format.
     """
     _DefaultName = "writeRecalibratedSourceTable"
     ConfigClass = WriteRecalibratedSourceTableConfig
@@ -395,8 +395,8 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
 
             inputs['catalog'] = self.addCalibColumns(**inputs)
 
-        result = self.run(**inputs).table
-        outputs = pipeBase.Struct(outputCatalog=result.toDataFrame())
+        result = self.run(**inputs)
+        outputs = pipeBase.Struct(outputCatalog=result.table)
         butlerQC.put(outputs, outputRefs)
 
     def attachCalibs(self, inputRefs, skyMap, exposure, externalSkyWcsGlobalCatalog=None,
@@ -621,14 +621,14 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
 
 
 class PostprocessAnalysis(object):
-    """Calculate columns from ParquetTable.
+    """Calculate columns from DataFrames or handles storing DataFrames.
 
     This object manages and organizes an arbitrary set of computations
     on a catalog.  The catalog is defined by a
-    `~lsst.pipe.tasks.parquetTable.ParquetTable` object (or list thereof), such
-     as a ``deepCoadd_obj`` dataset, and the computations are defined by a
-    collection of `lsst.pipe.tasks.functor.Functor` objects (or, equivalently,
-    a ``CompositeFunctor``).
+    `DeferredDatasetHandle` or `InMemoryDatasetHandle` object
+    (or list thereof), such as a ``deepCoadd_obj`` dataset, and the
+    computations are defined by a collection of `lsst.pipe.tasks.functor.Functor`
+    objects (or, equivalently, a ``CompositeFunctor``).
 
     After the object is initialized, accessing the ``.df`` attribute (which
     holds the `pandas.DataFrame` containing the results of the calculations)
@@ -644,18 +644,19 @@ class PostprocessAnalysis(object):
     This object also allows a list of refFlags to be passed, and defines a set
     of default refFlags that are always included even if not requested.
 
-    If a list of `~lsst.pipe.tasks.ParquetTable` object is passed, rather than a single one,
+    If a list of DataFrames or Handles is passed, rather than a single one,
     then the calculations will be mapped over all the input catalogs.  In
     principle, it should be straightforward to parallelize this activity, but
     initial tests have failed (see TODO in code comments).
 
     Parameters
     ----------
-    parq : `~lsst.pipe.tasks.ParquetTable` (or list of such)
+    handles : `lsst.daf.butler.DeferredDatasetHandle` or
+              `lsst.pipe.base.InMemoryDatasetHandle` or
+              list of these.
         Source catalog(s) for computation.
-
     functors : `list`, `dict`, or `~lsst.pipe.tasks.functors.CompositeFunctor`
-        Computations to do (functors that act on ``parq``).
+        Computations to do (functors that act on ``handles``).
         If a dict, the output
         DataFrame will have columns keyed accordingly.
         If a list, the column keys will come from the
@@ -682,8 +683,8 @@ class PostprocessAnalysis(object):
     _defaultRefFlags = []
     _defaultFuncs = ()
 
-    def __init__(self, parq, functors, filt=None, flags=None, refFlags=None, forcedFlags=None):
-        self.parq = parq
+    def __init__(self, handles, functors, filt=None, flags=None, refFlags=None, forcedFlags=None):
+        self.handles = handles
         self.functors = functors
 
         self.filt = filt
@@ -728,17 +729,17 @@ class PostprocessAnalysis(object):
         return self._df
 
     def compute(self, dropna=False, pool=None):
-        # map over multiple parquet tables
-        if type(self.parq) in (list, tuple):
+        # map over multiple handles
+        if type(self.handles) in (list, tuple):
             if pool is None:
-                dflist = [self.func(parq, dropna=dropna) for parq in self.parq]
+                dflist = [self.func(handle, dropna=dropna) for handle in self.handles]
             else:
                 # TODO: Figure out why this doesn't work (pyarrow pickling
                 # issues?)
-                dflist = pool.map(functools.partial(self.func, dropna=dropna), self.parq)
+                dflist = pool.map(functools.partial(self.func, dropna=dropna), self.handles)
             self._df = pd.concat(dflist)
         else:
-            self._df = self.func(self.parq, dropna=dropna)
+            self._df = self.func(self.handles, dropna=dropna)
 
         return self._df
 
@@ -788,7 +789,8 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
 
     by applying functors that convert units and apply calibrations.
     The purpose of this task is to perform a set of computations on
-    an input `ParquetTable` dataset (such as ``deepCoadd_obj``) and write the
+    an input ``DeferredDatasetHandle`` or ``InMemoryDatasetHandle`` that holds
+    a ``DataFrame`` dataset (such as ``deepCoadd_obj``), and write the
     results to a new dataset (which needs to be declared in an ``outputDataset``
     attribute).
 
@@ -892,21 +894,24 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
         if self.funcs is None:
             raise ValueError("config.functorFile is None. "
                              "Must be a valid path to yaml in order to run Task as a PipelineTask.")
-        result = self.run(parq=inputs['inputCatalog'], funcs=self.funcs,
+        result = self.run(handle=inputs['inputCatalog'], funcs=self.funcs,
                           dataId=outputRefs.outputCatalog.dataId.full)
         outputs = pipeBase.Struct(outputCatalog=result)
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, parq, funcs=None, dataId=None, band=None):
+    def run(self, handle, funcs=None, dataId=None, band=None):
         """Do postprocessing calculations
 
-        Takes a `ParquetTable` object and dataId,
+        Takes a ``DeferredDatasetHandle`` or ``InMemoryDatasetHandle`` or
+        ``DataFrame`` object and dataId,
         returns a dataframe with results of postprocessing calculations.
 
         Parameters
         ----------
-        parq : `lsst.pipe.tasks.parquetTable.ParquetTable`
-            ParquetTable from which calculations are done.
+        handles : `lsst.daf.butler.DeferredDatasetHandle` or
+                  `lsst.pipe.base.InMemoryDatasetHandle` or
+                  `pandas.DataFrame`, or list of these.
+            DataFrames from which calculations are done.
         funcs : `lsst.pipe.tasks.functors.Functors`
             Functors to apply to the table's columns
         dataId : dict, optional
@@ -920,21 +925,21 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
         """
         self.log.info("Transforming/standardizing the source table dataId: %s", dataId)
 
-        df = self.transform(band, parq, funcs, dataId).df
+        df = self.transform(band, handle, funcs, dataId).df
         self.log.info("Made a table of %d columns and %d rows", len(df.columns), len(df))
         return df
 
     def getFunctors(self):
         return self.funcs
 
-    def getAnalysis(self, parq, funcs=None, band=None):
+    def getAnalysis(self, handles, funcs=None, band=None):
         if funcs is None:
             funcs = self.funcs
-        analysis = PostprocessAnalysis(parq, funcs, filt=band)
+        analysis = PostprocessAnalysis(handles, funcs, filt=band)
         return analysis
 
-    def transform(self, band, parq, funcs, dataId):
-        analysis = self.getAnalysis(parq, funcs=funcs, band=band)
+    def transform(self, band, handles, funcs, dataId):
+        analysis = self.getAnalysis(handles, funcs=funcs, band=band)
         df = analysis.df
         if dataId and self.config.columnsFromDataId:
             for key in self.config.columnsFromDataId:
@@ -1056,27 +1061,24 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
     _DefaultName = "transformObjectCatalog"
     ConfigClass = TransformObjectCatalogConfig
 
-    def run(self, parq, funcs=None, dataId=None, band=None):
+    def run(self, handle, funcs=None, dataId=None, band=None):
         # NOTE: band kwarg is ignored here.
         dfDict = {}
         analysisDict = {}
         templateDf = pd.DataFrame()
 
-        if isinstance(parq, DeferredDatasetHandle):
-            columns = parq.get(component='columns')
-            inputBands = columns.unique(level=1).values
-        else:
-            inputBands = parq.columnLevelNames['band']
+        columns = handle.get(component='columns')
+        inputBands = columns.unique(level=1).values
 
         outputBands = self.config.outputBands if self.config.outputBands else inputBands
 
-        # Perform transform for data of filters that exist in parq.
+        # Perform transform for data of filters that exist in the handle dataframe.
         for inputBand in inputBands:
             if inputBand not in outputBands:
                 self.log.info("Ignoring %s band data in the input", inputBand)
                 continue
             self.log.info("Transforming the catalog of band %s", inputBand)
-            result = self.transform(inputBand, parq, funcs, dataId)
+            result = self.transform(inputBand, handle, funcs, dataId)
             dfDict[inputBand] = result.df
             analysisDict[inputBand] = result.analysis
             if templateDf.empty:
@@ -1152,7 +1154,7 @@ class ConsolidateObjectTableConfig(pipeBase.PipelineTaskConfig,
 
 
 class ConsolidateObjectTableTask(pipeBase.PipelineTask):
-    """Write patch-merged source tables to a tract-level parquet file.
+    """Write patch-merged source tables to a tract-level DataFrame Parquet file.
 
     Concatenates `objectTable` list into a per-visit `objectTable_tract`.
     """
@@ -1588,7 +1590,7 @@ class WriteForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
         dimensions=("instrument", "visit", "detector", "skymap", "tract")
     )
     outputCatalog = connectionTypes.Output(
-        doc="InputCatalogs horizonatally joined on `objectId` in Parquet format",
+        doc="InputCatalogs horizonatally joined on `objectId` in DataFrame parquet format",
         name="mergedForcedSource",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector", "skymap", "tract")
@@ -1605,7 +1607,7 @@ class WriteForcedSourceTableConfig(pipeBase.PipelineTaskConfig,
 
 
 class WriteForcedSourceTableTask(pipeBase.PipelineTask):
-    """Merge and convert per-detector forced source catalogs to parquet.
+    """Merge and convert per-detector forced source catalogs to DataFrame Parquet format.
 
     Because the predecessor ForcedPhotCcdTask operates per-detector,
     per-tract, (i.e., it has tract in its dimensions), detectors
@@ -1646,7 +1648,7 @@ class TransformForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
                                             dimensions=("instrument", "skymap", "patch", "tract")):
 
     inputCatalogs = connectionTypes.Input(
-        doc="Parquet table of merged ForcedSources produced by WriteForcedSourceTableTask",
+        doc="DataFrames of merged ForcedSources produced by WriteForcedSourceTableTask",
         name="mergedForcedSource",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector", "skymap", "tract"),
@@ -1699,10 +1701,10 @@ class TransformForcedSourceTableConfig(TransformCatalogBaseConfig,
 class TransformForcedSourceTableTask(TransformCatalogBaseTask):
     """Transform/standardize a ForcedSource catalog
 
-    Transforms each wide, per-detector forcedSource parquet table per the
+    Transforms each wide, per-detector forcedSource DataFrame per the
     specification file (per-camera defaults found in ForcedSource.yaml).
     All epochs that overlap the patch are aggregated into one per-patch
-    narrow-parquet file.
+    narrow-DataFrame file.
 
     No de-duplication of rows is performed. Duplicate resolutions flags are
     pulled in from the referenceCatalog: `detect_isPrimary`,
