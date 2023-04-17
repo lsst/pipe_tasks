@@ -26,9 +26,7 @@ import numpy as np
 
 import lsst.utils.tests
 
-import pyarrow as pa
-import pyarrow.parquet as pq
-from lsst.pipe.tasks.parquetTable import MultilevelParquetTable
+from lsst.pipe.base import InMemoryDatasetHandle
 from lsst.pipe.tasks.functors import HsmFwhm, Column
 from lsst.pipe.tasks.postprocess import TransformObjectCatalogTask, TransformObjectCatalogConfig
 
@@ -44,12 +42,9 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         # Note that this test input includes HSC-G, HSC-R, and HSC-I data
         df = pd.read_csv(os.path.join(ROOT, 'data', 'test_multilevel_parq.csv.gz'),
                          header=[0, 1, 2], index_col=0)
-        with lsst.utils.tests.getTempFilePath('*.parq') as filename:
-            table = pa.Table.from_pandas(df)
-            pq.write_table(table, filename)
-            self.parq = MultilevelParquetTable(filename)
 
         self.dataId = {"tract": 9615, "patch": "4,4"}
+        self.handle = InMemoryDatasetHandle(df, storageClass="DataFrame", dataId=self.dataId)
 
     def testNullFilter(self):
         """Test that columns for all filters are created despite they may not
@@ -70,7 +65,7 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
                  'IntColumn': Column('base_InputCount_value', dataset='meas'),
                  'GoodFlagColumn': Column('slot_GaussianFlux_flag', dataset='meas'),
                  'BadFlagColumn': Column('slot_Centroid_flag', dataset='meas')}
-        df = task.run(self.parq, funcs=funcs, dataId=self.dataId)
+        df = task.run(self.handle, funcs=funcs, dataId=self.dataId)
         self.assertIsInstance(df, pd.DataFrame)
 
         for filt in config.outputBands:
@@ -105,7 +100,7 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         config.camelCase = False
         task = TransformObjectCatalogTask(config=config)
         funcs = {'Fwhm': HsmFwhm(dataset='meas')}
-        df = task.run(self.parq, funcs=funcs, dataId=self.dataId)
+        df = task.run(self.handle, funcs=funcs, dataId=self.dataId)
         self.assertIsInstance(df, pd.DataFrame)
         for filt in config.outputBands:
             self.assertIn(filt + '_Fwhm', df.columns)
@@ -117,7 +112,7 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         config.multilevelOutput = True
         task = TransformObjectCatalogTask(config=config)
         funcs = {'Fwhm': HsmFwhm(dataset='meas')}
-        df = task.run(self.parq, funcs=funcs, dataId=self.dataId)
+        df = task.run(self.handle, funcs=funcs, dataId=self.dataId)
         self.assertIsInstance(df, pd.DataFrame)
         self.assertNotIn('g', df)
         for filt in config.outputBands:
@@ -131,7 +126,7 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         config.multilevelOutput = True
         task = TransformObjectCatalogTask(config=config)
         funcs = {'Fwhm': HsmFwhm(dataset='meas')}
-        df = task.run(self.parq, funcs=funcs, dataId=self.dataId)
+        df = task.run(self.handle, funcs=funcs, dataId=self.dataId)
         self.assertIsInstance(df, pd.DataFrame)
         self.assertNotIn('HSC-G', df)
         for filt in ['g', 'r', 'i']:
