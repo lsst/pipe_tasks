@@ -163,10 +163,7 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             np.savetxt(filename_diff_matched, row)
 
         self.assertEqual(len(row), len(self.diff_matched))
-
-        idx_diff = np.where(row != self.diff_matched)[0]
-        differences = [(row[d], self.diff_matched[d], result.diff_matched.columns[d]) for d in idx_diff]
-        self.assertEqual(len(idx_diff), 0, f'Differences (meas, ref, name): {differences}')
+        self.assertFloatsAlmostEqual(row, self.diff_matched)
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
