@@ -200,8 +200,10 @@ class HealSparseInputMapTask(pipeBase.Task):
                                                 bbox_afw_poly.convexHull().getVertices())
         bbox_poly = hsp.Polygon(ra=bbox_poly_radec[: -1, 0], dec=bbox_poly_radec[: -1, 1],
                                 value=np.arange(self.ccd_input_map.wide_mask_maxbits))
-        bbox_poly_map = bbox_poly.get_map_like(self.ccd_input_map)
-        self.ccd_input_map = hsp.and_intersection([self.ccd_input_map, bbox_poly_map])
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            bbox_poly_map = bbox_poly.get_map_like(self.ccd_input_map)
+            self.ccd_input_map = hsp.and_intersection([self.ccd_input_map, bbox_poly_map])
         self.ccd_input_map.metadata = metadata
 
         # Create a temporary map to hold the count of bad pixels in each healpix pixel
