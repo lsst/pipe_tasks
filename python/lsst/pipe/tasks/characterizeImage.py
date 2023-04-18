@@ -32,7 +32,12 @@ import lsst.daf.base as dafBase
 import lsst.pipe.base.connectionTypes as cT
 from lsst.afw.math import BackgroundList
 from lsst.afw.table import SourceTable
-from lsst.meas.algorithms import SubtractBackgroundTask, SourceDetectionTask, MeasureApCorrTask
+from lsst.meas.algorithms import (
+    SubtractBackgroundTask,
+    SourceDetectionTask,
+    MeasureApCorrTask,
+    MeasureApCorrError,
+)
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
 from lsst.meas.astrom import RefMatchTask, displayAstrometry
 from lsst.meas.algorithms import LoadReferenceObjectsConfig
@@ -426,9 +431,20 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         self.measurement.run(measCat=dmeRes.sourceCat, exposure=dmeRes.exposure,
                              exposureId=exposureIdInfo.expId)
         if self.config.doApCorr:
-            apCorrMap = self.measureApCorr.run(exposure=dmeRes.exposure, catalog=dmeRes.sourceCat).apCorrMap
-            dmeRes.exposure.getInfo().setApCorrMap(apCorrMap)
-            self.applyApCorr.run(catalog=dmeRes.sourceCat, apCorrMap=exposure.getInfo().getApCorrMap())
+            try:
+                apCorrMap = self.measureApCorr.run(
+                    exposure=dmeRes.exposure,
+                    catalog=dmeRes.sourceCat,
+                ).apCorrMap
+            except MeasureApCorrError:
+                # We have failed to get a valid aperture correction map.
+                # Proceed with processing, and image will be filtered
+                # downstream.
+                dmeRes.exposure.info.setApCorrMap(None)
+            else:
+                dmeRes.exposure.info.setApCorrMap(apCorrMap)
+                self.applyApCorr.run(catalog=dmeRes.sourceCat, apCorrMap=exposure.getInfo().getApCorrMap())
+
         self.catalogCalculation.run(dmeRes.sourceCat)
 
         self.display("measure", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
