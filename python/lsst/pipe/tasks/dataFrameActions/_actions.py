@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from astropy import units
 
-from ..configurableActions import ConfigurableActionStructField, ConfigurableActionField
+from lsst.pex.config.configurableActions import ConfigurableActionStructField, ConfigurableActionField
 from ._baseDataFrameActions import DataFrameAction
 from ._evalColumnExpression import makeColumnExpressionAction
 
