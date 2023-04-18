@@ -650,7 +650,7 @@ class MakeWarpTask(CoaddBaseTask):
             if not self.config.bgSubtracted:
                 calexp.maskedImage += background.getImage()
 
-            detectorId = calexp.getInfo().getDetector().getId()
+            detectorId = calexp.info.getDetector().getId()
 
             # Find the external photoCalib.
             if externalPhotoCalibCatalog is not None:
@@ -713,6 +713,12 @@ class MakeWarpTask(CoaddBaseTask):
                                      "and will not be used in the warp.", detectorId)
                     continue
                 calexp.info.setApCorrMap(apCorrMap)
+            else:
+                # Ensure that calexp has valid aperture correction map.
+                if calexp.info.getApCorrMap() is None:
+                    self.log.warning("Detector id %s has None for ApCorrMap in the calexp "
+                                     "and will not be used in the warp.", detectorId)
+                    continue
 
             # Calibrate the image.
             calexp.maskedImage = photoCalib.calibrateImage(calexp.maskedImage,
