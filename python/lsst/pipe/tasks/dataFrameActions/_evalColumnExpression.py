@@ -32,7 +32,7 @@ from numpy import log10 as log
 from numpy import (cos, sin, cosh, sinh)
 import pandas as pd
 
-from ..configurableActions import ConfigurableActionField
+from lsst.pex.config.configurableActions import ConfigurableActionField
 from ._baseDataFrameActions import DataFrameAction
 
 

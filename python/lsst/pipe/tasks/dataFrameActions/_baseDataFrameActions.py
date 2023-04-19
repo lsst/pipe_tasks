@@ -5,7 +5,7 @@ __all__ = ("DataFrameAction",)
 from lsst.pex.config import Field, ListField
 from typing import Iterable, Any, Mapping
 
-from ..configurableActions import ConfigurableAction
+from lsst.pex.config.configurableActions import ConfigurableAction
 
 
 class DataFrameAction(ConfigurableAction):

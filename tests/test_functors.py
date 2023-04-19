@@ -34,7 +34,6 @@ from lsst.sphgeom import HtmPixelization
 import lsst.meas.base as measBase
 import lsst.utils.tests
 from lsst.pipe.base import InMemoryDatasetHandle
-from lsst.pipe.tasks.parquetTable import MultilevelParquetTable, ParquetTable
 from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, RAColumn,
                                       DecColumn, Mag, MagDiff, Color, StarGalaxyLabeller,
                                       DeconvolvedMoments, SdssTraceSize, PsfSdssTraceSizeDiff,
@@ -51,9 +50,9 @@ ROOT = os.path.abspath(os.path.dirname(__file__))
 
 class FunctorTestCase(unittest.TestCase):
 
-    def simulateMultiParquet(self, dataDict):
-        """Create a simple test MultilevelParquetTable
-        """
+    def getMultiIndexDataFrame(self, dataDict):
+        """Create a simple test multi-index DataFrame."""
+
         simpleDF = pd.DataFrame(dataDict)
         dfFilterDSCombos = []
         for ds in self.datasets:
@@ -69,14 +68,12 @@ class FunctorTestCase(unittest.TestCase):
 
         df = functools.reduce(lambda d1, d2: d1.join(d2), dfFilterDSCombos)
 
-        return MultilevelParquetTable(dataFrame=df)
+        return df
 
-    def simulateParquet(self, dataDict):
-        df = pd.DataFrame(dataDict)
-        return ParquetTable(dataFrame=df)
+    def getSimpleDataFrame(self, dataDict):
+        return pd.DataFrame(dataDict)
 
-    def getDatasetHandle(self, parq):
-        df = parq._df
+    def getDatasetHandle(self, df):
         lo, hi = HtmPixelization(7).universe().ranges()[0]
         value = np.random.randint(lo, hi)
         return InMemoryDatasetHandle(df, storageClass="DataFrame", dataId={"htm7": value})
@@ -91,43 +88,43 @@ class FunctorTestCase(unittest.TestCase):
             "coord_ra": [3.77654137, 3.77643059, 3.77621148, 3.77611944, 3.77610396],
             "coord_dec": [0.01127624, 0.01127787, 0.01127543, 0.01127543, 0.01127543]}
 
-    def _funcVal(self, functor, parq):
+    def _funcVal(self, functor, df):
         self.assertIsInstance(functor.name, str)
         self.assertIsInstance(functor.shortname, str)
 
-        handle = self.getDatasetHandle(parq)
+        handle = self.getDatasetHandle(df)
 
-        val = functor(parq)
+        val = functor(df)
         val2 = functor(handle)
         self.assertTrue((val == val2).all())
         self.assertIsInstance(val, pd.Series)
 
-        val = functor(parq, dropna=True)
+        val = functor(df, dropna=True)
         val2 = functor(handle, dropna=True)
         self.assertTrue((val == val2).all())
         self.assertEqual(val.isnull().sum(), 0)
 
         return val
 
-    def _differenceVal(self, functor, parq1, parq2):
+    def _differenceVal(self, functor, df1, df2):
         self.assertIsInstance(functor.name, str)
         self.assertIsInstance(functor.shortname, str)
 
-        handle1 = self.getDatasetHandle(parq1)
-        handle2 = self.getDatasetHandle(parq2)
+        handle1 = self.getDatasetHandle(df1)
+        handle2 = self.getDatasetHandle(df2)
 
-        val = functor.difference(parq1, parq2)
+        val = functor.difference(df1, df2)
         val2 = functor.difference(handle1, handle2)
         self.assertTrue(val.equals(val2))
         self.assertIsInstance(val, pd.Series)
 
-        val = functor.difference(parq1, parq2, dropna=True)
+        val = functor.difference(df1, df2, dropna=True)
         val2 = functor.difference(handle1, handle2, dropna=True)
         self.assertTrue(val.equals(val2))
         self.assertEqual(val.isnull().sum(), 0)
 
-        val1 = self._funcVal(functor, parq1)
-        val2 = self._funcVal(functor, parq2)
+        val1 = self._funcVal(functor, df1)
+        val2 = self._funcVal(functor, df2)
 
         self.assertTrue(np.allclose(val, val1 - val2))
 
@@ -137,52 +134,58 @@ class FunctorTestCase(unittest.TestCase):
         self.columns.append("base_FootprintArea_value")
         self.dataDict["base_FootprintArea_value"] = \
             np.full(self.nRecords, 1)
-        parq = self.simulateMultiParquet(self.dataDict)
+        df = self.getMultiIndexDataFrame(self.dataDict)
         func = Column('base_FootprintArea_value', filt='g')
-        self._funcVal(func, parq)
+        self._funcVal(func, df)
 
-        parq = self.simulateParquet(self.dataDict)
+        df = self.getSimpleDataFrame(self.dataDict)
         func = Column('base_FootprintArea_value')
-        self._funcVal(func, parq)
+        self._funcVal(func, df)
 
     def testCustom(self):
         self.columns.append("base_FootprintArea_value")
         self.dataDict["base_FootprintArea_value"] = \
             np.random.rand(self.nRecords)
-        parq = self.simulateMultiParquet(self.dataDict)
+        df = self.getMultiIndexDataFrame(self.dataDict)
         func = CustomFunctor('2*base_FootprintArea_value', filt='g')
-        val = self._funcVal(func, parq)
+        val = self._funcVal(func, df)
 
         func2 = Column('base_FootprintArea_value', filt='g')
 
-        np.allclose(val.values, 2*func2(parq).values, atol=1e-13, rtol=0)
+        np.allclose(val.values, 2*func2(df).values, atol=1e-13, rtol=0)
 
-        parq = self.simulateParquet(self.dataDict)
+        df = self.getSimpleDataFrame(self.dataDict)
         func = CustomFunctor('2 * base_FootprintArea_value')
-        val = self._funcVal(func, parq)
+        val = self._funcVal(func, df)
         func2 = Column('base_FootprintArea_value')
 
-        np.allclose(val.values, 2*func2(parq).values, atol=1e-13, rtol=0)
+        np.allclose(val.values, 2*func2(df).values, atol=1e-13, rtol=0)
 
     def testCoords(self):
-        parq = self.simulateMultiParquet(self.dataDict)
-        ra = self._funcVal(RAColumn(), parq)
-        dec = self._funcVal(DecColumn(), parq)
+        df = self.getMultiIndexDataFrame(self.dataDict)
+        ra = self._funcVal(RAColumn(), df)
+        dec = self._funcVal(DecColumn(), df)
 
         columnDict = {'dataset': 'ref', 'band': 'g',
                       'column': ['coord_ra', 'coord_dec']}
 
-        coords = parq.toDataFrame(columns=columnDict, droplevels=True) / np.pi * 180.
+        handle = InMemoryDatasetHandle(df, storageClass="DataFrame")
+        dfSub = handle.get(parameters={"columns": columnDict})
+        self._dropLevels(dfSub)
+
+        coords = dfSub / np.pi * 180.
 
         self.assertTrue(np.allclose(ra, coords[('ref', 'g', 'coord_ra')], atol=1e-13, rtol=0))
         self.assertTrue(np.allclose(dec, coords[('ref', 'g', 'coord_dec')], atol=1e-13, rtol=0))
 
         # single-level column index table
-        parq = self.simulateParquet(self.dataDict)
-        ra = self._funcVal(RAColumn(), parq)
-        dec = self._funcVal(DecColumn(), parq)
+        df = self.getSimpleDataFrame(self.dataDict)
+        ra = self._funcVal(RAColumn(), df)
+        dec = self._funcVal(DecColumn(), df)
 
-        coords = parq.toDataFrame(columns=['coord_ra', 'coord_dec']) / np.pi * 180.
+        handle = InMemoryDatasetHandle(df, storageClass="DataFrame")
+        dfSub = handle.get(parameters={"columns": ['coord_ra', 'coord_dec']})
+        coords = dfSub / np.pi * 180.
 
         self.assertTrue(np.allclose(ra, coords['coord_ra'], atol=1e-13, rtol=0))
         self.assertTrue(np.allclose(dec, coords['coord_dec'], atol=1e-13, rtol=0))
@@ -191,9 +194,9 @@ class FunctorTestCase(unittest.TestCase):
         self.columns.extend(["base_PsfFlux_instFlux", "base_PsfFlux_instFluxErr"])
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
         self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 10)
-        parq = self.simulateMultiParquet(self.dataDict)
+        df = self.getMultiIndexDataFrame(self.dataDict)
         # Change one dataset filter combinations value.
-        parq._df[("meas", "g", "base_PsfFlux_instFlux")] -= 1
+        df[("meas", "g", "base_PsfFlux_instFlux")] -= 1
 
         fluxName = 'base_PsfFlux'
 
@@ -201,23 +204,23 @@ class FunctorTestCase(unittest.TestCase):
         for dataset in ['forced_src', 'meas']:
             psfMag_G = self._funcVal(Mag(fluxName, dataset=dataset,
                                          filt='g'),
-                                     parq)
+                                     df)
             psfMag_R = self._funcVal(Mag(fluxName, dataset=dataset,
                                          filt='r'),
-                                     parq)
+                                     df)
 
             psfColor_GR = self._funcVal(Color(fluxName, 'g', 'r',
                                               dataset=dataset),
-                                        parq)
+                                        df)
 
             self.assertTrue(np.allclose((psfMag_G - psfMag_R).dropna(), psfColor_GR, rtol=0, atol=1e-13))
 
         # Check that behavior as expected when dataset not provided;
         #  that is, that the color comes from forced and default Mag is meas
-        psfMag_G = self._funcVal(Mag(fluxName, filt='g'), parq)
-        psfMag_R = self._funcVal(Mag(fluxName, filt='r'), parq)
+        psfMag_G = self._funcVal(Mag(fluxName, filt='g'), df)
+        psfMag_R = self._funcVal(Mag(fluxName, filt='r'), df)
 
-        psfColor_GR = self._funcVal(Color(fluxName, 'g', 'r'), parq)
+        psfColor_GR = self._funcVal(Color(fluxName, 'g', 'r'), df)
 
         # These should *not* be equal.
         self.assertFalse(np.allclose((psfMag_G - psfMag_R).dropna(), psfColor_GR))
@@ -229,14 +232,14 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 10)
         self.dataDict["modelfit_CModel_instFlux"] = np.full(self.nRecords, 1000)
         self.dataDict["modelfit_CModel_instFluxErr"] = np.full(self.nRecords, 10)
-        parq = self.simulateMultiParquet(self.dataDict)
+        df = self.getMultiIndexDataFrame(self.dataDict)
 
         for filt in self.bands:
             filt = 'g'
-            val = self._funcVal(MagDiff('base_PsfFlux', 'modelfit_CModel', filt=filt), parq)
+            val = self._funcVal(MagDiff('base_PsfFlux', 'modelfit_CModel', filt=filt), df)
 
-            mag1 = self._funcVal(Mag('modelfit_CModel', filt=filt), parq)
-            mag2 = self._funcVal(Mag('base_PsfFlux', filt=filt), parq)
+            mag1 = self._funcVal(Mag('modelfit_CModel', filt=filt), df)
+            mag2 = self._funcVal(Mag('base_PsfFlux', filt=filt), df)
             self.assertTrue(np.allclose((mag2 - mag1).dropna(), val, rtol=0, atol=1e-13))
 
     def testDifference(self):
@@ -247,23 +250,23 @@ class FunctorTestCase(unittest.TestCase):
 
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
         self.dataDict["modelfit_CModel_instFlux"] = np.full(self.nRecords, 1000)
-        parq1 = self.simulateMultiParquet(self.dataDict)
+        df1 = self.getMultiIndexDataFrame(self.dataDict)
 
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 999)
         self.dataDict["modelfit_CModel_instFlux"] = np.full(self.nRecords, 999)
-        parq2 = self.simulateMultiParquet(self.dataDict)
+        df2 = self.getMultiIndexDataFrame(self.dataDict)
 
         magDiff = MagDiff('base_PsfFlux', 'modelfit_CModel', filt='g')
 
         # Asserts that differences computed properly
-        self._differenceVal(magDiff, parq1, parq2)
+        self._differenceVal(magDiff, df1, df2)
 
     def testLabeller(self):
         # Covering the code is better than nothing
         self.columns.append("base_ClassificationExtendedness_value")
         self.dataDict["base_ClassificationExtendedness_value"] = np.full(self.nRecords, 1)
-        parq = self.simulateMultiParquet(self.dataDict)
-        labels = self._funcVal(StarGalaxyLabeller(), parq)  # noqa
+        df = self.getMultiIndexDataFrame(self.dataDict)
+        _ = self._funcVal(StarGalaxyLabeller(), df)
 
     def testPixelScale(self):
         # Test that the pixel scale and pix->arcsec calculations perform as
@@ -283,71 +286,71 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["ext_shapeHSM_HsmPsfMoments_yy"] = np.full(self.nRecords, 1 / np.sqrt(2))
         self.dataDict["base_SdssShape_psf_xx"] = np.full(self.nRecords, 1)
         self.dataDict["base_SdssShape_psf_yy"] = np.full(self.nRecords, 1)
-        parq = self.simulateMultiParquet(self.dataDict)
+        df = self.getMultiIndexDataFrame(self.dataDict)
         # Covering the code is better than nothing
         for filt in self.bands:
             for Func in [DeconvolvedMoments,
                          SdssTraceSize,
                          PsfSdssTraceSizeDiff,
                          HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm]:
-                val = self._funcVal(Func(filt=filt), parq)  # noqa
+                _ = self._funcVal(Func(filt=filt), df)
 
-    def _compositeFuncVal(self, functor, parq):
+    def _compositeFuncVal(self, functor, df):
         self.assertIsInstance(functor, CompositeFunctor)
 
-        handle = self.getDatasetHandle(parq)
+        handle = self.getDatasetHandle(df)
 
-        df = functor(parq)
-        df2 = functor(handle)
-        self.assertTrue(df.equals(df2))
+        fdf1 = functor(df)
+        fdf2 = functor(handle)
+        self.assertTrue(fdf1.equals(fdf2))
 
-        self.assertIsInstance(df, pd.DataFrame)
-        self.assertTrue(np.all([k in df.columns for k in functor.funcDict.keys()]))
+        self.assertIsInstance(fdf1, pd.DataFrame)
+        self.assertTrue(np.all([k in fdf1.columns for k in functor.funcDict.keys()]))
 
-        df = functor(parq, dropna=True)
-        df2 = functor(handle, dropna=True)
-        self.assertTrue(df.equals(df2))
+        fdf1 = functor(df, dropna=True)
+        fdf2 = functor(handle, dropna=True)
+        self.assertTrue(fdf1.equals(fdf2))
 
         # Check that there are no nulls
-        self.assertFalse(df.isnull().any(axis=None))
+        self.assertFalse(fdf1.isnull().any(axis=None))
 
-        return df
+        return fdf1
 
-    def _compositeDifferenceVal(self, functor, parq1, parq2):
+    def _compositeDifferenceVal(self, functor, df1, df2):
         self.assertIsInstance(functor, CompositeFunctor)
 
-        handle1 = self.getDatasetHandle(parq1)
-        handle2 = self.getDatasetHandle(parq2)
+        handle1 = self.getDatasetHandle(df1)
+        handle2 = self.getDatasetHandle(df2)
 
-        df = functor.difference(parq1, parq2)
-        df2 = functor.difference(handle1, handle2)
-        self.assertTrue(df.equals(df2))
+        fdf1 = functor.difference(df1, df2)
+        fdf2 = functor.difference(handle1, handle2)
+        self.assertTrue(fdf1.equals(fdf2))
 
-        self.assertIsInstance(df, pd.DataFrame)
-        self.assertTrue(np.all([k in df.columns for k in functor.funcDict.keys()]))
+        self.assertIsInstance(fdf1, pd.DataFrame)
+        self.assertTrue(np.all([k in fdf1.columns for k in functor.funcDict.keys()]))
 
-        df = functor.difference(parq1, parq2, dropna=True)
-        df2 = functor.difference(handle1, handle2, dropna=True)
-        self.assertTrue(df.equals(df2))
+        fdf1 = functor.difference(df1, df2, dropna=True)
+        fdf2 = functor.difference(handle1, handle2, dropna=True)
+        self.assertTrue(fdf1.equals(fdf2))
 
         # Check that there are no nulls
-        self.assertFalse(df.isnull().any(axis=None))
+        self.assertFalse(fdf1.isnull().any(axis=None))
 
-        df1 = functor(parq1)
-        df2 = functor(parq2)
+        df1_functored = functor(df1)
+        df2_functored = functor(df2)
 
-        self.assertTrue(np.allclose(df.values, df1.values - df2.values))
+        self.assertTrue(np.allclose(fdf1.values, df1_functored.values - df2_functored.values))
 
-        return df
+        return fdf1
 
     def testComposite(self):
         self.columns.extend(["modelfit_CModel_instFlux", "base_PsfFlux_instFlux"])
         self.dataDict["modelfit_CModel_instFlux"] = np.full(self.nRecords, 1)
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1)
 
-        parq = self.simulateMultiParquet(self.dataDict)
+        df = self.getMultiIndexDataFrame(self.dataDict)
         # Modify r band value slightly.
-        parq._df[("meas", "r", "base_PsfFlux_instFlux")] -= 0.1
+        df[("meas", "r", "base_PsfFlux_instFlux")] -= 0.1
 
         filt = 'g'
         funcDict = {'psfMag_ref': Mag('base_PsfFlux', dataset='ref'),
@@ -357,7 +360,7 @@ class FunctorTestCase(unittest.TestCase):
                     'cmodel_magDiff': MagDiff('base_PsfFlux',
                                               'modelfit_CModel', filt=filt)}
         func = CompositeFunctor(funcDict)
-        df = self._compositeFuncVal(func, parq)
+        fdf1 = self._compositeFuncVal(func, df)
 
         # Repeat same, but define filter globally instead of individually
         funcDict2 = {'psfMag_ref': Mag('base_PsfFlux', dataset='ref'),
@@ -368,13 +371,13 @@ class FunctorTestCase(unittest.TestCase):
                                                'modelfit_CModel')}
 
         func2 = CompositeFunctor(funcDict2, filt=filt)
-        df2 = self._compositeFuncVal(func2, parq)
-        self.assertTrue(df.equals(df2))
+        fdf2 = self._compositeFuncVal(func2, df)
+        self.assertTrue(fdf1.equals(fdf2))
 
         func2.filt = 'r'
-        df3 = self._compositeFuncVal(func2, parq)
+        fdf3 = self._compositeFuncVal(func2, df)
         # Because we modified the R filter this should fail.
-        self.assertFalse(df2.equals(df3))
+        self.assertFalse(fdf2.equals(fdf3))
 
         # Make sure things work with passing list instead of dict
         funcs = [Mag('base_PsfFlux', dataset='ref'),
@@ -383,7 +386,7 @@ class FunctorTestCase(unittest.TestCase):
                  Mag('base_PsfFlux', filt=filt),
                  MagDiff('base_PsfFlux', 'modelfit_CModel', filt=filt)]
 
-        df = self._compositeFuncVal(CompositeFunctor(funcs), parq)
+        _ = self._compositeFuncVal(CompositeFunctor(funcs), df)
 
     def testCompositeSimple(self):
         """Test single-level composite functor for functionality
@@ -392,50 +395,50 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["modelfit_CModel_instFlux"] = np.full(self.nRecords, 1)
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1)
 
-        parq = self.simulateParquet(self.dataDict)
+        df = self.getSimpleDataFrame(self.dataDict)
         funcDict = {'ra': RAColumn(),
                     'dec': DecColumn(),
                     'psfMag': Mag('base_PsfFlux'),
                     'cmodel_magDiff': MagDiff('base_PsfFlux',
                                               'modelfit_CModel')}
         func = CompositeFunctor(funcDict)
-        df = self._compositeFuncVal(func, parq)  # noqa
+        _ = self._compositeFuncVal(func, df)
 
     def testCompositeColor(self):
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
         self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 10)
-        parq = self.simulateMultiParquet(self.dataDict)
+        df = self.getMultiIndexDataFrame(self.dataDict)
         funcDict = {'a': Mag('base_PsfFlux', dataset='meas', filt='g'),
                     'b': Mag('base_PsfFlux', dataset='forced_src', filt='g'),
                     'c': Color('base_PsfFlux', 'g', 'r')}
         # Covering the code is better than nothing
-        df = self._compositeFuncVal(CompositeFunctor(funcDict), parq)  # noqa
+        _ = self._compositeFuncVal(CompositeFunctor(funcDict), df)
 
     def testCompositeDifference(self):
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
         self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 10)
-        parq1 = self.simulateMultiParquet(self.dataDict)
+        df1 = self.getMultiIndexDataFrame(self.dataDict)
 
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 999)
         self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 9)
-        parq2 = self.simulateMultiParquet(self.dataDict)
+        df2 = self.getMultiIndexDataFrame(self.dataDict)
 
         funcDict = {'a': Mag('base_PsfFlux', dataset='meas', filt='g'),
                     'b': Mag('base_PsfFlux', dataset='forced_src', filt='g'),
                     'c': Color('base_PsfFlux', 'g', 'r')}
         # Covering the code is better than nothing
-        df = self._compositeDifferenceVal(CompositeFunctor(funcDict), parq1, parq2)  # noqa
+        _ = self._compositeDifferenceVal(CompositeFunctor(funcDict), df1, df2)
 
     def testCompositeFail(self):
         """Test a composite functor where one of the functors should be junk.
         """
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
-        parq = self.simulateMultiParquet(self.dataDict)
+        df = self.getMultiIndexDataFrame(self.dataDict)
 
         funcDict = {'good': Column("base_PsfFlux_instFlux"),
                     'bad': Column('not_a_column')}
 
-        df = self._compositeFuncVal(CompositeFunctor(funcDict), parq)  # noqa
+        _ = self._compositeFuncVal(CompositeFunctor(funcDict), df)
 
     def testLocalPhotometry(self):
         """Test the local photometry functors.
@@ -450,17 +453,12 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["base_LocalPhotoCalib"] = np.full(self.nRecords, calib)
         self.dataDict["base_LocalPhotoCalibErr"] = np.full(self.nRecords,
                                                            calibErr)
-        parq = self.simulateMultiParquet(self.dataDict)
+        df = self.getMultiIndexDataFrame(self.dataDict)
         func = LocalPhotometry("base_PsfFlux_instFlux",
                                "base_PsfFlux_instFluxErr",
                                "base_LocalPhotoCalib",
                                "base_LocalPhotoCalibErr")
-        df = parq.toDataFrame(columns={"dataset": "meas",
-                                       "band": "g",
-                                       "columns": ["base_PsfFlux_instFlux",
-                                                   "base_PsfFlux_instFluxErr",
-                                                   "base_LocalPhotoCalib",
-                                                   "base_LocalPhotoCalibErr"]})
+
         nanoJansky = func.instFluxToNanojansky(
             df[("meas", "g", "base_PsfFlux_instFlux")],
             df[("meas", "g", "base_LocalPhotoCalib")])
@@ -498,24 +496,24 @@ class FunctorTestCase(unittest.TestCase):
 
         # Test functors against the values computed above.
         self._testLocalPhotometryFunctors(LocalNanojansky,
-                                          parq,
+                                          df,
                                           nanoJansky)
         self._testLocalPhotometryFunctors(LocalNanojanskyErr,
-                                          parq,
+                                          df,
                                           nanoJanskyErr)
         self._testLocalPhotometryFunctors(LocalMagnitude,
-                                          parq,
+                                          df,
                                           mag)
         self._testLocalPhotometryFunctors(LocalMagnitudeErr,
-                                          parq,
+                                          df,
                                           magErr)
 
-    def _testLocalPhotometryFunctors(self, functor, parq, testValues):
+    def _testLocalPhotometryFunctors(self, functor, df, testValues):
         func = functor("base_PsfFlux_instFlux",
                        "base_PsfFlux_instFluxErr",
                        "base_LocalPhotoCalib",
                        "base_LocalPhotoCalibErr")
-        val = self._funcVal(func, parq)
+        val = self._funcVal(func, df)
         self.assertTrue(np.allclose(testValues.values,
                                     val.values,
                                     atol=1e-13,
@@ -545,14 +543,14 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["base_LocalPhotoCalibErr"] = np.full(self.nRecords,
                                                            calibErr)
 
-        parq = self.simulateMultiParquet(self.dataDict)
+        df = self.getMultiIndexDataFrame(self.dataDict)
         func = LocalDipoleMeanFlux("ip_diffim_DipoleFluxPos_instFlux",
                                    "ip_diffim_DipoleFluxNeg_instFlux",
                                    "ip_diffim_DipoleFluxPos_instFluxErr",
                                    "ip_diffim_DipoleFluxNeg_instFluxErr",
                                    "base_LocalPhotoCalib",
                                    "base_LocalPhotoCalibErr")
-        val = self._funcVal(func, parq)
+        val = self._funcVal(func, df)
         self.assertTrue(np.allclose(val.values,
                                     absMean,
                                     atol=1e-13,
@@ -564,7 +562,7 @@ class FunctorTestCase(unittest.TestCase):
                                       "ip_diffim_DipoleFluxNeg_instFluxErr",
                                       "base_LocalPhotoCalib",
                                       "base_LocalPhotoCalibErr")
-        val = self._funcVal(func, parq)
+        val = self._funcVal(func, df)
         self.assertTrue(np.allclose(val.values,
                                     absMeanErr,
                                     atol=1e-13,
@@ -576,7 +574,7 @@ class FunctorTestCase(unittest.TestCase):
                                    "ip_diffim_DipoleFluxNeg_instFluxErr",
                                    "base_LocalPhotoCalib",
                                    "base_LocalPhotoCalibErr")
-        val = self._funcVal(func, parq)
+        val = self._funcVal(func, df)
         self.assertTrue(np.allclose(val.values,
                                     absDiff,
                                     atol=1e-13,
@@ -588,7 +586,7 @@ class FunctorTestCase(unittest.TestCase):
                                       "ip_diffim_DipoleFluxNeg_instFluxErr",
                                       "base_LocalPhotoCalib",
                                       "base_LocalPhotoCalibErr")
-        val = self._funcVal(func, parq)
+        val = self._funcVal(func, df)
         self.assertTrue(np.allclose(val.values,
                                     absDiffErr,
                                     atol=1e-13,
@@ -630,22 +628,11 @@ class FunctorTestCase(unittest.TestCase):
                                                                       linAffMatrix[1, 0])
                 self.dataDict["base_LocalWcs_CDMatrix_2_2"] = np.full(self.nRecords,
                                                                       linAffMatrix[1, 1])
-                parq = self.simulateMultiParquet(self.dataDict)
+                df = self.getMultiIndexDataFrame(self.dataDict)
                 func = LocalWcs("base_LocalWcs_CDMatrix_1_1",
                                 "base_LocalWcs_CDMatrix_1_2",
                                 "base_LocalWcs_CDMatrix_2_1",
                                 "base_LocalWcs_CDMatrix_2_2")
-                df = parq.toDataFrame(columns={"dataset": "meas",
-                                               "band": "g",
-                                               "columns": ["dipoleSep",
-                                                           "slot_Centroid_x",
-                                                           "slot_Centroid_y",
-                                                           "someCentroid_x",
-                                                           "someCentroid_y",
-                                                           "base_LocalWcs_CDMatrix_1_1",
-                                                           "base_LocalWcs_CDMatrix_1_2",
-                                                           "base_LocalWcs_CDMatrix_2_1",
-                                                           "base_LocalWcs_CDMatrix_2_2"]})
 
                 # Exercise the full set of functions in LocalWcs.
                 sepRadians = func.getSkySeperationFromPixel(
@@ -671,7 +658,7 @@ class FunctorTestCase(unittest.TestCase):
                                          "base_LocalWcs_CDMatrix_1_2",
                                          "base_LocalWcs_CDMatrix_2_1",
                                          "base_LocalWcs_CDMatrix_2_2")
-                pixelScale = self._funcVal(func, parq)
+                pixelScale = self._funcVal(func, df)
                 self.assertTrue(np.allclose(
                     wcs.getPixelScale(center).asArcseconds(),
                     pixelScale.values,
@@ -684,7 +671,7 @@ class FunctorTestCase(unittest.TestCase):
                                                 "base_LocalWcs_CDMatrix_1_2",
                                                 "base_LocalWcs_CDMatrix_2_1",
                                                 "base_LocalWcs_CDMatrix_2_2")
-                val = self._funcVal(func, parq)
+                val = self._funcVal(func, df)
                 self.assertTrue(np.allclose(pixelScale.values * dipoleSep,
                                             val.values,
                                             atol=1e-16,
@@ -696,7 +683,7 @@ class FunctorTestCase(unittest.TestCase):
                                                     "base_LocalWcs_CDMatrix_1_2",
                                                     "base_LocalWcs_CDMatrix_2_1",
                                                     "base_LocalWcs_CDMatrix_2_2")
-                val = self._funcVal(func, parq)
+                val = self._funcVal(func, df)
                 self.assertTrue(np.allclose(pixelScale.values ** 2 * dipoleSep,
                                             val.values,
                                             atol=1e-16,
@@ -739,11 +726,11 @@ class FunctorTestCase(unittest.TestCase):
         """
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
         self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 100)
-        parq = self.simulateMultiParquet(self.dataDict)
+        df = self.getMultiIndexDataFrame(self.dataDict)
 
         func = Ratio("base_PsfFlux_instFlux", "base_PsfFlux_instFluxErr")
 
-        val = self._funcVal(func, parq)
+        val = self._funcVal(func, df)
         self.assertTrue(np.allclose(np.full(self.nRecords, 10),
                                     val.values,
                                     atol=1e-16,
@@ -752,15 +739,24 @@ class FunctorTestCase(unittest.TestCase):
     def testHtm(self):
         """Test that HtmIndxes are created as expected.
         """
-        parq = self.simulateMultiParquet(self.dataDict)
+        df = self.getMultiIndexDataFrame(self.dataDict)
         func = HtmIndex20("coord_ra", "coord_dec")
 
-        val = self._funcVal(func, parq)
+        val = self._funcVal(func, df)
         # Test that the HtmIds come out as the ra/dec in dataDict.
         self.assertTrue(np.all(np.equal(
             val.values,
             [14924528684992, 14924528689697, 14924528501716, 14924526434259,
              14924526433879])))
+
+    def _dropLevels(self, df):
+        levelsToDrop = [n for lev, n in zip(df.columns.levels, df.columns.names) if len(lev) == 1]
+
+        # Prevent error when trying to drop *all* columns
+        if len(levelsToDrop) == len(df.columns.names):
+            levelsToDrop.remove(df.columns.names[-1])
+
+        df.columns = df.columns.droplevel(levelsToDrop)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):

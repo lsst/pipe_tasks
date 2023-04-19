@@ -19,6 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import warnings
 import unittest
 import copy
 import functools
@@ -29,6 +30,7 @@ import lsst.utils.tests
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+
 from lsst.pipe.tasks.parquetTable import ParquetTable, MultilevelParquetTable
 
 
@@ -72,7 +74,11 @@ class ParquetTableTestCase(unittest.TestCase):
         del self.parq
 
     def getParq(self, filename, df):
-        return ParquetTable(filename), ParquetTable(dataFrame=df)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            fromFile, fromDF = ParquetTable(filename), ParquetTable(dataFrame=df)
+
+        return fromFile, fromDF
 
     def testRoundTrip(self):
         self.assertTrue(self.parq.toDataFrame().equals(self.df))
@@ -109,8 +115,10 @@ class MultilevelParquetTableTestCase(ParquetTableTestCase):
         return functools.reduce(lambda d1, d2: d1.join(d2), dfFilterDSCombos)
 
     def getParq(self, filename, df):
-        fromFile = MultilevelParquetTable(filename)
-        fromDf = MultilevelParquetTable(dataFrame=df)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            fromFile = MultilevelParquetTable(filename)
+            fromDf = MultilevelParquetTable(dataFrame=df)
         return fromFile, fromDf
 
     def testProperties(self):
