@@ -540,6 +540,5 @@ class ProcessBrightStarsTask(PipelineTask):
             config=self.config.refObjLoader,
         )
         output = self.run(**inputs, refObjLoader=refObjLoader)
-        # import pdb; pdb.set_trace()
         if output:
             butlerQC.put(output, outputRefs)
