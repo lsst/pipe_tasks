@@ -37,7 +37,7 @@ from lsst.pex.config import Config, Field, ListField, ConfigurableField, ConfigF
 from lsst.pipe.base import (PipelineTask, PipelineTaskConfig, Struct,
                             PipelineTaskConnections)
 import lsst.pipe.base.connectionTypes as cT
-from lsst.obs.base import ExposureIdInfo
+from lsst.meas.base import SkyMapIdGeneratorConfig
 
 
 def matchCatalogsExact(catalog1, catalog2, patch1=None, patch2=None):
@@ -182,6 +182,7 @@ class MergeDetectionsConfig(PipelineTaskConfig, pipelineConnections=MergeDetecti
     priorityList = ListField(dtype=str, default=[],
                              doc="Priority-ordered list of filter bands for the merge.")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
+    idGenerator = SkyMapIdGeneratorConfig.make_field()
 
     def setDefaults(self):
         Config.setDefaults(self)
@@ -254,9 +255,9 @@ class MergeDetectionsTask(PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        exposureIdInfo = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "tract_patch")
-        inputs["skySeed"] = exposureIdInfo.expId
-        inputs["idFactory"] = exposureIdInfo.makeSourceIdFactory()
+        idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
+        inputs["skySeed"] = idGenerator.catalog_id
+        inputs["idFactory"] = idGenerator.make_table_id_factory()
         catalogDict = {ref.dataId['band']: cat for ref, cat in zip(inputRefs.catalogs,
                        inputs['catalogs'])}
         inputs['catalogs'] = catalogDict

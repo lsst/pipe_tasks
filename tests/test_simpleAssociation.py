@@ -35,8 +35,6 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
 
     def setUp(self):
         simpleAssoc = SimpleAssociationTask()
-        self.tractPatchId = 1234
-        self.skymapBits = 16
 
         self.nDiaObjects = 10
         self.diaObjRas = np.linspace(45, 46, self.nDiaObjects)
@@ -108,9 +106,7 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
         """Test the full run method of the simple associator.
         """
         simpleAssoc = SimpleAssociationTask()
-        result = simpleAssoc.run(self.diaSources,
-                                 self.tractPatchId,
-                                 self.skymapBits)
+        result = simpleAssoc.run(self.diaSources)
 
         # Test the number of expected DiaObjects are created.
         self.assertEqual(len(result.diaObjects),
@@ -160,10 +156,8 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
         ccdVisit = diaSrc["ccdVisitId"]
         diaSourceId = diaSrc["diaSourceId"]
         self.diaSources.set_index(["ccdVisitId", "diaSourceId"], inplace=True)
-        idFactory = afwTable.IdFactory.makeSource(1234, afwTable.IdFactory.computeReservedFromMaxBits(16))
         idCat = afwTable.SourceCatalog(
-            afwTable.SourceTable.make(afwTable.SourceTable.makeMinimalSchema(),
-                                      idFactory))
+            afwTable.SourceTable.make(afwTable.SourceTable.makeMinimalSchema()))
 
         simpleAssoc = SimpleAssociationTask()
         simpleAssoc.addNewDiaObject(diaSrc,

@@ -27,7 +27,7 @@ __all__ = [
 from .fit_multiband import CatalogExposure, CatalogExposureConfig
 
 import lsst.afw.table as afwTable
-from lsst.obs.base import ExposureIdInfo
+from lsst.meas.base import SkyMapIdGeneratorConfig
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
@@ -240,6 +240,7 @@ class CoaddMultibandFitConfig(
         target=CoaddMultibandFitSubTask,
         doc="Task to fit sources using multiple bands",
     )
+    idGenerator = SkyMapIdGeneratorConfig.make_field()
 
     def get_band_sets(self):
         """Get the set of bands required by the fit_coadd_multiband subtask.
@@ -276,7 +277,7 @@ class CoaddMultibandFitTask(pipeBase.PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        id_tp = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "tract_patch").expId
+        id_tp = self.config.id_generator.apply(butlerQC.quantum.dataId).catalog_id
         # This is a roundabout way of ensuring all inputs get sorted and matched
         input_refs_objs = [(getattr(inputRefs, key), inputs[key])
                            for key in ("cats_meas", "coadds", "models_psf")]

@@ -32,14 +32,15 @@ import lsst.pipe.base.connectionTypes as cT
 import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryTask, displayAstrometry, denormalizeMatches
 from lsst.meas.algorithms import LoadReferenceObjectsConfig, SkyObjectsTask
-from lsst.obs.base import ExposureIdInfo
 import lsst.daf.base as dafBase
 from lsst.afw.math import BackgroundList
 from lsst.afw.table import SourceTable
 from lsst.meas.algorithms import SourceDetectionTask, ReferenceObjectLoader
 from lsst.meas.base import (SingleFrameMeasurementTask,
                             ApplyApCorrTask,
-                            CatalogCalculationTask)
+                            CatalogCalculationTask,
+                            IdGenerator,
+                            DetectorVisitIdGeneratorConfig)
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.utils.timer import timeMethod
 from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
@@ -314,6 +315,7 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         doc="Write the calexp? If fakes have been added then we do not want to write out the calexp as a "
             "normal calexp but as a fakes_calexp."
     )
+    idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
     def setDefaults(self):
         super().setDefaults()
@@ -478,7 +480,7 @@ class CalibrateTask(pipeBase.PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        inputs['exposureIdInfo'] = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "visit_detector")
+        inputs['idGenerator'] = self.config.idGenerator.apply(butlerQC.quantum.dataId)
 
         if self.config.doAstrometry:
             refObjLoader = ReferenceObjectLoader(dataIds=[ref.datasetRef.dataId
@@ -515,7 +517,7 @@ class CalibrateTask(pipeBase.PipelineTask):
 
     @timeMethod
     def run(self, exposure, exposureIdInfo=None, background=None,
-            icSourceCat=None):
+            icSourceCat=None, idGenerator=None):
         """Calibrate an exposure.
 
         Parameters
@@ -523,13 +525,15 @@ class CalibrateTask(pipeBase.PipelineTask):
         exposure : `lsst.afw.image.ExposureF`
             Exposure to calibrate.
         exposureIdInfo : `lsst.obs.baseExposureIdInfo`, optional
-            Exposure ID info. If not provided, returned SourceCatalog IDs will
-            not be globally unique.
+            Exposure ID info. Deprecated in favor of ``idGenerator``, and
+            ignored if that is provided.
         background : `lsst.afw.math.BackgroundList`, optional
             Initial model of background already subtracted from exposure.
         icSourceCat : `lsst.afw.image.SourceCatalog`, optional
             SourceCatalog from CharacterizeImageTask from which we can copy
             some fields.
+        idGenerator : `lsst.meas.base.IdGenerator`, optional
+            Object that generates source IDs and provides RNG seeds.
 
         Returns
         -------
@@ -552,13 +556,15 @@ class CalibrateTask(pipeBase.PipelineTask):
                Another reference to ``sourceCat`` for compatibility.
         """
         # detect, deblend and measure sources
-        if exposureIdInfo is None:
-            exposureIdInfo = ExposureIdInfo()
+        if idGenerator is None:
+            if exposureIdInfo is not None:
+                idGenerator = IdGenerator._from_exposure_id_info(exposureIdInfo)
+            else:
+                idGenerator = IdGenerator()
 
         if background is None:
             background = BackgroundList()
-        sourceIdFactory = exposureIdInfo.makeSourceIdFactory()
-        table = SourceTable.make(self.schema, sourceIdFactory)
+        table = SourceTable.make(self.schema, idGenerator.make_table_id_factory())
         table.setMetadata(self.algMetadata)
 
         detRes = self.detection.run(table=table, exposure=exposure,
@@ -568,7 +574,7 @@ class CalibrateTask(pipeBase.PipelineTask):
             for bg in detRes.background:
                 background.append(bg)
         if self.config.doSkySources:
-            skySourceFootprints = self.skySources.run(mask=exposure.mask, seed=exposureIdInfo.expId)
+            skySourceFootprints = self.skySources.run(mask=exposure.mask, seed=idGenerator.catalog_id)
             if skySourceFootprints:
                 for foot in skySourceFootprints:
                     s = sourceCat.addNew()
@@ -579,7 +585,7 @@ class CalibrateTask(pipeBase.PipelineTask):
         self.measurement.run(
             measCat=sourceCat,
             exposure=exposure,
-            exposureId=exposureIdInfo.expId
+            exposureId=idGenerator.catalog_id,
         )
         if self.config.doApCorr:
             self.applyApCorr.run(
@@ -615,27 +621,29 @@ class CalibrateTask(pipeBase.PipelineTask):
             matchMeta = astromRes.matchMeta
             if exposure.getWcs() is None:
                 if self.config.requireAstrometry:
-                    raise RuntimeError(f"WCS fit failed for {exposureIdInfo.expId} and requireAstrometry "
+                    raise RuntimeError(f"WCS fit failed for {idGenerator} and requireAstrometry "
                                        "is True.")
                 else:
                     self.log.warning("Unable to perform astrometric calibration for %r but "
                                      "requireAstrometry is False: attempting to proceed...",
-                                     exposureIdInfo.expId)
+                                     idGenerator)
 
         # compute photometric calibration
         if self.config.doPhotoCal:
             if np.all(np.isnan(sourceCat["coord_ra"])) or np.all(np.isnan(sourceCat["coord_dec"])):
                 if self.config.requirePhotoCal:
-                    raise RuntimeError(f"Astrometry failed for {exposureIdInfo.expId}, so cannot do "
+                    raise RuntimeError(f"Astrometry failed for {idGenerator}, so cannot do "
                                        "photoCal, but requirePhotoCal is True.")
                 self.log.warning("Astrometry failed for %r, so cannot do photoCal. requirePhotoCal "
                                  "is False, so skipping photometric calibration and setting photoCalib "
-                                 "to None.  Attempting to proceed...", exposureIdInfo.expId)
+                                 "to None.  Attempting to proceed...", idGenerator)
                 exposure.setPhotoCalib(None)
                 self.setMetadata(exposure=exposure, photoRes=None)
             else:
                 try:
-                    photoRes = self.photoCal.run(exposure, sourceCat=sourceCat, expId=exposureIdInfo.expId)
+                    photoRes = self.photoCal.run(
+                        exposure, sourceCat=sourceCat, expId=idGenerator.catalog_id
+                    )
                     exposure.setPhotoCalib(photoRes.photoCalib)
                     # TODO: reword this to phrase it in terms of the
                     # calibration factor?
@@ -652,7 +660,7 @@ class CalibrateTask(pipeBase.PipelineTask):
         self.postCalibrationMeasurement.run(
             measCat=sourceCat,
             exposure=exposure,
-            exposureId=exposureIdInfo.expId
+            exposureId=idGenerator.catalog_id,
         )
 
         if self.config.doComputeSummaryStats:
