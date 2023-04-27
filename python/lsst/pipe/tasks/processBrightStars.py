@@ -19,58 +19,61 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Extract small cutouts around bright stars, normalize and warp them to the
-same arbitrary pixel grid.
-"""
+"""Extract bright star cutouts; normalize and warp to the same pixel grid."""
 
 __all__ = ["ProcessBrightStarsTask"]
 
-import numpy as np
 import astropy.units as u
-
-from lsst import geom
-from lsst.afw import math as afwMath
-from lsst.afw import image as afwImage
-from lsst.afw import detection as afwDetect
-from lsst.afw import cameraGeom as cg
-from lsst.afw.geom import transformFactory as tFactory
-import lsst.pex.config as pexConfig
-from lsst.pipe import base as pipeBase
-from lsst.pipe.base import connectionTypes as cT
+import numpy as np
+from lsst.afw.cameraGeom import PIXELS, TAN_PIXELS
+from lsst.afw.detection import FootprintSet, Threshold
+from lsst.afw.geom.transformFactory import makeIdentityTransform, makeTransform
+from lsst.afw.image import Exposure, ExposureF, MaskedImageF
+from lsst.afw.math import (
+    StatisticsControl,
+    WarpingControl,
+    rotateImageBy90,
+    stringToStatisticsProperty,
+    warpImage,
+)
+from lsst.geom import AffineTransform, Box2I, Extent2I, Point2D, Point2I, SpherePoint, radians
+from lsst.meas.algorithms import LoadReferenceObjectsConfig, ReferenceObjectLoader
+from lsst.meas.algorithms.brightStarStamps import BrightStarStamp, BrightStarStamps
+from lsst.pex.config import ChoiceField, ConfigField, Field, ListField
 from lsst.pex.exceptions import InvalidParameterError
-from lsst.meas.algorithms import LoadReferenceObjectsConfig
-from lsst.meas.algorithms import ReferenceObjectLoader
-from lsst.meas.algorithms import brightStarStamps as bSS
+from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
+from lsst.pipe.base.connectionTypes import Input, Output, PrerequisiteInput
 from lsst.utils.timer import timeMethod
 
 
-class ProcessBrightStarsConnections(pipeBase.PipelineTaskConnections,
-                                    dimensions=("instrument", "visit", "detector")):
-    inputExposure = cT.Input(
+class ProcessBrightStarsConnections(PipelineTaskConnections, dimensions=("instrument", "visit", "detector")):
+    """Connections for ProcessBrightStarsTask."""
+
+    inputExposure = Input(
         doc="Input exposure from which to extract bright star stamps",
         name="calexp",
         storageClass="ExposureF",
-        dimensions=("visit", "detector")
+        dimensions=("visit", "detector"),
     )
-    skyCorr = cT.Input(
+    skyCorr = Input(
         doc="Input Sky Correction to be subtracted from the calexp if doApplySkyCorr=True",
         name="skyCorr",
         storageClass="Background",
-        dimensions=("instrument", "visit", "detector")
+        dimensions=("instrument", "visit", "detector"),
     )
-    refCat = cT.PrerequisiteInput(
+    refCat = PrerequisiteInput(
         doc="Reference catalog that contains bright star positions",
         name="gaia_dr2_20200414",
         storageClass="SimpleCatalog",
         dimensions=("skypix",),
         multiple=True,
-        deferLoad=True
+        deferLoad=True,
     )
-    brightStarStamps = cT.Output(
+    brightStarStamps = Output(
         doc="Set of preprocessed postage stamps, each centered on a single bright star.",
         name="brightStarStamps",
         storageClass="BrightStarStamps",
-        dimensions=("visit", "detector")
+        dimensions=("visit", "detector"),
     )
 
     def __init__(self, *, config=None):
@@ -79,39 +82,38 @@ class ProcessBrightStarsConnections(pipeBase.PipelineTaskConnections,
             self.inputs.remove("skyCorr")
 
 
-class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
-                               pipelineConnections=ProcessBrightStarsConnections):
-    """Configuration parameters for ProcessBrightStarsTask.
-    """
+class ProcessBrightStarsConfig(PipelineTaskConfig, pipelineConnections=ProcessBrightStarsConnections):
+    """Configuration parameters for ProcessBrightStarsTask."""
 
-    magLimit = pexConfig.Field(
+    magLimit = Field(
         dtype=float,
-        doc="Magnitude limit, in Gaia G; all stars brighter than this value will be processed",
-        default=18
+        doc="Magnitude limit, in Gaia G; all stars brighter than this value will be processed.",
+        default=18,
     )
-    stampSize = pexConfig.ListField(
+    stampSize = ListField(
         dtype=int,
-        doc="Size of the stamps to be extracted, in pixels",
-        default=(250, 250)
+        doc="Size of the stamps to be extracted, in pixels.",
+        default=(250, 250),
     )
-    modelStampBuffer = pexConfig.Field(
+    modelStampBuffer = Field(
         dtype=float,
-        doc="'Buffer' factor to be applied to determine the size of the stamp the processed stars will "
-            "be saved in. This will also be the size of the extended PSF model.",
-        default=1.1
+        doc=(
+            "'Buffer' factor to be applied to determine the size of the stamp the processed stars will be "
+            "saved in. This will also be the size of the extended PSF model."
+        ),
+        default=1.1,
     )
-    doRemoveDetected = pexConfig.Field(
+    doRemoveDetected = Field(
         dtype=bool,
-        doc="Whether DETECTION footprints, other than that for the central object, should be changed to "
-            "BAD",
-        default=True
+        doc="Whether DETECTION footprints, other than that for the central object, should be changed to BAD.",
+        default=True,
     )
-    doApplyTransform = pexConfig.Field(
+    doApplyTransform = Field(
         dtype=bool,
         doc="Apply transform to bright star stamps to correct for optical distortions?",
-        default=True
+        default=True,
     )
-    warpingKernelName = pexConfig.ChoiceField(
+    warpingKernelName = ChoiceField(
         dtype=str,
         doc="Warping kernel",
         default="lanczos5",
@@ -120,15 +122,14 @@ class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
             "lanczos3": "Lanczos kernel of order 3",
             "lanczos4": "Lanczos kernel of order 4",
             "lanczos5": "Lanczos kernel of order 5",
-        }
+        },
     )
-    annularFluxRadii = pexConfig.ListField(
+    annularFluxRadii = ListField(
         dtype=int,
-        doc="Inner and outer radii of the annulus used to compute the AnnularFlux for normalization, "
-            "in pixels.",
-        default=(40, 50)
+        doc="Inner and outer radii of the annulus used to compute AnnularFlux for normalization, in pixels.",
+        default=(40, 50),
     )
-    annularFluxStatistic = pexConfig.ChoiceField(
+    annularFluxStatistic = ChoiceField(
         dtype=str,
         doc="Type of statistic to use to compute annular flux.",
         default="MEANCLIP",
@@ -136,47 +137,48 @@ class ProcessBrightStarsConfig(pipeBase.PipelineTaskConfig,
             "MEAN": "mean",
             "MEDIAN": "median",
             "MEANCLIP": "clipped mean",
-        }
+        },
     )
-    numSigmaClip = pexConfig.Field(
+    numSigmaClip = Field(
         dtype=float,
         doc="Sigma for outlier rejection; ignored if annularFluxStatistic != 'MEANCLIP'.",
-        default=4
+        default=4,
     )
-    numIter = pexConfig.Field(
+    numIter = Field(
         dtype=int,
         doc="Number of iterations of outlier rejection; ignored if annularFluxStatistic != 'MEANCLIP'.",
-        default=3
+        default=3,
     )
-    badMaskPlanes = pexConfig.ListField(
+    badMaskPlanes = ListField(
         dtype=str,
-        doc="Mask planes that, if set, lead to associated pixels not being included in the computation of the"
-            " annular flux.",
-        default=('BAD', 'CR', 'CROSSTALK', 'EDGE', 'NO_DATA', 'SAT', 'SUSPECT', 'UNMASKEDNAN')
+        doc="Mask planes that identify pixels to not include in the computation of the annular flux.",
+        default=("BAD", "CR", "CROSSTALK", "EDGE", "NO_DATA", "SAT", "SUSPECT", "UNMASKEDNAN"),
     )
-    minPixelsWithinFrame = pexConfig.Field(
+    minPixelsWithinFrame = Field(
         dtype=int,
-        doc="Minimum number of pixels that must fall within the stamp boundary for the bright star to be"
-            " saved when its center is beyond the exposure boundary.",
-        default=50
+        doc=(
+            "Minimum number of pixels that must fall within the stamp boundary for the bright star to be "
+            "saved when its center is beyond the exposure boundary."
+        ),
+        default=50,
     )
-    doApplySkyCorr = pexConfig.Field(
+    doApplySkyCorr = Field(
         dtype=bool,
         doc="Apply full focal plane sky correction before extracting stars?",
-        default=True
+        default=True,
     )
-    discardNanFluxStars = pexConfig.Field(
+    discardNanFluxStars = Field(
         dtype=bool,
         doc="Should stars with NaN annular flux be discarded?",
-        default=False
+        default=False,
     )
-    refObjLoader = pexConfig.ConfigField(
+    refObjLoader = ConfigField(
         dtype=LoadReferenceObjectsConfig,
         doc="Reference object loader for astrometric calibration.",
     )
 
 
-class ProcessBrightStarsTask(pipeBase.PipelineTask):
+class ProcessBrightStarsTask(PipelineTask):
     """The description of the parameters for this Task are detailed in
     :lsst-task:`~lsst.pipe.base.PipelineTask`.
 
@@ -205,71 +207,74 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask):
         required to normalize each bright star stamp as their central pixels
         are likely saturated and/or contain ghosts, and cannot be used.
     """
+
     ConfigClass = ProcessBrightStarsConfig
     _DefaultName = "processBrightStars"
 
     def __init__(self, butler=None, initInputs=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Compute (model) stamp size depending on provided "buffer" value
-        self.modelStampSize = [int(self.config.stampSize[0]*self.config.modelStampBuffer),
-                               int(self.config.stampSize[1]*self.config.modelStampBuffer)]
+        self.modelStampSize = [
+            int(self.config.stampSize[0] * self.config.modelStampBuffer),
+            int(self.config.stampSize[1] * self.config.modelStampBuffer),
+        ]
         # force it to be odd-sized so we have a central pixel
         if not self.modelStampSize[0] % 2:
             self.modelStampSize[0] += 1
         if not self.modelStampSize[1] % 2:
             self.modelStampSize[1] += 1
         # central pixel
-        self.modelCenter = self.modelStampSize[0]//2, self.modelStampSize[1]//2
+        self.modelCenter = self.modelStampSize[0] // 2, self.modelStampSize[1] // 2
         # configure Gaia refcat
         if butler is not None:
-            self.makeSubtask('refObjLoader', butler=butler)
+            self.makeSubtask("refObjLoader", butler=butler)
 
     def applySkyCorr(self, calexp, skyCorr):
         """Apply correction to the sky background level.
 
-        Sky corrections can be generated with the 'skyCorrection.py'
-        executable in pipe_drivers. Because the sky model used by that
-        code extends over the entire focal plane, this can produce
-        better sky subtraction.
-        The calexp is updated in-place.
+        Sky corrections can be generated using the ``SkyCorrectionTask``.
+        As the sky model generated there extends over the full focal plane,
+        this should produce a more optimal sky subtraction solution.
 
         Parameters
         ----------
-        calexp : `lsst.afw.image.Exposure` or `lsst.afw.image.MaskedImage`
+        calexp : `~lsst.afw.image.Exposure` or `~lsst.afw.image.MaskedImage`
             Calibrated exposure.
-        skyCorr : `lsst.afw.math.backgroundList.BackgroundList` or `None`,
-                  optional
-            Full focal plane sky correction, obtained by running
-            `lsst.pipe.drivers.skyCorrection.SkyCorrectionTask`.
+        skyCorr : `~lsst.afw.math.backgroundList.BackgroundList`, optional
+            Full focal plane sky correction from ``SkyCorrectionTask``.
+
+        Notes
+        -----
+        This method modifies the input ``calexp`` in-place.
         """
-        if isinstance(calexp, afwImage.Exposure):
+        if isinstance(calexp, Exposure):
             calexp = calexp.getMaskedImage()
         calexp -= skyCorr.getImage()
 
     def extractStamps(self, inputExposure, refObjLoader=None):
-        """ Read position of bright stars within `inputExposure` from refCat
-        and extract them.
+        """Read the position of bright stars within an input exposure using a
+        refCat and extract them.
 
         Parameters
         ----------
-        inputExposure : `afwImage.exposure.exposure.ExposureF`
+        inputExposure : `~lsst.afw.image.ExposureF`
             The image from which bright star stamps should be extracted.
-        refObjLoader : `lsst.meas.algorithms.ReferenceObjectLoader`, optional
+        refObjLoader : `~lsst.meas.algorithms.ReferenceObjectLoader`, optional
             Loader to find objects within a reference catalog.
 
         Returns
         -------
-        result : `lsst.pipe.base.Struct`
+        result : `~lsst.pipe.base.Struct`
             Results as a struct with attributes:
 
             ``starIms``
-                List of stamps (`list`).
+                Postage stamps (`list`).
             ``pixCenters``
-                List of corresponding coordinates to each star's center, in pixels (`list`).
+                Corresponding coords to each star's center, in pixels (`list`).
             ``GMags``
-                List of corresponding (Gaia) G magnitudes (`list`).
+                Corresponding (Gaia) G magnitudes (`list`).
             ``gaiaIds``
-                Array of corresponding unique Gaia identifiers (`np.ndarray`).
+                Corresponding unique Gaia identifiers (`np.ndarray`).
         """
         if refObjLoader is None:
             refObjLoader = self.refObjLoader
@@ -281,35 +286,36 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask):
         # select stars within, or close enough to input exposure from refcat
         inputIm = inputExposure.maskedImage
         inputExpBBox = inputExposure.getBBox()
-        dilatationExtent = geom.Extent2I(np.array(self.config.stampSize) - self.config.minPixelsWithinFrame)
+        dilatationExtent = Extent2I(np.array(self.config.stampSize) - self.config.minPixelsWithinFrame)
         # TODO (DM-25894): handle catalog with stars missing from Gaia
-        withinCalexp = refObjLoader.loadPixelBox(inputExpBBox.dilatedBy(dilatationExtent), wcs,
-                                                 filterName="phot_g_mean")
+        withinCalexp = refObjLoader.loadPixelBox(
+            inputExpBBox.dilatedBy(dilatationExtent), wcs, filterName="phot_g_mean"
+        )
         refCat = withinCalexp.refCat
         # keep bright objects
-        fluxLimit = ((self.config.magLimit*u.ABmag).to(u.nJy)).to_value()
-        GFluxes = np.array(refCat['phot_g_mean_flux'])
+        fluxLimit = ((self.config.magLimit * u.ABmag).to(u.nJy)).to_value()
+        GFluxes = np.array(refCat["phot_g_mean_flux"])
         bright = GFluxes > fluxLimit
         # convert to AB magnitudes
-        allGMags = [((gFlux*u.nJy).to(u.ABmag)).to_value() for gFlux in GFluxes[bright]]
+        allGMags = [((gFlux * u.nJy).to(u.ABmag)).to_value() for gFlux in GFluxes[bright]]
         allIds = refCat.columns.extract("id", where=bright)["id"]
-        selectedColumns = refCat.columns.extract('coord_ra', 'coord_dec', where=bright)
+        selectedColumns = refCat.columns.extract("coord_ra", "coord_dec", where=bright)
         for j, (ra, dec) in enumerate(zip(selectedColumns["coord_ra"], selectedColumns["coord_dec"])):
-            sp = geom.SpherePoint(ra, dec, geom.radians)
+            sp = SpherePoint(ra, dec, radians)
             cpix = wcs.skyToPixel(sp)
             try:
-                starIm = inputExposure.getCutout(sp, geom.Extent2I(self.config.stampSize))
+                starIm = inputExposure.getCutout(sp, Extent2I(self.config.stampSize))
             except InvalidParameterError:
                 # star is beyond boundary
-                bboxCorner = np.array(cpix) - np.array(self.config.stampSize)/2
+                bboxCorner = np.array(cpix) - np.array(self.config.stampSize) / 2
                 # compute bbox as it would be otherwise
-                idealBBox = geom.Box2I(geom.Point2I(bboxCorner), geom.Extent2I(self.config.stampSize))
-                clippedStarBBox = geom.Box2I(idealBBox)
+                idealBBox = Box2I(Point2I(bboxCorner), Extent2I(self.config.stampSize))
+                clippedStarBBox = Box2I(idealBBox)
                 clippedStarBBox.clip(inputExpBBox)
                 if clippedStarBBox.getArea() > 0:
                     # create full-sized stamp with all pixels
                     # flagged as NO_DATA
-                    starIm = afwImage.ExposureF(bbox=idealBBox)
+                    starIm = ExposureF(bbox=idealBBox)
                     starIm.image[:] = np.nan
                     starIm.mask.set(inputExposure.mask.getPlaneBitMask("NO_DATA"))
                     # recover pixels from intersection with the exposure
@@ -322,29 +328,28 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask):
                     continue
             if self.config.doRemoveDetected:
                 # give detection footprint of other objects the BAD flag
-                detThreshold = afwDetect.Threshold(starIm.mask.getPlaneBitMask("DETECTED"),
-                                                   afwDetect.Threshold.BITMASK)
-                omask = afwDetect.FootprintSet(starIm.mask, detThreshold)
+                detThreshold = Threshold(starIm.mask.getPlaneBitMask("DETECTED"), Threshold.BITMASK)
+                omask = FootprintSet(starIm.mask, detThreshold)
                 allFootprints = omask.getFootprints()
                 otherFootprints = []
                 for fs in allFootprints:
-                    if not fs.contains(geom.Point2I(cpix)):
+                    if not fs.contains(Point2I(cpix)):
                         otherFootprints.append(fs)
                 nbMatchingFootprints = len(allFootprints) - len(otherFootprints)
                 if not nbMatchingFootprints == 1:
-                    self.log.warning("Failed to uniquely identify central DETECTION footprint for star "
-                                     "%s; found %d footprints instead.",
-                                     allIds[j], nbMatchingFootprints)
+                    self.log.warning(
+                        "Failed to uniquely identify central DETECTION footprint for star "
+                        "%s; found %d footprints instead.",
+                        allIds[j],
+                        nbMatchingFootprints,
+                    )
                 omask.setFootprints(otherFootprints)
                 omask.setMask(starIm.mask, "BAD")
             starIms.append(starIm)
             pixCenters.append(cpix)
             GMags.append(allGMags[j])
             ids.append(allIds[j])
-        return pipeBase.Struct(starIms=starIms,
-                               pixCenters=pixCenters,
-                               GMags=GMags,
-                               gaiaIds=ids)
+        return Struct(starIms=starIms, pixCenters=pixCenters, GMags=GMags, gaiaIds=ids)
 
     def warpStamps(self, stamps, pixCenters):
         """Warps and shifts all given stamps so they are sampled on the same
@@ -353,45 +358,49 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask):
 
         Parameters
         ----------
-        stamps : `collections.abc.Sequence`
-                     [`afwImage.exposure.exposure.ExposureF`]
+        stamps : `Sequence` [`~lsst.afw.image.ExposureF`]
             Image cutouts centered on a single object.
-        pixCenters : `collections.abc.Sequence` [`geom.Point2D`]
-            Positions of each object's center (as obtained from the refCat),
-            in pixels.
+        pixCenters : `Sequence` [`~lsst.geom.Point2D`]
+            Positions of each object's center (from the refCat) in pixels.
 
         Returns
         -------
-        result : `lsst.pipe.base.Struct`
+        result : `~lsst.pipe.base.Struct`
             Results as a struct with attributes:
 
             ``warpedStars``
-                List of stamps of warped stars (`list` of `afwImage.maskedImage.maskedImage.MaskedImage`).
+                Stamps of warped stars.
+                    (`list` [`~lsst.afw.image.MaskedImage`])
             ``warpTransforms``
-                List of the corresponding Transform from the initial star stamp
-                to the common model grid (`list` of `afwGeom.TransformPoint2ToPoint2`).
+                The corresponding Transform from the initial star stamp
+                to the common model grid.
+                    (`list` [`~lsst.afw.geom.TransformPoint2ToPoint2`])
             ``xy0s``
-                List of coordinates of the bottom-left
-                pixels of each stamp, before rotation (`list` of `geom.Point2I`).
+                Coordinates of the bottom-left pixels of each stamp,
+                before rotation.
+                    (`list` [`~lsst.geom.Point2I`])
             ``nb90Rots``
-                The number of 90 degrees rotations required
-                to compensate for detector orientation (`int`).
+                The number of 90 degrees rotations required to compensate for
+                detector orientation.
+                    (`int`)
         """
         # warping control; only contains shiftingALg provided in config
-        warpCont = afwMath.WarpingControl(self.config.warpingKernelName)
+        warpCont = WarpingControl(self.config.warpingKernelName)
         # Compare model to star stamp sizes
-        bufferPix = (self.modelStampSize[0] - self.config.stampSize[0],
-                     self.modelStampSize[1] - self.config.stampSize[1])
+        bufferPix = (
+            self.modelStampSize[0] - self.config.stampSize[0],
+            self.modelStampSize[1] - self.config.stampSize[1],
+        )
         # Initialize detector instance (note all stars were extracted from an
         # exposure from the same detector)
         det = stamps[0].getDetector()
         # Define correction for optical distortions
         if self.config.doApplyTransform:
-            pixToTan = det.getTransform(cg.PIXELS, cg.TAN_PIXELS)
+            pixToTan = det.getTransform(PIXELS, TAN_PIXELS)
         else:
-            pixToTan = tFactory.makeIdentityTransform()
+            pixToTan = makeIdentityTransform()
         # Array of all possible rotations for detector orientation:
-        possibleRots = np.array([k*np.pi/2 for k in range(4)])
+        possibleRots = np.array([k * np.pi / 2 for k in range(4)])
         # determine how many, if any, rotations are required
         yaw = det.getOrientation().getYaw()
         nb90Rots = np.argmin(np.abs(possibleRots - float(yaw)))
@@ -400,30 +409,31 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask):
         warpedStars, warpTransforms, xy0s = [], [], []
         for star, cent in zip(stamps, pixCenters):
             # (re)create empty destination image
-            destImage = afwImage.MaskedImageF(*self.modelStampSize)
-            bottomLeft = geom.Point2D(star.image.getXY0())
+            destImage = MaskedImageF(*self.modelStampSize)
+            bottomLeft = Point2D(star.image.getXY0())
             newBottomLeft = pixToTan.applyForward(bottomLeft)
-            newBottomLeft.setX(newBottomLeft.getX() - bufferPix[0]/2)
-            newBottomLeft.setY(newBottomLeft.getY() - bufferPix[1]/2)
+            newBottomLeft.setX(newBottomLeft.getX() - bufferPix[0] / 2)
+            newBottomLeft.setY(newBottomLeft.getY() - bufferPix[1] / 2)
             # Convert to int
-            newBottomLeft = geom.Point2I(newBottomLeft)
+            newBottomLeft = Point2I(newBottomLeft)
             # Set origin and save it
             destImage.setXY0(newBottomLeft)
             xy0s.append(newBottomLeft)
 
             # Define linear shifting to recenter stamps
             newCenter = pixToTan.applyForward(cent)  # center of warped star
-            shift = self.modelCenter[0] + newBottomLeft[0] - newCenter[0],\
-                self.modelCenter[1] + newBottomLeft[1] - newCenter[1]
-            affineShift = geom.AffineTransform(shift)
-            shiftTransform = tFactory.makeTransform(affineShift)
+            shift = (
+                self.modelCenter[0] + newBottomLeft[0] - newCenter[0],
+                self.modelCenter[1] + newBottomLeft[1] - newCenter[1],
+            )
+            affineShift = AffineTransform(shift)
+            shiftTransform = makeTransform(affineShift)
 
             # Define full transform (warp and shift)
             starWarper = pixToTan.then(shiftTransform)
 
             # Apply it
-            goodPix = afwMath.warpImage(destImage, star.getMaskedImage(),
-                                        starWarper, warpCont)
+            goodPix = warpImage(destImage, star.getMaskedImage(), starWarper, warpCont)
             if not goodPix:
                 self.log.debug("Warping of a star failed: no good pixel in output")
 
@@ -432,11 +442,10 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask):
 
             # Apply rotation if appropriate
             if nb90Rots:
-                destImage = afwMath.rotateImageBy90(destImage, nb90Rots)
+                destImage = rotateImageBy90(destImage, nb90Rots)
             warpedStars.append(destImage.clone())
             warpTransforms.append(starWarper)
-        return pipeBase.Struct(warpedStars=warpedStars, warpTransforms=warpTransforms, xy0s=xy0s,
-                               nb90Rots=nb90Rots)
+        return Struct(warpedStars=warpedStars, warpTransforms=warpTransforms, xy0s=xy0s, nb90Rots=nb90Rots)
 
     @timeMethod
     def run(self, inputExposure, refObjLoader=None, dataId=None, skyCorr=None):
@@ -447,29 +456,28 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask):
 
         Parameters
         ----------
-        inputExposure : `afwImage.exposure.exposure.ExposureF`
+        inputExposure : `~lsst.afw.image.ExposureF`
             The image from which bright star stamps should be extracted.
-        refObjLoader : `lsst.meas.algorithms.ReferenceObjectLoader`, optional
+        refObjLoader : `~lsst.meas.algorithms.ReferenceObjectLoader`, optional
             Loader to find objects within a reference catalog.
-        dataId : `dict` or `lsst.daf.butler.DataCoordinate`
+        dataId : `dict` or `~lsst.daf.butler.DataCoordinate`
             The dataId of the exposure (and detector) bright stars should be
             extracted from.
-        skyCorr : `lsst.afw.math.backgroundList.BackgroundList` or `None`,
-                  optional
-            Full focal plane sky correction, obtained by running
-            `lsst.pipe.drivers.skyCorrection.SkyCorrectionTask`.
+        skyCorr : `~lsst.afw.math.backgroundList.BackgroundList`, optional
+            Full focal plane sky correction obtained by `SkyCorrectionTask`.
 
         Returns
         -------
-        result :  `lsst.pipe.base.Struct`
+        result :  `~lsst.pipe.base.Struct`
             Results as a struct with attributes:
 
             ``brightStarStamps``
-                (`bSS.BrightStarStamps`)
+                (`~lsst.meas.algorithms.brightStarStamps.BrightStarStamps`)
         """
         if self.config.doApplySkyCorr:
-            self.log.info("Applying sky correction to exposure %s (exposure will be modified in-place).",
-                          dataId)
+            self.log.info(
+                "Applying sky correction to exposure %s (exposure will be modified in-place).", dataId
+            )
             self.applySkyCorr(inputExposure, skyCorr)
         self.log.info("Extracting bright stars from exposure %s", dataId)
         # Extract stamps around bright stars
@@ -478,48 +486,59 @@ class ProcessBrightStarsTask(pipeBase.PipelineTask):
             self.log.info("No suitable bright star found.")
             return None
         # Warp (and shift, and potentially rotate) them
-        self.log.info("Applying warp and/or shift to %i star stamps from exposure %s",
-                      len(extractedStamps.starIms), dataId)
+        self.log.info(
+            "Applying warp and/or shift to %i star stamps from exposure %s.",
+            len(extractedStamps.starIms),
+            dataId,
+        )
         warpOutputs = self.warpStamps(extractedStamps.starIms, extractedStamps.pixCenters)
         warpedStars = warpOutputs.warpedStars
         xy0s = warpOutputs.xy0s
-        brightStarList = [bSS.BrightStarStamp(stamp_im=warp,
-                                              archive_element=transform,
-                                              position=xy0s[j],
-                                              gaiaGMag=extractedStamps.GMags[j],
-                                              gaiaId=extractedStamps.gaiaIds[j])
-                          for j, (warp, transform) in
-                          enumerate(zip(warpedStars, warpOutputs.warpTransforms))]
+        brightStarList = [
+            BrightStarStamp(
+                stamp_im=warp,
+                archive_element=transform,
+                position=xy0s[j],
+                gaiaGMag=extractedStamps.GMags[j],
+                gaiaId=extractedStamps.gaiaIds[j],
+            )
+            for j, (warp, transform) in enumerate(zip(warpedStars, warpOutputs.warpTransforms))
+        ]
         # Compute annularFlux and normalize
-        self.log.info("Computing annular flux and normalizing %i bright stars from exposure %s",
-                      len(warpedStars), dataId)
+        self.log.info(
+            "Computing annular flux and normalizing %i bright stars from exposure %s.",
+            len(warpedStars),
+            dataId,
+        )
         # annularFlux statistic set-up, excluding mask planes
-        statsControl = afwMath.StatisticsControl()
+        statsControl = StatisticsControl()
         statsControl.setNumSigmaClip(self.config.numSigmaClip)
         statsControl.setNumIter(self.config.numIter)
         innerRadius, outerRadius = self.config.annularFluxRadii
-        statsFlag = afwMath.stringToStatisticsProperty(self.config.annularFluxStatistic)
-        brightStarStamps = bSS.BrightStarStamps.initAndNormalize(brightStarList,
-                                                                 innerRadius=innerRadius,
-                                                                 outerRadius=outerRadius,
-                                                                 nb90Rots=warpOutputs.nb90Rots,
-                                                                 imCenter=self.modelCenter,
-                                                                 use_archive=True,
-                                                                 statsControl=statsControl,
-                                                                 statsFlag=statsFlag,
-                                                                 badMaskPlanes=self.config.badMaskPlanes,
-                                                                 discardNanFluxObjects=(
-                                                                     self.config.discardNanFluxStars))
-        return pipeBase.Struct(brightStarStamps=brightStarStamps)
+        statsFlag = stringToStatisticsProperty(self.config.annularFluxStatistic)
+        brightStarStamps = BrightStarStamps.initAndNormalize(
+            brightStarList,
+            innerRadius=innerRadius,
+            outerRadius=outerRadius,
+            nb90Rots=warpOutputs.nb90Rots,
+            imCenter=self.modelCenter,
+            use_archive=True,
+            statsControl=statsControl,
+            statsFlag=statsFlag,
+            badMaskPlanes=self.config.badMaskPlanes,
+            discardNanFluxObjects=(self.config.discardNanFluxStars),
+        )
+        return Struct(brightStarStamps=brightStarStamps)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        inputs['dataId'] = str(butlerQC.quantum.dataId)
-        refObjLoader = ReferenceObjectLoader(dataIds=[ref.datasetRef.dataId
-                                                      for ref in inputRefs.refCat],
-                                             refCats=inputs.pop("refCat"),
-                                             name=self.config.connections.refCat,
-                                             config=self.config.refObjLoader)
+        inputs["dataId"] = str(butlerQC.quantum.dataId)
+        refObjLoader = ReferenceObjectLoader(
+            dataIds=[ref.datasetRef.dataId for ref in inputRefs.refCat],
+            refCats=inputs.pop("refCat"),
+            name=self.config.connections.refCat,
+            config=self.config.refObjLoader,
+        )
         output = self.run(**inputs, refObjLoader=refObjLoader)
         if output:
             butlerQC.put(output, outputRefs)
