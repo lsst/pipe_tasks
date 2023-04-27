@@ -127,7 +127,7 @@ class ProcessBrightStarsConfig(PipelineTaskConfig, pipelineConnections=ProcessBr
     annularFluxRadii = ListField(
         dtype=int,
         doc="Inner and outer radii of the annulus used to compute AnnularFlux for normalization, in pixels.",
-        default=(40, 50),
+        default=(70, 80),
     )
     annularFluxStatistic = ChoiceField(
         dtype=str,
@@ -161,6 +161,11 @@ class ProcessBrightStarsConfig(PipelineTaskConfig, pipelineConnections=ProcessBr
             "saved when its center is beyond the exposure boundary."
         ),
         default=50,
+    )
+    minPixelsWithinAnnulus = Field(
+        dtype=float,
+        doc="Minumum number of valid pixels that must fall within the annulus for the bright star to be saved for generating PSF",
+        default=0.0,
     )
     doApplySkyCorr = Field(
         dtype=bool,
@@ -286,7 +291,9 @@ class ProcessBrightStarsTask(PipelineTask):
         # select stars within, or close enough to input exposure from refcat
         inputIm = inputExposure.maskedImage
         inputExpBBox = inputExposure.getBBox()
-        dilatationExtent = Extent2I(np.array(self.config.stampSize) - self.config.minPixelsWithinFrame)
+        # an effort to include stars that are outside the exposure but their stamps overlaps with the
+        # exposure.
+        dilatationExtent = Extent2I(np.array(self.config.stampSize) // 2)
         # TODO (DM-25894): handle catalog with stars missing from Gaia
         withinCalexp = refObjLoader.loadPixelBox(
             inputExpBBox.dilatedBy(dilatationExtent), wcs, filterName="phot_g_mean"
@@ -501,6 +508,7 @@ class ProcessBrightStarsTask(PipelineTask):
                 position=xy0s[j],
                 gaiaGMag=extractedStamps.GMags[j],
                 gaiaId=extractedStamps.gaiaIds[j],
+                minPixelsWithinAnnulus=self.config.minPixelsWithinAnnulus,
             )
             for j, (warp, transform) in enumerate(zip(warpedStars, warpOutputs.warpTransforms))
         ]
