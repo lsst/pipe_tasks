@@ -24,7 +24,7 @@ __all__ = [
 ]
 
 from .fit_multiband import CatalogExposure, CatalogExposureConfig
-from lsst.obs.base import ExposureIdInfo
+from lsst.meas.base import SkyMapIdGeneratorConfig
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
@@ -137,6 +137,7 @@ class CoaddPsfFitConfig(
         target=CoaddPsfFitSubTask,
         doc="Task to fit PSF models for a single coadd",
     )
+    idGenerator = SkyMapIdGeneratorConfig.make_field()
 
 
 class CoaddPsfFitTask(pipeBase.PipelineTask):
@@ -157,7 +158,7 @@ class CoaddPsfFitTask(pipeBase.PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        id_tp = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "tract_patch").expId
+        id_tp = self.config.id_generator.apply(butlerQC.quantum.dataId).catalog_id
         dataId = inputRefs.cat_meas.dataId
         for dataRef in (inputRefs.coadd,):
             if dataRef.dataId != dataId:

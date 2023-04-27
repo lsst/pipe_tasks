@@ -32,6 +32,7 @@ import pandas as pd
 import lsst.geom as geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+from lsst.meas.base import SkyMapIdGeneratorConfig
 from lsst.skymap import BaseSkyMap
 
 from .coaddBase import makeSkyInfo
@@ -93,6 +94,7 @@ class DrpAssociationPipeConfig(
         doc="If True, construct and write out empty diaSource and diaObject "
             "tables. If False, raise NoWorkFound"
     )
+    idGenerator = SkyMapIdGeneratorConfig.make_field()
 
 
 class DrpAssociationPipeTask(pipeBase.PipelineTask):
@@ -111,11 +113,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
 
         inputs["tractId"] = butlerQC.quantum.dataId["tract"]
         inputs["patchId"] = butlerQC.quantum.dataId["patch"]
-        tractPatchId, skymapBits = butlerQC.quantum.dataId.pack(
-            "tract_patch",
-            returnMaxBits=True)
-        inputs["tractPatchId"] = tractPatchId
-        inputs["skymapBits"] = skymapBits
+        inputs["idGenerator"] = self.config.idGenerator.apply(butlerQC.quantum.dataId)
 
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
@@ -125,8 +123,9 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             skyMap,
             tractId,
             patchId,
-            tractPatchId,
-            skymapBits):
+            tractPatchId=None,
+            skymapBits=None,
+            idGenerator=None):
         """Trim DiaSources to the current Patch and run association.
 
         Takes in the set of DiaSource catalogs that covers the current patch,
@@ -142,7 +141,16 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         tractId : `int`
             Id of current tract being processed.
         patchId : `int`
-            Id of current patch being processed
+            Id of current patch being processed.
+        tractPatchId : `int`, optional
+            Unique identifier for the tract patch.  Deprecated in favor of
+            ``idGenerator`` along with `lsst.obs.base.ExposureIdInfo`.
+        skymapBits : `int`
+            Maximum number of bits used the ``tractPatchId`` integer
+            identifier.  Deprecated in favor of ``idGenerator`` along with
+            `lsst.obs.base.ExposureIdInfo`.
+        idGenerator : `lsst.meas.base.IdGenerator`, optional
+            Object that generates Object IDs and random number generator seeds.
 
         Returns
         -------
@@ -201,8 +209,9 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                       len(diaSourceHistoryCat), patchId, tractId)
 
         assocResult = self.associator.run(diaSourceHistoryCat,
-                                          tractPatchId,
-                                          skymapBits)
+                                          tractPatchId=tractPatchId,
+                                          skymapBits=skymapBits,
+                                          idGenerator=idGenerator)
 
         self.log.info("Associated DiaSources into %i DiaObjects",
                       len(assocResult.diaObjects))

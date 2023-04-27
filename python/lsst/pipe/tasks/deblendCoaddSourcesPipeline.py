@@ -28,9 +28,9 @@ from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTa
 import lsst.pipe.base.connectionTypes as cT
 
 from lsst.pex.config import ConfigurableField
+from lsst.meas.base import SkyMapIdGeneratorConfig
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.meas.extensions.scarlet import ScarletDeblendTask
-from lsst.obs.base import ExposureIdInfo
 
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
@@ -78,10 +78,6 @@ class DeblendCoaddSourceSingleConnections(PipelineTaskConnections,
         storageClass="SourceCatalog"
     )
 
-    def setDefaults(self):
-        super().setDefaults()
-        self.singleBandDeblend.propagateAllPeaks = True
-
 
 class DeblendCoaddSourcesSingleConfig(PipelineTaskConfig,
                                       pipelineConnections=DeblendCoaddSourceSingleConnections):
@@ -89,6 +85,11 @@ class DeblendCoaddSourcesSingleConfig(PipelineTaskConfig,
         target=SourceDeblendTask,
         doc="Task to deblend an image in one band"
     )
+    idGenerator = SkyMapIdGeneratorConfig.make_field()
+
+    def setDefaults(self):
+        super().setDefaults()
+        self.singleBandDeblend.propagateAllPeaks = True
 
 
 class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
@@ -162,6 +163,7 @@ class DeblendCoaddSourcesMultiConfig(PipelineTaskConfig,
         target=ScarletDeblendTask,
         doc="Task to deblend an images in multiple bands"
     )
+    idGenerator = SkyMapIdGeneratorConfig.make_field()
 
 
 class DeblendCoaddSourcesBaseTask(PipelineTask):
@@ -175,10 +177,7 @@ class DeblendCoaddSourcesBaseTask(PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        inputs["idFactory"] = ExposureIdInfo.fromDataId(
-            butlerQC.quantum.dataId,
-            "tract_patch"
-        ).makeSourceIdFactory()
+        inputs["idFactory"] = self.config.idGenerator.apply(butlerQC.quantum.dataId).make_table_id_factory()
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
@@ -227,8 +226,7 @@ class DeblendCoaddSourcesMultiTask(DeblendCoaddSourcesBaseTask):
         bandOrder.sort()
         inputRefs = reorderRefs(inputRefs, bandOrder, dataIdKey="band")
         inputs = butlerQC.get(inputRefs)
-        exposureIdInfo = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "tract_patch")
-        inputs["idFactory"] = exposureIdInfo.makeSourceIdFactory()
+        inputs["idFactory"] = self.config.idGenerator.apply(butlerQC.quantum.dataId).make_table_id_factory()
         inputs["filters"] = [dRef.dataId["band"] for dRef in inputRefs.coadds]
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)

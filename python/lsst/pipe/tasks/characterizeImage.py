@@ -41,8 +41,13 @@ from lsst.meas.algorithms import (
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
 from lsst.meas.astrom import RefMatchTask, displayAstrometry
 from lsst.meas.algorithms import LoadReferenceObjectsConfig
-from lsst.obs.base import ExposureIdInfo
-from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask, CatalogCalculationTask
+from lsst.meas.base import (
+    SingleFrameMeasurementTask,
+    ApplyApCorrTask,
+    CatalogCalculationTask,
+    IdGenerator,
+    DetectorVisitIdGeneratorConfig,
+)
 from lsst.meas.deblender import SourceDeblendTask
 import lsst.meas.extensions.shapeHSM  # noqa: F401 needed for default shape plugin
 from .measurePsf import MeasurePsfTask
@@ -220,6 +225,7 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
         dtype=str,
         default="raise",
     )
+    idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
     def setDefaults(self):
         super().setDefaults()
@@ -341,13 +347,13 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        if 'exposureIdInfo' not in inputs.keys():
-            inputs['exposureIdInfo'] = ExposureIdInfo.fromDataId(butlerQC.quantum.dataId, "visit_detector")
+        if 'idGenerator' not in inputs.keys():
+            inputs['idGenerator'] = self.config.idGenerator.apply(butlerQC.quantum.dataId)
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
     @timeMethod
-    def run(self, exposure, exposureIdInfo=None, background=None):
+    def run(self, exposure, exposureIdInfo=None, background=None, idGenerator=None):
         """Characterize a science image.
 
         Peforms the following operations:
@@ -360,11 +366,13 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         ----------
         exposure : `lsst.afw.image.ExposureF`
             Exposure to characterize.
-        exposureIdInfo : `lsst.obs.baseExposureIdInfo`, optional
-            Exposure ID info. If not provided, returned SourceCatalog IDs will not
-            be globally unique.
+        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`, optional
+            Exposure ID info. Deprecated in favor of ``idGenerator``, and
+            ignored if that is provided.
         background : `lsst.afw.math.BackgroundList`, optional
             Initial model of background already subtracted from exposure.
+        idGenerator : `lsst.meas.base.IdGenerator`, optional
+            Object that generates source IDs and provides RNG seeds.
 
         Returns
         -------
@@ -395,8 +403,13 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
             self.log.info("CharacterizeImageTask initialized with 'simple' PSF.")
             self.installSimplePsf.run(exposure=exposure)
 
-        if exposureIdInfo is None:
-            exposureIdInfo = ExposureIdInfo()
+        if idGenerator is None:
+            if exposureIdInfo is not None:
+                idGenerator = IdGenerator._from_exposure_id_info(exposureIdInfo)
+            else:
+                idGenerator = IdGenerator()
+
+        del exposureIdInfo
 
         # subtract an initial estimate of background level
         background = self.background.run(exposure).background
@@ -405,7 +418,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         for i in range(psfIterations):
             dmeRes = self.detectMeasureAndEstimatePsf(
                 exposure=exposure,
-                exposureIdInfo=exposureIdInfo,
+                idGenerator=idGenerator,
                 background=background,
             )
 
@@ -429,7 +442,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         # perform final measurement with final PSF, including measuring and applying aperture correction,
         # if wanted
         self.measurement.run(measCat=dmeRes.sourceCat, exposure=dmeRes.exposure,
-                             exposureId=exposureIdInfo.expId)
+                             exposureId=idGenerator.catalog_id)
         if self.config.doApCorr:
             try:
                 apCorrMap = self.measureApCorr.run(
@@ -460,7 +473,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         )
 
     @timeMethod
-    def detectMeasureAndEstimatePsf(self, exposure, exposureIdInfo, background):
+    def detectMeasureAndEstimatePsf(self, exposure, idGenerator, background):
         """Perform one iteration of detect, measure, and estimate PSF.
 
         Performs the following operations:
@@ -479,8 +492,8 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         ----------
         exposure : `lsst.afw.image.ExposureF`
             Exposure to characterize.
-        exposureIdInfo : `lsst.obs.baseExposureIdInfo`
-            Exposure ID info.
+        idGenerator : `lsst.meas.base.IdGenerator`
+            Object that generates source IDs and provides RNG seeds.
         background : `lsst.afw.math.BackgroundList`, optional
             Initial model of background already subtracted from exposure.
 
@@ -523,7 +536,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         if background is None:
             background = BackgroundList()
 
-        sourceIdFactory = exposureIdInfo.makeSourceIdFactory()
+        sourceIdFactory = idGenerator.make_table_id_factory()
         table = SourceTable.make(self.schema, sourceIdFactory)
         table.setMetadata(self.algMetadata)
 
@@ -536,7 +549,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         if self.config.doDeblend:
             self.deblend.run(exposure=exposure, sources=sourceCat)
 
-        self.measurement.run(measCat=sourceCat, exposure=exposure, exposureId=exposureIdInfo.expId)
+        self.measurement.run(measCat=sourceCat, exposure=exposure, exposureId=idGenerator.catalog_id)
 
         measPsfRes = pipeBase.Struct(cellSet=None)
         if self.config.doMeasurePsf:
@@ -546,7 +559,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
             else:
                 matches = None
             measPsfRes = self.measurePsf.run(exposure=exposure, sources=sourceCat, matches=matches,
-                                             expId=exposureIdInfo.expId)
+                                             expId=idGenerator.catalog_id)
         self.display("measure_iter", exposure=exposure, sourceCat=sourceCat)
 
         return pipeBase.Struct(

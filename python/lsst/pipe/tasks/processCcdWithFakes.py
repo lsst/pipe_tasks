@@ -34,7 +34,7 @@ import lsst.pipe.base as pipeBase
 
 from .insertFakes import InsertFakesTask
 from lsst.afw.table import SourceTable
-from lsst.obs.base import ExposureIdInfo
+from lsst.meas.base import IdGenerator, DetectorVisitIdGeneratorConfig
 from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections
 import lsst.pipe.base.connectionTypes as cT
 import lsst.afw.table as afwTable
@@ -247,6 +247,8 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig,
     insertFakes = pexConfig.ConfigurableField(target=InsertFakesTask,
                                               doc="Configuration for the fake sources")
 
+    idGenerator = DetectorVisitIdGeneratorConfig.make_field()
+
     def setDefaults(self):
         super().setDefaults()
         self.calibrate.measurement.plugins["base_PixelFlags"].masksFpAnywhere.append("FAKE")
@@ -308,9 +310,8 @@ class ProcessCcdWithFakesTask(PipelineTask):
         inputs = butlerQC.get(inputRefs)
         detectorId = inputs["exposure"].getInfo().getDetector().getId()
 
-        if 'exposureIdInfo' not in inputs.keys():
-            expId, expBits = butlerQC.quantum.dataId.pack("visit_detector", returnMaxBits=True)
-            inputs['exposureIdInfo'] = ExposureIdInfo(expId, expBits)
+        if 'idGenerator' not in inputs.keys():
+            inputs['idGenerator'] = self.config.idGenerator.apply(butlerQC.quantum.dataId)
 
         expWcs = inputs["exposure"].getWcs()
         tractId = None
@@ -393,51 +394,70 @@ class ProcessCcdWithFakesTask(PipelineTask):
     def run(self, fakeCats, exposure, skyMap, wcs=None, photoCalib=None, exposureIdInfo=None,
             icSourceCat=None, sfdSourceCat=None, externalSkyWcsGlobalCatalog=None,
             externalSkyWcsTractCatalog=None, externalPhotoCalibGlobalCatalog=None,
-            externalPhotoCalibTractCatalog=None):
-        """Add fake sources to a calexp and then run detection, deblending and measurement.
+            externalPhotoCalibTractCatalog=None, idGenerator=None):
+        """Add fake sources to a calexp and then run detection, deblending and
+        measurement.
 
         Parameters
         ----------
         fakeCats : `list` of `lsst.daf.butler.DeferredDatasetHandle`
-                    Set of tract level fake catalogs that potentially cover
-                    this detectorVisit.
+            Set of tract level fake catalogs that potentially cover this
+            detectorVisit.
         exposure : `lsst.afw.image.exposure.exposure.ExposureF`
-                    The exposure to add the fake sources to
+            The exposure to add the fake sources to.
         skyMap : `lsst.skymap.SkyMap`
             SkyMap defining the tracts and patches the fakes are stored over.
-        wcs : `lsst.afw.geom.SkyWcs`
-                    WCS to use to add fake sources
-        photoCalib : `lsst.afw.image.photoCalib.PhotoCalib`
-                    Photometric calibration to be used to calibrate the fake sources
-        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`
-        icSourceCat : `lsst.afw.table.SourceCatalog`
-                    Default : None
-                    Catalog to take the information about which sources were used for calibration from.
-        sfdSourceCat : `lsst.afw.table.SourceCatalog`
-                    Default : None
-                    Catalog produced by singleFrameDriver, needed to copy some calibration flags from.
+        wcs : `lsst.afw.geom.SkyWcs`, optional
+            WCS to use to add fake sources.
+        photoCalib : `lsst.afw.image.photoCalib.PhotoCalib`, optional
+            Photometric calibration to be used to calibrate the fake sources.
+        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`, optional
+            Object that carries ID information for this image/catalog.
+            Deprecated in favor of ``idGenerator``.
+        icSourceCat : `lsst.afw.table.SourceCatalog`, optional
+            Catalog to take the information about which sources were used for
+            calibration from.
+        sfdSourceCat : `lsst.afw.table.SourceCatalog`, optional
+            Catalog produced by singleFrameDriver, needed to copy some
+            calibration flags from.
+        externalSkyWcsGlobalCatalog : `lsst.afw.table.ExposureCatalog`, \
+                optional
+            Exposure catalog with external skyWcs to be applied per config.
+        externalSkyWcsTractCatalog : `lsst.afw.table.ExposureCatalog`, optional
+            Exposure catalog with external skyWcs to be applied per config.
+        externalPhotoCalibGlobalCatalog : `lsst.afw.table.ExposureCatalog`, \
+                optional
+            Exposure catalog with external photoCalib to be applied per config
+        externalPhotoCalibTractCatalog : `lsst.afw.table.ExposureCatalog`, \
+                optional
+            Exposure catalog with external photoCalib to be applied per config.
+        idGenerator : `lsst.meas.base.IdGenerator`, optional
+            Object that generates Source IDs and random seeds.
 
         Returns
         -------
         resultStruct : `lsst.pipe.base.struct.Struct`
-            contains : outputExposure : `lsst.afw.image.exposure.exposure.ExposureF`
-                       outputCat : `lsst.afw.table.source.source.SourceCatalog`
+            Result struct containing:
+
+            - outputExposure: `lsst.afw.image.exposure.exposure.ExposureF`
+            - outputCat: `lsst.afw.table.source.source.SourceCatalog`
 
         Notes
         -----
-        Adds pixel coordinates for each source to the fakeCat and removes objects with bulge or disk half
-        light radius = 0 (if ``config.cleanCat = True``). These columns are called ``x`` and ``y`` and are in
-        pixels.
+        Adds pixel coordinates for each source to the fakeCat and removes
+        objects with bulge or disk half light radius = 0 (if ``config.cleanCat
+        = True``). These columns are called ``x`` and ``y`` and are in pixels.
 
-        Adds the ``Fake`` mask plane to the exposure which is then set by `addFakeSources` to mark where fake
-        sources have been added. Uses the information in the ``fakeCat`` to make fake galaxies (using galsim)
-        and fake stars, using the PSF models from the PSF information for the calexp. These are then added to
-        the calexp and the calexp with fakes included returned.
+        Adds the ``Fake`` mask plane to the exposure which is then set by
+        `addFakeSources` to mark where fake sources have been added. Uses the
+        information in the ``fakeCat`` to make fake galaxies (using galsim) and
+        fake stars, using the PSF models from the PSF information for the
+        calexp. These are then added to the calexp and the calexp with fakes
+        included returned.
 
-        The galsim galaxies are made using a double sersic profile, one for the bulge and one for the disk,
-        this is then convolved with the PSF at that point.
-
-        If exposureIdInfo is not provided then the SourceCatalog IDs will not be globally unique.
+        The galsim galaxies are made using a double sersic profile, one for the
+        bulge and one for the disk, this is then convolved with the PSF at that
+        point.
         """
         fakeCat = self.composeFakeCat(fakeCats, skyMap)
 
@@ -453,9 +473,12 @@ class ProcessCcdWithFakesTask(PipelineTask):
         self.insertFakes.run(fakeCat, exposure, wcs, photoCalib)
 
         # detect, deblend and measure sources
-        if exposureIdInfo is None:
-            exposureIdInfo = ExposureIdInfo()
-        returnedStruct = self.calibrate.run(exposure, exposureIdInfo=exposureIdInfo)
+        if idGenerator is None:
+            if exposureIdInfo is not None:
+                idGenerator = IdGenerator._from_exposure_id_info(exposureIdInfo)
+            else:
+                idGenerator = IdGenerator()
+        returnedStruct = self.calibrate.run(exposure, idGenerator=idGenerator)
         sourceCat = returnedStruct.sourceCat
 
         sourceCat = self.copyCalibrationFields(sfdSourceCat, sourceCat, self.config.srcFieldsToCopy)
@@ -635,33 +658,38 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
     ConfigClass = ProcessCcdWithVariableFakesConfig
 
     def run(self, fakeCats, exposure, skyMap, wcs=None, photoCalib=None, exposureIdInfo=None,
-            icSourceCat=None, sfdSourceCat=None):
-        """Add fake sources to a calexp and then run detection, deblending and measurement.
+            icSourceCat=None, sfdSourceCat=None, idGenerator=None):
+        """Add fake sources to a calexp and then run detection, deblending and
+        measurement.
 
         Parameters
         ----------
         fakeCat : `pandas.core.frame.DataFrame`
-                    The catalog of fake sources to add to the exposure
+            The catalog of fake sources to add to the exposure.
         exposure : `lsst.afw.image.exposure.exposure.ExposureF`
-                    The exposure to add the fake sources to
+            The exposure to add the fake sources to.
         skyMap : `lsst.skymap.SkyMap`
             SkyMap defining the tracts and patches the fakes are stored over.
-        wcs : `lsst.afw.geom.SkyWcs`
-                    WCS to use to add fake sources
-        photoCalib : `lsst.afw.image.photoCalib.PhotoCalib`
-                    Photometric calibration to be used to calibrate the fake sources
-        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`
-        icSourceCat : `lsst.afw.table.SourceCatalog`
-                    Default : None
-                    Catalog to take the information about which sources were used for calibration from.
-        sfdSourceCat : `lsst.afw.table.SourceCatalog`
-                    Default : None
-                    Catalog produced by singleFrameDriver, needed to copy some calibration flags from.
+        wcs : `lsst.afw.geom.SkyWcs`, optional
+            WCS to use to add fake sources.
+        photoCalib : `lsst.afw.image.photoCalib.PhotoCalib`, optional
+            Photometric calibration to be used to calibrate the fake sources.
+        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`, optional
+            Object that carries ID information for this image/catalog.
+            Deprecated in favor of ``idGenerator``.
+        icSourceCat : `lsst.afw.table.SourceCatalog`, optional
+            Catalog to take the information about which sources were used for
+            calibration from.
+        sfdSourceCat : `lsst.afw.table.SourceCatalog`, optional
+            Catalog produced by singleFrameDriver, needed to copy some
+            calibration flags from.
+        idGenerator : `lsst.meas.base.IdGenerator`, optional
+            Object that generates Source IDs and random seeds.
 
         Returns
         -------
         resultStruct : `lsst.pipe.base.struct.Struct`
-            Results Strcut containing:
+            Results struct containing:
 
             - outputExposure : Exposure with added fakes
               (`lsst.afw.image.exposure.exposure.ExposureF`)
@@ -672,19 +700,22 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
 
         Notes
         -----
-        Adds pixel coordinates for each source to the fakeCat and removes objects with bulge or disk half
-        light radius = 0 (if ``config.cleanCat = True``). These columns are called ``x`` and ``y`` and are in
-        pixels.
+        Adds pixel coordinates for each source to the fakeCat and removes
+        objects with bulge or disk half light radius = 0 (if ``config.cleanCat
+        = True``). These columns are called ``x`` and ``y`` and are in pixels.
 
-        Adds the ``Fake`` mask plane to the exposure which is then set by `addFakeSources` to mark where fake
-        sources have been added. Uses the information in the ``fakeCat`` to make fake galaxies (using galsim)
-        and fake stars, using the PSF models from the PSF information for the calexp. These are then added to
-        the calexp and the calexp with fakes included returned.
+        Adds the ``Fake`` mask plane to the exposure which is then set by
+        `addFakeSources` to mark where fake sources have been added. Uses the
+        information in the ``fakeCat`` to make fake galaxies (using galsim) and
+        fake stars, using the PSF models from the PSF information for the
+        calexp. These are then added to the calexp and the calexp with fakes
+        included returned.
 
-        The galsim galaxies are made using a double sersic profile, one for the bulge and one for the disk,
-        this is then convolved with the PSF at that point.
+        The galsim galaxies are made using a double sersic profile, one for the
+        bulge and one for the disk, this is then convolved with the PSF at that
+        point.
 
-        If exposureIdInfo is not provided then the SourceCatalog IDs will not be globally unique.
+
         """
         fakeCat = self.composeFakeCat(fakeCats, skyMap)
 
@@ -694,16 +725,25 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
         if photoCalib is None:
             photoCalib = exposure.getPhotoCalib()
 
-        if exposureIdInfo is None:
-            exposureIdInfo = ExposureIdInfo()
+        if idGenerator is None:
+            if exposureIdInfo is not None:
+                idGenerator = IdGenerator._from_exposure_id_info(exposureIdInfo)
+            else:
+                idGenerator = IdGenerator()
 
         band = exposure.getFilter().bandLabel
-        ccdVisitMagnitudes = self.addVariablity(fakeCat, band, exposure, photoCalib, exposureIdInfo)
+        ccdVisitMagnitudes = self.addVariability(
+            fakeCat,
+            band,
+            exposure,
+            photoCalib,
+            idGenerator.catalog_id,
+        )
 
         self.insertFakes.run(fakeCat, exposure, wcs, photoCalib)
 
         # detect, deblend and measure sources
-        returnedStruct = self.calibrate.run(exposure, exposureIdInfo=exposureIdInfo)
+        returnedStruct = self.calibrate.run(exposure, idGenerator=idGenerator)
         sourceCat = returnedStruct.sourceCat
 
         sourceCat = self.copyCalibrationFields(sfdSourceCat, sourceCat, self.config.srcFieldsToCopy)
@@ -713,7 +753,7 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
                                        ccdVisitFakeMagnitudes=ccdVisitMagnitudes)
         return resultStruct
 
-    def addVariablity(self, fakeCat, band, exposure, photoCalib, exposureIdInfo):
+    def addVariability(self, fakeCat, band, exposure, photoCalib, rngSeed):
         """Add scatter to the fake catalog visit magnitudes.
 
         Currently just adds a simple Gaussian scatter around the static fake
@@ -730,8 +770,8 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
             Exposure fakes will be added to.
         photoCalib : `lsst.afw.image.PhotoCalib`
             Photometric calibration object of ``exposure``.
-        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`
-            Exposure id information and metadata.
+        rngSeed : `int`
+            Random number generator seed.
 
         Returns
         -------
@@ -739,8 +779,7 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
             DataFrame containing the values of the magnitudes to that will
             be inserted into this ccdVisit.
         """
-        expId = exposureIdInfo.expId
-        rng = np.random.default_rng(expId)
+        rng = np.random.default_rng(rngSeed)
         magScatter = rng.normal(loc=0,
                                 scale=self.config.scatterSize,
                                 size=len(fakeCat))
