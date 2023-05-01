@@ -26,6 +26,7 @@ import numpy as np
 import os
 import pandas as pd
 import unittest
+import logging
 
 import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
@@ -438,7 +439,9 @@ class FunctorTestCase(unittest.TestCase):
         funcDict = {'good': Column("base_PsfFlux_instFlux"),
                     'bad': Column('not_a_column')}
 
-        _ = self._compositeFuncVal(CompositeFunctor(funcDict), df)
+        with self.assertLogs(level=logging.ERROR) as cm:
+            _ = self._compositeFuncVal(CompositeFunctor(funcDict), df)
+        self.assertIn("Exception in CompositeFunctor (funcs: ['good', 'bad'])", cm.output[0])
 
     def testLocalPhotometry(self):
         """Test the local photometry functors.
