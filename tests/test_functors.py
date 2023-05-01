@@ -26,6 +26,7 @@ import numpy as np
 import os
 import pandas as pd
 import unittest
+import logging
 
 import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
@@ -43,7 +44,7 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
                                       LocalDipoleMeanFlux, LocalDipoleMeanFluxErr,
                                       LocalDipoleDiffFlux, LocalDipoleDiffFluxErr,
                                       LocalWcs, ComputePixelScale, ConvertPixelToArcseconds,
-                                      ConvertPixelSqToArcsecondsSq, Ratio, HtmIndex20)
+                                      ConvertPixelSqToArcsecondsSq, Ratio, HtmIndex20, Ebv)
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
@@ -438,7 +439,9 @@ class FunctorTestCase(unittest.TestCase):
         funcDict = {'good': Column("base_PsfFlux_instFlux"),
                     'bad': Column('not_a_column')}
 
-        _ = self._compositeFuncVal(CompositeFunctor(funcDict), df)
+        with self.assertLogs(level=logging.ERROR) as cm:
+            _ = self._compositeFuncVal(CompositeFunctor(funcDict), df)
+        self.assertIn("Exception in CompositeFunctor (funcs: ['good', 'bad'])", cm.output[0])
 
     def testLocalPhotometry(self):
         """Test the local photometry functors.
@@ -748,6 +751,18 @@ class FunctorTestCase(unittest.TestCase):
             val.values,
             [14924528684992, 14924528689697, 14924528501716, 14924526434259,
              14924526433879])))
+
+    def testEbv(self):
+        """Test that EBV works.
+        """
+        df = self.getMultiIndexDataFrame(self.dataDict)
+        func = Ebv()
+
+        val = self._funcVal(func, df)
+        np.testing.assert_array_almost_equal(
+            val.values,
+            [0.029100, 0.029013, 0.028857, 0.028802, 0.028797]
+        )
 
     def _dropLevels(self, df):
         levelsToDrop = [n for lev, n in zip(df.columns.levels, df.columns.names) if len(lev) == 1]

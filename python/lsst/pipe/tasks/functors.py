@@ -393,6 +393,7 @@ class CompositeFunctor(Functor):
 
     """
     dataset = None
+    name = "CompositeFunctor"
 
     def __init__(self, funcs, **kwargs):
 
@@ -479,7 +480,12 @@ class CompositeFunctor(Functor):
                     )
                     valDict[k] = f._func(subdf)
                 except Exception as e:
-                    self.log.error("Exception in %s call: %s: %s", self.name, type(e).__name__, e)
+                    self.log.exception(
+                        "Exception in %s (funcs: %s) call: %s",
+                        self.name,
+                        str(list(self.funcDict.keys())),
+                        type(e).__name__,
+                    )
                     try:
                         valDict[k] = f.fail(subdf)
                     except NameError:
@@ -1904,7 +1910,7 @@ class Ebv(Functor):
         super().__init__(**kwargs)
 
     def _func(self, df):
-        coords = SkyCoord(df['coord_ra']*u.rad, df['coord_dec']*u.rad)
+        coords = SkyCoord(df['coord_ra'].values * u.rad, df['coord_dec'].values * u.rad)
         ebv = self.sfd(coords)
         # Double precision unnecessary scientifically
         # but currently needed for ingest to qserv
