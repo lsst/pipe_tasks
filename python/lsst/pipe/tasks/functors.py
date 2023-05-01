@@ -1910,7 +1910,7 @@ class Ebv(Functor):
         super().__init__(**kwargs)
 
     def _func(self, df):
-        coords = SkyCoord(df['coord_ra']*u.rad, df['coord_dec']*u.rad)
+        coords = SkyCoord(df['coord_ra'].values * u.rad, df['coord_dec'].values * u.rad)
         ebv = self.sfd(coords)
         # Double precision unnecessary scientifically
         # but currently needed for ingest to qserv
