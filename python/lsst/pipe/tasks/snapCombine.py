@@ -30,7 +30,6 @@ import lsst.pipe.base as pipeBase
 from lsstDebug import getDebugFrame
 from lsst.afw.display import getDisplay
 from lsst.coadd.utils import addToCoadd, setCoaddEdgeBits
-from lsst.ip.diffim import SnapPsfMatchTask
 from lsst.meas.algorithms import SourceDetectionTask
 from lsst.meas.base import SingleFrameMeasurementTask
 import lsst.meas.algorithms as measAlg
@@ -115,7 +114,8 @@ class SnapCombineConfig(pexConfig.Config):
     )
 
     repair = pexConfig.ConfigurableField(target=RepairTask, doc="")
-    diffim = pexConfig.ConfigurableField(target=SnapPsfMatchTask, doc="")
+    # Target `SnapPsfMatchTask` removed in DM-38846
+    # diffim = pexConfig.ConfigurableField(target=SnapPsfMatchTask, doc="")
     detection = pexConfig.ConfigurableField(target=SourceDetectionTask, doc="")
     initialPsf = pexConfig.ConfigField(dtype=InitialPsfConfig, doc="")
     measurement = pexConfig.ConfigurableField(target=SingleFrameMeasurementTask, doc="")
@@ -153,7 +153,6 @@ class SnapCombineTask(pipeBase.Task):
     def __init__(self, *args, **kwargs):
         pipeBase.Task.__init__(self, *args, **kwargs)
         self.makeSubtask("repair")
-        self.makeSubtask("diffim")
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
         self.makeSubtask("detection", schema=self.schema)
@@ -203,14 +202,7 @@ class SnapCombineTask(pipeBase.Task):
 
         if self.config.doDiffIm:
             if self.config.doPsfMatch:
-                self.log.info("snapCombine psfMatch")
-                diffRet = self.diffim.run(snap0, snap1, "subtractExposures")
-                diffExp = diffRet.subtractedImage
-
-                # Measure centroid and width of kernel; dependent on ticket #1980
-                # Useful diagnostic for the degree of astrometric shift between snaps.
-                diffKern = diffRet.psfMatchingKernel
-                width, height = diffKern.getDimensions()
+                raise NotImplementedError("PSF-matching of snaps is not yet supported.")
 
             else:
                 diffExp = afwImage.ExposureF(snap0, True)
