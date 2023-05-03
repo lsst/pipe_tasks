@@ -42,40 +42,7 @@ from lsst.pipe.tasks.coaddInputRecorder import CoaddInputRecorderTask, CoaddInpu
 
 from astro_metadata_translator import makeObservationInfo
 
-__all__ = ["MockWarpReference", "makeMockSkyInfo", "MockCoaddTestData"]
-
-
-class MockWarpReference(pipeBase.InMemoryDatasetHandle):
-    """Very simple object that looks like a Gen 3 data reference to a warped
-    exposure.
-
-    Parameters
-    ----------
-    exposure : `lsst.afw.image.Exposure`
-        The exposure to be retrieved by the data reference.
-    """
-    def get(self, *, component=None, parameters=None):
-        """Retrieve the specified dataset using the API of the Gen 3 Butler.
-
-        Parameters
-        ----------
-        component : `str`, optional
-            If supplied, return the named metadata of the exposure.
-        parameters : `dict`, optional
-            If supplied, use the parameters to modify the exposure,
-            typically by taking a subset.
-
-        Returns
-        -------
-        `lsst.afw.image.Exposure` or `lsst.afw.image.VisitInfo`
-        or `lsst.meas.algorithms.SingleGaussianPsf`
-            Either the exposure or its metadata, depending on the component
-            requested.
-        """
-        exp = super().get(component=component, parameters=parameters)
-        if isinstance(exp, afwImage.ExposureF):
-            exp = exp.clone()
-        return exp
+__all__ = ["makeMockSkyInfo", "MockCoaddTestData"]
 
 
 def makeMockSkyInfo(bbox, wcs, patch):
@@ -419,7 +386,7 @@ class MockCoaddTestData:
 
         Returns
         -------
-        dataRefList : `list` of `MockWarpReference`
+        dataRefList : `list` of `~lsst.pipe.base.InMemoryDatasetHandle`
             The data references.
 
         Raises
@@ -435,7 +402,14 @@ class MockCoaddTestData:
                 exposure = matchedExposures[expId]
             else:
                 raise ValueError("warpType must be one of 'direct' or 'psfMatched'")
-            dataRef = MockWarpReference(exposure, storageClass="ExposureF",
-                                        tract=tract, patch=patch, visit=expId, coaddName=coaddName)
+            dataRef = pipeBase.InMemoryDatasetHandle(
+                exposure,
+                storageClass="ExposureF",
+                copy=True,
+                tract=tract,
+                patch=patch,
+                visit=expId,
+                coaddName=coaddName
+            )
             dataRefList.append(dataRef)
         return dataRefList
