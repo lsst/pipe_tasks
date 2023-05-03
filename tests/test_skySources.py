@@ -24,6 +24,7 @@ import unittest
 import logging
 
 import lsst.afw.image as afwImage
+import lsst.meas.extensions.piff.piffPsfDeterminer
 import lsst.utils.tests
 from lsst.utils import getPackageDir
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
