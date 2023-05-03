@@ -19,32 +19,36 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Read preprocessed bright stars and stack them to build an extended
-PSF model.
-"""
+"""Read preprocessed bright stars and stack to build an extended PSF model."""
 
-__all__ = ["FocalPlaneRegionExtendedPsf", "ExtendedPsf", "StackBrightStarsConfig",
-           "StackBrightStarsTask", "MeasureExtendedPsfConfig", "MeasureExtendedPsfTask"]
+__all__ = [
+    "FocalPlaneRegionExtendedPsf",
+    "ExtendedPsf",
+    "StackBrightStarsConfig",
+    "StackBrightStarsTask",
+    "MeasureExtendedPsfConfig",
+    "MeasureExtendedPsfTask",
+]
 
 from dataclasses import dataclass
 from typing import List
 
-from lsst.afw import image as afwImage
-from lsst.afw import fits as afwFits
-from lsst.afw import math as afwMath
+from lsst.afw.fits import Fits, readMetadata
+from lsst.afw.image import ImageF, MaskedImageF, MaskX
+from lsst.afw.math import StatisticsControl, statisticsStack, stringToStatisticsProperty
 from lsst.daf.base import PropertyList
-from lsst.pipe import base as pipeBase
-from lsst.pipe.tasks.assembleCoadd import AssembleCoaddTask
-import lsst.pex.config as pexConfig
 from lsst.geom import Extent2I
+from lsst.pex.config import ChoiceField, Config, ConfigurableField, DictField, Field, ListField
+from lsst.pipe.base import PipelineTaskConfig, PipelineTaskConnections, Struct, Task
+from lsst.pipe.base.connectionTypes import Input, Output
+from lsst.pipe.tasks.assembleCoadd import AssembleCoaddTask
 
 
 @dataclass
 class FocalPlaneRegionExtendedPsf:
     """Single extended PSF over a focal plane region.
 
-    The focal plane region is defined through a list
-    of detectors.
+    The focal plane region is defined through a list of detectors.
 
     Parameters
     ----------
@@ -54,7 +58,8 @@ class FocalPlaneRegionExtendedPsf:
         List of detector IDs that define the focal plane region over which this
         extended PSF model has been built (and can be used).
     """
-    extended_psf_image: afwImage.MaskedImageF
+
+    extended_psf_image: MaskedImageF
     detector_list: List[int]
 
 
@@ -70,6 +75,7 @@ class ExtendedPsf:
     default_extended_psf : `lsst.afw.image.MaskedImageF`
         Extended PSF model to be used as default (or only) extended PSF model.
     """
+
     def __init__(self, default_extended_psf=None):
         self.default_extended_psf = default_extended_psf
         self.focal_plane_regions = {}
@@ -92,7 +98,8 @@ class ExtendedPsf:
         if region_name in self.focal_plane_regions:
             raise ValueError(f"Region name {region_name} is already used by this ExtendedPsf instance.")
         self.focal_plane_regions[region_name] = FocalPlaneRegionExtendedPsf(
-            extended_psf_image=extended_psf_image, detector_list=detector_list)
+            extended_psf_image=extended_psf_image, detector_list=detector_list
+        )
         for det in detector_list:
             self.detectors_focal_plane_regions[det] = region_name
 
@@ -183,7 +190,7 @@ class ExtendedPsf:
                 metadata[region] = e_psf_region.detector_list
         else:
             metadata["HAS_REGIONS"] = False
-        fits_primary = afwFits.Fits(filename, "w")
+        fits_primary = Fits(filename, "w")
         fits_primary.createEmpty()
         fits_primary.writeMetadata(metadata)
         fits_primary.closeFile()
@@ -203,8 +210,7 @@ class ExtendedPsf:
             e_psf_region.extended_psf_image.mask.writeFits(filename, metadata=metadata, mode="a")
 
     def writeFits(self, filename):
-        """Alias for ``write_fits``; exists for compatibility with the Butler.
-        """
+        """Alias for ``write_fits``; for compatibility with the Butler."""
         self.write_fits(filename)
 
     @classmethod
@@ -217,41 +223,43 @@ class ExtendedPsf:
             Name of the file to read.
         """
         # Extract info from metadata.
-        global_metadata = afwFits.readMetadata(filename, hdu=0)
+        global_metadata = readMetadata(filename, hdu=0)
         has_default = global_metadata.getBool("HAS_DEFAULT")
         if global_metadata.getBool("HAS_REGIONS"):
             focal_plane_region_names = global_metadata.getArray("REGION_NAMES")
         else:
             focal_plane_region_names = []
-        f = afwFits.Fits(filename, "r")
+        f = Fits(filename, "r")
         n_extensions = f.countHdus()
         extended_psf_parts = {}
         for j in range(1, n_extensions):
-            md = afwFits.readMetadata(filename, hdu=j)
+            md = readMetadata(filename, hdu=j)
             if has_default and md["REGION"] == "DEFAULT":
                 if md["EXTNAME"] == "IMAGE":
-                    default_image = afwImage.ImageF(filename, hdu=j)
+                    default_image = ImageF(filename, hdu=j)
                 elif md["EXTNAME"] == "MASK":
-                    default_mask = afwImage.MaskX(filename, hdu=j)
+                    default_mask = MaskX(filename, hdu=j)
                 continue
             if md["EXTNAME"] == "IMAGE":
-                extended_psf_part = afwImage.ImageF(filename, hdu=j)
+                extended_psf_part = ImageF(filename, hdu=j)
             elif md["EXTNAME"] == "MASK":
-                extended_psf_part = afwImage.MaskX(filename, hdu=j)
+                extended_psf_part = MaskX(filename, hdu=j)
             extended_psf_parts.setdefault(md["REGION"], {})[md["EXTNAME"].lower()] = extended_psf_part
         # Handle default if present.
         if has_default:
-            extended_psf = cls(afwImage.MaskedImageF(default_image, default_mask))
+            extended_psf = cls(MaskedImageF(default_image, default_mask))
         else:
             extended_psf = cls()
         # Ensure we recovered an extended PSF for all focal plane regions.
         if len(extended_psf_parts) != len(focal_plane_region_names):
-            raise ValueError(f"Number of per-region extended PSFs read ({len(extended_psf_parts)}) does not "
-                             "match with the number of regions recorded in the metadata "
-                             f"({len(focal_plane_region_names)}).")
+            raise ValueError(
+                f"Number of per-region extended PSFs read ({len(extended_psf_parts)}) does not "
+                "match with the number of regions recorded in the metadata "
+                f"({len(focal_plane_region_names)})."
+            )
         # Generate extended PSF regions mappings.
         for r_name in focal_plane_region_names:
-            extended_psf_image = afwImage.MaskedImageF(**extended_psf_parts[r_name])
+            extended_psf_image = MaskedImageF(**extended_psf_parts[r_name])
             detector_list = global_metadata.getArray(r_name)
             extended_psf.add_regional_extended_psf(extended_psf_image, r_name, detector_list)
         # Instantiate ExtendedPsf.
@@ -259,21 +267,19 @@ class ExtendedPsf:
 
     @classmethod
     def readFits(cls, filename):
-        """Alias for ``readFits``; exists for compatibility with the Butler.
-        """
+        """Alias for ``readFits``; exists for compatibility with the Butler."""
         return cls.read_fits(filename)
 
 
-class StackBrightStarsConfig(pexConfig.Config):
-    """Configuration parameters for StackBrightStarsTask.
-    """
-    subregion_size = pexConfig.ListField(
+class StackBrightStarsConfig(Config):
+    """Configuration parameters for StackBrightStarsTask."""
+
+    subregion_size = ListField(
         dtype=int,
-        doc="Size, in pixels, of the subregions over which the stacking will be "
-            "iteratively performed.",
-        default=(100, 100)
+        doc="Size, in pixels, of the subregions over which the stacking will be " "iteratively performed.",
+        default=(100, 100),
     )
-    stacking_statistic = pexConfig.ChoiceField(
+    stacking_statistic = ChoiceField(
         dtype=str,
         doc="Type of statistic to use for stacking.",
         default="MEANCLIP",
@@ -281,46 +287,44 @@ class StackBrightStarsConfig(pexConfig.Config):
             "MEAN": "mean",
             "MEDIAN": "median",
             "MEANCLIP": "clipped mean",
-        }
+        },
     )
-    num_sigma_clip = pexConfig.Field(
+    num_sigma_clip = Field(
         dtype=float,
         doc="Sigma for outlier rejection; ignored if stacking_statistic != 'MEANCLIP'.",
-        default=4
+        default=4,
     )
-    num_iter = pexConfig.Field(
+    num_iter = Field(
         dtype=int,
         doc="Number of iterations of outlier rejection; ignored if stackingStatistic != 'MEANCLIP'.",
-        default=3
+        default=3,
     )
-    bad_mask_planes = pexConfig.ListField(
+    bad_mask_planes = ListField(
         dtype=str,
-        doc="Mask planes that, if set, lead to associated pixels not being included in the stacking of the "
-            "bright star stamps.",
-        default=('BAD', 'CR', 'CROSSTALK', 'EDGE', 'NO_DATA', 'SAT', 'SUSPECT', 'UNMASKEDNAN')
+        doc="Mask planes that define pixels to be excluded from the stacking of the bright star stamps.",
+        default=("BAD", "CR", "CROSSTALK", "EDGE", "NO_DATA", "SAT", "SUSPECT", "UNMASKEDNAN"),
     )
-    do_mag_cut = pexConfig.Field(
+    do_mag_cut = Field(
         dtype=bool,
         doc="Apply magnitude cut before stacking?",
-        default=False
+        default=False,
     )
-    mag_limit = pexConfig.Field(
+    mag_limit = Field(
         dtype=float,
         doc="Magnitude limit, in Gaia G; all stars brighter than this value will be stacked",
-        default=18
+        default=18,
     )
 
 
-class StackBrightStarsTask(pipeBase.Task):
-    """Stack bright stars together to build an extended PSF model.
-    """
+class StackBrightStarsTask(Task):
+    """Stack bright stars together to build an extended PSF model."""
+
     ConfigClass = StackBrightStarsConfig
     _DefaultName = "stack_bright_stars"
 
     def _set_up_stacking(self, example_stamp):
-        """Configure stacking statistic and control from config fields.
-        """
-        stats_control = afwMath.StatisticsControl()
+        """Configure stacking statistic and control from config fields."""
+        stats_control = StatisticsControl()
         stats_control.setNumSigmaClip(self.config.num_sigma_clip)
         stats_control.setNumIter(self.config.num_iter)
         if bad_masks := self.config.bad_mask_planes:
@@ -328,7 +332,7 @@ class StackBrightStarsTask(pipeBase.Task):
             for bm in bad_masks[1:]:
                 and_mask = and_mask | example_stamp.mask.getPlaneBitMask(bm)
             stats_control.setAndMask(and_mask)
-        stats_flags = afwMath.stringToStatisticsProperty(self.config.stacking_statistic)
+        stats_flags = stringToStatisticsProperty(self.config.stacking_statistic)
         return stats_control, stats_flags
 
     def run(self, bss_ref_list, region_name=None):
@@ -348,31 +352,37 @@ class StackBrightStarsTask(pipeBase.Task):
             (typically from `MeasureExtendedPsfTask`)
         """
         if region_name:
-            region_message = f' for region "{region_name}".'
+            region_message = f" for region '{region_name}'."
         else:
-            region_message = ''
-        self.log.info('Building extended PSF from stamps extracted from %d detector images%s',
-                      len(bss_ref_list), region_message)
+            region_message = "."
+        self.log.info(
+            "Building extended PSF from stamps extracted from %d detector images%s",
+            len(bss_ref_list),
+            region_message,
+        )
         # read in example set of full stamps
         example_bss = bss_ref_list[0].get()
         example_stamp = example_bss[0].stamp_im
         # create model image
-        ext_psf = afwImage.MaskedImageF(example_stamp.getBBox())
+        ext_psf = MaskedImageF(example_stamp.getBBox())
         # divide model image into smaller subregions
         subregion_size = Extent2I(*self.config.subregion_size)
         sub_bboxes = AssembleCoaddTask._subBBoxIter(ext_psf.getBBox(), subregion_size)
         # compute approximate number of subregions
-        n_subregions = int(ext_psf.getDimensions()[0]/subregion_size[0] + 1)*int(
-            ext_psf.getDimensions()[1]/subregion_size[1] + 1)
-        self.log.info("Stacking will performed iteratively over approximately %d "
-                      "smaller areas of the final model image.", n_subregions)
+        n_subregions = ((ext_psf.getDimensions()[0]) // (subregion_size[0] + 1)) * (
+            (ext_psf.getDimensions()[1]) // (subregion_size[1] + 1)
+        )
+        self.log.info(
+            "Stacking performed iteratively over approximately %d smaller areas of the final model image.",
+            n_subregions,
+        )
         # set up stacking statistic
         stats_control, stats_flags = self._set_up_stacking(example_stamp)
         # perform stacking
         for jbbox, bbox in enumerate(sub_bboxes):
             all_stars = None
             for bss_ref in bss_ref_list:
-                read_stars = bss_ref.get(parameters={'bbox': bbox})
+                read_stars = bss_ref.get(parameters={"bbox": bbox})
                 if self.config.do_mag_cut:
                     read_stars = read_stars.selectByMag(magMax=self.config.mag_limit)
                 if all_stars:
@@ -380,22 +390,21 @@ class StackBrightStarsTask(pipeBase.Task):
                 else:
                     all_stars = read_stars
             # TODO: DM-27371 add weights to bright stars for stacking
-            coadd_sub_bbox = afwMath.statisticsStack(all_stars.getMaskedImages(), stats_flags, stats_control)
+            coadd_sub_bbox = statisticsStack(all_stars.getMaskedImages(), stats_flags, stats_control)
             ext_psf.assign(coadd_sub_bbox, bbox)
         return ext_psf
 
 
-class MeasureExtendedPsfConnections(pipeBase.PipelineTaskConnections,
-                                    dimensions=("band", "instrument")):
-    input_brightStarStamps = pipeBase.connectionTypes.Input(
+class MeasureExtendedPsfConnections(PipelineTaskConnections, dimensions=("band", "instrument")):
+    input_brightStarStamps = Input(
         doc="Input list of bright star collections to be stacked.",
         name="brightStarStamps",
         storageClass="BrightStarStamps",
         dimensions=("visit", "detector"),
         deferLoad=True,
-        multiple=True
+        multiple=True,
     )
-    extended_psf = pipeBase.connectionTypes.Output(
+    extended_psf = Output(
         doc="Extended PSF model built by stacking bright stars.",
         name="extended_psf",
         storageClass="ExtendedPsf",
@@ -403,42 +412,45 @@ class MeasureExtendedPsfConnections(pipeBase.PipelineTaskConnections,
     )
 
 
-class MeasureExtendedPsfConfig(pipeBase.PipelineTaskConfig,
-                               pipelineConnections=MeasureExtendedPsfConnections):
-    """Configuration parameters for MeasureExtendedPsfTask.
-    """
-    stack_bright_stars = pexConfig.ConfigurableField(
+class MeasureExtendedPsfConfig(PipelineTaskConfig, pipelineConnections=MeasureExtendedPsfConnections):
+    """Configuration parameters for MeasureExtendedPsfTask."""
+
+    stack_bright_stars = ConfigurableField(
         target=StackBrightStarsTask,
         doc="Stack selected bright stars",
     )
-    detectors_focal_plane_regions = pexConfig.DictField(
+    detectors_focal_plane_regions = DictField(
         keytype=int,
         itemtype=str,
-        doc="Mapping from detector IDs to focal plane region names. If empty, a constant "
-            "extended PSF model is built from all selected bright stars.",
-        default={}
+        doc=(
+            "Mapping from detector IDs to focal plane region names. If empty, a constant extended PSF model "
+            "is built from all selected bright stars."
+        ),
+        default={},
     )
 
 
-class MeasureExtendedPsfTask(pipeBase.Task):
+class MeasureExtendedPsfTask(Task):
     """Build and save extended PSF model.
 
     The model is built by stacking bright star stamps, extracted and
     preprocessed by
     `lsst.pipe.tasks.processBrightStars.ProcessBrightStarsTask`.
-    If a mapping from detector IDs to focal plane regions is provided,
-    a different extended PSF model will be built for each focal plane
-    region. If not, a single, constant extended PSF model is built using
-    all available data.
+
+    If a mapping from detector IDs to focal plane regions is provided, a
+    different extended PSF model will be built for each focal plane region. If
+    not, a single constant extended PSF model is built with all available data.
     """
+
     ConfigClass = MeasureExtendedPsfConfig
     _DefaultName = "measureExtendedPsf"
 
     def __init__(self, initInputs=None, *args, **kwargs):
-        pipeBase.Task.__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.makeSubtask("stack_bright_stars")
-        self.focal_plane_regions = {region: [] for region in
-                                    set(self.config.detectors_focal_plane_regions.values())}
+        self.focal_plane_regions = {
+            region: [] for region in set(self.config.detectors_focal_plane_regions.values())
+        }
         for det, region in self.config.detectors_focal_plane_regions.items():
             self.focal_plane_regions[region].append(det)
         # make no assumption on what detector IDs should be, but if we come
@@ -465,9 +477,12 @@ class MeasureExtendedPsfTask(pipeBase.Task):
             try:
                 region_name = self.config.detectors_focal_plane_regions[det_id]
             except KeyError:
-                self.log.warning('Bright stars were available for detector %d, but it was missing '
-                                 'from the "detectors_focal_plane_regions" config field, so they will not '
-                                 'be used to build any of the extended PSF models', det_id)
+                self.log.warning(
+                    "Bright stars were available for detector %d, but it was missing from the %s config "
+                    "field, so they will not be used to build any of the extended PSF models.",
+                    det_id,
+                    "'detectors_focal_plane_regions'",
+                )
                 self.regionless_dets.append(det_id)
                 continue
             region_ref_list[region_name].append(dataset_handle)
@@ -475,11 +490,13 @@ class MeasureExtendedPsfTask(pipeBase.Task):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         input_data = butlerQC.get(inputRefs)
-        bss_ref_list = input_data['input_brightStarStamps']
+        bss_ref_list = input_data["input_brightStarStamps"]
         # Handle default case of a single region with empty detector list
         if not self.config.detectors_focal_plane_regions:
-            self.log.info("No detector groups were provided to MeasureExtendedPsfTask; computing a single, "
-                          "constant extended PSF model over all available observations.")
+            self.log.info(
+                "No detector groups were provided to MeasureExtendedPsfTask; computing a single, "
+                "constant extended PSF model over all available observations."
+            )
             output_e_psf = ExtendedPsf(self.stack_bright_stars.run(bss_ref_list))
         else:
             output_e_psf = ExtendedPsf()
@@ -487,11 +504,14 @@ class MeasureExtendedPsfTask(pipeBase.Task):
             for region_name, ref_list in region_ref_list.items():
                 if not ref_list:
                     # no valid references found
-                    self.log.warning('No valid brightStarStamps reference found for region "%s"; '
-                                     'skipping it.', region_name)
+                    self.log.warning(
+                        "No valid brightStarStamps reference found for region '%s'; skipping it.",
+                        region_name,
+                    )
                     continue
                 ext_psf = self.stack_bright_stars.run(ref_list, region_name)
-                output_e_psf.add_regional_extended_psf(ext_psf, region_name,
-                                                       self.focal_plane_regions[region_name])
-        output = pipeBase.Struct(extended_psf=output_e_psf)
+                output_e_psf.add_regional_extended_psf(
+                    ext_psf, region_name, self.focal_plane_regions[region_name]
+                )
+        output = Struct(extended_psf=output_e_psf)
         butlerQC.put(output, outputRefs)

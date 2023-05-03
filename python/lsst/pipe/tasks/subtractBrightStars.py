@@ -18,10 +18,8 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-"""Retrieve extended PSF model and subtract bright stars at calexp (ie
-single visit) level.
-"""
+
+"""Retrieve extended PSF model and subtract bright stars at visit level."""
 
 __all__ = ["SubtractBrightStarsConnections", "SubtractBrightStarsConfig", "SubtractBrightStarsTask"]
 
@@ -41,7 +39,7 @@ from lsst.afw.math import (
 from lsst.geom import Box2I, Point2D, Point2I
 from lsst.pex.config import ChoiceField, Field, ListField
 from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
-from lsst.pipe.base import connectionTypes as cT
+from lsst.pipe.base.connectionTypes import Input, Output
 
 
 class SubtractBrightStarsConnections(
@@ -49,7 +47,7 @@ class SubtractBrightStarsConnections(
     dimensions=("instrument", "visit", "detector"),
     defaultTemplates={"outputExposureName": "brightStar_subtracted", "outputBackgroundName": "brightStars"},
 ):
-    inputExposure = cT.Input(
+    inputExposure = Input(
         doc="Input exposure from which to subtract bright star stamps.",
         name="calexp",
         storageClass="ExposureF",
@@ -58,7 +56,7 @@ class SubtractBrightStarsConnections(
             "detector",
         ),
     )
-    inputBrightStarStamps = cT.Input(
+    inputBrightStarStamps = Input(
         doc="Set of preprocessed postage stamps, each centered on a single bright star.",
         name="brightStarStamps",
         storageClass="BrightStarStamps",
@@ -67,13 +65,13 @@ class SubtractBrightStarsConnections(
             "detector",
         ),
     )
-    inputExtendedPsf = cT.Input(
+    inputExtendedPsf = Input(
         doc="Extended PSF model.",
         name="extended_psf",
         storageClass="ExtendedPsf",
         dimensions=("band",),
     )
-    skyCorr = cT.Input(
+    skyCorr = Input(
         doc="Input Sky Correction to be subtracted from the calexp if ``doApplySkyCorr``=True.",
         name="skyCorr",
         storageClass="Background",
@@ -83,7 +81,7 @@ class SubtractBrightStarsConnections(
             "detector",
         ),
     )
-    outputExposure = cT.Output(
+    outputExposure = Output(
         doc="Exposure with bright stars subtracted.",
         name="{outputExposureName}_calexp",
         storageClass="ExposureF",
@@ -92,7 +90,7 @@ class SubtractBrightStarsConnections(
             "detector",
         ),
     )
-    outputBackgroundExposure = cT.Output(
+    outputBackgroundExposure = Output(
         doc="Exposure containing only the modelled bright stars.",
         name="{outputBackgroundName}_calexp_background",
         storageClass="ExposureF",
@@ -209,7 +207,7 @@ class SubtractBrightStarsTask(PipelineTask):
             Calibrated exposure.
         skyCorr : `~lsst.afw.math.backgroundList.BackgroundList`
             Full focal plane sky correction, obtained by running
-            `~lsst.pipe.drivers.skyCorrection.SkyCorrectionTask`.
+            `~lsst.pipe.tasks.skyCorrection.SkyCorrectionTask`.
         """
         if isinstance(calexp, Exposure):
             calexp = calexp.getMaskedImage()
@@ -281,7 +279,7 @@ class SubtractBrightStarsTask(PipelineTask):
 
         Parameters
         ----------
-        inputExposure : `~lsst.afw.image.exposure.exposure.ExposureF`
+        inputExposure : `~lsst.afw.image.ExposureF`
             The image from which bright stars should be subtracted.
         inputBrightStarStamps :
                 `~lsst.meas.algorithms.brightStarStamps.BrightStarStamps`
@@ -296,7 +294,7 @@ class SubtractBrightStarsTask(PipelineTask):
             subtracted from.
         skyCorr : `~lsst.afw.math.backgroundList.BackgroundList`, optional
             Full focal plane sky correction, obtained by running
-            `~lsst.pipe.drivers.skyCorrection.SkyCorrectionTask`. If
+            `~lsst.pipe.tasks.skyCorrection.SkyCorrectionTask`. If
             `doApplySkyCorr` is set to `True`, `skyCorr` cannot be `None`.
 
         Returns
