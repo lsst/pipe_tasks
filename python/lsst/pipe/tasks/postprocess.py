@@ -174,7 +174,6 @@ class WriteObjectTableTask(pipeBase.PipelineTask):
         catalog : `pandas.DataFrame`
             Merged dataframe.
         """
-
         dfs = []
         for filt, tableDict in catalogs.items():
             for dataset, table in tableDict.items():
@@ -183,14 +182,15 @@ class WriteObjectTableTask(pipeBase.PipelineTask):
 
                 # Sort columns by name, to ensure matching schema among patches
                 df = df.reindex(sorted(df.columns), axis=1)
-                df['tractId'] = tract
-                df['patchId'] = patch
+                df = df.assign(tractId=tract, patchId=patch)
 
                 # Make columns a 3-level MultiIndex
                 df.columns = pd.MultiIndex.from_tuples([(dataset, filt, c) for c in df.columns],
                                                        names=('dataset', 'band', 'column'))
                 dfs.append(df)
 
+        # We do this dance and not `pd.concat(dfs)` because the pandas
+        # concatenation uses infinite memory.
         catalog = functools.reduce(lambda d1, d2: d1.join(d2), dfs)
         return catalog
 
