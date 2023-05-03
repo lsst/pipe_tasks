@@ -638,7 +638,7 @@ class FunctorTestCase(unittest.TestCase):
                                 "base_LocalWcs_CDMatrix_2_2")
 
                 # Exercise the full set of functions in LocalWcs.
-                sepRadians = func.getSkySeperationFromPixel(
+                sepRadians = func.getSkySeparationFromPixel(
                     df[("meas", "g", "someCentroid_x")] - df[("meas", "g", "slot_Centroid_x")],
                     df[("meas", "g", "someCentroid_y")] - df[("meas", "g", "slot_Centroid_y")],
                     0.0,
