@@ -1200,7 +1200,7 @@ class LocalWcs(Functor):
         """
         return (x * cd11 + y * cd12, x * cd21 + y * cd22)
 
-    def computeSkySeperation(self, ra1, dec1, ra2, dec2):
+    def computeSkySeparation(self, ra1, dec1, ra2, dec2):
         """Compute the local pixel scale conversion.
 
         Parameters
@@ -1226,7 +1226,7 @@ class LocalWcs(Functor):
                 np.sin(deltaDec / 2) ** 2
                 + np.cos(dec2) * np.cos(dec1) * np.sin(deltaRa / 2) ** 2))
 
-    def getSkySeperationFromPixel(self, x1, y1, x2, y2, cd11, cd12, cd21, cd22):
+    def getSkySeparationFromPixel(self, x1, y1, x2, y2, cd11, cd12, cd21, cd22):
         """Compute the distance on the sphere from x2, y1 to x1, y1.
 
         Parameters
@@ -1258,7 +1258,7 @@ class LocalWcs(Functor):
         ra1, dec1 = self.computeDeltaRaDec(x1, y1, cd11, cd12, cd21, cd22)
         ra2, dec2 = self.computeDeltaRaDec(x2, y2, cd11, cd12, cd21, cd22)
         # Great circle distance for small separations.
-        return self.computeSkySeperation(ra1, dec1, ra2, dec2)
+        return self.computeSkySeparation(ra1, dec1, ra2, dec2)
 
 
 class ComputePixelScale(LocalWcs):
