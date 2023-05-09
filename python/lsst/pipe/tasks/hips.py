@@ -41,7 +41,7 @@ from PIL import Image
 
 from lsst.sphgeom import RangeSet, HealpixPixelization
 from lsst.utils.timer import timeMethod
-from lsst.daf.butler import Butler, DatasetRef, Quantum, SkyPixDimension, UnresolvedRefWarning
+from lsst.daf.butler import Butler, DatasetRef, Quantum, SkyPixDimension
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.geom as afwGeom
@@ -358,7 +358,23 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
         elif args.subparser_name == "build":
             # Build the quantum graph.
 
+            # Figure out collection names.
+            if args.output_run is None:
+                if args.output is None:
+                    raise ValueError("At least one of --output or --output-run options is required.")
+                args.output_run = "{}/{}".format(args.output, pipeBase.Instrument.makeCollectionTimestamp())
+
             build_ranges = RangeSet(sorted(args.pixels))
+
+            # Metadata includes a subset of attributes defined in CmdLineFwk.
+            metadata = {
+                "input": args.input,
+                "butler_argument": args.butler_config,
+                "output": args.output,
+                "output_run": args.output_run,
+                "data_query": args.where,
+                "time": f"{datetime.now()}",
+            }
 
             qg = cls.build_quantum_graph(
                 task_def,
@@ -366,7 +382,8 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
                 args.hpix_build_order,
                 build_ranges,
                 where=args.where,
-                collections=args.input
+                collections=args.input,
+                metadata=metadata,
             )
             qg.saveUri(args.save_qgraph)
 
@@ -430,6 +447,28 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
             )
 
         parser_build.add_argument(
+            "--output",
+            type=str,
+            help=(
+                "Name of the output CHAINED collection. If this options is specified and "
+                "--output-run is not, then a new RUN collection will be created by appending "
+                "a timestamp to the value of this option."
+            ),
+            default=None,
+            metavar="COLL",
+        )
+        parser_build.add_argument(
+            "--output-run",
+            type=str,
+            help=(
+                "Output RUN collection to write resulting images. If not provided "
+                "then --output must be provided and a new RUN collection will be created "
+                "by appending a timestamp to the value passed with --output."
+            ),
+            default=None,
+            metavar="RUN",
+        )
+        parser_build.add_argument(
             "-q",
             "--save-qgraph",
             type=str,
@@ -456,6 +495,7 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
         constraint_ranges,
         where=None,
         collections=None,
+        metadata=None,
     ):
         """Generate a `QuantumGraph` for running just this task.
 
@@ -489,6 +529,9 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
             Collection or collections to search for input datasets, in order.
             If not provided, ``registry.defaults.collections`` will be
             searched.
+        metadata : `dict` [ `str`, `Any` ]
+            Graph metadata. It is required to contain "output_run" key with the
+            name of the output RUN collection.
         """
         config = task_def.config
 
@@ -598,11 +641,12 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
                         output_data_ids.append(
                             registry.expandDataId({hpx_output_dimension: hpx_output_index, "band": band})
                         )
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", category=UnresolvedRefWarning)
-                    outputs = {dt: [DatasetRef(dt, data_id)] for dt in incidental_output_dataset_types}
-                    outputs[output_dataset_type] = [DatasetRef(output_dataset_type, data_id)
-                                                    for data_id in output_data_ids]
+                output_run = metadata["output_run"]
+                outputs = {
+                    dt: [DatasetRef(dt, data_id, run=output_run)] for dt in incidental_output_dataset_types
+                }
+                outputs[output_dataset_type] = [DatasetRef(output_dataset_type, data_id, run=output_run)
+                                                for data_id in output_data_ids]
                 quanta.append(
                     Quantum(
                         taskName=task_def.taskName,
@@ -617,7 +661,7 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
         if len(quanta) == 0:
             raise RuntimeError("Given constraints yielded empty quantum graph.")
 
-        return pipeBase.QuantumGraph(quanta={task_def: quanta})
+        return pipeBase.QuantumGraph(quanta={task_def: quanta}, metadata=metadata)
 
 
 class HipsPropertiesSpectralTerm(pexConfig.Config):
