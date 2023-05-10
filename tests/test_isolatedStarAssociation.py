@@ -120,6 +120,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                  ('apFlux_12_0_instFluxErr', 'f4'),
                  ('apFlux_12_0_instFlux_flag', '?'),
                  ('extendedness', 'f4'),
+                 ('detect_isPrimary', bool),
                  ('visit', 'i4'),
                  ('detector', 'i4'),
                  ('physical_filter', 'U10'),
@@ -178,6 +179,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                 table['extra_column'] = np.ones(nstar)
                 table['visit'] = visit_counter
                 table['detector'] = 1
+                table['detect_isPrimary'] = True
 
                 if i == 0:
                     # Make one star have low s/n
