@@ -127,7 +127,7 @@ class ProcessBrightStarsConfig(PipelineTaskConfig, pipelineConnections=ProcessBr
     annularFluxRadii = ListField(
         dtype=int,
         doc="Inner and outer radii of the annulus used to compute AnnularFlux for normalization, in pixels.",
-        default=(40, 50),
+        default=(70, 80),
     )
     annularFluxStatistic = ChoiceField(
         dtype=str,
@@ -154,13 +154,11 @@ class ProcessBrightStarsConfig(PipelineTaskConfig, pipelineConnections=ProcessBr
         doc="Mask planes that identify pixels to not include in the computation of the annular flux.",
         default=("BAD", "CR", "CROSSTALK", "EDGE", "NO_DATA", "SAT", "SUSPECT", "UNMASKEDNAN"),
     )
-    minPixelsWithinFrame = Field(
-        dtype=int,
-        doc=(
-            "Minimum number of pixels that must fall within the stamp boundary for the bright star to be "
-            "saved when its center is beyond the exposure boundary."
-        ),
-        default=50,
+    minValidAnnulusFraction = Field(
+        dtype=float,
+        doc="Minumum number of valid pixels that must fall within the annulus for the bright star to be "
+        "saved for subsequent generation of a PSF.",
+        default=0.0,
     )
     doApplySkyCorr = Field(
         dtype=bool,
@@ -286,10 +284,14 @@ class ProcessBrightStarsTask(PipelineTask):
         # select stars within, or close enough to input exposure from refcat
         inputIm = inputExposure.maskedImage
         inputExpBBox = inputExposure.getBBox()
-        dilatationExtent = Extent2I(np.array(self.config.stampSize) - self.config.minPixelsWithinFrame)
+        # Attempt to include stars that are outside of the exposure but their
+        # stamps overlap with the exposure.
+        dilatationExtent = Extent2I(np.array(self.config.stampSize) // 2)
         # TODO (DM-25894): handle catalog with stars missing from Gaia
         withinCalexp = refObjLoader.loadPixelBox(
-            inputExpBBox.dilatedBy(dilatationExtent), wcs, filterName="phot_g_mean"
+            inputExpBBox.dilatedBy(dilatationExtent),
+            wcs,
+            filterName="phot_g_mean",
         )
         refCat = withinCalexp.refCat
         # keep bright objects
@@ -501,6 +503,7 @@ class ProcessBrightStarsTask(PipelineTask):
                 position=xy0s[j],
                 gaiaGMag=extractedStamps.GMags[j],
                 gaiaId=extractedStamps.gaiaIds[j],
+                minValidAnnulusFraction=self.config.minValidAnnulusFraction,
             )
             for j, (warp, transform) in enumerate(zip(warpedStars, warpOutputs.warpTransforms))
         ]
