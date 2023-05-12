@@ -40,6 +40,12 @@ funcs:
     # raErr: not available yet DM-15180
     dec:
         functor: DecColumn
+
+   # RFC-924: Temporarily keep a duplicate "decl" entry for backwards
+   # compatibility. To be removed after September 2023.
+    decl:
+        functor: DecColumn
+
     # decErr: not available yet DM-15180
     # ra_dec_Cov: not available yet
     # One calibrated Calib flux is important:

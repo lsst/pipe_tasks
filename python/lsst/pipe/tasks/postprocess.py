@@ -1462,6 +1462,11 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
             # Technically you should join to get the visit from the visit
             # table.
             ccdEntry = ccdEntry.rename(columns={"visit": "visitId"})
+
+            # RFC-924: Temporarily keep a duplicate "decl" entry for backwards
+            # compatibility. To be removed after September 2023.
+            ccdEntry["decl"] = ccdEntry.loc[:, "dec"]
+
             ccdEntry['ccdVisitId'] = [
                 self.config.idGenerator.apply(
                     visitSummaryRef.dataId,
@@ -1567,6 +1572,11 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
             raDec = visitInfo.getBoresightRaDec()
             visitEntry["ra"] = raDec.getRa().asDegrees()
             visitEntry["dec"] = raDec.getDec().asDegrees()
+
+            # RFC-924: Temporarily keep a duplicate "decl" entry for backwards
+            # compatibility. To be removed after September 2023.
+            visitEntry["decl"] = visitEntry.loc[:, "dec"]
+
             visitEntry["skyRotation"] = visitInfo.getBoresightRotAngle().asDegrees()
             azAlt = visitInfo.getBoresightAzAlt()
             visitEntry["azimuth"] = azAlt.getLongitude().asDegrees()
