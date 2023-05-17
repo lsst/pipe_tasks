@@ -41,7 +41,7 @@ from PIL import Image
 
 from lsst.sphgeom import RangeSet, HealpixPixelization
 from lsst.utils.timer import timeMethod
-from lsst.daf.butler import Butler, DatasetRef, Quantum, SkyPixDimension
+from lsst.daf.butler import Butler, DataCoordinate, DatasetRef, Quantum, SkyPixDimension
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.geom as afwGeom
@@ -624,6 +624,7 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
                     inputs_by_hpx[hpx_index].update(input_refs_for_patch)
         # Iterate over the dict we just created and create the actual quanta.
         quanta = []
+        output_run = metadata["output_run"]
         for hpx_index, input_refs_for_hpx_index in inputs_by_hpx.items():
             # Group inputs by band.
             input_refs_by_band = defaultdict(list)
@@ -641,7 +642,6 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
                         output_data_ids.append(
                             registry.expandDataId({hpx_output_dimension: hpx_output_index, "band": band})
                         )
-                output_run = metadata["output_run"]
                 outputs = {
                     dt: [DatasetRef(dt, data_id, run=output_run)] for dt in incidental_output_dataset_types
                 }
@@ -661,7 +661,22 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
         if len(quanta) == 0:
             raise RuntimeError("Given constraints yielded empty quantum graph.")
 
-        return pipeBase.QuantumGraph(quanta={task_def: quanta}, metadata=metadata)
+        # Define initOutputs refs.
+        empty_data_id = DataCoordinate.makeEmpty(registry.dimensions)
+        init_outputs = {}
+        global_init_outputs = []
+        if config_dataset_type := dataset_types.initOutputs.get(task_def.configDatasetName):
+            init_outputs[task_def] = [DatasetRef(config_dataset_type, empty_data_id, run=output_run)]
+        packages_dataset_name = pipeBase.PipelineDatasetTypes.packagesDatasetName
+        if packages_dataset_type := dataset_types.initOutputs.get(packages_dataset_name):
+            global_init_outputs.append(DatasetRef(packages_dataset_type, empty_data_id, run=output_run))
+
+        return pipeBase.QuantumGraph(
+            quanta={task_def: quanta},
+            initOutputs=init_outputs,
+            globalInitOutputs=global_init_outputs,
+            metadata=metadata,
+        )
 
 
 class HipsPropertiesSpectralTerm(pexConfig.Config):
