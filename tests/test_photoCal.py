@@ -95,6 +95,7 @@ class PhotoCalTest(unittest.TestCase):
         self.config.match.referenceSelection.flags.good = ['photometric']
         self.config.match.referenceSelection.flags.bad = ['resolved']
         self.config.match.sourceSelection.doUnresolved = False  # Don't have star/galaxy in the srcCat
+        self.config.match.sourceSelection.doRequirePrimary = False  # Don't have detect_isPrimary in srcCat
 
         # The test and associated data have been prepared on the basis that we
         # use the PsfFlux to perform photometry.
