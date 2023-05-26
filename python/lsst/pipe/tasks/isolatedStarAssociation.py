@@ -145,6 +145,7 @@ class IsolatedStarAssociationConfig(pipeBase.PipelineTaskConfig,
         source_selector.doSignalToNoise = True
         source_selector.doIsolated = True
         source_selector.doRequireFiniteRaDec = True
+        source_selector.doRequirePrimary = True
 
         source_selector.signalToNoise.minimum = 10.0
         source_selector.signalToNoise.maximum = 1000.0
@@ -357,6 +358,8 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
         if self.source_selector.config.doIsolated:
             all_columns.append(self.source_selector.config.isolated.parentName)
             all_columns.append(self.source_selector.config.isolated.nChildName)
+        if self.source_selector.config.doRequirePrimary:
+            all_columns.append(self.source_selector.config.requirePrimary.primaryColName)
 
         return all_columns, columns
 

@@ -106,6 +106,7 @@ class PhotoCalConfig(pexConf.Config):
 
     def setDefaults(self):
         pexConf.Config.setDefaults(self)
+        self.match.sourceSelection.doRequirePrimary = True
         self.match.sourceSelection.doFlags = True
         self.match.sourceSelection.flags.bad = [
             "base_PixelFlags_flag_edge",
