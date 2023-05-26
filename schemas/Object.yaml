@@ -509,6 +509,14 @@ funcs:
         functor: Column
         args: base_ClassificationExtendedness_value
         dataset: meas
+    refSizeExtendedness:
+        functor: Column
+        args: base_ClassificationSizeExtendedness_value
+        dataset: ref
+    sizeExtendedness:
+        functor: Column
+        args: base_ClassificationSizeExtendedness_value
+        dataset: meas
     # lcPeriodic:  # Not computed. Need multi-epoch forced phot S19
     # lcNonPeriodic:  # Not computed. Need without multi-epoch forced phot S19
     # photoZ:  # Not computed yet
@@ -760,6 +768,7 @@ flags:
     - base_PixelFlags_flag_streak
     - base_PixelFlags_flag_streakCenter
     - base_ClassificationExtendedness_flag
+    - base_ClassificationSizeExtendedness_flag
     - calib_astrometry_used
     - calib_photometry_reserved
     - calib_photometry_used
@@ -836,6 +845,7 @@ flag_rename_rules:
     - ['base_Blendedness', 'blendedness']
     - ['base_PixelFlags_flag', 'pixelFlags']
     - ['base_ClassificationE', 'e']
+    - ['base_ClassificationS', 's']
     - ['base_Psf', 'psf']
     - ['base_CircularApertureFlux', 'apFlux']
     - ['base_FootprintArea', 'footprintArea']
