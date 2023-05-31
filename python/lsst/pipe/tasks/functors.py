@@ -1304,7 +1304,7 @@ class ComputePixelScale(LocalWcs):
 
 
 class ConvertPixelToArcseconds(ComputePixelScale):
-    """Convert a value in units pixels squared  to units arcseconds squared.
+    """Convert a value in units pixels to units arcseconds.
     """
 
     def __init__(self,
@@ -1341,7 +1341,7 @@ class ConvertPixelToArcseconds(ComputePixelScale):
 
 
 class ConvertPixelSqToArcsecondsSq(ComputePixelScale):
-    """Convert a value in units pixels to units arcseconds.
+    """Convert a value in units pixels squared to units arcseconds squared.
     """
 
     def __init__(self,
