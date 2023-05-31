@@ -36,15 +36,14 @@ import lsst.meas.base as measBase
 import lsst.utils.tests
 from lsst.pipe.base import InMemoryDatasetHandle
 from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, RAColumn,
-                                      DecColumn, Mag, MagDiff, Color, StarGalaxyLabeller,
+                                      DecColumn, Mag, MagDiff, Color,
                                       DeconvolvedMoments, SdssTraceSize, PsfSdssTraceSizeDiff,
                                       HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm,
                                       LocalPhotometry, LocalNanojansky, LocalNanojanskyErr,
-                                      LocalMagnitude, LocalMagnitudeErr,
                                       LocalDipoleMeanFlux, LocalDipoleMeanFluxErr,
                                       LocalDipoleDiffFlux, LocalDipoleDiffFluxErr,
                                       LocalWcs, ComputePixelScale, ConvertPixelToArcseconds,
-                                      ConvertPixelSqToArcsecondsSq, Ratio, HtmIndex20, Ebv)
+                                      ConvertPixelSqToArcsecondsSq, HtmIndex20, Ebv)
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
@@ -261,13 +260,6 @@ class FunctorTestCase(unittest.TestCase):
 
         # Asserts that differences computed properly
         self._differenceVal(magDiff, df1, df2)
-
-    def testLabeller(self):
-        # Covering the code is better than nothing
-        self.columns.append("base_ClassificationExtendedness_value")
-        self.dataDict["base_ClassificationExtendedness_value"] = np.full(self.nRecords, 1)
-        df = self.getMultiIndexDataFrame(self.dataDict)
-        _ = self._funcVal(StarGalaxyLabeller(), df)
 
     def testPixelScale(self):
         # Test that the pixel scale and pix->arcsec calculations perform as
@@ -504,12 +496,6 @@ class FunctorTestCase(unittest.TestCase):
         self._testLocalPhotometryFunctors(LocalNanojanskyErr,
                                           df,
                                           nanoJanskyErr)
-        self._testLocalPhotometryFunctors(LocalMagnitude,
-                                          df,
-                                          mag)
-        self._testLocalPhotometryFunctors(LocalMagnitudeErr,
-                                          df,
-                                          magErr)
 
     def _testLocalPhotometryFunctors(self, functor, df, testValues):
         func = functor("base_PsfFlux_instFlux",
@@ -723,21 +709,6 @@ class FunctorTestCase(unittest.TestCase):
         metadata.setDouble("CD2_1", -8.27440751733828E-07)
 
         return afwGeom.makeSkyWcs(metadata)
-
-    def testRatio(self):
-        """Test the ratio functor where one of the functors should be junk.
-        """
-        self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, 1000)
-        self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords, 100)
-        df = self.getMultiIndexDataFrame(self.dataDict)
-
-        func = Ratio("base_PsfFlux_instFlux", "base_PsfFlux_instFluxErr")
-
-        val = self._funcVal(func, df)
-        self.assertTrue(np.allclose(np.full(self.nRecords, 10),
-                                    val.values,
-                                    atol=1e-16,
-                                    rtol=1e-16))
 
     def testHtm(self):
         """Test that HtmIndxes are created as expected.

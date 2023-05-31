@@ -20,17 +20,17 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ["Functor", "CompositeFunctor", "CustomFunctor", "Column", "Index",
-           "IDColumn", "FootprintNPix", "CoordColumn", "RAColumn", "DecColumn",
-           "HtmIndex20", "Mag", "MagErr", "NanoMaggie", "MagDiff", "Color",
-           "Labeller", "StarGalaxyLabeller", "NumStarLabeller", "DeconvolvedMoments",
-           "SdssTraceSize", "PsfSdssTraceSizeDiff", "HsmTraceSize", "PsfHsmTraceSizeDiff",
-           "HsmFwhm", "E1", "E2", "RadiusFromQuadrupole", "LocalWcs", "ComputePixelScale",
-           "ConvertPixelToArcseconds", "ConvertPixelSqToArcsecondsSq", "ReferenceBand",
-           "Photometry", "NanoJansky", "NanoJanskyErr", "Magnitude", "MagnitudeErr",
-           "LocalPhotometry", "LocalNanojansky", "LocalNanojanskyErr",
-           "LocalMagnitude", "LocalMagnitudeErr", "LocalDipoleMeanFlux",
-           "LocalDipoleMeanFluxErr", "LocalDipoleDiffFlux", "LocalDipoleDiffFluxErr",
-           "Ratio", "Ebv"]
+           "CoordColumn", "RAColumn", "DecColumn", "HtmIndex20", "Mag",
+           "MagErr", "MagDiff", "Color", "DeconvolvedMoments", "SdssTraceSize",
+           "PsfSdssTraceSizeDiff", "HsmTraceSize", "PsfHsmTraceSizeDiff",
+           "HsmFwhm", "E1", "E2", "RadiusFromQuadrupole", "LocalWcs",
+           "ComputePixelScale", "ConvertPixelToArcseconds",
+           "ConvertPixelSqToArcsecondsSq", "ReferenceBand", "Photometry",
+           "NanoJansky", "NanoJanskyErr", "LocalPhotometry", "LocalNanojansky",
+           "LocalNanojanskyErr", "LocalDipoleMeanFlux",
+           "LocalDipoleMeanFluxErr", "LocalDipoleDiffFlux",
+           "LocalDipoleDiffFluxErr", "Ebv",
+           ]
 
 import yaml
 import re
@@ -656,19 +656,6 @@ class Index(Functor):
         return pd.Series(df.index, index=df.index)
 
 
-class IDColumn(Column):
-    col = 'id'
-    _allow_difference = False
-    _defaultNoDup = True
-
-    def _func(self, df):
-        return pd.Series(df.index, index=df.index)
-
-
-class FootprintNPix(Column):
-    col = 'base_Footprint_nPix'
-
-
 class CoordColumn(Column):
     """Base class for coordinate column, in degrees
     """
@@ -848,14 +835,6 @@ class MagErr(Mag):
         return super().name + '_err'
 
 
-class NanoMaggie(Mag):
-    """
-    """
-
-    def _func(self, df):
-        return (df[self.col] / self.fluxMag0) * 1e9
-
-
 class MagDiff(Functor):
     _defaultDataset = 'meas'
 
@@ -953,58 +932,6 @@ class Color(Functor):
     @property
     def shortname(self):
         return f"{self.col}_{self.filt2.replace('-', '')}m{self.filt1.replace('-', '')}"
-
-
-class Labeller(Functor):
-    """Main function of this subclass is to override the dropna=True
-    """
-    _null_label = 'null'
-    _allow_difference = False
-    name = 'label'
-    _force_str = False
-
-    def __call__(self, parq, dropna=False, **kwargs):
-        return super().__call__(parq, dropna=False, **kwargs)
-
-
-class StarGalaxyLabeller(Labeller):
-    _columns = ["base_ClassificationExtendedness_value"]
-    _column = "base_ClassificationExtendedness_value"
-
-    def _func(self, df):
-        x = df[self._columns][self._column]
-        mask = x.isnull()
-        test = (x < 0.5).astype(int)
-        test = test.mask(mask, 2)
-
-        # TODO: DM-21954 Look into veracity of inline comment below
-        # are these backwards?
-        categories = ['galaxy', 'star', self._null_label]
-        label = pd.Series(pd.Categorical.from_codes(test, categories=categories),
-                          index=x.index, name='label')
-        if self._force_str:
-            label = label.astype(str)
-        return label
-
-
-class NumStarLabeller(Labeller):
-    _columns = ['numStarFlags']
-    labels = {"star": 0, "maybe": 1, "notStar": 2}
-
-    def _func(self, df):
-        x = df[self._columns][self._columns[0]]
-
-        # Number of filters
-        n = len(x.unique()) - 1
-
-        labels = ['noStar', 'maybe', 'star']
-        label = pd.Series(pd.cut(x, [-1, 0, n-1, n], labels=labels),
-                          index=x.index, name='label')
-
-        if self._force_str:
-            label = label.astype(str)
-
-        return label
 
 
 class DeconvolvedMoments(Functor):
@@ -1478,21 +1405,6 @@ class NanoJanskyErr(Photometry):
         return pd.Series(retArr, index=df.index)
 
 
-class Magnitude(Photometry):
-    def _func(self, df):
-        return self.dn2mag(df[self.col], self.fluxMag0)
-
-
-class MagnitudeErr(Photometry):
-    @property
-    def columns(self):
-        return [self.col, self.colFluxErr]
-
-    def _func(self, df):
-        retArr = self.dn2MagErr(df[self.col], df[self.colFluxErr], self.fluxMag0, self.fluxMag0Err)
-        return pd.Series(retArr, index=df.index)
-
-
 class LocalPhotometry(Functor):
     """Base class for calibrating the specified instrument flux column using
     the local photometric calibration.
@@ -1510,11 +1422,8 @@ class LocalPhotometry(Functor):
 
     See also
     --------
-    LocalPhotometry
     LocalNanojansky
     LocalNanojanskyErr
-    LocalMagnitude
-    LocalMagnitudeErr
     """
     logNJanskyToAB = (1 * u.nJy).to_value(u.ABmag)
 
@@ -1609,15 +1518,7 @@ class LocalPhotometry(Functor):
 
 
 class LocalNanojansky(LocalPhotometry):
-    """Compute calibrated fluxes using the local calibration value.
-
-    See also
-    --------
-    LocalNanojansky
-    LocalNanojanskyErr
-    LocalMagnitude
-    LocalMagnitudeErr
-    """
+    """Compute calibrated fluxes using the local calibration value."""
 
     @property
     def columns(self):
@@ -1632,15 +1533,7 @@ class LocalNanojansky(LocalPhotometry):
 
 
 class LocalNanojanskyErr(LocalPhotometry):
-    """Compute calibrated flux errors using the local calibration value.
-
-    See also
-    --------
-    LocalNanojansky
-    LocalNanojanskyErr
-    LocalMagnitude
-    LocalMagnitudeErr
-    """
+    """Compute calibrated flux errors using the local calibration value."""
 
     @property
     def columns(self):
@@ -1656,57 +1549,6 @@ class LocalNanojanskyErr(LocalPhotometry):
                                                df[self.photoCalibCol], df[self.photoCalibErrCol])
 
 
-class LocalMagnitude(LocalPhotometry):
-    """Compute calibrated AB magnitudes using the local calibration value.
-
-    See also
-    --------
-    LocalNanojansky
-    LocalNanojanskyErr
-    LocalMagnitude
-    LocalMagnitudeErr
-    """
-
-    @property
-    def columns(self):
-        return [self.instFluxCol, self.photoCalibCol]
-
-    @property
-    def name(self):
-        return f'mag_{self.instFluxCol}'
-
-    def _func(self, df):
-        return self.instFluxToMagnitude(df[self.instFluxCol],
-                                        df[self.photoCalibCol])
-
-
-class LocalMagnitudeErr(LocalPhotometry):
-    """Compute calibrated AB magnitude errors using the local calibration value.
-
-    See also
-    --------
-    LocalNanojansky
-    LocalNanojanskyErr
-    LocalMagnitude
-    LocalMagnitudeErr
-    """
-
-    @property
-    def columns(self):
-        return [self.instFluxCol, self.instFluxErrCol,
-                self.photoCalibCol, self.photoCalibErrCol]
-
-    @property
-    def name(self):
-        return f'magErr_{self.instFluxCol}'
-
-    def _func(self, df):
-        return self.instFluxErrToMagnitudeErr(df[self.instFluxCol],
-                                              df[self.instFluxErrCol],
-                                              df[self.photoCalibCol],
-                                              df[self.photoCalibErrCol])
-
-
 class LocalDipoleMeanFlux(LocalPhotometry):
     """Compute absolute mean of dipole fluxes.
 
@@ -1714,9 +1556,6 @@ class LocalDipoleMeanFlux(LocalPhotometry):
     --------
     LocalNanojansky
     LocalNanojanskyErr
-    LocalMagnitude
-    LocalMagnitudeErr
-    LocalDipoleMeanFlux
     LocalDipoleMeanFluxErr
     LocalDipoleDiffFlux
     LocalDipoleDiffFluxErr
@@ -1763,10 +1602,7 @@ class LocalDipoleMeanFluxErr(LocalDipoleMeanFlux):
     --------
     LocalNanojansky
     LocalNanojanskyErr
-    LocalMagnitude
-    LocalMagnitudeErr
     LocalDipoleMeanFlux
-    LocalDipoleMeanFluxErr
     LocalDipoleDiffFlux
     LocalDipoleDiffFluxErr
     """
@@ -1801,11 +1637,8 @@ class LocalDipoleDiffFlux(LocalDipoleMeanFlux):
     --------
     LocalNanojansky
     LocalNanojanskyErr
-    LocalMagnitude
-    LocalMagnitudeErr
     LocalDipoleMeanFlux
     LocalDipoleMeanFluxErr
-    LocalDipoleDiffFlux
     LocalDipoleDiffFluxErr
     """
 
@@ -1831,12 +1664,9 @@ class LocalDipoleDiffFluxErr(LocalDipoleMeanFlux):
     --------
     LocalNanojansky
     LocalNanojanskyErr
-    LocalMagnitude
-    LocalMagnitudeErr
     LocalDipoleMeanFlux
     LocalDipoleMeanFluxErr
     LocalDipoleDiffFlux
-    LocalDipoleDiffFluxErr
     """
 
     @property
@@ -1858,41 +1688,6 @@ class LocalDipoleDiffFluxErr(LocalDipoleMeanFlux):
              * df[self.photoCalibErrCol])**2
             + (df[self.instFluxPosErrCol]**2 + df[self.instFluxNegErrCol]**2)
             * df[self.photoCalibCol]**2)
-
-
-class Ratio(Functor):
-    """Base class for returning the ratio of 2 columns.
-
-    Can be used to compute a Signal to Noise ratio for any input flux.
-
-    Parameters
-    ----------
-    numerator : `str`
-        Name of the column to use at the numerator in the ratio
-    denominator : `str`
-        Name of the column to use as the denominator in the ratio.
-    """
-    def __init__(self,
-                 numerator,
-                 denominator,
-                 **kwargs):
-        self.numerator = numerator
-        self.denominator = denominator
-        super().__init__(**kwargs)
-
-    @property
-    def columns(self):
-        return [self.numerator, self.denominator]
-
-    @property
-    def name(self):
-        return f'ratio_{self.numerator}_{self.denominator}'
-
-    def _func(self, df):
-        with np.warnings.catch_warnings():
-            np.warnings.filterwarnings('ignore', r'invalid value encountered')
-            np.warnings.filterwarnings('ignore', r'divide by zero')
-            return df[self.numerator] / df[self.denominator]
 
 
 class Ebv(Functor):
