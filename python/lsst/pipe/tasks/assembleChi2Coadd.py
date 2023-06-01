@@ -26,6 +26,9 @@ import numpy as np
 from lsst.afw.detection import Psf
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
+import lsst.afw.table as afwTable
+from lsst.meas.algorithms import SourceDetectionTask
+from lsst.meas.base import SkyMapIdGeneratorConfig
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
@@ -96,9 +99,9 @@ def convolveImage(image: afwImage.Image, psf: Psf) -> afwImage.Image:
 
 
 class AssembleChi2CoaddConnections(pipeBase.PipelineTaskConnections,
-                                   dimensions=("tract", "patch", "band", "skymap"),
+                                   dimensions=("tract", "patch", "skymap"),
                                    defaultTemplates={"inputCoaddName": "deep",
-                                                     "outputCoaddName": "deep"}):
+                                                     "outputCoaddName": "deepChi2"}):
     inputCoadds = cT.Input(
         doc="Exposure on which to run deblending",
         name="{inputCoaddName}Coadd_calexp",
@@ -108,7 +111,7 @@ class AssembleChi2CoaddConnections(pipeBase.PipelineTaskConnections,
     )
     chi2Coadd = cT.Output(
         doc="Chi^2 exposure, produced by merging multiband coadds",
-        name="{outputCoaddName}Chi2Coadd",
+        name="{outputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap"),
     )
@@ -132,16 +135,28 @@ class AssembleChi2CoaddConfig(pipeBase.PipelineTaskConfig,
     )
 
 
-class AssembleChi2CoaddTask(pipeBase.Task):
-    """Assemble a chi^2 (Kaiser) coadd from a collection of multi-band coadds
+class AssembleChi2CoaddTask(pipeBase.PipelineTask):
+    """Assemble a chi^2 coadd from a collection of multi-band coadds
 
-    See Kaiser 2001 for more information.
+    References
+    ----------
+    .. [1] Szalay, A. S., Connolly, A. J., and Szokoly, G. P., “Simultaneous
+    Multicolor Detection of Faint Galaxies in the Hubble Deep Field”,
+    The Astronomical Journal, vol. 117, no. 1, pp. 68–74,
+    1999. doi:10.1086/300689.
+
+    .. [2] Kaiser 2001 whitepaper,
+    http://pan-starrs.ifa.hawaii.edu/project/people/kaiser/imageprocessing/im%2B%2B.pdf  # noqa: E501
+
+    .. [3] https://dmtn-015.lsst.io/
+
+    .. [4] https://project.lsst.org/meetings/law/sites/lsst.org.meetings.law/files/Building%20and%20using%20coadds.pdf  # noqa: E501
     """
     ConfigClass = AssembleChi2CoaddConfig
     _DefaultName = "assembleChi2Coadd"
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, initInputs, **kwargs):
+        super().__init__(initInputs=initInputs, **kwargs)
 
     def combinedMasks(self, masks: list[afwImage.MaskX]) -> afwImage.MaskX:
         """Combine the mask plane in each input coadd
@@ -220,4 +235,97 @@ class AssembleChi2CoaddTask(pipeBase.Task):
         # Create the exposure
         maskedImage = refExp.maskedImage.Factory(image, mask=mask, variance=variance)
         chi2coadd = refExp.Factory(maskedImage, exposureInfo=refExp.getInfo())
+        chi2coadd.info.setFilter(None)
         return pipeBase.Struct(chi2Coadd=chi2coadd)
+
+
+class DetectChi2SourcesConnections(
+    pipeBase.PipelineTaskConnections,
+    dimensions=("tract", "patch", "skymap"),
+    defaultTemplates={
+        "inputCoaddName": "deepChi2",
+        "outputCoaddName": "deepChi2"
+    }
+):
+    detectionSchema = cT.InitOutput(
+        doc="Schema of the detection catalog",
+        name="{outputCoaddName}Coadd_det_schema",
+        storageClass="SourceCatalog",
+    )
+    exposure = cT.Input(
+        doc="Exposure on which detections are to be performed",
+        name="{inputCoaddName}Coadd_calexp",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "skymap"),
+    )
+    outputSources = cT.Output(
+        doc="Detected sources catalog",
+        name="{outputCoaddName}Coadd_det",
+        storageClass="SourceCatalog",
+        dimensions=("tract", "patch", "skymap"),
+    )
+
+
+class DetectChi2SourcesConfig(pipeBase.PipelineTaskConfig, pipelineConnections=DetectChi2SourcesConnections):
+    detection = pexConfig.ConfigurableField(
+        target=SourceDetectionTask,
+        doc="Detect sources in chi2 coadd"
+    )
+
+    idGenerator = SkyMapIdGeneratorConfig.make_field()
+
+    def setDefaults(self):
+        super().setDefaults()
+        self.detection.reEstimateBackground = False
+        self.detection.thresholdValue = 3
+
+
+class DetectChi2SourcesTask(pipeBase.PipelineTask):
+    _DefaultName = "detectChi2Sources"
+    ConfigClass = DetectChi2SourcesConfig
+
+    def __init__(self, schema=None, **kwargs):
+        # N.B. Super is used here to handle the multiple inheritance of PipelineTasks, the init tree
+        # call structure has been reviewed carefully to be sure super will work as intended.
+        super().__init__(**kwargs)
+        if schema is None:
+            schema = afwTable.SourceTable.makeMinimalSchema()
+        self.schema = schema
+        self.makeSubtask("detection", schema=self.schema)
+        self.detectionSchema = afwTable.SourceCatalog(self.schema)
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
+        inputs["idFactory"] = idGenerator.make_table_id_factory()
+        inputs["expId"] = idGenerator.catalog_id
+        outputs = self.run(**inputs)
+        butlerQC.put(outputs, outputRefs)
+
+    def run(self, exposure: afwImage.Exposure, idFactory: afwTable.IdFactory, expId: int) -> pipeBase.Struct:
+        """Run detection on a chi2 exposure.
+
+        Parameters
+        ----------
+        exposure :
+            Exposure on which to detect (may be backround-subtracted and scaled,
+            depending on configuration).
+        idFactory :
+            IdFactory to set source identifiers.
+        expId :
+            Exposure identifier (integer) for RNG seed.
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            Results as a struct with attributes:
+            ``outputSources``
+                Catalog of detections (`lsst.afw.table.SourceCatalog`).
+        """
+        table = afwTable.SourceTable.make(self.schema, idFactory)
+        # We override `doSmooth` since the chi2 coadd has already had an
+        # extra PSF convolution applied to decorrelate the images
+        # accross bands.
+        detections = self.detection.run(table, exposure, expId=expId, doSmooth=False)
+        sources = detections.sources
+        return pipeBase.Struct(outputSources=sources)
