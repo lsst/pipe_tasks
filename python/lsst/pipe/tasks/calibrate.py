@@ -35,7 +35,7 @@ from lsst.meas.algorithms import LoadReferenceObjectsConfig, SkyObjectsTask
 import lsst.daf.base as dafBase
 from lsst.afw.math import BackgroundList
 from lsst.afw.table import SourceTable
-from lsst.meas.algorithms import SourceDetectionTask, ReferenceObjectLoader
+from lsst.meas.algorithms import SourceDetectionTask, ReferenceObjectLoader, NormalizedCalibrationFluxTask
 from lsst.meas.base import (SingleFrameMeasurementTask,
                             ApplyApCorrTask,
                             CatalogCalculationTask,
@@ -261,6 +261,10 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         target=SingleFrameMeasurementTask,
         doc="Measure sources"
     )
+    normalizedCalibrationFlux = pexConfig.ConfigurableField(
+        target=NormalizedCalibrationFluxTask,
+        doc="Normalize the calibration flux thing.",
+    )
     postCalibrationMeasurement = pexConfig.ConfigurableField(
         target=SingleFrameMeasurementTask,
         doc="Second round of measurement for plugins that need to be run after photocal"
@@ -321,6 +325,7 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         super().setDefaults()
         self.detection.doTempLocalBackground = False
         self.deblend.maxFootprintSize = 2000
+        self.measurement.plugins.names |= ["base_CompensatedGaussianFlux"]
         self.postCalibrationMeasurement.plugins.names = ["base_LocalPhotoCalib", "base_LocalWcs"]
         self.postCalibrationMeasurement.doReplaceWithNoise = False
         for key in self.postCalibrationMeasurement.slots:
@@ -328,6 +333,11 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         self.astromRefObjLoader.anyFilterMapsToThis = "phot_g_mean"
         # The photoRefCat connection is the name to use for the colorterms.
         self.photoCal.photoCatName = self.connections.photoRefCat
+
+        self.normalizedCalibrationFlux.do_measure_ap_corr = False
+
+        self.measurement.algorithms["base_CompensatedGaussianFlux"].kernel_widths = [5]
+        self.measurement.algorithms["base_CompensatedGaussianFlux"].t = 1.5
 
 
 class CalibrateTask(pipeBase.PipelineTask):
@@ -449,6 +459,7 @@ class CalibrateTask(pipeBase.PipelineTask):
             self.skySourceKey = self.schema.addField("sky_source", type="Flag", doc="Sky objects.")
         self.makeSubtask('measurement', schema=self.schema,
                          algMetadata=self.algMetadata)
+        self.makeSubtask('normalizedCalibrationFlux', schema=self.schema)
         self.makeSubtask('postCalibrationMeasurement', schema=self.schema,
                          algMetadata=self.algMetadata)
         self.makeSubtask("setPrimaryFlags", schema=self.schema, isSingleFrame=True)
@@ -586,6 +597,10 @@ class CalibrateTask(pipeBase.PipelineTask):
             measCat=sourceCat,
             exposure=exposure,
             exposureId=idGenerator.catalog_id,
+        )
+        self.normalizedCalibrationFlux.run(
+            exposure=exposure,
+            catalog=sourceCat,
         )
         if self.config.doApCorr:
             self.applyApCorr.run(
