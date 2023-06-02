@@ -256,10 +256,6 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
         df = catalog.asAstropy().to_pandas().set_index('id', drop=True)
         df['ccdVisitId'] = ccdVisitId
 
-        # RFC-924: Temporarily keep a duplicate "decl" entry for backwards
-        # compatibility. To be removed after September 2023.
-        df['decl'] = df.loc['dec']
-
         return pipeBase.Struct(table=df)
 
 
