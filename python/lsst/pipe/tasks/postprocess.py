@@ -1575,7 +1575,7 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
 
             # RFC-924: Temporarily keep a duplicate "decl" entry for backwards
             # compatibility. To be removed after September 2023.
-            visitEntry["decl"] = visitEntry.loc[:, "dec"]
+            visitEntry["decl"] = visitEntry["dec"]
 
             visitEntry["skyRotation"] = visitInfo.getBoresightRotAngle().asDegrees()
             azAlt = visitInfo.getBoresightAzAlt()
