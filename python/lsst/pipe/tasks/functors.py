@@ -710,11 +710,11 @@ class HtmIndex20(Functor):
     htmLevel = 20
     _radians = True
 
-    def __init__(self, ra, decl, **kwargs):
+    def __init__(self, ra, dec, **kwargs):
         self.pixelator = sphgeom.HtmPixelization(self.htmLevel)
         self.ra = ra
-        self.decl = decl
-        self._columns = [self.ra, self.decl]
+        self.dec = dec
+        self._columns = [self.ra, self.dec]
         super().__init__(**kwargs)
 
     def _func(self, df):
@@ -722,11 +722,11 @@ class HtmIndex20(Functor):
         def computePixel(row):
             if self._radians:
                 sphPoint = geom.SpherePoint(row[self.ra],
-                                            row[self.decl],
+                                            row[self.dec],
                                             geom.radians)
             else:
                 sphPoint = geom.SpherePoint(row[self.ra],
-                                            row[self.decl],
+                                            row[self.dec],
                                             geom.degrees)
             return self.pixelator.index(sphPoint.getVector())
 

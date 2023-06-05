@@ -225,7 +225,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             assocDiaSourceTable=assocResult.assocDiaSources)
 
     def _addDiaObjectCoords(self, objects, sources):
-        obj = objects[['ra', 'decl']].rename(columns={"ra": "coord_ra", "decl": "coord_dec"})
+        obj = objects[['ra', 'dec']].rename(columns={"ra": "coord_ra", "dec": "coord_dec"})
         df = pd.merge(sources.reset_index(), obj, left_on='diaObjectId', right_index=True,
                       how='inner').set_index('diaSourceId')
         return df
@@ -252,6 +252,6 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         isInPatch = np.array([
             innerPatchBox.contains(
                 wcs.skyToPixel(
-                    geom.SpherePoint(row["ra"], row["decl"], geom.degrees)))
+                    geom.SpherePoint(row["ra"], row["dec"], geom.degrees)))
             for idx, row in cat.iterrows()])
         return isInPatch

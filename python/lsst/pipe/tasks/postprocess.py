@@ -255,6 +255,7 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
         self.log.info("Generating DataFrame from src catalog ccdVisitId=%s", ccdVisitId)
         df = catalog.asAstropy().to_pandas().set_index('id', drop=True)
         df['ccdVisitId'] = ccdVisitId
+
         return pipeBase.Struct(table=df)
 
 
@@ -1448,7 +1449,7 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
 
             ccdEntry = {}
             summaryTable = visitSummary.asAstropy()
-            selectColumns = ['id', 'visit', 'physical_filter', 'band', 'ra', 'decl', 'zenithDistance',
+            selectColumns = ['id', 'visit', 'physical_filter', 'band', 'ra', 'dec', 'zenithDistance',
                              'zeroPoint', 'psfSigma', 'skyBg', 'skyNoise',
                              'astromOffsetMean', 'astromOffsetStd', 'nPsfStar',
                              'psfStarDeltaE1Median', 'psfStarDeltaE2Median',
@@ -1462,6 +1463,11 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
             # Technically you should join to get the visit from the visit
             # table.
             ccdEntry = ccdEntry.rename(columns={"visit": "visitId"})
+
+            # RFC-924: Temporarily keep a duplicate "decl" entry for backwards
+            # compatibility. To be removed after September 2023.
+            ccdEntry["decl"] = ccdEntry.loc[:, "dec"]
+
             ccdEntry['ccdVisitId'] = [
                 self.config.idGenerator.apply(
                     visitSummaryRef.dataId,
@@ -1566,7 +1572,12 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
             visitEntry["band"] = visitRow['band']
             raDec = visitInfo.getBoresightRaDec()
             visitEntry["ra"] = raDec.getRa().asDegrees()
-            visitEntry["decl"] = raDec.getDec().asDegrees()
+            visitEntry["dec"] = raDec.getDec().asDegrees()
+
+            # RFC-924: Temporarily keep a duplicate "decl" entry for backwards
+            # compatibility. To be removed after September 2023.
+            visitEntry["decl"] = visitEntry["dec"]
+
             visitEntry["skyRotation"] = visitInfo.getBoresightRotAngle().asDegrees()
             azAlt = visitInfo.getBoresightAzAlt()
             visitEntry["azimuth"] = azAlt.getLongitude().asDegrees()

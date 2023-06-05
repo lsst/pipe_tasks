@@ -178,7 +178,7 @@ class MatchFakesTask(PipelineTask):
                                      trimmedFakes[self.config.dec_col])
         diaSrcVects = self._getVectors(
             np.radians(associatedDiaSources.loc[:, "ra"]),
-            np.radians(associatedDiaSources.loc[:, "decl"]))
+            np.radians(associatedDiaSources.loc[:, "dec"]))
 
         diaSrcTree = cKDTree(diaSrcVects)
         dist, idxs = diaSrcTree.query(

@@ -106,7 +106,7 @@ class IsolatedStarAssociationConfig(pipeBase.PipelineTaskConfig,
     dec_column = pexConfig.Field(
         doc='Name of column with declination.',
         dtype=str,
-        default='decl',
+        default='dec',
     )
     physical_filter_column = pexConfig.Field(
         doc='Name of column with physical filter name',

@@ -141,7 +141,7 @@ def makeMockVisitSummary(visit,
         row['decCorners'] = np.array([float(sph.getDec().asDegrees()) for sph in sph_pts])
         sph_pt = wcs.pixelToSky(bbox.getCenter())
         row['ra'] = sph_pt.getRa().asDegrees()
-        row['decl'] = sph_pt.getDec().asDegrees()
+        row['dec'] = sph_pt.getDec().asDegrees()
 
         # Generate a visitInfo.
         # This does not need to be consistent with the zenith angle in the table,
