@@ -11,6 +11,6 @@ warnings.warn(
 
 raise Exception("Downstream imports of configurableActions from "
                 "pipe.tasks have not been removed completely."
-               )
+                )
 
 from lsst.pex.config.configurableActions import *  # noqa: F401 E402, F403
