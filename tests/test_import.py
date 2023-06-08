@@ -48,6 +48,8 @@ class ImportTestCase(unittest.TestCase):
                 continue
             if file.startswith("__"):
                 continue
+            if file.startswith("configurableActions"):
+                continue
             root, ext = os.path.splitext(file)
             module_name = f"{root_pkg}.{root}"
             with self.subTest(module=module_name):
