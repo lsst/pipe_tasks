@@ -588,10 +588,15 @@ class CalibrateTask(pipeBase.PipelineTask):
             exposureId=idGenerator.catalog_id,
         )
         if self.config.doApCorr:
-            self.applyApCorr.run(
-                catalog=sourceCat,
-                apCorrMap=exposure.getInfo().getApCorrMap()
-            )
+            apCorrMap = exposure.getInfo().getApCorrMap()
+            if apCorrMap is None:
+                self.log.warning("Image does not have valid aperture correction map for %r; "
+                                 "skipping aperture correction", idGenerator)
+            else:
+                self.applyApCorr.run(
+                    catalog=sourceCat,
+                    apCorrMap=apCorrMap,
+                )
         self.catalogCalculation.run(sourceCat)
 
         self.setPrimaryFlags.run(sourceCat)
