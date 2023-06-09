@@ -21,6 +21,8 @@
 
 """Test ProcessCcdTask and its immediate subtasks.
 """
+import logging
+import os
 import shutil
 import tempfile
 import unittest
@@ -30,8 +32,11 @@ import lsst.afw.image
 import lsst.afw.math
 import lsst.afw.table
 import lsst.daf.butler.tests as butlerTests
+from lsst.utils import getPackageDir
 from lsst.pipe.base import testUtils
 from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
+from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
+import lsst.meas.extensions.piff.piffPsfDeterminer
 
 
 class CalibrateTaskTestCaseWithButler(lsst.utils.tests.TestCase):
@@ -184,6 +189,29 @@ class CalibrateTaskTestCaseWithButler(lsst.utils.tests.TestCase):
         #     So just check which ones were passed in
         self.assertEqual(run.call_args[1].keys(),
                          {"exposure", "idGenerator", "background", "icSourceCat"})
+
+    def testNoAperCorrMap(self):
+        expPath = os.path.join(getPackageDir("pipe_tasks"), "tests", "data", "v695833-e0-c000-a00.sci.fits")
+        exposure = lsst.afw.image.ExposureF(expPath)
+
+        charImConfig = CharacterizeImageConfig()
+        charImConfig.measurePsf.psfDeterminer = 'piff'
+        charImConfig.measurePsf.psfDeterminer['piff'].spatialOrder = 0
+        charImConfig.measureApCorr.sourceSelector["science"].doSignalToNoise = False
+        charImTask = CharacterizeImageTask(config=charImConfig)
+        charImResults = charImTask.run(exposure)
+        calibConfig = CalibrateConfig()
+        calibConfig.doAstrometry = False
+        calibConfig.doPhotoCal = False
+        calibConfig.doSkySources = False
+        calibConfig.doComputeSummaryStats = False
+
+        # Force the aperture correction map to None (DM-39626)
+        exposure.info.setApCorrMap(None)
+        calibTask = CalibrateTask(config=calibConfig)
+        with self.assertLogs(level=logging.WARNING) as cm:
+            _ = calibTask.run(charImResults.exposure)
+        self.assertIn("Image does not have valid aperture correction map", cm.output[0])
 
 
 def setup_module(module):
