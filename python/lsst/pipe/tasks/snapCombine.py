@@ -104,7 +104,6 @@ class SnapCombineConfig(pexConfig.Config):
         doc="List of float metadata keys to average when combining snaps, e.g. float positions and dates; "
         "non-float data must be handled by overriding the fixMetadata method",
         optional=True,
-
     )
     sumKeys = pexConfig.ListField(
         dtype=str,
@@ -113,12 +112,16 @@ class SnapCombineConfig(pexConfig.Config):
         optional=True,
     )
 
-    repair = pexConfig.ConfigurableField(target=RepairTask, doc="")
+    repair = pexConfig.ConfigurableField(target=RepairTask, doc="RepairTask configuration")
     # Target `SnapPsfMatchTask` removed in DM-38846
     # diffim = pexConfig.ConfigurableField(target=SnapPsfMatchTask, doc="")
-    detection = pexConfig.ConfigurableField(target=SourceDetectionTask, doc="")
-    initialPsf = pexConfig.ConfigField(dtype=InitialPsfConfig, doc="")
-    measurement = pexConfig.ConfigurableField(target=SingleFrameMeasurementTask, doc="")
+    detection = pexConfig.ConfigurableField(
+        target=SourceDetectionTask, doc="SourceDetectionTask configuration"
+    )
+    initialPsf = pexConfig.ConfigField(dtype=InitialPsfConfig, doc="InitialPsfConfig configuration")
+    measurement = pexConfig.ConfigurableField(
+        target=SingleFrameMeasurementTask, doc="SingleFrameMeasurementTask configuration"
+    )
 
     def setDefaults(self):
         self.detection.thresholdPolarity = "both"
