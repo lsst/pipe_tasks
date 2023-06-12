@@ -277,7 +277,7 @@ class CoaddMultibandFitTask(pipeBase.PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        id_tp = self.config.id_generator.apply(butlerQC.quantum.dataId).catalog_id
+        id_tp = self.config.idGenerator.apply(butlerQC.quantum.dataId).catalog_id
         # This is a roundabout way of ensuring all inputs get sorted and matched
         input_refs_objs = [(getattr(inputRefs, key), inputs[key])
                            for key in ("cats_meas", "coadds", "models_psf")]
