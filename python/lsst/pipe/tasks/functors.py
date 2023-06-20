@@ -37,6 +37,7 @@ import re
 from itertools import product
 import logging
 import os.path
+import warnings
 
 import pandas as pd
 import numpy as np
@@ -787,9 +788,9 @@ class Mag(Functor):
         return [self.col]
 
     def _func(self, df):
-        with np.warnings.catch_warnings():
-            np.warnings.filterwarnings('ignore', r'invalid value encountered')
-            np.warnings.filterwarnings('ignore', r'divide by zero')
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', r'invalid value encountered')
+            warnings.filterwarnings('ignore', r'divide by zero')
             return -2.5*np.log10(df[self.col] / self.fluxMag0)
 
     @property
@@ -821,9 +822,9 @@ class MagErr(Mag):
         return [self.col, self.col + 'Err']
 
     def _func(self, df):
-        with np.warnings.catch_warnings():
-            np.warnings.filterwarnings('ignore', r'invalid value encountered')
-            np.warnings.filterwarnings('ignore', r'divide by zero')
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', r'invalid value encountered')
+            warnings.filterwarnings('ignore', r'divide by zero')
             fluxCol, fluxErrCol = self.columns
             x = df[fluxErrCol] / df[fluxCol]
             y = self.fluxMag0Err / self.fluxMag0
@@ -850,9 +851,9 @@ class MagDiff(Functor):
         return [self.col1, self.col2]
 
     def _func(self, df):
-        with np.warnings.catch_warnings():
-            np.warnings.filterwarnings('ignore', r'invalid value encountered')
-            np.warnings.filterwarnings('ignore', r'divide by zero')
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', r'invalid value encountered')
+            warnings.filterwarnings('ignore', r'divide by zero')
             return -2.5*np.log10(df[self.col1]/df[self.col2])
 
     @property
@@ -1375,9 +1376,9 @@ class Photometry(Functor):
         return self.AB_FLUX_SCALE * dn / fluxMag0
 
     def dn2mag(self, dn, fluxMag0):
-        with np.warnings.catch_warnings():
-            np.warnings.filterwarnings('ignore', r'invalid value encountered')
-            np.warnings.filterwarnings('ignore', r'divide by zero')
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', r'invalid value encountered')
+            warnings.filterwarnings('ignore', r'divide by zero')
             return -2.5 * np.log10(dn/fluxMag0)
 
     def dn2fluxErr(self, dn, dnErr, fluxMag0, fluxMag0Err):

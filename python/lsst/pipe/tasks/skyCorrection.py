@@ -21,6 +21,8 @@
 
 __all__ = ["SkyCorrectionTask", "SkyCorrectionConfig"]
 
+import warnings
+
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.pipe.base.connectionTypes as cT
@@ -468,8 +470,8 @@ class SkyCorrectionTask(PipelineTask):
             "Focal plane background model constructed using %.2f x %.2f mm (%d x %d pixel) superpixels; "
             "FP BG median = %.1f counts, FP BG IQR = %.1f counts"
         )
-        with np.warnings.catch_warnings():
-            np.warnings.filterwarnings("ignore", r"invalid value encountered")
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", r"invalid value encountered")
             stats = np.nanpercentile(bgModelBase.getStatsImage().array, [50, 75, 25])
         self.log.info(
             msg,
@@ -506,8 +508,8 @@ class SkyCorrectionTask(PipelineTask):
             Detector level realization of the full focal plane bg model.
         """
         image = calExp.getMaskedImage()
-        with np.warnings.catch_warnings():
-            np.warnings.filterwarnings("ignore", r"invalid value encountered")
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", r"invalid value encountered")
             calBkgElement = bgModel.toCcdBackground(calExp.getDetector(), image.getBBox())
         image -= calBkgElement.getImage()
         return calExp, calBkgElement
