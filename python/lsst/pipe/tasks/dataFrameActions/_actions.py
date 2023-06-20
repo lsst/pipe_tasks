@@ -6,6 +6,7 @@ __all__ = ("SingleColumnAction", "MultiColumnAction", "CoordColumn", "MagColumnD
 
 from typing import Iterable
 
+import warnings
 import numpy as np
 import pandas as pd
 from astropy import units
@@ -51,9 +52,9 @@ class MagColumnDN(SingleColumnAction):
         if not (fluxMag0 := kwargs.get('fluxMag0')):
             fluxMag0 = 1/np.power(10, -0.4*self.coadd_zeropoint)
 
-        with np.warnings.catch_warnings():
-            np.warnings.filterwarnings('ignore', r'invalid value encountered')
-            np.warnings.filterwarnings('ignore', r'divide by zero')
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', r'invalid value encountered')
+            warnings.filterwarnings('ignore', r'divide by zero')
             return -2.5 * np.log10(df[self.column] / fluxMag0)
 
 
@@ -61,9 +62,9 @@ class MagColumnNanoJansky(SingleColumnAction):
 
     def __call__(self, df: pd.DataFrame, **kwargs):
 
-        with np.warnings.catch_warnings():
-            np.warnings.filterwarnings('ignore', r'invalid value encountered')
-            np.warnings.filterwarnings('ignore', r'divide by zero')
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', r'invalid value encountered')
+            warnings.filterwarnings('ignore', r'divide by zero')
             return -2.5 * np.log10((df[self.column] * 1e-9) / 3631.0)
 
 
