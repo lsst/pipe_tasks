@@ -52,7 +52,7 @@ CoaddPsfFitBaseTemplates = {
 
 class CoaddPsfFitConnections(
     pipeBase.PipelineTaskConnections,
-    dimensions=("tract", "patch", "skymap"),
+    dimensions=("tract", "patch", "band", "skymap"),
     defaultTemplates=CoaddPsfFitBaseTemplates,
 ):
     coadd = cT.Input(
