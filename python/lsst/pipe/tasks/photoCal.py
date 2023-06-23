@@ -417,6 +417,9 @@ class PhotoCalTask(pipeBase.Task):
         flux0 = 10**(0.4*r.zp)  # Flux of mag=0 star
         flux0err = 0.4*math.log(10)*flux0*r.sigma  # Error in flux0
         photoCalib = makePhotoCalibFromCalibZeroPoint(flux0, flux0err)
+        self.log.info("Photometric calibration factor (nJy/ADU): %f +/- %f",
+                      photoCalib.getCalibrationMean(),
+                      photoCalib.getCalibrationErr())
 
         return pipeBase.Struct(
             photoCalib=photoCalib,
