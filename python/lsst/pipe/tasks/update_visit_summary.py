@@ -344,6 +344,13 @@ class UpdateVisitSummaryConnections(
         dimensions=("instrument", "visit"),
         storageClass="ExposureCatalog",
     )
+    output_summary_catalog_nopsf = cT.Output(
+        doc="Visit-level catalog summarizing all image characterizations and calibrations, "
+            "but no PSF because of memory leak issues.",
+        name="finalVisitSummaryNoPsf",
+        dimensions=("instrument", "visit"),
+        storageClass="ExposureCatalog",
+    )
 
     def __init__(self, *, config: UpdateVisitSummaryConfig | None = None):
         super().__init__(config=config)
@@ -672,6 +679,8 @@ class UpdateVisitSummaryTask(PipelineTask):
         -------
         output_summary_catalog : `lsst.afw.table.ExposureCatalog`
             Output visit summary catalog.
+        output_summary_catalog_nopsf : `lsst.afw.table.ExposureCatalog`
+            Output visit summary catalog, without the psf.
 
         Notes
         -----
@@ -683,10 +692,13 @@ class UpdateVisitSummaryTask(PipelineTask):
         original component and values from the input catalog unchanged.
         """
         output_summary_catalog = ExposureCatalog(self.schema)
+        output_summary_catalog_nopsf = ExposureCatalog(self.schema)
         output_summary_catalog.setMetadata(input_summary_catalog.getMetadata())
+        output_summary_catalog_nopsf.setMetadata(input_summary_catalog.getMetadata())
         for input_record in input_summary_catalog:
             detector_id = input_record.getId()
             output_record = output_summary_catalog.addNew()
+            output_record_nopsf = output_summary_catalog_nopsf.addNew()
 
             # Make a new ExposureSummaryStats from the input record.
             summary_stats = ExposureSummaryStats.from_record(input_record)
@@ -697,6 +709,7 @@ class UpdateVisitSummaryTask(PipelineTask):
             # also copies fields that aren't part of summary_stats, including
             # the actual components like Psf, Wcs, etc.
             output_record.assign(input_record, self.schema_mapper)
+            output_record_nopsf.assign(input_record, self.schema_mapper)
 
             exposure = input_exposures[detector_id].get()
             bbox = exposure.getBBox()
@@ -711,7 +724,9 @@ class UpdateVisitSummaryTask(PipelineTask):
                     wcs = None
                 if self.config.wcs_provider == "tract":
                     output_record["wcsTractId"] = wcs_tract
+                    output_record_nopsf["wcsTractId"] = wcs_tract
                 output_record.setWcs(wcs)
+                output_record_nopsf.setWcs(wcs)
                 self.compute_summary_stats.update_wcs_stats(
                     summary_stats, wcs, bbox, output_record.getVisitInfo()
                 )
@@ -740,6 +755,7 @@ class UpdateVisitSummaryTask(PipelineTask):
                 else:
                     ap_corr = None
                 output_record.setApCorrMap(ap_corr)
+                output_record_nopsf.setApCorrMap(ap_corr)
 
             if photo_calib_overrides:
                 center = compute_center_for_detector_record(output_record, bbox, wcs)
@@ -753,7 +769,9 @@ class UpdateVisitSummaryTask(PipelineTask):
                     photo_calib = None
                 if self.config.photo_calib_provider == "tract":
                     output_record["photoCalibTractId"] = photo_calib_tract
+                    output_record_nopsf["photoCalibTractId"] = photo_calib_tract
                 output_record.setPhotoCalib(photo_calib)
+                output_record_nopsf.setPhotoCalib(photo_calib)
                 self.compute_summary_stats.update_photo_calib_stats(
                     summary_stats, photo_calib
                 )
@@ -778,6 +796,10 @@ class UpdateVisitSummaryTask(PipelineTask):
                     )
 
             summary_stats.update_record(output_record)
+            summary_stats.update_record(output_record_nopsf)
             del exposure
 
-        return Struct(output_summary_catalog=output_summary_catalog)
+        return Struct(
+            output_summary_catalog=output_summary_catalog,
+            output_summary_catalog_nopsf=output_summary_catalog_nopsf,
+        )
