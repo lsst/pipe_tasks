@@ -150,8 +150,8 @@ class AssembleChi2CoaddTask(pipeBase.PipelineTask):
 
     .. [3] https://dmtn-015.lsst.io/
 
-    .. [4] https://project.lsst.org/meetings/law/sites/lsst.org.meetings.law/files/Building%20and%20using%20coadds.pdf  # noqa: E501
-    """
+    .. [4] https://project.lsst.org/meetings/law/sites/lsst.org.meetings.law/files/Building%20and%20using%20coadds.pdf
+    """  # noqa: E501
     ConfigClass = AssembleChi2CoaddConfig
     _DefaultName = "assembleChi2Coadd"
 
