@@ -354,7 +354,7 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
         doc=("Per-visit wcs calibrations computed globally (with no tract information). "
              "These catalogs use the detector id for the catalog id, sorted on id for "
              "fast lookup."),
-        name="finalVisitSummary",
+        name="finalVisitSummaryNoPsf",
         storageClass="ExposureCatalog",
         dimensions=["instrument", "visit"],
     )
@@ -370,7 +370,7 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
         doc=("Per-visit photometric calibrations computed globally (with no tract "
              "information).  These catalogs use the detector id for the catalog id, "
              "sorted on id for fast lookup."),
-        name="finalVisitSummary",
+        name="finalVisitSummaryNoPsf",
         storageClass="ExposureCatalog",
         dimensions=["instrument", "visit"],
     )
@@ -1616,7 +1616,7 @@ class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
                                    defaultTemplates={"calexpType": ""}):
     visitSummaryRefs = connectionTypes.Input(
         doc="Data references for per-visit consolidated exposure metadata",
-        name="finalVisitSummary",
+        name="finalVisitSummaryNoPsf",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
         multiple=True,
@@ -1722,7 +1722,7 @@ class MakeVisitTableConnections(pipeBase.PipelineTaskConnections,
                                 defaultTemplates={"calexpType": ""}):
     visitSummaries = connectionTypes.Input(
         doc="Per-visit consolidated exposure metadata",
-        name="finalVisitSummary",
+        name="finalVisitSummaryNoPsf",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit",),
         multiple=True,
