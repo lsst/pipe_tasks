@@ -211,18 +211,7 @@ class ProcessBrightStarsTask(PipelineTask):
 
     def __init__(self, butler=None, initInputs=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Compute (model) stamp size depending on provided "buffer" value
-        self.modelStampSize = [
-            int(self.config.stampSize[0] * self.config.modelStampBuffer),
-            int(self.config.stampSize[1] * self.config.modelStampBuffer),
-        ]
-        # force it to be odd-sized so we have a central pixel
-        if not self.modelStampSize[0] % 2:
-            self.modelStampSize[0] += 1
-        if not self.modelStampSize[1] % 2:
-            self.modelStampSize[1] += 1
-        # central pixel
-        self.modelCenter = self.modelStampSize[0] // 2, self.modelStampSize[1] // 2
+        self.setModelStamp()
         # configure Gaia refcat
         if butler is not None:
             self.makeSubtask("refObjLoader", butler=butler)
@@ -249,7 +238,7 @@ class ProcessBrightStarsTask(PipelineTask):
             calexp = calexp.getMaskedImage()
         calexp -= skyCorr.getImage()
 
-    def extractStamps(self, inputExposure, refObjLoader=None):
+    def extractStamps(self, inputExposure, refObjLoader=None, inputBrightStarStamps=None):
         """Read the position of bright stars within an input exposure using a
         refCat and extract them.
 
@@ -299,9 +288,16 @@ class ProcessBrightStarsTask(PipelineTask):
         GFluxes = np.array(refCat["phot_g_mean_flux"])
         bright = GFluxes > fluxLimit
         # convert to AB magnitudes
-        allGMags = [((gFlux * u.nJy).to(u.ABmag)).to_value() for gFlux in GFluxes[bright]]
+        allGMags = np.array([((gFlux * u.nJy).to(u.ABmag)).to_value() for gFlux in GFluxes[bright]])
         allIds = refCat.columns.extract("id", where=bright)["id"]
         selectedColumns = refCat.columns.extract("coord_ra", "coord_dec", where=bright)
+        if inputBrightStarStamps is not None:
+            existings = np.array(inputBrightStarStamps.getGaiaIds())
+            existed = np.isin(allIds, existings)
+            allGMags = allGMags[~existed]
+            allIds = allIds[~existed]
+            selectedColumns["coord_ra"] = selectedColumns["coord_ra"][~existed]
+            selectedColumns["coord_dec"] = selectedColumns["coord_dec"][~existed]
         for j, (ra, dec) in enumerate(zip(selectedColumns["coord_ra"], selectedColumns["coord_dec"])):
             sp = SpherePoint(ra, dec, radians)
             cpix = wcs.skyToPixel(sp)
@@ -449,6 +445,19 @@ class ProcessBrightStarsTask(PipelineTask):
             warpTransforms.append(starWarper)
         return Struct(warpedStars=warpedStars, warpTransforms=warpTransforms, xy0s=xy0s, nb90Rots=nb90Rots)
 
+    def setModelStamp(self):
+        self.modelStampSize = [
+            int(self.config.stampSize[0] * self.config.modelStampBuffer),
+            int(self.config.stampSize[1] * self.config.modelStampBuffer),
+        ]
+        # force it to be odd-sized so we have a central pixel
+        if not self.modelStampSize[0] % 2:
+            self.modelStampSize[0] += 1
+        if not self.modelStampSize[1] % 2:
+            self.modelStampSize[1] += 1
+        # central pixel
+        self.modelCenter = self.modelStampSize[0] // 2, self.modelStampSize[1] // 2
+
     @timeMethod
     def run(self, inputExposure, refObjLoader=None, dataId=None, skyCorr=None):
         """Identify bright stars within an exposure using a reference catalog,
@@ -531,6 +540,10 @@ class ProcessBrightStarsTask(PipelineTask):
             badMaskPlanes=self.config.badMaskPlanes,
             discardNanFluxObjects=(self.config.discardNanFluxStars),
         )
+        # Dont create empty fits files if there is no normalized stamp!
+        if not len(brightStarStamps._stamps) > 0:
+            self.log.info("No normalized stamps exists for this exposure!")
+            return None
         return Struct(brightStarStamps=brightStarStamps)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
@@ -543,5 +556,6 @@ class ProcessBrightStarsTask(PipelineTask):
             config=self.config.refObjLoader,
         )
         output = self.run(**inputs, refObjLoader=refObjLoader)
+        # This if block prevents the code to produce an emtpy fits file in case there is no stamp.
         if output:
             butlerQC.put(output, outputRefs)
