@@ -417,6 +417,7 @@ class CalibrateTask(pipeBase.PipelineTask):
         else:
             self.schemaMapper = None
             self.schema = afwTable.SourceTable.makeMinimalSchema()
+        afwTable.CoordKey.addErrorFields(self.schema)
         self.makeSubtask('detection', schema=self.schema)
 
         self.algMetadata = dafBase.PropertyList()

@@ -352,6 +352,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # star measurement subtasks
         if initial_stars_schema is None:
             initial_stars_schema = afwTable.SourceTable.makeMinimalSchema()
+        afwTable.CoordKey.addErrorFields(initial_stars_schema)
         self.makeSubtask("star_detection", schema=initial_stars_schema)
         self.makeSubtask("star_deblend", schema=initial_stars_schema)
         self.makeSubtask("star_measurement", schema=initial_stars_schema)

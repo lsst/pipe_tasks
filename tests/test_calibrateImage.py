@@ -75,10 +75,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         dataset.addSource(instFlux=500*noise*psf_scale, centroid=center, shape=shape)
 
         schema = dataset.makeMinimalSchema()
-        schema.addField("truth_flux", type=np.float64, doc="true flux", units="nJy")
-        schema.addField("truth_fluxErr", type=np.float64, doc="true fluxErr", units="nJy")
-
-        self.truth_exposure, self.truth_cat = dataset.realize(noise=noise, schema=dataset.makeMinimalSchema())
+        afwTable.CoordKey.addErrorFields(schema)
+        self.truth_exposure, self.truth_cat = dataset.realize(noise=noise, schema=schema)
         lsst.afw.table.updateSourceCoords(self.truth_exposure.wcs, self.truth_cat)
         # To make it look like a version=1 (nJy fluxes) refcat
         self.truth_cat = self.truth_exposure.photoCalib.calibrateCatalog(self.truth_cat)
