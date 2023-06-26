@@ -123,8 +123,8 @@ class PhotoCalTask(pipeBase.Task):
     Parameters
     ----------
     refObjLoader : `lsst.meas.algorithms.ReferenceObjectLoader`
-        An instance of LoadReferenceObjectsTasks that supplies an external reference
-        catalog.
+        A reference object loader object; gen3 pipeline tasks will pass `None`
+        and call `match.setRefObjLoader` in `runQuantum`.
     schema : `lsst.afw.table.Schema`, optional
         The schema of the detection catalogs used as input to this task.
     **kwds
@@ -165,7 +165,7 @@ class PhotoCalTask(pipeBase.Task):
     ConfigClass = PhotoCalConfig
     _DefaultName = "photoCal"
 
-    def __init__(self, refObjLoader, schema=None, **kwds):
+    def __init__(self, refObjLoader=None, schema=None, **kwds):
         pipeBase.Task.__init__(self, **kwds)
         self.scatterPlot = None
         self.fig = None
