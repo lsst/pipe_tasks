@@ -303,8 +303,6 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
 
     def setDefaults(self):
         super().setDefaults()
-        self.detection.doTempLocalBackground = False
-        self.deblend.maxFootprintSize = 2000
         self.postCalibrationMeasurement.plugins.names = ["base_LocalPhotoCalib", "base_LocalWcs"]
         self.postCalibrationMeasurement.doReplaceWithNoise = False
         for key in self.postCalibrationMeasurement.slots:

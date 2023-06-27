@@ -232,7 +232,6 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
         # but these are the values we have been using
         self.detection.thresholdValue = 5.0
         self.detection.includeThresholdMultiplier = 10.0
-        self.detection.doTempLocalBackground = False
         # do not deblend, as it makes a mess
         self.doDeblend = False
         # measure and apply aperture correction; note: measuring and applying aperture

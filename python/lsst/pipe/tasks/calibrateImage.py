@@ -240,7 +240,6 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
 
         # Only use high S/N sources for PSF determination.
         self.psf_detection.thresholdValue = 50.0
-        self.psf_detection.thresholdType = "pixel_stdev"
         # TODO investigation: Probably want False here, but that may require
         # tweaking the background spatial scale, to make it small enough to
         # prevent extra peaks in the wings of bright objects.
@@ -268,9 +267,6 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         # https://github.com/lsst/meas_extensions_psfex/blob/main/config/default-lsst.psfex#L14
         self.psf_source_measurement.plugins["base_CircularApertureFlux"].radii = [9.0, 12.0]
 
-        self.psf_measure_psf.starSelector["objectSize"].doFluxLimit = False
-        self.psf_measure_psf.starSelector["objectSize"].doSignalToNoiseLimit = True
-
         # No extendeness information available: we need the aperture
         # corrections to determine that.
         self.measure_aperture_correction.sourceSelector["science"].doUnresolved = False
@@ -283,7 +279,6 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         # Detection for good S/N for astrometry/photometry and other
         # downstream tasks.
         self.star_detection.thresholdValue = 10.0
-        self.star_detection.thresholdType = "pixel_stdev"
         self.star_measurement.plugins = ["base_PixelFlags",
                                          "base_SdssCentroid",
                                          "ext_shapeHSM_HsmSourceMoments",
@@ -296,8 +291,6 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         self.star_measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
         # Only measure the apertures we need for star selection.
         self.star_measurement.plugins["base_CircularApertureFlux"].radii = [12.0]
-        # Restrict footprint area to prevent memory blowup on huge footprints.
-        self.star_deblend.maxFootprintArea = 10000
 
         # Select isolated stars with reliable measurements and no bad flags.
         self.star_selector["science"].doFlags = True
@@ -310,9 +303,6 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         self.astrometry.wcsFitter.retarget(lsst.meas.astrom.FitAffineWcsTask)
         # phot_g_mean is the primary Gaia band for all input bands.
         self.astrometry_ref_loader.anyFilterMapsToThis = "phot_g_mean"
-
-        # Reject magnitude outliers (TODO DM-39796: should be task default)
-        self.astrometry.doMagnitudeOutlierRejection = True
 
         # Do not subselect during fitting; we already selected good stars.
         self.astrometry.sourceSelector = "null"
