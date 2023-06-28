@@ -341,7 +341,9 @@ class PhotoCalTask(pipeBase.Task):
             ``arrays``
                 Magnitude arrays returned be `PhotoCalTask.extractMagArrays`.
             ``matches``
-                ReferenceMatchVector, as returned by `PhotoCalTask.selectMatches`.
+                ReferenceMatchVector, as returned by the matcher
+            ``matchMeta`` :  metadata needed to unpersist matches, as returned
+                by the matcher (`lsst.daf.base.PropertyList`)
             ``zp``
                 Photometric zero point (mag, `float`).
             ``sigma``
@@ -425,6 +427,7 @@ class PhotoCalTask(pipeBase.Task):
             photoCalib=photoCalib,
             arrays=arrays,
             matches=matches,
+            matchMeta=matchResults.matchMeta,
             zp=r.zp,
             sigma=r.sigma,
             ngood=r.ngood,
