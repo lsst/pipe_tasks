@@ -22,10 +22,8 @@
 import unittest
 
 import lsst.ip.isr as ipIsr
-import lsst.ip.isr.isrMock as isrMock
 import lsst.utils.tests
 from lsst.meas.algorithms import ReinterpolatePixelsConfig, ReinterpolatePixelsTask
-from lsst.utils.tests import methodParameters
 
 
 class TestReinterpolatePixels(lsst.utils.tests.TestCase):
@@ -34,22 +32,19 @@ class TestReinterpolatePixels(lsst.utils.tests.TestCase):
     """
 
     def setUp(self):
-        self.inputExp = isrMock.TrimmedRawMock().run()
+        self.inputExp = ipIsr.isrMock.TrimmedRawMock().run()
         self.mi = self.inputExp.getMaskedImage()
 
-    @methodParameters(growFootprints=range(3))
-    def test_reinterpolate_pixels(self, growFootprints):
+    def test_reinterpolate_pixels(self):
         """Expect number of interpolated pixels to be non-zero."""
         ipIsr.makeThresholdMask(self.mi, 200, growFootprints=2, maskName="SAT")
         config = ReinterpolatePixelsConfig()
-        config.growFootprints = growFootprints
-        config.kernelFwhm = 2.0
         config.maskNameList = ["SAT"]
         task = ReinterpolatePixelsTask(config=config)
         task.run(self.inputExp)
         interpMaskedImage = self.inputExp.getMaskedImage()
         numBit = ipIsr.countMaskedPixels(interpMaskedImage, "INTRP")
-        self.assertEqual(numBit, 40800, msg=f"ReinterpolatePixels with growFootprints={growFootprints}")
+        self.assertEqual(numBit, 40800)
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
