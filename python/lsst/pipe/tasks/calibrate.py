@@ -44,7 +44,6 @@ from lsst.meas.base import (SingleFrameMeasurementTask,
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.utils.timer import timeMethod
 from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
-from .fakes import BaseFakeSourcesTask
 from .photoCal import PhotoCalTask
 from .computeExposureSummaryStats import ComputeExposureSummaryStatsTask
 
@@ -285,20 +284,6 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
     catalogCalculation = pexConfig.ConfigurableField(
         target=CatalogCalculationTask,
         doc="Subtask to run catalogCalculation plugins on catalog"
-    )
-    doInsertFakes = pexConfig.Field(
-        dtype=bool,
-        default=False,
-        doc="Run fake sources injection task",
-        deprecated=("doInsertFakes is no longer supported. This config will be removed after v24. "
-                    "Please use ProcessCcdWithFakesTask instead.")
-    )
-    insertFakes = pexConfig.ConfigurableField(
-        target=BaseFakeSourcesTask,
-        doc="Injection of fake sources for testing purposes (must be "
-            "retargeted)",
-        deprecated=("insertFakes is no longer supported. This config will be removed after v24. "
-                    "Please use ProcessCcdWithFakesTask instead.")
     )
     doComputeSummaryStats = pexConfig.Field(
         dtype=bool,
