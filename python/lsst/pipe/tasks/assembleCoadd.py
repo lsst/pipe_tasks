@@ -244,7 +244,7 @@ class AssembleCoaddConfig(CoaddBaseTask.ConfigClass, pipeBase.PipelineTaskConfig
 
     def validate(self):
         super().validate()
-        if self.doPsfMatch:
+        if self.doPsfMatch:  # TODO: Remove this in DM-39841
             # Backwards compatibility.
             # Configs do not have loggers
             log.warning("Config doPsfMatch deprecated. Setting warpType='psfMatched'")
