@@ -34,7 +34,6 @@ from lsst.meas.base import (
     SkyMapIdGeneratorConfig,
 )
 from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
-from lsst.pipe.tasks.fakes import BaseFakeSourcesTask
 from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
 from lsst.pipe.tasks.propagateSourceFlags import PropagateSourceFlagsTask
 import lsst.afw.table as afwTable
@@ -109,15 +108,6 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
     scaleVariance = ConfigurableField(target=ScaleVarianceTask, doc="Variance rescaling")
     detection = ConfigurableField(target=DynamicDetectionTask, doc="Source detection")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
-    doInsertFakes = Field(dtype=bool, default=False,
-                          doc="Run fake sources injection task",
-                          deprecated=("doInsertFakes is no longer supported. This config will be removed "
-                                      "after v24."))
-    insertFakes = ConfigurableField(target=BaseFakeSourcesTask,
-                                    doc="Injection of fake sources for testing "
-                                    "purposes (must be retargeted)",
-                                    deprecated=("insertFakes is no longer supported. This config will "
-                                                "be removed after v24."))
     hasFakes = Field(
         dtype=bool,
         default=False,
