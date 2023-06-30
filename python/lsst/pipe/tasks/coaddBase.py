@@ -68,28 +68,36 @@ class CoaddBaseConfig(pexConfig.Config):
         doc=("Whether to apply external photometric calibration via an "
              "`lsst.afw.image.PhotoCalib` object.  Uses the "
              "`externalPhotoCalibName` field to determine which calibration "
-             "to load.")
+             "to load."),
+        # TODO: remove on DM-39854.
+        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v27.",
     )
     useGlobalExternalPhotoCalib = pexConfig.Field(
         dtype=bool,
-        default=True,
+        default=False,
         doc=("When using doApplyExternalPhotoCalib, use 'global' calibrations "
              "that are not run per-tract.  When False, use per-tract photometric "
-             "calibration files.")
+             "calibration files."),
+        # TODO: remove on DM-39854.
+        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v27.",
     )
     doApplyExternalSkyWcs = pexConfig.Field(
         dtype=bool,
         default=False,
         doc=("Whether to apply external astrometric calibration via an "
              "`lsst.afw.geom.SkyWcs` object.  Uses `externalSkyWcsName` "
-             "field to determine which calibration to load.")
+             "field to determine which calibration to load."),
+        # TODO: remove on DM-39854.
+        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v27.",
     )
     useGlobalExternalSkyWcs = pexConfig.Field(
         dtype=bool,
-        default=True,
+        default=False,
         doc=("When using doApplyExternalSkyWcs, use 'global' calibrations "
              "that are not run per-tract.  When False, use per-tract wcs "
-             "files.")
+             "files."),
+        # TODO: remove on DM-39854.
+        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v27.",
     )
     includeCalibVar = pexConfig.Field(
         dtype=bool,

@@ -48,7 +48,10 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
                           defaultTemplates={"coaddName": "deep",
                                             "skyWcsName": "gbdesAstrometricFit",
                                             "photoCalibName": "fgcm",
-                                            "calexpType": ""}):
+                                            "calexpType": ""},
+                          # TODO: remove on DM-39854.
+                          deprecatedTemplates={"skyWcsName": "Deprecated; will be removed after v27.",
+                                               "photoCalibName": "Deprecated; will be removed after v27."}):
     calExpList = connectionTypes.Input(
         doc="Input exposures to be resampled and optionally PSF-matched onto a SkyMap projection/patch",
         name="{calexpType}calexp",
@@ -83,6 +86,8 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         name="{skyWcsName}SkyWcsCatalog",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit", "tract"),
+        # TODO: remove on DM-39854.
+        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v27.",
     )
     externalSkyWcsGlobalCatalog = connectionTypes.Input(
         doc=("Per-visit wcs calibrations computed globally (with no tract information). "
@@ -91,6 +96,8 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
+        # TODO: remove on DM-39854.
+        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v27.",
     )
     externalPhotoCalibTractCatalog = connectionTypes.Input(
         doc=("Per-tract, per-visit photometric calibrations.  These catalogs use the "
@@ -98,6 +105,8 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         name="{photoCalibName}PhotoCalibCatalog",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit", "tract"),
+        # TODO: remove on DM-39854.
+        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v27.",
     )
     externalPhotoCalibGlobalCatalog = connectionTypes.Input(
         doc=("Per-visit photometric calibrations computed globally (with no tract "
@@ -106,6 +115,8 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
+        # TODO: remove on DM-39854.
+        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v27.",
     )
     finalizedPsfApCorrCatalog = connectionTypes.Input(
         doc=("Per-visit finalized psf models and aperture correction maps. "
@@ -114,6 +125,8 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
+        # TODO: remove on DM-39854.
+        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v27.",
     )
     direct = connectionTypes.Output(
         doc=("Output direct warped exposure (previously called CoaddTempExp), produced by resampling ",
@@ -165,6 +178,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
             del self.backgroundList
         if not config.doApplySkyCorr:
             del self.skyCorrList
+        # TODO: remove all "external" checks on DM-39854
         if config.doApplyExternalSkyWcs:
             if config.useGlobalExternalSkyWcs:
                 del self.externalSkyWcsTractCatalog
@@ -233,6 +247,7 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
         doc=(
             "If True, use the PSF model and aperture corrections from the 'visitSummary' connection. "
             "If False, use the PSF model and aperture corrections from the 'exposure' connection. "
+            # TODO: remove this next sentence on DM-39854.
             "The finalizedPsfApCorrCatalog connection (if enabled) takes precedence over either."
         ),
         dtype=bool,
@@ -257,6 +272,8 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
         doc="Whether to apply finalized psf models and aperture correction map.",
         dtype=bool,
         default=True,
+        # TODO: remove on DM-39854.
+        deprecated="Deprecated in favor of useVisitSummaryPsf.  Will be removed after v27.",
     )
     idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
@@ -547,15 +564,18 @@ class MakeWarpTask(CoaddBaseTask):
             Exposure catalog with external skyWcs to be applied
             if config.doApplyExternalSkyWcs=True.  Catalog uses the detector id
             for the catalog id, sorted on id for fast lookup.
+            Deprecated and will be removed after v27.
         externalPhotoCalibCatalog : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with external photoCalib to be applied
             if config.doApplyExternalPhotoCalib=True.  Catalog uses the
             detector id for the catalog id, sorted on id for fast lookup.
+            Deprecated and will be removed after v27.
         finalizedPsfApCorrCatalog : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with finalized psf models and aperture correction
             maps to be applied if config.doApplyFinalizedPsf=True.  Catalog
             uses the detector id for the catalog id, sorted on id for fast
             lookup.
+            Deprecated and will be removed after v27.
         visitSummary : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with potentially all calibrations.  Attributes set
             to `None` are ignored.
@@ -609,6 +629,9 @@ class MakeWarpTask(CoaddBaseTask):
                         calexp.setPsf(psf)
                     if (apCorrMap := row.getApCorrMap()) is not None:
                         calexp.info.setApCorrMap(apCorrMap)
+                # TODO: on DM-39854 the logic in the 'elif' blocks below could
+                # be moved into 'else' blocks above (or otherwise simplified
+                # substantially) after the 'external' arguments are removed.
 
             # Find the external photoCalib.
             if externalPhotoCalibCatalog is not None:
