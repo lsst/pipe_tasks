@@ -77,19 +77,6 @@ class CoaddBaseConfig(pexConfig.Config):
              "that are not run per-tract.  When False, use per-tract photometric "
              "calibration files.")
     )
-    externalPhotoCalibName = pexConfig.ChoiceField(
-        # TODO: Remove this config with the removal of Gen2 in DM-20572.
-        dtype=str,
-        doc=("Type of external PhotoCalib if `doApplyExternalPhotoCalib` is True. "
-             "This field is only used for Gen2 middleware."),
-        default="jointcal",
-        allowed={
-            "jointcal": "Use jointcal_photoCalib",
-            "fgcm": "Use fgcm_photoCalib",
-            "fgcm_tract": "Use fgcm_tract_photoCalib"
-        },
-        deprecated="This configuration is no longer used, and will be removed after v25.0",
-    )
     doApplyExternalSkyWcs = pexConfig.Field(
         dtype=bool,
         default=False,
@@ -103,17 +90,6 @@ class CoaddBaseConfig(pexConfig.Config):
         doc=("When using doApplyExternalSkyWcs, use 'global' calibrations "
              "that are not run per-tract.  When False, use per-tract wcs "
              "files.")
-    )
-    externalSkyWcsName = pexConfig.ChoiceField(
-        # TODO: Remove this config with the removal of Gen2 in DM-20572.
-        dtype=str,
-        doc=("Type of external SkyWcs if `doApplyExternalSkyWcs` is True. "
-             "This field is only used for Gen2 middleware."),
-        default="jointcal",
-        allowed={
-            "jointcal": "Use jointcal_wcs"
-        },
-        deprecated="This configuration is no longer used, and will be removed after v25.0",
     )
     includeCalibVar = pexConfig.Field(
         dtype=bool,
