@@ -229,6 +229,15 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
         dtype=bool,
         default=False,
     )
+    useVisitSummaryPsf = pexConfig.Field(
+        doc=(
+            "If True, use the PSF model and aperture corrections from the 'visitSummary' connection. "
+            "If False, use the PSF model and aperture corrections from the 'exposure' connection. "
+            "The finalizedPsfApCorrCatalog connection (if enabled) takes precedence over either."
+        ),
+        dtype=bool,
+        default=True,
+    )
     doWriteEmptyWarps = pexConfig.Field(
         dtype=bool,
         default=False,
@@ -356,7 +365,8 @@ class MakeWarpTask(CoaddBaseTask):
             **inputs,
             externalSkyWcsCatalog=externalSkyWcsCatalog,
             externalPhotoCalibCatalog=externalPhotoCalibCatalog,
-            finalizedPsfApCorrCatalog=finalizedPsfApCorrCatalog)
+            finalizedPsfApCorrCatalog=finalizedPsfApCorrCatalog,
+        )
         inputs = self.filterInputs(indices=completeIndices, inputs=inputs)
 
         # Do another selection based on the configured selection task
@@ -514,7 +524,7 @@ class MakeWarpTask(CoaddBaseTask):
 
     def _prepareCalibratedExposures(self, calExpList=[], wcsList=None, backgroundList=None, skyCorrList=None,
                                     externalSkyWcsCatalog=None, externalPhotoCalibCatalog=None,
-                                    finalizedPsfApCorrCatalog=None, **kwargs):
+                                    finalizedPsfApCorrCatalog=None, visitSummary=None, **kwargs):
         """Calibrate and add backgrounds to input calExpList in place.
 
         Parameters
@@ -546,6 +556,9 @@ class MakeWarpTask(CoaddBaseTask):
             maps to be applied if config.doApplyFinalizedPsf=True.  Catalog
             uses the detector id for the catalog id, sorted on id for fast
             lookup.
+        visitSummary : `lsst.afw.table.ExposureCatalog`, optional
+            Exposure catalog with potentially all calibrations.  Attributes set
+            to `None` are ignored.
         **kwargs
             Additional keyword arguments.
 
@@ -579,6 +592,24 @@ class MakeWarpTask(CoaddBaseTask):
 
             detectorId = calexp.info.getDetector().getId()
 
+            # Load all calibrations from visitSummary.
+            if visitSummary is not None:
+                row = visitSummary.find(detectorId)
+                if row is None:
+                    raise RuntimeError(
+                        f"Unexpectedly incomplete visitSummary: detector={detectorId} is missing."
+                    )
+                if (photoCalib := row.getPhotoCalib()) is not None:
+                    calexp.setPhotoCalib(photoCalib)
+                if (skyWcs := row.getWcs()) is not None:
+                    calexp.setWcs(skyWcs)
+                    wcsList[index] = skyWcs
+                if self.config.useVisitSummaryPsf:
+                    if (psf := row.getPsf()) is not None:
+                        calexp.setPsf(psf)
+                    if (apCorrMap := row.getApCorrMap()) is not None:
+                        calexp.info.setApCorrMap(apCorrMap)
+
             # Find the external photoCalib.
             if externalPhotoCalibCatalog is not None:
                 row = externalPhotoCalibCatalog.find(detectorId)
@@ -592,12 +623,10 @@ class MakeWarpTask(CoaddBaseTask):
                                      "and will not be used in the warp.", detectorId)
                     continue
                 calexp.setPhotoCalib(photoCalib)
-            else:
-                photoCalib = calexp.getPhotoCalib()
-                if photoCalib is None:
-                    self.log.warning("Detector id %s has None for photoCalib in the calexp "
-                                     "and will not be used in the warp.", detectorId)
-                    continue
+            elif photoCalib is None:
+                self.log.warning("Detector id %s has None for photoCalib in the visit summary "
+                                 "and will not be used in the warp.", detectorId)
+                continue
 
             # Find and apply external skyWcs.
             if externalSkyWcsCatalog is not None:
@@ -613,13 +642,10 @@ class MakeWarpTask(CoaddBaseTask):
                                      "and will not be used in the warp.", detectorId)
                     continue
                 calexp.setWcs(skyWcs)
-            else:
-                skyWcs = calexp.getWcs()
-                wcsList[index] = skyWcs
-                if skyWcs is None:
-                    self.log.warning("Detector id %s has None for skyWcs in the calexp "
-                                     "and will not be used in the warp.", detectorId)
-                    continue
+            elif skyWcs is None:
+                self.log.warning("Detector id %s has None for skyWcs in the visit summary "
+                                 "and will not be used in the warp.", detectorId)
+                continue
 
             # Find and apply finalized psf and aperture correction.
             if finalizedPsfApCorrCatalog is not None:
@@ -640,8 +666,17 @@ class MakeWarpTask(CoaddBaseTask):
                                      "and will not be used in the warp.", detectorId)
                     continue
                 calexp.info.setApCorrMap(apCorrMap)
+            elif self.config.useVisitSummaryPsf:
+                if psf is None:
+                    self.log.warning("Detector id %s has None for PSF in the visit summary "
+                                     "and will not be used in the warp.", detectorId)
+                if apCorrMap is None:
+                    self.log.warning("Detector id %s has None for ApCorrMap in the visit summary "
+                                     "and will not be used in the warp.", detectorId)
             else:
-                # Ensure that calexp has valid aperture correction map.
+                if calexp.getPsf() is None:
+                    self.log.warning("Detector id %s has None for PSF in the calexp "
+                                     "and will not be used in the warp.", detectorId)
                 if calexp.info.getApCorrMap() is None:
                     self.log.warning("Detector id %s has None for ApCorrMap in the calexp "
                                      "and will not be used in the warp.", detectorId)
