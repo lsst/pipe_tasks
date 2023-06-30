@@ -263,6 +263,11 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
                                               defaultTemplates={"catalogType": "",
                                                                 "skyWcsName": "gbdesAstrometricFit",
                                                                 "photoCalibName": "fgcm"},
+                                              # TODO: remove on DM-39854.
+                                              deprecatedTemplates={
+                                                  "skyWcsName": "Deprecated; will be removed after v27.",
+                                                  "photoCalibName": "Deprecated; will be removed after v27."
+                                              },
                                               dimensions=("instrument", "visit", "detector", "skymap")):
     skyMap = connectionTypes.Input(
         doc="skyMap needed to choose which tract-level calibrations to use when multiple available",
@@ -275,6 +280,12 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
         name="calexp",
         storageClass="ExposureF",
         dimensions=["instrument", "visit", "detector"],
+    )
+    visitSummary = connectionTypes.Input(
+        doc="Consolidated exposure metadata",
+        name="finalVisitSummary",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit",),
     )
     externalSkyWcsTractCatalog = connectionTypes.Input(
         doc=("Per-tract, per-visit wcs calibrations.  These catalogs use the detector "
@@ -407,7 +418,7 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
 
     def attachCalibs(self, inputRefs, skyMap, exposure, externalSkyWcsGlobalCatalog=None,
                      externalSkyWcsTractCatalog=None, externalPhotoCalibGlobalCatalog=None,
-                     externalPhotoCalibTractCatalog=None, **kwargs):
+                     externalPhotoCalibTractCatalog=None, visitSummary=None, **kwargs):
         """Apply external calibrations to exposure per configuration
 
         When multiple tract-level calibrations overlap, select the one with the
@@ -429,6 +440,9 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
             Exposure catalog with external photoCalib to be applied per config
         externalPhotoCalibTractCatalog : `~lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with external photoCalib to be applied per config
+        visitSummary : `lsst.afw.table.ExposureCatalog`, optional
+            Exposure catalog with all calibration objects.  WCS and PhotoCalib
+            are always applied if provided.
         **kwargs
             Additional keyword arguments are ignored to facilitate passing the
             same arguments to several methods.
@@ -484,7 +498,9 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
 
             externalPhotoCalibCatalog = externalPhotoCalibTractCatalog[ind]
 
-        return self.prepareCalibratedExposure(exposure, externalSkyWcsCatalog, externalPhotoCalibCatalog)
+        return self.prepareCalibratedExposure(
+            exposure, externalSkyWcsCatalog, externalPhotoCalibCatalog, visitSummary
+        )
 
     def getClosestTract(self, tracts, skyMap, bbox, wcs):
         """Find the index of the tract closest to detector from list of tractIds
@@ -516,7 +532,9 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
 
         return np.argmin(sep)
 
-    def prepareCalibratedExposure(self, exposure, externalSkyWcsCatalog=None, externalPhotoCalibCatalog=None):
+    def prepareCalibratedExposure(
+        self, exposure, externalSkyWcsCatalog=None, externalPhotoCalibCatalog=None, visitSummary=None
+    ):
         """Prepare a calibrated exposure and apply external calibrations
         if so configured.
 
@@ -532,6 +550,10 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
             Exposure catalog with external photoCalib to be applied
             if config.doApplyExternalPhotoCalib=True.  Catalog uses the detector
             id for the catalog id, sorted on id for fast lookup.
+        visitSummary : `lsst.afw.table.ExposureCatalog`, optional
+            Exposure catalog with all calibration objects.  WCS and PhotoCalib
+            are always applied if ``visitSummary`` is provided and those
+            components are not `None`.
 
         Returns
         -------
@@ -539,6 +561,21 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
             Exposure with adjusted calibrations.
         """
         detectorId = exposure.getInfo().getDetector().getId()
+
+        if visitSummary is not None:
+            row = visitSummary.find(detectorId)
+            if row is None:
+                raise RuntimeError(f"Visit summary for detector {detectorId} is unexpectedly missing.")
+            if (photoCalib := row.getPhotoCalib()) is None:
+                self.log.warning("Detector id %s has None for photoCalib in visit summary; "
+                                 "using original photoCalib.", detectorId)
+            else:
+                exposure.setPhotoCalib(photoCalib)
+            if (skyWcs := row.getWcs()) is None:
+                self.log.warning("Detector id %s has None for skyWcs in visit summary; "
+                                 "using original skyWcs.", detectorId)
+            else:
+                exposure.setWcs(skyWcs)
 
         if externalPhotoCalibCatalog is not None:
             row = externalPhotoCalibCatalog.find(detectorId)
