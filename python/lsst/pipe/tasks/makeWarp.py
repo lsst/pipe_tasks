@@ -153,36 +153,35 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
     )
 
     def __init__(self, *, config=None):
-        super().__init__(config=config)
         if config.bgSubtracted:
-            self.inputs.remove("backgroundList")
+            del self.backgroundList
         if not config.doApplySkyCorr:
-            self.inputs.remove("skyCorrList")
+            del self.skyCorrList
         if config.doApplyExternalSkyWcs:
             if config.useGlobalExternalSkyWcs:
-                self.inputs.remove("externalSkyWcsTractCatalog")
+                del self.externalSkyWcsTractCatalog
             else:
-                self.inputs.remove("externalSkyWcsGlobalCatalog")
+                del self.externalSkyWcsGlobalCatalog
         else:
-            self.inputs.remove("externalSkyWcsTractCatalog")
-            self.inputs.remove("externalSkyWcsGlobalCatalog")
+            del self.externalSkyWcsTractCatalog
+            del self.externalSkyWcsGlobalCatalog
         if config.doApplyExternalPhotoCalib:
             if config.useGlobalExternalPhotoCalib:
-                self.inputs.remove("externalPhotoCalibTractCatalog")
+                del self.externalPhotoCalibTractCatalog
             else:
-                self.inputs.remove("externalPhotoCalibGlobalCatalog")
+                del self.externalPhotoCalibGlobalCatalog
         else:
-            self.inputs.remove("externalPhotoCalibTractCatalog")
-            self.inputs.remove("externalPhotoCalibGlobalCatalog")
+            del self.externalPhotoCalibTractCatalog
+            del self.externalPhotoCalibGlobalCatalog
         if not config.doApplyFinalizedPsf:
-            self.inputs.remove("finalizedPsfApCorrCatalog")
+            del self.finalizedPsfApCorrCatalog
         if not config.makeDirect:
-            self.outputs.remove("direct")
+            del self.direct
         if not config.makePsfMatched:
-            self.outputs.remove("psfMatched")
+            del self.psfMatched
         # TODO DM-28769: add connection per selectImages connections
         if config.select.target != lsst.pipe.tasks.selectImages.PsfWcsSelectImagesTask:
-            self.inputs.remove("visitSummary")
+            del self.visitSummary
 
 
 class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
