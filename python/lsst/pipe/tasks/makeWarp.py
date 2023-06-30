@@ -21,7 +21,6 @@
 
 __all__ = ["MakeWarpTask", "MakeWarpConfig"]
 
-from deprecated.sphinx import deprecated
 import logging
 import numpy
 
@@ -402,12 +401,6 @@ class MakeWarpTask(CoaddBaseTask):
         for calExpInd, (calExp, ccdId, dataId) in enumerate(zip(calExpList, ccdIdList, dataIdList)):
             self.log.info("Processing calexp %d of %d for this Warp: id=%s",
                           calExpInd+1, len(calExpList), dataId)
-            # TODO: The following conditional is only required for backwards
-            # compatibility with the deprecated prepareCalibratedExposures()
-            # method.  Can remove with its removal after the deprecation
-            # period.
-            if isinstance(calExp, DeferredDatasetHandle):
-                calExp = calExp.get()
             try:
                 warpedAndMatched = self.warpAndPsfMatch.run(calExp, modelPsf=modelPsf,
                                                             wcs=skyInfo.wcs, maxBBox=skyInfo.bbox,
@@ -491,30 +484,6 @@ class MakeWarpTask(CoaddBaseTask):
             if isinstance(inputs[key], list):
                 inputs[key] = [inputs[key][ind] for ind in indices]
         return inputs
-
-    @deprecated(reason="This method is deprecated in favor of its leading underscore version, "
-                "_prepareCalibratedfExposures().  Will be removed after v25.",
-                version="v25.0", category=FutureWarning)
-    def prepareCalibratedExposures(self, calExpList, backgroundList=None, skyCorrList=None,
-                                   externalSkyWcsCatalog=None, externalPhotoCalibCatalog=None,
-                                   finalizedPsfApCorrCatalog=None,
-                                   **kwargs):
-        """Deprecated function.
-
-        Please use _prepareCalibratedExposure(), which this delegates to and
-        noting its slightly updated API, instead.
-        """
-        # Read in all calexps.
-        calExpList = [ref.get() for ref in calExpList]
-        # Populate wcsList as required by new underscored version of function.
-        wcsList = [calexp.getWcs() for calexp in calExpList]
-
-        indices = self._prepareCalibratedExposures(calExpList=calExpList, wcsList=wcsList,
-                                                   backgroundList=backgroundList, skyCorrList=skyCorrList,
-                                                   externalSkyWcsCatalog=externalSkyWcsCatalog,
-                                                   externalPhotoCalibCatalog=externalPhotoCalibCatalog,
-                                                   finalizedPsfApCorrCatalog=finalizedPsfApCorrCatalog)
-        return indices
 
     def _prepareCalibratedExposures(self, calExpList=[], wcsList=None, backgroundList=None, skyCorrList=None,
                                     externalSkyWcsCatalog=None, externalPhotoCalibCatalog=None,
