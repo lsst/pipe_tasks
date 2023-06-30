@@ -126,9 +126,6 @@ Python API reference
 .. automodapi:: lsst.pipe.tasks.extended_psf
    :no-inheritance-diagram:
 
-.. automodapi:: lsst.pipe.tasks.fakes
-   :no-inheritance-diagram:
-
 .. automodapi:: lsst.pipe.tasks.finalizeCharacterization
    :no-inheritance-diagram:
 
