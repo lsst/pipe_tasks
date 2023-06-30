@@ -129,14 +129,17 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "visit", "instrument"),
     )
-    # TODO DM-28769, have selectImages subtask indicate which connections they
-    # need:
     wcsList = connectionTypes.Input(
         doc="WCSs of calexps used by SelectImages subtask to determine if the calexp overlaps the patch",
         name="{calexpType}calexp.wcs",
         storageClass="Wcs",
         dimensions=("instrument", "visit", "detector"),
         multiple=True,
+        # TODO: remove on DM-39854
+        deprecated=(
+            "Deprecated in favor of the 'visitSummary' connection (and already ignored). "
+            "Will be removed after v27."
+        )
     )
     bboxList = connectionTypes.Input(
         doc="BBoxes of calexps used by SelectImages subtask to determine if the calexp overlaps the patch",
@@ -144,6 +147,11 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="Box2I",
         dimensions=("instrument", "visit", "detector"),
         multiple=True,
+        # TODO: remove on DM-39854
+        deprecated=(
+            "Deprecated in favor of the 'visitSummary' connection (and already ignored). "
+            "Will be removed after v27."
+        )
     )
     visitSummary = connectionTypes.Input(
         doc="Consolidated exposure metadata",
@@ -179,9 +187,14 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
             del self.direct
         if not config.makePsfMatched:
             del self.psfMatched
-        # TODO DM-28769: add connection per selectImages connections
-        if config.select.target != lsst.pipe.tasks.selectImages.PsfWcsSelectImagesTask:
-            del self.visitSummary
+        # We always drop the deprecated wcsList and bboxList connections,
+        # since we can always get equivalents from the visitSummary dataset.
+        # Removing them here avoids the deprecation warning, but we do have
+        # to deprecate rather than immediately remove them to keep old configs
+        # usable for a bit.
+        # TODO: remove on DM-39854
+        del self.bboxList
+        del self.wcsList
 
 
 class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
@@ -302,6 +315,20 @@ class MakeWarpTask(CoaddBaseTask):
             for dataId in dataIdList
         ]
 
+        visitSummary = inputs["visitSummary"]
+        bboxList = []
+        wcsList = []
+        for dataId in dataIdList:
+            row = visitSummary.find(dataId["detector"])
+            if row is None:
+                raise RuntimeError(
+                    f"Unexpectedly incomplete visitSummary provided to makeWarp: {dataId} is missing."
+                )
+            bboxList.append(row.getBBox())
+            wcsList.append(row.getWcs())
+        inputs["bboxList"] = bboxList
+        inputs["wcsList"] = wcsList
+
         if self.config.doApplyExternalSkyWcs:
             if self.config.useGlobalExternalSkyWcs:
                 externalSkyWcsCatalog = inputs.pop("externalSkyWcsGlobalCatalog")
@@ -343,7 +370,8 @@ class MakeWarpTask(CoaddBaseTask):
         # Extract integer visitId requested by `run`.
         visitId = dataIdList[0]["visit"]
 
-        results = self.run(**inputs, visitId=visitId,
+        results = self.run(**inputs,
+                           visitId=visitId,
                            ccdIdList=[ccdIdList[i] for i in goodIndices],
                            dataIdList=[dataIdList[i] for i in goodIndices],
                            skyInfo=skyInfo)
