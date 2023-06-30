@@ -57,7 +57,8 @@ class CoaddBaseConfig(pexConfig.Config):
     )
     doPsfMatch = pexConfig.Field(
         dtype=bool,
-        doc="Match to modelPsf? Deprecated. Sets makePsfMatched=True, makeDirect=False",
+        doc="Match to modelPsf? Sets makePsfMatched=True, makeDirect=False",
+        deprecated="This field is no longer used. Will be removed after v27.",  # TODO: DM-39841
         default=False
     )
     modelPsf = measAlg.GaussianPsfFactory.makeField(doc="Model Psf factory")

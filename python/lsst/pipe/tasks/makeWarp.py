@@ -244,7 +244,7 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
 
         if not self.makePsfMatched and not self.makeDirect:
             raise RuntimeError("At least one of config.makePsfMatched and config.makeDirect must be True")
-        if self.doPsfMatch:
+        if self.doPsfMatch:  # TODO: Remove this in DM-39841
             # Backwards compatibility.
             log.warning("Config doPsfMatch deprecated. Setting makePsfMatched=True and makeDirect=False")
             self.makePsfMatched = True
