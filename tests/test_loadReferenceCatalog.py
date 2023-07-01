@@ -30,7 +30,7 @@ def setup_module(module):
 
 
 class TrivialLoader(ReferenceObjectLoader):
-    """Minimal subclass of LoadReferenceObjectsTask"""
+    """Minimal subclass of ReferenceObjectLoader"""
     def make_synthetic_refcat(self, center, flux):
         """Make a synthetic reference catalog."""
         filters = ["ref1", "ref2", "ref3"]

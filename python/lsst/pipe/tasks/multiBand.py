@@ -488,7 +488,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
     peakSchema : ``lsst.afw.table.Schema`, optional
         The schema of the PeakRecords in the Footprints in the merged detection catalog.
     refObjLoader : `lsst.meas.algorithms.ReferenceObjectLoader`, optional
-        An instance of LoadReferenceObjectsTasks that supplies an external reference
+        An instance of ReferenceObjectLoader that supplies an external reference
         catalog. May be None if the loader can be constructed from the butler argument or all steps
         requiring a reference catalog are disabled.
     initInputs : `dict`, optional
