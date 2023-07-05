@@ -41,20 +41,15 @@ import logging
 import numpy as np
 import numbers
 import os
-import warnings
-
-from deprecated.sphinx import deprecated
 
 import lsst.geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
-from lsst.utils.introspection import find_outside_stacklevel
 from lsst.pipe.base import connectionTypes
 import lsst.afw.table as afwTable
-from lsst.afw.image import ExposureSummaryStats, ExposureF
+from lsst.afw.image import ExposureSummaryStats
 from lsst.meas.base import SingleFrameMeasurementTask, DetectorVisitIdGeneratorConfig
-from lsst.skymap import BaseSkyMap
 
 from .functors import CompositeFunctor, Column
 
@@ -264,26 +259,8 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
 
 
 class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
-                                              defaultTemplates={"catalogType": "",
-                                                                "skyWcsName": "gbdesAstrometricFit",
-                                                                "photoCalibName": "fgcm"},
-                                              # TODO: remove on DM-39854.
-                                              deprecatedTemplates={
-                                                  "skyWcsName": "Deprecated; will be removed after v26.",
-                                                  "photoCalibName": "Deprecated; will be removed after v26."
-                                              },
+                                              defaultTemplates={"catalogType": ""},
                                               dimensions=("instrument", "visit", "detector", "skymap")):
-    skyMap = connectionTypes.Input(
-        doc="skyMap needed to choose which tract-level calibrations to use when multiple available",
-        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
-        storageClass="SkyMap",
-        dimensions=("skymap",),
-        # TODO: remove on DM-39854.
-        deprecated=(
-            "Deprecated, since 'visitSummary' already resolves calibrations across tracts.  "
-            "Will be removed after v26."
-        ),
-    )
     exposure = connectionTypes.Input(
         doc="Input exposure to perform photometry on.",
         name="calexp",
@@ -301,78 +278,6 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit",),
     )
-    externalSkyWcsTractCatalog = connectionTypes.Input(
-        doc=("Per-tract, per-visit wcs calibrations.  These catalogs use the detector "
-             "id for the catalog id, sorted on id for fast lookup."),
-        name="{skyWcsName}SkyWcsCatalog",
-        storageClass="ExposureCatalog",
-        dimensions=["instrument", "visit", "tract"],
-        multiple=True,
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
-    )
-    externalSkyWcsGlobalCatalog = connectionTypes.Input(
-        doc=("Per-visit wcs calibrations computed globally (with no tract information). "
-             "These catalogs use the detector id for the catalog id, sorted on id for "
-             "fast lookup."),
-        name="finalVisitSummary",
-        storageClass="ExposureCatalog",
-        dimensions=["instrument", "visit"],
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
-    )
-    externalPhotoCalibTractCatalog = connectionTypes.Input(
-        doc=("Per-tract, per-visit photometric calibrations.  These catalogs use the "
-             "detector id for the catalog id, sorted on id for fast lookup."),
-        name="{photoCalibName}PhotoCalibCatalog",
-        storageClass="ExposureCatalog",
-        dimensions=["instrument", "visit", "tract"],
-        multiple=True,
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
-    )
-    externalPhotoCalibGlobalCatalog = connectionTypes.Input(
-        doc=("Per-visit photometric calibrations computed globally (with no tract "
-             "information).  These catalogs use the detector id for the catalog id, "
-             "sorted on id for fast lookup."),
-        name="finalVisitSummary",
-        storageClass="ExposureCatalog",
-        dimensions=["instrument", "visit"],
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
-    )
-
-    def __init__(self, *, config=None):
-        super().__init__(config=config)
-        # Same connection boilerplate as all other applications of
-        # Global/Tract calibrations
-        # TODO: remove all of this on DM-39854.
-        keepSkyMap = False
-        keepExposure = False
-        if config.doApplyExternalSkyWcs and config.doReevaluateSkyWcs:
-            keepExposure = True
-            if config.useGlobalExternalSkyWcs:
-                self.inputs.remove("externalSkyWcsTractCatalog")
-            else:
-                self.inputs.remove("externalSkyWcsGlobalCatalog")
-                keepSkyMap = True
-        else:
-            self.inputs.remove("externalSkyWcsTractCatalog")
-            self.inputs.remove("externalSkyWcsGlobalCatalog")
-        if config.doApplyExternalPhotoCalib and config.doReevaluatePhotoCalib:
-            keepExposure = True
-            if config.useGlobalExternalPhotoCalib:
-                self.inputs.remove("externalPhotoCalibTractCatalog")
-            else:
-                self.inputs.remove("externalPhotoCalibGlobalCatalog")
-                keepSkyMap = True
-        else:
-            self.inputs.remove("externalPhotoCalibTractCatalog")
-            self.inputs.remove("externalPhotoCalibGlobalCatalog")
-        if not keepSkyMap:
-            del self.skyMap
-        if not keepExposure:
-            del self.exposure
 
 
 class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
@@ -388,50 +293,7 @@ class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
         default=True,
         doc=("Add or replace local WCS columns and update the coord columns, coord_ra and coord_dec"),
     )
-    doApplyExternalPhotoCalib = pexConfig.Field(
-        dtype=bool,
-        default=False,
-        doc=("If and only if doReevaluatePhotoCalib, apply the photometric calibrations from an external ",
-             "algorithm such as FGCM or jointcal, else use the photoCalib already attached to the exposure."),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated along with the external PhotoCalib connections.  Will be removed after v26.",
-    )
-    doApplyExternalSkyWcs = pexConfig.Field(
-        dtype=bool,
-        default=False,
-        doc=("if and only if doReevaluateSkyWcs, apply the WCS from an external algorithm such as jointcal, ",
-             "else use the wcs already attached to the exposure."),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated along with the external WCS connections.  Will be removed after v26.",
-    )
-    useGlobalExternalPhotoCalib = pexConfig.Field(
-        dtype=bool,
-        default=False,
-        doc=("When using doApplyExternalPhotoCalib, use 'global' calibrations "
-             "that are not run per-tract.  When False, use per-tract photometric "
-             "calibration files."),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated along with the external PhotoCalib connections.  Will be removed after v26.",
-    )
-    useGlobalExternalSkyWcs = pexConfig.Field(
-        dtype=bool,
-        default=False,
-        doc=("When using doApplyExternalSkyWcs, use 'global' calibrations "
-             "that are not run per-tract.  When False, use per-tract wcs "
-             "files."),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated along with the external WCS connections.  Will be removed after v26.",
-    )
     idGenerator = DetectorVisitIdGeneratorConfig.make_field()
-
-    def validate(self):
-        super().validate()
-        if self.doApplyExternalSkyWcs and not self.doReevaluateSkyWcs:
-            log.warning("doApplyExternalSkyWcs=True but doReevaluateSkyWcs=False"
-                        "External SkyWcs will not be read or evaluated.")
-        if self.doApplyExternalPhotoCalib and not self.doReevaluatePhotoCalib:
-            log.warning("doApplyExternalPhotoCalib=True but doReevaluatePhotoCalib=False."
-                        "External PhotoCalib will not be read or evaluated.")
 
 
 class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
@@ -448,153 +310,18 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         inputs['ccdVisitId'] = idGenerator.catalog_id
 
         if self.config.doReevaluatePhotoCalib or self.config.doReevaluateSkyWcs:
-            if self.config.doApplyExternalPhotoCalib or self.config.doApplyExternalSkyWcs:
-                inputs['exposure'] = self.attachCalibs(inputRefs, **inputs)
-            else:
-                # Create an empty exposure that will hold the calibrations.
-                exposure = ExposureF()
-                detectorId = butlerQC.quantum.dataId["detector"]
-                inputs['exposure'] = self.prepareCalibratedExposure(
-                    exposure=exposure,
-                    detectorId=detectorId,
-                    visitSummary=inputs["visitSummary"],
-                )
+            inputs['exposure'] = self.prepareCalibratedExposure(
+                exposure=inputs["exposure"],
+                visitSummary=inputs["visitSummary"],
+                detectorId=butlerQC.quantum.dataId["detector"]
+            )
             inputs['catalog'] = self.addCalibColumns(**inputs)
 
         result = self.run(**inputs)
         outputs = pipeBase.Struct(outputCatalog=result.table)
         butlerQC.put(outputs, outputRefs)
 
-    # TODO: remove on DM-39854.
-    @deprecated("Deprecated in favor of exclusively using visit summaries; will be removed after v26.",
-                version="v26", category=FutureWarning)
-    def attachCalibs(self, inputRefs, skyMap, exposure, externalSkyWcsGlobalCatalog=None,
-                     externalSkyWcsTractCatalog=None, externalPhotoCalibGlobalCatalog=None,
-                     externalPhotoCalibTractCatalog=None, visitSummary=None, **kwargs):
-        """Apply external calibrations to exposure per configuration
-
-        When multiple tract-level calibrations overlap, select the one with the
-        center closest to detector.
-
-        Parameters
-        ----------
-        inputRefs : `~lsst.pipe.base.InputQuantizedConnection`, for dataIds of
-            tract-level calibs.
-        skyMap : `~lsst.skymap.BaseSkyMap`
-            skyMap to lookup tract geometry and WCS.
-        exposure : `lsst.afw.image.exposure.Exposure`
-            Input exposure to adjust calibrations.
-        externalSkyWcsGlobalCatalog : `~lsst.afw.table.ExposureCatalog`, optional
-            Exposure catalog with external skyWcs to be applied per config
-        externalSkyWcsTractCatalog : `~lsst.afw.table.ExposureCatalog`, optional
-            Exposure catalog with external skyWcs to be applied per config
-        externalPhotoCalibGlobalCatalog : `~lsst.afw.table.ExposureCatalog`, optional
-            Exposure catalog with external photoCalib to be applied per config
-        externalPhotoCalibTractCatalog : `~lsst.afw.table.ExposureCatalog`, optional
-            Exposure catalog with external photoCalib to be applied per config
-        visitSummary : `lsst.afw.table.ExposureCatalog`, optional
-            Exposure catalog with all calibration objects.  WCS and PhotoCalib
-            are always applied if provided.
-        **kwargs
-            Additional keyword arguments are ignored to facilitate passing the
-            same arguments to several methods.
-
-        Returns
-        -------
-        exposure : `lsst.afw.image.exposure.Exposure`
-            Exposure with adjusted calibrations.
-        """
-        if not self.config.doApplyExternalSkyWcs:
-            # Do not modify the exposure's SkyWcs
-            externalSkyWcsCatalog = None
-        elif self.config.useGlobalExternalSkyWcs:
-            # Use the global external SkyWcs
-            externalSkyWcsCatalog = externalSkyWcsGlobalCatalog
-            self.log.info('Applying global SkyWcs')
-        else:
-            # use tract-level external SkyWcs from the closest overlapping tract
-            inputRef = getattr(inputRefs, 'externalSkyWcsTractCatalog')
-            tracts = [ref.dataId['tract'] for ref in inputRef]
-            if len(tracts) == 1:
-                ind = 0
-                self.log.info('Applying tract-level SkyWcs from tract %s', tracts[ind])
-            else:
-                if exposure.getWcs() is None:  # TODO: could this look-up use the externalPhotoCalib?
-                    raise ValueError("Trying to locate nearest tract, but exposure.wcs is None.")
-                ind = self.getClosestTract(tracts, skyMap,
-                                           exposure.getBBox(), exposure.getWcs())
-                self.log.info('Multiple overlapping externalSkyWcsTractCatalogs found (%s). '
-                              'Applying closest to detector center: tract=%s', str(tracts), tracts[ind])
-
-            externalSkyWcsCatalog = externalSkyWcsTractCatalog[ind]
-
-        if not self.config.doApplyExternalPhotoCalib:
-            # Do not modify the exposure's PhotoCalib
-            externalPhotoCalibCatalog = None
-        elif self.config.useGlobalExternalPhotoCalib:
-            # Use the global external PhotoCalib
-            externalPhotoCalibCatalog = externalPhotoCalibGlobalCatalog
-            self.log.info('Applying global PhotoCalib')
-        else:
-            # use tract-level external PhotoCalib from the closest overlapping tract
-            inputRef = getattr(inputRefs, 'externalPhotoCalibTractCatalog')
-            tracts = [ref.dataId['tract'] for ref in inputRef]
-            if len(tracts) == 1:
-                ind = 0
-                self.log.info('Applying tract-level PhotoCalib from tract %s', tracts[ind])
-            else:
-                ind = self.getClosestTract(tracts, skyMap,
-                                           exposure.getBBox(), exposure.getWcs())
-                self.log.info('Multiple overlapping externalPhotoCalibTractCatalogs found (%s). '
-                              'Applying closest to detector center: tract=%s', str(tracts), tracts[ind])
-
-            externalPhotoCalibCatalog = externalPhotoCalibTractCatalog[ind]
-
-        return self.prepareCalibratedExposure(
-            exposure, externalSkyWcsCatalog, externalPhotoCalibCatalog, visitSummary
-        )
-
-    # TODO: remove on DM-39854.
-    @deprecated("Deprecated in favor of exclusively using visit summaries; will be removed after v26.",
-                version="v26", category=FutureWarning)
-    def getClosestTract(self, tracts, skyMap, bbox, wcs):
-        """Find the index of the tract closest to detector from list of tractIds
-
-        Parameters
-        ----------
-        tracts: `list` [`int`]
-            Iterable of integer tractIds
-        skyMap : `~lsst.skymap.BaseSkyMap`
-            skyMap to lookup tract geometry and wcs
-        bbox : `~lsst.geom.Box2I`
-            Detector bbox, center of which will compared to tract centers
-        wcs : `~lsst.afw.geom.SkyWcs`
-            Detector Wcs object to map the detector center to SkyCoord
-
-        Returns
-        -------
-        index : `int`
-        """
-        if len(tracts) == 1:
-            return 0
-
-        center = wcs.pixelToSky(bbox.getCenter())
-        sep = []
-        for tractId in tracts:
-            tract = skyMap[tractId]
-            tractCenter = tract.getWcs().pixelToSky(tract.getBBox().getCenter())
-            sep.append(center.separation(tractCenter))
-
-        return np.argmin(sep)
-
-    def prepareCalibratedExposure(
-        self,
-        exposure,
-        detectorId,
-        externalSkyWcsCatalog=None,
-        externalPhotoCalibCatalog=None,
-        visitSummary=None,
-    ):
+    def prepareCalibratedExposure(self, exposure, detectorId, visitSummary=None):
         """Prepare a calibrated exposure and apply external calibrations
         if so configured.
 
@@ -604,16 +331,6 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
             Input exposure to adjust calibrations.  May be empty.
         detectorId : `int`
             Detector ID associated with the exposure.
-        externalSkyWcsCatalog :  `lsst.afw.table.ExposureCatalog`, optional
-            Exposure catalog with external skyWcs to be applied
-            if config.doApplyExternalSkyWcs=True.  Catalog uses the detector id
-            for the catalog id, sorted on id for fast lookup.
-            Deprecated in favor of ``visitSummary``; will be removed after v26.
-        externalPhotoCalibCatalog : `lsst.afw.table.ExposureCatalog`, optional
-            Exposure catalog with external photoCalib to be applied
-            if config.doApplyExternalPhotoCalib=True.  Catalog uses the detector
-            id for the catalog id, sorted on id for fast lookup.
-            Deprecated in favor of ``visitSummary``; will be removed after v26.
         visitSummary : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with all calibration objects.  WCS and PhotoCalib
             are always applied if ``visitSummary`` is provided and those
@@ -640,44 +357,6 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
                 exposure.setWcs(None)
             else:
                 exposure.setWcs(skyWcs)
-
-        if externalPhotoCalibCatalog is not None:
-            # TODO: remove on DM-39854.
-            warnings.warn(
-                "Deprecated in favor of 'visitSummary'; will be removed after v26.",
-                FutureWarning,
-                stacklevel=find_outside_stacklevel("lsst.pipe.tasks.postprocessing"),
-            )
-            row = externalPhotoCalibCatalog.find(detectorId)
-            if row is None:
-                self.log.warning("Detector id %s not found in externalPhotoCalibCatalog; "
-                                 "Using original photoCalib.", detectorId)
-            else:
-                photoCalib = row.getPhotoCalib()
-                if photoCalib is None:
-                    self.log.warning("Detector id %s has None for photoCalib in externalPhotoCalibCatalog; "
-                                     "Using original photoCalib.", detectorId)
-                else:
-                    exposure.setPhotoCalib(photoCalib)
-
-        if externalSkyWcsCatalog is not None:
-            # TODO: remove on DM-39854.
-            warnings.warn(
-                "Deprecated in favor of 'visitSummary'; will be removed after v26.",
-                FutureWarning,
-                stacklevel=find_outside_stacklevel("lsst.pipe.tasks.postprocessing"),
-            )
-            row = externalSkyWcsCatalog.find(detectorId)
-            if row is None:
-                self.log.warning("Detector id %s not found in externalSkyWcsCatalog; "
-                                 "Using original skyWcs.", detectorId)
-            else:
-                skyWcs = row.getWcs()
-                if skyWcs is None:
-                    self.log.warning("Detector id %s has None for skyWcs in externalSkyWcsCatalog; "
-                                     "Using original skyWcs.", detectorId)
-                else:
-                    exposure.setWcs(skyWcs)
 
         return exposure
 
