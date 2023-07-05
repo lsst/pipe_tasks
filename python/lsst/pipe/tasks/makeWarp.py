@@ -46,12 +46,7 @@ log = logging.getLogger(__name__)
 class MakeWarpConnections(pipeBase.PipelineTaskConnections,
                           dimensions=("tract", "patch", "skymap", "instrument", "visit"),
                           defaultTemplates={"coaddName": "deep",
-                                            "skyWcsName": "gbdesAstrometricFit",
-                                            "photoCalibName": "fgcm",
-                                            "calexpType": ""},
-                          # TODO: remove on DM-39854.
-                          deprecatedTemplates={"skyWcsName": "Deprecated; will be removed after v26.",
-                                               "photoCalibName": "Deprecated; will be removed after v26."}):
+                                            "calexpType": ""}):
     calExpList = connectionTypes.Input(
         doc="Input exposures to be resampled and optionally PSF-matched onto a SkyMap projection/patch",
         name="{calexpType}calexp",
@@ -80,54 +75,6 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="SkyMap",
         dimensions=("skymap",),
     )
-    externalSkyWcsTractCatalog = connectionTypes.Input(
-        doc=("Per-tract, per-visit wcs calibrations.  These catalogs use the detector "
-             "id for the catalog id, sorted on id for fast lookup."),
-        name="{skyWcsName}SkyWcsCatalog",
-        storageClass="ExposureCatalog",
-        dimensions=("instrument", "visit", "tract"),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
-    )
-    externalSkyWcsGlobalCatalog = connectionTypes.Input(
-        doc=("Per-visit wcs calibrations computed globally (with no tract information). "
-             "These catalogs use the detector id for the catalog id, sorted on id for "
-             "fast lookup."),
-        name="finalVisitSummary",
-        storageClass="ExposureCatalog",
-        dimensions=("instrument", "visit"),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
-    )
-    externalPhotoCalibTractCatalog = connectionTypes.Input(
-        doc=("Per-tract, per-visit photometric calibrations.  These catalogs use the "
-             "detector id for the catalog id, sorted on id for fast lookup."),
-        name="{photoCalibName}PhotoCalibCatalog",
-        storageClass="ExposureCatalog",
-        dimensions=("instrument", "visit", "tract"),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
-    )
-    externalPhotoCalibGlobalCatalog = connectionTypes.Input(
-        doc=("Per-visit photometric calibrations computed globally (with no tract "
-             "information).  These catalogs use the detector id for the catalog id, "
-             "sorted on id for fast lookup."),
-        name="finalVisitSummary",
-        storageClass="ExposureCatalog",
-        dimensions=("instrument", "visit"),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
-    )
-    finalizedPsfApCorrCatalog = connectionTypes.Input(
-        doc=("Per-visit finalized psf models and aperture correction maps. "
-             "These catalogs use the detector id for the catalog id, "
-             "sorted on id for fast lookup."),
-        name="finalVisitSummary",
-        storageClass="ExposureCatalog",
-        dimensions=("instrument", "visit"),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
-    )
     direct = connectionTypes.Output(
         doc=("Output direct warped exposure (previously called CoaddTempExp), produced by resampling ",
              "calexps onto the skyMap patch geometry."),
@@ -142,30 +89,6 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "visit", "instrument"),
     )
-    wcsList = connectionTypes.Input(
-        doc="WCSs of calexps used by SelectImages subtask to determine if the calexp overlaps the patch",
-        name="{calexpType}calexp.wcs",
-        storageClass="Wcs",
-        dimensions=("instrument", "visit", "detector"),
-        multiple=True,
-        # TODO: remove on DM-39854
-        deprecated=(
-            "Deprecated in favor of the 'visitSummary' connection (and already ignored). "
-            "Will be removed after v26."
-        )
-    )
-    bboxList = connectionTypes.Input(
-        doc="BBoxes of calexps used by SelectImages subtask to determine if the calexp overlaps the patch",
-        name="{calexpType}calexp.bbox",
-        storageClass="Box2I",
-        dimensions=("instrument", "visit", "detector"),
-        multiple=True,
-        # TODO: remove on DM-39854
-        deprecated=(
-            "Deprecated in favor of the 'visitSummary' connection (and already ignored). "
-            "Will be removed after v26."
-        )
-    )
     visitSummary = connectionTypes.Input(
         doc="Input visit-summary catalog with updated calibration objects.",
         name="finalVisitSummary",
@@ -178,37 +101,10 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
             del self.backgroundList
         if not config.doApplySkyCorr:
             del self.skyCorrList
-        # TODO: remove all "external" checks on DM-39854
-        if config.doApplyExternalSkyWcs:
-            if config.useGlobalExternalSkyWcs:
-                del self.externalSkyWcsTractCatalog
-            else:
-                del self.externalSkyWcsGlobalCatalog
-        else:
-            del self.externalSkyWcsTractCatalog
-            del self.externalSkyWcsGlobalCatalog
-        if config.doApplyExternalPhotoCalib:
-            if config.useGlobalExternalPhotoCalib:
-                del self.externalPhotoCalibTractCatalog
-            else:
-                del self.externalPhotoCalibGlobalCatalog
-        else:
-            del self.externalPhotoCalibTractCatalog
-            del self.externalPhotoCalibGlobalCatalog
-        if not config.doApplyFinalizedPsf:
-            del self.finalizedPsfApCorrCatalog
         if not config.makeDirect:
             del self.direct
         if not config.makePsfMatched:
             del self.psfMatched
-        # We always drop the deprecated wcsList and bboxList connections,
-        # since we can always get equivalents from the visitSummary dataset.
-        # Removing them here avoids the deprecation warning, but we do have
-        # to deprecate rather than immediately remove them to keep old configs
-        # usable for a bit.
-        # TODO: remove on DM-39854
-        del self.bboxList
-        del self.wcsList
 
 
 class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
@@ -247,8 +143,6 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
         doc=(
             "If True, use the PSF model and aperture corrections from the 'visitSummary' connection. "
             "If False, use the PSF model and aperture corrections from the 'exposure' connection. "
-            # TODO: remove this next sentence on DM-39854.
-            "The finalizedPsfApCorrCatalog connection (if enabled) takes precedence over either."
         ),
         dtype=bool,
         default=True,
@@ -267,13 +161,6 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
         dtype=bool,
         default=False,
         doc="Apply sky correction?",
-    )
-    doApplyFinalizedPsf = pexConfig.Field(
-        doc="Whether to apply finalized psf models and aperture correction map.",
-        dtype=bool,
-        default=True,
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of useVisitSummaryPsf.  Will be removed after v26.",
     )
     idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
@@ -355,35 +242,9 @@ class MakeWarpTask(CoaddBaseTask):
         inputs["bboxList"] = bboxList
         inputs["wcsList"] = wcsList
 
-        if self.config.doApplyExternalSkyWcs:
-            if self.config.useGlobalExternalSkyWcs:
-                externalSkyWcsCatalog = inputs.pop("externalSkyWcsGlobalCatalog")
-            else:
-                externalSkyWcsCatalog = inputs.pop("externalSkyWcsTractCatalog")
-        else:
-            externalSkyWcsCatalog = None
-
-        if self.config.doApplyExternalPhotoCalib:
-            if self.config.useGlobalExternalPhotoCalib:
-                externalPhotoCalibCatalog = inputs.pop("externalPhotoCalibGlobalCatalog")
-            else:
-                externalPhotoCalibCatalog = inputs.pop("externalPhotoCalibTractCatalog")
-        else:
-            externalPhotoCalibCatalog = None
-
-        if self.config.doApplyFinalizedPsf:
-            finalizedPsfApCorrCatalog = inputs.pop("finalizedPsfApCorrCatalog")
-        else:
-            finalizedPsfApCorrCatalog = None
-
         # Do an initial selection on inputs with complete wcs/photoCalib info.
         # Qualifying calexps will be read in the following call.
-        completeIndices = self._prepareCalibratedExposures(
-            **inputs,
-            externalSkyWcsCatalog=externalSkyWcsCatalog,
-            externalPhotoCalibCatalog=externalPhotoCalibCatalog,
-            finalizedPsfApCorrCatalog=finalizedPsfApCorrCatalog,
-        )
+        completeIndices = self._prepareCalibratedExposures(**inputs)
         inputs = self.filterInputs(indices=completeIndices, inputs=inputs)
 
         # Do another selection based on the configured selection task
@@ -540,8 +401,7 @@ class MakeWarpTask(CoaddBaseTask):
         return inputs
 
     def _prepareCalibratedExposures(self, calExpList=[], wcsList=None, backgroundList=None, skyCorrList=None,
-                                    externalSkyWcsCatalog=None, externalPhotoCalibCatalog=None,
-                                    finalizedPsfApCorrCatalog=None, visitSummary=None, **kwargs):
+                                    visitSummary=None, **kwargs):
         """Calibrate and add backgrounds to input calExpList in place.
 
         Parameters
@@ -560,22 +420,6 @@ class MakeWarpTask(CoaddBaseTask):
         skyCorrList : `list` [`lsst.afw.math.backgroundList`], optional
             Sequence of background corrections to be subtracted if
             doApplySkyCorr=True.
-        externalSkyWcsCatalog : `lsst.afw.table.ExposureCatalog`, optional
-            Exposure catalog with external skyWcs to be applied
-            if config.doApplyExternalSkyWcs=True.  Catalog uses the detector id
-            for the catalog id, sorted on id for fast lookup.
-            Deprecated and will be removed after v26.
-        externalPhotoCalibCatalog : `lsst.afw.table.ExposureCatalog`, optional
-            Exposure catalog with external photoCalib to be applied
-            if config.doApplyExternalPhotoCalib=True.  Catalog uses the
-            detector id for the catalog id, sorted on id for fast lookup.
-            Deprecated and will be removed after v26.
-        finalizedPsfApCorrCatalog : `lsst.afw.table.ExposureCatalog`, optional
-            Exposure catalog with finalized psf models and aperture correction
-            maps to be applied if config.doApplyFinalizedPsf=True.  Catalog
-            uses the detector id for the catalog id, sorted on id for fast
-            lookup.
-            Deprecated and will be removed after v26.
         visitSummary : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with potentially all calibrations.  Attributes set
             to `None` are ignored.
@@ -599,7 +443,7 @@ class MakeWarpTask(CoaddBaseTask):
                                                                        wcsList,
                                                                        backgroundList,
                                                                        skyCorrList)):
-            if externalSkyWcsCatalog is None and wcs is None:
+            if wcs is None:
                 self.log.warning("Detector id %d for visit %d has None for skyWcs and will not be "
                                  "used in the warp", calexp.dataId["detector"], calexp.dataId["visit"])
                 continue
@@ -627,83 +471,21 @@ class MakeWarpTask(CoaddBaseTask):
                 if self.config.useVisitSummaryPsf:
                     if (psf := row.getPsf()) is not None:
                         calexp.setPsf(psf)
+                    else:
+                        self.log.warning("Detector id %s has None for PSF in the visit summary "
+                                         "and will not be used in the warp.", detectorId)
                     if (apCorrMap := row.getApCorrMap()) is not None:
                         calexp.info.setApCorrMap(apCorrMap)
-                # TODO: on DM-39854 the logic in the 'elif' blocks below could
-                # be moved into 'else' blocks above (or otherwise simplified
-                # substantially) after the 'external' arguments are removed.
-
-            # Find the external photoCalib.
-            if externalPhotoCalibCatalog is not None:
-                row = externalPhotoCalibCatalog.find(detectorId)
-                if row is None:
-                    self.log.warning("Detector id %s not found in externalPhotoCalibCatalog "
-                                     "and will not be used in the warp.", detectorId)
-                    continue
-                photoCalib = row.getPhotoCalib()
-                if photoCalib is None:
-                    self.log.warning("Detector id %s has None for photoCalib in externalPhotoCalibCatalog "
-                                     "and will not be used in the warp.", detectorId)
-                    continue
-                calexp.setPhotoCalib(photoCalib)
-            elif photoCalib is None:
-                self.log.warning("Detector id %s has None for photoCalib in the visit summary "
-                                 "and will not be used in the warp.", detectorId)
-                continue
-
-            # Find and apply external skyWcs.
-            if externalSkyWcsCatalog is not None:
-                row = externalSkyWcsCatalog.find(detectorId)
-                if row is None:
-                    self.log.warning("Detector id %s not found in externalSkyWcsCatalog "
-                                     "and will not be used in the warp.", detectorId)
-                    continue
-                skyWcs = row.getWcs()
-                wcsList[index] = skyWcs
-                if skyWcs is None:
-                    self.log.warning("Detector id %s has None for skyWcs in externalSkyWcsCatalog "
-                                     "and will not be used in the warp.", detectorId)
-                    continue
-                calexp.setWcs(skyWcs)
-            elif skyWcs is None:
-                self.log.warning("Detector id %s has None for skyWcs in the visit summary "
-                                 "and will not be used in the warp.", detectorId)
-                continue
-
-            # Find and apply finalized psf and aperture correction.
-            if finalizedPsfApCorrCatalog is not None:
-                row = finalizedPsfApCorrCatalog.find(detectorId)
-                if row is None:
-                    self.log.warning("Detector id %s not found in finalizedPsfApCorrCatalog "
-                                     "and will not be used in the warp.", detectorId)
-                    continue
-                psf = row.getPsf()
-                if psf is None:
-                    self.log.warning("Detector id %s has None for psf in finalizedPsfApCorrCatalog "
-                                     "and will not be used in the warp.", detectorId)
-                    continue
-                calexp.setPsf(psf)
-                apCorrMap = row.getApCorrMap()
-                if apCorrMap is None:
-                    self.log.warning("Detector id %s has None for ApCorrMap in finalizedPsfApCorrCatalog "
-                                     "and will not be used in the warp.", detectorId)
-                    continue
-                calexp.info.setApCorrMap(apCorrMap)
-            elif self.config.useVisitSummaryPsf:
-                if psf is None:
-                    self.log.warning("Detector id %s has None for PSF in the visit summary "
-                                     "and will not be used in the warp.", detectorId)
-                if apCorrMap is None:
-                    self.log.warning("Detector id %s has None for ApCorrMap in the visit summary "
-                                     "and will not be used in the warp.", detectorId)
-            else:
-                if calexp.getPsf() is None:
-                    self.log.warning("Detector id %s has None for PSF in the calexp "
-                                     "and will not be used in the warp.", detectorId)
-                if calexp.info.getApCorrMap() is None:
-                    self.log.warning("Detector id %s has None for ApCorrMap in the calexp "
-                                     "and will not be used in the warp.", detectorId)
-                    continue
+                    else:
+                        self.log.warning("Detector id %s has None for ApCorrMap in the visit summary "
+                                         "and will not be used in the warp.", detectorId)
+                else:
+                    if calexp.getPsf() is None:
+                        self.log.warning("Detector id %s has None for PSF in the exposure "
+                                         "and will not be used in the warp.", detectorId)
+                    if calexp.info.getApCorrMap() is None:
+                        self.log.warning("Detector id %s has None for ApCorrMap in the exposure "
+                                         "and will not be used in the warp.", detectorId)
 
             # Calibrate the image.
             calexp.maskedImage = photoCalib.calibrateImage(calexp.maskedImage,
