@@ -148,8 +148,7 @@ def makeMockVisitSummary(visit,
         # it just needs to be valid and have sufficient information to compute
         # exposure time and parallactic angle.
         date = DateTime(date=mjd, system=DateTime.DateSystem.MJD)
-        visit_info = afwImage.VisitInfo(exposureId=visit,
-                                        exposureTime=exposure_time,
+        visit_info = afwImage.VisitInfo(exposureTime=exposure_time,
                                         date=date,
                                         darkTime=0.0,
                                         boresightRaDec=geom.SpherePoint(ra_center,
