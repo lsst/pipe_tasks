@@ -98,7 +98,7 @@ Increase the matching kernel size. For example:
 Note that increasing the kernel size also increases runtime.
 
 Matched PSFs look ugly (dipoles, quadropoles, donuts)
-*******
+*****************************************************
 
 Unable to find good solution for matching kernel.
 

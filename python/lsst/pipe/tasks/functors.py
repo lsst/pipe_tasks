@@ -19,8 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["Functor", "CompositeFunctor", "CustomFunctor", "Column", "Index",
-           "CoordColumn", "RAColumn", "DecColumn", "HtmIndex20", "Mag",
+__all__ = ["init_fromDict", "Functor", "CompositeFunctor", "mag_aware_eval",
+           "CustomFunctor", "Column", "Index", "CoordColumn", "RAColumn",
+           "DecColumn", "HtmIndex20", "fluxName", "fluxErrName", "Mag",
            "MagErr", "MagDiff", "Color", "DeconvolvedMoments", "SdssTraceSize",
            "PsfSdssTraceSizeDiff", "HsmTraceSize", "PsfHsmTraceSizeDiff",
            "HsmFwhm", "E1", "E2", "RadiusFromQuadrupole", "LocalWcs",
@@ -54,26 +55,25 @@ import lsst.sphgeom as sphgeom
 
 def init_fromDict(initDict, basePath='lsst.pipe.tasks.functors',
                   typeKey='functor', name=None):
-    """Initialize an object defined in a dictionary
+    """Initialize an object defined in a dictionary.
 
-    The object needs to be importable as
-        f'{basePath}.{initDict[typeKey]}'
-    The positional and keyword arguments (if any) are contained in
-    "args" and "kwargs" entries in the dictionary, respectively.
-    This is used in `functors.CompositeFunctor.from_yaml` to initialize
-    a composite functor from a specification in a YAML file.
+    The object needs to be importable as f'{basePath}.{initDict[typeKey]}'.
+    The positional and keyword arguments (if any) are contained in "args" and
+    "kwargs" entries in the dictionary, respectively.
+    This is used in `~lsst.pipe.tasks.functors.CompositeFunctor.from_yaml` to
+    initialize a composite functor from a specification in a YAML file.
 
     Parameters
     ----------
     initDict : dictionary
-        Dictionary describing object's initialization.  Must contain
-        an entry keyed by ``typeKey`` that is the name of the object,
-        relative to ``basePath``.
+        Dictionary describing object's initialization.
+        Must contain an entry keyed by ``typeKey`` that is the name of the
+        object, relative to ``basePath``.
     basePath : str
         Path relative to module in which ``initDict[typeKey]`` is defined.
     typeKey : str
-        Key of ``initDict`` that is the name of the object
-        (relative to `basePath`).
+        Key of ``initDict`` that is the name of the object (relative to
+        ``basePath``).
     """
     initDict = initDict.copy()
     # TO DO: DM-21956 We should be able to define functors outside this module
@@ -92,62 +92,65 @@ def init_fromDict(initDict, basePath='lsst.pipe.tasks.functors',
 
 
 class Functor(object):
-    """Define and execute a calculation on a DataFrame or Handle holding a DataFrame.
+    """Define and execute a calculation on a DataFrame or Handle holding a
+    DataFrame.
 
-    The `__call__` method accepts either a `DataFrame` object or a
-    `DeferredDatasetHandle` or `InMemoryDatasetHandle`, and returns the
-    result of the calculation as a single column.  Each functor defines what
-    columns are needed for the calculation, and only these columns are read
-    from the dataset handle.
+    The `__call__` method accepts either a `~pandas.DataFrame` object or a
+    `~lsst.daf.butler.DeferredDatasetHandle` or
+    `~lsst.pipe.base.InMemoryDatasetHandle`, and returns the
+    result of the calculation as a single column.
+    Each functor defines what columns are needed for the calculation, and only
+    these columns are read from the dataset handle.
 
-    The action of  `__call__` consists of two steps: first, loading the
-    necessary columns from disk into memory as a `pandas.DataFrame` object;
-    and second, performing the computation on this dataframe and returning the
+    The action of `__call__` consists of two steps: first, loading the
+    necessary columns from disk into memory as a `~pandas.DataFrame` object;
+    and second, performing the computation on this DataFrame and returning the
     result.
 
-
     To define a new `Functor`, a subclass must define a `_func` method,
-    that takes a `pandas.DataFrame` and returns result in a `pandas.Series`.
-    In addition, it must define the following attributes
+    that takes a `~pandas.DataFrame` and returns result in a `~pandas.Series`.
+    In addition, it must define the following attributes:
 
     * `_columns`: The columns necessary to perform the calculation
     * `name`: A name appropriate for a figure axis label
     * `shortname`: A name appropriate for use as a dictionary key
 
-    On initialization, a `Functor` should declare what band (`filt` kwarg)
-    and dataset (e.g. `'ref'`, `'meas'`, `'forced_src'`) it is intended to be
-    applied to. This enables the `_get_data` method to extract the proper
-    columns from the underlying data. If not specified, the dataset will fall back
-    on the `_defaultDataset`attribute. If band is not specified and `dataset`
-    is anything other than `'ref'`, then an error will be raised when trying to
-    perform the calculation.
+    On initialization, a `Functor` should declare what band (``filt`` kwarg)
+    and dataset (e.g. ``'ref'``, ``'meas'``, ``'forced_src'``) it is intended
+    to be applied to.
+    This enables the `_get_data` method to extract the proper columns from the
+    underlying data.
+    If not specified, the dataset will fall back on the `_defaultDataset`
+    attribute.
+    If band is not specified and ``dataset`` is anything other than ``'ref'``,
+    then an error will be raised when trying to perform the calculation.
 
-    Originally, `Functor` was set up to expect
-    datasets formatted like the `deepCoadd_obj` dataset; that is, a
-    dataframe with a multi-level column index, with the levels of the
-    column index being `band`, `dataset`, and `column`.
-    It has since been generalized to apply to dataframes without mutli-level
-    indices and multi-level indices with just `dataset` and `column` levels.
-    In addition, the `_get_data` method that reads
-    the columns from the underlying data will return a dataframe with column
-    index levels defined by the `_dfLevels` attribute; by default, this is
-    `column`.
+    Originally, `Functor` was set up to expect datasets formatted like the
+    ``deepCoadd_obj`` dataset; that is, a DataFrame with a multi-level column
+    index, with the levels of the column index being ``band``, ``dataset``, and
+    ``column``.
+    It has since been generalized to apply to DataFrames without multi-level
+    indices and multi-level indices with just ``dataset`` and ``column``
+    levels.
+    In addition, the `_get_data` method that reads the columns from the
+    underlying data will return a DataFrame with column index levels defined by
+    the `_dfLevels` attribute; by default, this is ``column``.
 
-    The `_dfLevels` attributes should generally not need to
-    be changed, unless `_func` needs columns from multiple filters or datasets
-    to do the calculation.
-    An example of this is the `lsst.pipe.tasks.functors.Color` functor, for
-    which `_dfLevels = ('band', 'column')`, and `_func` expects the dataframe
+    The `_dfLevels` attributes should generally not need to be changed, unless
+    `_func` needs columns from multiple filters or datasets to do the
+    calculation.
+    An example of this is the `~lsst.pipe.tasks.functors.Color` functor, for
+    which `_dfLevels = ('band', 'column')`, and `_func` expects the DataFrame
     it gets to have those levels in the column index.
 
     Parameters
     ----------
     filt : str
-        Filter upon which to do the calculation
+        Band upon which to do the calculation.
 
     dataset : str
-        Dataset upon which to do the calculation
-        (e.g., 'ref', 'meas', 'forced_src').
+        Dataset upon which to do the calculation (e.g., 'ref', 'meas',
+        'forced_src').
     """
 
     _defaultDataset = 'ref'
@@ -162,6 +165,7 @@ class Functor(object):
 
     @property
     def noDup(self):
+        """Do not explode by band if used on object table."""
         if self._noDup is not None:
             return self._noDup
         else:
@@ -169,32 +173,34 @@ class Functor(object):
 
     @property
     def columns(self):
-        """Columns required to perform calculation
-        """
+        """Columns required to perform calculation."""
         if not hasattr(self, '_columns'):
             raise NotImplementedError('Must define columns property or _columns attribute')
         return self._columns
 
     def _get_data_columnLevels(self, data, columnIndex=None):
-        """Gets the names of the column index levels
+        """Gets the names of the column index levels.
 
         This should only be called in the context of a multilevel table.
 
         Parameters
         ----------
         data : various
-            The data to be read, can be a `DeferredDatasetHandle` or
-            `InMemoryDatasetHandle`.
-        columnnIndex (optional): pandas `Index` object
-            If not passed, then it is read from the `DeferredDatasetHandle`
-            for `InMemoryDatasetHandle`.
+            The data to be read, can be a
+            `~lsst.daf.butler.DeferredDatasetHandle` or
+            `~lsst.pipe.base.InMemoryDatasetHandle`.
+        columnIndex (optional): pandas `~pandas.Index` object
+            If not passed, then it is read from the
+            `~lsst.daf.butler.DeferredDatasetHandle`
+            for `~lsst.pipe.base.InMemoryDatasetHandle`.
         """
         if columnIndex is None:
             columnIndex = data.get(component="columns")
         return columnIndex.names
 
     def _get_data_columnLevelNames(self, data, columnIndex=None):
-        """Gets the content of each of the column levels for a multilevel table.
+        """Gets the content of each of the column levels for a multilevel
+        table.
         """
         if columnIndex is None:
             columnIndex = data.get(component="columns")
@@ -207,8 +213,7 @@ class Functor(object):
         return columnLevelNames
 
     def _colsFromDict(self, colDict, columnIndex=None):
-        """Converts dictionary column specficiation to a list of columns
-        """
+        """Converts dictionary column specficiation to a list of columns."""
         new_colDict = {}
         columnLevels = self._get_data_columnLevels(None, columnIndex=columnIndex)
 
@@ -227,21 +232,25 @@ class Functor(object):
         return colsAvailable
 
     def multilevelColumns(self, data, columnIndex=None, returnTuple=False):
-        """Returns columns needed by functor from multilevel dataset
+        """Returns columns needed by functor from multilevel dataset.
 
-        To access tables with multilevel column structure, the `DeferredDatasetHandle`
-        or `InMemoryDatasetHandle` need to be passed either a list of tuples or a
-        dictionary.
+        To access tables with multilevel column structure, the
+        `~lsst.daf.butler.DeferredDatasetHandle` or
+        `~lsst.pipe.base.InMemoryDatasetHandle` needs to be passed
+        either a list of tuples or a dictionary.
 
         Parameters
         ----------
         data : various
-            The data as either `DeferredDatasetHandle`, or `InMemoryDatasetHandle`.
-        columnIndex (optional): pandas `Index` object
-            either passed or read in from `DeferredDatasetHandle`.
+            The data as either `~lsst.daf.butler.DeferredDatasetHandle`, or
+            `~lsst.pipe.base.InMemoryDatasetHandle`.
+        columnIndex (optional): pandas `~pandas.Index` object
+            Either passed or read in from
+            `~lsst.daf.butler.DeferredDatasetHandle`.
         `returnTuple` : `bool`
-            If true, then return a list of tuples rather than the column dictionary
-            specification.  This is set to `True` by `CompositeFunctor` in order to be able to
+            If true, then return a list of tuples rather than the column
+            dictionary specification.
+            This is set to `True` by `CompositeFunctor` in order to be able to
             combine columns from the various component functors.
 
         """
@@ -251,7 +260,8 @@ class Functor(object):
         if columnIndex is None:
             columnIndex = data.get(component="columns")
 
-        # Confirm that the dataset has the column levels the functor is expecting it to have.
+        # Confirm that the dataset has the column levels the functor is
+        # expecting it to have.
         columnLevels = self._get_data_columnLevels(data, columnIndex)
 
         columnDict = {'column': self.columns,
@@ -276,11 +286,10 @@ class Functor(object):
             return columnDict
 
     def _func(self, df, dropna=True):
-        raise NotImplementedError('Must define calculation on dataframe')
+        raise NotImplementedError('Must define calculation on DataFrame')
 
     def _get_columnIndex(self, data):
-        """Return columnIndex
-        """
+        """Return columnIndex."""
 
         if isinstance(data, (DeferredDatasetHandle, InMemoryDatasetHandle)):
             return data.get(component="columns")
@@ -288,15 +297,16 @@ class Functor(object):
             return None
 
     def _get_data(self, data):
-        """Retrieve dataframe necessary for calculation.
+        """Retrieve DataFrame necessary for calculation.
 
-        The data argument can be a `DataFrame`, a `DeferredDatasetHandle`, or an
-        `InMemoryDatasetHandle`.
+        The data argument can be a `~pandas.DataFrame`, a
+        `~lsst.daf.butler.DeferredDatasetHandle`, or
+        an `~lsst.pipe.base.InMemoryDatasetHandle`.
 
-        Returns dataframe upon which `self._func` can act.
+        Returns a DataFrame upon which `self._func` can act.
         """
-        # We wrap a dataframe in a handle here to take advantage of the dataframe
-        # delegate dataframe column wrangling abilities.
+        # We wrap a DataFrame in a handle here to take advantage of the
+        # DataFrame delegate DataFrame column wrangling abilities.
         if isinstance(data, pd.DataFrame):
             _data = InMemoryDatasetHandle(data, storageClass="DataFrame")
         elif isinstance(data, (DeferredDatasetHandle, InMemoryDatasetHandle)):
@@ -304,20 +314,21 @@ class Functor(object):
         else:
             raise RuntimeError(f"Unexpected type provided for data. Got {get_full_type_name(data)}.")
 
-        # First thing to do: check to see if the data source has a multilevel column index or not.
+        # First thing to do: check to see if the data source has a multilevel
+        # column index or not.
         columnIndex = self._get_columnIndex(_data)
         is_multiLevel = isinstance(columnIndex, pd.MultiIndex)
 
-        # Get proper columns specification for this functor
+        # Get proper columns specification for this functor.
         if is_multiLevel:
             columns = self.multilevelColumns(_data, columnIndex=columnIndex)
         else:
             columns = self.columns
 
-        # Load in-memory dataframe with appropriate columns the gen3 way
+        # Load in-memory DataFrame with appropriate columns the gen3 way.
         df = _data.get(parameters={"columns": columns})
 
-        # Drop unnecessary column levels
+        # Drop unnecessary column levels.
         if is_multiLevel:
             df = self._setLevels(df)
 
@@ -344,7 +355,8 @@ class Functor(object):
         return vals
 
     def difference(self, data1, data2, **kwargs):
-        """Computes difference between functor called on two different DataFrame/Handle objects
+        """Computes difference between functor called on two different
+        DataFrame/Handle objects.
         """
         return self(data1, **kwargs) - self(data2, **kwargs)
 
@@ -353,14 +365,12 @@ class Functor(object):
 
     @property
     def name(self):
-        """Full name of functor (suitable for figure labels)
-        """
+        """Full name of functor (suitable for figure labels)."""
         return NotImplementedError
 
     @property
     def shortname(self):
-        """Short name of functor (suitable for column name/dict key)
-        """
+        """Short name of functor (suitable for column name/dict key)."""
         return self.name
 
 
@@ -368,30 +378,31 @@ class CompositeFunctor(Functor):
     """Perform multiple calculations at once on a catalog.
 
     The role of a `CompositeFunctor` is to group together computations from
-    multiple functors.  Instead of returning `pandas.Series` a
-    `CompositeFunctor` returns a `pandas.Dataframe`, with the column names
-    being the keys of `funcDict`.
+    multiple functors.
+    Instead of returning `~pandas.Series` a `CompositeFunctor` returns a
+    `~pandas.DataFrame`, with the column names being the keys of ``funcDict``.
 
     The `columns` attribute of a `CompositeFunctor` is the union of all columns
     in all the component functors.
 
-    A `CompositeFunctor` does not use a `_func` method itself; rather,
-    when a `CompositeFunctor` is called, all its columns are loaded
-    at once, and the resulting dataframe is passed to the `_func` method of each component
-    functor.  This has the advantage of only doing I/O (reading from parquet file) once,
-    and works because each individual `_func` method of each component functor does not
-    care if there are *extra* columns in the dataframe being passed; only that it must contain
-    *at least* the `columns` it expects.
+    A `CompositeFunctor` does not use a `_func` method itself; rather, when a
+    `CompositeFunctor` is called, all its columns are loaded at once, and the
+    resulting DataFrame is passed to the `_func` method of each component
+    functor.
+    This has the advantage of only doing I/O (reading from parquet file) once,
+    and works because each individual `_func` method of each component functor
+    does not care if there are *extra* columns in the DataFrame being passed;
+    only that it must contain *at least* the `columns` it expects.
 
-    An important and useful class method is `from_yaml`, which takes as argument the path to a YAML
-    file specifying a collection of functors.
+    An important and useful class method is `from_yaml`, which takes as an
+    argument the path to a YAML file specifying a collection of functors.
 
     Parameters
     ----------
     funcs : `dict` or `list`
-        Dictionary or list of functors.  If a list, then it will be converted
-        into a dictonary according to the `.shortname` attribute of each functor.
-
+        Dictionary or list of functors.
+        If a list, then it will be converted into a dictonary according to the
+        `.shortname` attribute of each functor.
     """
     dataset = None
     name = "CompositeFunctor"
@@ -419,6 +430,7 @@ class CompositeFunctor(Functor):
         self._filt = filt
 
     def update(self, new):
+        """Update the functor with new functors."""
         if isinstance(new, dict):
             self.funcDict.update(new)
         elif isinstance(new, CompositeFunctor):
@@ -426,7 +438,7 @@ class CompositeFunctor(Functor):
         else:
             raise TypeError('Can only update with dictionary or CompositeFunctor.')
 
-        # Make sure new functors have the same 'filt' set
+        # Make sure new functors have the same 'filt' set.
         if self.filt is not None:
             self.filt = self.filt
 
@@ -435,7 +447,8 @@ class CompositeFunctor(Functor):
         return list(set([x for y in [f.columns for f in self.funcDict.values()] for x in y]))
 
     def multilevelColumns(self, data, **kwargs):
-        # Get the union of columns for all component functors.  Note the need to have `returnTuple=True` here.
+        # Get the union of columns for all component functors.
+        # Note the need to have `returnTuple=True` here.
         return list(
             set(
                 [
@@ -449,16 +462,15 @@ class CompositeFunctor(Functor):
         )
 
     def __call__(self, data, **kwargs):
-        """Apply the functor to the data table
+        """Apply the functor to the data table.
 
         Parameters
         ----------
         data : various
-            The data represented as `lsst.daf.butler.DeferredDatasetHandle`,
-            `lsst.pipe.base.InMemoryDatasetHandle`,
-            or `pandas.DataFrame`.
+            The data represented as `~lsst.daf.butler.DeferredDatasetHandle`,
+            `~lsst.pipe.base.InMemoryDatasetHandle`, or `~pandas.DataFrame`.
             The table or a pointer to a table on disk from which columns can
-            be accessed
+            be accessed.
         """
         if isinstance(data, pd.DataFrame):
             _data = InMemoryDatasetHandle(data, storageClass="DataFrame")
@@ -497,7 +509,7 @@ class CompositeFunctor(Functor):
 
             valDict = {k: f._func(df) for k, f in self.funcDict.items()}
 
-            # Check that output columns are actually columns
+            # Check that output columns are actually columns.
             for name, colVal in valDict.items():
                 if len(colVal.shape) != 1:
                     raise RuntimeError("Transformed column '%s' is not the shape of a column. "
@@ -563,14 +575,16 @@ class CompositeFunctor(Functor):
 
 
 def mag_aware_eval(df, expr, log):
-    """Evaluate an expression on a DataFrame, knowing what the 'mag' function means
+    """Evaluate an expression on a DataFrame, knowing what the 'mag' function
+    means.
 
-    Builds on `pandas.DataFrame.eval`, which parses and executes math on dataframes.
+    Builds on `pandas.DataFrame.eval`, which parses and executes math on
+    DataFrames.
 
     Parameters
     ----------
-    df : pandas.DataFrame
-        Dataframe on which to evaluate expression.
+    df : ~pandas.DataFrame
+        DataFrame on which to evaluate expression.
 
     expr : str
         Expression.
@@ -586,15 +600,16 @@ def mag_aware_eval(df, expr, log):
 
 
 class CustomFunctor(Functor):
-    """Arbitrary computation on a catalog
+    """Arbitrary computation on a catalog.
 
-    Column names (and thus the columns to be loaded from catalog) are found
-    by finding all words and trying to ignore all "math-y" words.
+    Column names (and thus the columns to be loaded from catalog) are found by
+    finding all words and trying to ignore all "math-y" words.
 
     Parameters
     ----------
     expr : str
-        Expression to evaluate, to be parsed and executed by `mag_aware_eval`.
+        Expression to evaluate, to be parsed and executed by
+        `~lsst.pipe.tasks.functors.mag_aware_eval`.
     """
     _ignore_words = ('mag', 'sin', 'cos', 'exp', 'log', 'sqrt')
 
@@ -626,8 +641,7 @@ class CustomFunctor(Functor):
 
 
 class Column(Functor):
-    """Get column with specified name
-    """
+    """Get column with a specified name."""
 
     def __init__(self, col, **kwargs):
         self.col = col
@@ -646,10 +660,9 @@ class Column(Functor):
 
 
 class Index(Functor):
-    """Return the value of the index for each object
-    """
+    """Return the value of the index for each object."""
 
-    columns = ['coord_ra']  # just a dummy; something has to be here
+    columns = ['coord_ra']  # Just a dummy; something has to be here.
     _defaultDataset = 'ref'
     _defaultNoDup = True
 
@@ -658,22 +671,21 @@ class Index(Functor):
 
 
 class CoordColumn(Column):
-    """Base class for coordinate column, in degrees
-    """
+    """Base class for coordinate column, in degrees."""
     _radians = True
 
     def __init__(self, col, **kwargs):
         super().__init__(col, **kwargs)
 
     def _func(self, df):
-        # Must not modify original column in case that column is used by another functor
+        # Must not modify original column in case that column is used by
+        # another functor.
         output = df[self.col] * 180 / np.pi if self._radians else df[self.col]
         return output
 
 
 class RAColumn(CoordColumn):
-    """Right Ascension, in degrees
-    """
+    """Right Ascension, in degrees."""
     name = 'RA'
     _defaultNoDup = True
 
@@ -685,8 +697,7 @@ class RAColumn(CoordColumn):
 
 
 class DecColumn(CoordColumn):
-    """Declination, in degrees
-    """
+    """Declination, in degrees."""
     name = 'Dec'
     _defaultNoDup = True
 
@@ -703,9 +714,9 @@ class HtmIndex20(Functor):
     Notes
     -----
     This functor was implemented to satisfy requirements of old APDB interface
-    which required ``pixelId`` column in DiaObject with HTM20 index. APDB
-    interface had migrated to not need that information, but we keep this
-    class in case it may be useful for something else.
+    which required the ``pixelId`` column in DiaObject with HTM20 index.
+    The APDB interface had migrated to not need that information, but we keep
+    this class in case it may be useful for something else.
     """
     name = "Htm20"
     htmLevel = 20
@@ -735,40 +746,40 @@ class HtmIndex20(Functor):
 
 
 def fluxName(col):
+    """Append _instFlux to the column name if it doesn't have it already."""
     if not col.endswith('_instFlux'):
         col += '_instFlux'
     return col
 
 
 def fluxErrName(col):
+    """Append _instFluxErr to the column name if it doesn't have it already."""
     if not col.endswith('_instFluxErr'):
         col += '_instFluxErr'
     return col
 
 
 class Mag(Functor):
-    """Compute calibrated magnitude
+    """Compute calibrated magnitude.
 
-    Takes a `calib` argument, which returns the flux at mag=0
-    as `calib.getFluxMag0()`.  If not provided, then the default
-    `fluxMag0` is 63095734448.0194, which is default for HSC.
-    This default should be removed in DM-21955
+    Returns the flux at mag=0.
+    The default ``fluxMag0`` is 63095734448.0194, which is default for HSC.
+    TO DO: This default should be made configurable in DM-21955.
 
     This calculation hides warnings about invalid values and dividing by zero.
 
-    As for all functors, a `dataset` and `filt` kwarg should be provided upon
-    initialization.  Unlike the default `Functor`, however, the default dataset
-    for a `Mag` is `'meas'`, rather than `'ref'`.
+    As with all functors, a ``dataset`` and ``filt`` kwarg should be provided
+    upon initialization.
+    Unlike the default `Functor`, however, the default dataset for a `Mag` is
+    ``'meas'``, rather than ``'ref'``.
 
     Parameters
     ----------
     col : `str`
-        Name of flux column from which to compute magnitude.  Can be parseable
-        by `lsst.pipe.tasks.functors.fluxName` function---that is, you can pass
-        `'modelfit_CModel'` instead of `'modelfit_CModel_instFlux'`) and it will
-        understand.
-    calib : `lsst.afw.image.calib.Calib` (optional)
-        Object that knows zero point.
+        Name of flux column from which to compute magnitude.
+        Can be parseable by the `~lsst.pipe.tasks.functors.fluxName` function;
+        that is, you can pass ``'modelfit_CModel'`` instead of
+        ``'modelfit_CModel_instFlux'``, and it will understand.
     """
     _defaultDataset = 'meas'
 
@@ -776,9 +787,15 @@ class Mag(Functor):
         self.col = fluxName(col)
         self.calib = calib
         if calib is not None:
+            # TO DO: DM-39914 Remove deprecated calib argument in Mag functor.
+            warnings.warn(
+                "The 'calib' argument is deprecated, and will be removed after v27.",
+                FutureWarning,
+                stacklevel=2,
+            )
             self.fluxMag0 = calib.getFluxMag0()[0]
         else:
-            # TO DO: DM-21955 Replace hard coded photometic calibration values
+            # TO DO: DM-21955 Replace hard coded photometic calibration values.
             self.fluxMag0 = 63095734448.0194
 
         super().__init__(**kwargs)
@@ -799,22 +816,26 @@ class Mag(Functor):
 
 
 class MagErr(Mag):
-    """Compute calibrated magnitude uncertainty
-
-    Takes the same `calib` object as `lsst.pipe.tasks.functors.Mag`.
+    """Compute calibrated magnitude uncertainty.
 
     Parameters
+    ----------
     col : `str`
-        Name of flux column
-    calib : `lsst.afw.image.calib.Calib` (optional)
-        Object that knows zero point.
+        Name of the flux column.
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.calib is not None:
+            # TO DO: DM-39914 Remove deprecated calib argument in Mag functor.
             self.fluxMag0Err = self.calib.getFluxMag0()[1]
+            warnings.warn(
+                "The 'calib' argument is deprecated, and will be removed after v27.",
+                FutureWarning,
+                stacklevel=2,
+            )
         else:
+            # TO DO: DM-21955 Replace hard coded photometic calibration values.
             self.fluxMag0Err = 0.
 
     @property
@@ -837,9 +858,8 @@ class MagErr(Mag):
 
 
 class MagDiff(Functor):
+    """Functor to calculate magnitude difference."""
     _defaultDataset = 'meas'
-
-    """Functor to calculate magnitude difference"""
 
     def __init__(self, col1, col2, **kwargs):
         self.col1 = fluxName(col1)
@@ -866,29 +886,28 @@ class MagDiff(Functor):
 
 
 class Color(Functor):
-    """Compute the color between two filters
+    """Compute the color between two filters.
 
-    Computes color by initializing two different `Mag`
-    functors based on the `col` and filters provided, and
-    then returning the difference.
+    Computes color by initializing two different `Mag` functors based on the
+    ``col`` and filters provided, and then returning the difference.
 
-    This is enabled by the `_func` expecting a dataframe with a
-    multilevel column index, with both `'band'` and `'column'`,
-    instead of just `'column'`, which is the `Functor` default.
+    This is enabled by the `_func` method expecting a DataFrame with a
+    multilevel column index, with both ``'band'`` and ``'column'``, instead of
+    just ``'column'``, which is the `Functor` default.
     This is controlled by the `_dfLevels` attribute.
 
-    Also of note, the default dataset for `Color` is `forced_src'`,
-    whereas for `Mag` it is `'meas'`.
+    Also of note, the default dataset for `Color` is ``forced_src'``, whereas
+    for `Mag` it is ``'meas'``.
 
     Parameters
     ----------
     col : str
-        Name of flux column from which to compute; same as would be passed to
-        `lsst.pipe.tasks.functors.Mag`.
+        Name of the flux column from which to compute; same as would be passed
+        to `~lsst.pipe.tasks.functors.Mag`.
 
     filt2, filt1 : str
         Filters from which to compute magnitude difference.
-        Color computed is `Mag(filt2) - Mag(filt1)`.
+        Color computed is ``Mag(filt2) - Mag(filt1)``.
     """
     _defaultDataset = 'forced_src'
     _dfLevels = ('band', 'column')
@@ -936,6 +955,13 @@ class Color(Functor):
 
 
 class DeconvolvedMoments(Functor):
+    """This functor subtracts the trace of the PSF second moments from the
+    trace of the second moments of the source.
+
+    If the HsmShapeAlgorithm measurement is valid, then these will be used for
+    the sources.
+    Otherwise, the SdssShapeAlgorithm measurements will be used.
+    """
     name = 'Deconvolved Moments'
     shortname = 'deconvolvedMoments'
     _columns = ("ext_shapeHSM_HsmSourceMoments_xx",
@@ -945,7 +971,7 @@ class DeconvolvedMoments(Functor):
                 "ext_shapeHSM_HsmPsfMoments_yy")
 
     def _func(self, df):
-        """Calculate deconvolved moments"""
+        """Calculate deconvolved moments."""
         if "ext_shapeHSM_HsmSourceMoments_xx" in df.columns:  # _xx added by tdm
             hsm = df["ext_shapeHSM_HsmSourceMoments_xx"] + df["ext_shapeHSM_HsmSourceMoments_yy"]
         else:
@@ -954,16 +980,22 @@ class DeconvolvedMoments(Functor):
         if "ext_shapeHSM_HsmPsfMoments_xx" in df.columns:
             psf = df["ext_shapeHSM_HsmPsfMoments_xx"] + df["ext_shapeHSM_HsmPsfMoments_yy"]
         else:
-            # LSST does not have shape.sdss.psf.  Could instead add base_PsfShape to catalog using
-            # exposure.getPsf().computeShape(s.getCentroid()).getIxx()
-            # raise TaskError("No psf shape parameter found in catalog")
+            # LSST does not have shape.sdss.psf.
+            # We could instead add base_PsfShape to the catalog using
+            # exposure.getPsf().computeShape(s.getCentroid()).getIxx().
             raise RuntimeError('No psf shape parameter found in catalog')
 
         return hsm.where(np.isfinite(hsm), sdss) - psf
 
 
 class SdssTraceSize(Functor):
-    """Functor to calculate SDSS trace radius size for sources"""
+    """Functor to calculate the SDSS trace radius size for sources.
+
+    The SDSS trace radius size is a measure of size equal to the square root of
+    half of the trace of the second moments tensor measured with the
+    SdssShapeAlgorithm plugin.
+    This has units of pixels.
+    """
     name = "SDSS Trace Size"
     shortname = 'sdssTrace'
     _columns = ("base_SdssShape_xx", "base_SdssShape_yy")
@@ -974,7 +1006,13 @@ class SdssTraceSize(Functor):
 
 
 class PsfSdssTraceSizeDiff(Functor):
-    """Functor to calculate SDSS trace radius size difference (%) between object and psf model"""
+    """Functor to calculate the SDSS trace radius size difference (%) between
+    the object and the PSF model.
+
+    See Also
+    --------
+    SdssTraceSize
+    """
     name = "PSF - SDSS Trace Size"
     shortname = 'psf_sdssTrace'
     _columns = ("base_SdssShape_xx", "base_SdssShape_yy",
@@ -988,7 +1026,13 @@ class PsfSdssTraceSizeDiff(Functor):
 
 
 class HsmTraceSize(Functor):
-    """Functor to calculate HSM trace radius size for sources"""
+    """Functor to calculate the HSM trace radius size for sources.
+
+    The HSM trace radius size is a measure of size equal to the square root of
+    half of the trace of the second moments tensor measured with the
+    HsmShapeAlgorithm plugin.
+    This has units of pixels.
+    """
     name = 'HSM Trace Size'
     shortname = 'hsmTrace'
     _columns = ("ext_shapeHSM_HsmSourceMoments_xx",
@@ -1001,7 +1045,13 @@ class HsmTraceSize(Functor):
 
 
 class PsfHsmTraceSizeDiff(Functor):
-    """Functor to calculate HSM trace radius size difference (%) between object and psf model"""
+    """Functor to calculate the HSM trace radius size difference (%) between
+    the object and the PSF model.
+
+    See Also
+    --------
+    HsmTraceSize
+    """
     name = 'PSF - HSM Trace Size'
     shortname = 'psf_HsmTrace'
     _columns = ("ext_shapeHSM_HsmSourceMoments_xx",
@@ -1019,6 +1069,16 @@ class PsfHsmTraceSizeDiff(Functor):
 
 
 class HsmFwhm(Functor):
+    """Functor to calculate the PSF FWHM with second moments measured from the
+    HsmShapeAlgorithm plugin.
+
+    This is in units of arcseconds, and assumes the hsc_rings_v1 skymap pixel
+    scale of 0.168 arcseconds/pixel.
+
+    Notes
+    -----
+    This conversion assumes the PSF is Gaussian, which is not always the case.
+    """
     name = 'HSM Psf FWHM'
     _columns = ('ext_shapeHSM_HsmPsfMoments_xx', 'ext_shapeHSM_HsmPsfMoments_yy')
     # TODO: DM-21403 pixel scale should be computed from the CD matrix or transform matrix
@@ -1031,6 +1091,15 @@ class HsmFwhm(Functor):
 
 
 class E1(Functor):
+    r"""Calculate :math:`e_1` ellipticity component for sources, defined as:
+
+    .. math::
+        e_1 &= (I_{xx}-I_{yy})/(I_{xx}+I_{yy})
+
+    See Also
+    --------
+    E2
+    """
     name = "Distortion Ellipticity (e1)"
     shortname = "Distortion"
 
@@ -1050,6 +1119,15 @@ class E1(Functor):
 
 
 class E2(Functor):
+    r"""Calculate :math:`e_2` ellipticity component for sources, defined as:
+
+    .. math::
+        e_2 &= 2I_{xy}/(I_{xx}+I_{yy})
+
+    See Also
+    --------
+    E1
+    """
     name = "Ellipticity e2"
 
     def __init__(self, colXX, colXY, colYY, **kwargs):
@@ -1067,6 +1145,16 @@ class E2(Functor):
 
 
 class RadiusFromQuadrupole(Functor):
+    """Calculate the radius from the quadrupole moments.
+
+    This returns the fourth root of the determinant of the second moments
+    tensor, which has units of pixels.
+
+    See Also
+    --------
+    SdssTraceSize
+    HsmTraceSize
+    """
 
     def __init__(self, colXX, colXY, colYY, **kwargs):
         self.colXX = colXX
@@ -1083,8 +1171,7 @@ class RadiusFromQuadrupole(Functor):
 
 
 class LocalWcs(Functor):
-    """Computations using the stored localWcs.
-    """
+    """Computations using the stored localWcs."""
     name = "LocalWcsOperations"
 
     def __init__(self,
@@ -1104,26 +1191,26 @@ class LocalWcs(Functor):
 
         Parameters
         ----------
-        x : `pandas.Series`
+        x : `~pandas.Series`
             X pixel coordinate.
-        y : `pandas.Series`
+        y : `~pandas.Series`
             Y pixel coordinate.
-        cd11 : `pandas.Series`
+        cd11 : `~pandas.Series`
             [1, 1] element of the local Wcs affine transform.
-        cd11 : `pandas.Series`
+        cd11 : `~pandas.Series`
             [1, 1] element of the local Wcs affine transform.
-        cd12 : `pandas.Series`
+        cd12 : `~pandas.Series`
             [1, 2] element of the local Wcs affine transform.
-        cd21 : `pandas.Series`
+        cd21 : `~pandas.Series`
             [2, 1] element of the local Wcs affine transform.
-        cd22 : `pandas.Series`
+        cd22 : `~pandas.Series`
             [2, 2] element of the local Wcs affine transform.
 
         Returns
         -------
         raDecTuple : tuple
-            RA and dec conversion of x and y given the local Wcs. Returned
-            units are in radians.
+            RA and dec conversion of x and y given the local Wcs.
+            Returned units are in radians.
 
         """
         return (x * cd11 + y * cd12, x * cd21 + y * cd22)
@@ -1133,18 +1220,18 @@ class LocalWcs(Functor):
 
         Parameters
         ----------
-        ra1 : `pandas.Series`
+        ra1 : `~pandas.Series`
             Ra of the first coordinate in radians.
-        dec1 : `pandas.Series`
+        dec1 : `~pandas.Series`
             Dec of the first coordinate in radians.
-        ra2 : `pandas.Series`
+        ra2 : `~pandas.Series`
             Ra of the second coordinate in radians.
-        dec2 : `pandas.Series`
+        dec2 : `~pandas.Series`
             Dec of the second coordinate in radians.
 
         Returns
         -------
-        dist : `pandas.Series`
+        dist : `~pandas.Series`
             Distance on the sphere in radians.
         """
         deltaDec = dec2 - dec1
@@ -1159,29 +1246,29 @@ class LocalWcs(Functor):
 
         Parameters
         ----------
-        x1 : `pandas.Series`
+        x1 : `~pandas.Series`
             X pixel coordinate.
-        y1 : `pandas.Series`
+        y1 : `~pandas.Series`
             Y pixel coordinate.
-        x2 : `pandas.Series`
+        x2 : `~pandas.Series`
             X pixel coordinate.
-        y2 : `pandas.Series`
+        y2 : `~pandas.Series`
             Y pixel coordinate.
-        cd11 : `pandas.Series`
+        cd11 : `~pandas.Series`
             [1, 1] element of the local Wcs affine transform.
-        cd11 : `pandas.Series`
+        cd11 : `~pandas.Series`
             [1, 1] element of the local Wcs affine transform.
-        cd12 : `pandas.Series`
+        cd12 : `~pandas.Series`
             [1, 2] element of the local Wcs affine transform.
-        cd21 : `pandas.Series`
+        cd21 : `~pandas.Series`
             [2, 1] element of the local Wcs affine transform.
-        cd22 : `pandas.Series`
+        cd22 : `~pandas.Series`
             [2, 2] element of the local Wcs affine transform.
 
         Returns
         -------
-        Distance : `pandas.Series`
-            Arcseconds per pixel at the location of the local WC
+        Distance : `~pandas.Series`
+            Arcseconds per pixel at the location of the local WC.
         """
         ra1, dec1 = self.computeDeltaRaDec(x1, y1, cd11, cd12, cd21, cd22)
         ra2, dec2 = self.computeDeltaRaDec(x2, y2, cd11, cd12, cd21, cd22)
@@ -1206,21 +1293,21 @@ class ComputePixelScale(LocalWcs):
 
         Parameters
         ----------
-        cd11 : `pandas.Series`
+        cd11 : `~pandas.Series`
             [1, 1] element of the local Wcs affine transform in radians.
-        cd11 : `pandas.Series`
+        cd11 : `~pandas.Series`
             [1, 1] element of the local Wcs affine transform in radians.
-        cd12 : `pandas.Series`
+        cd12 : `~pandas.Series`
             [1, 2] element of the local Wcs affine transform in radians.
-        cd21 : `pandas.Series`
+        cd21 : `~pandas.Series`
             [2, 1] element of the local Wcs affine transform in radians.
-        cd22 : `pandas.Series`
+        cd22 : `~pandas.Series`
             [2, 2] element of the local Wcs affine transform in radians.
 
         Returns
         -------
-        pixScale : `pandas.Series`
-            Arcseconds per pixel at the location of the local WC
+        pixScale : `~pandas.Series`
+            Arcseconds per pixel at the location of the local WC.
         """
         return 3600 * np.degrees(np.sqrt(np.fabs(cd11 * cd22 - cd12 * cd21)))
 
@@ -1232,8 +1319,7 @@ class ComputePixelScale(LocalWcs):
 
 
 class ConvertPixelToArcseconds(ComputePixelScale):
-    """Convert a value in units pixels to units arcseconds.
-    """
+    """Convert a value in units of pixels to units of arcseconds."""
 
     def __init__(self,
                  col,
@@ -1269,7 +1355,8 @@ class ConvertPixelToArcseconds(ComputePixelScale):
 
 
 class ConvertPixelSqToArcsecondsSq(ComputePixelScale):
-    """Convert a value in units pixels squared to units arcseconds squared.
+    """Convert a value in units of pixels squared to units of arcseconds
+    squared.
     """
 
     def __init__(self,
@@ -1307,6 +1394,15 @@ class ConvertPixelSqToArcsecondsSq(ComputePixelScale):
 
 
 class ReferenceBand(Functor):
+    """Return the band used to seed multiband forced photometry.
+
+    This functor is to be used on Object tables.
+    It converts the boolean merge_measurements_{band} columns into a single
+    string representing the first band for which merge_measurements_{band}
+    is True.
+
+    Assumes the default priority order of i, r, z, y, g, u.
+    """
     name = 'Reference Band'
     shortname = 'refBand'
 
@@ -1321,24 +1417,25 @@ class ReferenceBand(Functor):
 
     def _func(self, df: pd.DataFrame) -> pd.Series:
         def getFilterAliasName(row):
-            # get column name with the max value (True > False)
+            # Get column name with the max value (True > False).
             colName = row.idxmax()
             return colName.replace('merge_measurement_', '')
 
         # Skip columns that are unavailable, because this functor requests the
-        # superset of bands that could be included in the object table
+        # superset of bands that could be included in the object table.
         columns = [col for col in self.columns if col in df.columns]
-        # Makes a Series of dtype object if df is empty
+        # Makes a Series of dtype object if df is empty.
         return df[columns].apply(getFilterAliasName, axis=1,
                                  result_type='reduce').astype('object')
 
 
 class Photometry(Functor):
-    # AB to NanoJansky (3631 Jansky)
+    """Base class for Object table calibrated fluxes and magnitudes."""
+    # AB to NanoJansky (3631 Jansky).
     AB_FLUX_SCALE = (0 * u.ABmag).to_value(u.nJy)
     LOG_AB_FLUX_SCALE = 12.56
     FIVE_OVER_2LOG10 = 1.085736204758129569
-    # TO DO: DM-21955 Replace hard coded photometic calibration values
+    # TO DO: DM-21955 Replace hard coded photometic calibration values.
     COADD_ZP = 27
 
     def __init__(self, colFlux, colFluxErr=None, calib=None, **kwargs):
@@ -1365,6 +1462,7 @@ class Photometry(Functor):
 
     @classmethod
     def hypot(cls, a, b):
+        """Compute sqrt(a^2 + b^2) without under/overflow."""
         if np.abs(a) < np.abs(b):
             a, b = b, a
         if a == 0.:
@@ -1373,30 +1471,36 @@ class Photometry(Functor):
         return np.abs(a) * np.sqrt(1. + q*q)
 
     def dn2flux(self, dn, fluxMag0):
+        """Convert instrumental flux to nanojanskys."""
         return self.AB_FLUX_SCALE * dn / fluxMag0
 
     def dn2mag(self, dn, fluxMag0):
+        """Convert instrumental flux to AB magnitude."""
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', r'invalid value encountered')
             warnings.filterwarnings('ignore', r'divide by zero')
             return -2.5 * np.log10(dn/fluxMag0)
 
     def dn2fluxErr(self, dn, dnErr, fluxMag0, fluxMag0Err):
+        """Convert instrumental flux error to nanojanskys."""
         retVal = self.vhypot(dn * fluxMag0Err, dnErr * fluxMag0)
         retVal *= self.AB_FLUX_SCALE / fluxMag0 / fluxMag0
         return retVal
 
     def dn2MagErr(self, dn, dnErr, fluxMag0, fluxMag0Err):
+        """Convert instrumental flux error to AB magnitude error."""
         retVal = self.dn2fluxErr(dn, dnErr, fluxMag0, fluxMag0Err) / self.dn2flux(dn, fluxMag0)
         return self.FIVE_OVER_2LOG10 * retVal
 
 
 class NanoJansky(Photometry):
+    """Convert instrumental flux to nanojanskys."""
     def _func(self, df):
         return self.dn2flux(df[self.col], self.fluxMag0)
 
 
 class NanoJanskyErr(Photometry):
+    """Convert instrumental flux error to nanojanskys."""
     @property
     def columns(self):
         return [self.col, self.colFluxErr]
@@ -1421,7 +1525,7 @@ class LocalPhotometry(Functor):
     photoCalibErrCol : `str`
         Error associated with ``photoCalibCol``
 
-    See also
+    See Also
     --------
     LocalNanojansky
     LocalNanojanskyErr
@@ -1445,14 +1549,14 @@ class LocalPhotometry(Functor):
 
         Parameters
         ----------
-        instFlux : `numpy.ndarray` or `pandas.Series`
-            Array of instrument flux measurements
-        localCalib : `numpy.ndarray` or `pandas.Series`
+        instFlux : `~numpy.ndarray` or `~pandas.Series`
+            Array of instrument flux measurements.
+        localCalib : `~numpy.ndarray` or `~pandas.Series`
             Array of local photometric calibration estimates.
 
         Returns
         -------
-        calibFlux : `numpy.ndarray` or `pandas.Series`
+        calibFlux : `~numpy.ndarray` or `~pandas.Series`
             Array of calibrated flux measurements.
         """
         return instFlux * localCalib
@@ -1462,18 +1566,18 @@ class LocalPhotometry(Functor):
 
         Parameters
         ----------
-        instFlux : `numpy.ndarray` or `pandas.Series`
-            Array of instrument flux measurements
-        instFluxErr : `numpy.ndarray` or `pandas.Series`
-            Errors on associated ``instFlux`` values
-        localCalib : `numpy.ndarray` or `pandas.Series`
+        instFlux : `~numpy.ndarray` or `~pandas.Series`
+            Array of instrument flux measurements.
+        instFluxErr : `~numpy.ndarray` or `~pandas.Series`
+            Errors on associated ``instFlux`` values.
+        localCalib : `~numpy.ndarray` or `~pandas.Series`
             Array of local photometric calibration estimates.
-        localCalibErr : `numpy.ndarray` or `pandas.Series`
-           Errors on associated ``localCalib`` values
+        localCalibErr : `~numpy.ndarray` or `~pandas.Series`
+           Errors on associated ``localCalib`` values.
 
         Returns
         -------
-        calibFluxErr : `numpy.ndarray` or `pandas.Series`
+        calibFluxErr : `~numpy.ndarray` or `~pandas.Series`
             Errors on calibrated flux measurements.
         """
         return np.hypot(instFluxErr * localCalib, instFlux * localCalibErr)
@@ -1483,14 +1587,14 @@ class LocalPhotometry(Functor):
 
         Parameters
         ----------
-        instFlux : `numpy.ndarray` or `pandas.Series`
-            Array of instrument flux measurements
-        localCalib : `numpy.ndarray` or `pandas.Series`
+        instFlux : `~numpy.ndarray` or `~pandas.Series`
+            Array of instrument flux measurements.
+        localCalib : `~numpy.ndarray` or `~pandas.Series`
             Array of local photometric calibration estimates.
 
         Returns
         -------
-        calibMag : `numpy.ndarray` or `pandas.Series`
+        calibMag : `~numpy.ndarray` or `~pandas.Series`
             Array of calibrated AB magnitudes.
         """
         return -2.5 * np.log10(self.instFluxToNanojansky(instFlux, localCalib)) + self.logNJanskyToAB
@@ -1500,18 +1604,18 @@ class LocalPhotometry(Functor):
 
         Parameters
         ----------
-        instFlux : `numpy.ndarray` or `pandas.Series`
-            Array of instrument flux measurements
-        instFluxErr : `numpy.ndarray` or `pandas.Series`
-            Errors on associated ``instFlux`` values
-        localCalib : `numpy.ndarray` or `pandas.Series`
+        instFlux : `~numpy.ndarray` or `~pandas.Series`
+            Array of instrument flux measurements.
+        instFluxErr : `~numpy.ndarray` or `~pandas.Series`
+            Errors on associated ``instFlux`` values.
+        localCalib : `~numpy.ndarray` or `~pandas.Series`
             Array of local photometric calibration estimates.
-        localCalibErr : `numpy.ndarray` or `pandas.Series`
-           Errors on associated ``localCalib`` values
+        localCalibErr : `~numpy.ndarray` or `~pandas.Series`
+           Errors on associated ``localCalib`` values.
 
         Returns
         -------
-        calibMagErr: `numpy.ndarray` or `pandas.Series`
+        calibMagErr: `~numpy.ndarray` or `~pandas.Series`
             Error on calibrated AB magnitudes.
         """
         err = self.instFluxErrToNanojanskyErr(instFlux, instFluxErr, localCalib, localCalibErr)
@@ -1519,7 +1623,10 @@ class LocalPhotometry(Functor):
 
 
 class LocalNanojansky(LocalPhotometry):
-    """Compute calibrated fluxes using the local calibration value."""
+    """Compute calibrated fluxes using the local calibration value.
+
+    This returns units of nanojanskys.
+    """
 
     @property
     def columns(self):
@@ -1534,7 +1641,10 @@ class LocalNanojansky(LocalPhotometry):
 
 
 class LocalNanojanskyErr(LocalPhotometry):
-    """Compute calibrated flux errors using the local calibration value."""
+    """Compute calibrated flux errors using the local calibration value.
+
+    This returns units of nanojanskys.
+    """
 
     @property
     def columns(self):
@@ -1553,7 +1663,7 @@ class LocalNanojanskyErr(LocalPhotometry):
 class LocalDipoleMeanFlux(LocalPhotometry):
     """Compute absolute mean of dipole fluxes.
 
-    See also
+    See Also
     --------
     LocalNanojansky
     LocalNanojanskyErr
@@ -1599,7 +1709,7 @@ class LocalDipoleMeanFlux(LocalPhotometry):
 class LocalDipoleMeanFluxErr(LocalDipoleMeanFlux):
     """Compute the error on the absolute mean of dipole fluxes.
 
-    See also
+    See Also
     --------
     LocalNanojansky
     LocalNanojanskyErr
@@ -1632,9 +1742,9 @@ class LocalDipoleMeanFluxErr(LocalDipoleMeanFlux):
 class LocalDipoleDiffFlux(LocalDipoleMeanFlux):
     """Compute the absolute difference of dipole fluxes.
 
-    Value is (abs(pos) - abs(neg))
+    Calculated value is (abs(pos) - abs(neg)).
 
-    See also
+    See Also
     --------
     LocalNanojansky
     LocalNanojanskyErr
@@ -1661,7 +1771,7 @@ class LocalDipoleDiffFlux(LocalDipoleMeanFlux):
 class LocalDipoleDiffFluxErr(LocalDipoleMeanFlux):
     """Compute the error on the absolute difference of dipole fluxes.
 
-    See also
+    See Also
     --------
     LocalNanojansky
     LocalNanojanskyErr
@@ -1692,14 +1802,13 @@ class LocalDipoleDiffFluxErr(LocalDipoleMeanFlux):
 
 
 class Ebv(Functor):
-    """Compute E(B-V) from dustmaps.sfd
-    """
+    """Compute E(B-V) from dustmaps.sfd."""
     _defaultDataset = 'ref'
     name = "E(B-V)"
     shortname = "ebv"
 
     def __init__(self, **kwargs):
-        # import is only needed for Ebv
+        # Import is only needed for Ebv.
         from dustmaps.sfd import SFDQuery
         self._columns = ['coord_ra', 'coord_dec']
         self.sfd = SFDQuery()
@@ -1708,6 +1817,6 @@ class Ebv(Functor):
     def _func(self, df):
         coords = SkyCoord(df['coord_ra'].values * u.rad, df['coord_dec'].values * u.rad)
         ebv = self.sfd(coords)
-        # Double precision unnecessary scientifically
-        # but currently needed for ingest to qserv
+        # Double precision unnecessary scientifically but currently needed for
+        # ingest to qserv.
         return pd.Series(ebv, index=df.index).astype('float64')
