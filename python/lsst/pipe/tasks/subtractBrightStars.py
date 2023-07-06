@@ -52,7 +52,9 @@ logger = logging.getLogger(__name__)
 class SubtractBrightStarsConnections(
     PipelineTaskConnections,
     dimensions=("instrument", "visit", "detector"),
-    defaultTemplates={"outputExposureName": "brightStar_subtracted", "outputBackgroundName": "brightStars", "badStampsName": "brightStars"},
+    defaultTemplates={"outputExposureName": "brightStar_subtracted",
+                      "outputBackgroundName": "brightStars",
+                      "badStampsName": "brightStars"},
 ):
     inputExposure = Input(
         doc="Input exposure from which to subtract bright star stamps.",
@@ -374,10 +376,13 @@ class SubtractBrightStarsTask(PipelineTask):
         Returns
         -------
         brightStarList:
-            A list containing `lsst.meas.algorithms.brightStarStamps.BrightStarStamp` of stars to be subtracted.
+            A list containing `lsst.meas.algorithms.brightStarStamps.BrightStarStamp` of stars to be
+            subtracted.
         """
         self.setWarpTask()
-        missedStars = self.warper.extractStamps(inputExposure, refObjLoader=refObjLoader, inputBrightStarStamps=inputBrightStarStamps)
+        missedStars = self.warper.extractStamps(
+            inputExposure, refObjLoader=refObjLoader, inputBrightStarStamps=inputBrightStarStamps
+        )
         self.warpOutputs = self.warper.warpStamps(missedStars.starIms, missedStars.pixCenters)
         brightStarList = [
             BrightStarStamp(
@@ -388,7 +393,8 @@ class SubtractBrightStarsTask(PipelineTask):
                 gaiaId=missedStars.gaiaIds[j],
                 minValidAnnulusFraction=self.warper.config.minValidAnnulusFraction,
             )
-            for j, (warp, transform) in enumerate(zip(self.warpOutputs.warpedStars, self.warpOutputs.warpTransforms))
+            for j, (warp, transform) in enumerate(zip(self.warpOutputs.warpedStars,
+                                                      self.warspOutputs.warpTransforms))
         ]
         return brightStarList
 
@@ -421,10 +427,10 @@ class SubtractBrightStarsTask(PipelineTask):
         # Create SpanSet of annulus
         outerCircle = SpanSet.fromShape(
             brightStarStamp.optimalOuterRadius, Stencil.CIRCLE, offset=self.warper.modelCenter
-            )
+        )
         innerCircle = SpanSet.fromShape(
             brightStarStamp.optimalInnerRadius, Stencil.CIRCLE, offset=self.warper.modelCenter
-            )
+        )
         annulus = outerCircle.intersectNot(innerCircle)
         return annulus
 
@@ -441,7 +447,9 @@ class SubtractBrightStarsTask(PipelineTask):
         annularFlux: float
             The annular flux of the PSF model at the radius where the flux of the given star is determined.
         """
-        andMask = reduce(ior, (annulusImage.mask.getPlaneBitMask(bm) for bm in self.warper.config.badMaskPlanes))
+        andMask = reduce(
+            ior, (annulusImage.mask.getPlaneBitMask(bm) for bm in self.warper.config.badMaskPlanes)
+        )
         self.missedStatsControl.setAndMask(andMask)
         annulusStat = makeStatistics(annulusImage, self.missedStatsFlag, self.missedStatsControl)
         return annulusStat.getValue()
@@ -565,7 +573,11 @@ class SubtractBrightStarsTask(PipelineTask):
         if multipleAnnuli:
             cond = self.psf_annular_fluxes[:, 0] == brightStarStamp.optimalOuterRadius
             psf_annular_flux = self.psf_annular_fluxes[cond, 1][0]
-            self.scaleModel(invImage, brightStarStamp, inPlace=True, nb90Rots=self.inv90Rots, psf_annular_flux=psf_annular_flux)
+            self.scaleModel(invImage,
+                            brightStarStamp,
+                            inPlace=True,
+                            nb90Rots=self.inv90Rots,
+                            psf_annular_flux=psf_annular_flux)
         else:
             self.scaleModel(invImage, brightStarStamp, inPlace=True, nb90Rots=self.inv90Rots)
         # Replace NaNs before subtraction (note all NaN pixels have
@@ -600,7 +612,8 @@ class SubtractBrightStarsTask(PipelineTask):
             An Exposure containing a scaled bright star model fit to every bright star profile; its image can
             then be subtracted from the input exposure.
         invImages: list
-            A list containing the extended PSF models, shifted (and potentially warped) to match bright stars' positionings.
+            A list containing the extended PSF models, shifted (and potentially warped) to match bright
+            stars' positionings.
         """
         for star in brightStarStamps:
             if star.gaiaGMag < self.config.magLimit:
@@ -632,10 +645,18 @@ class SubtractBrightStarsTask(PipelineTask):
         # in its current state, the code produces outputBadStamps which are the stamps of stars that have not
         # been subtracted from the image for any reason. If all the stars are subtracted from the calexp, the
         # output is an empty fits file.
-        output = Struct(outputExposure=outputExposure, outputBackgroundExposure=outputBackgroundExposure, outputBadStamps=badStamps)
+        output = Struct(outputExposure=outputExposure,
+                        outputBackgroundExposure=outputBackgroundExposure,
+                        outputBadStamps=badStamps)
         butlerQC.put(output, outputRefs)
 
-    def run(self, inputExposure, inputBrightStarStamps, inputExtendedPsf, dataId, skyCorr=None, refObjLoader=None):
+    def run(self,
+            inputExposure,
+            inputBrightStarStamps,
+            inputExtendedPsf,
+            dataId,
+            skyCorr=None,
+            refObjLoader=None):
         """Iterate over all bright stars in an exposure to scale the extended
         PSF model before subtracting bright stars.
 
@@ -707,10 +728,14 @@ class SubtractBrightStarsTask(PipelineTask):
         )
 
         invImages = []
-        subtractor, invImages = self.buildSubtractor(inputBrightStarStamps, subtractor, invImages, multipleAnnuli=False)
+        subtractor, invImages = self.buildSubtractor(
+            inputBrightStarStamps, subtractor, invImages, multipleAnnuli=False
+        )
         if len(brightStarStamps) > 0:
             self.psf_annular_fluxes = self.findPsfAnnularFluxes(brightStarStamps)
-            subtractor, invImages = self.buildSubtractor(brightStarStamps, subtractor, invImages, multipleAnnuli=True)
+            subtractor, invImages = self.buildSubtractor(
+                brightStarStamps, subtractor, invImages, multipleAnnuli=True
+            )
         badStamps = BrightStarStamps(badStamps)
 
         return subtractorExp, invImages, badStamps
