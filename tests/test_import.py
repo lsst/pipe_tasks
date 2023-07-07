@@ -19,42 +19,23 @@
 # the GNU General Public License along with this program.  If not,
 # see <https://www.lsstcorp.org/LegalNotices/>.
 
-import importlib.resources
-import os.path
 import unittest
 
-from lsst.utils import doImport
+from lsst.utils.tests import ImportTestCase
 
 
-class ImportTestCase(unittest.TestCase):
+class PipeTasksImportTestCase(ImportTestCase):
     """Test that every file can be imported.
 
     pipe_tasks does not import all the task code by default and not
     every file currently has a test.
     """
 
-    def test_import(self):
-        self.assertImport("lsst.pipe.tasks")
-
-    def test_import_script(self):
-        self.assertImport("lsst.pipe.tasks.script")
-
-    def test_import_dataFrameActions(self):
-        self.assertImport("lsst.pipe.tasks.dataFrameActions")
-
-    def assertImport(self, root_pkg):
-        for file in importlib.resources.contents(root_pkg):
-            if not file.endswith(".py"):
-                continue
-            if file.startswith("__"):
-                continue
-            root, ext = os.path.splitext(file)
-            module_name = f"{root_pkg}.{root}"
-            with self.subTest(module=module_name):
-                try:
-                    doImport(module_name)
-                except ImportError as e:
-                    raise AssertionError(f"Error importing module {module_name}: {e}") from e
+    PACKAGES = {
+        "lsst.pipe.tasks",
+        "lsst.pipe.tasks.script",
+        "lsst.pipe.tasks.dataFrameActions",
+    }
 
 
 if __name__ == "__main__":
