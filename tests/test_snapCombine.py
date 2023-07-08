@@ -89,10 +89,10 @@ class SnapCombineTestCase(lsst.utils.tests.TestCase):
         snap0 = makeRandomExposure(25, 25, 10000, 5000, badPixelMask)
         snap1 = makeRandomExposure(25, 25, 10000, 5000, badPixelMask)
         resExp = task.run(snap0, snap1).exposure
-        resMi = resExp.getMaskedImage()
+        resMi = resExp.maskedImage
 
         predExp = simpleAdd(snap0, snap1, badPixelMask)
-        predMi = predExp.getMaskedImage()
+        predMi = predExp.maskedImage
         self.assertMaskedImagesAlmostEqual(resMi, predMi)
 
     def testAdditionAllGood(self):
@@ -106,10 +106,10 @@ class SnapCombineTestCase(lsst.utils.tests.TestCase):
         snap0 = makeRandomExposure(25, 25, 10000, 5000, 0)
         snap1 = makeRandomExposure(25, 25, 10000, 5000, 0)
         resExp = task.run(snap0, snap1).exposure
-        resMi = resExp.getMaskedImage()
+        resMi = resExp.maskedImage
 
-        predMi = snap0.getMaskedImage().Factory(snap0.getMaskedImage(), True)
-        predMi += snap1.getMaskedImage()
+        predMi = snap0.maskedImage.Factory(snap0.maskedImage, True)
+        predMi += snap1.maskedImage
         self.assertMaskedImagesAlmostEqual(resMi, predMi)
 
     def testMetadata(self):
