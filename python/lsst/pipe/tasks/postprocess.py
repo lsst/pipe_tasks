@@ -248,7 +248,7 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
 
         Returns
         -------
-        result : `lsst.pipe.base.Struct`
+        result : `~lsst.pipe.base.Struct`
             ``table``
                 `DataFrame` version of the input catalog
         """
@@ -415,18 +415,19 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
 
         Parameters
         ----------
-        inputRefs : `lsst.pipe.base.InputQuantizedConnection`, for dataIds of
+        inputRefs : `~lsst.pipe.base.InputQuantizedConnection`, for dataIds of
             tract-level calibs.
-        skyMap : `lsst.skymap.SkyMap`
+        skyMap : `~lsst.skymap.BaseSkyMap`
+            skyMap to lookup tract geometry and WCS.
         exposure : `lsst.afw.image.exposure.Exposure`
             Input exposure to adjust calibrations.
-        externalSkyWcsGlobalCatalog : `lsst.afw.table.ExposureCatalog`, optional
+        externalSkyWcsGlobalCatalog : `~lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with external skyWcs to be applied per config
-        externalSkyWcsTractCatalog : `lsst.afw.table.ExposureCatalog`, optional
+        externalSkyWcsTractCatalog : `~lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with external skyWcs to be applied per config
-        externalPhotoCalibGlobalCatalog : `lsst.afw.table.ExposureCatalog`, optional
+        externalPhotoCalibGlobalCatalog : `~lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with external photoCalib to be applied per config
-        externalPhotoCalibTractCatalog : `lsst.afw.table.ExposureCatalog`, optional
+        externalPhotoCalibTractCatalog : `~lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with external photoCalib to be applied per config
         **kwargs
             Additional keyword arguments are ignored to facilitate passing the
@@ -492,11 +493,11 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         ----------
         tracts: `list` [`int`]
             Iterable of integer tractIds
-        skyMap : `lsst.skymap.SkyMap`
+        skyMap : `~lsst.skymap.BaseSkyMap`
             skyMap to lookup tract geometry and wcs
-        bbox : `lsst.geom.Box2I`
+        bbox : `~lsst.geom.Box2I`
             Detector bbox, center of which will compared to tract centers
-        wcs : `lsst.afw.geom.SkyWcs`
+        wcs : `~lsst.afw.geom.SkyWcs`
             Detector Wcs object to map the detector center to SkyCoord
 
         Returns
@@ -640,8 +641,9 @@ class PostprocessAnalysis(object):
     on a catalog.  The catalog is defined by a
     `DeferredDatasetHandle` or `InMemoryDatasetHandle` object
     (or list thereof), such as a ``deepCoadd_obj`` dataset, and the
-    computations are defined by a collection of `lsst.pipe.tasks.functor.Functor`
-    objects (or, equivalently, a ``CompositeFunctor``).
+    computations are defined by a collection of
+    `~lsst.pipe.tasks.functors.Functor` objects (or, equivalently, a
+    ``CompositeFunctor``).
 
     After the object is initialized, accessing the ``.df`` attribute (which
     holds the `pandas.DataFrame` containing the results of the calculations)
@@ -664,8 +666,8 @@ class PostprocessAnalysis(object):
 
     Parameters
     ----------
-    handles : `lsst.daf.butler.DeferredDatasetHandle` or
-              `lsst.pipe.base.InMemoryDatasetHandle` or
+    handles : `~lsst.daf.butler.DeferredDatasetHandle` or
+              `~lsst.pipe.base.InMemoryDatasetHandle` or
               list of these.
         Source catalog(s) for computation.
     functors : `list`, `dict`, or `~lsst.pipe.tasks.functors.CompositeFunctor`
@@ -798,64 +800,51 @@ class TransformCatalogBaseConfig(pipeBase.PipelineTaskConfig,
 
 
 class TransformCatalogBaseTask(pipeBase.PipelineTask):
-    """Base class for transforming/standardizing a catalog
+    """Base class for transforming/standardizing a catalog by applying functors
+    that convert units and apply calibrations.
 
-    by applying functors that convert units and apply calibrations.
-    The purpose of this task is to perform a set of computations on
-    an input ``DeferredDatasetHandle`` or ``InMemoryDatasetHandle`` that holds
-    a ``DataFrame`` dataset (such as ``deepCoadd_obj``), and write the
-    results to a new dataset (which needs to be declared in an ``outputDataset``
+    The purpose of this task is to perform a set of computations on an input
+    ``DeferredDatasetHandle`` or ``InMemoryDatasetHandle`` that holds a
+    ``DataFrame`` dataset (such as ``deepCoadd_obj``), and write the results to
+    a new dataset (which needs to be declared in an ``outputDataset``
     attribute).
 
     The calculations to be performed are defined in a YAML file that specifies
-    a set of functors to be computed, provided as
-    a ``--functorFile`` config parameter.  An example of such a YAML file
-    is the following:
+    a set of functors to be computed, provided as a ``--functorFile`` config
+    parameter. An example of such a YAML file is the following:
 
         funcs:
-            psfMag:
-                functor: Mag
-                args:
-                    - base_PsfFlux
-                filt: HSC-G
-                dataset: meas
-            cmodel_magDiff:
-                functor: MagDiff
-                args:
-                    - modelfit_CModel
-                    - base_PsfFlux
-                filt: HSC-G
-            gauss_magDiff:
-                functor: MagDiff
-                args:
-                    - base_GaussianFlux
-                    - base_PsfFlux
-                filt: HSC-G
-            count:
+            sourceId:
+                functor: Index
+            x:
                 functor: Column
+                args: slot_Centroid_x
+            y:
+                functor: Column
+                args: slot_Centroid_y
+            psfFlux:
+                functor: LocalNanojansky
                 args:
-                    - base_InputCount_value
-                filt: HSC-G
-            deconvolved_moments:
-                functor: DeconvolvedMoments
-                filt: HSC-G
-                dataset: forced_src
-        refFlags:
-            - calib_psfUsed
-            - merge_measurement_i
-            - merge_measurement_r
-            - merge_measurement_z
-            - merge_measurement_y
-            - merge_measurement_g
-            - base_PixelFlags_flag_inexact_psfCenter
+                    - slot_PsfFlux_instFlux
+                    - slot_PsfFlux_instFluxErr
+                    - base_LocalPhotoCalib
+                    - base_LocalPhotoCalibErr
+            psfFluxErr:
+                functor: LocalNanojanskyErr
+                args:
+                    - slot_PsfFlux_instFlux
+                    - slot_PsfFlux_instFluxErr
+                    - base_LocalPhotoCalib
+                    - base_LocalPhotoCalibErr
+        flags:
             - detect_isPrimary
 
     The names for each entry under "func" will become the names of columns in
     the output dataset.  All the functors referenced are defined in
-    `lsst.pipe.tasks.functors`.  Positional arguments to be passed to each
+    `~lsst.pipe.tasks.functors`.  Positional arguments to be passed to each
     functor are in the `args` list, and any additional entries for each column
-    other than "functor" or "args" (e.g., ``'filt'``, ``'dataset'``) are treated as
-    keyword arguments to be passed to the functor initialization.
+    other than "functor" or "args" (e.g., ``'filt'``, ``'dataset'``) are
+    treated as keyword arguments to be passed to the functor initialization.
 
     The "flags" entry is the default shortcut for `Column` functors.
     All columns listed under "flags" will be copied to the output table
@@ -921,11 +910,11 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
 
         Parameters
         ----------
-        handles : `lsst.daf.butler.DeferredDatasetHandle` or
-                  `lsst.pipe.base.InMemoryDatasetHandle` or
-                  `pandas.DataFrame`, or list of these.
+        handles : `~lsst.daf.butler.DeferredDatasetHandle` or
+                  `~lsst.pipe.base.InMemoryDatasetHandle` or
+                  `~pandas.DataFrame`, or list of these.
             DataFrames from which calculations are done.
-        funcs : `lsst.pipe.tasks.functors.Functors`
+        funcs : `~lsst.pipe.tasks.functors.Functor`
             Functors to apply to the table's columns
         dataId : dict, optional
             Used to add a `patchId` column to the output dataframe.
@@ -933,7 +922,7 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
             Filter band that is being processed.
 
         Returns
-        ------
+        -------
         df : `pandas.DataFrame`
         """
         self.log.info("Transforming/standardizing the source table dataId: %s", dataId)
@@ -1436,7 +1425,7 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
 
         Returns
         -------
-        result : `lsst.pipe.Base.Struct`
+        result : `~lsst.pipe.base.Struct`
            Results struct with attribute:
 
            ``outputCatalog``
@@ -1553,7 +1542,7 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
             List of exposure catalogs with per-detector summary information.
         Returns
         -------
-        result : `lsst.pipe.Base.Struct`
+        result : `~lsst.pipe.base.Struct`
             Results struct with attribute:
 
             ``outputCatalog``

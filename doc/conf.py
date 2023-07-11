@@ -11,3 +11,4 @@ project = "pipe_tasks"
 html_theme_options["logotext"] = project
 html_title = project
 html_short_title = project
+intersphinx_mapping["lsst"] = ("https://pipelines.lsst.io/v/daily/", None)  # noqa
