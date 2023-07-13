@@ -291,7 +291,7 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
         dimensions=["instrument", "visit", "detector"],
     )
     visitSummary = connectionTypes.Input(
-        doc="Consolidated exposure metadata",
+        doc="Input visit-summary catalog with updated calibration objects.",
         name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit",),
