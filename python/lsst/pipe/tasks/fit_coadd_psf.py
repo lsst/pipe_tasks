@@ -52,7 +52,7 @@ CoaddPsfFitBaseTemplates = {
 
 class CoaddPsfFitConnections(
     pipeBase.PipelineTaskConnections,
-    dimensions=("tract", "patch", "skymap"),
+    dimensions=("tract", "patch", "band", "skymap"),
     defaultTemplates=CoaddPsfFitBaseTemplates,
 ):
     coadd = cT.Input(
@@ -158,7 +158,7 @@ class CoaddPsfFitTask(pipeBase.PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        id_tp = self.config.id_generator.apply(butlerQC.quantum.dataId).catalog_id
+        id_tp = self.config.idGenerator.apply(butlerQC.quantum.dataId).catalog_id
         dataId = inputRefs.cat_meas.dataId
         for dataRef in (inputRefs.coadd,):
             if dataRef.dataId != dataId:
