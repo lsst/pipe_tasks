@@ -70,7 +70,7 @@ class CoaddBaseConfig(pexConfig.Config):
              "`externalPhotoCalibName` field to determine which calibration "
              "to load."),
         # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v27.",
+        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v26.",
     )
     useGlobalExternalPhotoCalib = pexConfig.Field(
         dtype=bool,
@@ -79,7 +79,7 @@ class CoaddBaseConfig(pexConfig.Config):
              "that are not run per-tract.  When False, use per-tract photometric "
              "calibration files."),
         # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v27.",
+        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v26.",
     )
     doApplyExternalSkyWcs = pexConfig.Field(
         dtype=bool,
@@ -88,7 +88,7 @@ class CoaddBaseConfig(pexConfig.Config):
              "`lsst.afw.geom.SkyWcs` object.  Uses `externalSkyWcsName` "
              "field to determine which calibration to load."),
         # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v27.",
+        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v26.",
     )
     useGlobalExternalSkyWcs = pexConfig.Field(
         dtype=bool,
@@ -97,7 +97,7 @@ class CoaddBaseConfig(pexConfig.Config):
              "that are not run per-tract.  When False, use per-tract wcs "
              "files."),
         # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v27.",
+        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v26.",
     )
     includeCalibVar = pexConfig.Field(
         dtype=bool,

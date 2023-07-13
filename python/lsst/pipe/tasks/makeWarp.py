@@ -50,8 +50,8 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
                                             "photoCalibName": "fgcm",
                                             "calexpType": ""},
                           # TODO: remove on DM-39854.
-                          deprecatedTemplates={"skyWcsName": "Deprecated; will be removed after v27.",
-                                               "photoCalibName": "Deprecated; will be removed after v27."}):
+                          deprecatedTemplates={"skyWcsName": "Deprecated; will be removed after v26.",
+                                               "photoCalibName": "Deprecated; will be removed after v26."}):
     calExpList = connectionTypes.Input(
         doc="Input exposures to be resampled and optionally PSF-matched onto a SkyMap projection/patch",
         name="{calexpType}calexp",
@@ -87,7 +87,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit", "tract"),
         # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v27.",
+        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
     )
     externalSkyWcsGlobalCatalog = connectionTypes.Input(
         doc=("Per-visit wcs calibrations computed globally (with no tract information). "
@@ -97,7 +97,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
         # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v27.",
+        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
     )
     externalPhotoCalibTractCatalog = connectionTypes.Input(
         doc=("Per-tract, per-visit photometric calibrations.  These catalogs use the "
@@ -106,7 +106,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit", "tract"),
         # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v27.",
+        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
     )
     externalPhotoCalibGlobalCatalog = connectionTypes.Input(
         doc=("Per-visit photometric calibrations computed globally (with no tract "
@@ -116,7 +116,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
         # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v27.",
+        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
     )
     finalizedPsfApCorrCatalog = connectionTypes.Input(
         doc=("Per-visit finalized psf models and aperture correction maps. "
@@ -126,7 +126,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
         # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v27.",
+        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
     )
     direct = connectionTypes.Output(
         doc=("Output direct warped exposure (previously called CoaddTempExp), produced by resampling ",
@@ -151,7 +151,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         # TODO: remove on DM-39854
         deprecated=(
             "Deprecated in favor of the 'visitSummary' connection (and already ignored). "
-            "Will be removed after v27."
+            "Will be removed after v26."
         )
     )
     bboxList = connectionTypes.Input(
@@ -163,7 +163,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         # TODO: remove on DM-39854
         deprecated=(
             "Deprecated in favor of the 'visitSummary' connection (and already ignored). "
-            "Will be removed after v27."
+            "Will be removed after v26."
         )
     )
     visitSummary = connectionTypes.Input(
@@ -273,7 +273,7 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
         dtype=bool,
         default=True,
         # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of useVisitSummaryPsf.  Will be removed after v27.",
+        deprecated="Deprecated in favor of useVisitSummaryPsf.  Will be removed after v26.",
     )
     idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
@@ -564,18 +564,18 @@ class MakeWarpTask(CoaddBaseTask):
             Exposure catalog with external skyWcs to be applied
             if config.doApplyExternalSkyWcs=True.  Catalog uses the detector id
             for the catalog id, sorted on id for fast lookup.
-            Deprecated and will be removed after v27.
+            Deprecated and will be removed after v26.
         externalPhotoCalibCatalog : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with external photoCalib to be applied
             if config.doApplyExternalPhotoCalib=True.  Catalog uses the
             detector id for the catalog id, sorted on id for fast lookup.
-            Deprecated and will be removed after v27.
+            Deprecated and will be removed after v26.
         finalizedPsfApCorrCatalog : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with finalized psf models and aperture correction
             maps to be applied if config.doApplyFinalizedPsf=True.  Catalog
             uses the detector id for the catalog id, sorted on id for fast
             lookup.
-            Deprecated and will be removed after v27.
+            Deprecated and will be removed after v26.
         visitSummary : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with potentially all calibrations.  Attributes set
             to `None` are ignored.

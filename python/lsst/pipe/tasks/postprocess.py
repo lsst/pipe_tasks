@@ -269,8 +269,8 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
                                                                 "photoCalibName": "fgcm"},
                                               # TODO: remove on DM-39854.
                                               deprecatedTemplates={
-                                                  "skyWcsName": "Deprecated; will be removed after v27.",
-                                                  "photoCalibName": "Deprecated; will be removed after v27."
+                                                  "skyWcsName": "Deprecated; will be removed after v26.",
+                                                  "photoCalibName": "Deprecated; will be removed after v26."
                                               },
                                               dimensions=("instrument", "visit", "detector", "skymap")):
     skyMap = connectionTypes.Input(
@@ -281,7 +281,7 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
         # TODO: remove on DM-39854.
         deprecated=(
             "Deprecated, since 'visitSummary' already resolves calibrations across tracts.  "
-            "Will be removed after v27."
+            "Will be removed after v26."
         ),
     )
     exposure = connectionTypes.Input(
@@ -304,7 +304,7 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
         dimensions=["instrument", "visit", "tract"],
         multiple=True,
         # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v27.",
+        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
     )
     externalSkyWcsGlobalCatalog = connectionTypes.Input(
         doc=("Per-visit wcs calibrations computed globally (with no tract information). "
@@ -314,7 +314,7 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
         storageClass="ExposureCatalog",
         dimensions=["instrument", "visit"],
         # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v27.",
+        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
     )
     externalPhotoCalibTractCatalog = connectionTypes.Input(
         doc=("Per-tract, per-visit photometric calibrations.  These catalogs use the "
@@ -324,7 +324,7 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
         dimensions=["instrument", "visit", "tract"],
         multiple=True,
         # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v27.",
+        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
     )
     externalPhotoCalibGlobalCatalog = connectionTypes.Input(
         doc=("Per-visit photometric calibrations computed globally (with no tract "
@@ -334,7 +334,7 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
         storageClass="ExposureCatalog",
         dimensions=["instrument", "visit"],
         # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v27.",
+        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
     )
 
     def __init__(self, *, config=None):
@@ -384,7 +384,7 @@ class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
         doc=("If and only if doReevaluatePhotoCalib, apply the photometric calibrations from an external ",
              "algorithm such as FGCM or jointcal, else use the photoCalib already attached to the exposure."),
         # TODO: remove on DM-39854.
-        deprecated="Deprecated along with the external PhotoCalib connections.  Will be removed after v27.",
+        deprecated="Deprecated along with the external PhotoCalib connections.  Will be removed after v26.",
     )
     doApplyExternalSkyWcs = pexConfig.Field(
         dtype=bool,
@@ -392,7 +392,7 @@ class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
         doc=("if and only if doReevaluateSkyWcs, apply the WCS from an external algorithm such as jointcal, ",
              "else use the wcs already attached to the exposure."),
         # TODO: remove on DM-39854.
-        deprecated="Deprecated along with the external WCS connections.  Will be removed after v27.",
+        deprecated="Deprecated along with the external WCS connections.  Will be removed after v26.",
     )
     useGlobalExternalPhotoCalib = pexConfig.Field(
         dtype=bool,
@@ -401,7 +401,7 @@ class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
              "that are not run per-tract.  When False, use per-tract photometric "
              "calibration files."),
         # TODO: remove on DM-39854.
-        deprecated="Deprecated along with the external PhotoCalib connections.  Will be removed after v27.",
+        deprecated="Deprecated along with the external PhotoCalib connections.  Will be removed after v26.",
     )
     useGlobalExternalSkyWcs = pexConfig.Field(
         dtype=bool,
@@ -410,7 +410,7 @@ class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
              "that are not run per-tract.  When False, use per-tract wcs "
              "files."),
         # TODO: remove on DM-39854.
-        deprecated="Deprecated along with the external WCS connections.  Will be removed after v27.",
+        deprecated="Deprecated along with the external WCS connections.  Will be removed after v26.",
     )
     idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
@@ -451,7 +451,7 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         butlerQC.put(outputs, outputRefs)
 
     # TODO: remove on DM-39854.
-    @deprecated("Deprecated in favor of exclusively using visit summaries; will be removed after v27.",
+    @deprecated("Deprecated in favor of exclusively using visit summaries; will be removed after v26.",
                 version="v26", category=FutureWarning)
     def attachCalibs(self, inputRefs, skyMap, exposure, externalSkyWcsGlobalCatalog=None,
                      externalSkyWcsTractCatalog=None, externalPhotoCalibGlobalCatalog=None,
@@ -540,7 +540,7 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         )
 
     # TODO: remove on DM-39854.
-    @deprecated("Deprecated in favor of exclusively using visit summaries; will be removed after v27.",
+    @deprecated("Deprecated in favor of exclusively using visit summaries; will be removed after v26.",
                 version="v26", category=FutureWarning)
     def getClosestTract(self, tracts, skyMap, bbox, wcs):
         """Find the index of the tract closest to detector from list of tractIds
@@ -586,12 +586,12 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
             Exposure catalog with external skyWcs to be applied
             if config.doApplyExternalSkyWcs=True.  Catalog uses the detector id
             for the catalog id, sorted on id for fast lookup.
-            Deprecated in favor of ``visitSummary``; will be removed after v27.
+            Deprecated in favor of ``visitSummary``; will be removed after v26.
         externalPhotoCalibCatalog : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with external photoCalib to be applied
             if config.doApplyExternalPhotoCalib=True.  Catalog uses the detector
             id for the catalog id, sorted on id for fast lookup.
-            Deprecated in favor of ``visitSummary``; will be removed after v27.
+            Deprecated in favor of ``visitSummary``; will be removed after v26.
         visitSummary : `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with all calibration objects.  WCS and PhotoCalib
             are always applied if ``visitSummary`` is provided and those
@@ -622,7 +622,7 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         if externalPhotoCalibCatalog is not None:
             # TODO: remove on DM-39854.
             warnings.warn(
-                "Deprecated in favor of 'visitSummary'; will be removed after v27.",
+                "Deprecated in favor of 'visitSummary'; will be removed after v26.",
                 FutureWarning,
                 stacklevel=find_outside_stacklevel("lsst.pipe.tasks.postprocessing"),
             )
@@ -641,7 +641,7 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         if externalSkyWcsCatalog is not None:
             # TODO: remove on DM-39854.
             warnings.warn(
-                "Deprecated in favor of 'visitSummary'; will be removed after v27.",
+                "Deprecated in favor of 'visitSummary'; will be removed after v26.",
                 FutureWarning,
                 stacklevel=find_outside_stacklevel("lsst.pipe.tasks.postprocessing"),
             )
