@@ -8,7 +8,7 @@ PropagateSourceFlagsTask
 Flagged sources may come from a mix of two different types of source catalogs.
 The `sourceTable_visit` catalogs from `CalibrateTask` contain flags for the first round of astrometry/photometry/psf fits.
 The `finalized_src_table` catalogs from `FinalizeCalibrationTask` contain flags from the second round of psf fitting.
-Which table should be used for the source of which flags depends on the configuration of coadds (in particular ``makeWarpConfig.doApplyFinalizedPsf``).
+Which table should be used for the source of which flags depends on the configuration of coadds (in particular ``makeWarpConfig.useVisitSummaryPsf``).
 
 .. _lsst.pipe.tasks.propagateSourceFlags.PropagateSourceFlagsTask-api:
 

@@ -68,52 +68,36 @@ class CoaddBaseConfig(pexConfig.Config):
         doc=("Whether to apply external photometric calibration via an "
              "`lsst.afw.image.PhotoCalib` object.  Uses the "
              "`externalPhotoCalibName` field to determine which calibration "
-             "to load.")
+             "to load."),
+        # TODO: remove on DM-39854.
+        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v26.",
     )
     useGlobalExternalPhotoCalib = pexConfig.Field(
         dtype=bool,
-        default=True,
+        default=False,
         doc=("When using doApplyExternalPhotoCalib, use 'global' calibrations "
              "that are not run per-tract.  When False, use per-tract photometric "
-             "calibration files.")
-    )
-    externalPhotoCalibName = pexConfig.ChoiceField(
-        # TODO: Remove this config with the removal of Gen2 in DM-20572.
-        dtype=str,
-        doc=("Type of external PhotoCalib if `doApplyExternalPhotoCalib` is True. "
-             "This field is only used for Gen2 middleware."),
-        default="jointcal",
-        allowed={
-            "jointcal": "Use jointcal_photoCalib",
-            "fgcm": "Use fgcm_photoCalib",
-            "fgcm_tract": "Use fgcm_tract_photoCalib"
-        },
-        deprecated="This configuration is no longer used, and will be removed after v25.0",
+             "calibration files."),
+        # TODO: remove on DM-39854.
+        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v26.",
     )
     doApplyExternalSkyWcs = pexConfig.Field(
         dtype=bool,
         default=False,
         doc=("Whether to apply external astrometric calibration via an "
              "`lsst.afw.geom.SkyWcs` object.  Uses `externalSkyWcsName` "
-             "field to determine which calibration to load.")
+             "field to determine which calibration to load."),
+        # TODO: remove on DM-39854.
+        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v26.",
     )
     useGlobalExternalSkyWcs = pexConfig.Field(
         dtype=bool,
-        default=True,
+        default=False,
         doc=("When using doApplyExternalSkyWcs, use 'global' calibrations "
              "that are not run per-tract.  When False, use per-tract wcs "
-             "files.")
-    )
-    externalSkyWcsName = pexConfig.ChoiceField(
-        # TODO: Remove this config with the removal of Gen2 in DM-20572.
-        dtype=str,
-        doc=("Type of external SkyWcs if `doApplyExternalSkyWcs` is True. "
-             "This field is only used for Gen2 middleware."),
-        default="jointcal",
-        allowed={
-            "jointcal": "Use jointcal_wcs"
-        },
-        deprecated="This configuration is no longer used, and will be removed after v25.0",
+             "files."),
+        # TODO: remove on DM-39854.
+        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v26.",
     )
     includeCalibVar = pexConfig.Field(
         dtype=bool,
