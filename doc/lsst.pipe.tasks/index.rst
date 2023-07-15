@@ -156,9 +156,6 @@ Python API reference
 .. automodapi:: lsst.pipe.tasks.loadReferenceCatalog
    :no-inheritance-diagram:
 
-.. automodapi:: lsst.pipe.tasks.makeCoaddTempExp
-   :no-inheritance-diagram:
-
 .. automodapi:: lsst.pipe.tasks.makeDiscreteSkyMap
    :no-inheritance-diagram:
 
