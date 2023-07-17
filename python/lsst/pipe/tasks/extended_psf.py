@@ -274,13 +274,11 @@ class ExtendedPsf:
 class StackBrightStarsConfig(Config):
     """Configuration parameters for StackBrightStarsTask."""
 
-    subregion_size = ListField(
-        dtype=int,
+    subregion_size = ListField[int](
         doc="Size, in pixels, of the subregions over which the stacking will be " "iteratively performed.",
         default=(100, 100),
     )
-    stacking_statistic = ChoiceField(
-        dtype=str,
+    stacking_statistic = ChoiceField[str](
         doc="Type of statistic to use for stacking.",
         default="MEANCLIP",
         allowed={
@@ -289,28 +287,23 @@ class StackBrightStarsConfig(Config):
             "MEANCLIP": "clipped mean",
         },
     )
-    num_sigma_clip = Field(
-        dtype=float,
+    num_sigma_clip = Field[float](
         doc="Sigma for outlier rejection; ignored if stacking_statistic != 'MEANCLIP'.",
         default=4,
     )
-    num_iter = Field(
-        dtype=int,
+    num_iter = Field[int](
         doc="Number of iterations of outlier rejection; ignored if stackingStatistic != 'MEANCLIP'.",
         default=3,
     )
-    bad_mask_planes = ListField(
-        dtype=str,
+    bad_mask_planes = ListField[str](
         doc="Mask planes that define pixels to be excluded from the stacking of the bright star stamps.",
         default=("BAD", "CR", "CROSSTALK", "EDGE", "NO_DATA", "SAT", "SUSPECT", "UNMASKEDNAN"),
     )
-    do_mag_cut = Field(
-        dtype=bool,
+    do_mag_cut = Field[bool](
         doc="Apply magnitude cut before stacking?",
         default=False,
     )
-    mag_limit = Field(
-        dtype=float,
+    mag_limit = Field[float](
         doc="Magnitude limit, in Gaia G; all stars brighter than this value will be stacked",
         default=18,
     )
@@ -324,9 +317,10 @@ class StackBrightStarsTask(Task):
 
     def _set_up_stacking(self, example_stamp):
         """Configure stacking statistic and control from config fields."""
-        stats_control = StatisticsControl()
-        stats_control.setNumSigmaClip(self.config.num_sigma_clip)
-        stats_control.setNumIter(self.config.num_iter)
+        stats_control = StatisticsControl(
+            numSigmaClip=self.config.num_sigma_clip,
+            numIter=self.config.num_iter,
+        )
         if bad_masks := self.config.bad_mask_planes:
             and_mask = example_stamp.mask.getPlaneBitMask(bad_masks[0])
             for bm in bad_masks[1:]:
