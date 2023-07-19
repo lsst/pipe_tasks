@@ -239,8 +239,7 @@ class ProcessBrightStarsTask(PipelineTask):
         calexp -= skyCorr.getImage()
 
     def extractStamps(self, inputExposure, refObjLoader=None, inputBrightStarStamps=None):
-        """Read the position of bright stars within an input exposure using a
-        refCat and extract them.
+        """Read the position of bright stars within an input exposure using a refCat and extract them.
 
         Parameters
         ----------
@@ -248,6 +247,11 @@ class ProcessBrightStarsTask(PipelineTask):
             The image from which bright star stamps should be extracted.
         refObjLoader : `~lsst.meas.algorithms.ReferenceObjectLoader`, optional
             Loader to find objects within a reference catalog.
+        inputBrightStarStamps: `~lsst.meas.algorithms.brightStarStamps.BrightStarStamps`, optional
+            Provides information about the stars that have already been extracted from the inputExposure in
+            some other steps of the pipeline. For example, this is used in the `SubtractBrightStarsTask` to
+            avoid extracting the stars that already have been extracted when running `ProcessBrightStarsTask`
+            to produce brigthStarsStamps.
 
         Returns
         -------
@@ -262,6 +266,9 @@ class ProcessBrightStarsTask(PipelineTask):
                 Corresponding (Gaia) G magnitudes (`list`).
             ``gaiaIds``
                 Corresponding unique Gaia identifiers (`np.ndarray`).
+
+        Notes
+        
         """
         if refObjLoader is None:
             refObjLoader = self.refObjLoader
@@ -285,15 +292,22 @@ class ProcessBrightStarsTask(PipelineTask):
         refCat = withinCalexp.refCat
         # keep bright objects
         fluxLimit = ((self.config.magLimit * u.ABmag).to(u.nJy)).to_value()
-        GFluxes = np.array(refCat["phot_g_mean_flux"])
-        bright = GFluxes > fluxLimit
+        gFluxes = np.array(refCat["phot_g_mean_flux"])
+        bright = gFluxes > fluxLimit
         # convert to AB magnitudes
-        allGMags = np.array([((gFlux * u.nJy).to(u.ABmag)).to_value() for gFlux in GFluxes[bright]])
+        allGMags = np.array([((gFlux * u.nJy).to(u.ABmag)).to_value() for gFlux in gFluxes[bright]])
         allIds = refCat.columns.extract("id", where=bright)["id"]
         selectedColumns = refCat.columns.extract("coord_ra", "coord_dec", where=bright)
+        # the following block removes stars that have already been extracted in some other steps of the
+        # pipeline.
         if inputBrightStarStamps is not None:
+            # extracting the ids of the stars that have already been extracted.
             existings = np.array(inputBrightStarStamps.getGaiaIds())
+            # crossmatching the ids of the stars that have already been extracted with the ids of the stars
+            # that are in the input exposure.
             existed = np.isin(allIds, existings)
+            # removing the stars that have already been extracted from the list of stars that are in the
+            # input exposure.
             allGMags = allGMags[~existed]
             allIds = allIds[~existed]
             selectedColumns["coord_ra"] = selectedColumns["coord_ra"][~existed]
@@ -541,7 +555,7 @@ class ProcessBrightStarsTask(PipelineTask):
             discardNanFluxObjects=(self.config.discardNanFluxStars),
         )
         # Dont create empty fits files if there is no normalized stamp!
-        if not len(brightStarStamps._stamps) > 0:
+        if len(brightStarStamps._stamps) == 0:
             self.log.info("No normalized stamps exists for this exposure!")
             return None
         return Struct(brightStarStamps=brightStarStamps)
@@ -556,6 +570,6 @@ class ProcessBrightStarsTask(PipelineTask):
             config=self.config.refObjLoader,
         )
         output = self.run(**inputs, refObjLoader=refObjLoader)
-        # This if block prevents the code to produce an emtpy fits file in case there is no stamp.
+        # This block prevents the code to produce an empty fits file in case there is no stamp.
         if output:
             butlerQC.put(output, outputRefs)

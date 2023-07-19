@@ -117,7 +117,7 @@ class SubtractBrightStarsConnections(
         ),
     )
     outputBadStamps = Output(
-        doc="The stamps the are not normalized and consequently not subtracted from the exposure.",
+        doc="The stamps that are not normalized and consequently not subtracted from the exposure.",
         name="{badStampsName}_unsubtracted_stapms",
         storageClass="BrightStarStamps",
         dimensions=(
@@ -152,7 +152,7 @@ class SubtractBrightStarsConfig(PipelineTaskConfig, pipelineConnections=Subtract
     )
     minValidAnnulusFraction = Field(
         dtype=float,
-        doc="Minumum number of valid pixels that must fall within the annulus for the bright star to be "
+        doc="Minimum number of valid pixels that must fall within the annulus for the bright star to be "
         "saved for subsequent generation of a PSF.",
         default=0.0,
     )
@@ -218,8 +218,10 @@ class SubtractBrightStarsConfig(PipelineTaskConfig, pipelineConnections=Subtract
     subtractionBoxBuffer = Field(
         dtype=float,
         doc=(
-            "'Buffer' factor to be applied to determine the size of the stamp the processed stars will be "
-            "saved in. This will also be the size of the extended PSF model."
+            "'Buffer' (multiplicative) factor to be applied to determine the size of the stamp the "
+            "processed stars will be saved in. This is also the size of the extended PSF model. The buffer "
+            "region is masked and contain no data and subtractionBox determines the region where contains "
+            "the data."
         ),
         default=1.1,
     )
@@ -252,7 +254,7 @@ class SubtractBrightStarsTask(PipelineTask):
         # Placeholders to set up Statistics if scalingType is leastSquare.
         self.statsControl, self.statsFlag = None, None
         # warping control; only contains shiftingALg provided in config
-        self.warpCont = WarpingControl(self.config.warpingKernelName)
+        self.warpControl = WarpingControl(self.config.warpingKernelName)
 
     def _setUpStatistics(self, exampleMask):
         """Configure statistics control and flag, for use if ``scalingType`` is
@@ -284,7 +286,7 @@ class SubtractBrightStarsTask(PipelineTask):
             calexp = calexp.getMaskedImage()
         calexp -= skyCorr.getImage()
 
-    def scaleModel(self, model, star, inPlace=True, nb90Rots=0, psf_annular_flux=None):
+    def scaleModel(self, model, star, inPlace=True, nb90Rots=0, psf_annular_flux=1.):
         """Compute scaling factor to be applied to the extended PSF so that its
         amplitude matches that of an individual star.
 
@@ -299,6 +301,10 @@ class SubtractBrightStarsTask(PipelineTask):
             Whether the model should be scaled in place. Default is `True`.
         nb90Rots : `int`
             The number of 90-degrees rotations to apply to the star stamp.
+        psf_annular_flux: `float`, optional
+            The annular flux of the PSF model at the radius where the flux of the given star is determined.
+            This is 1 for stars present in inputBrightStarStamps, but can be different for stars that are
+            missing from inputBrightStarStamps.
 
         Returns
         -------
@@ -306,8 +312,6 @@ class SubtractBrightStarsTask(PipelineTask):
             The factor by which the model image should be multiplied for it
             to be scaled to the input bright star.
         """
-        if psf_annular_flux is None:
-            psf_annular_flux = 1
         if self.config.scalingType == "annularFlux":
             scalingFactor = star.annularFlux * psf_annular_flux
         elif self.config.scalingType == "leastSquare":
@@ -332,8 +336,9 @@ class SubtractBrightStarsTask(PipelineTask):
             model.image *= scalingFactor
         return scalingFactor
 
-    def _overRideWarperConfig(self):
-        """Override the warper config with the config of this task.
+    def _overrideWarperConfig(self):
+        """Override the warper config with the config of this task. This is necessary for the stars that are
+        missing from the inputBrightStarStamps but need to be subtracted.
         """
         self.warper.config.minValidAnnulusFraction = self.config.minValidAnnulusFraction
         self.warper.config.numSigmaClip = self.config.numSigmaClip
@@ -357,7 +362,7 @@ class SubtractBrightStarsTask(PipelineTask):
         subtracted.
         """
         self.warper = ProcessBrightStarsTask()
-        self._overRideWarperConfig()
+        self._overrideWarperConfig()
         self.warper.modelCenter = self.modelStampSize[0] // 2, self.modelStampSize[1] // 2
 
     def makeBrightStarList(self, inputBrightStarStamps, inputExposure, refObjLoader):
@@ -394,7 +399,7 @@ class SubtractBrightStarsTask(PipelineTask):
                 minValidAnnulusFraction=self.warper.config.minValidAnnulusFraction,
             )
             for j, (warp, transform) in enumerate(zip(self.warpOutputs.warpedStars,
-                                                      self.warspOutputs.warpTransforms))
+                                                      self.warpOutputs.warpTransforms))
         ]
         return brightStarList
 
@@ -412,7 +417,11 @@ class SubtractBrightStarsTask(PipelineTask):
         return annulusImage
 
     def createAnnulus(self, brightStarStamp):
-        """Create an annulus of the given star.
+        """Create a circular annulus of the given star. The annulus is set based on the inner and outer
+        optimal radii. The optimal radii describe the annulus where the flux of the star is found.
+        Accordingly, the aim is to crate the same annulus for the PSF model and eventually measure the modle
+        flux around that annulus. An optimal radius usually differes from the radius where the PSF model is
+        normalized.
 
         Parameters
         ----------
@@ -467,7 +476,7 @@ class SubtractBrightStarsTask(PipelineTask):
 
         Returns
         -------
-        annularFlux: float
+        annularFlux: float (between 0 and 1)
             The annular flux of the PSF model at the radius where the flux of the given star is determined.
         """
         annulusImage = self.initAnnulusImage()
@@ -492,10 +501,10 @@ class SubtractBrightStarsTask(PipelineTask):
 
         Notes
         -----
-        While the PSF model is normalized at a certain radius, the flux of a star at that radius might be
-        impossible to find. Therefore, we have to scale the PSF model considering a radius where the star has
-        an identified flux. To do that, the flux of the model should be found and used to adjust the scaling
-        step.
+        While the PSF model is normalized at a certain radius, the annular flux of a star around that radius
+        might be impossible to find. Therefore, we have to scale the PSF model considering a radius where the
+        star has an identified flux. To do that, the flux of the model should be found and used to adjust the
+        scaling step.
         """
         outerRadii = []
         annularFluxes = []
@@ -510,7 +519,9 @@ class SubtractBrightStarsTask(PipelineTask):
         return np.array([outerRadii, annularFluxes]).T
 
     def preparePlaneModelStamp(self, brightStarStamp):
-        """Prepare the PSF model before scaling.
+        """Prepare the PSF plane model. It is called PlaneMdoel because while it is a PSF model stamp that is
+        warped and rotated to the same orientation of a chosen star, but it is not scaled to the brightness
+        level of the star yet.
 
         Parameters
         ----------
@@ -523,22 +534,30 @@ class SubtractBrightStarsTask(PipelineTask):
             Contains the corner coordination and the dimensions of the model stamp.
 
         invImage: `~lsst.afw.image.MaskedImageF`
-            The extended PSF model, shifted (and potentially warped) to match the bright star's positioning.
+            The extended PSF model, shifted (and potentially warped and rotated) to match the bright star's
+            positioning.
 
         Raises
         ------
         RuntimeError
-            Raised if warping of the model is failed.
+            Raised if warping of the model failed.
+
+        Notes
+        -----
+        Since detectors have different orientations, the PSF model should be rotated to match the orientation
+        of the detectors in some cases. To do that, the code uses the inverse of the transform that is
+        applied to the bright star stamp to match the orientation of the detector.
         """
         # Set the origin.
         self.model.setXY0(brightStarStamp.position)
         # Create an empty destination image.
+        import pdb; pdb.set_trace()
         invTransform = brightStarStamp.archive_element.inverted()
         invOrigin = Point2I(invTransform.applyForward(Point2D(brightStarStamp.position)))
         bbox = Box2I(corner=invOrigin, dimensions=self.modelStampSize)
         invImage = MaskedImageF(bbox)
         # Apply inverse transform.
-        goodPix = warpImage(invImage, self.model, invTransform, self.warpCont)
+        goodPix = warpImage(invImage, self.model, invTransform, self.warpControl)
         if not goodPix:
             # Do we want to find another way or just subtract the non-warped scaled model?
             # Currently the code just leaves the failed ones un-subtracted.
@@ -553,7 +572,7 @@ class SubtractBrightStarsTask(PipelineTask):
         Parameters
         ----------
         subtractor : `~lsst.afw.image.MaskedImageF`
-            The Exposure containing the scaled model of brigth stars to be subtracted from the input
+            The full image containing the scaled model of bright stars to be subtracted from the input
             exposure.
         brightStarStamp : `~lsst.meas.algorithms.brightStarStamps.BrightStarStamp`
             The stamp of the star of which the PSF model will be scaled and added to the subtractor.
@@ -564,33 +583,33 @@ class SubtractBrightStarsTask(PipelineTask):
         Returns
         -------
         subtractor : `~lsst.afw.image.MaskedImageF`
-            The input subtractor Exposure with the added scaled model at the given star's location in the
+            The input subtractor full image with the added scaled model at the given star's location in the
             exposure.
         invImage: `~lsst.afw.image.MaskedImageF`
             The extended PSF model, shifted (and potentially warped) to match the bright star's positioning.
         """
         bbox, invImage = self.preparePlaneModelStamp(brightStarStamp)
-        if multipleAnnuli:
-            cond = self.psf_annular_fluxes[:, 0] == brightStarStamp.optimalOuterRadius
-            psf_annular_flux = self.psf_annular_fluxes[cond, 1][0]
-            self.scaleModel(invImage,
-                            brightStarStamp,
-                            inPlace=True,
-                            nb90Rots=self.inv90Rots,
-                            psf_annular_flux=psf_annular_flux)
-        else:
-            self.scaleModel(invImage, brightStarStamp, inPlace=True, nb90Rots=self.inv90Rots)
-        # Replace NaNs before subtraction (note all NaN pixels have
-        # the NO_DATA flag).
-        invImage.image.array[np.isnan(invImage.image.array)] = 0
         bbox.clip(self.inputExpBBox)
         if bbox.getArea() > 0:
+            if multipleAnnuli:
+                cond = self.psf_annular_fluxes[:, 0] == brightStarStamp.optimalOuterRadius
+                psf_annular_flux = self.psf_annular_fluxes[cond, 1][0]
+                self.scaleModel(invImage,
+                                brightStarStamp,
+                                inPlace=True,
+                                nb90Rots=self.inv90Rots,
+                                psf_annular_flux=psf_annular_flux)
+            else:
+                self.scaleModel(invImage, brightStarStamp, inPlace=True, nb90Rots=self.inv90Rots)
+            # Replace NaNs before subtraction (note all NaN pixels have
+            # the NO_DATA flag).
+            invImage.image.array[np.isnan(invImage.image.array)] = 0
             subtractor[bbox] += invImage[bbox]
         return subtractor, invImage
 
     def buildSubtractor(self, brightStarStamps, subtractor, invImages, multipleAnnuli=False):
         """Build an image containing potentially multiple scaled PSF models, each at the location of a given
-        brigth star.
+        bright star.
 
         Parameters
         ----------
@@ -598,11 +617,11 @@ class SubtractBrightStarsTask(PipelineTask):
             Set of stamps centered on each bright star to be subtracted, produced by running
             `~lsst.pipe.tasks.processBrightStars.ProcessBrightStarsTask`.
         subtractor : `~lsst.afw.image.MaskedImageF`
-            The Exposure that will contain the scaled model of brigth stars to be subtracted from the
+            The Exposure that will contain the scaled model of bright stars to be subtracted from the
             exposure.
         invImages : `list`
             A list containing extended PSF models, shifted (and potentially warped) to match the bright stars
-            positionings.
+            positions.
         multipleAnnuli : bool, optional
             This will be passed to addScaledModel method, by default False.
 
@@ -613,7 +632,7 @@ class SubtractBrightStarsTask(PipelineTask):
             then be subtracted from the input exposure.
         invImages: list
             A list containing the extended PSF models, shifted (and potentially warped) to match bright
-            stars' positionings.
+            stars' positions.
         """
         for star in brightStarStamps:
             if star.gaiaGMag < self.config.magLimit:
