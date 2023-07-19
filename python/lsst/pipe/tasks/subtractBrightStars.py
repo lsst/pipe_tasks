@@ -551,7 +551,6 @@ class SubtractBrightStarsTask(PipelineTask):
         # Set the origin.
         self.model.setXY0(brightStarStamp.position)
         # Create an empty destination image.
-        import pdb; pdb.set_trace()
         invTransform = brightStarStamp.archive_element.inverted()
         invOrigin = Point2I(invTransform.applyForward(Point2D(brightStarStamp.position)))
         bbox = Box2I(corner=invOrigin, dimensions=self.modelStampSize)
