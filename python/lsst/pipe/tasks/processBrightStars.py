@@ -555,7 +555,7 @@ class ProcessBrightStarsTask(PipelineTask):
             discardNanFluxObjects=(self.config.discardNanFluxStars),
         )
         # Dont create empty fits files if there is no normalized stamp!
-        if len(brightStarStamps._stamps) == 0:
+        if not brightStarStamps._stamps:
             self.log.info("No normalized stamps exists for this exposure!")
             return None
         return Struct(brightStarStamps=brightStarStamps)
