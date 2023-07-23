@@ -789,7 +789,7 @@ class Mag(Functor):
         if calib is not None:
             # TO DO: DM-39914 Remove deprecated calib argument in Mag functor.
             warnings.warn(
-                "The 'calib' argument is deprecated, and will be removed after v27.",
+                "The 'calib' argument is deprecated, and will be removed after v26.",
                 FutureWarning,
                 stacklevel=2,
             )
@@ -830,7 +830,7 @@ class MagErr(Mag):
             # TO DO: DM-39914 Remove deprecated calib argument in Mag functor.
             self.fluxMag0Err = self.calib.getFluxMag0()[1]
             warnings.warn(
-                "The 'calib' argument is deprecated, and will be removed after v27.",
+                "The 'calib' argument is deprecated, and will be removed after v26.",
                 FutureWarning,
                 stacklevel=2,
             )
