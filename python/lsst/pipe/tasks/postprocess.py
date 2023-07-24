@@ -52,7 +52,7 @@ import lsst.daf.base as dafBase
 from lsst.utils.introspection import find_outside_stacklevel
 from lsst.pipe.base import connectionTypes
 import lsst.afw.table as afwTable
-from lsst.afw.image import ExposureSummaryStats
+from lsst.afw.image import ExposureSummaryStats, ExposureF
 from lsst.meas.base import SingleFrameMeasurementTask, DetectorVisitIdGeneratorConfig
 from lsst.skymap import BaseSkyMap
 
@@ -289,6 +289,11 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
         name="calexp",
         storageClass="ExposureF",
         dimensions=["instrument", "visit", "detector"],
+        # TODO: remove on DM-39584
+        deprecated=(
+            "Deprecated, as the `calexp` is not needed and just creates unnecessary i/o.  "
+            "Will be removed after v26."
+        ),
     )
     visitSummary = connectionTypes.Input(
         doc="Input visit-summary catalog with updated calibration objects.",
@@ -343,7 +348,9 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
         # Global/Tract calibrations
         # TODO: remove all of this on DM-39854.
         keepSkyMap = False
+        keepExposure = False
         if config.doApplyExternalSkyWcs and config.doReevaluateSkyWcs:
+            keepExposure = True
             if config.useGlobalExternalSkyWcs:
                 self.inputs.remove("externalSkyWcsTractCatalog")
             else:
@@ -353,6 +360,7 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
             self.inputs.remove("externalSkyWcsTractCatalog")
             self.inputs.remove("externalSkyWcsGlobalCatalog")
         if config.doApplyExternalPhotoCalib and config.doReevaluatePhotoCalib:
+            keepExposure = True
             if config.useGlobalExternalPhotoCalib:
                 self.inputs.remove("externalPhotoCalibTractCatalog")
             else:
@@ -363,6 +371,8 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
             self.inputs.remove("externalPhotoCalibGlobalCatalog")
         if not keepSkyMap:
             del self.skyMap
+        if not keepExposure:
+            del self.exposure
 
 
 class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
@@ -441,8 +451,13 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
             if self.config.doApplyExternalPhotoCalib or self.config.doApplyExternalSkyWcs:
                 inputs['exposure'] = self.attachCalibs(inputRefs, **inputs)
             else:
+                # Create an empty exposure that will hold the calibrations.
+                exposure = ExposureF()
+                detectorId = butlerQC.quantum.dataId["detector"]
                 inputs['exposure'] = self.prepareCalibratedExposure(
-                    exposure=inputs["exposure"], visitSummary=inputs["visitSummary"]
+                    exposure=exposure,
+                    detectorId=detectorId,
+                    visitSummary=inputs["visitSummary"],
                 )
             inputs['catalog'] = self.addCalibColumns(**inputs)
 
@@ -573,7 +588,12 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         return np.argmin(sep)
 
     def prepareCalibratedExposure(
-        self, exposure, externalSkyWcsCatalog=None, externalPhotoCalibCatalog=None, visitSummary=None
+        self,
+        exposure,
+        detectorId,
+        externalSkyWcsCatalog=None,
+        externalPhotoCalibCatalog=None,
+        visitSummary=None,
     ):
         """Prepare a calibrated exposure and apply external calibrations
         if so configured.
@@ -581,7 +601,9 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         Parameters
         ----------
         exposure : `lsst.afw.image.exposure.Exposure`
-            Input exposure to adjust calibrations.
+            Input exposure to adjust calibrations.  May be empty.
+        detectorId : `int`
+            Detector ID associated with the exposure.
         externalSkyWcsCatalog :  `lsst.afw.table.ExposureCatalog`, optional
             Exposure catalog with external skyWcs to be applied
             if config.doApplyExternalSkyWcs=True.  Catalog uses the detector id
@@ -602,20 +624,20 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         exposure : `lsst.afw.image.exposure.Exposure`
             Exposure with adjusted calibrations.
         """
-        detectorId = exposure.getInfo().getDetector().getId()
-
         if visitSummary is not None:
             row = visitSummary.find(detectorId)
             if row is None:
                 raise RuntimeError(f"Visit summary for detector {detectorId} is unexpectedly missing.")
             if (photoCalib := row.getPhotoCalib()) is None:
                 self.log.warning("Detector id %s has None for photoCalib in visit summary; "
-                                 "using original photoCalib.", detectorId)
+                                 "skipping reevaluation of photoCalib.", detectorId)
+                exposure.setPhotoCalib(None)
             else:
                 exposure.setPhotoCalib(photoCalib)
             if (skyWcs := row.getWcs()) is None:
                 self.log.warning("Detector id %s has None for skyWcs in visit summary; "
-                                 "using original skyWcs.", detectorId)
+                                 "skipping reevaluation of skyWcs.", detectorId)
+                exposure.setWcs(None)
             else:
                 exposure.setWcs(skyWcs)
 
@@ -692,10 +714,10 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
 
         measureConfig.plugins.names = []
         if self.config.doReevaluateSkyWcs:
-            measureConfig.plugins.names.add('base_LocalWcs')
+            measureConfig.plugins.names.add("base_LocalWcs")
             self.log.info("Re-evaluating base_LocalWcs plugin")
         if self.config.doReevaluatePhotoCalib:
-            measureConfig.plugins.names.add('base_LocalPhotoCalib')
+            measureConfig.plugins.names.add("base_LocalPhotoCalib")
             self.log.info("Re-evaluating base_LocalPhotoCalib plugin")
         pluginsNotToCopy = tuple(measureConfig.plugins.names)
 
@@ -719,8 +741,20 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         # sky and are used as such in sdm tables without transform
         if self.config.doReevaluateSkyWcs and exposure.wcs is not None:
             afwTable.updateSourceCoords(exposure.wcs, newCat)
+            wcsPlugin = measurement.plugins["base_LocalWcs"]
+        else:
+            wcsPlugin = None
 
-        measurement.run(measCat=newCat, exposure=exposure, exposureId=idGenerator.catalog_id)
+        if self.config.doReevaluatePhotoCalib and exposure.getPhotoCalib() is not None:
+            pcPlugin = measurement.plugins["base_LocalPhotoCalib"]
+        else:
+            pcPlugin = None
+
+        for row in newCat:
+            if wcsPlugin is not None:
+                wcsPlugin.measure(row, exposure)
+            if pcPlugin is not None:
+                pcPlugin.measure(row, exposure)
 
         return newCat
 
