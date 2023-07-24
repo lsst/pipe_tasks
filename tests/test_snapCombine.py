@@ -41,11 +41,9 @@ def makeRandomExposure(width, height, imMean, varMean, maxMask):
     @param[in] maxMask maximum mask value; values will be uniformly chosen in [0, maxMask]
     """
     exp = afwImage.ExposureF(width, height)
-    mi = exp.getMaskedImage()
-    imArr, maskArr, varArr = mi.getArrays()
-    imArr[:, :] = np.random.poisson(imMean, size=imArr.shape)
-    varArr[:, :] = np.random.poisson(varMean, size=varArr.shape)
-    maskArr[:, :] = np.random.randint(0, maxMask + 1, size=maskArr.shape)
+    exp.image.array[:, :] = np.random.poisson(imMean, size=exp.image.array.shape)
+    exp.variance.array[:, :] = np.random.poisson(varMean, size=exp.variance.array.shape)
+    exp.mask.array[:, :] = np.random.randint(0, maxMask + 1, size=exp.mask.array.shape)
 
     return exp
 
@@ -53,27 +51,23 @@ def makeRandomExposure(width, height, imMean, varMean, maxMask):
 def simpleAdd(exp0, exp1, badPixelMask):
     """Add two exposures, avoiding bad pixels
     """
-    imArr0, maskArr0, varArr0 = exp0.getMaskedImage().getArrays()
-    imArr1, maskArr1, varArr1 = exp1.getMaskedImage().getArrays()
     expRes = exp0.Factory(exp0, True)
-    miRes = expRes.getMaskedImage()
-    imArrRes, maskArrRes, varArrRes = miRes.getArrays()
-
     weightMap = afwImage.ImageF(exp0.getDimensions())
-    weightArr = weightMap.getArray()
 
-    good0 = np.bitwise_and(maskArr0, badPixelMask) == 0
-    good1 = np.bitwise_and(maskArr1, badPixelMask) == 0
+    good0 = np.bitwise_and(exp0.mask.array, badPixelMask) == 0
+    good1 = np.bitwise_and(exp1.mask.array, badPixelMask) == 0
 
-    imArrRes[:, :] = np.where(good0, imArr0, 0) + np.where(good1, imArr1, 0)
-    varArrRes[:, :] = np.where(good0, varArr0, 0) + np.where(good1, varArr1, 0)
-    maskArrRes[:, :] = np.bitwise_or(np.where(good0, maskArr0, 0), np.where(good1, maskArr1, 0))
-    weightArr[:, :] = np.where(good0, 1, 0) + np.where(good1, 1, 0)
+    expRes.image.array[:, :] = np.where(good0, exp0.image.array, 0) + np.where(good1, exp1.image.array, 0)
+    expRes.variance.array[:, :] = np.where(good0, exp0.variance.array, 0) + \
+        np.where(good1, exp1.variance.array, 0)
+    expRes.mask.array[:, :] = np.bitwise_or(np.where(good0, exp0.mask.array, 0),
+                                            np.where(good1, exp1.mask.array, 0))
+    weightMap.array[:, :] = np.where(good0, 1, 0) + np.where(good1, 1, 0)
 
-    miRes /= weightMap
-    miRes *= 2  # want addition, not mean, where both pixels are valid
+    expRes.maskedImage /= weightMap
+    expRes.maskedImage *= 2  # want addition, not mean, where both pixels are valid
 
-    setCoaddEdgeBits(miRes.getMask(), weightMap)
+    setCoaddEdgeBits(expRes.mask, weightMap)
 
     return expRes
 
@@ -95,10 +89,10 @@ class SnapCombineTestCase(lsst.utils.tests.TestCase):
         snap0 = makeRandomExposure(25, 25, 10000, 5000, badPixelMask)
         snap1 = makeRandomExposure(25, 25, 10000, 5000, badPixelMask)
         resExp = task.run(snap0, snap1).exposure
-        resMi = resExp.getMaskedImage()
+        resMi = resExp.maskedImage
 
         predExp = simpleAdd(snap0, snap1, badPixelMask)
-        predMi = predExp.getMaskedImage()
+        predMi = predExp.maskedImage
         self.assertMaskedImagesAlmostEqual(resMi, predMi)
 
     def testAdditionAllGood(self):
@@ -112,10 +106,10 @@ class SnapCombineTestCase(lsst.utils.tests.TestCase):
         snap0 = makeRandomExposure(25, 25, 10000, 5000, 0)
         snap1 = makeRandomExposure(25, 25, 10000, 5000, 0)
         resExp = task.run(snap0, snap1).exposure
-        resMi = resExp.getMaskedImage()
+        resMi = resExp.maskedImage
 
-        predMi = snap0.getMaskedImage().Factory(snap0.getMaskedImage(), True)
-        predMi += snap1.getMaskedImage()
+        predMi = snap0.maskedImage.Factory(snap0.maskedImage, True)
+        predMi += snap1.maskedImage
         self.assertMaskedImagesAlmostEqual(resMi, predMi)
 
     def testMetadata(self):
