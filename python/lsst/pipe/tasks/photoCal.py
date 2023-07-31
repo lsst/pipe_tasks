@@ -123,8 +123,8 @@ class PhotoCalTask(pipeBase.Task):
     Parameters
     ----------
     refObjLoader : `lsst.meas.algorithms.ReferenceObjectLoader`
-        An instance of LoadReferenceObjectsTasks that supplies an external reference
-        catalog.
+        A reference object loader object; gen3 pipeline tasks will pass `None`
+        and call `match.setRefObjLoader` in `runQuantum`.
     schema : `lsst.afw.table.Schema`, optional
         The schema of the detection catalogs used as input to this task.
     **kwds
@@ -165,7 +165,7 @@ class PhotoCalTask(pipeBase.Task):
     ConfigClass = PhotoCalConfig
     _DefaultName = "photoCal"
 
-    def __init__(self, refObjLoader, schema=None, **kwds):
+    def __init__(self, refObjLoader=None, schema=None, **kwds):
         pipeBase.Task.__init__(self, **kwds)
         self.scatterPlot = None
         self.fig = None
@@ -341,7 +341,9 @@ class PhotoCalTask(pipeBase.Task):
             ``arrays``
                 Magnitude arrays returned be `PhotoCalTask.extractMagArrays`.
             ``matches``
-                ReferenceMatchVector, as returned by `PhotoCalTask.selectMatches`.
+                ReferenceMatchVector, as returned by the matcher
+            ``matchMeta`` :  metadata needed to unpersist matches, as returned
+                by the matcher (`lsst.daf.base.PropertyList`)
             ``zp``
                 Photometric zero point (mag, `float`).
             ``sigma``
@@ -417,11 +419,15 @@ class PhotoCalTask(pipeBase.Task):
         flux0 = 10**(0.4*r.zp)  # Flux of mag=0 star
         flux0err = 0.4*math.log(10)*flux0*r.sigma  # Error in flux0
         photoCalib = makePhotoCalibFromCalibZeroPoint(flux0, flux0err)
+        self.log.info("Photometric calibration factor (nJy/ADU): %f +/- %f",
+                      photoCalib.getCalibrationMean(),
+                      photoCalib.getCalibrationErr())
 
         return pipeBase.Struct(
             photoCalib=photoCalib,
             arrays=arrays,
             matches=matches,
+            matchMeta=matchResults.matchMeta,
             zp=r.zp,
             sigma=r.sigma,
             ngood=r.ngood,
