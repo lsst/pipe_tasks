@@ -22,7 +22,6 @@
 __all__ = ["CharacterizeImageConfig", "CharacterizeImageTask"]
 
 import numpy as np
-import warnings
 
 from lsstDebug import getDebugFrame
 import lsst.afw.table as afwTable
@@ -278,8 +277,6 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
 
     Parameters
     ----------
-    butler : `None`
-        Compatibility parameter. Should always be `None`.
     refObjLoader : `lsst.meas.algorithms.ReferenceObjectLoader`, optional
         Reference object loader if using a catalog-based star-selector.
     schema : `lsst.afw.table.Schema`, optional
@@ -313,13 +310,8 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
     ConfigClass = CharacterizeImageConfig
     _DefaultName = "characterizeImage"
 
-    def __init__(self, butler=None, refObjLoader=None, schema=None, **kwargs):
+    def __init__(self, refObjLoader=None, schema=None, **kwargs):
         super().__init__(**kwargs)
-
-        if butler is not None:
-            warnings.warn("The 'butler' parameter is no longer used and can be safely removed.",
-                          category=FutureWarning, stacklevel=2)
-            butler = None
 
         if schema is None:
             schema = SourceTable.makeMinimalSchema()

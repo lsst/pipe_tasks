@@ -294,7 +294,7 @@ class ProcessCcdWithFakesTask(PipelineTask):
     _DefaultName = "processCcdWithFakes"
     ConfigClass = ProcessCcdWithFakesConfig
 
-    def __init__(self, schema=None, butler=None, **kwargs):
+    def __init__(self, schema=None, **kwargs):
         """Initalize things! This should go above in the class docstring
         """
 

@@ -23,7 +23,6 @@ __all__ = ["MergeDetectionsConfig", "MergeDetectionsTask"]
 
 import numpy as np
 from numpy.lib.recfunctions import rec_join
-import warnings
 
 from .multiBandUtils import CullPeaksConfig
 
@@ -216,8 +215,6 @@ class MergeDetectionsTask(PipelineTask):
 
     Parameters
     ----------
-    butler : `None`, optional
-        Compatibility parameter. Should always be `None`.
     schema : `lsst.afw.table.Schema`, optional
         The schema of the detection catalogs used as input to this task.
     initInputs : `dict`, optional
@@ -229,13 +226,8 @@ class MergeDetectionsTask(PipelineTask):
     ConfigClass = MergeDetectionsConfig
     _DefaultName = "mergeCoaddDetections"
 
-    def __init__(self, butler=None, schema=None, initInputs=None, **kwargs):
+    def __init__(self, schema=None, initInputs=None, **kwargs):
         super().__init__(**kwargs)
-
-        if butler is not None:
-            warnings.warn("The 'butler' parameter is no longer used and can be safely removed.",
-                          category=FutureWarning, stacklevel=2)
-            butler = None
 
         if initInputs is not None:
             schema = initInputs['schema'].schema

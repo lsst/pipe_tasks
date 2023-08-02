@@ -209,7 +209,7 @@ class ProcessBrightStarsTask(PipelineTask):
     ConfigClass = ProcessBrightStarsConfig
     _DefaultName = "processBrightStars"
 
-    def __init__(self, butler=None, initInputs=None, *args, **kwargs):
+    def __init__(self, initInputs=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Compute (model) stamp size depending on provided "buffer" value
         self.modelStampSize = [
@@ -223,9 +223,6 @@ class ProcessBrightStarsTask(PipelineTask):
             self.modelStampSize[1] += 1
         # central pixel
         self.modelCenter = self.modelStampSize[0] // 2, self.modelStampSize[1] // 2
-        # configure Gaia refcat
-        if butler is not None:
-            self.makeSubtask("refObjLoader", butler=butler)
 
     def applySkyCorr(self, calexp, skyCorr):
         """Apply correction to the sky background level.
