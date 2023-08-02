@@ -21,8 +21,6 @@
 
 __all__ = ["DetectCoaddSourcesConfig", "DetectCoaddSourcesTask"]
 
-import warnings
-
 from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.config import Field, ConfigurableField, ChoiceField
@@ -480,9 +478,6 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
 
     Parameters
     ----------
-    butler : `lsst.daf.butler.Butler` or `None`, optional
-        A butler used to read the input schemas from disk or construct the reference
-        catalog loader, if schema or peakSchema or refObjLoader is None.
     schema : ``lsst.afw.table.Schema`, optional
         The schema of the merged detection catalog used as input to this one.
     peakSchema : ``lsst.afw.table.Schema`, optional
@@ -501,7 +496,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
     _DefaultName = "measureCoaddSources"
     ConfigClass = MeasureMergedCoaddSourcesConfig
 
-    def __init__(self, butler=None, schema=None, peakSchema=None, refObjLoader=None, initInputs=None,
+    def __init__(self, schema=None, peakSchema=None, refObjLoader=None, initInputs=None,
                  **kwargs):
         super().__init__(**kwargs)
         self.deblended = self.config.inputCatalog.startswith("deblended")
@@ -509,8 +504,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         if initInputs is not None:
             schema = initInputs['inputSchema'].schema
         if schema is None:
-            assert butler is not None, "Neither butler nor schema is defined"
-            schema = butler.get(self.config.coaddName + self.inputCatalog + "_schema").schema
+            raise ValueError("Schema must be defined.")
         self.schemaMapper = afwTable.SchemaMapper(schema)
         self.schemaMapper.addMinimalSchema(schema)
         self.schema = self.schemaMapper.getOutputSchema()
@@ -518,7 +512,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("setPrimaryFlags", schema=self.schema)
         if self.config.doMatchSources:
-            self.makeSubtask("match", butler=butler, refObjLoader=refObjLoader)
+            self.makeSubtask("match", refObjLoader=refObjLoader)
         if self.config.doPropagateFlags:
             self.makeSubtask("propagateFlags", schema=self.schema)
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
@@ -638,7 +632,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     def run(self, exposure, sources, skyInfo, exposureId, ccdInputs=None, visitCatalogs=None, wcsUpdates=None,
-            butler=None, sourceTableHandleDict=None, finalizedSourceTableHandleDict=None):
+            sourceTableHandleDict=None, finalizedSourceTableHandleDict=None):
         """Run measurement algorithms on the input exposure, and optionally populate the
         resulting catalog with extra information.
 
@@ -667,10 +661,6 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             to the input visits. Used to put all coordinates to common system. If `None` and
             butler is `None` then the task cannot propagate visit flags to the output catalog.
             Deprecated, to be removed with PropagateVisitFlagsTask.
-        butler : `None`, optional
-            This was a Gen2 butler used to load visit catalogs.
-            No longer used and should not be set. Will be removed in the
-            future.
         sourceTableHandleDict : `dict` [`int`, `lsst.daf.butler.DeferredDatasetHandle`], optional
             Dict for sourceTable_visit handles (key is visit) for propagating flags.
             These tables are derived from the ``CalibrateTask`` sources, and contain
@@ -688,11 +678,6 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             reference catalog in the matchResults attribute, and denormalized
             matches in the denormMatches attribute.
         """
-        if butler is not None:
-            warnings.warn("The 'butler' parameter is no longer used and can be safely removed.",
-                          category=FutureWarning, stacklevel=2)
-            butler = None
-
         self.measurement.run(sources, exposure, exposureId=exposureId)
 
         if self.config.doApCorr:
@@ -725,7 +710,6 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             else:
                 # Legacy deprecated version
                 self.propagateFlags.run(
-                    butler,
                     sources,
                     ccdInputs,
                     exposure.getWcs(),

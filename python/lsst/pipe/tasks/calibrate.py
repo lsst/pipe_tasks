@@ -22,7 +22,6 @@
 __all__ = ["CalibrateConfig", "CalibrateTask"]
 
 import math
-import warnings
 import numpy as np
 
 from lsstDebug import getDebugFrame
@@ -375,15 +374,10 @@ class CalibrateTask(pipeBase.PipelineTask):
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
 
-    def __init__(self, butler=None, astromRefObjLoader=None,
+    def __init__(self, astromRefObjLoader=None,
                  photoRefObjLoader=None, icSourceSchema=None,
                  initInputs=None, **kwargs):
         super().__init__(**kwargs)
-
-        if butler is not None:
-            warnings.warn("The 'butler' parameter is no longer used and can be safely removed.",
-                          category=FutureWarning, stacklevel=2)
-            butler = None
 
         if initInputs is not None:
             icSourceSchema = initInputs['icSourceSchema'].schema

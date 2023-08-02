@@ -22,7 +22,6 @@
 __all__ = ["MergeMeasurementsConfig", "MergeMeasurementsTask"]
 
 import numpy
-import warnings
 
 import lsst.afw.table as afwTable
 import lsst.pex.config as pexConfig
@@ -127,8 +126,6 @@ class MergeMeasurementsTask(pipeBase.PipelineTask):
 
     Parameters
     ----------
-    butler : `None`, optional
-        Compatibility parameter. Should always be `None`.
     schema : `lsst.afw.table.Schema`, optional
         The schema of the detection catalogs used as input to this task.
     initInputs : `dict`, optional
@@ -144,13 +141,8 @@ class MergeMeasurementsTask(pipeBase.PipelineTask):
     inputDataset = "meas"
     outputDataset = "ref"
 
-    def __init__(self, butler=None, schema=None, initInputs=None, **kwargs):
+    def __init__(self, schema=None, initInputs=None, **kwargs):
         super().__init__(**kwargs)
-
-        if butler is not None:
-            warnings.warn("The 'butler' parameter is no longer used and can be safely removed.",
-                          category=FutureWarning, stacklevel=2)
-            butler = None
 
         if initInputs is not None:
             schema = initInputs['inputSchema'].schema
