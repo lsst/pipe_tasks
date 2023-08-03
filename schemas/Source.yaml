@@ -340,6 +340,12 @@ flags:
    - base_CircularApertureFlux_17_0_flag
    - base_CircularApertureFlux_17_0_instFlux
    - base_CircularApertureFlux_17_0_instFluxErr
+   - base_CircularApertureFlux_35_0_flag
+   - base_CircularApertureFlux_35_0_instFlux
+   - base_CircularApertureFlux_35_0_instFluxErr
+   - base_CircularApertureFlux_50_0_flag
+   - base_CircularApertureFlux_50_0_instFlux
+   - base_CircularApertureFlux_50_0_instFluxErr
    - base_ClassificationExtendedness_flag
    - base_FootprintArea_value
    - base_Jacobian_flag
