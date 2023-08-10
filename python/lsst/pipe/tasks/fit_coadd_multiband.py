@@ -141,14 +141,14 @@ class CoaddMultibandFitConnections(
         """
         # Check which bands are going to be fit
         bands_fit, bands_read_only = self.config.get_band_sets()
-        bands_needed = bands_fit.union(bands_read_only)
+        bands_needed = bands_fit + [band for band in bands_read_only if band not in bands_fit]
 
         adjusted_inputs = {}
         for connection_name, (connection, dataset_refs) in inputs.items():
             # Datasets without bands in their dimensions should be fine
             if 'band' in connection.dimensions:
                 datasets_by_band = {dref.dataId['band']: dref for dref in dataset_refs}
-                if not bands_needed.issubset(datasets_by_band.keys()):
+                if not set(bands_needed).issubset(datasets_by_band.keys()):
                     raise pipeBase.NoWorkFound(
                         f'DatasetRefs={dataset_refs} have data with bands in the'
                         f' set={set(datasets_by_band.keys())},'
@@ -156,7 +156,7 @@ class CoaddMultibandFitConnections(
                         f' {self.config.__class__}.fit_coadd_multiband='
                         f'{self.config.fit_coadd_multiband._value.__class__}\'s attributes'
                         f' bands_fit={bands_fit} and bands_read_only()={bands_read_only}.'
-                        f' Add the required bands={bands_needed.difference(datasets_by_band.keys())}.'
+                        f' Add the required bands={set(bands_needed).difference(datasets_by_band.keys())}.'
                     )
                 # Adjust all datasets with band dimensions to include just
                 # the needed bands, in consistent order.
@@ -258,7 +258,7 @@ class CoaddMultibandFitConfig(
         except AttributeError:
             raise RuntimeError(f'{__class__}.fit_coadd_multiband must have bands_fit attribute') from None
         bands_read_only = self.fit_coadd_multiband.bands_read_only()
-        return set(bands_fit), set(bands_read_only)
+        return tuple(list({band: None for band in bands}.keys()) for bands in (bands_fit, bands_read_only))
 
 
 class CoaddMultibandFitTask(pipeBase.PipelineTask):
@@ -287,8 +287,8 @@ class CoaddMultibandFitTask(pipeBase.PipelineTask):
         ]
         dataIds = set(cats).union(set(exps))
         models_scarlet = inputs["models_scarlet"]
-        catexps = [None]*len(dataIds)
-        for idx, dataId in enumerate(dataIds):
+        catexps = {}
+        for dataId in dataIds:
             catalog = cats[dataId]
             exposure = exps[dataId]
             models_scarlet.updateCatalogFootprints(
@@ -299,10 +299,11 @@ class CoaddMultibandFitTask(pipeBase.PipelineTask):
                 removeScarletData=True,
                 updateFluxColumns=False,
             )
-            catexps[idx] = CatalogExposureInputs(
+            catexps[dataId['band']] = CatalogExposureInputs(
                 catalog=catalog, exposure=exposure, table_psf_fits=models_psf[dataId],
                 dataId=dataId, id_tract_patch=id_tp,
             )
+        catexps = [catexps[band] for band in self.config.get_band_sets()[0]]
         outputs = self.run(catexps=catexps, cat_ref=inputs['cat_ref'])
         butlerQC.put(outputs, outputRefs)
 

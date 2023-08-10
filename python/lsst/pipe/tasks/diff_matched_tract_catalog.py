@@ -43,7 +43,7 @@ from enum import Enum
 import numpy as np
 import pandas as pd
 from scipy.stats import iqr
-from typing import Dict, Sequence, Set
+from typing import Dict, Sequence
 
 
 def is_sequence_set(x: Sequence):
@@ -136,13 +136,17 @@ class MatchedCatalogFluxesConfig(pexConfig.Config):
         doc="List of target catalog flux error column names",
     )
 
+    # this should be an orderedset
     @property
-    def columns_in_ref(self) -> Set[str]:
-        return {self.column_ref_flux}
+    def columns_in_ref(self) -> list[str]:
+        return [self.column_ref_flux]
 
+    # this should also be an orderedset
     @property
-    def columns_in_target(self) -> Set[str]:
-        return set(self.columns_target_flux).union(set(self.columns_target_flux_err))
+    def columns_in_target(self) -> list[str]:
+        columns = [col for col in self.columns_target_flux]
+        columns.extend(col for col in self.columns_target_flux_err if col not in columns)
+        return columns
 
 
 class DiffMatchedTractCatalogConfig(
@@ -171,7 +175,7 @@ class DiffMatchedTractCatalogConfig(
     )
 
     @property
-    def columns_in_ref(self) -> Set[str]:
+    def columns_in_ref(self) -> list[str]:
         columns_all = [self.coord_format.column_ref_coord1, self.coord_format.column_ref_coord2,
                        self.column_ref_extended]
         for column_lists in (
@@ -186,11 +190,12 @@ class DiffMatchedTractCatalogConfig(
         return set(columns_all)
 
     @property
-    def columns_in_target(self) -> Set[str]:
+    def columns_in_target(self) -> list[str]:
         columns_all = [self.coord_format.column_target_coord1, self.coord_format.column_target_coord2,
                        self.column_target_extended]
         if self.coord_format.coords_ref_to_convert is not None:
-            columns_all.extend(self.coord_format.coords_ref_to_convert.values())
+            columns_all.extend(col for col in self.coord_format.coords_ref_to_convert.values()
+                               if col not in columns_all)
         for column_lists in (
             (
                 self.columns_target_coord_err,
@@ -201,10 +206,11 @@ class DiffMatchedTractCatalogConfig(
             (x.columns_in_target for x in self.columns_flux.values()),
         ):
             for column_list in column_lists:
-                columns_all.extend(column_list)
-        return set(columns_all)
+                columns_all.extend(col for col in column_list if col not in columns_all)
+        return columns_all
 
     columns_flux = pexConfig.ConfigDictField(
+        doc="Configs for flux columns for each band",
         keytype=str,
         itemtype=MatchedCatalogFluxesConfig,
     )
@@ -639,7 +645,7 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         cat_left = cat_target.iloc[matched_row]
         has_index_left = cat_left.index.name is not None
         cat_right = cat_ref[matched_ref].reset_index()
-        cat_matched = pd.concat(objs=(cat_left.reset_index(drop=True), cat_right), axis=1)
+        cat_matched = pd.concat(objs=(cat_left.reset_index(drop=True), cat_right), axis=1, sort=False)
         if has_index_left:
             cat_matched.index = cat_left.index
         cat_matched.columns.values[len(cat_target.columns):] = [f'refcat_{col}' for col in cat_right.columns]
