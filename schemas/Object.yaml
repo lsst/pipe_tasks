@@ -659,6 +659,8 @@ flags:
     - base_PixelFlags_flag_sensor_edgeCenter
     - base_PixelFlags_flag_suspect
     - base_PixelFlags_flag_suspectCenter
+    - base_PixelFlags_flag_streak
+    - base_PixelFlags_flag_streakCenter
     - base_ClassificationExtendedness_flag
     - calib_astrometry_used
     - calib_photometry_reserved

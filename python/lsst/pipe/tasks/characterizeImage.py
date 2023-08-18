@@ -51,6 +51,7 @@ from lsst.meas.deblender import SourceDeblendTask
 import lsst.meas.extensions.shapeHSM  # noqa: F401 needed for default shape plugin
 from .measurePsf import MeasurePsfTask
 from .repair import RepairTask
+from .maskStreaks import MaskStreaksTask
 from .computeExposureSummaryStats import ComputeExposureSummaryStatsTask
 from lsst.pex.exceptions import LengthError
 from lsst.utils.timer import timeMethod
@@ -224,6 +225,16 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
         dtype=str,
         default="raise",
     )
+    doMaskStreaks = pexConfig.Field(
+        doc="Mask streaks",
+        default=True,
+        dtype=bool,
+    )
+    maskStreaks = pexConfig.ConfigurableField(
+        target=MaskStreaksTask,
+        doc="Subtask for masking streaks. Only used if doMaskStreaks is True. "
+            "Adds a mask plane to an exposure, with the mask plane name set by streakMaskName.",
+    )
     idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
     def setDefaults(self):
@@ -271,6 +282,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
     e.g. as output by `~lsst.ip.isr.IsrTask`):
     - detect and measure bright sources
     - repair cosmic rays
+    - detect and mask streaks
     - measure and subtract background
     - measure PSF
 
@@ -318,6 +330,8 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         self.makeSubtask("background")
         self.makeSubtask("installSimplePsf")
         self.makeSubtask("repair")
+        if self.config.doMaskStreaks:
+            self.makeSubtask("maskStreaks")
         self.makeSubtask("measurePsf", schema=self.schema)
         # TODO DM-34769: remove this `if` block
         if self.config.doMeasurePsf and self.measurePsf.usesMatches:
@@ -429,6 +443,10 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         # perform final repair with final PSF
         self.repair.run(exposure=dmeRes.exposure)
         self.display("repair", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
+
+        # mask streaks
+        if self.config.doMaskStreaks:
+            _ = self.maskStreaks.run(dmeRes.exposure)
 
         # perform final measurement with final PSF, including measuring and applying aperture correction,
         # if wanted

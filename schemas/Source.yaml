@@ -44,13 +44,13 @@ funcs:
    # compatibility. To be removed after September 2023.
     decl:
         functor: DecColumn
-    
+
     raErr:
         functor: RAErrColumn
     decErr:
         functor: DecErrColumn
     ra_dec_Cov:
-        functor: RADecCovColumn    
+        functor: RADecCovColumn
     # One calibrated Calib flux is important:
     calibFlux:
         functor: LocalNanojansky
@@ -369,6 +369,8 @@ flags:
    - base_PixelFlags_flag_saturatedCenter
    - base_PixelFlags_flag_suspect
    - base_PixelFlags_flag_suspectCenter
+   - base_PixelFlags_flag_streak
+   - base_PixelFlags_flag_streakCenter
    - base_PsfFlux_apCorr
    - base_PsfFlux_apCorrErr
    - base_PsfFlux_area

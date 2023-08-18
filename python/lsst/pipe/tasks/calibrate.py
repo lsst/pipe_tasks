@@ -311,6 +311,10 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         # The photoRefCat connection is the name to use for the colorterms.
         self.photoCal.photoCatName = self.connections.photoRefCat
 
+        # Keep track of which footprints contain streaks
+        self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['STREAK']
+        self.measurement.plugins['base_PixelFlags'].masksFpCenter = ['STREAK']
+
 
 class CalibrateTask(pipeBase.PipelineTask):
     """Calibrate an exposure: measure sources and perform astrometric and
