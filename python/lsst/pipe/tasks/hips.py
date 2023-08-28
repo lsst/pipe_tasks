@@ -1152,7 +1152,9 @@ class GenerateHipsTask(pipeBase.PipelineTask):
 
         # And make a grayscale png as well
 
-        vals = 255 - png_mapping.map_intensity_to_uint8(image.array).astype(np.uint8)
+        with np.errstate(invalid="ignore"):
+            vals = 255 - png_mapping.map_intensity_to_uint8(image.array).astype(np.uint8)
+
         vals[~np.isfinite(image.array) | (image.array < 0)] = 0
         im = Image.fromarray(vals[::-1, :], "L")
 
