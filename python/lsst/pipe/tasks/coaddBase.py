@@ -25,6 +25,7 @@ import lsst.pex.config as pexConfig
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
 import lsst.meas.algorithms as measAlg
+import lsst.geom as geom
 
 from lsst.meas.algorithms import ScaleVarianceTask
 from .selectImages import PsfWcsSelectImagesTask
@@ -255,3 +256,43 @@ def reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):
         else:
             outputList.append(padWith)
     return outputList
+
+
+def subBBoxIter(bbox, subregionSize):
+    """Iterate over subregions of a bbox.
+
+    Parameters
+    ----------
+    bbox : `lsst.geom.Box2I`
+        Bounding box over which to iterate.
+    subregionSize : `lsst.geom.Extent2I`
+        Size of sub-bboxes.
+
+    Yields
+    ------
+    subBBox : `lsst.geom.Box2I`
+        Next sub-bounding box of size ``subregionSize`` or smaller; each ``subBBox``
+        is contained within ``bbox``, so it may be smaller than ``subregionSize`` at
+        the edges of ``bbox``, but it will never be empty.
+
+    Raises
+    ------
+    RuntimeError
+        Raised if any of the following occur:
+        - The given bbox is empty.
+        - The subregionSize is 0.
+    """
+    if bbox.isEmpty():
+        raise RuntimeError("bbox %s is empty" % (bbox,))
+    if subregionSize[0] < 1 or subregionSize[1] < 1:
+        raise RuntimeError("subregionSize %s must be nonzero" % (subregionSize,))
+
+    for rowShift in range(0, bbox.getHeight(), subregionSize[1]):
+        for colShift in range(0, bbox.getWidth(), subregionSize[0]):
+            subBBox = geom.Box2I(bbox.getMin() + geom.Extent2I(colShift, rowShift), subregionSize)
+            subBBox.clip(bbox)
+            if subBBox.isEmpty():
+                raise RuntimeError("Bug: empty bbox! bbox=%s, subregionSize=%s, "
+                                   "colShift=%s, rowShift=%s" %
+                                   (bbox, subregionSize, colShift, rowShift))
+            yield subBBox

@@ -40,8 +40,8 @@ from lsst.daf.base import PropertyList
 from lsst.geom import Extent2I
 from lsst.pex.config import ChoiceField, Config, ConfigurableField, DictField, Field, ListField
 from lsst.pipe.base import PipelineTaskConfig, PipelineTaskConnections, Struct, Task
+from lsst.pipe.tasks.coaddBase import subBBoxIter
 from lsst.pipe.base.connectionTypes import Input, Output
-from lsst.pipe.tasks.assembleCoadd import AssembleCoaddTask
 
 
 @dataclass
@@ -361,7 +361,7 @@ class StackBrightStarsTask(Task):
         ext_psf = MaskedImageF(example_stamp.getBBox())
         # divide model image into smaller subregions
         subregion_size = Extent2I(*self.config.subregion_size)
-        sub_bboxes = AssembleCoaddTask._subBBoxIter(ext_psf.getBBox(), subregion_size)
+        sub_bboxes = subBBoxIter(ext_psf.getBBox(), subregion_size)
         # compute approximate number of subregions
         n_subregions = ((ext_psf.getDimensions()[0]) // (subregion_size[0] + 1)) * (
             (ext_psf.getDimensions()[1]) // (subregion_size[1] + 1)

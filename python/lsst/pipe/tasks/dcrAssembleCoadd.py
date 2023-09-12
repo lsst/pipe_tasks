@@ -39,7 +39,7 @@ from .assembleCoadd import (AssembleCoaddConnections,
                             AssembleCoaddTask,
                             CompareWarpAssembleCoaddConfig,
                             CompareWarpAssembleCoaddTask)
-from .coaddBase import makeSkyInfo
+from .coaddBase import makeSkyInfo, subBBoxIter
 from .measurePsf import MeasurePsfTask
 
 
@@ -569,7 +569,7 @@ class DcrAssembleCoaddTask(CompareWarpAssembleCoaddTask):
         nSubregions = (ceil(skyInfo.bbox.getHeight()/subregionSize[1])
                        * ceil(skyInfo.bbox.getWidth()/subregionSize[0]))
         subIter = 0
-        for subBBox in self._subBBoxIter(skyInfo.bbox, subregionSize):
+        for subBBox in subBBoxIter(skyInfo.bbox, subregionSize):
             modelIter = 0
             subIter += 1
             self.log.info("Computing coadd over patch %s subregion %s of %s: %s",
