@@ -51,6 +51,8 @@ import lsst.geom as geom
 from lsst.afw.geom import makeHpxWcs
 from lsst.resources import ResourcePath
 
+from .healSparseMapping import _is_power_of_two
+
 
 class HighResolutionHipsConnections(pipeBase.PipelineTaskConnections,
                                     dimensions=("healpix9", "band"),
@@ -829,8 +831,9 @@ class GenerateHipsConfig(pipeBase.PipelineTaskConfig,
     )
     allsky_tilesize = pexConfig.Field(
         dtype=int,
-        doc="Allsky.png tile size. Must be power of 2.",
-        default=512,
+        doc="Allsky tile size; must be power of 2. HiPS standard recommends 64x64 tiles.",
+        default=64,
+        check=_is_power_of_two,
     )
     png_gray_asinh_minimum = pexConfig.Field(
         doc="AsinhMapping intensity to be mapped to black for grayscale png scaling.",
