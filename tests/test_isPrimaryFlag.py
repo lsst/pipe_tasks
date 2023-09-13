@@ -254,6 +254,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
             catalog=catalog,
             band="test",
             psfModel=coadds["test"].getPsf(),
+            maskImage=coadds["test"].mask,
             redistributeImage=None,
         )
         # measure
