@@ -1535,7 +1535,20 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             HEALPix order of the minimum order to make allsky file.
         """
         tile_size = self.config.allsky_tilesize
-        n_tiles_per_side = int(np.sqrt(hpg.nside_to_npixel(hpg.order_to_nside(allsky_order))))
+
+        # The Allsky file format is described in
+        # https://www.ivoa.net/documents/HiPS/20170519/REC-HIPS-1.0-20170519.pdf
+        # From S4.3.2:
+        # The Allsky file is built as an array of tiles, stored side by side in
+        # the left-to-right order. The width of this array must be the square
+        # root of the number of the tiles of the order. For instance, the width
+        # of this array at order 3 is 27 ( (int)sqrt(768) ). To avoid having a
+        # too large Allsky file, the resolution of each tile may be reduced but
+        # must stay a power of two (typically 64x64 pixels rather than 512x512).
+
+        n_tiles = hpg.nside_to_npixel(hpg.order_to_nside(allsky_order))
+        n_tiles_wide = int(np.floor(np.sqrt(n_tiles)))
+        n_tiles_high = int(np.ceil(n_tiles / n_tiles_wide))
 
         allsky_image = None
 
@@ -1552,15 +1565,15 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             matches = re.match(pixel_regex, png_uri.basename())
             pix_num = int(matches.group(1))
             tile_image = Image.open(io.BytesIO(png_uri.read()))
-            row = math.floor(pix_num//n_tiles_per_side)
-            column = pix_num % n_tiles_per_side
+            row = math.floor(pix_num//n_tiles_wide)
+            column = pix_num % n_tiles_wide
             box = (column*tile_size, row*tile_size, (column + 1)*tile_size, (row + 1)*tile_size)
             tile_image_shrunk = tile_image.resize((tile_size, tile_size))
 
             if allsky_image is None:
                 allsky_image = Image.new(
                     tile_image.mode,
-                    (n_tiles_per_side*tile_size, n_tiles_per_side*tile_size),
+                    (n_tiles_wide*tile_size, n_tiles_high*tile_size),
                 )
             allsky_image.paste(tile_image_shrunk, box)
 
