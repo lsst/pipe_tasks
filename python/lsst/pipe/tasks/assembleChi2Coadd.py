@@ -32,7 +32,6 @@ from lsst.meas.base import SkyMapIdGeneratorConfig
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
-import lsst.utils as utils
 
 
 log = logging.getLogger(__name__)
@@ -183,7 +182,6 @@ class AssembleChi2CoaddTask(pipeBase.PipelineTask):
         result.array[:] = mask
         return result
 
-    @utils.inheritDoc(pipeBase.PipelineTask)
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         outputs = self.run(**inputs)

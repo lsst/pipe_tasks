@@ -407,7 +407,6 @@ class AssembleCoaddTask(CoaddBaseTask, pipeBase.PipelineTask):
 
         self.warpType = self.config.warpType
 
-    @utils.inheritDoc(pipeBase.PipelineTask)
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputData = butlerQC.get(inputRefs)
 
