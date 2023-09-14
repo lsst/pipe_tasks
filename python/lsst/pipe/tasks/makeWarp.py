@@ -317,9 +317,13 @@ class MakeWarpTask(CoaddBaseTask):
 
     @utils.inheritDoc(pipeBase.PipelineTask)
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        # Obtain the list of input detectors from calExpList.  Sort them by
-        # detector order (to ensure reproducibility).  Then ensure all input
-        # lists are in the same sorted detector order.
+        # Docstring to be augmented with info from PipelineTask.runQuantum
+        """Notes
+        -----
+        Obtain the list of input detectors from calExpList.  Sort them by
+        detector order (to ensure reproducibility).  Then ensure all input
+        lists are in the same sorted detector order.
+        """
         detectorOrder = [ref.datasetRef.dataId['detector'] for ref in inputRefs.calExpList]
         detectorOrder.sort()
         inputRefs = reorderRefs(inputRefs, detectorOrder, dataIdKey='detector')

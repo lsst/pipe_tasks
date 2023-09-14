@@ -1499,7 +1499,9 @@ class CompareWarpAssembleCoaddTask(AssembleCoaddTask):
     @timeMethod
     def run(self, skyInfo, tempExpRefList, imageScalerList, weightList,
             supplementaryData):
-        """Assemble the coadd.
+        """Notes
+        -----
+        Assemble the coadd.
 
         Find artifacts and apply them to the warps' masks creating a list of
         alternative masks with a new "CLIPPED" plane and updated "NO_DATA"
