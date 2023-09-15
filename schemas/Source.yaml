@@ -37,7 +37,6 @@ funcs:
     # x_y_Cov: not available
     ra:
         functor: RAColumn
-    # raErr: not available yet DM-15180
     dec:
         functor: DecColumn
 
@@ -45,9 +44,13 @@ funcs:
    # compatibility. To be removed after September 2023.
     decl:
         functor: DecColumn
-
-    # decErr: not available yet DM-15180
-    # ra_dec_Cov: not available yet
+    
+    raErr:
+        functor: RAErrColumn
+    decErr:
+        functor: DecErrColumn
+    ra_dec_Cov:
+        functor: RADecCovColumn    
     # One calibrated Calib flux is important:
     calibFlux:
         functor: LocalNanojansky

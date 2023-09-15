@@ -708,6 +708,40 @@ class DecColumn(CoordColumn):
         return super().__call__(catalog, **kwargs)
 
 
+class RAErrColumn(CoordColumn):
+    """Uncertainty in Right Ascension, in degrees."""
+    name = 'RAErr'
+    _defaultNoDup = True
+
+    def __init__(self, **kwargs):
+        super().__init__('coord_raErr', **kwargs)
+
+
+class DecErrColumn(CoordColumn):
+    """Uncertainty in declination, in degrees."""
+    name = 'DecErr'
+    _defaultNoDup = True
+
+    def __init__(self, **kwargs):
+        super().__init__('coord_decErr', **kwargs)
+
+
+class RADecCovColumn(Column):
+    """Coordinate covariance column, in degrees."""
+    _radians = True
+    name = 'RADecCov'
+    _defaultNoDup = True
+
+    def __init__(self, **kwargs):
+        super().__init__('coord_ra_dec_Cov', **kwargs)
+
+    def _func(self, df):
+        # Must not modify original column in case that column is used by
+        # another functor.
+        output = df[self.col]*(180/np.pi)**2 if self._radians else df[self.col]
+        return output
+
+
 class HtmIndex20(Functor):
     """Compute the level 20 HtmIndex for the catalog.
 

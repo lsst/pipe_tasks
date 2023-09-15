@@ -18,6 +18,18 @@ funcs:
         # coord_dec because "dec" is reserved in most SQL DBs
         functor: DecColumn
         dataset: ref
+    coord_raErr:
+        # error in reference position for merged "ref" cat.
+        functor: RAErrColumn
+        dataset: ref
+    coord_decErr:
+        # error in reference position for merged "ref" cat.
+        functor: DecErrColumn
+        dataset: ref
+    coord_ra_dec_Cov:
+        # covariance in reference position for merged "ref" cat.
+        functor: RADecCovColumn
+        dataset: ref
     ra:
         functor: CoordColumn
         args: coord_ra
@@ -34,8 +46,18 @@ funcs:
         args: coord_dec
         dataset: meas
 
-    # raErr:  not available yet DM-15180
-    # decErr: not available yet DM-15180
+    raErr:
+        functor: RAErrColumn
+        dataset: meas
+        noDup: False
+    decErr:
+        functor: DecErrColumn
+        dataset: meas
+        noDup: False
+    ra_dec_Cov:
+        functor: RADecCovColumn
+        dataset: meas
+        noDup: False
     # Reference band is same for all measurements
     refBand:
         functor: ReferenceBand
