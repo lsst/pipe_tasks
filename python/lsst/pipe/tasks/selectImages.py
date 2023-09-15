@@ -25,7 +25,6 @@ __all__ = ["BaseSelectImagesTask", "BaseExposureInfo", "WcsSelectImagesTask", "P
 
 import numpy as np
 import lsst.sphgeom
-import lsst.utils as utils
 import lsst.pex.config as pexConfig
 import lsst.pex.exceptions as pexExceptions
 import lsst.geom as geom
@@ -635,7 +634,6 @@ class BestSeeingQuantileSelectVisitsTask(BestSeeingSelectVisitsTask):
     ConfigClass = BestSeeingQuantileSelectVisitsConfig
     _DefaultName = 'bestSeeingQuantileSelectVisits'
 
-    @utils.inheritDoc(BestSeeingSelectVisitsTask)
     def run(self, visitSummaries, skyMap, dataId):
         if self.config.doConfirmOverlap:
             patchPolygon = self.makePatchPolygon(skyMap, dataId)
