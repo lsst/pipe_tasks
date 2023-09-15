@@ -85,7 +85,7 @@ class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instru
 
     astromRefCat = cT.PrerequisiteInput(
         doc="Reference catalog to use for astrometry",
-        name="gaia_dr2_20200414",
+        name="gaia_dr3_20230707",
         storageClass="SimpleCatalog",
         dimensions=("skypix",),
         deferLoad=True,

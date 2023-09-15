@@ -41,7 +41,7 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
 
     astrometry_ref_cat = connectionTypes.PrerequisiteInput(
         doc="Reference catalog to use for astrometric calibration.",
-        name="gaia_dr2_20200414",
+        name="gaia_dr3_20230707",
         storageClass="SimpleCatalog",
         dimensions=("skypix",),
         deferLoad=True,

@@ -279,7 +279,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         # inputs
         butlerTests.addDatasetType(self.repo, "postISRCCD", {"instrument", "exposure", "detector"},
                                    "ExposureF")
-        butlerTests.addDatasetType(self.repo, "gaia_dr2_20200414", {"htm7"}, "SimpleCatalog")
+        butlerTests.addDatasetType(self.repo, "gaia_dr3_20230707", {"htm7"}, "SimpleCatalog")
         butlerTests.addDatasetType(self.repo, "ps1_pv3_3pi_20170110", {"htm7"}, "SimpleCatalog")
 
         # outputs
@@ -316,7 +316,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         # put empty data
         self.butler = butlerTests.makeTestCollection(self.repo)
         self.butler.put(afwImage.ExposureF(), "postISRCCD", self.exposure_id)
-        self.butler.put(afwTable.SimpleCatalog(), "gaia_dr2_20200414", self.htm_id)
+        self.butler.put(afwTable.SimpleCatalog(), "gaia_dr3_20230707", self.htm_id)
         self.butler.put(afwTable.SimpleCatalog(), "ps1_pv3_3pi_20170110", self.htm_id)
 
     def tearDown(self):
@@ -344,7 +344,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         mock_run = lsst.pipe.base.testUtils.runTestQuantum(task, self.butler, quantum)
 
         # Ensure the reference loaders have been configured.
-        self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr2_20200414")
+        self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr3_20230707")
         self.assertEqual(task.photometry.match.refObjLoader.name, "ps1_pv3_3pi_20170110")
         # Check that the proper kwargs are passed to run().
         self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposure"})
@@ -369,7 +369,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         mock_run = lsst.pipe.base.testUtils.runTestQuantum(task, self.butler, quantum)
 
         # Ensure the reference loaders have been configured.
-        self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr2_20200414")
+        self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr3_20230707")
         self.assertEqual(task.photometry.match.refObjLoader.name, "ps1_pv3_3pi_20170110")
         # Check that the proper kwargs are passed to run().
         self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposure"})
