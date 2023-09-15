@@ -43,7 +43,7 @@ from enum import Enum
 import numpy as np
 import pandas as pd
 from scipy.stats import iqr
-from typing import Dict, Sequence, Set
+from typing import Dict, Sequence
 
 
 def is_sequence_set(x: Sequence):
@@ -136,13 +136,17 @@ class MatchedCatalogFluxesConfig(pexConfig.Config):
         doc="List of target catalog flux error column names",
     )
 
+    # this should be an orderedset
     @property
-    def columns_in_ref(self) -> Set[str]:
-        return {self.column_ref_flux}
+    def columns_in_ref(self) -> list[str]:
+        return [self.column_ref_flux]
 
+    # this should also be an orderedset
     @property
-    def columns_in_target(self) -> Set[str]:
-        return set(self.columns_target_flux).union(set(self.columns_target_flux_err))
+    def columns_in_target(self) -> list[str]:
+        columns = [col for col in self.columns_target_flux]
+        columns.extend(col for col in self.columns_target_flux_err if col not in columns)
+        return columns
 
 
 class DiffMatchedTractCatalogConfig(
@@ -171,7 +175,7 @@ class DiffMatchedTractCatalogConfig(
     )
 
     @property
-    def columns_in_ref(self) -> Set[str]:
+    def columns_in_ref(self) -> list[str]:
         columns_all = [self.coord_format.column_ref_coord1, self.coord_format.column_ref_coord2,
                        self.column_ref_extended]
         for column_lists in (
@@ -186,11 +190,12 @@ class DiffMatchedTractCatalogConfig(
         return set(columns_all)
 
     @property
-    def columns_in_target(self) -> Set[str]:
+    def columns_in_target(self) -> list[str]:
         columns_all = [self.coord_format.column_target_coord1, self.coord_format.column_target_coord2,
                        self.column_target_extended]
         if self.coord_format.coords_ref_to_convert is not None:
-            columns_all.extend(self.coord_format.coords_ref_to_convert.values())
+            columns_all.extend(col for col in self.coord_format.coords_ref_to_convert.values()
+                               if col not in columns_all)
         for column_lists in (
             (
                 self.columns_target_coord_err,
@@ -201,84 +206,75 @@ class DiffMatchedTractCatalogConfig(
             (x.columns_in_target for x in self.columns_flux.values()),
         ):
             for column_list in column_lists:
-                columns_all.extend(column_list)
-        return set(columns_all)
+                columns_all.extend(col for col in column_list if col not in columns_all)
+        return columns_all
 
     columns_flux = pexConfig.ConfigDictField(
+        doc="Configs for flux columns for each band",
         keytype=str,
         itemtype=MatchedCatalogFluxesConfig,
-        doc="Configs for flux columns for each band",
     )
-    columns_ref_copy = pexConfig.ListField(
-        dtype=str,
-        default=set(),
-        doc='Reference table columns to copy to copy into cat_matched',
+    columns_ref_copy = pexConfig.ListField[str](
+        doc='Reference table columns to copy into cat_matched',
+        default=[],
+        listCheck=is_sequence_set,
     )
-    columns_target_coord_err = pexConfig.ListField(
-        dtype=str,
-        listCheck=lambda x: (len(x) == 2) and (x[0] != x[1]),
+    columns_target_coord_err = pexConfig.ListField[str](
         doc='Target table coordinate columns with standard errors (sigma)',
+        listCheck=lambda x: (len(x) == 2) and (x[0] != x[1]),
     )
-    columns_target_copy = pexConfig.ListField(
-        dtype=str,
+    columns_target_copy = pexConfig.ListField[str](
+        doc='Target table columns to copy into cat_matched',
         default=('patch',),
-        doc='Target table columns to copy to copy into cat_matched',
+        listCheck=is_sequence_set,
     )
-    columns_target_select_true = pexConfig.ListField(
-        dtype=str,
-        default=('detect_isPrimary',),
+    columns_target_select_true = pexConfig.ListField[str](
         doc='Target table columns to require to be True for selecting sources',
+        default=('detect_isPrimary',),
+        listCheck=is_sequence_set,
     )
-    columns_target_select_false = pexConfig.ListField(
-        dtype=str,
-        default=('merge_peak_sky',),
+    columns_target_select_false = pexConfig.ListField[str](
         doc='Target table columns to require to be False for selecting sources',
+        default=('merge_peak_sky',),
+        listCheck=is_sequence_set,
     )
-    coord_format = pexConfig.ConfigField(
-        dtype=ConvertCatalogCoordinatesConfig,
+    coord_format = pexConfig.ConfigField[ConvertCatalogCoordinatesConfig](
         doc="Configuration for coordinate conversion",
     )
-    extendedness_cut = pexConfig.Field(
+    extendedness_cut = pexConfig.Field[float](
         dtype=float,
         default=0.5,
         doc='Minimum extendedness for a measured source to be considered extended',
     )
-    mag_num_bins = pexConfig.Field(
+    mag_num_bins = pexConfig.Field[int](
         doc='Number of magnitude bins',
         default=15,
-        dtype=int,
     )
-    mag_brightest_ref = pexConfig.Field(
-        dtype=float,
-        default=15,
+    mag_brightest_ref = pexConfig.Field[float](
         doc='Brightest magnitude cutoff for binning',
+        default=15,
     )
-    mag_ceiling_target = pexConfig.Field(
-        dtype=float,
+    mag_ceiling_target = pexConfig.Field[float](
+        doc='Ceiling (maximum/faint) magnitude for target sources',
         default=None,
         optional=True,
-        doc='Ceiling (maximum/faint) magnitude for target sources',
     )
-    mag_faintest_ref = pexConfig.Field(
-        dtype=float,
-        default=30,
+    mag_faintest_ref = pexConfig.Field[float](
         doc='Faintest magnitude cutoff for binning',
+        default=30,
     )
-    mag_zeropoint_ref = pexConfig.Field(
-        dtype=float,
-        default=31.4,
+    mag_zeropoint_ref = pexConfig.Field[float](
         doc='Magnitude zeropoint for reference sources',
-    )
-    mag_zeropoint_target = pexConfig.Field(
-        dtype=float,
         default=31.4,
-        doc='Magnitude zeropoint for target sources',
     )
-    percentiles = pexConfig.ListField(
-        dtype=str,
+    mag_zeropoint_target = pexConfig.Field[float](
+        doc='Magnitude zeropoint for target sources',
+        default=31.4,
+    )
+    percentiles = pexConfig.ListField[str](
+        doc='Percentiles to compute for diff/chi values',
         # -2, -1, +1, +2 sigma percentiles for normal distribution
         default=('2.275', '15.866', '84.134', '97.725'),
-        doc='Percentiles to compute for diff/chi values',
         itemCheck=is_percentile,
         listCheck=is_sequence_set,
     )
@@ -649,7 +645,7 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         cat_left = cat_target.iloc[matched_row]
         has_index_left = cat_left.index.name is not None
         cat_right = cat_ref[matched_ref].reset_index()
-        cat_matched = pd.concat(objs=(cat_left.reset_index(drop=True), cat_right), axis=1)
+        cat_matched = pd.concat(objs=(cat_left.reset_index(drop=True), cat_right), axis=1, sort=False)
         if has_index_left:
             cat_matched.index = cat_left.index
         cat_matched.columns.values[len(cat_target.columns):] = [f'refcat_{col}' for col in cat_right.columns]
