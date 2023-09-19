@@ -171,10 +171,10 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
     )
     doWriteMatchesDenormalized = pexConfig.Field(
         dtype=bool,
-        default=False,
+        default=True,
         doc=("Write reference matches in denormalized format? "
              "This format uses more disk space, but is more convenient to "
-             "read. Ignored if doWriteMatches=False or doWrite=False."),
+             "read for debugging. Ignored if doWriteMatches=False or doWrite=False."),
     )
     doAstrometry = pexConfig.Field(
         dtype=bool,
