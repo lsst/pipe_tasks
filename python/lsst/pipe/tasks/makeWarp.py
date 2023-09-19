@@ -271,7 +271,7 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
     doApplyFinalizedPsf = pexConfig.Field(
         doc="Whether to apply finalized psf models and aperture correction map.",
         dtype=bool,
-        default=True,
+        default=False,
         # TODO: remove on DM-39854.
         deprecated="Deprecated in favor of useVisitSummaryPsf.  Will be removed after v26.",
     )
