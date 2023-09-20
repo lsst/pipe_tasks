@@ -447,10 +447,12 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
                                            'base_Variance',
                                            'base_LocalPhotoCalib',
                                            'base_LocalWcs']
-        self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['CLIPPED', 'SENSOR_EDGE',
-                                                                       'INEXACT_PSF', 'STREAK']
-        self.measurement.plugins['base_PixelFlags'].masksFpCenter = ['CLIPPED', 'SENSOR_EDGE',
-                                                                     'INEXACT_PSF', 'STREAK']
+        self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = [
+            'CLIPPED', 'SENSOR_EDGE', 'INEXACT_PSF', 'STREAK', 'INJECTED'
+        ]
+        self.measurement.plugins['base_PixelFlags'].masksFpCenter = [
+            'CLIPPED', 'SENSOR_EDGE', 'INEXACT_PSF', 'STREAK', 'INJECTED_CORE'
+        ]
 
 
 class MeasureMergedCoaddSourcesTask(PipelineTask):
