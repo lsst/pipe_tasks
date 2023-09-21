@@ -107,6 +107,9 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # We don't have many test points, so can't match on complicated shapes.
         self.config.astrometry.matcher.numPointsForShape = 3
 
+        # Something about this test dataset prefers the older fluxRatio here.
+        self.config.star_catalog_calculation.plugins['base_ClassificationExtendedness'].fluxRatio = 0.925
+
     def test_run(self):
         """Test that run() returns reasonable values to be butler put.
         """

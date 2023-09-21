@@ -171,10 +171,10 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
     )
     doWriteMatchesDenormalized = pexConfig.Field(
         dtype=bool,
-        default=False,
+        default=True,
         doc=("Write reference matches in denormalized format? "
              "This format uses more disk space, but is more convenient to "
-             "read. Ignored if doWriteMatches=False or doWrite=False."),
+             "read for debugging. Ignored if doWriteMatches=False or doWrite=False."),
     )
     doAstrometry = pexConfig.Field(
         dtype=bool,
@@ -303,8 +303,6 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
 
     def setDefaults(self):
         super().setDefaults()
-        self.detection.doTempLocalBackground = False
-        self.deblend.maxFootprintSize = 2000
         self.postCalibrationMeasurement.plugins.names = ["base_LocalPhotoCalib", "base_LocalWcs"]
         self.postCalibrationMeasurement.doReplaceWithNoise = False
         for key in self.postCalibrationMeasurement.slots:
