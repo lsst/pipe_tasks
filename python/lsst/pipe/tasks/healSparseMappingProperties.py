@@ -29,6 +29,7 @@ __all__ = ["BasePropertyMapConfig", "PropertyMapRegistry", "register_property_ma
 
 import numpy as np
 import healsparse as hsp
+import copy
 
 import lsst.pex.config as pexConfig
 import lsst.geom
@@ -209,6 +210,9 @@ class BasePropertyMap:
     dtype = np.float64
     requires_psf = False
 
+    description = ""
+    unit = ""
+
     ConfigClass = BasePropertyMapConfig
 
     registry = PropertyMapRegistry(BasePropertyMapConfig)
@@ -229,26 +233,45 @@ class BasePropertyMap:
         nside : `int`
             Healpix nside of the property map.
         """
+        base_metadata = {
+            "DESCRIPTION": self.description,
+            "UNIT": self.unit,
+        }
         if self.config.do_min:
+            metadata = copy.copy(base_metadata)
+            metadata["OPERATION"] = "minimum"
             self.min_map = hsp.HealSparseMap.make_empty(nside_coverage,
                                                         nside,
-                                                        self.dtype)
+                                                        self.dtype,
+                                                        metadata=metadata)
         if self.config.do_max:
+            metadata = copy.copy(base_metadata)
+            metadata["OPERATION"] = "maximum"
             self.max_map = hsp.HealSparseMap.make_empty(nside_coverage,
                                                         nside,
-                                                        self.dtype)
+                                                        self.dtype,
+                                                        metadata=metadata)
         if self.config.do_mean:
+            metadata = copy.copy(base_metadata)
+            metadata["OPERATION"] = "mean"
             self.mean_map = hsp.HealSparseMap.make_empty(nside_coverage,
                                                          nside,
-                                                         self.dtype)
+                                                         self.dtype,
+                                                         metadata=metadata)
         if self.config.do_weighted_mean:
+            metadata = copy.copy(base_metadata)
+            metadata["OPERATION"] = "weighted mean"
             self.weighted_mean_map = hsp.HealSparseMap.make_empty(nside_coverage,
                                                                   nside,
-                                                                  self.dtype)
+                                                                  self.dtype,
+                                                                  metadata=metadata)
         if self.config.do_sum:
+            metadata = copy.copy(base_metadata)
+            metadata["OPERATION"] = "sum"
             self.sum_map = hsp.HealSparseMap.make_empty(nside_coverage,
                                                         nside,
-                                                        self.dtype)
+                                                        self.dtype,
+                                                        metadata=metadata)
 
     def initialize_values(self, n_pixels):
         """Initialize the value arrays for accumulation.

@@ -978,7 +978,9 @@ class ConsolidateHealSparsePropertyMapTask(pipeBase.PipelineTask):
                     input_map.nside_sparse,
                     input_map.dtype,
                     sentinel=input_map._sentinel,
-                    cov_pixels=cov_pix)
+                    cov_pixels=cov_pix,
+                    metadata=input_map.metadata,
+                )
 
             # Only use pixels that are properly inside the tract.
             vpix, ra, dec = input_map.valid_pixels_pos(return_pixels=True)
