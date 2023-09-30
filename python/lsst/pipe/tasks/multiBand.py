@@ -31,6 +31,7 @@ from lsst.meas.base import (
     CatalogCalculationTask,
     SkyMapIdGeneratorConfig,
 )
+from lsst.meas.extensions.scarlet.io import updateCatalogFootprints
 from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
 from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
 from lsst.pipe.tasks.propagateSourceFlags import PropagateSourceFlagsTask
@@ -559,16 +560,16 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         if self.config.doAddFootprints:
             modelData = inputs.pop('scarletModels')
             if self.config.doConserveFlux:
-                redistributeImage = inputs['exposure'].image
+                imageForResdistibution = inputs['exposure']
             else:
-                redistributeImage = None
-            modelData.updateCatalogFootprints(
+                imageForResdistibution = None
+            updateCatalogFootprints(
+                modelData=modelData,
                 catalog=sources,
                 band=inputRefs.exposure.dataId["band"],
-                psfModel=inputs['exposure'].getPsf(),
-                maskImage=inputs['exposure'].mask,
-                redistributeImage=redistributeImage,
+                imageForResdistibution=imageForResdistibution,
                 removeScarletData=True,
+                updateFluxColumns=True,
             )
         table = sources.getTable()
         table.setMetadata(self.algMetadata)  # Capture algorithm metadata to write out to the source catalog.

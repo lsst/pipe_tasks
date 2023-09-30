@@ -33,6 +33,7 @@ from lsst.utils import getPackageDir
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
 from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 from lsst.meas.algorithms import SourceDetectionTask, SkyObjectsTask
+import lsst.meas.extensions.scarlet as mes
 from lsst.meas.extensions.scarlet.scarletDeblendTask import ScarletDeblendTask
 from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask, getPseudoSources
@@ -251,12 +252,13 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         # deblend
         catalog, modelData = deblendTask.run(coadds, catalog)
         # Attach footprints to the catalog
-        modelData.updateCatalogFootprints(
+        mes.io.updateCatalogFootprints(
+            modelData=modelData,
             catalog=catalog,
             band="test",
-            psfModel=coadds["test"].getPsf(),
-            maskImage=coadds["test"].mask,
-            redistributeImage=None,
+            imageForResdistibution=coadds["test"],
+            removeScarletData=True,
+            updateFluxColumns=True,
         )
         # measure
         measureTask.run(catalog, self.exposure)
