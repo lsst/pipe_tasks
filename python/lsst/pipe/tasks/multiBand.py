@@ -560,14 +560,14 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         if self.config.doAddFootprints:
             modelData = inputs.pop('scarletModels')
             if self.config.doConserveFlux:
-                imageForResdistibution = inputs['exposure']
+                imageForRedistribution = inputs['exposure']
             else:
-                imageForResdistibution = None
+                imageForRedistribution = None
             updateCatalogFootprints(
                 modelData=modelData,
                 catalog=sources,
                 band=inputRefs.exposure.dataId["band"],
-                imageForResdistibution=imageForResdistibution,
+                imageForRedistribution=imageForRedistribution,
                 removeScarletData=True,
                 updateFluxColumns=True,
             )

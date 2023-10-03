@@ -255,8 +255,13 @@ class MergeMeasurementsTask(pipeBase.PipelineTask):
                     if hasPseudoFilter:
                         break
 
-                isBad = any(inputRecord.get(flag) for flag in self.badFlags)
-                if isBad or inputRecord.get(self.fluxFlagKey) or inputRecord.get(self.instFluxErrKey) == 0:
+                isBad = (
+                    any(inputRecord.get(flag) for flag in self.badFlags)
+                    or inputRecord["deblend_dataCoverage"] == 0
+                    or inputRecord.get(self.fluxFlagKey)
+                    or inputRecord.get(self.instFluxErrKey) == 0
+                )
+                if isBad:
                     sn = 0.
                 else:
                     sn = inputRecord.get(self.instFluxKey)/inputRecord.get(self.instFluxErrKey)
