@@ -256,7 +256,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
             modelData=modelData,
             catalog=catalog,
             band="test",
-            imageForResdistibution=coadds["test"],
+            imageForRedistribution=coadds["test"],
             removeScarletData=True,
             updateFluxColumns=True,
         )
