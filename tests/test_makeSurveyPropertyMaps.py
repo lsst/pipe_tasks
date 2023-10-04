@@ -27,6 +27,7 @@ import healsparse as hsp
 import esutil
 import warnings
 import logging
+from astropy import units
 
 import lsst.utils.tests
 import lsst.daf.butler
@@ -50,6 +51,8 @@ from surveyPropertyMapsTestUtils import makeMockVisitSummary
 class DistTimesPsfAreaPropertyMap(BasePropertyMap):
     """Property map to compute the distance from the boresight center
     by the psf area. Do not try this at home."""
+    description = "Distance times psf area"
+    unit = "deg*pixel**2"
     requires_psf = True
 
     def _compute(self, row, ra, dec, scalings, psf_array=None):
@@ -190,26 +193,51 @@ class HealSparsePropertyMapTaskTestCase(lsst.utils.tests.TestCase):
             if map_config.do_min:
                 self.assertTrue(hasattr(property_map, 'min_map'))
                 np.testing.assert_array_equal(property_map.min_map.valid_pixels, valid_pixels)
+                metadata = property_map.min_map.metadata
+                self.assertIsNotNone(metadata["DESCRIPTION"])
+                self.assertEqual(metadata["OPERATION"], "minimum")
+                unit = units.Unit(metadata["UNIT"])
+                self.assertIsNotNone(unit)
             else:
                 self.assertFalse(hasattr(property_map, 'min_map'))
             if map_config.do_max:
                 self.assertTrue(hasattr(property_map, 'max_map'))
                 np.testing.assert_array_equal(property_map.max_map.valid_pixels, valid_pixels)
+                metadata = property_map.max_map.metadata
+                self.assertIsNotNone(metadata["DESCRIPTION"])
+                self.assertEqual(metadata["OPERATION"], "maximum")
+                unit = units.Unit(metadata["UNIT"])
+                self.assertIsNotNone(unit)
             else:
                 self.assertFalse(hasattr(property_map, 'max_map'))
             if map_config.do_mean:
                 self.assertTrue(hasattr(property_map, 'mean_map'))
                 np.testing.assert_array_equal(property_map.mean_map.valid_pixels, valid_pixels)
+                metadata = property_map.mean_map.metadata
+                self.assertIsNotNone(metadata["DESCRIPTION"])
+                self.assertEqual(metadata["OPERATION"], "mean")
+                unit = units.Unit(metadata["UNIT"])
+                self.assertIsNotNone(unit)
             else:
                 self.assertFalse(hasattr(property_map, 'mean_map'))
             if map_config.do_weighted_mean:
                 self.assertTrue(hasattr(property_map, 'weighted_mean_map'))
                 np.testing.assert_array_equal(property_map.weighted_mean_map.valid_pixels, valid_pixels)
+                metadata = property_map.weighted_mean_map.metadata
+                self.assertIsNotNone(metadata["DESCRIPTION"])
+                self.assertEqual(metadata["OPERATION"], "weighted mean")
+                unit = units.Unit(metadata["UNIT"])
+                self.assertIsNotNone(unit)
             else:
                 self.assertFalse(hasattr(property_map, 'weighted_mean_map'))
             if map_config.do_sum:
                 self.assertTrue(hasattr(property_map, 'sum_map'))
                 np.testing.assert_array_equal(property_map.sum_map.valid_pixels, valid_pixels)
+                metadata = property_map.sum_map.metadata
+                self.assertIsNotNone(metadata["DESCRIPTION"])
+                self.assertEqual(metadata["OPERATION"], "sum")
+                unit = units.Unit(metadata["UNIT"])
+                self.assertIsNotNone(unit)
             else:
                 self.assertFalse(hasattr(property_map, 'sum_map'))
 

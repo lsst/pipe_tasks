@@ -29,6 +29,7 @@ __all__ = ["BasePropertyMapConfig", "PropertyMapRegistry", "register_property_ma
 
 import numpy as np
 import healsparse as hsp
+import copy
 
 import lsst.pex.config as pexConfig
 import lsst.geom
@@ -209,6 +210,9 @@ class BasePropertyMap:
     dtype = np.float64
     requires_psf = False
 
+    description = ""
+    unit = ""
+
     ConfigClass = BasePropertyMapConfig
 
     registry = PropertyMapRegistry(BasePropertyMapConfig)
@@ -229,26 +233,45 @@ class BasePropertyMap:
         nside : `int`
             Healpix nside of the property map.
         """
+        base_metadata = {
+            "DESCRIPTION": self.description,
+            "UNIT": self.unit,
+        }
         if self.config.do_min:
+            metadata = copy.copy(base_metadata)
+            metadata["OPERATION"] = "minimum"
             self.min_map = hsp.HealSparseMap.make_empty(nside_coverage,
                                                         nside,
-                                                        self.dtype)
+                                                        self.dtype,
+                                                        metadata=metadata)
         if self.config.do_max:
+            metadata = copy.copy(base_metadata)
+            metadata["OPERATION"] = "maximum"
             self.max_map = hsp.HealSparseMap.make_empty(nside_coverage,
                                                         nside,
-                                                        self.dtype)
+                                                        self.dtype,
+                                                        metadata=metadata)
         if self.config.do_mean:
+            metadata = copy.copy(base_metadata)
+            metadata["OPERATION"] = "mean"
             self.mean_map = hsp.HealSparseMap.make_empty(nside_coverage,
                                                          nside,
-                                                         self.dtype)
+                                                         self.dtype,
+                                                         metadata=metadata)
         if self.config.do_weighted_mean:
+            metadata = copy.copy(base_metadata)
+            metadata["OPERATION"] = "weighted mean"
             self.weighted_mean_map = hsp.HealSparseMap.make_empty(nside_coverage,
                                                                   nside,
-                                                                  self.dtype)
+                                                                  self.dtype,
+                                                                  metadata=metadata)
         if self.config.do_sum:
+            metadata = copy.copy(base_metadata)
+            metadata["OPERATION"] = "sum"
             self.sum_map = hsp.HealSparseMap.make_empty(nside_coverage,
                                                         nside,
-                                                        self.dtype)
+                                                        self.dtype,
+                                                        metadata=metadata)
 
     def initialize_values(self, n_pixels):
         """Initialize the value arrays for accumulation.
@@ -387,6 +410,8 @@ class BasePropertyMap:
 @register_property_map("exposure_time")
 class ExposureTimePropertyMap(BasePropertyMap):
     """Exposure time property map."""
+    description = "Exposure time"
+    unit = "s"
 
     def _compute(self, row, ra, dec, scalings, psf_array=None):
         return row.getVisitInfo().getExposureTime()
@@ -395,6 +420,8 @@ class ExposureTimePropertyMap(BasePropertyMap):
 @register_property_map("psf_size")
 class PsfSizePropertyMap(BasePropertyMap):
     """PSF size property map."""
+    description = "PSF size"
+    unit = "pixel"
     requires_psf = True
 
     def _compute(self, row, ra, dec, scalings, psf_array=None):
@@ -404,6 +431,7 @@ class PsfSizePropertyMap(BasePropertyMap):
 @register_property_map("psf_e1")
 class PsfE1PropertyMap(BasePropertyMap):
     """PSF shape e1 property map."""
+    description = "PSF e1"
     requires_psf = True
 
     def _compute(self, row, ra, dec, scalings, psf_array=None):
@@ -413,6 +441,7 @@ class PsfE1PropertyMap(BasePropertyMap):
 @register_property_map("psf_e2")
 class PsfE2PropertyMap(BasePropertyMap):
     """PSF shape e2 property map."""
+    description = "PSF e2"
     requires_psf = True
 
     def _compute(self, row, ra, dec, scalings, psf_array=None):
@@ -422,6 +451,7 @@ class PsfE2PropertyMap(BasePropertyMap):
 @register_property_map("n_exposure")
 class NExposurePropertyMap(BasePropertyMap):
     """Number of exposures property map."""
+    description = "Number of exposures"
     dtype = np.int32
 
     def _compute(self, row, ra, dec, scalings, psf_array=None):
@@ -442,6 +472,8 @@ class PsfMaglimPropertyMapConfig(BasePropertyMapConfig):
 @register_property_map("psf_maglim")
 class PsfMaglimPropertyMap(BasePropertyMap):
     """PSF magnitude limit property map."""
+    description = "PSF magnitude limit"
+    unit = "mag(AB)"
     requires_psf = True
 
     ConfigClass = PsfMaglimPropertyMapConfig
@@ -460,6 +492,9 @@ class PsfMaglimPropertyMap(BasePropertyMap):
 @register_property_map("sky_background")
 class SkyBackgroundPropertyMap(BasePropertyMap):
     """Sky background property map."""
+    description = "Sky background"
+    unit = "nJy"
+
     def _compute(self, row, ra, dec, scalings, psf_array=None):
         return scalings*row["skyBg"]
 
@@ -467,6 +502,9 @@ class SkyBackgroundPropertyMap(BasePropertyMap):
 @register_property_map("sky_noise")
 class SkyNoisePropertyMap(BasePropertyMap):
     """Sky noise property map."""
+    description = "Sky noise"
+    unit = "nJy"
+
     def _compute(self, row, ra, dec, scalings, psf_array=None):
         return scalings*row["skyNoise"]
 
@@ -474,6 +512,8 @@ class SkyNoisePropertyMap(BasePropertyMap):
 @register_property_map("dcr_dra")
 class DcrDraPropertyMap(BasePropertyMap):
     """Effect of DCR on delta-RA property map."""
+    description = "Effect of DCR on delta-RA"
+
     def _compute(self, row, ra, dec, scalings, psf_array=None):
         par_angle = row.getVisitInfo().getBoresightParAngle().asRadians()
         return np.tan(np.deg2rad(row["zenithDistance"]))*np.sin(par_angle)
@@ -482,6 +522,8 @@ class DcrDraPropertyMap(BasePropertyMap):
 @register_property_map("dcr_ddec")
 class DcrDdecPropertyMap(BasePropertyMap):
     """Effect of DCR on delta-Dec property map."""
+    description = "Effect of DCR on delta-Dec"
+
     def _compute(self, row, ra, dec, scalings, psf_array=None):
         par_angle = row.getVisitInfo().getBoresightParAngle().asRadians()
         return np.tan(np.deg2rad(row["zenithDistance"]))*np.cos(par_angle)
@@ -490,6 +532,8 @@ class DcrDdecPropertyMap(BasePropertyMap):
 @register_property_map("dcr_e1")
 class DcrE1PropertyMap(BasePropertyMap):
     """Effect of DCR on psf shape e1 property map."""
+    description = "Effect of DCR on PSF shape e1"
+
     def _compute(self, row, ra, dec, scalings, psf_array=None):
         par_angle = row.getVisitInfo().getBoresightParAngle().asRadians()
         return (np.tan(np.deg2rad(row["zenithDistance"]))**2.)*np.cos(2.*par_angle)
@@ -498,6 +542,8 @@ class DcrE1PropertyMap(BasePropertyMap):
 @register_property_map("dcr_e2")
 class DcrE2PropertyMap(BasePropertyMap):
     """Effect of DCR on psf shape e2 property map."""
+    description = "Effect of DCR on PSF shape e2"
+
     def _compute(self, row, ra, dec, scalings, psf_array=None):
         par_angle = row.getVisitInfo().getBoresightParAngle().asRadians()
         return (np.tan(np.deg2rad(row["zenithDistance"]))**2.)*np.sin(2.*par_angle)
@@ -506,6 +552,9 @@ class DcrE2PropertyMap(BasePropertyMap):
 @register_property_map("epoch")
 class EpochPropertyMap(BasePropertyMap):
     """Observation epoch (mjd) property map."""
+    description = "Observation epoch"
+    unit = "day"
+
     def _compute(self, row, ra, dec, scalings, psf_array=None):
         date = row.getVisitInfo().getDate()
         return date.get(date.MJD)
