@@ -263,12 +263,15 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         psfYY = psf_cat[self.config.psfShape + '_yy']
         psfXY = psf_cat[self.config.psfShape + '_xy']
 
-        starSize = (starXX*starYY - starXY**2.)**0.25
+        # Use the trace radius for the star size.
+        starSize = np.sqrt(starXX/2. + starYY/2.)
+
         starE1 = (starXX - starYY)/(starXX + starYY)
         starE2 = 2*starXY/(starXX + starYY)
         starSizeMedian = np.median(starSize)
 
-        psfSize = (psfXX*psfYY - psfXY**2)**0.25
+        # Use the trace radius for the psf size.
+        psfSize = np.sqrt(psfXX/2. + psfYY/2.)
         psfE1 = (psfXX - psfYY)/(psfXX + psfYY)
         psfE2 = 2*psfXY/(psfXX + psfYY)
 
