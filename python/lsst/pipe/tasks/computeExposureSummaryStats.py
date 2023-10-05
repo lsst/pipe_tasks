@@ -56,15 +56,13 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         default=("NO_DATA", "SUSPECT"),
     )
     starSelection = pexConfig.Field(
-        doc="Field to select sources to be used in the PSF statistics computation.",
+        doc="Field to select full list of sources used for PSF modeling.",
         dtype=str,
         default="calib_psf_used",
-        deprecated="This field is deprecated and will be removed after v27. "
-                   "Please use starSelector instead.",
     )
     starSelector = pexConfig.ConfigurableField(
         target=ScienceSourceSelectorTask,
-        doc="Selection of sources to compute star statistics.",
+        doc="Selection of sources to compute PSF star statistics.",
     )
     starShape = pexConfig.Field(
         doc="Base name of columns to use for the source shape in the PSF statistics computation.",
@@ -276,11 +274,14 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             # good sources).
             return
 
-        selected = self.starSelector.run(sources)
-        psf_mask = selected.selected
-        nPsfStar = psf_mask.sum()
+        # Count the total number of psf stars used (prior to stats selection).
+        nPsfStar = sources[self.config.starSelection].sum()
+        summary.nPsfStar = int(nPsfStar)
 
-        if nPsfStar == 0:
+        psf_mask = self.starSelector.run(sources).selected
+        nPsfStarsUsedInStats = psf_mask.sum()
+
+        if nPsfStarsUsedInStats == 0:
             # No stars to measure statistics, so we must return the defaults
             # of 0 stars and NaN values.
             return
@@ -318,7 +319,6 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         psfStarDeltaSizeScatter = sigmaMad(starSize - psfSize, scale='normal')
         psfStarScaledDeltaSizeScatter = psfStarDeltaSizeScatter/starSizeMedian
 
-        summary.nPsfStar = int(nPsfStar)
         summary.psfStarDeltaE1Median = float(psfStarDeltaE1Median)
         summary.psfStarDeltaE2Median = float(psfStarDeltaE2Median)
         summary.psfStarDeltaE1Scatter = float(psfStarDeltaE1Scatter)
