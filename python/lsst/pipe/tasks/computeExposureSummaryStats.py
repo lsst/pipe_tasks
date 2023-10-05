@@ -282,7 +282,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
         psfStarDeltaSizeMedian = np.median(starSize - psfSize)
         psfStarDeltaSizeScatter = sigmaMad(starSize - psfSize, scale='normal')
-        psfStarScaledDeltaSizeScatter = psfStarDeltaSizeScatter/starSizeMedian**2.
+        psfStarScaledDeltaSizeScatter = psfStarDeltaSizeScatter/starSizeMedian
 
         summary.nPsfStar = int(nPsfStar)
         summary.psfStarDeltaE1Median = float(psfStarDeltaE1Median)
