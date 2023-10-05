@@ -192,17 +192,6 @@ funcs:
         args:
             - ext_gaap_GaapFlux_1_15x_PsfFlux_instFlux
             - ext_gaap_GaapFlux_1_15x_PsfFlux_instFluxErr
-    # 0.5 arcsec sigma GAaP flux
-    gaap0p5Flux:
-        functor: NanoJansky
-        dataset: forced_src
-        args: ext_gaap_GaapFlux_1_15x_0_5_instFlux
-    gaap0p5FluxErr:
-        functor: NanoJanskyErr
-        dataset: forced_src
-        args:
-            - ext_gaap_GaapFlux_1_15x_0_5_instFlux
-            - ext_gaap_GaapFlux_1_15x_0_5_instFluxErr
     # 0.7 arcsec sigma GAaP flux
     gaap0p7Flux:
         functor: NanoJansky
@@ -713,7 +702,6 @@ forcedFlags:
     - ext_gaap_GaapFlux_flag_edge
     - ext_gaap_GaapFlux_1_15x_flag_gaussianization
     - ext_gaap_GaapFlux_1_15x_Optimal_flag_bigPsf
-    - ext_gaap_GaapFlux_1_15x_0_5_flag_bigPsf
     - ext_gaap_GaapFlux_1_15x_0_7_flag_bigPsf
     - ext_gaap_GaapFlux_1_15x_1_0_flag_bigPsf
     - ext_gaap_GaapFlux_1_15x_1_5_flag_bigPsf
@@ -725,7 +713,6 @@ flag_rename_rules:
     - ['base_PixelFlags_flag', 'pixelFlags']
     - ['base_CircularApertureFlux', 'apFlux']
     - ['ext_convolved_', '']
-    - ['ext_gaap_GaapFlux_1_15x_0_5', 'gaap0p5Flux']
     - ['ext_gaap_GaapFlux_1_15x_0_7', 'gaap0p7Flux']
     - ['ext_gaap_GaapFlux_1_15x_1_0', 'gaap1p0Flux']
     - ['ext_gaap_GaapFlux_1_15x_1_5', 'gaap1p5Flux']
