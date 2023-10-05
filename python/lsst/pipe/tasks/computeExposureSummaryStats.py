@@ -34,6 +34,7 @@ import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
 import lsst.geom as geom
+from lsst.meas.algorithms import ScienceSourceSelectorTask
 from lsst.utils.timer import timeMethod
 
 
@@ -57,7 +58,13 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
     starSelection = pexConfig.Field(
         doc="Field to select sources to be used in the PSF statistics computation.",
         dtype=str,
-        default="calib_psf_used"
+        default="calib_psf_used",
+        deprecated="This field is deprecated and will be removed after v27. "
+                   "Please use starSelector instead.",
+    )
+    starSelector = pexConfig.ConfigurableField(
+        target=ScienceSourceSelectorTask,
+        doc="Selection of sources to compute star statistics.",
     )
     starShape = pexConfig.Field(
         doc="Base name of columns to use for the source shape in the PSF statistics computation.",
@@ -87,6 +94,27 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         "robutsness metric calculations (namely, maxDistToNearestPsf and psfTraceRadiusDelta).",
         default=("BAD", "CR", "EDGE", "INTRP", "NO_DATA", "SAT", "SUSPECT"),
     )
+
+    def setDefaults(self):
+        super().setDefaults()
+
+        self.starSelector.setDefaults()
+        self.starSelector.doFlags = True
+        self.starSelector.doSignalToNoise = True
+        self.starSelector.doUnresolved = False
+        self.starSelector.doIsolated = False
+        self.starSelector.doRequireFiniteRaDec = False
+        self.starSelector.doRequirePrimary = False
+
+        self.starSelector.signalToNoise.minimum = 50.0
+        self.starSelector.signalToNoise.maximum = 1000.0
+
+        self.starSelector.flags.bad = ["slot_Shape_flag", "slot_PsfFlux_flag"]
+        # Select stars used for PSF modeling.
+        self.starSelector.flags.good = ["calib_psf_used"]
+
+        self.starSelector.signalToNoise.fluxField = "slot_PsfFlux_instFlux"
+        self.starSelector.signalToNoise.errField = "slot_PsfFlux_instFluxErr"
 
 
 class ComputeExposureSummaryStatsTask(pipeBase.Task):
@@ -128,6 +156,11 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     """
     ConfigClass = ComputeExposureSummaryStatsConfig
     _DefaultName = "computeExposureSummaryStats"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.makeSubtask("starSelector")
 
     @timeMethod
     def run(self, exposure, sources, background):
@@ -243,7 +276,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             # good sources).
             return
 
-        psf_mask = sources[self.config.starSelection] & (~sources[self.config.starShape + '_flag'])
+        selected = self.starSelector.run(sources)
+        psf_mask = selected.selected
         nPsfStar = psf_mask.sum()
 
         if nPsfStar == 0:
