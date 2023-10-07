@@ -36,7 +36,7 @@ class ActionTest1(ConfigurableAction):
         return self.var
 
     def validate(self):
-        assert(self.var is not None)
+        assert self.var is not None
 
 
 class ActionTest2(ConfigurableAction):
@@ -46,7 +46,7 @@ class ActionTest2(ConfigurableAction):
         return self.var
 
     def validate(self):
-        assert(self.var is not None)
+        assert self.var is not None
 
 
 class ActionTest3(ConfigurableAction):
@@ -56,7 +56,7 @@ class ActionTest3(ConfigurableAction):
         return self.var
 
     def validate(self):
-        assert(self.var is not None)
+        assert self.var is not None
 
 
 class ConfigurableActionsTestCase(unittest.TestCase):
