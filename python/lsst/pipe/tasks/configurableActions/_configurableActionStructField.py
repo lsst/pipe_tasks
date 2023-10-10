@@ -161,7 +161,7 @@ class ConfigurableActionStruct(Generic[ActionTypeVar]):
         # Config Fields should never outlive their config class instance
         # assert that as such here
         value = self._config_()
-        assert(value is not None)
+        assert value is not None
         return value
 
     @property

@@ -612,14 +612,14 @@ class FocalPlaneBackground:
             values.set(0.0)
         else:
             values = values.clone()
-        assert(values.getDimensions() == self.dims)
+        assert values.getDimensions() == self.dims
         self._values = values
         if numbers is None:
             numbers = afwImage.ImageF(self.dims)  # float for dynamic range and convenience
             numbers.set(0.0)
         else:
             numbers = numbers.clone()
-        assert(numbers.getDimensions() == self.dims)
+        assert numbers.getDimensions() == self.dims
         self._numbers = numbers
 
     def __reduce__(self):
