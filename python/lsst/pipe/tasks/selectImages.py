@@ -258,7 +258,7 @@ class PsfWcsSelectImagesConfig(pipeBase.PipelineTaskConfig,
     maxScaledSizeScatter = pexConfig.Field(
         doc="Maximum scatter in the size residuals, scaled by the median size",
         dtype=float,
-        default=0.009,
+        default=0.019,
         optional=True,
     )
     maxPsfTraceRadiusDelta = pexConfig.Field(
