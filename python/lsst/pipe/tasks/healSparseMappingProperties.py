@@ -165,13 +165,18 @@ def compute_approx_psf_size_and_shape(ccd_row, ra, dec, nx=20, ny=20, orderx=2, 
                                               ("psf_e2", "f8"),
                                               ("psf_area", "f8")])
 
-    cheb_size = ChebyshevBoundedField.fit(lsst.geom.Box2I(bbox), x, y, psf_size, ctrl)
+    # Protect against nans which can come in at the edges and masked regions.
+    good = np.isfinite(psf_size)
+    x = x[good]
+    y = y[good]
+
+    cheb_size = ChebyshevBoundedField.fit(lsst.geom.Box2I(bbox), x, y, psf_size[good], ctrl)
     psf_array["psf_size"] = cheb_size.evaluate(pixel_x, pixel_y)
-    cheb_e1 = ChebyshevBoundedField.fit(lsst.geom.Box2I(bbox), x, y, psf_e1, ctrl)
+    cheb_e1 = ChebyshevBoundedField.fit(lsst.geom.Box2I(bbox), x, y, psf_e1[good], ctrl)
     psf_array["psf_e1"] = cheb_e1.evaluate(pixel_x, pixel_y)
-    cheb_e2 = ChebyshevBoundedField.fit(lsst.geom.Box2I(bbox), x, y, psf_e2, ctrl)
+    cheb_e2 = ChebyshevBoundedField.fit(lsst.geom.Box2I(bbox), x, y, psf_e2[good], ctrl)
     psf_array["psf_e2"] = cheb_e2.evaluate(pixel_x, pixel_y)
-    cheb_area = ChebyshevBoundedField.fit(lsst.geom.Box2I(bbox), x, y, psf_area, ctrl)
+    cheb_area = ChebyshevBoundedField.fit(lsst.geom.Box2I(bbox), x, y, psf_area[good], ctrl)
     psf_array["psf_area"] = cheb_area.evaluate(pixel_x, pixel_y)
 
     return psf_array
