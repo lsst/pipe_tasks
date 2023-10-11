@@ -225,4 +225,5 @@ class RepairTask(pipeBase.Task):
                     for cr in crs:
                         afwDisplay.utils.drawBBox(cr.getBBox(), borderWidth=0.55)
 
-        self.log.info("Identified %s cosmic rays.", num)
+        text = "kept" if keepCRs else "interpolated over"
+        self.log.info("Identified and %s %s cosmic rays.", text, num)
