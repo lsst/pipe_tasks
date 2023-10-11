@@ -503,6 +503,11 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.psf_source_measurement.run(detections.sources, exposure)
         psf_result = self.psf_measure_psf.run(exposure=exposure, sources=detections.sources)
 
+        # Final repair with final PSF, removing cosmic rays this time.
+        self.psf_repair.run(exposure=exposure)
+        # Final measurement with the CRs removed.
+        self.psf_source_measurement.run(detections.sources, exposure)
+
         # PSF is set on exposure; only return candidates for optional saving.
         return detections.sources, background, psf_result.cellSet
 
