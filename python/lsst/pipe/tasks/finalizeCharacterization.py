@@ -35,6 +35,7 @@ import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
+import lsst.meas.extensions.psfex.psfexPsfDeterminer  # noqa: F401
 import lsst.meas.extensions.piff.piffPsfDeterminer  # noqa: F401
 from lsst.meas.algorithms import MeasureApCorrTask
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask
