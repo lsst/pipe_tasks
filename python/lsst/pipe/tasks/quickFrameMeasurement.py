@@ -155,6 +155,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         self.schema.getAliasMap().set("slot_Centroid", self.centroidName)
         self.schema.getAliasMap().set("slot_Shape", self.shapeName)
         self.control = measBase.SdssCentroidControl()
+        self.control.maxDistToPeak = -1
         self.centroider = measBase.SdssCentroidAlgorithm(self.control, self.centroidName, self.schema)
         self.sdssShape = measBase.SdssShapeControl()
         self.shaper = measBase.SdssShapeAlgorithm(self.sdssShape, self.shapeName, self.schema)
