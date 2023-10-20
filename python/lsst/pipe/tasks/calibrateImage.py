@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import numpy as np
+
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.meas.algorithms
@@ -472,10 +474,23 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         cell_set : `lsst.afw.math.SpatialCellSet`
             PSF candidates returned by the psf determiner.
         """
-        self.log.info("First pass detection with Guassian PSF FWHM=%s", self.config.install_simple_psf.fwhm)
+        def log_psf(msg):
+            """Log the parameters of the psf and background, with a prepended
+            message.
+            """
+            position = exposure.psf.getAveragePosition()
+            sigma = exposure.psf.computeShape(position).getDeterminantRadius()
+            dimensions = exposure.psf.computeImage(position).getDimensions()
+            median_background = np.median(background.getImage().array)
+            self.log.info("%s sigma=%0.4f, dimensions=%s; median background=%0.2f",
+                          msg, sigma, dimensions, median_background)
+
+        self.log.info("First pass detection with Guassian PSF FWHM=%s pixels",
+                      self.config.install_simple_psf.fwhm)
         self.install_simple_psf.run(exposure=exposure)
 
         background = self.psf_subtract_background.run(exposure=exposure).background
+        log_psf("Initial PSF:")
         self.psf_repair.run(exposure=exposure, keepCRs=True)
 
         table = afwTable.SourceTable.make(self.psf_schema)
@@ -488,7 +503,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # repair/detect/measure/measure_psf step: this can help it converge.
         self.install_simple_psf.run(exposure=exposure)
 
-        self.log.info("Re-running repair, detection, and PSF measurement using new simple PSF.")
+        log_psf("Rerunning with simple PSF:")
         # TODO investigation: Should we only re-run repair here, to use the
         # new PSF? Maybe we *do* need to re-run measurement with PsfFlux, to
         # use the fitted PSF?
@@ -502,6 +517,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         detections = self.psf_detection.run(table=table, exposure=exposure, background=background)
         self.psf_source_measurement.run(detections.sources, exposure)
         psf_result = self.psf_measure_psf.run(exposure=exposure, sources=detections.sources)
+
+        log_psf("Final PSF:")
 
         # Final repair with final PSF, removing cosmic rays this time.
         self.psf_repair.run(exposure=exposure)
