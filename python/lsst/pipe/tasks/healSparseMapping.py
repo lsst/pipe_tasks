@@ -546,9 +546,29 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
             patch_info = tract_info[patch]
 
             input_map = input_map_dict[patch].get()
+
+            # Initialize the tract maps as soon as we have the first input
+            # map for getting nside information.
+            if not tract_maps_initialized:
+                # We use the first input map nside information to initialize
+                # the tract maps
+                nside_coverage = self._compute_nside_coverage_tract(tract_info)
+                nside = input_map.nside_sparse
+
+                do_compute_approx_psf = False
+                # Initialize the tract maps
+                for property_map in self.property_maps:
+                    property_map.initialize_tract_maps(nside_coverage, nside)
+                    if property_map.requires_psf:
+                        do_compute_approx_psf = True
+
+                tract_maps_initialized = True
+
             if input_map.valid_pixels.size == 0:
                 self.log.warning("No valid pixels for band %s, tract %d, patch %d; skipping.",
                                  band, tract, patch)
+                continue
+
             coadd_photo_calib = coadd_dict[patch].get(component="photoCalib")
             coadd_inputs = coadd_dict[patch].get(component="coaddInputs")
 
@@ -567,21 +587,6 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
                 warnings.simplefilter("ignore")
                 patch_poly_map = patch_poly.get_map_like(input_map)
                 input_map = hsp.and_intersection([input_map, patch_poly_map])
-
-            if not tract_maps_initialized:
-                # We use the first input map nside information to initialize
-                # the tract maps
-                nside_coverage = self._compute_nside_coverage_tract(tract_info)
-                nside = input_map.nside_sparse
-
-                do_compute_approx_psf = False
-                # Initialize the tract maps
-                for property_map in self.property_maps:
-                    property_map.initialize_tract_maps(nside_coverage, nside)
-                    if property_map.requires_psf:
-                        do_compute_approx_psf = True
-
-                tract_maps_initialized = True
 
             valid_pixels, vpix_ra, vpix_dec = input_map.valid_pixels_pos(return_pixels=True)
 
