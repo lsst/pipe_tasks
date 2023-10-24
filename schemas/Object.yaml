@@ -595,6 +595,10 @@ funcs:
         dataset: ref
     ebv:
         functor: Ebv
+    dataCoverage:
+        functor: Column
+        args: deblend_dataCoverage
+        dataset: meas
     # DM-22247: Add Star/Galaxy sep columns
     #     - Morphological Star Galaxy Classifier (Names? float 0-1)]
     #     - Morphological + Color (SED-based) Star Galaxy Classifier (Names? float 0-1)]
@@ -611,6 +615,7 @@ refFlags:
     - merge_peak_sky
     - deblend_nChild
     - deblend_skipped
+    - deblend_incompleteData
     - slot_Shape_flag
     - slot_Shape_xx
     - slot_Shape_xy

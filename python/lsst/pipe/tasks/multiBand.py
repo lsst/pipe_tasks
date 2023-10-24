@@ -1054,6 +1054,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask, CmdLineTask):
                 catalog=sources,
                 band=inputRefs.exposure.dataId["band"],
                 psfModel=inputs['exposure'].getPsf(),
+                maskImage=inputs['exposure'].mask,
                 redistributeImage=redistributeImage,
                 removeScarletData=True,
             )
