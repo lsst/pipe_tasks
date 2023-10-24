@@ -45,13 +45,20 @@ class ExtendedPsfTestCase(lsst.utils.tests.TestCase):
         self.default_e_psf = make_extended_psf(1)[0]
         self.constant_e_psf = extended_psf.ExtendedPsf(self.default_e_psf)
         self.regions = ["NW", "SW", "E"]
-        self.region_detectors = [list(range(10)), list(range(10, 20)), list(range(20, 40))]
+        self.region_detectors = []
+        for i in range(3):
+            self.det = extended_psf.DetectorsInRegion()
+            r0 = 10*i
+            r1 = 10*(i+1)
+            self.det.detectors = list(range(r0, r1))
+            self.region_detectors.append(self.det)
         self.regional_e_psfs = make_extended_psf(3)
 
     def tearDown(self):
         del self.default_e_psf
         del self.regions
         del self.region_detectors
+        del self.det
         del self.regional_e_psfs
 
     def test_constant_psf(self):
@@ -79,20 +86,20 @@ class ExtendedPsfTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(len(with_default_e_psf), 3)
         # Ensure we recover the correct regional PSF.
         for j in range(2):
-            for det in self.region_detectors[j]:
+            for det in self.region_detectors[j].detectors:
                 # Try it by calling the class directly.
                 reg_psf0, reg_psf1 = starts_empty_e_psf(det), with_default_e_psf(det)
                 self.assertMaskedImagesAlmostEqual(reg_psf0, self.regional_e_psfs[j])
                 self.assertMaskedImagesAlmostEqual(reg_psf1, self.regional_e_psfs[j])
                 # Try it by passing on a detector number to the
-                # get_regional_extended_psf method.
-                reg_psf0 = starts_empty_e_psf.get_regional_extended_psf(detector=det)
-                reg_psf1 = with_default_e_psf.get_regional_extended_psf(detector=det)
+                # get_extended_psf method.
+                reg_psf0 = starts_empty_e_psf.get_extended_psf(region_name=det)
+                reg_psf1 = with_default_e_psf.get_extended_psf(region_name=det)
                 self.assertMaskedImagesAlmostEqual(reg_psf0, self.regional_e_psfs[j])
                 self.assertMaskedImagesAlmostEqual(reg_psf1, self.regional_e_psfs[j])
             # Try it by passing on a region name.
-            reg_psf0 = starts_empty_e_psf.get_regional_extended_psf(region_name=self.regions[j])
-            reg_psf1 = with_default_e_psf.get_regional_extended_psf(region_name=self.regions[j])
+            reg_psf0 = starts_empty_e_psf.get_extended_psf(region_name=self.regions[j])
+            reg_psf1 = with_default_e_psf.get_extended_psf(region_name=self.regions[j])
             self.assertMaskedImagesAlmostEqual(reg_psf0, self.regional_e_psfs[j])
             self.assertMaskedImagesAlmostEqual(reg_psf1, self.regional_e_psfs[j])
         # Ensure we recover the original default PSF.
@@ -118,7 +125,7 @@ class ExtendedPsfTestCase(lsst.utils.tests.TestCase):
             self.assertMaskedImagesAlmostEqual(per_region_e_psf0(), read_e_psf0())
             # And per-region extended PSFs.
             for j in range(3):
-                for det in self.region_detectors[j]:
+                for det in self.region_detectors[j].detectors:
                     reg_psf0, read_reg_psf0 = per_region_e_psf0(det), read_e_psf0(det)
                     self.assertMaskedImagesAlmostEqual(reg_psf0, read_reg_psf0)
         # Test IO with a single per-region extended PSF.
@@ -130,7 +137,7 @@ class ExtendedPsfTestCase(lsst.utils.tests.TestCase):
             read_e_psf1 = extended_psf.ExtendedPsf.readFits(f.name)
             self.assertEqual(per_region_e_psf0.detectors_focal_plane_regions,
                              read_e_psf0.detectors_focal_plane_regions)
-            for det in self.region_detectors[1]:
+            for det in self.region_detectors[1].detectors:
                 reg_psf1, read_reg_psf1 = per_region_e_psf1(det), read_e_psf1(det)
                 self.assertMaskedImagesAlmostEqual(reg_psf1, read_reg_psf1)
 
