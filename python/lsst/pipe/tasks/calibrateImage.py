@@ -284,7 +284,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         # and do initial detection at S/N>5.0?
         # Detection for good S/N for astrometry/photometry and other
         # downstream tasks.
-        self.star_detection.thresholdValue = 10.0
+        self.star_detection.thresholdValue = 5.0
         self.star_measurement.plugins = ["base_PixelFlags",
                                          "base_SdssCentroid",
                                          "ext_shapeHSM_HsmSourceMoments",
