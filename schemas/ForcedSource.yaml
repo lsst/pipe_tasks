@@ -1,4 +1,4 @@
-# This file defines the mapping between the columns in a forced source table 
+# This file defines the mapping between the columns in a forced source table
 # and their respective DPDD-style column names, as used by
 # `lsst.pipe.tasks.postprocess.TransformForcedSourceTableTask`.
 # See the DPDD for more information about the output: https://lse-163.lsst.io
@@ -91,6 +91,8 @@ calexpFlags:
     - base_PixelFlags_flag_saturatedCenter
     - base_PixelFlags_flag_crCenter
     - base_PixelFlags_flag_suspectCenter
+    - base_PixelFlags_flag_streak
+    - base_PixelFlags_flag_streakCenter
 flag_rename_rules:
     - ['base_PixelFlags_flag', 'pixelFlags']
     - ['base_Local', 'local']

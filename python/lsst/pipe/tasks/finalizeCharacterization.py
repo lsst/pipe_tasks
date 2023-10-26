@@ -215,6 +215,11 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
         self.measurement.slots.shape = 'ext_shapeHSM_HsmSourceMoments'
         self.measurement.slots.psfShape = 'ext_shapeHSM_HsmPsfMoments'
         self.measurement.plugins['ext_shapeHSM_HsmShapeRegauss'].deblendNChild = ""
+
+        # Keep track of which footprints contain streaks
+        self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['STREAK']
+        self.measurement.plugins['base_PixelFlags'].masksFpCenter = ['STREAK']
+
         # Turn off slot setting for measurement for centroid and shape
         # (for which we use the input src catalog measurements)
         self.measurement.slots.centroid = None
