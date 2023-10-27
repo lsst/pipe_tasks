@@ -76,7 +76,6 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         schema = dataset.makeMinimalSchema()
         self.truth_exposure, self.truth_cat = dataset.realize(noise=noise, schema=schema)
-        lsst.afw.table.updateSourceCoords(self.truth_exposure.wcs, self.truth_cat)
         # To make it look like a version=1 (nJy fluxes) refcat
         self.truth_cat = self.truth_exposure.photoCalib.calibrateCatalog(self.truth_cat)
         self.ref_loader = testUtils.MockReferenceObjectLoaderFromMemory([self.truth_cat])
