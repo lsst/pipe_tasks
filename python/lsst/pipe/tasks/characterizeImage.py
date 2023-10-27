@@ -433,7 +433,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
             psfSigma = psf.computeShape(psfAvgPos).getDeterminantRadius()
             psfDimensions = psf.computeImage(psfAvgPos).getDimensions()
             medBackground = np.median(dmeRes.background.getImage().getArray())
-            self.log.info("iter %s; PSF sigma=%0.2f, dimensions=%s; median background=%0.2f",
+            self.log.info("iter %s; PSF sigma=%0.4f, dimensions=%s; median background=%0.2f",
                           i + 1, psfSigma, psfDimensions, medBackground)
             if np.isnan(psfSigma):
                 raise RuntimeError("PSF sigma is NaN, cannot continue PSF determination.")
