@@ -35,6 +35,8 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.kht
 from lsst.utils.timer import timeMethod
+from . import maskStreaksUtil
+
 @nb.jit(nopython=True, fastmath=True)
 def numbaMakeMaskedProfile(sigma, theta, rho, _mxmesh, _mymesh, _maskWeights, _maskData):
     invSigma = sigma**-1
@@ -167,7 +169,7 @@ class Line:
 
     rho: float
     theta: float
-    sigma: float = 0
+    sigma: float = 0.0
 
 
 class LineCollection:
@@ -185,7 +187,7 @@ class LineCollection:
 
     def __init__(self, rhos, thetas, sigmas=None):
         if sigmas is None:
-            sigmas = np.zeros(len(rhos))
+            sigmas = np.zeros(len(rhos), dtype=np.float32)
 
         self._lines = [Line(rho, theta, sigma) for (rho, theta, sigma) in
                        zip(rhos, thetas, sigmas)]
@@ -251,8 +253,8 @@ class LineProfile:
         self.weights = weights
         self._ymax, self._xmax = data.shape
         self._dtype = data.dtype
-        xrange = np.arange(self._xmax) - self._xmax / 2.
-        yrange = np.arange(self._ymax) - self._ymax / 2.
+        xrange = np.arange(self._xmax, dtype=np.float32) - self._xmax / 2.
+        yrange = np.arange(self._ymax, dtype=np.float32) - self._ymax / 2.
         self._rhoMax = ((0.5 * self._ymax)**2 + (0.5 * self._xmax)**2)**0.5
         self._xmesh, self._ymesh = np.meshgrid(xrange, yrange)
         self.mask = (weights != 0)
@@ -302,11 +304,23 @@ class LineProfile:
         dModel : `np.ndarray`
             Derivative of the model in the masked region.
         """
+        if not fitFlux:
+            return self.oldMakeMaskedProfile(line, fitFlux)
+
         # result = numbaMakeMaskedProfile(line.sigma, line.theta, line.rho,
         #                                 self._mxmesh,
         #                                 self._mymesh,
         #                                 self._maskWeights,
         #                                 self._maskData)
+        result = maskStreaksUtil._makeMaskedProfile(line.sigma, line.theta, line.rho,
+                                                    self._mxmesh,
+                                                    self._mymesh,
+                                                    self._maskWeights,
+                                                    self._maskData)
+        model, dModeldRho, dModeldTheta, dModeldInvSigma = result
+        return model, np.array((dModeldRho, dModeldTheta, dModeldInvSigma))
+
+    def oldMakeMaskedProfile(self, line, fitFlux=True):
         invSigma = line.sigma**-1
         # Calculate distance between pixels and line
         radtheta = np.deg2rad(line.theta)
