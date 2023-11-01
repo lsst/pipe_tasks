@@ -469,7 +469,7 @@ class LineProfile:
             cholesky = scipy.linalg.cho_factor(A)
             dx = scipy.linalg.cho_solve(cholesky, b)
 
-            factor, fmin, _, _ = scipy.optimize.brent(line_search, args=(dx,), full_output=True, tol=0.05)
+            factor = scipy.optimize.brent(line_search, args=(dx,), tol=0.05)
             x -= factor * dx
             if (abs(x[0]) > 1.5 * self._rhoMax) or (iter > maxIter):
                 fitFailure = True
