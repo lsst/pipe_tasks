@@ -21,11 +21,6 @@
 
 __all__ = ["MaskStreaksConfig", "MaskStreaksTask", "setDetectionMask"]
 
-import lsst.pex.config as pexConfig
-import lsst.pipe.base as pipeBase
-import lsst.kht
-from lsst.utils.timer import timeMethod
-
 import numpy as np
 import scipy
 import textwrap
@@ -35,6 +30,10 @@ from sklearn.cluster import KMeans
 import warnings
 from dataclasses import dataclass
 
+import lsst.pex.config as pexConfig
+import lsst.pipe.base as pipeBase
+import lsst.kht
+from lsst.utils.timer import timeMethod
 
 def setDetectionMask(maskedImage, forceSlowBin=False, binning=None, detectedPlane="DETECTED",
                      badMaskPlanes=("NO_DATA", "INTRP", "BAD", "SAT", "EDGE"), detectionThreshold=5):
