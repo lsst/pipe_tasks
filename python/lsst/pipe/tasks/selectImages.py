@@ -409,7 +409,7 @@ class BestSeeingSelectVisitsConfig(pipeBase.PipelineTaskConfig,
         dtype=int,
         doc="Maximum number of visits to select",
         default=12,
-        min=0
+        min=-1,
     )
     maxPsfFwhm = pexConfig.Field(
         dtype=float,
@@ -520,7 +520,10 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
             visits.append(visit)
 
         sortedVisits = [ind for (_, ind) in sorted(zip(fwhmSizes, visits))]
-        output = sortedVisits[:self.config.nVisitsMax]
+        if self.config.nVisitsMax < 0:
+            output = sortedVisits
+        else:
+            output = sortedVisits[:self.config.nVisitsMax]
         self.log.info("%d images selected with FWHM range of %d--%d arcseconds",
                       len(output), fwhmSizes[visits.index(output[0])], fwhmSizes[visits.index(output[-1])])
 
