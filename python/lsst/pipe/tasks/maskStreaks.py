@@ -22,6 +22,7 @@
 __all__ = ["MaskStreaksConfig", "MaskStreaksTask", "setDetectionMask"]
 
 import numpy as np
+import numba as nb
 import scipy
 import textwrap
 import copy
@@ -34,6 +35,42 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.kht
 from lsst.utils.timer import timeMethod
+@nb.jit(nopython=True, fastmath=True)
+def numbaMakeMaskedProfile(sigma, theta, rho, _mxmesh, _mymesh, _maskWeights, _maskData):
+    invSigma = sigma**-1
+    # Calculate distance between pixels and line
+    radtheta = np.deg2rad(theta)
+    costheta = np.cos(radtheta)
+    sintheta = np.sin(radtheta)
+    distance = (costheta * _mxmesh + sintheta * _mymesh - rho)
+    distanceSquared = distance**2
+
+    # Calculate partial derivatives of distance
+    drad = np.pi / 180
+    dDistanceSqdRho = 2 * distance * (-np.ones_like(_mxmesh))
+    dDistanceSqdTheta = (2 * distance * (-sintheta * _mxmesh + costheta * _mymesh) * drad)
+
+    # Use pixel-line distances to make Moffat profile
+    profile = (1 + distanceSquared * invSigma**2)**-2.5
+    dProfile = -2.5 * (1 + distanceSquared * invSigma**2)**-3.5
+
+    # Calculate line flux from profile and data
+    flux = ((_maskWeights * _maskData * profile).sum()
+            / (_maskWeights * profile**2).sum())
+    if np.isnan(flux):
+        flux = 0
+
+    model = flux * profile
+
+    # Calculate model derivatives
+    fluxdProfile = flux * dProfile
+    fluxdProfileInvSigma = fluxdProfile * invSigma**2
+    dModeldRho = fluxdProfileInvSigma * dDistanceSqdRho
+    dModeldTheta = fluxdProfileInvSigma * dDistanceSqdTheta
+    dModeldInvSigma = fluxdProfile * distanceSquared * 2 * invSigma
+
+    return model, dModeldRho, dModeldTheta, dModeldInvSigma
+
 
 def setDetectionMask(maskedImage, forceSlowBin=False, binning=None, detectedPlane="DETECTED",
                      badMaskPlanes=("NO_DATA", "INTRP", "BAD", "SAT", "EDGE"), detectionThreshold=5):
@@ -265,6 +302,11 @@ class LineProfile:
         dModel : `np.ndarray`
             Derivative of the model in the masked region.
         """
+        # result = numbaMakeMaskedProfile(line.sigma, line.theta, line.rho,
+        #                                 self._mxmesh,
+        #                                 self._mymesh,
+        #                                 self._maskWeights,
+        #                                 self._maskData)
         invSigma = line.sigma**-1
         # Calculate distance between pixels and line
         radtheta = np.deg2rad(line.theta)
