@@ -524,7 +524,7 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
             output = sortedVisits
         else:
             output = sortedVisits[:self.config.nVisitsMax]
-        self.log.info("%d images selected with FWHM range of %d--%d arcseconds",
+        self.log.info("%d images selected with FWHM range of %f--%f arcseconds",
                       len(output), fwhmSizes[visits.index(output[0])], fwhmSizes[visits.index(output[-1])])
 
         # In order to store as a StructuredDataDict, convert list to dict
