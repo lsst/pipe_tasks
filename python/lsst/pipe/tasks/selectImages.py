@@ -407,7 +407,7 @@ class BestSeeingSelectVisitsConfig(pipeBase.PipelineTaskConfig,
                                    pipelineConnections=BestSeeingSelectVisitsConnections):
     nVisitsMax = pexConfig.RangeField(
         dtype=int,
-        doc="Maximum number of visits to select",
+        doc="Maximum number of visits to select; use -1 to select all.",
         default=12,
         min=-1,
     )
