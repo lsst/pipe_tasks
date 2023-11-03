@@ -43,17 +43,12 @@ class InitialPsfConfig(pexConfig.Config):
 
     model = pexConfig.ChoiceField(
         dtype=str,
-        doc="PSF model type",
+        doc="PSF model to install in snaps.",
         default="SingleGaussian",
         allowed={
             "SingleGaussian": "Single Gaussian model",
             "DoubleGaussian": "Double Gaussian model",
         },
-    )
-    pixelScale = pexConfig.Field(
-        dtype=float,
-        doc="Pixel size (arcsec).  Only needed if no Wcs is provided",
-        default=0.25,
     )
     fwhm = pexConfig.Field(
         dtype=float,
@@ -83,11 +78,6 @@ class SnapCombineConfig(pexConfig.Config):
         doc="Perform difference imaging before combining",
         default=False,
     )
-    doPsfMatch = pexConfig.Field(
-        dtype=bool,
-        doc="Perform PSF matching for difference imaging (ignored if doDiffIm false)",
-        default=True,
-    )
     doMeasurement = pexConfig.Field(
         dtype=bool,
         doc="Measure difference sources (ignored if doDiffIm false)",
@@ -111,16 +101,21 @@ class SnapCombineConfig(pexConfig.Config):
         "non-float, non-int data must be handled by overriding the fixMetadata method",
         optional=True,
     )
-
-    repair = pexConfig.ConfigurableField(target=RepairTask, doc="RepairTask configuration")
-    # Target `SnapPsfMatchTask` removed in DM-38846
-    # diffim = pexConfig.ConfigurableField(target=SnapPsfMatchTask, doc="")
-    detection = pexConfig.ConfigurableField(
-        target=SourceDetectionTask, doc="SourceDetectionTask configuration"
+    initialPsf = pexConfig.ConfigField(
+        dtype=InitialPsfConfig,
+        doc="Task to generate an initial PSF before repair."
     )
-    initialPsf = pexConfig.ConfigField(dtype=InitialPsfConfig, doc="InitialPsfConfig configuration")
+    repair = pexConfig.ConfigurableField(
+        target=RepairTask,
+        doc="Task to repair individual snaps before combining."
+    )
+    detection = pexConfig.ConfigurableField(
+        target=SourceDetectionTask,
+        doc="Task to perform detection on a difference image, if doDiffIm is True."
+    )
     measurement = pexConfig.ConfigurableField(
-        target=SingleFrameMeasurementTask, doc="SingleFrameMeasurementTask configuration"
+        target=SingleFrameMeasurementTask,
+        doc="Task to perform measurement on difference image, if doDiffIm is True."
     )
 
     def setDefaults(self):
@@ -158,19 +153,21 @@ class SnapCombineTask(pipeBase.Task):
         self.makeSubtask("repair")
         self.schema = afwTable.SourceTable.makeMinimalSchema()
         self.algMetadata = dafBase.PropertyList()
-        self.makeSubtask("detection", schema=self.schema)
-        if self.config.doMeasurement:
-            self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
+        if self.config.doDiffIm:
+            self.makeSubtask("detection", schema=self.schema)
+            if self.config.doMeasurement:
+                self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
 
     @timeMethod
     def run(self, snap0, snap1, defects=None):
-        """Combine two snaps.
+        """Combine two snaps, returning the combined image and possibly doing
+        simple image subtraction on the two.
 
         Parameters
         ----------
-        snap0 : `Unknown`
+        snap0 : `lsst.afw.image.Exposure`
             Snapshot exposure 0.
-        snap1 : `Unknown`
+        snap1 : `lsst.afw.image.Exposure`
             Snapshot exposure 1.
         defects : `list` or `None`, optional
             Defect list (for repair task).
@@ -189,11 +186,12 @@ class SnapCombineTask(pipeBase.Task):
         sources = None
 
         if self.config.doRepair:
-            self.log.info("snapCombine repair")
             psf = self.makeInitialPsf(snap0, fwhmPix=self.config.repairPsfFwhm)
             snap0.setPsf(psf)
             snap1.setPsf(psf)
+            self.log.info("Repairing snap image 1")
             self.repair.run(snap0, defects=defects, keepCRs=False)
+            self.log.info("Repairing snap image 2")
             self.repair.run(snap1, defects=defects, keepCRs=False)
 
             repair0frame = getDebugFrame(self._display, "repair0")
@@ -204,13 +202,9 @@ class SnapCombineTask(pipeBase.Task):
                 getDisplay(repair1frame).mtv(snap1)
 
         if self.config.doDiffIm:
-            if self.config.doPsfMatch:
-                raise NotImplementedError("PSF-matching of snaps is not yet supported.")
-
-            else:
-                diffExp = afwImage.ExposureF(snap0, True)
-                diffMi = diffExp.getMaskedImage()
-                diffMi -= snap1.getMaskedImage()
+            diffExp = afwImage.ExposureF(snap0, True)
+            diffMi = diffExp.maskedImage
+            diffMi -= snap1.maskedImage
 
             psf = self.makeInitialPsf(snap0)
             diffExp.setPsf(psf)
@@ -221,12 +215,12 @@ class SnapCombineTask(pipeBase.Task):
             if self.config.doMeasurement:
                 self.measurement.measure(diffExp, sources)
 
-            mask0 = snap0.getMaskedImage().getMask()
-            mask1 = snap1.getMaskedImage().getMask()
+            mask0 = snap0.mask
+            mask1 = snap1.mask
             detRet.positive.setMask(mask0, "DETECTED")
             detRet.negative.setMask(mask1, "DETECTED")
 
-            maskD = diffExp.getMaskedImage().getMask()
+            maskD = diffExp.mask
             detRet.positive.setMask(maskD, "DETECTED")
             detRet.negative.setMask(maskD, "DETECTED_NEGATIVE")
 
@@ -242,27 +236,25 @@ class SnapCombineTask(pipeBase.Task):
 
         Parameters
         ----------
-        snap0 : `Unknown`
+        snap0 : `lsst.afw.image.Exposure`
             Snap exposure 0.
-        snap1 : `Unknown`
+        snap1 : `lsst.afw.image.Exposure`
             Snap exposure 1.
 
         Returns
         -------
-        combinedExp : `Unknown`
+        combinedExp : `lsst.afw.image.Exposure`
             Combined exposure.
         """
-        self.log.info("snapCombine addSnaps")
-
         combinedExp = snap0.Factory(snap0, True)
-        combinedMi = combinedExp.getMaskedImage()
+        combinedMi = combinedExp.maskedImage
         combinedMi.set(0)
 
-        weightMap = combinedMi.getImage().Factory(combinedMi.getBBox())
+        weightMap = combinedMi.image.Factory(combinedMi.getBBox())
         weight = 1.0
         badPixelMask = afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes)
-        addToCoadd(combinedMi, weightMap, snap0.getMaskedImage(), badPixelMask, weight)
-        addToCoadd(combinedMi, weightMap, snap1.getMaskedImage(), badPixelMask, weight)
+        addToCoadd(combinedMi, weightMap, snap0.maskedImage, badPixelMask, weight)
+        addToCoadd(combinedMi, weightMap, snap1.maskedImage, badPixelMask, weight)
 
         # pre-scaling the weight map instead of post-scaling the combinedMi saves a bit of time
         # because the weight map is a simple Image instead of a MaskedImage
@@ -331,6 +323,8 @@ class SnapCombineTask(pipeBase.Task):
     def makeInitialPsf(self, exposure, fwhmPix=None):
         """Initialise the detection procedure by setting the PSF and WCS.
 
+        Parameters
+        ----------
         exposure : `lsst.afw.image.Exposure`
             Exposure to process.
 
@@ -353,7 +347,7 @@ class SnapCombineTask(pipeBase.Task):
 
         size = self.config.initialPsf.size
         model = self.config.initialPsf.model
-        self.log.info("installInitialPsf fwhm=%s pixels; size=%s pixels", fwhmPix, size)
+        self.log.info("Initial snap PSF fwhm=%s pixels; size=%s pixels", fwhmPix, size)
         psfCls = getattr(measAlg, model + "Psf")
         psf = psfCls(size, size, fwhmPix/(2.0*num.sqrt(2*num.log(2.0))))
         return psf
