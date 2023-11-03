@@ -114,33 +114,68 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # Something about this test dataset prefers the older fluxRatio here.
         self.config.star_catalog_calculation.plugins['base_ClassificationExtendedness'].fluxRatio = 0.925
 
-    def test_run(self):
-        """Test that run() returns reasonable values to be butler put.
-        """
-        calibrate = CalibrateImageTask(config=self.config)
-        calibrate.astrometry.setRefObjLoader(self.ref_loader)
-        calibrate.photometry.match.setRefObjLoader(self.ref_loader)
-        result = calibrate.run(exposure=self.exposure)
+    def _check_run(self, calibrate, result, *, photo_calib):
+        """Test the result of CalibrateImage.run().
 
+        Parameters
+        ----------
+        calibrate : `lsst.pipe.tasks.calibrateImage.CalibrateImageTask`
+            Configured task that had `run` called on it.
+        result : `lsst.pipe.base.Struct`
+            Result of calling calibrate.run().
+        photo_calib : `float`
+            Expected value of the PhotoCalib mean.
+        """
         # Background should have 4 elements: 3 from compute_psf and one from
         # re-estimation during source detection.
         self.assertEqual(len(result.background), 4)
 
         # Check that the summary statistics are reasonable.
-        summary = self.exposure.info.getSummaryStats()
-        self.assertFloatsAlmostEqual(self.exposure.info.getSummaryStats().psfSigma, 2.0, rtol=1e-2)
+        summary = result.output_exposure.info.getSummaryStats()
+        self.assertFloatsAlmostEqual(summary.psfSigma, 2.0, rtol=1e-2)
         self.assertFloatsAlmostEqual(summary.ra, self.sky_center.getRa().asDegrees(), rtol=1e-7)
         self.assertFloatsAlmostEqual(summary.dec, self.sky_center.getDec().asDegrees(), rtol=1e-7)
 
         # Returned photoCalib should be the applied value, not the ==1 one on the exposure.
         self.assertFloatsAlmostEqual(result.applied_photo_calib.getCalibrationMean(),
-                                     self.photo_calib, rtol=2e-3)
+                                     photo_calib, rtol=2e-3)
         # Should have flux/magnitudes in the catalog.
         self.assertIn("slot_PsfFlux_flux", result.stars.schema)
         self.assertIn("slot_PsfFlux_mag", result.stars.schema)
 
         # Check that all necessary fields are in the output.
         lsst.pipe.base.testUtils.assertValidOutput(calibrate, result)
+
+    def test_run(self):
+        """Test that run() returns reasonable values to be butler put.
+        """
+        calibrate = CalibrateImageTask(config=self.config)
+        calibrate.astrometry.setRefObjLoader(self.ref_loader)
+        calibrate.photometry.match.setRefObjLoader(self.ref_loader)
+        result = calibrate.run(exposures=self.exposure)
+
+        self._check_run(calibrate, result, photo_calib=self.photo_calib)
+
+    def test_run_2_snaps(self):
+        """Test that run() returns reasonable values to be butler put, when
+        passed two exposures to combine as snaps.
+        """
+        calibrate = CalibrateImageTask(config=self.config)
+        calibrate.astrometry.setRefObjLoader(self.ref_loader)
+        calibrate.photometry.match.setRefObjLoader(self.ref_loader)
+        result = calibrate.run(exposures=[self.exposure, self.exposure])
+
+        self._check_run(calibrate, result, photo_calib=self.photo_calib/2)
+
+    def test_handle_snaps(self):
+        calibrate = CalibrateImageTask(config=self.config)
+        self.assertEqual(calibrate._handle_snaps(self.exposure), self.exposure)
+        self.assertEqual(calibrate._handle_snaps((self.exposure, )), self.exposure)
+        self.assertEqual(calibrate._handle_snaps(self.exposure), self.exposure)
+        with self.assertRaisesRegex(RuntimeError, "Can only process 1 or 2 snaps, not 0."):
+            calibrate._handle_snaps([])
+        with self.assertRaisesRegex(RuntimeError, "Can only process 1 or 2 snaps, not 3."):
+            calibrate._handle_snaps(3*[self.exposure])
 
     def test_compute_psf(self):
         """Test that our brightest sources are found by _compute_psf(),
@@ -269,7 +304,8 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
     """
     def setUp(self):
         instrument = "testCam"
-        exposure = 101
+        exposure0 = 101
+        exposure1 = 101
         visit = 100101
         detector = 42
 
@@ -279,7 +315,8 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
 
         # dataIds for fake data
         butlerTests.addDataIdValue(self.repo, "instrument", instrument)
-        butlerTests.addDataIdValue(self.repo, "exposure", exposure)
+        butlerTests.addDataIdValue(self.repo, "exposure", exposure0)
+        butlerTests.addDataIdValue(self.repo, "exposure", exposure1)
         butlerTests.addDataIdValue(self.repo, "visit", visit)
         butlerTests.addDataIdValue(self.repo, "detector", detector)
 
@@ -314,15 +351,17 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
                                    "Catalog")
 
         # dataIds
-        self.exposure_id = self.repo.registry.expandDataId(
-            {"instrument": instrument, "exposure": exposure, "detector": detector})
+        self.exposure0_id = self.repo.registry.expandDataId(
+            {"instrument": instrument, "exposure": exposure0, "detector": detector})
+        self.exposure1_id = self.repo.registry.expandDataId(
+            {"instrument": instrument, "exposure": exposure1, "detector": detector})
         self.visit_id = self.repo.registry.expandDataId(
             {"instrument": instrument, "visit": visit, "detector": detector})
         self.htm_id = self.repo.registry.expandDataId({"htm7": 42})
 
         # put empty data
         self.butler = butlerTests.makeTestCollection(self.repo)
-        self.butler.put(afwImage.ExposureF(), "postISRCCD", self.exposure_id)
+        self.butler.put(afwImage.ExposureF(), "postISRCCD", self.exposure0_id)
         self.butler.put(afwTable.SimpleCatalog(), "gaia_dr3_20230707", self.htm_id)
         self.butler.put(afwTable.SimpleCatalog(), "ps1_pv3_3pi_20170110", self.htm_id)
 
@@ -335,7 +374,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
 
         quantum = lsst.pipe.base.testUtils.makeQuantum(
             task, self.butler, self.visit_id,
-            {"exposure": self.exposure_id,
+            {"exposures": [self.exposure0_id],
              "astrometry_ref_cat": [self.htm_id],
              "photometry_ref_cat": [self.htm_id],
              # outputs
@@ -354,7 +393,34 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr3_20230707")
         self.assertEqual(task.photometry.match.refObjLoader.name, "ps1_pv3_3pi_20170110")
         # Check that the proper kwargs are passed to run().
-        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposure"})
+        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures"})
+
+    def test_runQuantum_2_snaps(self):
+        task = CalibrateImageTask()
+        lsst.pipe.base.testUtils.assertValidInitOutput(task)
+
+        quantum = lsst.pipe.base.testUtils.makeQuantum(
+            task, self.butler, self.visit_id,
+            {"exposures": [self.exposure0_id, self.exposure1_id],
+             "astrometry_ref_cat": [self.htm_id],
+             "photometry_ref_cat": [self.htm_id],
+             # outputs
+             "output_exposure": self.visit_id,
+             "stars": self.visit_id,
+             "background": self.visit_id,
+             "psf_stars": self.visit_id,
+             "applied_photo_calib": self.visit_id,
+             "initial_pvi_background": self.visit_id,
+             "astrometry_matches": self.visit_id,
+             "photometry_matches": self.visit_id,
+             })
+        mock_run = lsst.pipe.base.testUtils.runTestQuantum(task, self.butler, quantum)
+
+        # Ensure the reference loaders have been configured.
+        self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr3_20230707")
+        self.assertEqual(task.photometry.match.refObjLoader.name, "ps1_pv3_3pi_20170110")
+        # Check that the proper kwargs are passed to run().
+        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures"})
 
     def test_runQuantum_no_optional_outputs(self):
         config = CalibrateImageTask.ConfigClass()
@@ -364,7 +430,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
 
         quantum = lsst.pipe.base.testUtils.makeQuantum(
             task, self.butler, self.visit_id,
-            {"exposure": self.exposure_id,
+            {"exposures": [self.exposure0_id],
              "astrometry_ref_cat": [self.htm_id],
              "photometry_ref_cat": [self.htm_id],
              # outputs
@@ -379,7 +445,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr3_20230707")
         self.assertEqual(task.photometry.match.refObjLoader.name, "ps1_pv3_3pi_20170110")
         # Check that the proper kwargs are passed to run().
-        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposure"})
+        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures"})
 
     def test_lintConnections(self):
         """Check that the connections are self-consistent.

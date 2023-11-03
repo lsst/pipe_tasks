@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import collections.abc
+
 import numpy as np
 
 import lsst.afw.table as afwTable
@@ -35,7 +37,8 @@ import lsst.pipe.base as pipeBase
 from lsst.pipe.base import connectionTypes
 from lsst.utils.timer import timeMethod
 
-from . import measurePsf, repair, setPrimaryFlags, photoCal, computeExposureSummaryStats, maskStreaks
+from . import measurePsf, repair, setPrimaryFlags, photoCal, \
+    computeExposureSummaryStats, maskStreaks, snapCombine
 
 
 class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
@@ -58,10 +61,11 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
         multiple=True
     )
 
-    exposure = connectionTypes.Input(
-        doc="Exposure to be calibrated, and detected and measured on.",
+    exposures = connectionTypes.Input(
+        doc="Exposure (or two snaps) to be calibrated, and detected and measured on.",
         name="postISRCCD",
         storageClass="Exposure",
+        multiple=True,  # to handle 1 exposure or 2 snaps
         dimensions=["instrument", "exposure", "detector"],
     )
 
@@ -142,6 +146,11 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         # we always have it on for production runs?
         default=["psf_stars", "astrometry_matches", "photometry_matches"],
         optional=True
+    )
+
+    snap_combine = pexConfig.ConfigurableField(
+        target=snapCombine.SnapCombineTask,
+        doc="Task to combine two snaps to make one exposure.",
     )
 
     # subtasks used during psf characterization
@@ -340,6 +349,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
     def __init__(self, initial_stars_schema=None, **kwargs):
         super().__init__(**kwargs)
 
+        self.makeSubtask("snap_combine")
+
         # PSF determination subtasks
         self.makeSubtask("install_simple_psf")
         self.makeSubtask("psf_repair")
@@ -394,15 +405,17 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     @timeMethod
-    def run(self, *, exposure):
+    def run(self, *, exposures):
         """Find stars and perform psf measurement, then do a deeper detection
         and measurement and calibrate astrometry and photometry from that.
 
         Parameters
         ----------
-        exposure : `lsst.afw.image.Exposure`
-            Post-ISR exposure, with an initial WCS, VisitInfo, and Filter.
-            Modified in-place during processing.
+        exposures : `lsst.afw.image.Exposure` or `list` [`lsst.afw.image.Exposure`]
+            Post-ISR exposure(s), with an initial WCS, VisitInfo, and Filter.
+            Modified in-place during processing if only one is passed.
+            If two exposures are passed, treat them as snaps and combine
+            before doing further processing.
 
         Returns
         -------
@@ -432,6 +445,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 Reference catalog stars matches used in the photometric fit.
                 (`list` [`lsst.afw.table.ReferenceMatch`] or `lsst.afw.table.BaseCatalog`)
         """
+        exposure = self._handle_snaps(exposures)
+
         psf_stars, background, candidates = self._compute_psf(exposure)
 
         self._measure_aperture_correction(exposure, psf_stars)
@@ -454,6 +469,36 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                applied_photo_calib=photo_calib,
                                astrometry_matches=astrometry_matches,
                                photometry_matches=photometry_matches)
+
+    def _handle_snaps(self, exposure):
+        """Combine two snaps into one exposure, or return a single exposure.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure` or `list` [`lsst.afw.image.Exposure]`
+            One or two exposures to combine as snaps.
+
+        Returns
+        -------
+        exposure : `lsst.afw.image.Exposure`
+            A single exposure to continue processing.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if input does not contain either 1 or 2 exposures.
+        """
+        if isinstance(exposure, lsst.afw.image.Exposure):
+            return exposure
+
+        if isinstance(exposure, collections.abc.Sequence):
+            match len(exposure):
+                case 1:
+                    return exposure[0]
+                case 2:
+                    return self.snap_combine.run(exposure[0], exposure[1]).exposure
+                case n:
+                    raise RuntimeError(f"Can only process 1 or 2 snaps, not {n}.")
 
     def _compute_psf(self, exposure, guess_psf=True):
         """Find bright sources detected on an exposure and fit a PSF model to
