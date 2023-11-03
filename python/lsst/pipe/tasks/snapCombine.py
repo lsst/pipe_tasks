@@ -66,7 +66,7 @@ class SnapCombineConfig(pexConfig.Config):
     doRepair = pexConfig.Field(
         dtype=bool,
         doc="Repair images (CR reject and interpolate) before combining",
-        default=True,
+        default=False,
     )
     repairPsfFwhm = pexConfig.Field(
         dtype=float,
@@ -85,9 +85,8 @@ class SnapCombineConfig(pexConfig.Config):
     )
     badMaskPlanes = pexConfig.ListField(
         dtype=str,
-        doc="Mask planes that, if set, the associated pixels are not included in the combined exposure; "
-        "DETECTED excludes cosmic rays",
-        default=("DETECTED",),
+        doc="Mask planes that, if set, the associated pixels are not included in the combined exposure.",
+        default=(),
     )
     averageKeys = pexConfig.ListField(
         dtype=str,
