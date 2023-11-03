@@ -238,7 +238,9 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             summary.psfTraceRadiusDelta = float(psfTraceRadiusDelta)
 
         if sources is None:
-            # No sources are available (as in some tests)
+            # No sources are available (as in some tests and rare cases where
+            # the selection criteria in finalizeCharacterization lead to no
+            # good sources).
             return
 
         psf_mask = sources[self.config.starSelection] & (~sources[self.config.starShape + '_flag'])

@@ -315,6 +315,11 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         -------
         struct : `lsst.pipe.base.struct`
             Struct with outputs for persistence.
+
+        Raises
+        ------
+        NoWorkFound
+            Raised if the selector returns no good sources.
         """
         # We do not need the isolated star table in this task.
         # However, it is used in tests to confirm consistency of indexes.
@@ -335,6 +340,7 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         psf_ap_corr_cat.setMetadata(metadata)
 
         measured_src_tables = []
+        measured_src_table = None
 
         for detector in src_dict:
             src = src_dict[detector].get()
@@ -349,20 +355,25 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             )
 
             # And now we package it together...
-            record = psf_ap_corr_cat.addNew()
-            record['id'] = int(detector)
-            record['visit'] = visit
-            if psf is not None:
-                record.setPsf(psf)
-            if ap_corr_map is not None:
-                record.setApCorrMap(ap_corr_map)
+            if measured_src is not None:
+                record = psf_ap_corr_cat.addNew()
+                record['id'] = int(detector)
+                record['visit'] = visit
+                if psf is not None:
+                    record.setPsf(psf)
+                if ap_corr_map is not None:
+                    record.setApCorrMap(ap_corr_map)
 
-            measured_src['visit'][:] = visit
-            measured_src['detector'][:] = detector
+                measured_src['visit'][:] = visit
+                measured_src['detector'][:] = detector
 
-            measured_src_tables.append(measured_src.asAstropy().as_array())
+                measured_src_tables.append(measured_src.asAstropy().as_array())
 
-        measured_src_table = np.concatenate(measured_src_tables)
+        if len(measured_src_tables) > 0:
+            measured_src_table = np.concatenate(measured_src_tables)
+
+        if measured_src_table is None:
+            raise pipeBase.NoWorkFound(f'No good sources found for any detectors in visit {visit}')
 
         return pipeBase.Struct(psf_ap_corr_cat=psf_ap_corr_cat,
                                output_table=measured_src_table)
@@ -598,6 +609,10 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         """
         # Apply source selector (s/n, flags, etc.)
         good_src = self.source_selector.selectSources(src)
+        if sum(good_src.selected) == 0:
+            self.log.warning('No good sources remain after cuts for visit %d, detector %d',
+                             visit, detector)
+            return None, None, None
 
         # Cut down input src to the selected sources
         # We use a separate schema/mapper here than for the output/measurement catalog because of

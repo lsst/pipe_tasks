@@ -21,11 +21,13 @@
 #
 """Test FinalizeCharacterizationTask.
 """
+import logging
 import unittest
 import numpy as np
 import pandas as pd
 
 import lsst.utils.tests
+import lsst.afw.table as afwTable
 import lsst.pipe.base as pipeBase
 
 from lsst.pipe.tasks.finalizeCharacterization import (FinalizeCharacterizationConfig,
@@ -41,6 +43,7 @@ class TestFinalizeCharacterizationTask(FinalizeCharacterizationTask):
         pipeBase.PipelineTask.__init__(self, **kwargs)
 
         self.makeSubtask('reserve_selection')
+        self.makeSubtask('source_selector')
 
 
 class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
@@ -208,6 +211,33 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
         )
 
         self.assertGreater(len(iso), 0)
+
+    def test_compute_psf_and_ap_corr_map_no_sources(self):
+        """Test log message when there are no good sources after selection."""
+        # Create an empty source catalog.
+        src_schema = afwTable.SourceTable.makeMinimalSchema()
+        src_schema.addField('base_GaussianFlux_instFlux', type='F', doc='Flux field')
+        src_schema.addField('base_GaussianFlux_instFluxErr', type='F', doc='Flux field')
+        src = afwTable.SourceCatalog(src_schema)
+
+        # Set defaults and placeholders for required positional arguments.
+        self.finalizeCharacterizationTask.config.source_selector['science'].flags.bad = []
+        visit = 0
+        detector = 0
+        exposure = None
+        isolated_source_table = None
+        with self.assertLogs(level=logging.WARNING) as cm:
+            psf, ap_corr_map, measured_src = self.finalizeCharacterizationTask.compute_psf_and_ap_corr_map(
+                visit,
+                detector,
+                exposure,
+                src,
+                isolated_source_table
+            )
+        self.assertIn(
+            "No good sources remain after cuts for visit {}, detector {}".format(visit, detector),
+            cm.output[0]
+        )
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
