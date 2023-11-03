@@ -38,8 +38,7 @@ from lsst.meas.algorithms import (
     MeasureApCorrError,
 )
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
-from lsst.meas.astrom import RefMatchTask, displayAstrometry
-from lsst.meas.algorithms import LoadReferenceObjectsConfig
+from lsst.meas.astrom import displayAstrometry
 from lsst.meas.base import (
     SingleFrameMeasurementTask,
     ApplyApCorrTask,
@@ -195,18 +194,6 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
         target=InstallGaussianPsfTask,
         doc="Install a simple PSF model",
     )
-    refObjLoader = pexConfig.ConfigField(
-        dtype=LoadReferenceObjectsConfig,
-        deprecated="This field does nothing. Will be removed after v24 (see DM-34768).",
-        doc="reference object loader",
-    )
-    ref_match = pexConfig.ConfigurableField(
-        target=RefMatchTask,
-        deprecated="This field was never usable. Will be removed after v24 (see DM-34768).",
-        doc="Task to load and match reference objects. Only used if measurePsf can use matches. "
-        "Warning: matching will only work well if the initial WCS is accurate enough "
-        "to give good matches (roughly: good to 3 arcsec across the CCD).",
-    )
     measurePsf = pexConfig.ConfigurableField(
         target=MeasurePsfTask,
         doc="Measure PSF",
@@ -288,8 +275,6 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
 
     Parameters
     ----------
-    refObjLoader : `lsst.meas.algorithms.ReferenceObjectLoader`, optional
-        Reference object loader if using a catalog-based star-selector.
     schema : `lsst.afw.table.Schema`, optional
         Initial schema for icSrc catalog.
     **kwargs
@@ -321,7 +306,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
     ConfigClass = CharacterizeImageConfig
     _DefaultName = "characterizeImage"
 
-    def __init__(self, refObjLoader=None, schema=None, **kwargs):
+    def __init__(self, schema=None, **kwargs):
         super().__init__(**kwargs)
 
         if schema is None:
@@ -333,9 +318,6 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         if self.config.doMaskStreaks:
             self.makeSubtask("maskStreaks")
         self.makeSubtask("measurePsf", schema=self.schema)
-        # TODO DM-34769: remove this `if` block
-        if self.config.doMeasurePsf and self.measurePsf.usesMatches:
-            self.makeSubtask("ref_match", refObjLoader=refObjLoader)
         self.algMetadata = dafBase.PropertyList()
         self.makeSubtask('detection', schema=self.schema)
         if self.config.doDeblend:
@@ -565,12 +547,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
 
         measPsfRes = pipeBase.Struct(cellSet=None)
         if self.config.doMeasurePsf:
-            # TODO DM-34769: remove this `if` block, and the `matches` kwarg from measurePsf.run below.
-            if self.measurePsf.usesMatches:
-                matches = self.ref_match.loadAndMatch(exposure=exposure, sourceCat=sourceCat).matches
-            else:
-                matches = None
-            measPsfRes = self.measurePsf.run(exposure=exposure, sources=sourceCat, matches=matches,
+            measPsfRes = self.measurePsf.run(exposure=exposure, sources=sourceCat,
                                              expId=idGenerator.catalog_id)
         self.display("measure_iter", exposure=exposure, sourceCat=sourceCat)
 
