@@ -1022,7 +1022,7 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
             raise ValueError("config.functorFile is None. "
                              "Must be a valid path to yaml in order to run Task as a PipelineTask.")
         result = self.run(handle=inputs['inputCatalog'], funcs=self.funcs,
-                          dataId=outputRefs.outputCatalog.dataId.full)
+                          dataId=dict(outputRefs.outputCatalog.dataId.mapping))
         outputs = pipeBase.Struct(outputCatalog=result)
         butlerQC.put(outputs, outputRefs)
 
@@ -1071,7 +1071,7 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
         if dataId and self.config.columnsFromDataId:
             for key in self.config.columnsFromDataId:
                 if key in dataId:
-                    df[str(key)] = dataId[key]
+                    df[key] = dataId[key]
                 else:
                     raise ValueError(f"'{key}' in config.columnsFromDataId not found in dataId: {dataId}")
 
@@ -1400,7 +1400,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         dataRefs = butlerQC.get(inputRefs.calexp)
-        visit = dataRefs[0].dataId.byName()['visit']
+        visit = dataRefs[0].dataId['visit']
 
         self.log.debug("Concatenating metadata from %d per-detector calexps (visit %d)",
                        len(dataRefs), visit)
@@ -1770,7 +1770,7 @@ class WriteForcedSourceTableTask(pipeBase.PipelineTask):
         # Add ccdVisitId to allow joining with CcdVisitTable
         idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
         inputs['ccdVisitId'] = idGenerator.catalog_id
-        inputs['band'] = butlerQC.quantum.dataId.full['band']
+        inputs['band'] = butlerQC.quantum.dataId['band']
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
@@ -1870,7 +1870,7 @@ class TransformForcedSourceTableTask(TransformCatalogBaseTask):
             raise ValueError("config.functorFile is None. "
                              "Must be a valid path to yaml in order to run Task as a PipelineTask.")
         outputs = self.run(inputs['inputCatalogs'], inputs['referenceCatalog'], funcs=self.funcs,
-                           dataId=outputRefs.outputCatalog.dataId.full)
+                           dataId=dict(outputRefs.outputCatalog.dataId.mapping))
 
         butlerQC.put(outputs, outputRefs)
 

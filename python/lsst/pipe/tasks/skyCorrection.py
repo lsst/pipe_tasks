@@ -27,7 +27,6 @@ import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.pipe.base.connectionTypes as cT
 import numpy as np
-from lsst.daf.butler import DimensionGraph
 from lsst.pex.config import Config, ConfigField, ConfigurableField, Field, FieldValidationError
 from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
 from lsst.pipe.tasks.background import (
@@ -59,7 +58,7 @@ def _skyFrameLookup(datasetType, registry, quantumDataId, collections):
     results : `list` [`lsst.daf.butler.DatasetRef`]
         List of datasets that will be used as sky calibration frames.
     """
-    newDataId = quantumDataId.subset(DimensionGraph(registry.dimensions, names=["instrument", "visit"]))
+    newDataId = quantumDataId.subset(registry.dimensions.conform(["instrument", "visit"]))
     skyFrames = []
     for dataId in registry.queryDataIds(["visit", "detector"], dataId=newDataId).expanded():
         skyFrame = registry.findDataset(
