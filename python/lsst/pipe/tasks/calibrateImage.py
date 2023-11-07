@@ -319,7 +319,9 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         self.photometry.match.sourceSelection.retarget(sourceSelector.NullSourceSelectorTask)
 
         # All sources should be good for PSF summary statistics.
+        # TODO: These should both be changed to calib_psf_used with DM-41640.
         self.compute_summary_stats.starSelection = "calib_photometry_used"
+        self.compute_summary_stats.starSelector.flags.good = ["calib_photometry_used"]
 
 
 class CalibrateImageTask(pipeBase.PipelineTask):
