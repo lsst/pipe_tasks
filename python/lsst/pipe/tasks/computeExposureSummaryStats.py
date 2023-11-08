@@ -34,6 +34,7 @@ import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
 import lsst.geom as geom
+from lsst.meas.algorithms import ScienceSourceSelectorTask
 from lsst.utils.timer import timeMethod
 
 
@@ -55,9 +56,13 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         default=("NO_DATA", "SUSPECT"),
     )
     starSelection = pexConfig.Field(
-        doc="Field to select sources to be used in the PSF statistics computation.",
+        doc="Field to select full list of sources used for PSF modeling.",
         dtype=str,
-        default="calib_psf_used"
+        default="calib_psf_used",
+    )
+    starSelector = pexConfig.ConfigurableField(
+        target=ScienceSourceSelectorTask,
+        doc="Selection of sources to compute PSF star statistics.",
     )
     starShape = pexConfig.Field(
         doc="Base name of columns to use for the source shape in the PSF statistics computation.",
@@ -87,6 +92,27 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         "robutsness metric calculations (namely, maxDistToNearestPsf and psfTraceRadiusDelta).",
         default=("BAD", "CR", "EDGE", "INTRP", "NO_DATA", "SAT", "SUSPECT"),
     )
+
+    def setDefaults(self):
+        super().setDefaults()
+
+        self.starSelector.setDefaults()
+        self.starSelector.doFlags = True
+        self.starSelector.doSignalToNoise = True
+        self.starSelector.doUnresolved = False
+        self.starSelector.doIsolated = False
+        self.starSelector.doRequireFiniteRaDec = False
+        self.starSelector.doRequirePrimary = False
+
+        self.starSelector.signalToNoise.minimum = 50.0
+        self.starSelector.signalToNoise.maximum = 1000.0
+
+        self.starSelector.flags.bad = ["slot_Shape_flag", "slot_PsfFlux_flag"]
+        # Select stars used for PSF modeling.
+        self.starSelector.flags.good = ["calib_psf_used"]
+
+        self.starSelector.signalToNoise.fluxField = "slot_PsfFlux_instFlux"
+        self.starSelector.signalToNoise.errField = "slot_PsfFlux_instFluxErr"
 
 
 class ComputeExposureSummaryStatsTask(pipeBase.Task):
@@ -128,6 +154,11 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     """
     ConfigClass = ComputeExposureSummaryStatsConfig
     _DefaultName = "computeExposureSummaryStats"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.makeSubtask("starSelector")
 
     @timeMethod
     def run(self, exposure, sources, background):
@@ -243,10 +274,14 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             # good sources).
             return
 
-        psf_mask = sources[self.config.starSelection] & (~sources[self.config.starShape + '_flag'])
-        nPsfStar = psf_mask.sum()
+        # Count the total number of psf stars used (prior to stats selection).
+        nPsfStar = sources[self.config.starSelection].sum()
+        summary.nPsfStar = int(nPsfStar)
 
-        if nPsfStar == 0:
+        psf_mask = self.starSelector.run(sources).selected
+        nPsfStarsUsedInStats = psf_mask.sum()
+
+        if nPsfStarsUsedInStats == 0:
             # No stars to measure statistics, so we must return the defaults
             # of 0 stars and NaN values.
             return
@@ -263,12 +298,15 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         psfYY = psf_cat[self.config.psfShape + '_yy']
         psfXY = psf_cat[self.config.psfShape + '_xy']
 
-        starSize = (starXX*starYY - starXY**2.)**0.25
+        # Use the trace radius for the star size.
+        starSize = np.sqrt(starXX/2. + starYY/2.)
+
         starE1 = (starXX - starYY)/(starXX + starYY)
         starE2 = 2*starXY/(starXX + starYY)
         starSizeMedian = np.median(starSize)
 
-        psfSize = (psfXX*psfYY - psfXY**2)**0.25
+        # Use the trace radius for the psf size.
+        psfSize = np.sqrt(psfXX/2. + psfYY/2.)
         psfE1 = (psfXX - psfYY)/(psfXX + psfYY)
         psfE2 = 2*psfXY/(psfXX + psfYY)
 
@@ -279,9 +317,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
         psfStarDeltaSizeMedian = np.median(starSize - psfSize)
         psfStarDeltaSizeScatter = sigmaMad(starSize - psfSize, scale='normal')
-        psfStarScaledDeltaSizeScatter = psfStarDeltaSizeScatter/starSizeMedian**2.
+        psfStarScaledDeltaSizeScatter = psfStarDeltaSizeScatter/starSizeMedian
 
-        summary.nPsfStar = int(nPsfStar)
         summary.psfStarDeltaE1Median = float(psfStarDeltaE1Median)
         summary.psfStarDeltaE2Median = float(psfStarDeltaE2Median)
         summary.psfStarDeltaE1Scatter = float(psfStarDeltaE1Scatter)
