@@ -527,6 +527,7 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
 
         if len(output) == 0:
             self.log.info("All images rejected in BestSeeingSelectVisitsTask.")
+            raise pipeBase.NoWorkFound(f"No good images found for {dataId}")
         else:
             self.log.info(
                 "%d images selected with FWHM range of %f--%f arcseconds",
