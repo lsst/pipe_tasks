@@ -28,6 +28,7 @@ from .fit_multiband import CatalogExposure, CatalogExposureConfig
 
 import lsst.afw.table as afwTable
 from lsst.meas.base import SkyMapIdGeneratorConfig
+from lsst.meas.extensions.scarlet.io import updateCatalogFootprints
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
@@ -291,11 +292,11 @@ class CoaddMultibandFitTask(pipeBase.PipelineTask):
         for dataId in dataIds:
             catalog = cats[dataId]
             exposure = exps[dataId]
-            models_scarlet.updateCatalogFootprints(
+            updateCatalogFootprints(
+                modelData=models_scarlet,
                 catalog=catalog,
                 band=dataId['band'],
-                psfModel=exposure.getPsf(),
-                redistributeImage=exposure.image,
+                imageForRedistribution=exposure,
                 removeScarletData=True,
                 updateFluxColumns=False,
             )
