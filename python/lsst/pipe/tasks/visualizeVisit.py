@@ -24,6 +24,14 @@ __all__ = [
     "VisualizeBinExpTask",
     "VisualizeMosaicExpConfig",
     "VisualizeMosaicExpTask",
+    "VisualizeBinCalibConfig",
+    "VisualizeBinCalibTask",
+    "VisualizeMosaicCalibConfig",
+    "VisualizeMosaicCalibTask",
+    "VisualizeBinCalibFilterConfig",
+    "VisualizeBinCalibFilterTask",
+    "VisualizeMosaicCalibFilterConfig",
+    "VisualizeMosaicCalibFilterTask",
 ]
 
 import lsst.afw.cameraGeom.utils as afwUtils
@@ -35,12 +43,13 @@ import lsst.pipe.base.connectionTypes as cT
 import numpy as np
 
 
-class VisualizeBinExpConnections(pipeBase.PipelineTaskConnections, dimensions=("instrument", "detector")):
+class VisualizeBinExpConnections(pipeBase.PipelineTaskConnections,
+                                 dimensions=("instrument", "exposure", "detector")):
     inputExp = cT.Input(
         name="calexp",
         doc="Input exposure data to mosaic.",
         storageClass="ExposureF",
-        dimensions=("instrument", "detector"),
+        dimensions=("instrument", "detector", ),
     )
     camera = cT.PrerequisiteInput(
         name="camera",
@@ -116,12 +125,13 @@ class VisualizeBinExpTask(pipeBase.PipelineTask):
         return pipeBase.Struct(outputExp=outputExp)
 
 
-class VisualizeMosaicExpConnections(pipeBase.PipelineTaskConnections, dimensions=("instrument",)):
+class VisualizeMosaicExpConnections(pipeBase.PipelineTaskConnections,
+                                    dimensions=("instrument", "exposure", )):
     inputExps = cT.Input(
         name="calexpBin",
         doc="Input binned images mosaic.",
         storageClass="ExposureF",
-        dimensions=("instrument", "detector"),
+        dimensions=("instrument", "detector", "exposure", ),
         multiple=True,
     )
     camera = cT.PrerequisiteInput(
@@ -265,3 +275,180 @@ class ImageSource:
         # so we don't need to here.
         image = afwMath.rotateImageBy90(image, detector.getOrientation().getNQuarter())
         return image, detector
+
+
+class VisualizeBinCalibConnections(pipeBase.PipelineTaskConnections, dimensions=("instrument", "detector")):
+    inputExp = cT.Input(
+        name="bias",
+        doc="Input exposure data to mosaic.",
+        storageClass="ExposureF",
+        dimensions=("instrument", "detector"),
+        isCalibration=True,
+    )
+    camera = cT.PrerequisiteInput(
+        name="camera",
+        doc="Input camera to use for mosaic geometry.",
+        storageClass="Camera",
+        dimensions=("instrument",),
+        isCalibration=True,
+    )
+
+    outputExp = cT.Output(
+        name="calexpBin",
+        doc="Output binned image.",
+        storageClass="ExposureF",
+        dimensions=("instrument", "detector"),
+    )
+
+
+class VisualizeBinCalibConfig(VisualizeBinExpConfig, pipelineConnections=VisualizeBinCalibConnections):
+    pass
+
+
+class VisualizeBinCalibTask(VisualizeBinExpTask):
+    """Bin the detectors of an calibration.
+
+    The outputs of this task should be passed to
+    VisualizeMosaicCalibTask to be mosaicked into a full focal plane
+    visualization image.
+    """
+
+    ConfigClass = VisualizeBinCalibConfig
+    _DefaultName = "VisualizeBinCalib"
+
+    pass
+
+
+class VisualizeMosaicCalibConnections(pipeBase.PipelineTaskConnections, dimensions=("instrument",)):
+    inputExps = cT.Input(
+        name="calexpBin",
+        doc="Input binned images mosaic.",
+        storageClass="ExposureF",
+        dimensions=("instrument", "detector"),
+        multiple=True,
+    )
+    camera = cT.PrerequisiteInput(
+        name="camera",
+        doc="Input camera to use for mosaic geometry.",
+        storageClass="Camera",
+        dimensions=("instrument",),
+        isCalibration=True,
+    )
+
+    outputData = cT.Output(
+        name="calexpFocalPlane",
+        doc="Output binned mosaicked frame.",
+        storageClass="ImageF",
+        dimensions=("instrument",),
+    )
+
+
+class VisualizeMosaicCalibConfig(
+    VisualizeMosaicExpConfig, pipelineConnections=VisualizeMosaicCalibConnections
+):
+    pass
+
+
+class VisualizeMosaicCalibTask(VisualizeMosaicExpTask):
+    """Task to mosaic binned products.
+
+    The config.binning parameter must match that used in the
+    VisualizeBinCalibTask.  Otherwise there will be a mismatch between
+    the input image size and the expected size of that image in the
+    full focal plane frame.
+    """
+
+    ConfigClass = VisualizeMosaicCalibConfig
+    _DefaultName = "VisualizeMosaicCalib"
+
+    pass
+
+
+class VisualizeBinCalibFilterConnections(pipeBase.PipelineTaskConnections,
+                                         dimensions=("instrument", "detector", "physical_filter")):
+    inputExp = cT.Input(
+        name="bias",
+        doc="Input exposure data to mosaic.",
+        storageClass="ExposureF",
+        dimensions=("instrument", "detector", "physical_filter"),
+        isCalibration=True,
+    )
+    camera = cT.PrerequisiteInput(
+        name="camera",
+        doc="Input camera to use for mosaic geometry.",
+        storageClass="Camera",
+        dimensions=("instrument",),
+        isCalibration=True,
+    )
+
+    outputExp = cT.Output(
+        name="calexpBin",
+        doc="Output binned image.",
+        storageClass="ExposureF",
+        dimensions=("instrument", "detector", "physical_filter"),
+    )
+
+
+class VisualizeBinCalibFilterConfig(VisualizeBinExpConfig,
+                                    pipelineConnections=VisualizeBinCalibFilterConnections):
+    pass
+
+
+class VisualizeBinCalibFilterTask(VisualizeBinExpTask):
+    """Bin the detectors of an calibration.
+
+    The outputs of this task should be passed to
+    VisualizeMosaicCalibTask to be mosaicked into a full focal plane
+    visualization image.
+    """
+
+    ConfigClass = VisualizeBinCalibFilterConfig
+    _DefaultName = "VisualizeBinCalibFilter"
+
+    pass
+
+
+class VisualizeMosaicCalibFilterConnections(pipeBase.PipelineTaskConnections,
+                                            dimensions=("instrument", "physical_filter",)):
+    inputExps = cT.Input(
+        name="calexpBin",
+        doc="Input binned images mosaic.",
+        storageClass="ExposureF",
+        dimensions=("instrument", "detector", "physical_filter"),
+        multiple=True,
+    )
+    camera = cT.PrerequisiteInput(
+        name="camera",
+        doc="Input camera to use for mosaic geometry.",
+        storageClass="Camera",
+        dimensions=("instrument",),
+        isCalibration=True,
+    )
+
+    outputData = cT.Output(
+        name="calexpFocalPlane",
+        doc="Output binned mosaicked frame.",
+        storageClass="ImageF",
+        dimensions=("instrument",),
+    )
+
+
+class VisualizeMosaicCalibFilterConfig(
+    VisualizeMosaicExpConfig, pipelineConnections=VisualizeMosaicCalibFilterConnections
+):
+    pass
+
+
+class VisualizeMosaicCalibFilterTask(VisualizeMosaicExpTask):
+    """Task to mosaic binned products.
+
+    The config.binning parameter must match that used in the
+    VisualizeBinCalibFilterTask.  Otherwise there will be a mismatch between
+    the input image size and the expected size of that image in the
+    full focal plane frame.
+    """
+
+    ConfigClass = VisualizeMosaicCalibFilterConfig
+    _DefaultName = "VisualizeMosaicCalibFilter"
+
+    pass
