@@ -30,7 +30,7 @@ from lsst.utils.timer import timeMethod
 
 
 class SnapCombineConfig(pexConfig.Config):
-    badMaskPlanes = pexConfig.ListField(
+    bad_mask_planes = pexConfig.ListField(
         dtype=str,
         doc="Mask planes that, if set, the associated pixels are not included in the combined exposure.",
         default=(),
@@ -84,25 +84,23 @@ class SnapCombineTask(pipeBase.Task):
 
         Returns
         -------
-        combinedExp : `lsst.afw.image.Exposure`
+        combined : `lsst.afw.image.Exposure`
             Combined exposure.
         """
-        combinedExp = snap0.Factory(snap0, True)
-        combinedMi = combinedExp.maskedImage
-        combinedMi.set(0)
+        combined = snap0.Factory(snap0, True)
+        combined.maskedImage.set(0)
 
-        weightMap = combinedMi.image.Factory(combinedMi.getBBox())
+        weights = combined.maskedImage.image.Factory(combined.maskedImage.getBBox())
         weight = 1.0
-        badPixelMask = afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes)
-        addToCoadd(combinedMi, weightMap, snap0.maskedImage, badPixelMask, weight)
-        addToCoadd(combinedMi, weightMap, snap1.maskedImage, badPixelMask, weight)
+        bad_mask = afwImage.Mask.getPlaneBitMask(self.config.bad_mask_planes)
+        addToCoadd(combined.maskedImage, weights, snap0.maskedImage, bad_mask, weight)
+        addToCoadd(combined.maskedImage, weights, snap1.maskedImage, bad_mask, weight)
 
-        # pre-scaling the weight map instead of post-scaling the combinedMi saves a bit of time
+        # pre-scaling the weight map instead of post-scaling the combined.maskedImage saves a bit of time
         # because the weight map is a simple Image instead of a MaskedImage
-        weightMap *= 0.5  # so result is sum of both images, instead of average
-        combinedMi /= weightMap
-        setCoaddEdgeBits(combinedMi.getMask(), weightMap)
+        weights *= 0.5  # so result is sum of both images, instead of average
+        combined.maskedImage /= weights
+        setCoaddEdgeBits(combined.maskedImage.getMask(), weights)
 
-        # note: none of the inputs has a valid PhotoCalib object, so that is not touched
-        # Filter was already copied
 
+        return combined
