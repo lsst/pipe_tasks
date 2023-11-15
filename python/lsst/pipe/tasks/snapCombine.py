@@ -66,6 +66,7 @@ class SnapCombineTask(pipeBase.Task):
             ``exposure``
                 Snap-combined exposure.
         """
+        self.log.info("Merging two snaps with exposure ids: %s, %s", snap0.visitInfo.id, snap1.visitInfo.id)
         combined = self._add_snaps(snap0, snap1)
 
         return pipeBase.Struct(
