@@ -98,7 +98,16 @@ class SnapCombineTestCase(lsst.utils.tests.TestCase):
         expect += self.snap1.maskedImage
         self.assertMaskedImagesAlmostEqual(result.maskedImage, expect)
 
+    def _check_visitInfo(self, visit_info):
+        self.assertEqual(visit_info.exposureTime,
+                         self.snap0.visitInfo.exposureTime + self.snap1.visitInfo.exposureTime)
+        self.assertEqual(visit_info.date.get(),
+                         (self.snap0.visitInfo.date.get() + self.snap1.visitInfo.date.get())/2)
 
+    def test_visitInfo(self):
+        task = SnapCombineTask()
+        visit_info = task._merge_visit_info(self.snap0.visitInfo, self.snap1.visitInfo)
+        self._check_visitInfo(visit_info)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):

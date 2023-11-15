@@ -102,5 +102,32 @@ class SnapCombineTask(pipeBase.Task):
         combined.maskedImage /= weights
         setCoaddEdgeBits(combined.maskedImage.getMask(), weights)
 
+        combined.info.setVisitInfo(self._merge_visit_info(snap0.visitInfo, snap1.visitInfo))
 
         return combined
+
+    def _merge_visit_info(self, info0, info1):
+        """Merge the visitInfo values from the two exposures.
+
+        In particular:
+         * id will be the id of snap 0.
+         * date will be the average of the dates.
+         * exposure time will be the sum of the times.
+
+        Parameters
+        ----------
+        info0, info1 : `lsst.afw.image.VisitInfo`
+            Metadata to combine.
+
+        Returns
+        -------
+        info : `lsst.afw.image.VisitInfo`
+            Combined metadata.
+
+        """
+        time = info0.exposureTime + info1.exposureTime
+        date = (info0.date.get() + info1.date.get()) / 2.0
+        result = info0.copyWith(exposureTime=time,
+                                date=dafBase.DateTime(date)
+                                )
+        return result
