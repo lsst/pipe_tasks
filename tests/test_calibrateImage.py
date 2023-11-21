@@ -104,6 +104,12 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.config.psf_measure_psf.psfDeterminer = 'pca'
         # We don't have many test points, so can't match on complicated shapes.
         self.config.astrometry.matcher.numPointsForShape = 3
+        # ApFlux has more noise than PsfFlux (the latter unrealistically small
+        # in this test data), so we need to do magnitude rejection at higher
+        # sigma, otherwise we can lose otherwise good sources.
+        # TODO DM-39203: Once we are using Compensated Gaussian Fluxes, we
+        # will use those fluxes here, and hopefully can remove this.
+        self.config.astrometry.magnitudeOutlierRejectionNSigma = 9.0
 
         # Something about this test dataset prefers the older fluxRatio here.
         self.config.star_catalog_calculation.plugins['base_ClassificationExtendedness'].fluxRatio = 0.925
