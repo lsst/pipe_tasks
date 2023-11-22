@@ -41,7 +41,7 @@ from PIL import Image
 
 from lsst.sphgeom import RangeSet, HealpixPixelization
 from lsst.utils.timer import timeMethod
-from lsst.daf.butler import Butler, DataCoordinate, DatasetRef, Quantum, SkyPixDimension
+from lsst.daf.butler import Butler, DataCoordinate, DatasetRef, Quantum
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.afw.geom as afwGeom
@@ -548,16 +548,19 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
         output_dataset_type = dataset_types.outputs[task_def.connections.hips_exposures.name]
         incidental_output_dataset_types = dataset_types.outputs.copy()
         incidental_output_dataset_types.remove(output_dataset_type)
-        (hpx_output_dimension,) = (d for d in output_dataset_type.dimensions
-                                   if isinstance(d, SkyPixDimension))
+        (hpx_output_dimension,) = (
+            registry.dimensions.skypix_dimensions[d] for d in output_dataset_type.dimensions.skypix.names
+        )
 
         constraint_hpx_pixelization = registry.dimensions[f"healpix{constraint_order}"].pixelization
         common_skypix_name = registry.dimensions.commonSkyPix.name
         common_skypix_pixelization = registry.dimensions.commonSkyPix.pixelization
 
         # We will need all the pixels at the quantum resolution as well
-        task_dimensions = registry.dimensions.extract(task_def.connections.dimensions)
-        (hpx_dimension,) = (d for d in task_dimensions if d.name != "band")
+        task_dimensions = registry.dimensions.conform(task_def.connections.dimensions)
+        (hpx_dimension,) = (
+            registry.dimensions.skypix_dimensions[d] for d in task_dimensions.names if d != "band"
+        )
         hpx_pixelization = hpx_dimension.pixelization
 
         if hpx_pixelization.level < constraint_order:
@@ -608,7 +611,7 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
             bind=bind
         ).expanded()
         inputs_by_patch = defaultdict(set)
-        patch_dimensions = registry.dimensions.extract(["patch"])
+        patch_dimensions = registry.dimensions.conform(["patch"])
         for input_ref in input_refs:
             inputs_by_patch[input_ref.dataId.subset(patch_dimensions)].add(input_ref)
         if not inputs_by_patch:
@@ -664,7 +667,7 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
             raise RuntimeError("Given constraints yielded empty quantum graph.")
 
         # Define initOutputs refs.
-        empty_data_id = DataCoordinate.makeEmpty(registry.dimensions)
+        empty_data_id = DataCoordinate.make_empty(registry.dimensions)
         init_outputs = {}
         global_init_outputs = []
         if config_dataset_type := dataset_types.initOutputs.get(task_def.configDatasetName):
@@ -862,7 +865,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
 
-        dims = inputRefs.hips_exposure_handles[0].dataId.names
+        dims = inputRefs.hips_exposure_handles[0].dataId.dimensions.names
         order = None
         for dim in dims:
             if "healpix" in dim:
