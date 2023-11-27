@@ -109,7 +109,7 @@ class CalibrateTaskTestCaseWithButler(lsst.utils.tests.TestCase):
 
     def setUp(self):
         super().setUp()
-        self.butler = butlerTests.makeTestCollection(self.repo)
+        self.butler = butlerTests.makeTestCollection(self.repo, uniqueId=self.id())
 
         self.dataId = {"instrument": "notACam", "visit": 101, "detector": 42}
         # CalibrateTask absolutely requires an ExpandedDataCoordinate
