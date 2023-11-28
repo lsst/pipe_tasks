@@ -40,7 +40,7 @@ from lsst.afw.math import (
 from lsst.geom import AffineTransform, Box2I, Extent2I, Point2D, Point2I, SpherePoint, radians
 from lsst.meas.algorithms import LoadReferenceObjectsConfig, ReferenceObjectLoader
 from lsst.meas.algorithms.brightStarStamps import BrightStarStamp, BrightStarStamps
-from lsst.pex.config import ChoiceField, ConfigField, Field, ListField
+from lsst.pex.config import Config, ChoiceField, ConfigField, Field, ListField, ConfigDictField
 from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
 from lsst.pipe.base.connectionTypes import Input, Output, PrerequisiteInput
 from lsst.utils.timer import timeMethod
@@ -82,6 +82,33 @@ class ProcessBrightStarsConnections(PipelineTaskConnections, dimensions=("instru
             self.inputs.remove("skyCorr")
 
 
+class BinLimits(Config):
+    """Provides a list of upper and lower limits for magnitude bins."""
+
+    limits = ListField[float](
+        doc="A list containing the upper and lower limits of magnitude bins.",
+        default=[],
+    )
+
+
+class StampSize(Config):
+    """Provides a list of upper and lower limits for magnitude bins."""
+
+    size = ListField[int](
+        doc="A list containing the sized of stamps for each magnitude bin.",
+        default=[],
+    )
+
+
+class AnnulusRadii(Config):
+    """Provides a list of inner and outer radius for stamps of a magnitude bin."""
+
+    radii = ListField[int](
+        doc="A list containing the inner and outer radii of the annulus for each magnitude bin.",
+        default=[],
+    )
+
+
 class ProcessBrightStarsConfig(PipelineTaskConfig, pipelineConnections=ProcessBrightStarsConnections):
     """Configuration parameters for ProcessBrightStarsTask."""
 
@@ -89,9 +116,24 @@ class ProcessBrightStarsConfig(PipelineTaskConfig, pipelineConnections=ProcessBr
         doc="Magnitude limit, in Gaia G; all stars brighter than this value will be processed.",
         default=18,
     )
+    magBins = ConfigDictField(
+        keytype=str,
+        itemtype=BinLimits,
+        doc=(
+            "Dictionary of magnitude limits for bins of stars to be processed. The keys are the names of "
+            "the bins and the values are the magnitude limits."
+        ),
+        default={},
+    )
     stampSize = ListField[int](
         doc="Size of the stamps to be extracted, in pixels.",
         default=(250, 250),
+    )
+    stampsSizes = ConfigDictField(
+        keytype=str,
+        itemtype=StampSize,
+        doc="Sizes of the stamps to be extracted, in pixels, for each magnitude bin.",
+        default={},
     )
     modelStampBuffer = Field[float](
         doc=(
@@ -122,6 +164,12 @@ class ProcessBrightStarsConfig(PipelineTaskConfig, pipelineConnections=ProcessBr
     annularFluxRadii = ListField[int](
         doc="Inner and outer radii of the annulus used to compute AnnularFlux for normalization, in pixels.",
         default=(70, 80),
+    )
+    multiAnnularFluxRadii = ConfigDictField(
+        keytype=str,
+        itemtype=AnnulusRadii,
+        doc="The inner and outer radii for the annulus of each magnitude bin.",
+        default={},
     )
     annularFluxStatistic = ChoiceField[str](
         doc="Type of statistic to use to compute annular flux.",
@@ -247,7 +295,11 @@ class ProcessBrightStarsTask(PipelineTask):
             len(extractedStamps.starStamps),
             dataId,
         )
-        warpOutputs = self.warpStamps(extractedStamps.starStamps, extractedStamps.pixCenters)
+        warpOutputs = self.warpStamps(
+            extractedStamps.starStamps,
+            extractedStamps.pixCenters,
+            extractedStamps.binTags
+        )
         warpedStars = warpOutputs.warpedStars
         xy0s = warpOutputs.xy0s
         brightStarList = [
@@ -257,6 +309,7 @@ class ProcessBrightStarsTask(PipelineTask):
                 position=xy0s[j],
                 gaiaGMag=extractedStamps.gMags[j],
                 gaiaId=extractedStamps.gaiaIds[j],
+                binTag=warpOutputs.binTags[j],
                 minValidAnnulusFraction=self.config.minValidAnnulusFraction,
             )
             for j, (warp, transform) in enumerate(zip(warpedStars, warpOutputs.warpTransforms))
@@ -273,14 +326,18 @@ class ProcessBrightStarsTask(PipelineTask):
             numIter=self.config.numIter,
         )
 
-        innerRadius, outerRadius = self.config.annularFluxRadii
+        # innerRadius, outerRadius = self.config.annularFluxRadii
         statsFlag = stringToStatisticsProperty(self.config.annularFluxStatistic)
         brightStarStamps = BrightStarStamps.initAndNormalize(
             brightStarList,
-            innerRadius=innerRadius,
-            outerRadius=outerRadius,
+            # innerRadius=innerRadius,
+            # outerRadius=outerRadius,
+            annularFluxRadii=self.annularFluxRadii,
             nb90Rots=warpOutputs.nb90Rots,
-            imCenter=self.modelCenter,
+            # imCenter=self.modelCenter,
+            imsCenters=self.modelsCenters,
+            modelSizes=self.modelStampsSizes,
+            bins=self.bins,
             use_archive=True,
             statsControl=statsControl,
             statsFlag=statsFlag,
@@ -358,51 +415,59 @@ class ProcessBrightStarsTask(PipelineTask):
         wcs = inputExposure.getWcs()
         inputBBox = inputExposure.getBBox()
 
-        # Trim the reference catalog to only those objects within the exposure
-        # bounding box dilated by half the bright star stamp size. This ensures
-        # all stars that overlap the exposure are included.
-        dilatationExtent = Extent2I(np.array(self.config.stampSize) // 2)
-        withinExposure = refObjLoader.loadPixelBox(
-            inputBBox.dilatedBy(dilatationExtent), wcs, filterName=filterName
-        )
-        refCat = withinExposure.refCat
-        fluxField = withinExposure.fluxField
-
-        # Define ref cat bright subset: objects brighter than the mag limit.
-        fluxLimit = ((self.config.magLimit * u.ABmag).to(u.nJy)).to_value()  # AB magnitudes.
-        refCatBright = Table(
-            refCat.extract("id", "coord_ra", "coord_dec", fluxField, where=refCat[fluxField] > fluxLimit)
-        )
-        refCatBright["mag"] = (refCatBright[fluxField][:] * u.nJy).to(u.ABmag).to_value()  # AB magnitudes.
-
-        # Remove input bright stars (if provided) from the bright subset.
-        if inputBrightStarStamps is not None:
-            # Extract the IDs of stars that have already been extracted.
-            existing = np.isin(refCatBright["id"][:], inputBrightStarStamps.getGaiaIds())
-            refCatBright = refCatBright[~existing]
-
-        # Loop over each reference bright star, extract a stamp around it.
         pixCenters = []
         starStamps = []
         badRows = []
-        for row, object in enumerate(refCatBright):
-            coordSky = SpherePoint(object["coord_ra"], object["coord_dec"], radians)
-            coordPix = wcs.skyToPixel(coordSky)
-            # TODO: Replace this method with exposure getCutout after DM-40042.
-            starStamp = self._getCutout(inputExposure, coordPix, self.config.stampSize.list())
-            if not starStamp:
-                badRows.append(row)
-                continue
-            if self.config.doRemoveDetected:
-                self._replaceSecondaryFootprints(starStamp, coordPix, object["id"])
-            starStamps.append(starStamp)
-            pixCenters.append(coordPix)
+        gMags = []
+        ids = []
+        binTags = []
+        for i, bin in enumerate(self.bins):
+            # Trim the reference catalog to only those objects within the exposure
+            # bounding box dilated by half the bright star stamp size. This ensures
+            # all stars that overlap the exposure are included.
+            # Amir: this should contain dilatation for each bin separately. Maybe no need for central bin?
+            # Amir: one dictionary for all bins or a for loope?????
+            dilatationExtent = Extent2I(np.array(self.stampsSizes[bin].size) // 2)
+            # Amir: this should be done for each bin separately
+            withinExposure = refObjLoader.loadPixelBox(
+                inputBBox.dilatedBy(dilatationExtent), wcs, filterName=filterName
+            )
+            refCat = withinExposure.refCat
+            fluxField = withinExposure.fluxField
 
-        # Remove bad rows from the reference catalog; set up return data.
-        refCatBright.remove_rows(badRows)
-        gMags = list(refCatBright["mag"][:])
-        ids = list(refCatBright["id"][:])
-        return Struct(starStamps=starStamps, pixCenters=pixCenters, gMags=gMags, gaiaIds=ids)
+            # Define ref cat bright subset: objects within the mag limit.
+            fluxLimit = ((self.magBins[bin].limits * u.ABmag).to(u.nJy)).to_value()  # AB magnitudes.
+            fluxCond = refCat[fluxField] < fluxLimit[0]
+            fluxCond &= refCat[fluxField] > fluxLimit[1]
+            refCatBright = Table(
+                refCat.extract("id", "coord_ra", "coord_dec", fluxField, where=fluxCond)
+            )
+            refCatBright["mag"] = (refCatBright[fluxField][:] * u.nJy).to(u.ABmag).to_value()  # AB magnitudes.
+
+            # Remove input bright stars (if provided) from the bright subset.
+            if inputBrightStarStamps is not None:
+                # Extract the IDs of stars that have already been extracted.
+                existing = np.isin(refCatBright["id"][:], inputBrightStarStamps.getGaiaIds())
+                refCatBright = refCatBright[~existing]
+
+            # Loop over each reference bright star, extract a stamp around it.
+            for row, object in enumerate(refCatBright):
+                coordSky = SpherePoint(object["coord_ra"], object["coord_dec"], radians)
+                coordPix = wcs.skyToPixel(coordSky)
+                # TODO: Replace this method with exposure getCutout after DM-40042.
+                starStamp = self._getCutout(inputExposure, coordPix, self.stampsSizes[bin].size)
+                if not starStamp:
+                    badRows.append(row)
+                    continue
+                if self.config.doRemoveDetected:
+                    self._replaceSecondaryFootprints(starStamp, coordPix, object["id"])
+                starStamps.append(starStamp)
+                pixCenters.append(coordPix)
+                gMags.append(refCatBright["mag"][row])
+                ids.append(refCatBright["id"][row])
+                binTags.append(bin)
+
+        return Struct(starStamps=starStamps, pixCenters=pixCenters, gMags=gMags, gaiaIds=ids, binTags=binTags)
 
     def _getCutout(self, inputExposure, coordPix: Point2D, stampSize: list[int]):
         """Get a cutout from an input exposure, handling edge cases.
@@ -504,7 +569,7 @@ class ProcessBrightStarsTask(PipelineTask):
         footprintSet.setFootprints(secondaryFootprints)
         footprintSet.setMask(stamp.mask, replace)
 
-    def warpStamps(self, stamps, pixCenters):
+    def warpStamps(self, stamps, pixCenters, binTags):
         """Warps and shifts all given stamps so they are sampled on the same
         pixel grid and centered on the central pixel. This includes rotating
         the stamp depending on detector orientation.
@@ -539,11 +604,6 @@ class ProcessBrightStarsTask(PipelineTask):
         """
         # warping control; only contains shiftingALg provided in config
         warpCont = WarpingControl(self.config.warpingKernelName)
-        # Compare model to star stamp sizes
-        bufferPix = (
-            self.modelStampSize[0] - self.config.stampSize[0],
-            self.modelStampSize[1] - self.config.stampSize[1],
-        )
         # Initialize detector instance (note all stars were extracted from an
         # exposure from the same detector)
         det = stamps[0].getDetector()
@@ -560,13 +620,22 @@ class ProcessBrightStarsTask(PipelineTask):
 
         # apply transformation to each star
         warpedStars, warpTransforms, xy0s = [], [], []
-        for star, cent in zip(stamps, pixCenters):
+        # Compare model to star stamp sizes
+        # Amir: this should be done for all bins?
+        binsBufferPix = {}
+        for bin in self.bins:
+            bufferPix = (
+                self.modelStampsSizes[bin][0] - self.stampsSizes[bin].size[0],
+                self.modelStampsSizes[bin][1] - self.stampsSizes[bin].size[1],
+            )
+            binsBufferPix[bin] = bufferPix
+        for star, cent, binTag in zip(stamps, pixCenters, binTags):
             # (re)create empty destination image
-            destImage = MaskedImageF(*self.modelStampSize)
+            destImage = MaskedImageF(*self.modelStampsSizes[binTag])
             bottomLeft = Point2D(star.image.getXY0())
             newBottomLeft = pixToTan.applyForward(bottomLeft)
-            newBottomLeft.setX(newBottomLeft.getX() - bufferPix[0] / 2)
-            newBottomLeft.setY(newBottomLeft.getY() - bufferPix[1] / 2)
+            newBottomLeft.setX(newBottomLeft.getX() - binsBufferPix[binTag][0] / 2)
+            newBottomLeft.setY(newBottomLeft.getY() - binsBufferPix[binTag][1] / 2)
             # Convert to int
             newBottomLeft = Point2I(newBottomLeft)
             # Set origin and save it
@@ -576,8 +645,8 @@ class ProcessBrightStarsTask(PipelineTask):
             # Define linear shifting to recenter stamps
             newCenter = pixToTan.applyForward(cent)  # center of warped star
             shift = (
-                self.modelCenter[0] + newBottomLeft[0] - newCenter[0],
-                self.modelCenter[1] + newBottomLeft[1] - newCenter[1],
+                self.modelsCenters[binTag][0] + newBottomLeft[0] - newCenter[0],
+                self.modelsCenters[binTag][1] + newBottomLeft[1] - newCenter[1],
             )
             affineShift = AffineTransform(shift)
             shiftTransform = makeTransform(affineShift)
@@ -598,18 +667,78 @@ class ProcessBrightStarsTask(PipelineTask):
                 destImage = rotateImageBy90(destImage, nb90Rots)
             warpedStars.append(destImage.clone())
             warpTransforms.append(starWarper)
-        return Struct(warpedStars=warpedStars, warpTransforms=warpTransforms, xy0s=xy0s, nb90Rots=nb90Rots)
+        return Struct(warpedStars=warpedStars, warpTransforms=warpTransforms, xy0s=xy0s, nb90Rots=nb90Rots, binTags=binTags)
 
     def setModelStamp(self):
         """Compute (model) stamp size depending on provided buffer value."""
-        self.modelStampSize = [
-            int(self.config.stampSize[0] * self.config.modelStampBuffer),
-            int(self.config.stampSize[1] * self.config.modelStampBuffer),
-        ]
-        # Force stamp to be odd-sized so we have a central pixel.
-        if not self.modelStampSize[0] % 2:
-            self.modelStampSize[0] += 1
-        if not self.modelStampSize[1] % 2:
-            self.modelStampSize[1] += 1
-        # Central pixel.
-        self.modelCenter = self.modelStampSize[0] // 2, self.modelStampSize[1] // 2
+        if not self.config.magBins:
+            self.setMagBins()
+        else:
+            self.magBins = self.config.magBins
+            self.bins = list(self.magBins.keys())
+        if not self.config.stampsSizes:
+            self.setStampsSizes()
+        else:
+            self.stampsSizes = self.config.stampsSizes
+        self.applyModelStampBuffer()
+        # self.modelStampSize = [
+        #     int(self.config.stampSize[0] * self.config.modelStampBuffer),
+        #     int(self.config.stampSize[1] * self.config.modelStampBuffer),
+        # ]
+        # # Force stamp to be odd-sized so we have a central pixel.
+        # if not self.modelStampSize[0] % 2:
+        #     self.modelStampSize[0] += 1
+        # if not self.modelStampSize[1] % 2:
+        #     self.modelStampSize[1] += 1
+        # # Central pixel.
+        # self.modelCenter = self.modelStampSize[0] // 2, self.modelStampSize[1] // 2
+        if not self.config.multiAnnularFluxRadii:
+            self.setAnnularRadii()
+        else:
+            self.annularFluxRadii = self.config.multiAnnularFluxRadii
+
+    def setMagBins(self):
+        """Set default magnitude bins."""
+        self.bins = ["100", "101", "102"]
+        # Test continues magnitude for bins
+        limits = [[19, 19.5], [16, 17], [11, 12]]
+        self.magBins = {}
+        for key, value in zip(self.bins, limits):
+            binLimits = BinLimits()
+            binLimits.limits = value
+            self.magBins[key] = binLimits
+
+    def setStampsSizes(self):
+        """Set default stamps sizes."""
+        sizes = [[130, 130], [200, 200], [600, 600]]
+        self.stampsSizes = {}
+        for key, value in zip(self.bins, sizes):
+            stampSize = StampSize()
+            stampSize.size = value
+            self.stampsSizes[key] = stampSize
+
+    def applyModelStampBuffer(self):
+        """Apply buffer to determine the model stamps sizes."""
+        self.modelStampsSizes = {}
+        self.modelsCenters = {}
+        for key, value in self.stampsSizes.items():
+            self.modelStampsSizes[key] = [
+                int(value.size[0] * self.config.modelStampBuffer),
+                int(value.size[1] * self.config.modelStampBuffer),
+            ]
+            # Force stamp to be odd-sized so we have a central pixel.
+            if not self.modelStampsSizes[key][0] % 2:
+                self.modelStampsSizes[key][0] += 1
+            if not self.modelStampsSizes[key][1] % 2:
+                self.modelStampsSizes[key][1] += 1
+            # Central pixel.
+            self.modelsCenters[key] = self.modelStampsSizes[key][0] // 2, self.modelStampsSizes[key][1] // 2
+
+    def setAnnularRadii(self):
+        """Set default annular flux radii."""
+        self.annularFluxRadii = {}
+        radii = [[12, 20], [23, 33], [90, 105]]
+        for i, key in enumerate(self.bins):
+            annularFluxRadii = AnnulusRadii()
+            annularFluxRadii.radii = radii[i]
+            self.annularFluxRadii[key] = annularFluxRadii

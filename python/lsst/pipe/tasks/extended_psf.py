@@ -31,13 +31,17 @@ __all__ = [
     "DetectorsInRegion",
 ]
 
+import numpy as np
+from functools import reduce
+from operator import ior
 from dataclasses import dataclass
 
 from lsst.afw.fits import Fits, readMetadata
-from lsst.afw.image import ImageF, MaskedImageF, MaskX
-from lsst.afw.math import StatisticsControl, statisticsStack, stringToStatisticsProperty
+from lsst.afw.geom import SpanSet, Stencil
+from lsst.afw.image import ImageF, MaskedImageF, MaskX, ExposureF
+from lsst.afw.math import StatisticsControl, statisticsStack, stringToStatisticsProperty, makeStatistics
 from lsst.daf.base import PropertyList
-from lsst.geom import Extent2I
+from lsst.geom import Extent2I, Point2I, Box2I
 from lsst.pex.config import ChoiceField, Config, ConfigDictField, ConfigurableField, Field, ListField
 from lsst.pipe.base import PipelineTaskConfig, PipelineTaskConnections, Struct, Task
 from lsst.pipe.base.connectionTypes import Input, Output
@@ -117,8 +121,9 @@ class ExtendedPsf:
         Extended PSF model to be used as default (or only) extended PSF model.
     """
 
-    def __init__(self, default_extended_psf=None):
-        self.default_extended_psf = default_extended_psf
+    def __init__(self, extendedPsfsDict=None):
+        self.extendedPsfsDict = extendedPsfsDict
+        # self.default_extended_psf = default_extended_psf
         self.focal_plane_regions = {}
         self.detectors_focal_plane_regions = {}
 
@@ -228,7 +233,9 @@ class ExtendedPsf:
         """
         # Create primary HDU with global metadata.
         metadata = PropertyList()
-        metadata["HAS_DEFAULT"] = self.default_extended_psf is not None
+        # metadata["HAS_DEFAULT"] = self.default_extended_psf is not None
+        for binType in self.extendedPsfsDict.keys():
+            metadata["{}_HAS_DEFAULT".format(binType.upper)] = self.extendedPsfsDict[binType]['stackedImage'] is not None
         if self.focal_plane_regions:
             metadata["HAS_REGIONS"] = True
             metadata["REGION_NAMES"] = list(self.focal_plane_regions.keys())
@@ -241,12 +248,20 @@ class ExtendedPsf:
         fits_primary.writeMetadata(metadata)
         fits_primary.closeFile()
         # Write default extended PSF.
-        if self.default_extended_psf is not None:
+        for binType in self.extendedPsfsDict.keys():
             default_hdu_metadata = PropertyList()
-            default_hdu_metadata.update({"REGION": "DEFAULT", "EXTNAME": "IMAGE"})
-            self.default_extended_psf.image.writeFits(filename, metadata=default_hdu_metadata, mode="a")
-            default_hdu_metadata.update({"REGION": "DEFAULT", "EXTNAME": "MASK"})
-            self.default_extended_psf.mask.writeFits(filename, metadata=default_hdu_metadata, mode="a")
+            default_hdu_metadata.update({"REGION": "DEFAULT", "EXTNAME": "IMAGE", "BIN": binType.upper()})
+            self.extendedPsfsDict[binType].image.writeFits(filename, metadata=default_hdu_metadata, mode="a")
+            default_hdu_metadata.update({"REGION": "DEFAULT", "EXTNAME": "MASK", "BIN": binType.upper()})
+            self.extendedPsfsDict[binType].mask.writeFits(filename, metadata=default_hdu_metadata, mode="a")
+
+        # # Write default extended PSF.
+        # if self.default_extended_psf is not None:
+        #     default_hdu_metadata = PropertyList()
+        #     default_hdu_metadata.update({"REGION": "DEFAULT", "EXTNAME": "IMAGE"})
+        #     self.default_extended_psf.image.writeFits(filename, metadata=default_hdu_metadata, mode="a")
+        #     default_hdu_metadata.update({"REGION": "DEFAULT", "EXTNAME": "MASK"})
+        #     self.default_extended_psf.mask.writeFits(filename, metadata=default_hdu_metadata, mode="a")
         # Write extended PSF for each focal plane region.
         for j, (region, e_psf_region) in enumerate(self.focal_plane_regions.items()):
             metadata = PropertyList()
@@ -401,39 +416,126 @@ class StackBrightStarsTask(Task):
             len(bss_ref_list),
             region_message,
         )
-        # read in example set of full stamps
-        example_bss = bss_ref_list[0].get()
-        example_stamp = example_bss[0].stamp_im
-        # create model image
-        ext_psf = MaskedImageF(example_stamp.getBBox())
-        # divide model image into smaller subregions
-        subregion_size = Extent2I(*self.config.subregion_size)
-        sub_bboxes = subBBoxIter(ext_psf.getBBox(), subregion_size)
-        # compute approximate number of subregions
-        n_subregions = ((ext_psf.getDimensions()[0]) // (subregion_size[0] + 1)) * (
-            (ext_psf.getDimensions()[1]) // (subregion_size[1] + 1)
-        )
-        self.log.info(
-            "Stacking performed iteratively over approximately %d smaller areas of the final model image.",
-            n_subregions,
-        )
+        preparedStampsDict = self.prepareStamps(bss_ref_list)
+        self.performStacking(preparedStampsDict)
+        extendedPsfsDict = {}
+        for binTag in preparedStampsDict.keys():
+            extendedPsfsDict[binTag] = {}
+            extendedPsfsDict[binTag]['stackedImage'] = preparedStampsDict[binTag]['stackedImage']
+
+        # # read in example set of full stamps
+        # example_bss = bss_ref_list[0].get()
+        # example_stamp = example_bss[0].stamp_im
+        # # creating groups of stamps based on their magnitude bins
+        # # create model image
+        # ext_psf = MaskedImageF(example_stamp.getBBox())
+        # # divide model image into smaller subregions
+        # subregion_size = Extent2I(*self.config.subregion_size)
+        # sub_bboxes = subBBoxIter(ext_psf.getBBox(), subregion_size)
+        # # compute approximate number of subregions
+        # n_subregions = ((ext_psf.getDimensions()[0]) // (subregion_size[0] + 1)) * (
+        #     (ext_psf.getDimensions()[1]) // (subregion_size[1] + 1)
+        # )
+        # self.log.info(
+        #     "Stacking performed iteratively over approximately %d smaller areas of the final model image.",
+        #     n_subregions,
+        # )
         # set up stacking statistic
-        stats_control, stats_flags = self._set_up_stacking(example_stamp)
-        # perform stacking
-        for jbbox, bbox in enumerate(sub_bboxes):
-            all_stars = None
-            for bss_ref in bss_ref_list:
-                read_stars = bss_ref.get(parameters={"bbox": bbox})
-                if self.config.do_mag_cut:
-                    read_stars = read_stars.selectByMag(magMax=self.config.mag_limit)
-                if all_stars:
-                    all_stars.extend(read_stars)
+        # stats_control, stats_flags = self._set_up_stacking(example_stamp)
+        # # perform stacking
+        # for jbbox, bbox in enumerate(sub_bboxes):
+        #     all_stars = None
+        #     for i, bss_ref in enumerate(bss_ref_list):
+        #         read_stars = bss_ref.get(parameters={"bbox": bbox})
+        #         if self.config.do_mag_cut:
+        #             read_stars = read_stars.selectByMag(magMax=self.config.mag_limit)
+        #         if all_stars:
+        #             all_stars.extend(read_stars)
+        #         else:
+        #             all_stars = read_stars
+        #     # TODO: DM-27371 add weights to bright stars for stacking
+        #     coadd_sub_bbox = statisticsStack(all_stars.getMaskedImages(), stats_flags, stats_control)
+        #     ext_psf.assign(coadd_sub_bbox, bbox)
+        # return ext_psf
+        return extendedPsfsDict
+
+    def performStacking(self, preparedStampsDict):
+        for binTag in preparedStampsDict.keys():
+            self.log.info(
+                "Stacking performed iteratively over approximately %d smaller areas of the model image for "
+                "stars in %s magnitude bin.",
+                preparedStampsDict[binTag]["NSubRegions"],
+                binTag,
+            )
+            stackedImage = statisticsStack(preparedStampsDict[binTag]['stamps'], preparedStampsDict[binTag]["statsFlags"], preparedStampsDict[binTag]["statsControl"])
+            preparedStampsDict[binTag]['stackedImage'].assign(stackedImage)
+
+    def prepareStamps(self, bss_ref_list):
+        preparedStampsDict = self.groupStamps(bss_ref_list)
+
+        # Reading the size of the subregions from the config file
+        # Should we have one subregion for each group of stamps or one
+        # subregion for each stamp?
+        subregion_size = Extent2I(*self.config.subregion_size)
+        for binTag in preparedStampsDict.keys():
+            # create model image
+            preparedStampsDict[binTag]['stackedImage'] = MaskedImageF(preparedStampsDict[binTag]['stamps'][0].getBBox())
+            self.generateSubBboxes(preparedStampsDict[binTag], subregion_size)
+            self.setUpStats(preparedStampsDict[binTag])
+        return preparedStampsDict
+
+    def groupStamps(self, bss_ref_list):
+        """Group bright star stamps by magnitude bins.
+
+        Parameters
+        ----------
+        bss_ref_list : `list` of
+                `lsst.daf.butler._deferredDatasetHandle.DeferredDatasetHandle`
+            List of available bright star stamps data references.
+
+        Returns
+        -------
+        groupedStampsDict :
+            `dict` [`str`,
+                    `lsst.pipe.tasks.processBrightStars.BrightStarStamp`]
+            Dictionary containing the magnitude bins tags as keys and list of
+            bright stars stamps for each magnitude bin as the value.
+        """
+        groupedStampsDict = {}
+        for bss_ref in bss_ref_list:
+            bss = bss_ref.get()
+            for stamp in bss:
+                binTag = stamp.binTag
+                if binTag not in groupedStampsDict.keys():
+                    groupedStampsDict[binTag] = {}
+                    groupedStampsDict[binTag]["stamps"] = [stamp.stamp_im]
                 else:
-                    all_stars = read_stars
-            # TODO: DM-27371 add weights to bright stars for stacking
-            coadd_sub_bbox = statisticsStack(all_stars.getMaskedImages(), stats_flags, stats_control)
-            ext_psf.assign(coadd_sub_bbox, bbox)
-        return ext_psf
+                    groupedStampsDict[binTag]["stamps"].append(stamp.stamp_im)
+        return groupedStampsDict
+
+    def generateSubBboxes(self, magBinStampsDict, subregion_size):
+        """Generate subregions for each group of stamps.
+
+        Parameters
+        ----------
+        groupedStampsDict : `dict` of `list` of `lsst.pipe.tasks.processBrightStars.BrightStarStamp`
+            List of lists of bright star stamps, grouped by detector.
+        Returns
+        -------
+        subBboxesDict : `dict` of `list` of `lsst.geom.Box2I`
+            List of lists of subregions for each group of stamps.
+        """
+        # divide model image into smaller subregions
+        # subBboxes =
+        magBinStampsDict["subBboxes"] = subBBoxIter(magBinStampsDict['stackedImage'].getBBox(), subregion_size)
+        magBinStampsDict["NSubRegions"] = ((magBinStampsDict['stackedImage'].getDimensions()[0]) // (subregion_size[0] + 1)) * (
+            (magBinStampsDict['stackedImage'].getDimensions()[1]) // (subregion_size[1] + 1)
+        )
+
+    def setUpStats(self, magBinStampsDict):
+        stats_control, stats_flags = self._set_up_stacking(magBinStampsDict['stamps'][0])
+        magBinStampsDict["statsControl"] = stats_control
+        magBinStampsDict["statsFlags"] = stats_flags
 
 
 class MeasureExtendedPsfConnections(PipelineTaskConnections, dimensions=("band", "instrument")):
@@ -450,6 +552,21 @@ class MeasureExtendedPsfConnections(PipelineTaskConnections, dimensions=("band",
         name="extended_psf",
         storageClass="ExtendedPsf",
         dimensions=("band",),
+    )
+    # stacked_stamps = Output(
+    #     doc="Extended PSF model built by stacking bright stars.",
+    #     name="stacked_stamps",
+    #     storageClass="StackedStamps",
+    #     dimensions=("band",),
+    # )
+
+
+class AnnulusRadii(Config):
+    """Provides a list containing inner and outer radius for a scaling annulus."""
+
+    radii = ListField[int](
+        doc="A list containing the inner and outer radii of the scaling annulus.",
+        default=[],
     )
 
 
@@ -469,6 +586,21 @@ class MeasureExtendedPsfConfig(PipelineTaskConfig, pipelineConnections=MeasureEx
             "It's possible for a single detector to be included in multiple regions if so desired."
         ),
         default={},
+    )
+    scalingAnnuli = ConfigDictField(
+        keytype=str,
+        itemtype=AnnulusRadii,
+        doc="The inner and outer radii for the scaling annuli.",
+        default={},
+    )
+    badMaskPlanes = ListField[str](
+        doc="Mask planes that, if set, lead to associated pixels not being included in the computation of "
+        "the scaling factor (`BAD` should always be included). Ignored if scalingType is `annularFlux`, "
+        "as the stamps are expected to already be normalized.",
+        # Note that `BAD` should always be included, as secondary detected
+        # sources (i.e., detected sources other than the primary source of
+        # interest) also get set to `BAD`.
+        default=("BAD", "CR", "CROSSTALK", "EDGE", "NO_DATA", "SAT", "SUSPECT", "UNMASKEDNAN"),
     )
 
 
@@ -491,6 +623,10 @@ class MeasureExtendedPsfTask(Task):
         super().__init__(*args, **kwargs)
         self.makeSubtask("stack_bright_stars")
         self.detectors_focal_plane_regions = self.config.detectors_focal_plane_regions
+        if not self.config.scalingAnnuli:
+            self.setScalingAnnularRadii()
+        else:
+            self.scalingAnnuli = self.config.scalingAnnuli
         self.regionless_dets = []
 
     def select_detector_refs(self, ref_list):
@@ -522,17 +658,190 @@ class MeasureExtendedPsfTask(Task):
             region_ref_list[region_name].append(dataset_handle)
         return region_ref_list
 
+    def scaleStackedStamps(self, stackedStamps):
+        binTags = [binTag for binTag in stackedStamps.keys()]
+        # annuliTags = [annulusTag for annulusTag in self.scalingAnnuli.keys()]
+        import pdb; pdb.set_trace()
+        for i, key in enumerate(self.scalingAnnuli.keys()):
+            # make cutout from the larger stacked image
+            BBox = stackedStamps[binTags[i]]['stackedImage'].getBBox()
+            stampSize = [BBox.getWidth(), BBox.getHeight()]
+            cutout = self._getCutout(stackedStamps[binTags[i+1]]['stackedImage'].clone(), stampSize)
+            # make annulus for :stackedStamps[binTags[i+1]]
+            innerImage = self.createMaskedImage(stackedStamps[binTags[i]]['stackedImage'].clone(), self.scalingAnnuli[key].radii, key=key, binTag=binTags[i])
+            outerImage = self.createMaskedImage(cutout, self.scalingAnnuli[key].radii, key=key, binTag=binTags[i+1])
+            # make annulus for :stackedStamps[binTags[i]]
+            # find the scaling factor (includes _setUpStatistics)
+            scaleFactor = self.findScalingFactor(outerImage, innerImage)
+            # scale stacked image[i] and stich it into stacked image[i+1]
+        import pdb; pdb.set_trace()
+        k = 0
+    
+    #     annulus1
+    #     annulus2
+    #     .
+    #     .
+    #     .
+    #     annulusNStiches
+
+    #     annulus1 => scale the inner to the level of the outer
+    #     annulus2 => scale the inner to the level of the outer
+
+    #     three possible stitching:
+    #         1. keep the inner annulus
+    #         2. keep the outer annulus
+    #         3. find the mean of the two annuli
+    #     NStitches = len(stackedStamps.keys()) - 1
+    #     for i in range(NStitches):
+    #         print(NStitches)
+
+    def findScalingFactor(self, outerImage, innerImage):
+        """Find the scaling factor between two annuli.
+
+        Parameters
+        ----------
+        outerImage : `lsst.afw.image.MaskedImageF`
+            The masked stacked image of the brighter end of the join-bin.
+        innerImage : `lsst.afw.image.MaskedImageF`
+            The masked stacked image of the fainter end of the join-bin.
+
+        Returns
+        -------
+        scalingFactor : `float`
+            The scaling factor for the fainter stacked image.
+        """
+        # This needs more thought! Is there a way to include the mask planes
+        # from both stacked images? or maybe we do not need to include the
+        # maske planes at all?
+        self._setUpStatistics(outerImage.mask)
+        xy = innerImage.clone()
+        xy.image.array *= outerImage.image.array
+        xx = outerImage.clone()
+        xx.image.array = outerImage.image.array**2
+        xySum = makeStatistics(xy, self.statsFlag, self.statsControl).getValue()
+        xxSum = makeStatistics(xx, self.statsFlag, self.statsControl).getValue()
+        scalingFactor = xySum / xxSum if xxSum else 1
+        return scalingFactor
+    
+    def createMaskedImage(self, image, annulusRadii, key=None, binTag=None):
+        imCenter = image.image.getBBox().getCenter()
+        imCenter = int(imCenter[0]), int(imCenter[1])
+        outerCircle = SpanSet.fromShape(annulusRadii[1], Stencil.CIRCLE, offset=imCenter)
+        innerCircle = SpanSet.fromShape(annulusRadii[0], Stencil.CIRCLE, offset=imCenter)
+        annulusWidth = annulusRadii[1] - annulusRadii[0]
+        if annulusWidth < 1:
+            raise ValueError("The annulus width must be greater than 1 pixel.")
+        annulus = outerCircle.intersectNot(innerCircle)
+
+        maskedImageSize = image.getDimensions()
+        maskPlaneDict = image.mask.getMaskPlaneDict()
+        annulusImage = MaskedImageF(maskedImageSize, planeDict=maskPlaneDict)
+        annulusImage.image.array[:] = np.nan
+
+        # # annulusMask = annulusImage.mask
+        # # annulusMask.array[:] = 2 ** maskPlaneDict["NO_DATA"]
+        # from astropy.io import fits
+        # output_fits_file = key + binTag + '.fits'
+        # # Create a Primary HDU with the data
+        # primary_hdu = fits.PrimaryHDU(image.image.array)
+        # # Create an HDU list
+        # hdul = fits.HDUList([primary_hdu])
+        # # Write the HDU list to the FITS file
+        # hdul.writeto(output_fits_file, overwrite=True)
+        import pdb; pdb.set_trace()
+        annulus.copyMaskedImage(image, annulusImage)
+        return annulusImage
+
+    def _getCutout(self, inputImage, stampSize: list[int]):
+        # TODO: Replace this method with exposure getCutout after DM-40042.
+        BBox = inputImage.getBBox()
+        # coordPix = np.array(refImageBBox.getCenter())
+        corner = Point2I(np.array(BBox.getCenter()) - np.array(stampSize) / 2)
+        dimensions = Extent2I(stampSize)
+        stampBBox = Box2I(corner, dimensions)
+        overlapBBox = Box2I(stampBBox)
+        overlapBBox.clip(inputImage.getBBox())
+        # if overlapBBox.getArea() > 0:
+            # Create full-sized stamp with pixels initially flagged as NO_DATA.
+        stamp = MaskedImageF(bbox=stampBBox)
+        stamp.image[:] = np.nan
+        stamp.mask.set(inputImage.mask.getPlaneBitMask("NO_DATA"))
+        # Restore pixels which overlap the input exposure.
+        inputMI = inputImage.image
+        overlap = inputMI.Factory(inputMI, overlapBBox)
+        stamp.image[overlapBBox] = overlap
+        stamp.image.setXY0(0, 0)
+        # Set detector and WCS.
+        # stamp.setDetector(inputExposure.getDetector())
+        # stamp.setWcs(inputExposure.getWcs())
+        # else:
+        #     stamp = None
+        return stamp
+
+    def _setUpStatistics(self, exampleMask):
+    # def _setUpStatistics(self, exampleMask=stackedStamps['central']['stackedImage'].mask):
+        """Configure statistics control and flag, for use if ``scalingType`` is
+        `leastSquare`.
+        """
+        # if self.config.scalingType == "leastSquare":
+        # Set the mask planes which will be ignored.
+        andMask = reduce(
+            ior,
+            (exampleMask.getPlaneBitMask(bm) for bm in self.config.badMaskPlanes),
+        )
+        self.statsControl = StatisticsControl(
+            # andMask=andMask,
+        )
+        self.statsFlag = stringToStatisticsProperty("SUM")
+            
+    def setScalingAnnularRadii(self):
+        """Set default scaling annular flux radii."""
+        self.scalinTags = ["200", "201"]
+        self.scalingAnnuli = {}
+        # radii = [[12, 20], [23, 33], [90, 105]]
+        radii = [[10, 22], [30, 40]]
+        for i, key in enumerate(self.scalinTags):
+            annulusRadii = AnnulusRadii()
+            annulusRadii.radii = radii[i]
+            self.scalingAnnuli[key] = annulusRadii
+
+    def joinStackedStamps(self, scaledStackedStamps):
+        NStitches = len(scaledStackedStamps.keys()) - 1
+        stitched = None
+        for i in range(NStitches):
+            if stitched is None:
+                stitched = self.stitchModels(scaledStackedStamps, i)
+            else:
+                stitched = self.stitchModels(scaledStackedStamps, i, stitched)
+        return None
+    
+    def stitchModels(self, stackedStamps, i, stitched=None):
+        for binTag in stackedStamps.keys():
+
+            if stitched is None:
+                stitched = stackedStamps[i]['stackedImage']
+        else:
+            stitched = self.stitch(stackedStamps[i]['stackedImage'], stitched)
+        return stitched
+    
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         input_data = butlerQC.get(inputRefs)
         bss_ref_list = input_data["input_brightStarStamps"]
+        output_e_psf = self.run(bss_ref_list)
+        output = Struct(extended_psf=output_e_psf)
+        butlerQC.put(output, outputRefs)
+    def run(self, bss_ref_list):
         if not self.config.detectors_focal_plane_regions:
             self.log.info(
                 "No detector groups were provided to MeasureExtendedPsfTask; computing a single, "
                 "constant extended PSF model over all available observations."
             )
-            output_e_psf = ExtendedPsf(self.stack_bright_stars.run(bss_ref_list))
+            # output_e_psf = [ExtendedPsf(stackedImage) for stackedImage in self.stack_bright_stars.run(bss_ref_list)]
+            stackedStamps = self.stack_bright_stars.run(bss_ref_list)
+            scaledStackedStamps = self.scaleStackedStamps(stackedStamps)
+            output_e_psf = self.joinStackedStamps(scaledStackedStamps)
         else:
-            output_e_psf = ExtendedPsf()
+            stackedStamps = ExtendedPsf()
             region_ref_list = self.select_detector_refs(bss_ref_list)
             for region_name, ref_list in region_ref_list.items():
                 if not ref_list:
@@ -543,8 +852,7 @@ class MeasureExtendedPsfTask(Task):
                     )
                     continue
                 ext_psf = self.stack_bright_stars.run(ref_list, region_name)
-                output_e_psf.add_regional_extended_psf(
+                stackedStamps.add_regional_extended_psf(
                     ext_psf, region_name, self.detectors_focal_plane_regions[region_name]
                 )
-        output = Struct(extended_psf=output_e_psf)
-        butlerQC.put(output, outputRefs)
+        return output_e_psf
