@@ -614,9 +614,21 @@ funcs:
         dataset: ref
     ebv:
         functor: Ebv
-    dataCoverage:
+    deblend_dataCoverage:
         functor: Column
         args: deblend_dataCoverage
+        dataset: meas
+    deblend_blendedness:
+        functor: Column
+        args: deblend_blendedness
+        dataset: meas
+    deblend_fluxOverlap:
+        functor: Column
+        args: deblend_fluxOverlap
+        dataset: meas
+    deblend_fluxOverlapFraction:
+        functor: Column
+        args: deblend_fluxOverlapFraction
         dataset: meas
     # DM-22247: Add Star/Galaxy sep columns
     #     - Morphological Star Galaxy Classifier (Names? float 0-1)]
@@ -633,8 +645,18 @@ refFlags:
     - detect_isDeblendedModelSource
     - merge_peak_sky
     - deblend_nChild
+    - deblend_nPeaks
+    - deblend_failed
     - deblend_skipped
+    - deblend_isolatedParent
+    - deblend_parentTooBig
+    - deblend_tooManyPeaks
+    - deblend_masked
     - deblend_incompleteData
+    - deblend_iterations
+    - deblend_peak_center_x
+    - deblend_peak_center_y
+    - deblend_logL
     - slot_Shape_flag
     - slot_Shape_xx
     - slot_Shape_xy
@@ -668,6 +690,10 @@ flags:
     - calib_psf_candidate
     - calib_psf_reserved
     - calib_psf_used
+    - deblend_blendedness
+    - deblend_dataCoverage
+    - deblend_fluxOverlap
+    - deblend_fluxOverlapFraction
     - slot_ApFlux_flag
     - slot_ApFlux_flag_apertureTruncated
     - slot_ApFlux_flag_sincCoeffsTruncated
