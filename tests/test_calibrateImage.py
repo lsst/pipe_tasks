@@ -100,6 +100,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # We don't have many sources, so have to fit simpler models.
         self.config.psf_detection.background.approxOrderX = 1
         self.config.star_detection.background.approxOrderX = 1
+        # Only insert 2 sky sources, for simplicity.
+        self.config.star_sky_sources.nSources = 2
         # Use PCA psf fitter, as psfex fails if there are only 4 stars.
         self.config.psf_measure_psf.psfDeterminer = 'pca'
         # We don't have many test points, so can't match on complicated shapes.
@@ -110,6 +112,9 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # TODO DM-39203: Once we are using Compensated Gaussian Fluxes, we
         # will use those fluxes here, and hopefully can remove this.
         self.config.astrometry.magnitudeOutlierRejectionNSigma = 9.0
+
+        # find_stars needs an id generator.
+        self.id_generator = lsst.meas.base.IdGenerator()
 
         # Something about this test dataset prefers the older fluxRatio here.
         self.config.star_catalog_calculation.plugins['base_ClassificationExtendedness'].fluxRatio = 0.925
@@ -231,18 +236,19 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         psf_stars, background, candidates = calibrate._compute_psf(self.exposure)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
 
-        stars = calibrate._find_stars(self.exposure, background)
+        stars = calibrate._find_stars(self.exposure, background, self.id_generator)
 
         # Background should have 4 elements: 3 from compute_psf and one from
         # re-estimation during source detection.
         self.assertEqual(len(background), 4)
 
-        # Only psf-like sources with S/N>10 should be in the output catalog.
-        self.assertEqual(len(stars), 5)
-        self.assertTrue(psf_stars.isContiguous())
+        # Only 5 psf-like sources with S/N>10 should be in the output catalog,
+        # plus two sky sources.
+        self.assertEqual(len(stars), 7)
+        self.assertTrue(stars.isContiguous())
         # Sort in order of brightness, to easily compare with expected positions.
-        psf_stars.sort(psf_stars.getPsfFluxSlot().getMeasKey())
-        for record, flux, center in zip(psf_stars[::-1], self.fluxes, self.centroids[self.fluxes > 50]):
+        stars.sort(stars.getPsfFluxSlot().getMeasKey())
+        for record, flux, center in zip(stars[::-1], self.fluxes, self.centroids[self.fluxes > 50]):
             self.assertFloatsAlmostEqual(record.getX(), center[0], rtol=0.01)
             self.assertFloatsAlmostEqual(record.getY(), center[1], rtol=0.01)
             self.assertFloatsAlmostEqual(record["slot_PsfFlux_instFlux"], flux, rtol=0.01)
@@ -254,12 +260,13 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         calibrate.astrometry.setRefObjLoader(self.ref_loader)
         psf_stars, background, candidates = calibrate._compute_psf(self.exposure)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
-        stars = calibrate._find_stars(self.exposure, background)
+        stars = calibrate._find_stars(self.exposure, background, self.id_generator)
 
         calibrate._fit_astrometry(self.exposure, stars)
 
         # Check that we got reliable matches with the truth coordinates.
-        fitted = SkyCoord(stars['coord_ra'], stars['coord_dec'], unit="radian")
+        sky = stars["sky_source"]
+        fitted = SkyCoord(stars[~sky]['coord_ra'], stars[~sky]['coord_dec'], unit="radian")
         truth = SkyCoord(self.truth_cat['coord_ra'], self.truth_cat['coord_dec'], unit="radian")
         idx, d2d, _ = fitted.match_to_catalog_sky(truth)
         np.testing.assert_array_less(d2d.to_value(u.milliarcsecond), 35.0)
@@ -273,7 +280,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         calibrate.photometry.match.setRefObjLoader(self.ref_loader)
         psf_stars, background, candidates = calibrate._compute_psf(self.exposure)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
-        stars = calibrate._find_stars(self.exposure, background)
+        stars = calibrate._find_stars(self.exposure, background, self.id_generator)
         calibrate._fit_astrometry(self.exposure, stars)
 
         stars, matches, meta, photoCalib = calibrate._fit_photometry(self.exposure, stars)
@@ -287,15 +294,21 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # PhotoCalib on the exposure must be identically 1.
         self.assertEqual(self.exposure.photoCalib.getCalibrationMean(), 1.0)
 
-        # Check that we got reliable magnitudes and fluxes vs. truth.
-        fitted = SkyCoord(stars['coord_ra'], stars['coord_dec'], unit="radian")
+        # Check that we got reliable magnitudes and fluxes vs. truth, ignoring
+        # sky sources.
+        sky = stars["sky_source"]
+        fitted = SkyCoord(stars[~sky]['coord_ra'], stars[~sky]['coord_dec'], unit="radian")
         truth = SkyCoord(self.truth_cat['coord_ra'], self.truth_cat['coord_dec'], unit="radian")
         idx, _, _ = fitted.match_to_catalog_sky(truth)
         # Because the input variance image does not include contributions from
         # the sources, we can't use fluxErr as a bound on the measurement
         # quality here.
-        self.assertFloatsAlmostEqual(stars['slot_PsfFlux_flux'], self.truth_cat['truth_flux'][idx], rtol=0.1)
-        self.assertFloatsAlmostEqual(stars['slot_PsfFlux_mag'], self.truth_cat['truth_mag'][idx], rtol=0.01)
+        self.assertFloatsAlmostEqual(stars[~sky]['slot_PsfFlux_flux'],
+                                     self.truth_cat['truth_flux'][idx],
+                                     rtol=0.1)
+        self.assertFloatsAlmostEqual(stars[~sky]['slot_PsfFlux_mag'],
+                                     self.truth_cat['truth_mag'][idx],
+                                     rtol=0.01)
 
     def test_match_psf_stars(self):
         """Test that _match_psf_stars() flags the correct stars as psf stars
@@ -304,7 +317,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         calibrate = CalibrateImageTask(config=self.config)
         psf_stars, background, candidates = calibrate._compute_psf(self.exposure)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
-        stars = calibrate._find_stars(self.exposure, background)
+        stars = calibrate._find_stars(self.exposure, background, self.id_generator)
 
         # There should be no psf-related flags set at first.
         self.assertEqual(stars["calib_psf_candidate"].sum(), 0)
@@ -313,12 +326,14 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         calibrate._match_psf_stars(psf_stars, stars)
 
-        # Sort in order of brightness; the psf stars are the 3 brightest.
+        # Sort in order of brightness; the psf stars are the 3 brightest, with
+        # two sky sources as the faintest.
         stars.sort(stars.getPsfFluxSlot().getMeasKey())
         # sort() above leaves the catalog non-contiguous.
         stars = stars.copy(deep=True)
-        np.testing.assert_array_equal(stars["calib_psf_candidate"], [False, False, True, True, True])
-        np.testing.assert_array_equal(stars["calib_psf_used"], [False, False, True, True, True])
+        np.testing.assert_array_equal(stars["calib_psf_candidate"],
+                                      [False, False, False, False, True, True, True])
+        np.testing.assert_array_equal(stars["calib_psf_used"], [False, False, False, False, True, True, True])
         # Too few sources to reserve any in these tests.
         self.assertEqual(stars["calib_psf_reserved"].sum(), 0)
 
@@ -338,8 +353,14 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.repo_path = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.repo = butlerTests.makeTestRepo(self.repo_path.name)
 
+        # A complete instrument record is necessary for the id generator.
+        instrumentRecord = self.repo.dimensions["instrument"].RecordClass(
+            name=instrument, visit_max=1e6, exposure_max=1e6, detector_max=128,
+            class_name="lsst.obs.base.instrument_tests.DummyCam",
+        )
+        self.repo.registry.syncDimensionData("instrument", instrumentRecord)
+
         # dataIds for fake data
-        butlerTests.addDataIdValue(self.repo, "instrument", instrument)
         butlerTests.addDataIdValue(self.repo, "exposure", exposure0)
         butlerTests.addDataIdValue(self.repo, "exposure", exposure1)
         butlerTests.addDataIdValue(self.repo, "visit", visit)
@@ -418,7 +439,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr3_20230707")
         self.assertEqual(task.photometry.match.refObjLoader.name, "ps1_pv3_3pi_20170110")
         # Check that the proper kwargs are passed to run().
-        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures"})
+        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures", "id_generator"})
 
     def test_runQuantum_2_snaps(self):
         task = CalibrateImageTask()
@@ -445,7 +466,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr3_20230707")
         self.assertEqual(task.photometry.match.refObjLoader.name, "ps1_pv3_3pi_20170110")
         # Check that the proper kwargs are passed to run().
-        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures"})
+        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures", "id_generator"})
 
     def test_runQuantum_no_optional_outputs(self):
         config = CalibrateImageTask.ConfigClass()
@@ -470,7 +491,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr3_20230707")
         self.assertEqual(task.photometry.match.refObjLoader.name, "ps1_pv3_3pi_20170110")
         # Check that the proper kwargs are passed to run().
-        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures"})
+        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures", "id_generator"})
 
     def test_lintConnections(self):
         """Check that the connections are self-consistent.

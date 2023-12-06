@@ -28,7 +28,7 @@ import lsst.afw.image as afwImage
 import lsst.meas.algorithms
 import lsst.meas.algorithms.installGaussianPsf
 import lsst.meas.algorithms.measureApCorr
-from lsst.meas.algorithms import sourceSelector
+import lsst.meas.base
 import lsst.meas.astrom
 import lsst.meas.deblender
 import lsst.meas.extensions.shapeHSM
@@ -148,6 +148,9 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         optional=True
     )
 
+    # To generate catalog ids consistently across subtasks.
+    id_generator = lsst.meas.base.DetectorVisitIdGeneratorConfig.make_field()
+
     snap_combine = pexConfig.ConfigurableField(
         target=snapCombine.SnapCombineTask,
         doc="Task to combine two snaps to make one exposure.",
@@ -191,6 +194,10 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     star_detection = pexConfig.ConfigurableField(
         target=lsst.meas.algorithms.SourceDetectionTask,
         doc="Task to detect stars to return in the output catalog."
+    )
+    star_sky_sources = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.SkyObjectsTask,
+        doc="Task to generate sky sources ('empty' regions where there are no detections).",
     )
     star_mask_streaks = pexConfig.ConfigurableField(
         target=maskStreaks.MaskStreaksTask,
@@ -317,15 +324,20 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         self.star_selector["science"].doSignalToNoise = True
         self.star_selector["science"].doIsolated = True
         self.star_selector["science"].signalToNoise.minimum = 10.0
+        # Keep sky sources in the output catalog, even though they aren't
+        # wanted for calibration.
+        self.star_selector["science"].doSkySources = True
 
         # Use the affine WCS fitter (assumes we have a good camera geometry).
         self.astrometry.wcsFitter.retarget(lsst.meas.astrom.FitAffineWcsTask)
         # phot_g_mean is the primary Gaia band for all input bands.
         self.astrometry_ref_loader.anyFilterMapsToThis = "phot_g_mean"
 
-        # Do not subselect during fitting; we already selected good stars.
-        self.astrometry.sourceSelector = "null"
-        self.photometry.match.sourceSelection.retarget(sourceSelector.NullSourceSelectorTask)
+        # Only reject sky sources; we already selected good stars.
+        self.astrometry.sourceSelector["science"].doFlags = True
+        self.astrometry.sourceSelector["science"].flags.bad = ["sky_source"]
+        self.photometry.match.sourceSelection.doFlags = True
+        self.photometry.match.sourceSelection.flags.bad = ["sky_source"]
 
         # All sources should be good for PSF summary statistics.
         # TODO: These should both be changed to calib_psf_used with DM-41640.
@@ -378,6 +390,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         afwTable.CoordKey.addErrorFields(initial_stars_schema)
         self.makeSubtask("star_detection", schema=initial_stars_schema)
+        self.makeSubtask("star_sky_sources", schema=initial_stars_schema)
         self.makeSubtask("star_mask_streaks")
         self.makeSubtask("star_deblend", schema=initial_stars_schema)
         self.makeSubtask("star_measurement", schema=initial_stars_schema)
@@ -396,6 +409,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
+        id_generator = self.config.id_generator.apply(butlerQC.quantum.dataId)
 
         astrometry_loader = lsst.meas.algorithms.ReferenceObjectLoader(
             dataIds=[ref.datasetRef.dataId for ref in inputRefs.astrometry_ref_cat],
@@ -411,12 +425,12 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             config=self.config.photometry_ref_loader, log=self.log)
         self.photometry.match.setRefObjLoader(photometry_loader)
 
-        outputs = self.run(**inputs)
+        outputs = self.run(id_generator=id_generator, **inputs)
 
         butlerQC.put(outputs, outputRefs)
 
     @timeMethod
-    def run(self, *, exposures):
+    def run(self, *, exposures, id_generator=None):
         """Find stars and perform psf measurement, then do a deeper detection
         and measurement and calibrate astrometry and photometry from that.
 
@@ -427,6 +441,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             Modified in-place during processing if only one is passed.
             If two exposures are passed, treat them as snaps and combine
             before doing further processing.
+        id_generator : `lsst.meas.base.IdGenerator`, optional
+            Object that generates source IDs and provides random seeds.
 
         Returns
         -------
@@ -456,13 +472,16 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 Reference catalog stars matches used in the photometric fit.
                 (`list` [`lsst.afw.table.ReferenceMatch`] or `lsst.afw.table.BaseCatalog`)
         """
+        if id_generator is None:
+            id_generator = lsst.meas.base.IdGenerator()
+
         exposure = self._handle_snaps(exposures)
 
         psf_stars, background, candidates = self._compute_psf(exposure)
 
         self._measure_aperture_correction(exposure, psf_stars)
 
-        stars = self._find_stars(exposure, background)
+        stars = self._find_stars(exposure, background, id_generator)
 
         astrometry_matches, astrometry_meta = self._fit_astrometry(exposure, stars)
         stars, photometry_matches, photometry_meta, photo_calib = self._fit_photometry(exposure, stars)
@@ -602,7 +621,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         result = self.measure_aperture_correction.run(exposure, bright_sources)
         exposure.setApCorrMap(result.apCorrMap)
 
-    def _find_stars(self, exposure, background):
+    def _find_stars(self, exposure, background, id_generator):
         """Detect stars on an exposure that has a PSF model, and measure their
         PSF, circular aperture, compensated gaussian fluxes.
 
@@ -613,6 +632,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         background : `lsst.afw.math.BackgroundList`
             Background that was fit to the exposure during detection;
             modified in-place during subsequent detection.
+        id_generator : `lsst.meas.base.IdGenerator`
+            Object that generates source IDs and provides random seeds.
 
         Returns
         -------
@@ -625,6 +646,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # measurement uses the most accurate background-subtraction.
         detections = self.star_detection.run(table=table, exposure=exposure, background=background)
         sources = detections.sources
+        self.star_sky_sources.run(exposure.mask, id_generator.catalog_id, sources)
 
         # Mask streaks
         self.star_mask_streaks.run(exposure)
