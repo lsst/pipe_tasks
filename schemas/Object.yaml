@@ -596,6 +596,86 @@ funcs:
         functor: Column
         args: ext_shapeHSM_HsmShapeRegauss_flag
         dataset: meas
+    hsm_moments_30:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsSource_30
+      dataset: meas
+    hsm_momentsPsf_30:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsPSF_30
+      dataset: meas
+    hsm_moments_21:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsSource_21
+      dataset: meas
+    hsm_momentsPsf_21:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsPSF_21
+      dataset: meas
+    hsm_moments_12:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsSource_12
+      dataset: meas
+    hsm_momentsPsf_12:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsPSF_12
+      dataset: meas
+    hsm_moments_03:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsSource_03
+      dataset: meas
+    hsm_momentsPsf_03:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsPSF_03
+      dataset: meas
+    hsm_moments_40:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsSource_40
+      dataset: meas
+    hsm_momentsPsf_40:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsPSF_40
+      dataset: meas
+    hsm_moments_31:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsSource_31
+      dataset: meas
+    hsm_momentsPsf_31:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsPSF_31
+      dataset: meas
+    hsm_moments_22:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsSource_22
+      dataset: meas
+    hsm_momentsPsf_22:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsPSF_22
+      dataset: meas
+    hsm_moments_13:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsSource_13
+      dataset: meas
+    hsm_momentsPsf_13:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsPSF_13
+      dataset: meas
+    hsm_moments_04:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsSource_04
+      dataset: meas
+    hsm_momentsPsf_04:
+      functor: Column
+      args: ext_shapeHSM_HigherOrderMomentsPSF_04
+      dataset: meas
+    hsm_moments_flag:
+        functor: Column
+        args: ext_shapeHSM_HigherOrderMomentsSource_flag
+        dataset: meas
+    hsm_momentsPsf_flag:
+        functor: Column
+        args: ext_shapeHSM_HigherOrderMomentsPSF_flag
+        dataset: meas
     inputCount:
         functor: Column
         args: base_InputCount_value
@@ -762,3 +842,4 @@ flag_rename_rules:
     - ['base_Jacobian', 'jacobian']
     - ['base_Input', 'input']
     - ['ext_convolved_', '']
+    - ['ext_shapeHSM_HigherOrderMoments', 'hsm_HigherOrderMoments']
