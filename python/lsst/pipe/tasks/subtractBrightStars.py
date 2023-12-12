@@ -247,6 +247,14 @@ class SubtractBrightStarsTask(PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         # Docstring inherited.
         inputs = butlerQC.get(inputRefs)
+        if inputs["inputExtendedPsf"].default_extended_psf is None:
+            if not self.detInRegions(inputs):
+                self.log.warn(
+                    "Extended PSF model is not available for detector %i. Skipping withouth processing this "
+                    "exposure.",
+                    inputs["inputExposure"].detector.getId(),
+                )
+                return None
         dataId = butlerQC.quantum.dataId
         refObjLoader = ReferenceObjectLoader(
             dataIds=[ref.datasetRef.dataId for ref in inputRefs.refCat],
@@ -363,6 +371,32 @@ class SubtractBrightStarsTask(PipelineTask):
         badStamps = BrightStarStamps(badStamps)
 
         return subtractorExp, invImages, badStamps
+
+    def detInRegions(self, inputs):
+        """Determine whether the input exposure's detector is in the region(s)
+        where the extended PSF model(s) is(are) available.
+
+        Parameters
+        ----------
+        inputs : `dict`
+            Dictionary containing the inputs to the task, including
+            `inputExposure` and `inputExtendedPsf`.
+
+        Returns
+        -------
+        `bool`
+            True if the detector is in the region(s) where the extended PSF
+            model(s) is(are) available, False otherwise.
+        """
+        availableDets = [
+            det
+            for detList in inputs["inputExtendedPsf"].detectors_focal_plane_regions.values()
+            for det in detList.detectors
+        ]
+        if inputs["inputExposure"].detector.getId() in availableDets:
+            return True
+        else:
+            return False
 
     def _setUpStatistics(self, exampleMask):
         """Configure statistics control and flag, for use if ``scalingType`` is
