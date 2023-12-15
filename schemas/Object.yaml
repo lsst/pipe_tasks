@@ -309,10 +309,6 @@ funcs:
         functor: Column
         args: slot_ShapeRound_xy
         dataset: meas
-    iPSF_flag:
-        functor: Column
-        args: slot_PsfShape_flag
-        dataset: meas
     ixxDebiasedPSF:
         functor: Column
         args: ext_shapeHSM_HsmPsfMomentsDebiased_xx
