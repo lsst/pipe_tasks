@@ -411,7 +411,11 @@ class LineProfile:
                 fitFailure = True
                 break
             dChi2 = oldChi2 - chi2
-            cholesky = scipy.linalg.cho_factor(A)
+            try:
+                cholesky = scipy.linalg.cho_factor(A)
+            except np.linalg.LinAlgError:
+                fitFailure = True
+                break
             dx = scipy.linalg.cho_solve(cholesky, b)
 
             factor, fmin, _, _ = scipy.optimize.brent(line_search, args=(dx,), full_output=True, tol=0.05)
