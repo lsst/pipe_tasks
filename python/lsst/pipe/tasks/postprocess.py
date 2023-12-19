@@ -83,6 +83,22 @@ def flattenFilters(df, noDupCols=['coord_ra', 'coord_dec'], camelCase=False, inp
     return newDf
 
 
+def _pd_concat_fast(dataframes):
+    """Alternative to `pd.concat` that is much faster and uses
+    much less memory.
+
+    Parameters
+    ----------
+    dataframes : Iterable [`pandas.DataFrame`]
+
+    Returns
+    -------
+    dataframe : `pandas.DataFrame`
+        The concatenated dataframe.
+    """
+    return functools.reduce(lambda d1, d2: d1.join(d2), dataframes)
+
+
 class WriteObjectTableConnections(pipeBase.PipelineTaskConnections,
                                   defaultTemplates={"coaddName": "deep"},
                                   dimensions=("tract", "patch", "skymap")):
@@ -193,9 +209,7 @@ class WriteObjectTableTask(pipeBase.PipelineTask):
                                                        names=('dataset', 'band', 'column'))
                 dfs.append(df)
 
-        # We do this dance and not `pd.concat(dfs)` because the pandas
-        # concatenation uses infinite memory.
-        catalog = functools.reduce(lambda d1, d2: d1.join(d2), dfs)
+        catalog = _pd_concat_fast(dfs)
         return catalog
 
 
@@ -877,7 +891,7 @@ class PostprocessAnalysis(object):
                 # TODO: Figure out why this doesn't work (pyarrow pickling
                 # issues?)
                 dflist = pool.map(functools.partial(self.func, dropna=dropna), self.handles)
-            self._df = pd.concat(dflist)
+            self._df = _pd_concat_fast(dflist)
         else:
             self._df = self.func(self.handles, dropna=dropna)
 
@@ -1295,7 +1309,7 @@ class ConsolidateObjectTableTask(pipeBase.PipelineTask):
         inputs = butlerQC.get(inputRefs)
         self.log.info("Concatenating %s per-patch Object Tables",
                       len(inputs['inputCatalogs']))
-        df = pd.concat(inputs['inputCatalogs'])
+        df = _pd_concat_fast(inputs['inputCatalogs'])
         butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
 
 
@@ -1505,7 +1519,7 @@ class ConsolidateSourceTableTask(pipeBase.PipelineTask):
         inputs = butlerQC.get(inputRefs)
         self.log.info("Concatenating %s per-detector Source Tables",
                       len(inputs['inputCatalogs']))
-        df = pd.concat(inputs['inputCatalogs'])
+        df = _pd_concat_fast(inputs['inputCatalogs'])
         butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
 
 
@@ -1623,7 +1637,7 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
             # values are actually wanted.
             ccdEntries.append(ccdEntry)
 
-        outputCatalog = pd.concat(ccdEntries)
+        outputCatalog = _pd_concat_fast(ccdEntries)
         outputCatalog.set_index('ccdVisitId', inplace=True, verify_integrity=True)
         return pipeBase.Struct(outputCatalog=outputCatalog)
 
@@ -1786,7 +1800,7 @@ class WriteForcedSourceTableTask(pipeBase.PipelineTask):
 
             dfs.append(df)
 
-        outputCatalog = functools.reduce(lambda d1, d2: d1.join(d2), dfs)
+        outputCatalog = _pd_concat_fast(dfs)
         return pipeBase.Struct(outputCatalog=outputCatalog)
 
 
@@ -1883,7 +1897,7 @@ class TransformForcedSourceTableTask(TransformCatalogBaseTask):
             # Filter for only rows that were detected on (overlap) the patch
             dfs.append(result.df.join(ref, how='inner'))
 
-        outputCatalog = pd.concat(dfs)
+        outputCatalog = _pd_concat_fast(dfs)
 
         # Now that we are done joining on config.keyRef
         # Change index to config.key by
@@ -1939,5 +1953,5 @@ class ConsolidateTractTask(pipeBase.PipelineTask):
         self.log.info("Concatenating %s per-patch %s Tables",
                       len(inputs['inputCatalogs']),
                       inputRefs.inputCatalogs[0].datasetType.name)
-        df = pd.concat(inputs['inputCatalogs'])
+        df = _pd_concat_fast(inputs["inputCatalogs"])
         butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
