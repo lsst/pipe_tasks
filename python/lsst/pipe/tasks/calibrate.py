@@ -498,7 +498,7 @@ class CalibrateTask(pipeBase.PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     @timeMethod
-    def run(self, exposure, exposureIdInfo=None, background=None,
+    def run(self, exposure, background=None,
             icSourceCat=None, idGenerator=None):
         """Calibrate an exposure.
 
@@ -506,9 +506,6 @@ class CalibrateTask(pipeBase.PipelineTask):
         ----------
         exposure : `lsst.afw.image.ExposureF`
             Exposure to calibrate.
-        exposureIdInfo : `lsst.obs.baseExposureIdInfo`, optional
-            Exposure ID info. Deprecated in favor of ``idGenerator``, and
-            ignored if that is provided.
         background : `lsst.afw.math.BackgroundList`, optional
             Initial model of background already subtracted from exposure.
         icSourceCat : `lsst.afw.image.SourceCatalog`, optional
@@ -539,10 +536,7 @@ class CalibrateTask(pipeBase.PipelineTask):
         """
         # detect, deblend and measure sources
         if idGenerator is None:
-            if exposureIdInfo is not None:
-                idGenerator = IdGenerator._from_exposure_id_info(exposureIdInfo)
-            else:
-                idGenerator = IdGenerator()
+            idGenerator = IdGenerator()
 
         if background is None:
             background = BackgroundList()

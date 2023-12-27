@@ -32,7 +32,6 @@ import lsst.geom as geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.meas.base import IdGenerator
-from lsst.obs.base import ExposureIdInfo
 
 from .associationUtils import query_disc, eq2xyz, toIndex
 
@@ -63,7 +62,7 @@ class SimpleAssociationTask(pipeBase.Task):
     ConfigClass = SimpleAssociationConfig
     _DefaultName = "simpleAssociation"
 
-    def run(self, diaSources, tractPatchId=None, skymapBits=None, idGenerator=None):
+    def run(self, diaSources, idGenerator=None):
         """Associate DiaSources into a collection of DiaObjects using a
         brute force matching algorithm.
 
@@ -75,13 +74,6 @@ class SimpleAssociationTask(pipeBase.Task):
         diaSources : `pandas.DataFrame`
             DiaSources grouped by CcdVisitId to spatially associate into
             DiaObjects.
-        tractPatchId : `int`, optional
-            Unique identifier for the tract patch.  Deprecated in favor of
-            ``idGenerator`` along with `lsst.obs.base.ExposureIdInfo`.
-        skymapBits : `int`
-            Maximum number of bits used the ``tractPatchId`` integer
-            identifier.  Deprecated in favor of ``idGenerator`` along with
-            `lsst.obs.base.ExposureIdInfo`.
         idGenerator : `lsst.meas.base.IdGenerator`, optional
             Object that generates Object IDs and random number generator seeds.
 
@@ -115,11 +107,7 @@ class SimpleAssociationTask(pipeBase.Task):
 
         # Create Id factory and catalog for creating DiaObjectIds.
         if idGenerator is None:
-            if tractPatchId is not None and skymapBits is not None:
-                exposureIdInfo = ExposureIdInfo(tractPatchId, skymapBits)
-                idGenerator = IdGenerator._from_exposure_id_info(exposureIdInfo)
-            else:
-                idGenerator = IdGenerator()
+            idGenerator = IdGenerator()
         idCat = idGenerator.make_source_catalog(afwTable.SourceTable.makeMinimalSchema())
 
         for ccdVisit in diaSources.index.levels[0]:
