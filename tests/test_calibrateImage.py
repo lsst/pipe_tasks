@@ -310,7 +310,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         detector = 42
 
         # Create a and populate a test butler for runQuantum tests.
-        self.repo_path = tempfile.TemporaryDirectory()
+        self.repo_path = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.repo = butlerTests.makeTestRepo(self.repo_path.name)
 
         # dataIds for fake data
@@ -366,7 +366,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.butler.put(afwTable.SimpleCatalog(), "ps1_pv3_3pi_20170110", self.htm_id)
 
     def tearDown(self):
-        del self.repo_path  # this removes the temporary directory
+        self.repo_path.cleanup()
 
     def test_runQuantum(self):
         task = CalibrateImageTask()
