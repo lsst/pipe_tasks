@@ -22,7 +22,7 @@
 __all__ = ["CatalogExposure", "CatalogExposureConfig", ]
 
 from functools import cached_property
-from pydantic import Field
+from pydantic import Field, ConfigDict
 from pydantic.dataclasses import dataclass
 
 import lsst.afw.image as afwImage
@@ -30,8 +30,7 @@ import lsst.afw.table as afwTable
 import lsst.daf.butler as dafButler
 
 
-class CatalogExposureConfig:
-    arbitrary_types_allowed = True
+CatalogExposureConfig = ConfigDict(arbitrary_types_allowed=True)
 
 
 @dataclass(frozen=True, kw_only=True, config=CatalogExposureConfig)
