@@ -43,9 +43,14 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         np.random.seed(12345)
 
         # Make an exposure with a noise image
+        band = "i"
+        physical_filter = "test-i"
         exposure = afwImage.ExposureF(100, 100)
+        exposure.setFilter(afwImage.FilterLabel(band=band, physical=physical_filter))
+
+        skyMean = 100.0
         skySigma = 10.0
-        exposure.getImage().getArray()[:, :] = np.random.normal(0.0, skySigma, size=(100, 100))
+        exposure.getImage().getArray()[:, :] = np.random.normal(skyMean, skySigma, size=(100, 100))
         exposure.getVariance().getArray()[:, :] = skySigma**2.
 
         # Set the visitInfo
@@ -86,8 +91,13 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         background = afwMath.BackgroundList()
         background.append(backobj)
 
-        # Run the task
+        # Configure and run the task
         expSummaryTask = ComputeExposureSummaryStatsTask()
+        # Configure nominal values for effective time calculation
+        expSummaryTask.config.fiducialZeroPoint = {band: float(zp)}
+        expSummaryTask.config.fiducialPsfSigma = {band: float(psfSize)}
+        expSummaryTask.config.fiducialSkyBackground = {band: float(skyMean)}
+        # Run the task
         summary = expSummaryTask.run(exposure, None, background)
 
         # Test the outputs
@@ -114,11 +124,13 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
 
         # Need to compare background level and noise
         # These are only approximately 0+/-10 because of the small image
-        self.assertFloatsAlmostEqual(summary.skyBg, -0.079, atol=1e-3)
-
+        self.assertFloatsAlmostEqual(summary.skyBg, skyMean, rtol=1e-3)
         self.assertFloatsAlmostEqual(summary.meanVar, skySigma**2.)
 
         self.assertFloatsAlmostEqual(summary.zenithDistance, 30.57112, atol=1e-5)
+
+        # Effective exposure time
+        self.assertFloatsAlmostEqual(summary.effectiveTime, 1.0, rtol=1e-3)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
