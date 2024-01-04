@@ -391,7 +391,7 @@ class ProcessCcdWithFakesTask(PipelineTask):
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, fakeCats, exposure, skyMap, wcs=None, photoCalib=None, exposureIdInfo=None,
+    def run(self, fakeCats, exposure, skyMap, wcs=None, photoCalib=None,
             icSourceCat=None, sfdSourceCat=None, externalSkyWcsGlobalCatalog=None,
             externalSkyWcsTractCatalog=None, externalPhotoCalibGlobalCatalog=None,
             externalPhotoCalibTractCatalog=None, idGenerator=None):
@@ -411,9 +411,6 @@ class ProcessCcdWithFakesTask(PipelineTask):
             WCS to use to add fake sources.
         photoCalib : `lsst.afw.image.photoCalib.PhotoCalib`, optional
             Photometric calibration to be used to calibrate the fake sources.
-        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`, optional
-            Object that carries ID information for this image/catalog.
-            Deprecated in favor of ``idGenerator``.
         icSourceCat : `lsst.afw.table.SourceCatalog`, optional
             Catalog to take the information about which sources were used for
             calibration from.
@@ -474,10 +471,7 @@ class ProcessCcdWithFakesTask(PipelineTask):
 
         # detect, deblend and measure sources
         if idGenerator is None:
-            if exposureIdInfo is not None:
-                idGenerator = IdGenerator._from_exposure_id_info(exposureIdInfo)
-            else:
-                idGenerator = IdGenerator()
+            idGenerator = IdGenerator()
         returnedStruct = self.calibrate.run(exposure, idGenerator=idGenerator)
         sourceCat = returnedStruct.sourceCat
 
@@ -657,7 +651,7 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
     _DefaultName = "processCcdWithVariableFakes"
     ConfigClass = ProcessCcdWithVariableFakesConfig
 
-    def run(self, fakeCats, exposure, skyMap, wcs=None, photoCalib=None, exposureIdInfo=None,
+    def run(self, fakeCats, exposure, skyMap, wcs=None, photoCalib=None,
             icSourceCat=None, sfdSourceCat=None, idGenerator=None):
         """Add fake sources to a calexp and then run detection, deblending and
         measurement.
@@ -674,9 +668,6 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
             WCS to use to add fake sources.
         photoCalib : `lsst.afw.image.photoCalib.PhotoCalib`, optional
             Photometric calibration to be used to calibrate the fake sources.
-        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`, optional
-            Object that carries ID information for this image/catalog.
-            Deprecated in favor of ``idGenerator``.
         icSourceCat : `lsst.afw.table.SourceCatalog`, optional
             Catalog to take the information about which sources were used for
             calibration from.
@@ -726,10 +717,7 @@ class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
             photoCalib = exposure.getPhotoCalib()
 
         if idGenerator is None:
-            if exposureIdInfo is not None:
-                idGenerator = IdGenerator._from_exposure_id_info(exposureIdInfo)
-            else:
-                idGenerator = IdGenerator()
+            idGenerator = IdGenerator()
 
         band = exposure.getFilter().bandLabel
         ccdVisitMagnitudes = self.addVariability(

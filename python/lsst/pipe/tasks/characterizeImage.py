@@ -340,7 +340,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     @timeMethod
-    def run(self, exposure, exposureIdInfo=None, background=None, idGenerator=None):
+    def run(self, exposure, background=None, idGenerator=None):
         """Characterize a science image.
 
         Peforms the following operations:
@@ -353,9 +353,6 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         ----------
         exposure : `lsst.afw.image.ExposureF`
             Exposure to characterize.
-        exposureIdInfo : `lsst.obs.base.ExposureIdInfo`, optional
-            Exposure ID info. Deprecated in favor of ``idGenerator``, and
-            ignored if that is provided.
         background : `lsst.afw.math.BackgroundList`, optional
             Initial model of background already subtracted from exposure.
         idGenerator : `lsst.meas.base.IdGenerator`, optional
@@ -391,12 +388,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
             self.installSimplePsf.run(exposure=exposure)
 
         if idGenerator is None:
-            if exposureIdInfo is not None:
-                idGenerator = IdGenerator._from_exposure_id_info(exposureIdInfo)
-            else:
-                idGenerator = IdGenerator()
-
-        del exposureIdInfo
+            idGenerator = IdGenerator()
 
         # subtract an initial estimate of background level
         background = self.background.run(exposure).background

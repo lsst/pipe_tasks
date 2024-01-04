@@ -123,8 +123,6 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             skyMap,
             tractId,
             patchId,
-            tractPatchId=None,
-            skymapBits=None,
             idGenerator=None):
         """Trim DiaSources to the current Patch and run association.
 
@@ -142,13 +140,6 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             Id of current tract being processed.
         patchId : `int`
             Id of current patch being processed.
-        tractPatchId : `int`, optional
-            Unique identifier for the tract patch.  Deprecated in favor of
-            ``idGenerator`` along with `lsst.obs.base.ExposureIdInfo`.
-        skymapBits : `int`
-            Maximum number of bits used the ``tractPatchId`` integer
-            identifier.  Deprecated in favor of ``idGenerator`` along with
-            `lsst.obs.base.ExposureIdInfo`.
         idGenerator : `lsst.meas.base.IdGenerator`, optional
             Object that generates Object IDs and random number generator seeds.
 
@@ -208,10 +199,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         self.log.info("Found %i DiaSources overlapping patch %i, tract %i",
                       len(diaSourceHistoryCat), patchId, tractId)
 
-        assocResult = self.associator.run(diaSourceHistoryCat,
-                                          tractPatchId=tractPatchId,
-                                          skymapBits=skymapBits,
-                                          idGenerator=idGenerator)
+        assocResult = self.associator.run(diaSourceHistoryCat, idGenerator=idGenerator)
 
         self.log.info("Associated DiaSources into %i DiaObjects",
                       len(assocResult.diaObjects))
