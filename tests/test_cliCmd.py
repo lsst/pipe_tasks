@@ -183,38 +183,46 @@ class RegisterDcrSubfiltersTest(unittest.TestCase, ButlerTestHelper):
             result = self.runner.invoke(butlerCli, ["create", self.repo])
             self.assertEqual(result.exit_code, 0, clickResultMsg(result))
 
-            result = self.runner.invoke(butlerCli, ["register-dcr-subfilters", self.repo, "3", "foo"])
+            # Since a subfilter requires a band, and a band is implied by a
+            # physical_filter, we register an instrument to define these.
+            result = self.runner.invoke(
+                butlerCli,
+                ["register-instrument", self.repo, "lsst.obs.base.instrument_tests.DummyCam"],
+            )
             self.assertEqual(result.exit_code, 0, clickResultMsg(result))
-            self.assertIn(registerDcrSubfilters.registeredMsg.format(band="foo", subfilters="[0, 1, 2]"),
+
+            result = self.runner.invoke(butlerCli, ["register-dcr-subfilters", self.repo, "3", "u"])
+            self.assertEqual(result.exit_code, 0, clickResultMsg(result))
+            self.assertIn(registerDcrSubfilters.registeredMsg.format(band="u", subfilters="[0, 1, 2]"),
                           result.output)
 
             result = self.runner.invoke(butlerCli, ["query-dimension-records", self.repo, "subfilter"])
             self.assertEqual(result.exit_code, 0, clickResultMsg(result))
             self.assertAstropyTablesEqual(
-                AstropyTable((("foo", "foo", "foo"), (0, 1, 2)), names=("band", "id")),
+                AstropyTable((("u", "u", "u"), (0, 1, 2)), names=("band", "id")),
                 readTable(result.output))
 
             # Verify expected output message for registering subfilters in a
             # band that already has subfilters
-            result = self.runner.invoke(butlerCli, ["register-dcr-subfilters", self.repo, "5", "foo"])
+            result = self.runner.invoke(butlerCli, ["register-dcr-subfilters", self.repo, "5", "u"])
             self.assertEqual(result.exit_code, 0, clickResultMsg(result))
-            self.assertIn(registerDcrSubfilters.notRegisteredMsg.format(band="foo", subfilters="[0, 1, 2]"),
+            self.assertIn(registerDcrSubfilters.notRegisteredMsg.format(band="u", subfilters="[0, 1, 2]"),
                           result.output)
 
             # Add subfilters for two filters, one new filter and one existing.
             # Verify expected result messages and registry values.
-            result = self.runner.invoke(butlerCli, ["register-dcr-subfilters", self.repo, "3", "foo", "bar"])
+            result = self.runner.invoke(butlerCli, ["register-dcr-subfilters", self.repo, "3", "u", "g"])
             self.assertEqual(result.exit_code, 0, clickResultMsg(result))
-            self.assertIn(registerDcrSubfilters.notRegisteredMsg.format(band="foo", subfilters="[0, 1, 2]"),
+            self.assertIn(registerDcrSubfilters.notRegisteredMsg.format(band="u", subfilters="[0, 1, 2]"),
                           result.output)
-            self.assertIn(registerDcrSubfilters.registeredMsg.format(band="bar", subfilters="[0, 1, 2]"),
+            self.assertIn(registerDcrSubfilters.registeredMsg.format(band="g", subfilters="[0, 1, 2]"),
                           result.output)
             result = self.runner.invoke(butlerCli, ["query-dimension-records", self.repo, "subfilter"])
             self.assertEqual(result.exit_code, 0, clickResultMsg(result))
             resultTable = readTable(result.output)
             resultTable.sort(["band", "id"])
             self.assertAstropyTablesEqual(
-                AstropyTable((("bar", "bar", "bar", "foo", "foo", "foo"),
+                AstropyTable((("g", "g", "g", "u", "u", "u"),
                               (0, 1, 2, 0, 1, 2)), names=("band", "id")),
                 resultTable)
 
