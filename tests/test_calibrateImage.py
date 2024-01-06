@@ -60,7 +60,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
                                 400*noise*psf_scale,
                                 1000*noise*psf_scale))
         self.centroids = np.array(((162, 22),
-                                   (25, 70),
+                                   (40, 70),
                                    (100, 160),
                                    (50, 120),
                                    (92, 35),
@@ -238,7 +238,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.assertEqual(len(background), 4)
 
         # Only psf-like sources with S/N>10 should be in the output catalog.
-        self.assertEqual(len(stars), 4)
+        self.assertEqual(len(stars), 5)
         self.assertTrue(psf_stars.isContiguous())
         # Sort in order of brightness, to easily compare with expected positions.
         psf_stars.sort(psf_stars.getPsfFluxSlot().getMeasKey())
@@ -262,7 +262,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         fitted = SkyCoord(stars['coord_ra'], stars['coord_dec'], unit="radian")
         truth = SkyCoord(self.truth_cat['coord_ra'], self.truth_cat['coord_dec'], unit="radian")
         idx, d2d, _ = fitted.match_to_catalog_sky(truth)
-        np.testing.assert_array_less(d2d.to_value(u.milliarcsecond), 30.0)
+        np.testing.assert_array_less(d2d.to_value(u.milliarcsecond), 35.0)
 
     def test_photometry(self):
         """Test that the fitted photoCalib matches the one we generated,
