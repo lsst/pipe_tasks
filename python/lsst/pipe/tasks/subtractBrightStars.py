@@ -248,7 +248,7 @@ class SubtractBrightStarsTask(PipelineTask):
         # Docstring inherited.
         inputs = butlerQC.get(inputRefs)
         if inputs["inputExtendedPsf"].default_extended_psf is None:
-            if not self.detInRegions(inputs):
+            if not self._detectorInRegions(inputs["inputExposure"], inputs["inputExtendedPsf"]):
                 self.log.warn(
                     "Extended PSF model is not available for detector %i. Skipping withouth processing this "
                     "exposure.",
@@ -372,15 +372,22 @@ class SubtractBrightStarsTask(PipelineTask):
 
         return subtractorExp, invImages, badStamps
 
-    def detInRegions(self, inputs):
+    def _detectorInRegions(self, inputExposure, inputExtendedPsf):
         """Determine whether the input exposure's detector is in the region(s)
         where the extended PSF model(s) is(are) available.
 
         Parameters
         ----------
-        inputs : `dict`
-            Dictionary containing the inputs to the task, including
-            `inputExposure` and `inputExtendedPsf`.
+        inputExposure : `lsst.afw.image.ExposureF`
+            The image from which bright stars should be subtracted. The ID of
+            the detector will be used to determine whether the detector is in
+            the region(s) where the extended PSF model(s) is(are) available.
+        inputExtendedPsf: `~lsst.pipe.tasks.extended_psf.ExtendedPsf`
+            Extended PSF model(s), produced by
+            `~lsst.pipe.tasks.extended_psf.MeasureExtendedPsfTask`. The ID's of
+            the detectors in the region(s) where the extended PSF model(s)
+            is(are) available will be used to cross match with the ID of the
+            input exposure's detector.
 
         Returns
         -------
@@ -388,12 +395,12 @@ class SubtractBrightStarsTask(PipelineTask):
             True if the detector is in the region(s) where the extended PSF
             model(s) is(are) available, False otherwise.
         """
-        availableDets = [
-            det
-            for detList in inputs["inputExtendedPsf"].detectors_focal_plane_regions.values()
-            for det in detList.detectors
+        availableDetectors = [
+            detector
+            for detectorList in inputExtendedPsf.detectors_focal_plane_regions.values()
+            for detector in detectorList.detectors
         ]
-        if inputs["inputExposure"].detector.getId() in availableDets:
+        if inputExposure.detector.getId() in availableDetectors:
             return True
         else:
             return False
