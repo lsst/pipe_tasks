@@ -247,6 +247,14 @@ class SubtractBrightStarsTask(PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         # Docstring inherited.
         inputs = butlerQC.get(inputRefs)
+        if inputs["inputExtendedPsf"].default_extended_psf is None:
+            if not self._detectorInRegions(inputs["inputExposure"], inputs["inputExtendedPsf"]):
+                self.log.warn(
+                    "Extended PSF model is not available for detector %i. Skipping withouth processing this "
+                    "exposure.",
+                    inputs["inputExposure"].detector.getId(),
+                )
+                return None
         dataId = butlerQC.quantum.dataId
         refObjLoader = ReferenceObjectLoader(
             dataIds=[ref.datasetRef.dataId for ref in inputRefs.refCat],
@@ -363,6 +371,39 @@ class SubtractBrightStarsTask(PipelineTask):
         badStamps = BrightStarStamps(badStamps)
 
         return subtractorExp, invImages, badStamps
+
+    def _detectorInRegions(self, inputExposure, inputExtendedPsf):
+        """Determine whether the input exposure's detector is in the region(s)
+        where the extended PSF model(s) is(are) available.
+
+        Parameters
+        ----------
+        inputExposure : `lsst.afw.image.ExposureF`
+            The image from which bright stars should be subtracted. The ID of
+            the detector will be used to determine whether the detector is in
+            the region(s) where the extended PSF model(s) is(are) available.
+        inputExtendedPsf: `~lsst.pipe.tasks.extended_psf.ExtendedPsf`
+            Extended PSF model(s), produced by
+            `~lsst.pipe.tasks.extended_psf.MeasureExtendedPsfTask`. The ID's of
+            the detectors in the region(s) where the extended PSF model(s)
+            is(are) available will be used to cross match with the ID of the
+            input exposure's detector.
+
+        Returns
+        -------
+        `bool`
+            True if the detector is in the region(s) where the extended PSF
+            model(s) is(are) available, False otherwise.
+        """
+        availableDetectors = [
+            detector
+            for detectorList in inputExtendedPsf.detectors_focal_plane_regions.values()
+            for detector in detectorList.detectors
+        ]
+        if inputExposure.detector.getId() in availableDetectors:
+            return True
+        else:
+            return False
 
     def _setUpStatistics(self, exampleMask):
         """Configure statistics control and flag, for use if ``scalingType`` is
