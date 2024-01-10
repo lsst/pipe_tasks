@@ -113,7 +113,7 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
     maxEffectiveTransparency = pexConfig.Field(
         dtype=float,
         doc="Maximum value allowed for effective transparency scale factor (often inf or 1.0).",
-        default=np.inf,
+        default=float('inf')
     )
 
     def setDefaults(self):
@@ -583,10 +583,11 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         # Effective exposure time (seconds)
         effectiveTime = t_eff * exposureTime
 
-        summary.effectiveTime = effectiveTime
+        summary.effectiveTime = float(effectiveTime)
         # Save the individual components for testing...
-        summary.teffDict = dict(effectiveTime=effectiveTime, t_eff=t_eff,
-                                f_eff=f_eff, c_eff=c_eff, b_eff=b_eff)
+        summary.teffDict = dict(effectiveTime=float(effectiveTime),
+                                t_eff=float(t_eff), f_eff=float(f_eff),
+                                c_eff=float(c_eff), b_eff=float(b_eff))
 
 
 def maximum_nearest_psf_distance(
