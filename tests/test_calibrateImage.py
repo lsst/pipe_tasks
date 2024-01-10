@@ -297,6 +297,31 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.assertFloatsAlmostEqual(stars['slot_PsfFlux_flux'], self.truth_cat['truth_flux'][idx], rtol=0.1)
         self.assertFloatsAlmostEqual(stars['slot_PsfFlux_mag'], self.truth_cat['truth_mag'][idx], rtol=0.01)
 
+    def test_match_psf_stars(self):
+        """Test that _match_psf_stars() flags the correct stars as psf stars
+        and candidates.
+        """
+        calibrate = CalibrateImageTask(config=self.config)
+        psf_stars, background, candidates = calibrate._compute_psf(self.exposure)
+        calibrate._measure_aperture_correction(self.exposure, psf_stars)
+        stars = calibrate._find_stars(self.exposure, background)
+
+        # There should be no psf-related flags set at first.
+        self.assertEqual(stars["calib_psf_candidate"].sum(), 0)
+        self.assertEqual(stars["calib_psf_used"].sum(), 0)
+        self.assertEqual(stars["calib_psf_reserved"].sum(), 0)
+
+        calibrate._match_psf_stars(psf_stars, stars)
+
+        # Sort in order of brightness; the psf stars are the 3 brightest.
+        stars.sort(stars.getPsfFluxSlot().getMeasKey())
+        # sort() above leaves the catalog non-contiguous.
+        stars = stars.copy(deep=True)
+        np.testing.assert_array_equal(stars["calib_psf_candidate"], [False, False, True, True, True])
+        np.testing.assert_array_equal(stars["calib_psf_used"], [False, False, True, True, True])
+        # Too few sources to reserve any in these tests.
+        self.assertEqual(stars["calib_psf_reserved"].sum(), 0)
+
 
 class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
     """Tests of ``CalibrateImageTask.runQuantum``, which need a test butler,

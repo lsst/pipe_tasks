@@ -365,6 +365,17 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # star measurement subtasks
         if initial_stars_schema is None:
             initial_stars_schema = afwTable.SourceTable.makeMinimalSchema()
+
+        # These fields let us track which sources were used for psf and
+        # aperture correction calculations.
+        self.psf_fields = ("calib_psf_candidate", "calib_psf_used", "calib_psf_reserved",
+                           # TODO DM-39203: these can be removed once apcorr is gone.
+                           "apcorr_slot_CalibFlux_used", "apcorr_base_GaussianFlux_used",
+                           "apcorr_base_PsfFlux_used")
+        for field in self.psf_fields:
+            item = self.psf_schema.find(field)
+            initial_stars_schema.addField(item.getField())
+
         afwTable.CoordKey.addErrorFields(initial_stars_schema)
         self.makeSubtask("star_detection", schema=initial_stars_schema)
         self.makeSubtask("star_mask_streaks")
@@ -637,6 +648,60 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             return result.sourceCat.copy(deep=True)
         else:
             return result.sourceCat
+
+    def _match_psf_stars(self, psf_stars, stars):
+        """Match calibration stars to psf stars, to identify which were psf
+        candidates, and which were used or reserved during psf measurement.
+
+        Parameters
+        ----------
+        psf_stars : `lsst.afw.table.SourceCatalog`
+            PSF candidate stars that were sent to the psf determiner. Used to
+            populate psf-related flag fields.
+        stars : `lsst.afw.table.SourceCatalog`
+            Stars that will be used for calibration; psf-related fields will
+            be updated in-place.
+
+        Notes
+        -----
+        This code was adapted from CalibrateTask.copyIcSourceFields().
+        """
+        control = afwTable.MatchControl()
+        # Return all matched objects, to separate blends.
+        control.findOnlyClosest = False
+        matches = afwTable.matchXy(psf_stars, stars, 3.0, control)
+        deblend_key = stars.schema["deblend_nChild"].asKey()
+        matches = [m for m in matches if m[1].get(deblend_key) == 0]
+
+        # Because we had to allow multiple matches to handle parents, we now
+        # need to prune to the best (closest) matches.
+        # Closest matches is a dict of psf_stars source ID to Match record
+        # (psf_stars source, sourceCat source, distance in pixels).
+        best = {}
+        for match0, match1, d in matches:
+            id0 = match0.getId()
+            match = best.get(id0)
+            if match is None or d <= match[2]:
+                best[id0] = (match0, match1, d)
+        matches = list(best.values())
+        ids = np.array([(match0.getId(), match1.getId()) for match0, match1, d in matches]).T
+
+        # Check that no stars sources are listed twice; we already know
+        # that each match has a unique psf_stars id, due to using as the key
+        # in best above.
+        n_matches = len(matches)
+        n_unique = len(set(m[1].getId() for m in matches))
+        if n_unique != n_matches:
+            self.log.warning("%d psf_stars matched only %d stars; ",
+                             n_matches, n_unique)
+
+        # The indices of the IDs, so we can update the flag fields as arrays.
+        idx0 = np.searchsorted(psf_stars["id"], ids[0])
+        idx1 = np.searchsorted(stars["id"], ids[1])
+        for field in self.psf_fields:
+            result = np.zeros(len(stars), dtype=bool)
+            result[idx0] = psf_stars[field][idx1]
+            stars[field] = result
 
     def _fit_astrometry(self, exposure, stars):
         """Fit an astrometric model to the data and return the reference
