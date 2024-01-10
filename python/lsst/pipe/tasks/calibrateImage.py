@@ -278,11 +278,10 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
                                                ]
         self.psf_source_measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
         # Only measure apertures we need for PSF measurement.
-        # TODO DM-40064: psfex has a hard-coded value of 9 in a psfex-config
-        # file: make that configurable and/or change it to 12 to be consistent
-        # with our other uses?
-        # https://github.com/lsst/meas_extensions_psfex/blob/main/config/default-lsst.psfex#L14
-        self.psf_source_measurement.plugins["base_CircularApertureFlux"].radii = [9.0, 12.0]
+        self.psf_source_measurement.plugins["base_CircularApertureFlux"].radii = [12.0]
+        # TODO DM-40843: Remove this line once this is the psfex default.
+        self.psf_measure_psf.psfDeterminer["psfex"].photometricFluxField = \
+            "base_CircularApertureFlux_12_0_instFlux"
 
         # No extendeness information available: we need the aperture
         # corrections to determine that.
