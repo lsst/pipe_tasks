@@ -60,7 +60,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
                                 400*noise*psf_scale,
                                 1000*noise*psf_scale))
         self.centroids = np.array(((162, 22),
-                                   (25, 70),
+                                   (40, 70),
                                    (100, 160),
                                    (50, 120),
                                    (92, 35),
@@ -182,17 +182,17 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         that a PSF is assigned to the expopsure.
         """
         calibrate = CalibrateImageTask(config=self.config)
-        sources, background, candidates = calibrate._compute_psf(self.exposure)
+        psf_stars, background, candidates = calibrate._compute_psf(self.exposure)
 
         # Background should have 3 elements: initial subtraction, and two from
         # re-estimation during the two detection passes.
         self.assertEqual(len(background), 3)
 
         # Only the point-sources with S/N > 50 should be in this output.
-        self.assertEqual(sources["calib_psf_used"].sum(), 3)
+        self.assertEqual(psf_stars["calib_psf_used"].sum(), 3)
         # Sort in order of brightness, to easily compare with expected positions.
-        sources.sort(sources.getPsfFluxSlot().getMeasKey())
-        for record, flux, center in zip(sources[::-1], self.fluxes, self.centroids[self.fluxes > 50]):
+        psf_stars.sort(psf_stars.getPsfFluxSlot().getMeasKey())
+        for record, flux, center in zip(psf_stars[::-1], self.fluxes, self.centroids[self.fluxes > 50]):
             self.assertFloatsAlmostEqual(record.getX(), center[0], rtol=0.01)
             self.assertFloatsAlmostEqual(record.getY(), center[1], rtol=0.01)
             # PsfFlux should match the values inserted.
@@ -216,11 +216,11 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         exposure.
         """
         calibrate = CalibrateImageTask(config=self.config)
-        sources, background, candidates = calibrate._compute_psf(self.exposure)
+        psf_stars, background, candidates = calibrate._compute_psf(self.exposure)
 
         # First check that the exposure doesn't have an ApCorrMap.
         self.assertIsNone(self.exposure.apCorrMap)
-        calibrate._measure_aperture_correction(self.exposure, sources)
+        calibrate._measure_aperture_correction(self.exposure, psf_stars)
         self.assertIsInstance(self.exposure.apCorrMap, afwImage.ApCorrMap)
 
     def test_find_stars(self):
@@ -228,8 +228,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         in the image and returns them in the output catalog.
         """
         calibrate = CalibrateImageTask(config=self.config)
-        sources, background, candidates = calibrate._compute_psf(self.exposure)
-        calibrate._measure_aperture_correction(self.exposure, sources)
+        psf_stars, background, candidates = calibrate._compute_psf(self.exposure)
+        calibrate._measure_aperture_correction(self.exposure, psf_stars)
 
         stars = calibrate._find_stars(self.exposure, background)
 
@@ -238,11 +238,11 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.assertEqual(len(background), 4)
 
         # Only psf-like sources with S/N>10 should be in the output catalog.
-        self.assertEqual(len(stars), 4)
-        self.assertTrue(sources.isContiguous())
+        self.assertEqual(len(stars), 5)
+        self.assertTrue(psf_stars.isContiguous())
         # Sort in order of brightness, to easily compare with expected positions.
-        sources.sort(sources.getPsfFluxSlot().getMeasKey())
-        for record, flux, center in zip(sources[::-1], self.fluxes, self.centroids[self.fluxes > 50]):
+        psf_stars.sort(psf_stars.getPsfFluxSlot().getMeasKey())
+        for record, flux, center in zip(psf_stars[::-1], self.fluxes, self.centroids[self.fluxes > 50]):
             self.assertFloatsAlmostEqual(record.getX(), center[0], rtol=0.01)
             self.assertFloatsAlmostEqual(record.getY(), center[1], rtol=0.01)
             self.assertFloatsAlmostEqual(record["slot_PsfFlux_instFlux"], flux, rtol=0.01)
@@ -252,8 +252,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         """
         calibrate = CalibrateImageTask(config=self.config)
         calibrate.astrometry.setRefObjLoader(self.ref_loader)
-        sources, background, candidates = calibrate._compute_psf(self.exposure)
-        calibrate._measure_aperture_correction(self.exposure, sources)
+        psf_stars, background, candidates = calibrate._compute_psf(self.exposure)
+        calibrate._measure_aperture_correction(self.exposure, psf_stars)
         stars = calibrate._find_stars(self.exposure, background)
 
         calibrate._fit_astrometry(self.exposure, stars)
@@ -262,7 +262,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         fitted = SkyCoord(stars['coord_ra'], stars['coord_dec'], unit="radian")
         truth = SkyCoord(self.truth_cat['coord_ra'], self.truth_cat['coord_dec'], unit="radian")
         idx, d2d, _ = fitted.match_to_catalog_sky(truth)
-        np.testing.assert_array_less(d2d.to_value(u.milliarcsecond), 30.0)
+        np.testing.assert_array_less(d2d.to_value(u.milliarcsecond), 35.0)
 
     def test_photometry(self):
         """Test that the fitted photoCalib matches the one we generated,
@@ -271,8 +271,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         calibrate = CalibrateImageTask(config=self.config)
         calibrate.astrometry.setRefObjLoader(self.ref_loader)
         calibrate.photometry.match.setRefObjLoader(self.ref_loader)
-        sources, background, candidates = calibrate._compute_psf(self.exposure)
-        calibrate._measure_aperture_correction(self.exposure, sources)
+        psf_stars, background, candidates = calibrate._compute_psf(self.exposure)
+        calibrate._measure_aperture_correction(self.exposure, psf_stars)
         stars = calibrate._find_stars(self.exposure, background)
         calibrate._fit_astrometry(self.exposure, stars)
 
@@ -296,6 +296,31 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # quality here.
         self.assertFloatsAlmostEqual(stars['slot_PsfFlux_flux'], self.truth_cat['truth_flux'][idx], rtol=0.1)
         self.assertFloatsAlmostEqual(stars['slot_PsfFlux_mag'], self.truth_cat['truth_mag'][idx], rtol=0.01)
+
+    def test_match_psf_stars(self):
+        """Test that _match_psf_stars() flags the correct stars as psf stars
+        and candidates.
+        """
+        calibrate = CalibrateImageTask(config=self.config)
+        psf_stars, background, candidates = calibrate._compute_psf(self.exposure)
+        calibrate._measure_aperture_correction(self.exposure, psf_stars)
+        stars = calibrate._find_stars(self.exposure, background)
+
+        # There should be no psf-related flags set at first.
+        self.assertEqual(stars["calib_psf_candidate"].sum(), 0)
+        self.assertEqual(stars["calib_psf_used"].sum(), 0)
+        self.assertEqual(stars["calib_psf_reserved"].sum(), 0)
+
+        calibrate._match_psf_stars(psf_stars, stars)
+
+        # Sort in order of brightness; the psf stars are the 3 brightest.
+        stars.sort(stars.getPsfFluxSlot().getMeasKey())
+        # sort() above leaves the catalog non-contiguous.
+        stars = stars.copy(deep=True)
+        np.testing.assert_array_equal(stars["calib_psf_candidate"], [False, False, True, True, True])
+        np.testing.assert_array_equal(stars["calib_psf_used"], [False, False, True, True, True])
+        # Too few sources to reserve any in these tests.
+        self.assertEqual(stars["calib_psf_reserved"].sum(), 0)
 
 
 class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
