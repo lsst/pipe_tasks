@@ -354,6 +354,11 @@ class StackBrightStarsConfig(Config):
         doc="Magnitude limit, in Gaia G; all stars brighter than this value will be stacked",
         default=18,
     )
+    minValidAnnulusFraction = Field[float](
+        doc="Minimum number of valid pixels that must fall within the annulus for the bright star to be "
+        "included in the generation of a PSF.",
+        default=0.0,
+    )
 
 
 class StackBrightStarsTask(Task):
@@ -375,6 +380,24 @@ class StackBrightStarsTask(Task):
             stats_control.setAndMask(and_mask)
         stats_flags = stringToStatisticsProperty(self.config.stacking_statistic)
         return stats_control, stats_flags
+
+    def removeInvalidStamps(self, read_stars):
+        """Remove stamps that do not have enough valid pixels in the annulus.
+
+        Parameters
+        ----------
+        read_stars : `list` of `lsst.pipe.tasks.processBrightStars.BrightStarStamp`
+            List of bright star stamps to be stacked.
+        """
+        # finding stamps that do not have enough valid pixels in the annulus
+        inValidStamps = []
+        for stamp in read_stars:
+            if stamp.validAnnulusFraction < self.config.minValidAnnulusFraction:
+                inValidStamps.append(stamp)
+        # removing stamps that do not have enough valid pixels in the annulus
+        if len(inValidStamps):
+            for inValidStamp in inValidStamps:
+                read_stars._stamps.remove(inValidStamp)
 
     def run(self, bss_ref_list, region_name=None):
         """Read input bright star stamps and stack them together.
@@ -424,6 +447,7 @@ class StackBrightStarsTask(Task):
             all_stars = None
             for bss_ref in bss_ref_list:
                 read_stars = bss_ref.get(parameters={"bbox": bbox})
+                self.removeInvalidStamps(read_stars)
                 if self.config.do_mag_cut:
                     read_stars = read_stars.selectByMag(magMax=self.config.mag_limit)
                 if all_stars:
