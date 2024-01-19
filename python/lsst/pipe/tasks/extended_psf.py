@@ -389,15 +389,15 @@ class StackBrightStarsTask(Task):
         read_stars : `list` of `lsst.pipe.tasks.processBrightStars.BrightStarStamp`
             List of bright star stamps to be stacked.
         """
-        # finding stamps that do not have enough valid pixels in the annulus
-        inValidStamps = []
+        # Find stamps that do not have enough valid pixels in the annulus
+        invalidStamps = []
         for stamp in read_stars:
             if stamp.validAnnulusFraction < self.config.minValidAnnulusFraction:
-                inValidStamps.append(stamp)
-        # removing stamps that do not have enough valid pixels in the annulus
-        if len(inValidStamps):
-            for inValidStamp in inValidStamps:
-                read_stars._stamps.remove(inValidStamp)
+                invalidStamps.append(stamp)
+        # Remove stamps that do not have enough valid pixels in the annulus
+        if len(invalidStamps):
+            for invalidStamp in invalidStamps:
+                read_stars._stamps.remove(invalidStamp)
 
     def run(self, bss_ref_list, region_name=None):
         """Read input bright star stamps and stack them together.
