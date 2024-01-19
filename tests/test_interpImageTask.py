@@ -36,7 +36,7 @@ import lsst.geom
 import lsst.afw.image as afwImage
 import lsst.pex.config as pexConfig
 import lsst.ip.isr as ipIsr
-from lsst.pipe.tasks.interpImage import InterpImageTask
+from lsst.pipe.tasks.interpImage import CloughTocher2DInterpolateTask, InterpImageTask
 
 try:
     display
@@ -164,6 +164,137 @@ class InterpolationTestCase(lsst.utils.tests.TestCase):
         task = InterpImageTask(config)
         task.run(image, planeName=bad, fwhmPixels=self.FWHM)
         self.assertFloatsEqual(image.image.array, value)
+
+
+class CloughTocher2DInterpolateTestCase(lsst.utils.tests.TestCase):
+    """Test the CloughTocher2DInterpolateTask."""
+
+    def setUp(self):
+        super().setUp()
+
+        self.maskedimage = afwImage.MaskedImageF(100, 121)
+        for x in range(100):
+            for y in range(121):
+                self.maskedimage[x, y] = (3 * y + x * 5, 0, 1.0)
+
+        # Clone the maskedimage so we can compare it after running the task.
+        self.reference = self.maskedimage.clone()
+
+        # Set some central pixels as SAT
+        sliceX, sliceY = slice(30, 35), slice(40, 45)
+        self.maskedimage.mask[sliceX, sliceY] = afwImage.Mask.getPlaneBitMask("SAT")
+        self.maskedimage.image[sliceX, sliceY] = np.nan
+        # Put nans here to make sure interp is done ok
+
+        # Set an entire column as BAD
+        self.maskedimage.mask[54:55, :] = afwImage.Mask.getPlaneBitMask("BAD")
+        self.maskedimage.image[54:55, :] = np.nan
+
+        # Set an entire row as BAD
+        self.maskedimage.mask[:, 110:111] = afwImage.Mask.getPlaneBitMask("BAD")
+        self.maskedimage.image[:, 110:111] = np.nan
+
+        # Set a diagonal set of pixels as CR
+        for i in range(74, 78):
+            self.maskedimage.mask[i, i] = afwImage.Mask.getPlaneBitMask("CR")
+            self.maskedimage.image[i, i] = np.nan
+
+        # Set one of the edges as EDGE
+        self.maskedimage.mask[0:1, :] = afwImage.Mask.getPlaneBitMask("EDGE")
+        self.maskedimage.image[0:1, :] = np.nan
+
+        # Set a smaller streak at the edge
+        self.maskedimage.mask[25:28, 0:1] = afwImage.Mask.getPlaneBitMask("EDGE")
+        self.maskedimage.image[25:28, 0:1] = np.nan
+
+        # Update the reference image's mask alone, so we can compare them after
+        # running the task.
+        self.reference.mask.array[:, :] = self.maskedimage.mask.array
+
+        # Create a noise image
+        self.noise = self.maskedimage.clone()
+        np.random.seed(12345)
+        self.noise.image.array[:, :] = np.random.normal(size=self.noise.image.array.shape)
+
+    @lsst.utils.tests.methodParameters(n_runs=(1, 2))
+    def test_interpolation(self, n_runs: int):
+        """Test that the interpolation is done correctly.
+
+        Parameters
+        ----------
+        n_runs : `int`
+            Number of times to run the task. Running the task more than once
+            should have no effect.
+        """
+        config = CloughTocher2DInterpolateTask.ConfigClass()
+        config.badMaskPlanes = (
+            "BAD",
+            "SAT",
+            "CR",
+            "EDGE",
+        )
+        config.fillValue = 0.5
+        task = CloughTocher2DInterpolateTask(config)
+        for n in range(n_runs):
+            task.run(self.maskedimage)
+
+        # Assert that the mask and the variance planes remain unchanged.
+        self.assertImagesEqual(self.maskedimage.variance, self.reference.variance)
+        self.assertMasksEqual(self.maskedimage.mask, self.reference.mask)
+
+        # Check that the long streak of bad pixels have been replaced with the
+        # fillValue, but not the short streak.
+        np.testing.assert_array_equal(self.maskedimage.image[0:1, :].array, config.fillValue)
+        with self.assertRaises(AssertionError):
+            np.testing.assert_array_equal(self.maskedimage.image[25:28, 0:1].array, config.fillValue)
+
+        # Check that interpolated pixels are close to the reference (original),
+        # and that none of them is still NaN.
+        self.assertTrue(np.isfinite(self.maskedimage.image.array).all())
+        self.assertImagesAlmostEqual(
+            self.maskedimage.image[1:, :], self.reference.image[1:, :], rtol=1e-05, atol=1e-08
+        )
+
+    @lsst.utils.tests.methodParametersProduct(pass_badpix=(True, False), pass_goodpix=(True, False))
+    def test_interpolation_with_noise(self, pass_badpix: bool = True, pass_goodpix: bool = True):
+        """Test that we can reuse the badpix and goodpix.
+
+        Parameters
+        ----------
+        pass_badpix : `bool`
+            Whether to pass the badpix to the task?
+        pass_goodpix : `bool`
+            Whether to pass the goodpix to the task?
+        """
+
+        config = CloughTocher2DInterpolateTask.ConfigClass()
+        config.badMaskPlanes = (
+            "BAD",
+            "SAT",
+            "CR",
+            "EDGE",
+        )
+        task = CloughTocher2DInterpolateTask(config)
+
+        badpix, goodpix = task.run(self.noise)
+        task.run(
+            self.maskedimage,
+            badpix=(badpix if pass_badpix else None),
+            goodpix=(goodpix if pass_goodpix else None),
+        )
+
+        # Check that the long streak of bad pixels by the edge have been
+        # replaced with fillValue, but not the short streak.
+        np.testing.assert_array_equal(self.maskedimage.image[0:1, :].array, config.fillValue)
+        with self.assertRaises(AssertionError):
+            np.testing.assert_array_equal(self.maskedimage.image[25:28, 0:1].array, config.fillValue)
+
+        # Check that interpolated pixels are close to the reference (original),
+        # and that none of them is still NaN.
+        self.assertTrue(np.isfinite(self.maskedimage.image.array).all())
+        self.assertImagesAlmostEqual(
+            self.maskedimage.image[1:, :], self.reference.image[1:, :], rtol=1e-05, atol=1e-08
+        )
 
 
 def setup_module(module):
