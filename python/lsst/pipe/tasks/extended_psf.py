@@ -121,9 +121,8 @@ class ExtendedPsf:
         Extended PSF model to be used as default (or only) extended PSF model.
     """
 
-    def __init__(self, extendedPsfsDict=None):
-        self.extendedPsfsDict = extendedPsfsDict
-        # self.default_extended_psf = default_extended_psf
+    def __init__(self, default_extended_psf=None):
+        self.default_extended_psf = default_extended_psf
         self.focal_plane_regions = {}
         self.detectors_focal_plane_regions = {}
 
@@ -233,9 +232,7 @@ class ExtendedPsf:
         """
         # Create primary HDU with global metadata.
         metadata = PropertyList()
-        # metadata["HAS_DEFAULT"] = self.default_extended_psf is not None
-        for binType in self.extendedPsfsDict.keys():
-            metadata["{}_HAS_DEFAULT".format(binType.upper)] = self.extendedPsfsDict[binType]['stackedImage'] is not None
+        metadata["HAS_DEFAULT"] = self.default_extended_psf is not None
         if self.focal_plane_regions:
             metadata["HAS_REGIONS"] = True
             metadata["REGION_NAMES"] = list(self.focal_plane_regions.keys())
@@ -248,20 +245,12 @@ class ExtendedPsf:
         fits_primary.writeMetadata(metadata)
         fits_primary.closeFile()
         # Write default extended PSF.
-        for binType in self.extendedPsfsDict.keys():
+        if self.default_extended_psf is not None:
             default_hdu_metadata = PropertyList()
-            default_hdu_metadata.update({"REGION": "DEFAULT", "EXTNAME": "IMAGE", "BIN": binType.upper()})
-            self.extendedPsfsDict[binType].image.writeFits(filename, metadata=default_hdu_metadata, mode="a")
-            default_hdu_metadata.update({"REGION": "DEFAULT", "EXTNAME": "MASK", "BIN": binType.upper()})
-            self.extendedPsfsDict[binType].mask.writeFits(filename, metadata=default_hdu_metadata, mode="a")
-
-        # # Write default extended PSF.
-        # if self.default_extended_psf is not None:
-        #     default_hdu_metadata = PropertyList()
-        #     default_hdu_metadata.update({"REGION": "DEFAULT", "EXTNAME": "IMAGE"})
-        #     self.default_extended_psf.image.writeFits(filename, metadata=default_hdu_metadata, mode="a")
-        #     default_hdu_metadata.update({"REGION": "DEFAULT", "EXTNAME": "MASK"})
-        #     self.default_extended_psf.mask.writeFits(filename, metadata=default_hdu_metadata, mode="a")
+            default_hdu_metadata.update({"REGION": "DEFAULT", "EXTNAME": "IMAGE"})
+            self.default_extended_psf.image.writeFits(filename, metadata=default_hdu_metadata, mode="a")
+            default_hdu_metadata.update({"REGION": "DEFAULT", "EXTNAME": "MASK"})
+            self.default_extended_psf.mask.writeFits(filename, metadata=default_hdu_metadata, mode="a")
         # Write extended PSF for each focal plane region.
         for j, (region, e_psf_region) in enumerate(self.focal_plane_regions.items()):
             metadata = PropertyList()
@@ -329,6 +318,8 @@ class ExtendedPsf:
 
     @classmethod
     def readFits(cls, filename):
+        """Alias for ``readFits``; exists for compatibility with the Butler."""
+        return cls.read_fits(filename)
         """Alias for ``readFits``; exists for compatibility with the Butler."""
         return cls.read_fits(filename)
 
@@ -660,22 +651,46 @@ class MeasureExtendedPsfTask(Task):
 
     def scaleStackedStamps(self, stackedStamps):
         binTags = [binTag for binTag in stackedStamps.keys()]
+        jointPSF = None
+        # self.scaleFactors = {}
         # annuliTags = [annulusTag for annulusTag in self.scalingAnnuli.keys()]
-        import pdb; pdb.set_trace()
         for i, key in enumerate(self.scalingAnnuli.keys()):
-            # make cutout from the larger stacked image
-            BBox = stackedStamps[binTags[i]]['stackedImage'].getBBox()
-            stampSize = [BBox.getWidth(), BBox.getHeight()]
-            cutout = self._getCutout(stackedStamps[binTags[i+1]]['stackedImage'].clone(), stampSize)
-            # make annulus for :stackedStamps[binTags[i+1]]
-            innerImage = self.createMaskedImage(stackedStamps[binTags[i]]['stackedImage'].clone(), self.scalingAnnuli[key].radii, key=key, binTag=binTags[i])
-            outerImage = self.createMaskedImage(cutout, self.scalingAnnuli[key].radii, key=key, binTag=binTags[i+1])
-            # make annulus for :stackedStamps[binTags[i]]
-            # find the scaling factor (includes _setUpStatistics)
-            scaleFactor = self.findScalingFactor(outerImage, innerImage)
-            # scale stacked image[i] and stich it into stacked image[i+1]
-        import pdb; pdb.set_trace()
-        k = 0
+            if i < len(binTags) -1:
+                # make cutout from the larger stacked image
+                innImage = stackedStamps[binTags[i]]['stackedImage'].clone()
+                outImage = stackedStamps[binTags[i+1]]['stackedImage'].clone()
+                BBox = innImage.getBBox()
+                stampSize = [BBox.getWidth(), BBox.getHeight()]
+                xy0, cutout = self._getCutout(outImage, stampSize)
+                # make annulus for :stackedStamps[binTags[i+1]]
+                innerImage = self.createMaskedImage(innImage, self.scalingAnnuli[key].radii, key=key, binTag=binTags[i])
+                outerImage = self.createMaskedImage(cutout, self.scalingAnnuli[key].radii, key=key, binTag=binTags[i+1])
+                # make annulus for :stackedStamps[binTags[i]]
+                # find the scaling factor (includes _setUpStatistics)
+                scaleFactor = self.findScalingFactor(outerImage, innerImage)
+                # scale stacked image[i] and stich it into stacked image[i+1]
+                # self.scaleFactors[key] = scaleFactor
+                if jointPSF is None:
+                    jointPSF = self.joinStackedStamps(
+                        stackedStamps[binTags[i]]['stackedImage'],
+                        stackedStamps[binTags[i+1]]['stackedImage'],
+                        self.scalingAnnuli[key].radii,
+                        xy0,
+                        scaleFactor,
+                        key)
+                else:
+                    jointPSF = self.joinStackedStamps(
+                        jointPSF,
+                        stackedStamps[binTags[i+1]]['stackedImage'],
+                        self.scalingAnnuli[key].radii,
+                        xy0,
+                        scaleFactor,
+                        key)
+            else:
+                # TODO: If there is no stamp for a given magnitude bin, we need to make sure the right way of joining is implemented. For example, what should happend if a bin which is not the faintest or brightest bin has no stamp?
+                print("One or more magnitude bins are not represented by stamps!")
+
+        return jointPSF
     
     #     annulus1
     #     annulus2
@@ -714,10 +729,10 @@ class MeasureExtendedPsfTask(Task):
         # from both stacked images? or maybe we do not need to include the
         # maske planes at all?
         self._setUpStatistics(outerImage.mask)
-        xy = innerImage.clone()
-        xy.image.array *= outerImage.image.array
-        xx = outerImage.clone()
-        xx.image.array = outerImage.image.array**2
+        xy = outerImage.clone()
+        xy.image.array *= innerImage.image.array
+        xx = innerImage.clone()
+        xx.image.array = innerImage.image.array**2
         xySum = makeStatistics(xy, self.statsFlag, self.statsControl).getValue()
         xxSum = makeStatistics(xx, self.statsFlag, self.statsControl).getValue()
         scalingFactor = xySum / xxSum if xxSum else 1
@@ -738,18 +753,17 @@ class MeasureExtendedPsfTask(Task):
         annulusImage = MaskedImageF(maskedImageSize, planeDict=maskPlaneDict)
         annulusImage.image.array[:] = np.nan
 
-        # # annulusMask = annulusImage.mask
-        # # annulusMask.array[:] = 2 ** maskPlaneDict["NO_DATA"]
+        # annulusMask = annulusImage.mask
+        # annulusMask.array[:] = 2 ** maskPlaneDict["NO_DATA"]
+        annulus.copyMaskedImage(image, annulusImage)
         # from astropy.io import fits
-        # output_fits_file = key + binTag + '.fits'
+        # output_fits_file = "example_images/" + key + binTag + '.fits'
         # # Create a Primary HDU with the data
-        # primary_hdu = fits.PrimaryHDU(image.image.array)
+        # primary_hdu = fits.PrimaryHDU(annulusImage.image.array)
         # # Create an HDU list
         # hdul = fits.HDUList([primary_hdu])
         # # Write the HDU list to the FITS file
         # hdul.writeto(output_fits_file, overwrite=True)
-        import pdb; pdb.set_trace()
-        annulus.copyMaskedImage(image, annulusImage)
         return annulusImage
 
     def _getCutout(self, inputImage, stampSize: list[int]):
@@ -759,6 +773,7 @@ class MeasureExtendedPsfTask(Task):
         corner = Point2I(np.array(BBox.getCenter()) - np.array(stampSize) / 2)
         dimensions = Extent2I(stampSize)
         stampBBox = Box2I(corner, dimensions)
+        xy0 = [stampBBox.beginX, stampBBox.beginY]
         overlapBBox = Box2I(stampBBox)
         overlapBBox.clip(inputImage.getBBox())
         # if overlapBBox.getArea() > 0:
@@ -770,14 +785,23 @@ class MeasureExtendedPsfTask(Task):
         inputMI = inputImage.image
         overlap = inputMI.Factory(inputMI, overlapBBox)
         stamp.image[overlapBBox] = overlap
-        stamp.image.setXY0(0, 0)
+        stamp.setXY0(0, 0)
         # Set detector and WCS.
         # stamp.setDetector(inputExposure.getDetector())
         # stamp.setWcs(inputExposure.getWcs())
         # else:
         #     stamp = None
-        return stamp
+        return xy0, stamp
 
+    def writetoFits(self, image, filename):
+        from astropy.io import fits
+        # Create a Primary HDU with the data
+        primary_hdu = fits.PrimaryHDU(image)
+        # Create an HDU list
+        hdul = fits.HDUList([primary_hdu])
+        # Write the HDU list to the FITS file
+        hdul.writeto(filename, overwrite=True)
+    
     def _setUpStatistics(self, exampleMask):
     # def _setUpStatistics(self, exampleMask=stackedStamps['central']['stackedImage'].mask):
         """Configure statistics control and flag, for use if ``scalingType`` is
@@ -796,24 +820,33 @@ class MeasureExtendedPsfTask(Task):
             
     def setScalingAnnularRadii(self):
         """Set default scaling annular flux radii."""
-        self.scalinTags = ["200", "201"]
+        self.scalinTags = ["200", "201", "202"]
         self.scalingAnnuli = {}
         # radii = [[12, 20], [23, 33], [90, 105]]
-        radii = [[10, 22], [30, 40]]
+        radii = [[12, 22], [70, 85], [150, 200]]
         for i, key in enumerate(self.scalinTags):
             annulusRadii = AnnulusRadii()
             annulusRadii.radii = radii[i]
             self.scalingAnnuli[key] = annulusRadii
 
-    def joinStackedStamps(self, scaledStackedStamps):
-        NStitches = len(scaledStackedStamps.keys()) - 1
-        stitched = None
-        for i in range(NStitches):
-            if stitched is None:
-                stitched = self.stitchModels(scaledStackedStamps, i)
-            else:
-                stitched = self.stitchModels(scaledStackedStamps, i, stitched)
-        return None
+    def joinStackedStamps(self, innerImage, outerImage, raddi, xy0, scaleFactor, key):
+        # Scaling the inner image using the scaling factor:
+        innerImage.image.array *= scaleFactor
+        innerImage.setXY0(xy0[0], xy0[1])
+        imCenter = innerImage.image.getBBox().getCenter()
+        imCenter = int(imCenter[0]), int(imCenter[1])
+        innerCircle = SpanSet.fromShape(raddi[0], Stencil.CIRCLE, offset=imCenter)
+        maskedImageSize = outerImage.getDimensions()
+        maskPlaneDict = outerImage.mask.getMaskPlaneDict()
+        jointImage = MaskedImageF(maskedImageSize, planeDict=maskPlaneDict)
+        jointImage.image.array[:] = outerImage.image.array[:]
+
+        # annulusMask = annulusImage.mask
+        # annulusMask.array[:] = 2 ** maskPlaneDict["NO_DATA"]
+        innerCircle.copyMaskedImage(innerImage, jointImage)
+        filename = key + 'finaljoint.fits'
+        self.writetoFits(jointImage.image.array, filename)
+        return jointImage
     
     def stitchModels(self, stackedStamps, i, stitched=None):
         for binTag in stackedStamps.keys():
@@ -839,7 +872,8 @@ class MeasureExtendedPsfTask(Task):
             # output_e_psf = [ExtendedPsf(stackedImage) for stackedImage in self.stack_bright_stars.run(bss_ref_list)]
             stackedStamps = self.stack_bright_stars.run(bss_ref_list)
             scaledStackedStamps = self.scaleStackedStamps(stackedStamps)
-            output_e_psf = self.joinStackedStamps(scaledStackedStamps)
+            # TO DO: the final product should also carry the binTag or image size of the largest stamp.
+            output_e_psf = ExtendedPsf(scaledStackedStamps)
         else:
             stackedStamps = ExtendedPsf()
             region_ref_list = self.select_detector_refs(bss_ref_list)

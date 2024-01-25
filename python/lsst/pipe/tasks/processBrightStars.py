@@ -669,15 +669,15 @@ class ProcessBrightStarsTask(PipelineTask):
             warpTransforms.append(starWarper)
         return Struct(warpedStars=warpedStars, warpTransforms=warpTransforms, xy0s=xy0s, nb90Rots=nb90Rots, binTags=binTags)
 
-    def setModelStamp(self):
+    def setModelStamp(self, subBin=None): # subBin is a temporary fix which will be removed later. this affects everything after this line.
         """Compute (model) stamp size depending on provided buffer value."""
         if not self.config.magBins:
-            self.setMagBins()
+            self.setMagBins(subBin=subBin)
         else:
             self.magBins = self.config.magBins
             self.bins = list(self.magBins.keys())
         if not self.config.stampsSizes:
-            self.setStampsSizes()
+            self.setStampsSizes(subBin=subBin)
         else:
             self.stampsSizes = self.config.stampsSizes
         self.applyModelStampBuffer()
@@ -693,24 +693,31 @@ class ProcessBrightStarsTask(PipelineTask):
         # # Central pixel.
         # self.modelCenter = self.modelStampSize[0] // 2, self.modelStampSize[1] // 2
         if not self.config.multiAnnularFluxRadii:
-            self.setAnnularRadii()
+            self.setAnnularRadii(subBin=subBin)
         else:
             self.annularFluxRadii = self.config.multiAnnularFluxRadii
 
-    def setMagBins(self):
+    def setMagBins(self, subBin=None):
         """Set default magnitude bins."""
-        self.bins = ["100", "101", "102"]
+        if subBin is None:
+            self.bins = ["100", "101", "102", "103"]
         # Test continues magnitude for bins
-        limits = [[19, 19.5], [16, 17], [11, 12]]
+            limits = [[18, 18.5], [15, 16], [11, 12], [8, 9]]
+        else:
+            self.bins = [subBin]
+            limits = [[11, 12]]
         self.magBins = {}
         for key, value in zip(self.bins, limits):
             binLimits = BinLimits()
             binLimits.limits = value
             self.magBins[key] = binLimits
 
-    def setStampsSizes(self):
+    def setStampsSizes(self, subBin=None):
         """Set default stamps sizes."""
-        sizes = [[130, 130], [200, 200], [600, 600]]
+        if subBin is None:
+            sizes = [[130, 130], [200, 200], [600, 600], [1000, 1000]]
+        else:
+            sizes = [[600, 600]]
         self.stampsSizes = {}
         for key, value in zip(self.bins, sizes):
             stampSize = StampSize()
@@ -734,10 +741,13 @@ class ProcessBrightStarsTask(PipelineTask):
             # Central pixel.
             self.modelsCenters[key] = self.modelStampsSizes[key][0] // 2, self.modelStampsSizes[key][1] // 2
 
-    def setAnnularRadii(self):
+    def setAnnularRadii(self, subBin=None):
         """Set default annular flux radii."""
         self.annularFluxRadii = {}
-        radii = [[12, 20], [23, 33], [90, 105]]
+        if subBin is None:
+            radii = [[12, 20], [23, 33], [90, 105], [180, 200]]
+        else:
+            radii = [[90, 105]]
         for i, key in enumerate(self.bins):
             annularFluxRadii = AnnulusRadii()
             annularFluxRadii.radii = radii[i]

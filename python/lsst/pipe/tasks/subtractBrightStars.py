@@ -338,20 +338,27 @@ class SubtractBrightStarsTask(PipelineTask):
             self.setMissedStarsStatsControl()
             # This may change when multiple star bins are used for PSF
             # creation.
-            innerRadius = inputBrightStarStamps._innerRadius
-            outerRadius = inputBrightStarStamps._outerRadius
+            # innerRadius = inputBrightStarStamps._innerRadius
+            # outerRadius = inputBrightStarStamps._outerRadius
+            # innerRadius = 90
+            # outerRadius = 105
+            # modelSizes = {}
+            # modelSizes['102'] = self.modelStampSize
             brightStarStamps, badStamps = BrightStarStamps.initAndNormalize(
                 brightStarList,
-                innerRadius=innerRadius,
-                outerRadius=outerRadius,
+                # innerRadius=innerRadius,
+                # outerRadius=outerRadius,
+                annularFluxRadii=self.warper.annularFluxRadii,
                 nb90Rots=self.warpOutputs.nb90Rots,
-                imCenter=self.warper.modelCenter,
+                # imCenter=self.warper.modelCenter,
+                modelSizes=self.warper.stampsSizes,
                 use_archive=True,
                 statsControl=self.missedStatsControl,
                 statsFlag=self.missedStatsFlag,
                 badMaskPlanes=self.warper.config.badMaskPlanes,
                 discardNanFluxObjects=False,
                 forceFindFlux=True,
+                bins=["102"], # temporary fix. Should be removed when the code is updated.
             )
 
             self.psf_annular_fluxes = self.findPsfAnnularFluxes(brightStarStamps)
@@ -464,7 +471,7 @@ class SubtractBrightStarsTask(PipelineTask):
         self.warper.config.stampSize = self.config.subtractionBox
         self.warper.modelStampBuffer = self.config.subtractionBoxBuffer
         self.warper.config.magLimit = self.config.magLimit
-        self.warper.setModelStamp()
+        self.warper.setModelStamp(subBin="102")
 
     def setMissedStarsStatsControl(self):
         """Configure statistics control for processing missing stars from
@@ -482,7 +489,9 @@ class SubtractBrightStarsTask(PipelineTask):
         """
         self.warper = ProcessBrightStarsTask()
         self._overrideWarperConfig()
-        self.warper.modelCenter = self.modelStampSize[0] // 2, self.modelStampSize[1] // 2
+        self.warper.setModelStamp()
+        self.bins = ["102"]
+        # self.warper.modelCenter = self.modelStampSize[0] // 2, self.modelStampSize[1] // 2
 
     def makeBrightStarList(self, inputBrightStarStamps, inputExposure, refObjLoader):
         """Make a list of bright stars that are missing from
@@ -512,7 +521,7 @@ class SubtractBrightStarsTask(PipelineTask):
             inputExposure, refObjLoader=refObjLoader, inputBrightStarStamps=inputBrightStarStamps
         )
         if missedStars.starStamps:
-            self.warpOutputs = self.warper.warpStamps(missedStars.starStamps, missedStars.pixCenters)
+            self.warpOutputs = self.warper.warpStamps(missedStars.starStamps, missedStars.pixCenters, binTags=["102"] * len(missedStars.starStamps))
             brightStarList = [
                 BrightStarStamp(
                     stamp_im=warp,
@@ -520,6 +529,7 @@ class SubtractBrightStarsTask(PipelineTask):
                     position=self.warpOutputs.xy0s[j],
                     gaiaGMag=missedStars.gMags[j],
                     gaiaId=missedStars.gaiaIds[j],
+                    binTag="102", # temporary fix. Should be removed when the code is updated.
                     minValidAnnulusFraction=self.warper.config.minValidAnnulusFraction,
                 )
                 for j, (warp, transform) in enumerate(
@@ -566,10 +576,10 @@ class SubtractBrightStarsTask(PipelineTask):
         """
         # Create SpanSet of annulus.
         outerCircle = SpanSet.fromShape(
-            brightStarStamp.optimalOuterRadius, Stencil.CIRCLE, offset=self.warper.modelCenter
+            brightStarStamp.optimalOuterRadius, Stencil.CIRCLE, offset=self.warper.modelsCenters["102"]
         )
         innerCircle = SpanSet.fromShape(
-            brightStarStamp.optimalInnerRadius, Stencil.CIRCLE, offset=self.warper.modelCenter
+            brightStarStamp.optimalInnerRadius, Stencil.CIRCLE, offset=self.warper.modelsCenters["102"]
         )
         annulus = outerCircle.intersectNot(innerCircle)
         return annulus
@@ -786,7 +796,8 @@ class SubtractBrightStarsTask(PipelineTask):
             warped) to match bright stars' positions.
         """
         for star in brightStarStamps:
-            if star.gaiaGMag < self.config.magLimit:
+            # if star.gaiaGMag < self.config.magLimit:
+            if star.gaiaGMag < max(self.warper.magBins["102"].limits):
                 try:
                     # Add the scaled model at the star location to subtractor.
                     subtractor, invImage = self.addScaledModel(subtractor, star, multipleAnnuli)
