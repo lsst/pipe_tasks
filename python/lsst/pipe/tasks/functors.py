@@ -817,20 +817,10 @@ class Mag(Functor):
     """
     _defaultDataset = 'meas'
 
-    def __init__(self, col, calib=None, **kwargs):
+    def __init__(self, col, **kwargs):
         self.col = fluxName(col)
-        self.calib = calib
-        if calib is not None:
-            # TO DO: DM-39914 Remove deprecated calib argument in Mag functor.
-            warnings.warn(
-                "The 'calib' argument is deprecated, and will be removed after v26.",
-                FutureWarning,
-                stacklevel=2,
-            )
-            self.fluxMag0 = calib.getFluxMag0()[0]
-        else:
-            # TO DO: DM-21955 Replace hard coded photometic calibration values.
-            self.fluxMag0 = 63095734448.0194
+        # TO DO: DM-21955 Replace hard coded photometic calibration values.
+        self.fluxMag0 = 63095734448.0194
 
         super().__init__(**kwargs)
 
@@ -860,17 +850,8 @@ class MagErr(Mag):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if self.calib is not None:
-            # TO DO: DM-39914 Remove deprecated calib argument in Mag functor.
-            self.fluxMag0Err = self.calib.getFluxMag0()[1]
-            warnings.warn(
-                "The 'calib' argument is deprecated, and will be removed after v26.",
-                FutureWarning,
-                stacklevel=2,
-            )
-        else:
-            # TO DO: DM-21955 Replace hard coded photometic calibration values.
-            self.fluxMag0Err = 0.
+        # TO DO: DM-21955 Replace hard coded photometic calibration values.
+        self.fluxMag0Err = 0.
 
     @property
     def columns(self):
@@ -1472,17 +1453,13 @@ class Photometry(Functor):
     # TO DO: DM-21955 Replace hard coded photometic calibration values.
     COADD_ZP = 27
 
-    def __init__(self, colFlux, colFluxErr=None, calib=None, **kwargs):
+    def __init__(self, colFlux, colFluxErr=None, **kwargs):
         self.vhypot = np.vectorize(self.hypot)
         self.col = colFlux
         self.colFluxErr = colFluxErr
 
-        self.calib = calib
-        if calib is not None:
-            self.fluxMag0, self.fluxMag0Err = calib.getFluxMag0()
-        else:
-            self.fluxMag0 = 1./np.power(10, -0.4*self.COADD_ZP)
-            self.fluxMag0Err = 0.
+        self.fluxMag0 = 1./np.power(10, -0.4*self.COADD_ZP)
+        self.fluxMag0Err = 0.
 
         super().__init__(**kwargs)
 
