@@ -176,8 +176,10 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     - psfTraceRadiusDelta
 
     These quantities are computed to assess depth:
-    - effectiveTime
-    - effectiveTimeDict
+    - effTime
+    - effTimeScalePsfSigma
+    - effTimeScaleSkyBg
+    - effTimeScaleZeroPoint
     """
     ConfigClass = ComputeExposureSummaryStatsConfig
     _DefaultName = "computeExposureSummaryStats"
@@ -533,8 +535,10 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         self.log.info("Updating effective exposure time")
 
         nan = float("nan")
-        summary.effectiveTime = nan
-        summary.effectiveTimeDict = None
+        summary.effTime = nan
+        summary.effTimeScalePsfSigma = nan
+        summary.effTimeScaleSkyBg = nan
+        summary.effTimeScaleZeroPoint = nan
 
         exposureTime = exposure.getInfo().getVisitInfo().getExposureTime()
         filterLabel = exposure.getFilter()
@@ -583,12 +587,11 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         # Effective exposure time (seconds)
         effectiveTime = t_eff * exposureTime
 
-        summary.effectiveTime = float(effectiveTime)
-        # Save the individual components for testing...
-        summary.teffDict = dict(effectiveTime=float(effectiveTime),
-                                t_eff=float(t_eff), f_eff=float(f_eff),
-                                c_eff=float(c_eff), b_eff=float(b_eff))
-
+        # Output quantities
+        summary.effTime = float(effectiveTime)
+        summary.effTimeScalePsfSigma = float(f_eff)
+        summary.effTimeScaleSkyBg = float(b_eff)
+        summary.effTimeScaleZeroPoint = float(c_eff)
 
 def maximum_nearest_psf_distance(
     image_mask,

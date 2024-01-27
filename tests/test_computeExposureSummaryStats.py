@@ -130,7 +130,7 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         self.assertFloatsAlmostEqual(summary.zenithDistance, 30.57112, atol=1e-5)
 
         # Effective exposure time
-        self.assertFloatsAlmostEqual(summary.effectiveTime, 1.0, rtol=1e-3)
+        self.assertFloatsAlmostEqual(summary.effTime, 1.0, rtol=1e-3)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
