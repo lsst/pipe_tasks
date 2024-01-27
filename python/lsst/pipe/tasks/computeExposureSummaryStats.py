@@ -593,6 +593,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.effTimeScaleSkyBg = float(b_eff)
         summary.effTimeScaleZeroPoint = float(c_eff)
 
+
 def maximum_nearest_psf_distance(
     image_mask,
     psf_cat,
