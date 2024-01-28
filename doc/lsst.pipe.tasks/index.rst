@@ -198,9 +198,6 @@ Python API reference
 .. automodapi:: lsst.pipe.tasks.objectMasks
    :no-inheritance-diagram:
 
-.. automodapi:: lsst.pipe.tasks.parquetTable
-   :no-inheritance-diagram:
-
 .. automodapi:: lsst.pipe.tasks.photoCal
    :no-inheritance-diagram:
 
