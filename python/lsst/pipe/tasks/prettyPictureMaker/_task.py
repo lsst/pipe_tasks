@@ -65,7 +65,7 @@ if TYPE_CHECKING:
 
 class PrettyPictureConnections(
     PipelineTaskConnections,
-    dimensions={"tract", "patch" "skymap"},
+    dimensions={"tract", "patch", "skymap"},
     defaultTemplates={"coaddTypeName": "deep"},
 ):
     inputCoadds = Input(
