@@ -195,7 +195,8 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
     )
     cieWhitePoint = ListField[float](
         doc="The white point of the input arrays in ciexz coordinates",
-        maxLength=2
+        maxLength=2,
+        default=[0.28, 0.28]
     )
 
     def setDefaults(self):

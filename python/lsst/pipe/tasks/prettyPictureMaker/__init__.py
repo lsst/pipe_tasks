@@ -21,6 +21,6 @@
 
 from __future__ import annotations
 
-from _task import *
-from _colorMapper import *
-from _localContrast import *
+from ._task import *
+from ._colorMapper import *
+from ._localContrast import *
