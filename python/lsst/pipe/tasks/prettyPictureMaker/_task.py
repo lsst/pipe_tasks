@@ -350,7 +350,7 @@ class PrettyMosaicConnections(PipelineTaskConnections, dimensions=("tract", "sky
 
     outputRGBMosaic = Output(
         doc="A RGB mosaic created from the input data stored as a 3d array",
-        name="rgbPicture_array",
+        name="rgbMosaic_array",
         storageClass="NumpyArray",
         dimensions=("tract", "patch", "skymap"),
     )
