@@ -123,7 +123,9 @@ class LumConfig(Config):
         doc="The minimum intensity value after stretch, values lower will be set to zero",
         default=0
     )
-    floor = Field[float](doc="A scaling factor to apply to the luminance before asinh scaling")
+    floor = Field[float](
+        doc="A scaling factor to apply to the luminance before asinh scaling",
+        default=0.0)
 
 
 class LocalContrastConfig(Config):
