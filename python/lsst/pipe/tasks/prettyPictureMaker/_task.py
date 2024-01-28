@@ -179,7 +179,8 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
     channelConfig = ConfigDictField(
         doc="A dictionary that maps band names to their rgb channel configurations",
         keytype=str,
-        itemtype=ChannelRGBConfig
+        itemtype=ChannelRGBConfig,
+        default={}
     )
     imageRemappingConfig = ConfigField[RemapBoundsConfig](
         doc="Configuration controlling channel normalization process"
