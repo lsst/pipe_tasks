@@ -451,7 +451,7 @@ class PrettyMosaicTask(PipelineTask):
                 )
             else:
                 consolidatedImage[*box.slices] = rgb
-                consolidatedMask[*box.slices] = rgbMask
+                consolidatedMask[*box.slices] = rgbMask.array
 
         for plugin in plugins.full():
             consolidatedImage = plugin(consolidatedImage, consolidatedMask, maskDict)
