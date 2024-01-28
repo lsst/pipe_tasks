@@ -324,7 +324,7 @@ def localContrast(image: NDArray, sigma: float, highlights: float = -0.9, shadow
     for value in range(1, len(gamma) - 1):
         pyramidVectors = List()
         pyramidVectors.append(prevLapPyr)
-        newImg = r(imagePadded, next(outCycle), gamma[value], sigma, shadows=beta, highlights=alpha, clarity=clarity)
+        newImg = r(imagePadded, next(outCycle), gamma[value], sigma, shadows=shadows, highlights=highlights, clarity=clarity)
         prevLapPyr = makeLapPyramid(newImg, padY_amounts, padX_amounts, tmpGauss, next(cycler), upscratch=upscratch)
         pyramidVectors.append(prevLapPyr)
 
