@@ -35,15 +35,13 @@ from lsst.afw.image import Mask
 if TYPE_CHECKING:
     from numpy.typing import NDArray
     from collections.abc import Mapping
+    PLUGIN_TYPE = Callable[[NDArray, NDArray, Mapping[str, int]], NDArray]
 
 
 class PluginType(Enum):
     CHANNEL = auto()
     PARTIAL = auto()
     FULL = auto()
-
-
-PLUGIN_TYPE = Callable[[NDArray, NDArray, Mapping[str, int]], NDArray]
 
 
 class PluginsRegistry:
