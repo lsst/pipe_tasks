@@ -444,8 +444,8 @@ class PrettyMosaicTask(PipelineTask):
                     fy=shape[1]/self.config.binFactor
                 )
                 rgbMask = cv2.resize(
-                    rgbMask.array,
-                    dst=consolidatedMask[*box.slices].astype(np.float32),
+                    rgbMask.array.astype(np.float32),
+                    dst=consolidatedMask[*box.slices],
                     dsize=shape,
                     fx=shape[0]/self.config.binFactor,
                     fy=shape[1]/self.config.binFactor
