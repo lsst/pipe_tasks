@@ -322,6 +322,9 @@ funcs:
     extendedness:
         functor: Column
         args: base_ClassificationExtendedness_value
+    sizeExtendedness:
+        functor: Column
+        args: base_ClassificationSizeExtendedness_value
 flags:
    - base_LocalPhotoCalib
    - base_LocalPhotoCalib_flag
@@ -350,6 +353,7 @@ flags:
    - base_CircularApertureFlux_50_0_instFlux
    - base_CircularApertureFlux_50_0_instFluxErr
    - base_ClassificationExtendedness_flag
+   - base_ClassificationSizeExtendedness_flag
    - base_FootprintArea_value
    - base_Jacobian_flag
    - base_Jacobian_value
@@ -430,6 +434,7 @@ flag_rename_rules:
     - ['base_Local', 'local']
     - ['base_PixelFlags_flag', 'pixelFlags']
     - ['base_ClassificationE', 'e']
+    - ['base_ClassificationS', 's']
     - ['base_SdssCentroid', 'centroid']
     - ['base_Variance', 'variance']
     - ['base_Psf', 'psf']

@@ -120,6 +120,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                  ('apFlux_12_0_instFluxErr', 'f4'),
                  ('apFlux_12_0_instFlux_flag', '?'),
                  ('extendedness', 'f4'),
+                 ('sizeExtendedness', 'f4'),
                  ('detect_isPrimary', bool),
                  ('visit', 'i4'),
                  ('detector', 'i4'),

@@ -273,6 +273,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
                                                "base_CircularApertureFlux",
                                                "base_GaussianFlux",
                                                "base_PsfFlux",
+                                               "base_ClassificationSizeExtendedness",
                                                ]
         self.psf_source_measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
         # Only measure apertures we need for PSF measurement.
@@ -301,6 +302,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
                                          "base_GaussianFlux",
                                          "base_PsfFlux",
                                          "base_CircularApertureFlux",
+                                         "base_ClassificationSizeExtendedness",
                                          ]
         self.star_measurement.slots.psfShape = "ext_shapeHSM_HsmPsfMoments"
         self.star_measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
