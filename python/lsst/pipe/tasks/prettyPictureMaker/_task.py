@@ -280,6 +280,7 @@ class PrettyPictureTask(PipelineTask):
             height=jointMask.shape[0],
             planeDefs=maskDict
         )  # type: ignore
+        lsstMask.array = jointMask
         return Struct(outputRGB=colorImage.astype(np.uint8), outputRGBMask=lsstMask)
 
     def runQuantum(
