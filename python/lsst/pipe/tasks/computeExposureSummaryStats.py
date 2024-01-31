@@ -92,6 +92,32 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         "robutsness metric calculations (namely, maxDistToNearestPsf and psfTraceRadiusDelta).",
         default=("BAD", "CR", "EDGE", "INTRP", "NO_DATA", "SAT", "SUSPECT"),
     )
+    fiducialSkyBackground = pexConfig.DictField(
+        keytype=str,
+        itemtype=float,
+        doc="Fiducial sky background level (ADU/s) assumed when calculating effective exposure time. "
+        "Keyed by band.",
+        default={'u': 1.0, 'g': 1.0, 'r': 1.0, 'i': 1.0, 'z': 1.0, 'y': 1.0},
+    )
+    fiducialPsfSigma = pexConfig.DictField(
+        keytype=str,
+        itemtype=float,
+        doc="Fiducial PSF sigma (pixels) assumed when calculating effective exposure time. "
+        "Keyed by band.",
+        default={'u': 1.0, 'g': 1.0, 'r': 1.0, 'i': 1.0, 'z': 1.0, 'y': 1.0},
+    )
+    fiducialZeroPoint = pexConfig.DictField(
+        keytype=str,
+        itemtype=float,
+        doc="Fiducial zero point assumed when calculating effective exposure time. "
+        "Keyed by band.",
+        default={'u': 25.0, 'g': 25.0, 'r': 25.0, 'i': 25.0, 'z': 25.0, 'y': 25.0},
+    )
+    maxEffectiveTransparency = pexConfig.Field(
+        dtype=float,
+        doc="Maximum value allowed for effective transparency scale factor (often inf or 1.0).",
+        default=float('inf')
+    )
 
     def setDefaults(self):
         super().setDefaults()
@@ -151,6 +177,12 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     (against, e.g., extrapolation instability):
     - maxDistToNearestPsf
     - psfTraceRadiusDelta
+
+    These quantities are computed to assess depth:
+    - effTime
+    - effTimePsfSigmaScale
+    - effTimeSkyBgScale
+    - effTimeZeroPointScale
     """
     ConfigClass = ComputeExposureSummaryStatsConfig
     _DefaultName = "computeExposureSummaryStats"
@@ -194,6 +226,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         self.update_background_stats(summary, background)
 
         self.update_masked_image_stats(summary, exposure.getMaskedImage())
+
+        self.update_effective_time_stats(summary, exposure)
 
         md = exposure.getMetadata()
         if 'SFM_ASTROM_OFFSET_MEAN' in md:
@@ -470,6 +504,101 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
                                          statsCtrl)
         meanVar, _ = statObj.getResult(afwMath.MEANCLIP)
         summary.meanVar = meanVar
+
+    def update_effective_time_stats(self, summary, exposure):
+        """Compute effective exposure time statistics to estimate depth.
+
+        The effective exposure time is the equivalent shutter open
+        time that would be needed under nominal conditions to give the
+        same signal-to-noise for a point source as what is achieved by
+        the observation of interest. This metric combines measurements
+        of the point-spread function, the sky brightness, and the
+        transparency.
+
+        .. _teff_definitions:
+
+        The effective exposure time and its subcomponents are defined in [1]_
+
+        References
+        ----------
+
+        .. [1] Neilsen, E.H., Bernstein, G., Gruendl, R., and Kent, S. (2016).
+               Limiting Magnitude, \tau, teff, and Image Quality in DES Year 1
+               https://www.osti.gov/biblio/1250877/
+
+
+        Parameters
+        ----------
+        summary : `lsst.afw.image.ExposureSummaryStats`
+            Summary object to update in-place.
+        exposure : `lsst.afw.image.ExposureF`
+            Exposure to grab band and exposure time metadata
+
+        """
+        self.log.info("Updating effective exposure time")
+
+        nan = float("nan")
+        summary.effTime = nan
+        summary.effTimePsfSigmaScale = nan
+        summary.effTimeSkyBgScale = nan
+        summary.effTimeZeroPointScale = nan
+
+        exposureTime = exposure.getInfo().getVisitInfo().getExposureTime()
+        filterLabel = exposure.getFilter()
+        if (filterLabel is None) or (not filterLabel.hasBandLabel):
+            band = None
+        else:
+            band = filterLabel.bandLabel
+
+        if band is None:
+            self.log.warn("No band associated with exposure; effTime not calculated.")
+            return
+
+        # PSF component
+        if np.isnan(summary.psfSigma):
+            self.log.debug("PSF sigma is NaN")
+            f_eff = nan
+        elif band not in self.config.fiducialPsfSigma:
+            self.log.debug(f"Fiducial PSF value not found for {band}")
+            f_eff = nan
+        else:
+            fiducialPsfSigma = self.config.fiducialPsfSigma[band]
+            f_eff = (summary.psfSigma / fiducialPsfSigma)**-2
+
+        # Transparency component (note that exposure time may be removed from zeropoint)
+        if np.isnan(summary.zeroPoint):
+            self.log.debug("Zero point is NaN")
+            c_eff = nan
+        elif band not in self.config.fiducialZeroPoint:
+            self.log.debug(f"Fiducial zero point value not found for {band}")
+            c_eff = nan
+        else:
+            fiducialZeroPoint = self.config.fiducialZeroPoint[band]
+            zeroPointDiff = fiducialZeroPoint - (summary.zeroPoint - 2.5*np.log10(exposureTime))
+            c_eff = min(10**(-2.0*(zeroPointDiff)/2.5), self.config.maxEffectiveTransparency)
+
+        # Sky brightness component (convert to cts/s)
+        if np.isnan(summary.skyBg):
+            self.log.debug("Sky background is NaN")
+            b_eff = nan
+        elif band not in self.config.fiducialSkyBackground:
+            self.log.debug(f"Fiducial sky background value not found for {band}")
+            b_eff = nan
+        else:
+            fiducialSkyBackground = self.config.fiducialSkyBackground[band]
+            b_eff = fiducialSkyBackground/(summary.skyBg/exposureTime)
+
+        # Effective exposure time scale factor
+        t_eff = f_eff * c_eff * b_eff
+
+        # Effective exposure time (seconds)
+        effectiveTime = t_eff * exposureTime
+
+        # Output quantities
+        summary.effTime = float(effectiveTime)
+        summary.effTimePsfSigmaScale = float(f_eff)
+        summary.effTimeSkyBgScale = float(b_eff)
+        summary.effTimeZeroPointScale = float(c_eff)
 
 
 def maximum_nearest_psf_distance(
