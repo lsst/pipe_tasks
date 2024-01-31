@@ -95,19 +95,22 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
     fiducialSkyBackground = pexConfig.DictField(
         keytype=str,
         itemtype=float,
-        doc="Fiducial sky background level (cts/s) assumed when calculating effective exposure time.",
+        doc="Fiducial sky background level (ADU/s) assumed when calculating effective exposure time. "
+        "Keyed by band.",
         default={'u': 1.0, 'g': 1.0, 'r': 1.0, 'i': 1.0, 'z': 1.0, 'y': 1.0},
     )
     fiducialPsfSigma = pexConfig.DictField(
         keytype=str,
         itemtype=float,
-        doc="Fiducial PSF sigma (pixels) assumed when calculating effective exposure time.",
+        doc="Fiducial PSF sigma (pixels) assumed when calculating effective exposure time. "
+        "Keyed by band.",
         default={'u': 1.0, 'g': 1.0, 'r': 1.0, 'i': 1.0, 'z': 1.0, 'y': 1.0},
     )
     fiducialZeroPoint = pexConfig.DictField(
         keytype=str,
         itemtype=float,
-        doc="Fiducial zero point assumed when calculating effective exposure time.",
+        doc="Fiducial zero point assumed when calculating effective exposure time. "
+        "Keyed by band.",
         default={'u': 25.0, 'g': 25.0, 'r': 25.0, 'i': 25.0, 'z': 25.0, 'y': 25.0},
     )
     maxEffectiveTransparency = pexConfig.Field(
@@ -177,9 +180,9 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
     These quantities are computed to assess depth:
     - effTime
-    - effTimeScalePsfSigma
-    - effTimeScaleSkyBg
-    - effTimeScaleZeroPoint
+    - effTimePsfSigmaScale
+    - effTimeSkyBgScale
+    - effTimeZeroPointScale
     """
     ConfigClass = ComputeExposureSummaryStatsConfig
     _DefaultName = "computeExposureSummaryStats"
@@ -536,9 +539,9 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
         nan = float("nan")
         summary.effTime = nan
-        summary.effTimeScalePsfSigma = nan
-        summary.effTimeScaleSkyBg = nan
-        summary.effTimeScaleZeroPoint = nan
+        summary.effTimePsfSigmaScale = nan
+        summary.effTimeSkyBgScale = nan
+        summary.effTimeZeroPointScale = nan
 
         exposureTime = exposure.getInfo().getVisitInfo().getExposureTime()
         filterLabel = exposure.getFilter()
@@ -547,24 +550,28 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         else:
             band = filterLabel.bandLabel
 
+        if band is None:
+            self.log.warn("No band associated with exposure; effTime not calculated.")
+            return
+
         # PSF component
         if np.isnan(summary.psfSigma):
-            self.log.warn("PSF sigma is NaN")
+            self.log.debug("PSF sigma is NaN")
             f_eff = nan
         elif band not in self.config.fiducialPsfSigma:
-            self.log.warn(f"Fiducial PSF value not found for {band}")
-            f_eff = 1.0
+            self.log.debug(f"Fiducial PSF value not found for {band}")
+            f_eff = nan
         else:
             fiducialPsfSigma = self.config.fiducialPsfSigma[band]
             f_eff = (summary.psfSigma / fiducialPsfSigma)**-2
 
         # Transparency component (note that exposure time may be removed from zeropoint)
         if np.isnan(summary.zeroPoint):
-            self.log.warn("Zero point is NaN")
+            self.log.debug("Zero point is NaN")
             c_eff = nan
         elif band not in self.config.fiducialZeroPoint:
-            self.log.warn(f"Fiducial zero point value not found for {band}")
-            c_eff = 1.0
+            self.log.debug(f"Fiducial zero point value not found for {band}")
+            c_eff = nan
         else:
             fiducialZeroPoint = self.config.fiducialZeroPoint[band]
             zeroPointDiff = fiducialZeroPoint - (summary.zeroPoint - 2.5*np.log10(exposureTime))
@@ -572,11 +579,11 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
         # Sky brightness component (convert to cts/s)
         if np.isnan(summary.skyBg):
-            self.log.warn("Sky background is NaN")
+            self.log.debug("Sky background is NaN")
             b_eff = nan
         elif band not in self.config.fiducialSkyBackground:
-            self.log.warn(f"Fiducial sky background value not found for {band}")
-            b_eff = 1.0
+            self.log.debug(f"Fiducial sky background value not found for {band}")
+            b_eff = nan
         else:
             fiducialSkyBackground = self.config.fiducialSkyBackground[band]
             b_eff = fiducialSkyBackground/(summary.skyBg/exposureTime)
@@ -589,9 +596,9 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
         # Output quantities
         summary.effTime = float(effectiveTime)
-        summary.effTimeScalePsfSigma = float(f_eff)
-        summary.effTimeScaleSkyBg = float(b_eff)
-        summary.effTimeScaleZeroPoint = float(c_eff)
+        summary.effTimePsfSigmaScale = float(f_eff)
+        summary.effTimeSkyBgScale = float(b_eff)
+        summary.effTimeZeroPointScale = float(c_eff)
 
 
 def maximum_nearest_psf_distance(

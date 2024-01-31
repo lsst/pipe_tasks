@@ -1571,8 +1571,8 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
                              'psfStarDeltaSizeMedian', 'psfStarDeltaSizeScatter',
                              'psfStarScaledDeltaSizeScatter',
                              'psfTraceRadiusDelta', 'maxDistToNearestPsf',
-                             'effTime', 'effTimeScalePsfSigma',
-                             'effTimeScaleSkyBg', 'effTimeScaleZeroPoint']
+                             'effTime', 'effTimePsfSigmaScale',
+                             'effTimeSkyBgScale', 'effTimeZeroPointScale']
             ccdEntry = summaryTable[selectColumns].to_pandas().set_index('id')
             # 'visit' is the human readable visit number.
             # 'visitId' is the key to the visitId table. They are the same.
