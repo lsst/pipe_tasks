@@ -173,8 +173,7 @@ class IsolatedStarAssociationConfig(pipeBase.PipelineTaskConfig,
         source_selector.isolated.parentName = 'parentSourceId'
         source_selector.isolated.nChildName = 'deblend_nChild'
 
-        source_selector.unresolved.maximum = 0.5
-        source_selector.unresolved.name = 'extendedness'
+        source_selector.unresolved.name = 'sizeExtendedness'
 
         source_selector.requireFiniteRaDec.raColName = self.ra_column
         source_selector.requireFiniteRaDec.decColName = self.dec_column
