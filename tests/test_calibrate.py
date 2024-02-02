@@ -59,9 +59,14 @@ class CalibrateTaskTestCaseWithButler(lsst.utils.tests.TestCase):
             "physical_filter",
             {"instrument": "notACam", "name": "r", "band": "r"},
         )
+        if "day_obs" in butler.dimensions:
+            butler.registry.insertDimensionData(
+                "day_obs",
+                {"id": 20240201, "instrument": "notACam"},
+            )
         butler.registry.insertDimensionData(
             "visit",
-            {"instrument": "notACam", "id": 101, "name": "101", "physical_filter": "r"},
+            {"instrument": "notACam", "id": 101, "name": "101", "physical_filter": "r", "day_obs": 20240201},
         )
         butler.registry.insertDimensionData("detector",
                                             {"instrument": "notACam", "id": 42, "full_name": "42"})
