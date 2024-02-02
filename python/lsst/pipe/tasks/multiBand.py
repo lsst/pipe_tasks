@@ -24,7 +24,8 @@ __all__ = ["DetectCoaddSourcesConfig", "DetectCoaddSourcesTask"]
 from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.config import Field, ConfigurableField, ChoiceField
-from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader, ScaleVarianceTask
+from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader, ScaleVarianceTask, \
+    SetPrimaryFlagsTask
 from lsst.meas.base import (
     SingleFrameMeasurementTask,
     ApplyApCorrTask,
@@ -33,7 +34,6 @@ from lsst.meas.base import (
 )
 from lsst.meas.extensions.scarlet.io import updateCatalogFootprints
 from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
-from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
 from lsst.pipe.tasks.propagateSourceFlags import PropagateSourceFlagsTask
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath

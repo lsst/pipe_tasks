@@ -28,6 +28,7 @@ import lsst.afw.image as afwImage
 import lsst.meas.algorithms
 import lsst.meas.algorithms.installGaussianPsf
 import lsst.meas.algorithms.measureApCorr
+import lsst.meas.algorithms.setPrimaryFlags
 import lsst.meas.base
 import lsst.meas.astrom
 import lsst.meas.deblender
@@ -37,8 +38,7 @@ import lsst.pipe.base as pipeBase
 from lsst.pipe.base import connectionTypes
 from lsst.utils.timer import timeMethod
 
-from . import measurePsf, repair, setPrimaryFlags, photoCal, \
-    computeExposureSummaryStats, maskStreaks, snapCombine
+from . import measurePsf, repair, photoCal, computeExposureSummaryStats, maskStreaks, snapCombine
 
 
 class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
@@ -221,7 +221,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
             "for the star selector to remove extended sources."
     )
     star_set_primary_flags = pexConfig.ConfigurableField(
-        target=setPrimaryFlags.SetPrimaryFlagsTask,
+        target=lsst.meas.algorithms.setPrimaryFlags.SetPrimaryFlagsTask,
         doc="Task to add isPrimary to the catalog."
     )
     star_selector = lsst.meas.algorithms.sourceSelectorRegistry.makeField(
