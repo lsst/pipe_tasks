@@ -287,6 +287,8 @@ class ProcessBrightStarsTask(PipelineTask):
             badMaskPlanes=self.config.badMaskPlanes,
             discardNanFluxObjects=(self.config.discardNanFluxStars),
         )
+        # Store the count number of valid stars that overlap the exposure.
+        self.metadata["validStarCount"] = len(brightStarStamps)
         # Do not create empty FITS files if there aren't any normalized stamps.
         if not brightStarStamps._stamps:
             self.log.info("No normalized stamps exist for this exposure.")
@@ -402,6 +404,12 @@ class ProcessBrightStarsTask(PipelineTask):
         refCatBright.remove_rows(badRows)
         gMags = list(refCatBright["mag"][:])
         ids = list(refCatBright["id"][:])
+
+        # Store the count number of all stars (within the given magnitude
+        # range) that overlap the exposure.
+        # TODO: Make sure self._getCutout only misses stars that don't have any
+        # valid pixel overlapped with the exposure.
+        self.metadata["allStarCount"] = len(starStamps)
         return Struct(starStamps=starStamps, pixCenters=pixCenters, gMags=gMags, gaiaIds=ids)
 
     def _getCutout(self, inputExposure, coordPix: Point2D, stampSize: list[int]):

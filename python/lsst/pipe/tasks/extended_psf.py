@@ -554,10 +554,15 @@ class MeasureExtendedPsfTask(Task):
                 "No detector groups were provided to MeasureExtendedPsfTask; computing a single, "
                 "constant extended PSF model over all available observations."
             )
+            self.metadata["psfStarCount"] = 0
+            for brightStarStamps in bss_ref_list:
+                stamps = brightStarStamps.get()
+                self.metadata["psfStarCount"] += len(stamps)
             output_e_psf = ExtendedPsf(self.stack_bright_stars.run(bss_ref_list))
         else:
             output_e_psf = ExtendedPsf()
             region_ref_list = self.select_detector_refs(bss_ref_list)
+            self.metadata["psfStarCount"] = {}
             for region_name, ref_list in region_ref_list.items():
                 if not ref_list:
                     # no valid references found
@@ -566,6 +571,10 @@ class MeasureExtendedPsfTask(Task):
                         region_name,
                     )
                     continue
+                self.metadata["psfStarCount"][region_name] = 0
+                for brightStarStamps in ref_list:
+                    stamps = brightStarStamps.get()
+                    self.metadata["psfStarCount"][region_name] += len(stamps)
                 ext_psf = self.stack_bright_stars.run(ref_list, region_name)
                 output_e_psf.add_regional_extended_psf(
                     ext_psf, region_name, self.detectors_focal_plane_regions[region_name]
