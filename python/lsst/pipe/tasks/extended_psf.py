@@ -549,20 +549,24 @@ class MeasureExtendedPsfTask(Task):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         input_data = butlerQC.get(inputRefs)
         bss_ref_list = input_data["input_brightStarStamps"]
+        # Creating the metadata dictionary to store the number of stars used to
+        # generate the PSF model(s).
+        self.metadata["psfStarCount"] = {}
         if not self.config.detectors_focal_plane_regions:
             self.log.info(
                 "No detector groups were provided to MeasureExtendedPsfTask; computing a single, "
                 "constant extended PSF model over all available observations."
             )
-            self.metadata["psfStarCount"] = 0
+            # Store the count number of stars that are used to generate the PSF
+            # model. In this case, stars from all detectors are used/counted.
+            self.metadata["psfStarCount"]["all"] = 0
             for brightStarStamps in bss_ref_list:
                 stamps = brightStarStamps.get()
-                self.metadata["psfStarCount"] += len(stamps)
+                self.metadata["psfStarCount"]["all"] += len(stamps)
             output_e_psf = ExtendedPsf(self.stack_bright_stars.run(bss_ref_list))
         else:
             output_e_psf = ExtendedPsf()
             region_ref_list = self.select_detector_refs(bss_ref_list)
-            self.metadata["psfStarCount"] = {}
             for region_name, ref_list in region_ref_list.items():
                 if not ref_list:
                     # no valid references found
@@ -571,6 +575,8 @@ class MeasureExtendedPsfTask(Task):
                         region_name,
                     )
                     continue
+                # Store the count number of stars that are used to generate
+                # the PSF model for each region.
                 self.metadata["psfStarCount"][region_name] = 0
                 for brightStarStamps in ref_list:
                     stamps = brightStarStamps.get()
