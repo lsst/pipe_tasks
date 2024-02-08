@@ -399,7 +399,7 @@ class StackBrightStarsTask(Task):
             for invalidStamp in invalidStamps:
                 read_stars._stamps.remove(invalidStamp)
 
-    def run(self, bss_ref_list, region_name=None):
+    def run(self, bss_ref_list, stars_dict, region_name=None):
         """Read input bright star stamps and stack them together.
 
         The stacking is done iteratively over smaller areas of the final model
@@ -410,6 +410,8 @@ class StackBrightStarsTask(Task):
         bss_ref_list : `list` of
                 `lsst.daf.butler._deferredDatasetHandle.DeferredDatasetHandle`
             List of available bright star stamps data references.
+        stars_dict: `dict`
+            Dictionary to store the number of stars used to generate the PSF.
         region_name : `str`, optional
             Name of the focal plane region, if applicable. Only used for
             logging purposes, when running over multiple such regions
@@ -419,6 +421,10 @@ class StackBrightStarsTask(Task):
             region_message = f" for region '{region_name}'."
         else:
             region_message = "."
+        if region_name is not None:
+            stars_dict_key = region_name
+        else:
+            stars_dict_key = "all"
         self.log.info(
             "Building extended PSF from stamps extracted from %d detector images%s",
             len(bss_ref_list),
@@ -448,6 +454,10 @@ class StackBrightStarsTask(Task):
             for bss_ref in bss_ref_list:
                 read_stars = bss_ref.get(parameters={"bbox": bbox})
                 self.removeInvalidStamps(read_stars)
+                if jbbox == 0:
+                    # Store the number of stars used to generate the PSF model
+                    # in the metadata dictionary.
+                    stars_dict[stars_dict_key] += len(read_stars)
                 if self.config.do_mag_cut:
                     read_stars = read_stars.selectByMag(magMax=self.config.mag_limit)
                 if all_stars:
@@ -549,12 +559,20 @@ class MeasureExtendedPsfTask(Task):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         input_data = butlerQC.get(inputRefs)
         bss_ref_list = input_data["input_brightStarStamps"]
+        # Creating the metadata dictionary to store the number of stars used to
+        # generate the PSF model(s).
+        self.metadata["psfStarCount"] = {}
         if not self.config.detectors_focal_plane_regions:
             self.log.info(
                 "No detector groups were provided to MeasureExtendedPsfTask; computing a single, "
                 "constant extended PSF model over all available observations."
             )
-            output_e_psf = ExtendedPsf(self.stack_bright_stars.run(bss_ref_list))
+            # Creating the sub-dictionary to store the number of stars when one
+            # PSF modle is generated for focal plane.
+            self.metadata["psfStarCount"]["all"] = 0
+            output_e_psf = ExtendedPsf(
+                self.stack_bright_stars.run(bss_ref_list, self.metadata["psfStarCount"])
+            )
         else:
             output_e_psf = ExtendedPsf()
             region_ref_list = self.select_detector_refs(bss_ref_list)
@@ -566,7 +584,11 @@ class MeasureExtendedPsfTask(Task):
                         region_name,
                     )
                     continue
-                ext_psf = self.stack_bright_stars.run(ref_list, region_name)
+                # Creating the sub-dictionary to store the number of stars
+                # that are used to generate the PSF model for the current
+                # region.
+                self.metadata["psfStarCount"][region_name] = 0
+                ext_psf = self.stack_bright_stars.run(ref_list, self.metadata["psfStarCount"], region_name)
                 output_e_psf.add_regional_extended_psf(
                     ext_psf, region_name, self.detectors_focal_plane_regions[region_name]
                 )
