@@ -406,7 +406,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
     def setUp(self):
         instrument = "testCam"
         exposure0 = 101
-        exposure1 = 101
+        exposure1 = 102
         visit = 100101
         detector = 42
 
@@ -422,10 +422,10 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.repo.registry.syncDimensionData("instrument", instrumentRecord)
 
         # dataIds for fake data
+        butlerTests.addDataIdValue(self.repo, "detector", detector)
         butlerTests.addDataIdValue(self.repo, "exposure", exposure0)
         butlerTests.addDataIdValue(self.repo, "exposure", exposure1)
         butlerTests.addDataIdValue(self.repo, "visit", visit)
-        butlerTests.addDataIdValue(self.repo, "detector", detector)
 
         # inputs
         butlerTests.addDatasetType(self.repo, "postISRCCD", {"instrument", "exposure", "detector"},
@@ -475,6 +475,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         # put empty data
         self.butler = butlerTests.makeTestCollection(self.repo)
         self.butler.put(afwImage.ExposureF(), "postISRCCD", self.exposure0_id)
+        self.butler.put(afwImage.ExposureF(), "postISRCCD", self.exposure1_id)
         self.butler.put(afwTable.SimpleCatalog(), "gaia_dr3_20230707", self.htm_id)
         self.butler.put(afwTable.SimpleCatalog(), "ps1_pv3_3pi_20170110", self.htm_id)
 
