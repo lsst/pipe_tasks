@@ -452,6 +452,12 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
         self.measurement.plugins['base_PixelFlags'].masksFpCenter = ['CLIPPED', 'SENSOR_EDGE',
                                                                      'INEXACT_PSF', 'STREAK']
 
+    def validate(self):
+        super().validate()
+
+        if not self.doMatchSources and self.doWriteMatchesDenormalized:
+            raise ValueError("Cannot set doWriteMatchesDenormalized if doMatchSources is False.")
+
 
 class MeasureMergedCoaddSourcesTask(PipelineTask):
     """Deblend sources from main catalog in each coadd seperately and measure.
