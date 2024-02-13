@@ -356,6 +356,7 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
             self.inputs -= set(("scarletModels",))
 
         if config.doMatchSources is False:
+            self.prerequisiteInputs -= set(("refCat",))
             self.outputs -= set(("matchResult",))
 
         if config.doWriteMatchesDenormalized is False:
