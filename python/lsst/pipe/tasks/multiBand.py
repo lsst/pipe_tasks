@@ -452,6 +452,12 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
         self.measurement.plugins['base_PixelFlags'].masksFpCenter = ['CLIPPED', 'SENSOR_EDGE',
                                                                      'INEXACT_PSF', 'STREAK']
 
+    def validate(self):
+        super().validate()
+
+        if not self.doMatchSources and self.doWriteMatchesDenormalized:
+            raise ValueError("Cannot set doWriteMatchesDenormalized if doMatchSources is False.")
+
 
 class MeasureMergedCoaddSourcesTask(PipelineTask):
     """Deblend sources from main catalog in each coadd seperately and measure.
@@ -528,12 +534,13 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
 
-        refObjLoader = ReferenceObjectLoader([ref.datasetRef.dataId for ref in inputRefs.refCat],
-                                             inputs.pop('refCat'),
-                                             name=self.config.connections.refCat,
-                                             config=self.config.refObjLoader,
-                                             log=self.log)
-        self.match.setRefObjLoader(refObjLoader)
+        if self.config.doMatchSources:
+            refObjLoader = ReferenceObjectLoader([ref.datasetRef.dataId for ref in inputRefs.refCat],
+                                                 inputs.pop('refCat'),
+                                                 name=self.config.connections.refCat,
+                                                 config=self.config.refObjLoader,
+                                                 log=self.log)
+            self.match.setRefObjLoader(refObjLoader)
 
         # Set psfcache
         # move this to run after gen2 deprecation
