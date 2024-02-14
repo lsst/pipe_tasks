@@ -253,8 +253,9 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         # like CRs for very good seeing images.
         self.install_simple_psf.fwhm = 4
 
-        # Only use high S/N sources for PSF determination.
-        self.psf_detection.thresholdValue = 50.0
+        # S/N>=50 sources for PSF determination, but detection to S/N=5.
+        self.psf_detection.thresholdValue = 5.0
+        self.psf_detection.includeThresholdMultiplier = 10.0
         # TODO investigation: Probably want False here, but that may require
         # tweaking the background spatial scale, to make it small enough to
         # prevent extra peaks in the wings of bright objects.
@@ -277,11 +278,10 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
                                                ]
         self.psf_source_measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
         # Only measure apertures we need for PSF measurement.
-        # TODO DM-40064: psfex has a hard-coded value of 9 in a psfex-config
-        # file: make that configurable and/or change it to 12 to be consistent
-        # with our other uses?
-        # https://github.com/lsst/meas_extensions_psfex/blob/main/config/default-lsst.psfex#L14
-        self.psf_source_measurement.plugins["base_CircularApertureFlux"].radii = [9.0, 12.0]
+        self.psf_source_measurement.plugins["base_CircularApertureFlux"].radii = [12.0]
+        # TODO DM-40843: Remove this line once this is the psfex default.
+        self.psf_measure_psf.psfDeterminer["psfex"].photometricFluxField = \
+            "base_CircularApertureFlux_12_0_instFlux"
 
         # No extendeness information available: we need the aperture
         # corrections to determine that.
@@ -289,12 +289,10 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         self.measure_aperture_correction.sourceSelector["science"].flags.good = ["calib_psf_used"]
         self.measure_aperture_correction.sourceSelector["science"].flags.bad = []
 
-        # TODO investigation: how faint do we have to detect, to be able to
-        # deblend, etc? We may need star_selector to have a separate value,
-        # and do initial detection at S/N>5.0?
         # Detection for good S/N for astrometry/photometry and other
-        # downstream tasks.
+        # downstream tasks; detection mask to S/N>=5, but S/N>=10 peaks.
         self.star_detection.thresholdValue = 5.0
+        self.star_detection.includeThresholdMultiplier = 2.0
         self.star_measurement.plugins = ["base_PixelFlags",
                                          "base_SdssCentroid",
                                          "ext_shapeHSM_HsmSourceMoments",
