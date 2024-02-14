@@ -33,7 +33,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
 
-import astropy
+import astropy.table
 from abc import ABC, abstractmethod
 from pydantic import Field
 from pydantic.dataclasses import dataclass
