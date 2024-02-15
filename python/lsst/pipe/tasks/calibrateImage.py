@@ -84,8 +84,13 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
     )
-    # TODO DM-40061: persist a parquet version of this!
     stars = connectionTypes.Output(
+        doc="Catalog of unresolved sources detected on the calibrated exposure.",
+        name="initial_stars_detector",
+        storageClass="ArrowAstropy",
+        dimensions=["instrument", "visit", "detector"],
+    )
+    stars_footprints = connectionTypes.Output(
         doc="Catalog of unresolved sources detected on the calibrated exposure; "
             "includes source footprints.",
         name="initial_stars_footprints_detector",
@@ -106,15 +111,17 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
     )
 
     # Optional outputs
-
-    # TODO: We need to decide on what intermediate outputs we want to save,
-    # and which to save by default.
-    # TODO DM-40061: persist a parquet version of this!
-    psf_stars = connectionTypes.Output(
+    psf_stars_footprints = connectionTypes.Output(
         doc="Catalog of bright unresolved sources detected on the exposure used for PSF determination; "
             "includes source footprints.",
-        name="initial_psf_stars_footprints",
+        name="initial_psf_stars_footprints_detector",
         storageClass="SourceCatalog",
+        dimensions=["instrument", "visit", "detector"],
+    )
+    psf_stars = connectionTypes.Output(
+        doc="Catalog of bright unresolved sources detected on the exposure used for PSF determination.",
+        name="initial_psf_stars_detector",
+        storageClass="ArrowAstropy",
         dimensions=["instrument", "visit", "detector"],
     )
     astrometry_matches = connectionTypes.Output(
@@ -134,6 +141,7 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
         super().__init__(config=config)
         if not config.optional_outputs:
             self.outputs.remove("psf_stars")
+            self.outputs.remove("psf_stars_footprints")
             self.outputs.remove("astrometry_matches")
             self.outputs.remove("photometry_matches")
 
@@ -144,7 +152,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         dtype=str,
         # TODO: note somewhere to disable this for benchmarking, but should
         # we always have it on for production runs?
-        default=["psf_stars", "astrometry_matches", "photometry_matches"],
+        default=["psf_stars", "psf_stars_footprints", "astrometry_matches", "photometry_matches"],
         optional=True
     )
 
@@ -455,9 +463,15 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             ``stars``
                 Stars that were used to calibrate the exposure, with
                 calibrated fluxes and magnitudes.
+                (`astropy.table.Table`)
+            ``stars_footprints``
+                Footprints of stars that were used to calibrate the exposure.
                 (`lsst.afw.table.SourceCatalog`)
             ``psf_stars``
                 Stars that were used to determine the image PSF.
+                (`astropy.table.Table`)
+            ``psf_stars_footprints``
+                Footprints of stars that were used to determine the image PSF.
                 (`lsst.afw.table.SourceCatalog`)
             ``background``
                 Background that was fit to the exposure when detecting
@@ -493,8 +507,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             photometry_matches = lsst.meas.astrom.denormalizeMatches(photometry_matches, photometry_meta)
 
         return pipeBase.Struct(output_exposure=exposure,
-                               stars=stars,
-                               psf_stars=psf_stars,
+                               stars_footprints=stars,
+                               stars=stars.asAstropy(),
+                               psf_stars_footprints=psf_stars,
+                               psf_stars=psf_stars.asAstropy(),
                                background=background,
                                applied_photo_calib=photo_calib,
                                astrometry_matches=astrometry_matches,
