@@ -496,6 +496,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self._measure_aperture_correction(exposure, psf_stars)
 
         stars = self._find_stars(exposure, background, id_generator)
+        self._match_psf_stars(psf_stars, stars)
 
         astrometry_matches, astrometry_meta = self._fit_astrometry(exposure, stars)
         stars, photometry_matches, photometry_meta, photo_calib = self._fit_photometry(exposure, stars)

@@ -150,6 +150,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         # Should have detected all S/N >= 10 sources plus 2 sky sources, whether 1 or 2 snaps.
         self.assertEqual(len(result.stars), 7)
+        # Did the psf flags get propagated from the psf_stars catalog?
+        self.assertEqual(result.stars["calib_psf_used"].sum(), 3)
 
         # Check that all necessary fields are in the output.
         lsst.pipe.base.testUtils.assertValidOutput(calibrate, result)
