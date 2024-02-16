@@ -84,6 +84,9 @@ Python API reference
 .. automodapi:: lsst.pipe.tasks.calexpCutout
    :no-inheritance-diagram:
 
+.. automodapi:: lsst.pipe.tasks.calibrateImage
+   :no-inheritance-diagram:
+
 .. automodapi:: lsst.pipe.tasks.calibrate
    :no-inheritance-diagram:
 
