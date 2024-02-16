@@ -72,9 +72,6 @@ Configurations
 Python API reference
 ====================
 
-.. automodapi:: lsst.pipe.tasks.assembleCoadd
-   :no-inheritance-diagram:
-
 .. automodapi:: lsst.pipe.tasks.associationUtils
    :no-inheritance-diagram:
 
@@ -106,9 +103,6 @@ Python API reference
    :no-inheritance-diagram:
 
 .. automodapi:: lsst.pipe.tasks.cosmicRayPostDiff
-   :no-inheritance-diagram:
-
-.. automodapi:: lsst.pipe.tasks.dcrAssembleCoadd
    :no-inheritance-diagram:
 
 .. automodapi:: lsst.pipe.tasks.deblendCoaddSourcesPipeline
