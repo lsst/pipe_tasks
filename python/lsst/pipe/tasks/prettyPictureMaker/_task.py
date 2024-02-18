@@ -35,9 +35,9 @@ import numpy as np
 from typing import TYPE_CHECKING, cast, Any
 from lsst.skymap import BaseSkyMap
 
-from lsst.daf.butler import Butler, DeferredDatasetHandle 
+from lsst.daf.butler import Butler, DeferredDatasetHandle
 from lsst.daf.butler import DatasetRef
-from lsst.pex.config import Field, Config, ConfigDictField, ConfigField, ListField
+from lsst.pex.config import Field, Config, ConfigDictField, ConfigField, ListField, ChoiceField
 from lsst.pipe.base import (
     PipelineTask,
     PipelineTaskConfig,
@@ -201,6 +201,15 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         maxLength=2,
         default=[0.28, 0.28]
     )
+    arrayType = ChoiceField[str](
+        doc="The dataset type for the output image array",
+        default="uint8",
+        allowed={
+            "uint8": "Use 8 bit arrays, 255 max",
+            "uint16": "Use 16 bit arrays, 65535 max",
+            "half": "Use 16 bit float arrays, 1 max"
+        }
+    )
 
     def setDefaults(self):
         self.channelConfig['i'] = ChannelRGBConfig(r=1, g=0, b=0)
@@ -265,8 +274,22 @@ class PrettyPictureTask(PipelineTask):
             cieWhitePoint=tuple(self.config.cieWhitePoint)  # type: ignore
         )
 
-        # lsstRGB returns an image in 0-1 scale it to 255 as most expect that
-        colorImage *= 255
+        # Find the dataset type and thus the maximum values as well
+        match self.config.arrayType:
+            case "uint8":
+                dtype = np.uint8
+                maxVal = 255
+            case "uint16":
+                dtype = np.uint16
+                maxVal = 65535
+            case "half":
+                dtype = np.half
+                maxVal = 1.0
+            case _:
+                assert True, "This code path should be unreachable"
+
+        # lsstRGB returns an image in 0-1 scale it to the maximum value
+        colorImage *= maxVal
 
         # assert for typing reasons
         assert jointMask is not None
@@ -281,7 +304,7 @@ class PrettyPictureTask(PipelineTask):
             planeDefs=maskDict
         )  # type: ignore
         lsstMask.array = jointMask
-        return Struct(outputRGB=colorImage.astype(np.uint8), outputRGBMask=lsstMask)
+        return Struct(outputRGB=colorImage.astype(dtype), outputRGBMask=lsstMask)
 
     def runQuantum(
         self,
@@ -414,18 +437,8 @@ class PrettyMosaicTask(PipelineTask):
         # Allocate storage for the mosaic
         self.imageHandle = tempfile.NamedTemporaryFile()
         self.maskHandle = tempfile.NamedTemporaryFile()
-        consolidatedImage = np.memmap(
-            self.imageHandle.name,
-            mode='w+',
-            shape=(newBox.getHeight(), newBox.getWidth(), 3),
-            dtype=np.uint8
-        )
-        consolidatedMask = np.memmap(
-            self.maskHandle.name,
-            mode='w+',
-            shape=(newBox.getHeight(), newBox.getWidth()),
-            dtype=np.float32
-        )
+        consolidatedImage = None
+        consolidatedMask = None
 
         # Actually assemble the mosaic
         maskDict = {}
@@ -433,6 +446,22 @@ class PrettyMosaicTask(PipelineTask):
             rgb = handle.get()
             rgbMask = handleMask.get()
             maskDict = rgbMask.getMaskPlaneDict()
+            # allocate the memory for the mosaic
+            if consolidatedImage is None:
+                consolidatedImage = np.memmap(
+                    self.imageHandle.name,
+                    mode='w+',
+                    shape=(newBox.getHeight(), newBox.getWidth(), 3),
+                    dtype=rgb.dtype
+                )
+            if consolidatedMask is None:
+                consolidatedMask = np.memmap(
+                    self.maskHandle.name,
+                    mode='w+',
+                    shape=(newBox.getHeight(), newBox.getWidth()),
+                    dtype=rgbMask.array.dtype
+                )
+
             if self.config.binFactor > 1:
                 # opencv wants things in x, y dimensions
                 shape = tuple(box.getDimensions())[::-1]
@@ -455,7 +484,12 @@ class PrettyMosaicTask(PipelineTask):
                 consolidatedMask[*box.slices] = rgbMask.array
 
         for plugin in plugins.full():
-            consolidatedImage = plugin(consolidatedImage, consolidatedMask, maskDict)
+            if consolidatedImage is not None and consolidatedMask is not None:
+                consolidatedImage = plugin(consolidatedImage, consolidatedMask, maskDict)
+        # If consolidated image still None, that means there was no work to do.
+        # Return an empty image instead of letting this task fail.
+        if consolidatedImage is None:
+            consolidatedImage = np.zeros((0, 0, 0), dtype=np.uint8)
 
         return Struct(outputRGBMosaic=consolidatedImage)
 
