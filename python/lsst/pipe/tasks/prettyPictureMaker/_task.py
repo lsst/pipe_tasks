@@ -203,7 +203,7 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
     )
     arrayType = ChoiceField[str](
         doc="The dataset type for the output image array",
-        default="uin8",
+        default="uint8",
         allowed={
             "uint8": "Use 8 bit arrays, 255 max",
             "uint16": "Use 16 bit arrays, 65535 max",
