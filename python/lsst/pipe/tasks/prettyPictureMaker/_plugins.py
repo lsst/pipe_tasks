@@ -115,6 +115,8 @@ def fixNoData(image: NDArray, mask: NDArray, maskDict: Mapping[str, int]) -> NDA
     print("running mask fixup")
     m = (mask & 2**maskDict['NO_DATA']).astype(bool)
     print("done making mask")
-    image = cv2.inpaint(image.astype(np.uint8), m.astype(np.uint8), 3, cv2.INPAINT_TELEA)
+    # loop over arrays and apply, this supports more than 8 bit arrays
+    for i in range(3):
+        image[:, :, i] = cv2.inpaint(image[:, :, i], m.astype(image.dtype), 3, cv2.INPAINT_TELEA)
     print("done mask fixup")
     return image
