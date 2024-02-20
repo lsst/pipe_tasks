@@ -276,8 +276,7 @@ class CoaddMultibandFitTask(pipeBase.PipelineTask):
         super().__init__(initInputs=initInputs, **kwargs)
         self.makeSubtask("fit_coadd_multiband")
 
-    def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        inputs = butlerQC.get(inputRefs)
+    def build_catexps(self, butlerQC, inputRefs, inputs) -> list[CatalogExposureInputs]:
         id_tp = self.config.idGenerator.apply(butlerQC.quantum.dataId).catalog_id
         # This is a roundabout way of ensuring all inputs get sorted and matched
         input_refs_objs = [(getattr(inputRefs, key), inputs[key])
@@ -305,6 +304,11 @@ class CoaddMultibandFitTask(pipeBase.PipelineTask):
                 dataId=dataId, id_tract_patch=id_tp,
             )
         catexps = [catexps[band] for band in self.config.get_band_sets()[0]]
+        return catexps
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        catexps = self.build_catexps(butlerQC, inputRefs, inputs)
         outputs = self.run(catexps=catexps, cat_ref=inputs['cat_ref'])
         butlerQC.put(outputs, outputRefs)
 
