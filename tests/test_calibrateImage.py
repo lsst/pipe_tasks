@@ -116,8 +116,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # find_stars needs an id generator.
         self.id_generator = lsst.meas.base.IdGenerator()
 
-        # Something about this test dataset prefers the older fluxRatio here.
-        self.config.star_catalog_calculation.plugins['base_ClassificationExtendedness'].fluxRatio = 0.925
+        # Something about this test dataset prefers a larger threshold here.
+        self.config.star_selector["science"].unresolved.maximum = 0.2
 
     def _check_run(self, calibrate, result):
         """Test the result of CalibrateImage.run().
