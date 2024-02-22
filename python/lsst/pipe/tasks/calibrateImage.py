@@ -140,10 +140,10 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
     def __init__(self, *, config=None):
         super().__init__(config=config)
         if not config.optional_outputs:
-            self.outputs.remove("psf_stars")
-            self.outputs.remove("psf_stars_footprints")
-            self.outputs.remove("astrometry_matches")
-            self.outputs.remove("photometry_matches")
+            del self.psf_stars
+            del self.psf_stars_footprints
+            del self.astrometry_matches
+            del self.photometry_matches
 
 
 class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=CalibrateImageConnections):
