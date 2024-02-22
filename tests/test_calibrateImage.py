@@ -144,9 +144,11 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # Returned photoCalib should be the applied value, not the ==1 one on the exposure.
         self.assertFloatsAlmostEqual(result.applied_photo_calib.getCalibrationMean(),
                                      photo_calib, rtol=2e-3)
-        # Should have flux/magnitudes in the catalog.
-        self.assertIn("slot_PsfFlux_flux", result.stars.schema)
-        self.assertIn("slot_PsfFlux_mag", result.stars.schema)
+        # Should have flux/magnitudes in the afw and astropy catalogs
+        self.assertIn("slot_PsfFlux_flux", result.stars_footprints.schema)
+        self.assertIn("slot_PsfFlux_mag", result.stars_footprints.schema)
+        self.assertEqual(result.stars["slot_PsfFlux_flux"].unit, u.nJy)
+        self.assertEqual(result.stars["slot_PsfFlux_mag"].unit, u.ABmag)
 
         # Check that all necessary fields are in the output.
         lsst.pipe.base.testUtils.assertValidOutput(calibrate, result)
@@ -378,15 +380,21 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         butlerTests.addDatasetType(self.repo, "initial_stars_footprints_detector",
                                    {"instrument", "visit", "detector"},
                                    "SourceCatalog")
+        butlerTests.addDatasetType(self.repo, "initial_stars_detector",
+                                   {"instrument", "visit", "detector"},
+                                   "ArrowAstropy")
         butlerTests.addDatasetType(self.repo, "initial_photoCalib_detector",
                                    {"instrument", "visit", "detector"},
                                    "PhotoCalib")
         # optional outputs
         butlerTests.addDatasetType(self.repo, "initial_pvi_background", {"instrument", "visit", "detector"},
                                    "Background")
-        butlerTests.addDatasetType(self.repo, "initial_psf_stars_footprints",
+        butlerTests.addDatasetType(self.repo, "initial_psf_stars_footprints_detector",
                                    {"instrument", "visit", "detector"},
                                    "SourceCatalog")
+        butlerTests.addDatasetType(self.repo, "initial_psf_stars_detector",
+                                   {"instrument", "visit", "detector"},
+                                   "ArrowAstropy")
         butlerTests.addDatasetType(self.repo,
                                    "initial_astrometry_match_detector",
                                    {"instrument", "visit", "detector"},
@@ -426,8 +434,10 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              # outputs
              "output_exposure": self.visit_id,
              "stars": self.visit_id,
+             "stars_footprints": self.visit_id,
              "background": self.visit_id,
              "psf_stars": self.visit_id,
+             "psf_stars_footprints": self.visit_id,
              "applied_photo_calib": self.visit_id,
              "initial_pvi_background": self.visit_id,
              "astrometry_matches": self.visit_id,
@@ -453,8 +463,10 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              # outputs
              "output_exposure": self.visit_id,
              "stars": self.visit_id,
+             "stars_footprints": self.visit_id,
              "background": self.visit_id,
              "psf_stars": self.visit_id,
+             "psf_stars_footprints": self.visit_id,
              "applied_photo_calib": self.visit_id,
              "initial_pvi_background": self.visit_id,
              "astrometry_matches": self.visit_id,
@@ -482,6 +494,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              # outputs
              "output_exposure": self.visit_id,
              "stars": self.visit_id,
+             "stars_footprints": self.visit_id,
              "applied_photo_calib": self.visit_id,
              "background": self.visit_id,
              })
