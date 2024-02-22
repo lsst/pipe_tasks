@@ -32,11 +32,10 @@ import lsst.utils.tests
 from lsst.utils import getPackageDir
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
 from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
-from lsst.meas.algorithms import SourceDetectionTask, SkyObjectsTask
+from lsst.meas.algorithms import SourceDetectionTask, SkyObjectsTask, SetPrimaryFlagsTask
 import lsst.meas.extensions.scarlet as mes
 from lsst.meas.extensions.scarlet.scarletDeblendTask import ScarletDeblendTask
 from lsst.meas.base import SingleFrameMeasurementTask
-from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask, getPseudoSources
 from lsst.afw.table import SourceCatalog
 
 
@@ -235,9 +234,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         measureConfig.slots.calibFlux = None
         measureConfig.slots.gaussianFlux = None
         measureTask = SingleFrameMeasurementTask(config=measureConfig, schema=schema)
-        primaryConfig = SetPrimaryFlagsTask.ConfigClass()
-        setPrimaryTask = SetPrimaryFlagsTask(config=primaryConfig, schema=schema,
-                                             name="setPrimaryFlags", isSingleFrame=False)
+        setPrimaryTask = SetPrimaryFlagsTask(schema=schema, isSingleFrame=False)
 
         table = SourceCatalog.Table.make(schema)
         # detect sources
@@ -270,7 +267,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         # deblendedModelPrimary sources,
         # since they both have the same blended sources and only differ
         # over which model to use for the isolated sources.
-        isPseudo = getPseudoSources(outputCat, primaryConfig.pseudoFilterList, schema, setPrimaryTask.log)
+        isPseudo = outputCat["merge_peak_sky"]
         self.assertEqual(
             np.sum(outputCat["detect_isDeblendedSource"] & ~isPseudo),
             np.sum(outputCat["detect_isDeblendedModelSource"]))

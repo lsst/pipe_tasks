@@ -34,7 +34,7 @@ from lsst.meas.algorithms import LoadReferenceObjectsConfig, SkyObjectsTask
 import lsst.daf.base as dafBase
 from lsst.afw.math import BackgroundList
 from lsst.afw.table import SourceTable
-from lsst.meas.algorithms import SourceDetectionTask, ReferenceObjectLoader
+from lsst.meas.algorithms import SourceDetectionTask, ReferenceObjectLoader, SetPrimaryFlagsTask
 from lsst.meas.base import (SingleFrameMeasurementTask,
                             ApplyApCorrTask,
                             CatalogCalculationTask,
@@ -42,7 +42,6 @@ from lsst.meas.base import (SingleFrameMeasurementTask,
                             DetectorVisitIdGeneratorConfig)
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.utils.timer import timeMethod
-from lsst.pipe.tasks.setPrimaryFlags import SetPrimaryFlagsTask
 from .photoCal import PhotoCalTask
 from .computeExposureSummaryStats import ComputeExposureSummaryStatsTask
 
