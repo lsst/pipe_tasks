@@ -119,7 +119,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # Something about this test dataset prefers the older fluxRatio here.
         self.config.star_catalog_calculation.plugins['base_ClassificationExtendedness'].fluxRatio = 0.925
 
-    def _check_run(self, calibrate, result, *, photo_calib):
+    def _check_run(self, calibrate, result):
         """Test the result of CalibrateImage.run().
 
         Parameters
@@ -128,8 +128,6 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
             Configured task that had `run` called on it.
         result : `lsst.pipe.base.Struct`
             Result of calling calibrate.run().
-        photo_calib : `float`
-            Expected value of the PhotoCalib mean.
         """
         # Background should have 4 elements: 3 from compute_psf and one from
         # re-estimation during source detection.
@@ -143,12 +141,17 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         # Returned photoCalib should be the applied value, not the ==1 one on the exposure.
         self.assertFloatsAlmostEqual(result.applied_photo_calib.getCalibrationMean(),
-                                     photo_calib, rtol=2e-3)
+                                     self.photo_calib, rtol=2e-3)
         # Should have flux/magnitudes in the afw and astropy catalogs
         self.assertIn("slot_PsfFlux_flux", result.stars_footprints.schema)
         self.assertIn("slot_PsfFlux_mag", result.stars_footprints.schema)
         self.assertEqual(result.stars["slot_PsfFlux_flux"].unit, u.nJy)
         self.assertEqual(result.stars["slot_PsfFlux_mag"].unit, u.ABmag)
+
+        # Should have detected all S/N >= 10 sources plus 2 sky sources, whether 1 or 2 snaps.
+        self.assertEqual(len(result.stars), 7)
+        # Did the psf flags get propagated from the psf_stars catalog?
+        self.assertEqual(result.stars["calib_psf_used"].sum(), 3)
 
         # Check that all necessary fields are in the output.
         lsst.pipe.base.testUtils.assertValidOutput(calibrate, result)
@@ -161,7 +164,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         calibrate.photometry.match.setRefObjLoader(self.ref_loader)
         result = calibrate.run(exposures=self.exposure)
 
-        self._check_run(calibrate, result, photo_calib=self.photo_calib)
+        self._check_run(calibrate, result)
 
     def test_run_2_snaps(self):
         """Test that run() returns reasonable values to be butler put, when
@@ -170,9 +173,12 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         calibrate = CalibrateImageTask(config=self.config)
         calibrate.astrometry.setRefObjLoader(self.ref_loader)
         calibrate.photometry.match.setRefObjLoader(self.ref_loader)
+        # Halve the flux in each exposure to get the expected visit sum.
+        self.exposure.image /= 2
+        self.exposure.variance /= 2
         result = calibrate.run(exposures=[self.exposure, self.exposure])
 
-        self._check_run(calibrate, result, photo_calib=self.photo_calib/2)
+        self._check_run(calibrate, result)
 
     def test_handle_snaps(self):
         calibrate = CalibrateImageTask(config=self.config)
