@@ -213,7 +213,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     )
     star_deblend = pexConfig.ConfigurableField(
         target=lsst.meas.deblender.SourceDeblendTask,
-        doc="Split blended sources into their components"
+        doc="Split blended sources into their components."
     )
     star_measurement = pexConfig.ConfigurableField(
         target=lsst.meas.base.SingleFrameMeasurementTask,
