@@ -717,13 +717,13 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # Closest matches is a dict of psf_stars source ID to Match record
         # (psf_stars source, sourceCat source, distance in pixels).
         best = {}
-        for match0, match1, d in matches:
-            id0 = match0.getId()
-            match = best.get(id0)
+        for match_psf, match_stars, d in matches:
+            match = best.get(match_psf.getId())
             if match is None or d <= match[2]:
-                best[id0] = (match0, match1, d)
+                best[match_psf.getId()] = (match_psf, match_stars, d)
         matches = list(best.values())
-        ids = np.array([(match0.getId(), match1.getId()) for match0, match1, d in matches]).T
+        # We'll use this to construct index arrays into each catalog.
+        ids = np.array([(match_psf.getId(), match_stars.getId()) for match_psf, match_stars, d in matches]).T
 
         # Check that no stars sources are listed twice; we already know
         # that each match has a unique psf_stars id, due to using as the key
@@ -735,11 +735,11 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                              n_matches, n_unique)
 
         # The indices of the IDs, so we can update the flag fields as arrays.
-        idx0 = np.searchsorted(psf_stars["id"], ids[0])
-        idx1 = np.searchsorted(stars["id"], ids[1])
+        idx_psf_stars = np.searchsorted(psf_stars["id"], ids[0])
+        idx_stars = np.searchsorted(stars["id"], ids[1])
         for field in self.psf_fields:
             result = np.zeros(len(stars), dtype=bool)
-            result[idx0] = psf_stars[field][idx1]
+            result[idx_stars] = psf_stars[field][idx_psf_stars]
             stars[field] = result
 
     def _fit_astrometry(self, exposure, stars):

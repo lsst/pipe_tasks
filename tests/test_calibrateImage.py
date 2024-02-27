@@ -332,10 +332,19 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.assertEqual(stars["calib_psf_used"].sum(), 0)
         self.assertEqual(stars["calib_psf_reserved"].sum(), 0)
 
+        # Reorder stars to be out of order with psf_stars (putting the sky
+        # sources in front); this tests that I get the indexing right.
+        stars.sort(stars.getCentroidSlot().getMeasKey().getX())
+        stars = stars.copy(deep=True)
+        # Re-number the ids: the matcher requires sorted ids: this is always
+        # true in the code itself, but we've permuted them by sorting on
+        # flux. We don't care what the actual ids themselves are here.
+        stars["id"] = np.arange(len(stars))
+
         calibrate._match_psf_stars(psf_stars, stars)
 
-        # Sort in order of brightness; the psf stars are the 3 brightest, with
-        # two sky sources as the faintest.
+        # Check that the three brightest stars have the psf flags transfered
+        # from the psf_stars catalog by sorting in order of brightness.
         stars.sort(stars.getPsfFluxSlot().getMeasKey())
         # sort() above leaves the catalog non-contiguous.
         stars = stars.copy(deep=True)
