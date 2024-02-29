@@ -482,6 +482,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         exposure = self._handle_snaps(exposures)
 
+        # TODO remove on DM-43083: work around the fact that we don't want
+        # to run streak detection in this task in production.
+        exposure.mask.addMaskPlane("STREAK")
+
         psf_stars, background, candidates = self._compute_psf(exposure)
 
         self._measure_aperture_correction(exposure, psf_stars)
