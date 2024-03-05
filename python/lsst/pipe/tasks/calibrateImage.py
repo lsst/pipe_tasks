@@ -38,7 +38,7 @@ import lsst.pipe.base as pipeBase
 from lsst.pipe.base import connectionTypes
 from lsst.utils.timer import timeMethod
 
-from . import measurePsf, repair, photoCal, computeExposureSummaryStats, maskStreaks, snapCombine
+from . import measurePsf, repair, photoCal, computeExposureSummaryStats, snapCombine
 
 
 class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
@@ -207,10 +207,6 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         target=lsst.meas.algorithms.SkyObjectsTask,
         doc="Task to generate sky sources ('empty' regions where there are no detections).",
     )
-    star_mask_streaks = pexConfig.ConfigurableField(
-        target=maskStreaks.MaskStreaksTask,
-        doc="Task for masking streaks. Adds a STREAK mask plane to an exposure.",
-    )
     star_deblend = pexConfig.ConfigurableField(
         target=lsst.meas.deblender.SourceDeblendTask,
         doc="Split blended sources into their components."
@@ -322,10 +318,6 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         # Only measure the apertures we need for star selection.
         self.star_measurement.plugins["base_CircularApertureFlux"].radii = [12.0]
 
-        # Keep track of which footprints contain streaks
-        self.star_measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['STREAK']
-        self.star_measurement.plugins['base_PixelFlags'].masksFpCenter = ['STREAK']
-
         # Select isolated stars with reliable measurements and no bad flags.
         self.star_selector["science"].doFlags = True
         self.star_selector["science"].doUnresolved = True
@@ -399,7 +391,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         afwTable.CoordKey.addErrorFields(initial_stars_schema)
         self.makeSubtask("star_detection", schema=initial_stars_schema)
         self.makeSubtask("star_sky_sources", schema=initial_stars_schema)
-        self.makeSubtask("star_mask_streaks")
         self.makeSubtask("star_deblend", schema=initial_stars_schema)
         self.makeSubtask("star_measurement", schema=initial_stars_schema)
         self.makeSubtask("star_apply_aperture_correction", schema=initial_stars_schema)
@@ -490,6 +481,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             id_generator = lsst.meas.base.IdGenerator()
 
         exposure = self._handle_snaps(exposures)
+
+        # TODO remove on DM-43083: work around the fact that we don't want
+        # to run streak detection in this task in production.
+        exposure.mask.addMaskPlane("STREAK")
 
         psf_stars, background, candidates = self._compute_psf(exposure)
 
@@ -664,9 +659,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         detections = self.star_detection.run(table=table, exposure=exposure, background=background)
         sources = detections.sources
         self.star_sky_sources.run(exposure.mask, id_generator.catalog_id, sources)
-
-        # Mask streaks
-        self.star_mask_streaks.run(exposure)
 
         # TODO investigation: Could this deblender throw away blends of non-PSF sources?
         self.star_deblend.run(exposure=exposure, sources=sources)
