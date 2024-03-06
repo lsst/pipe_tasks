@@ -107,7 +107,7 @@ class DiffMatchedTractCatalogConnections(
         dimensions=("tract", "skymap"),
     )
     cat_matched = cT.Output(
-        doc="Catalog with reference and target columns for matched sources only",
+        doc="Catalog with reference and target columns for joined sources",
         name="matched_{name_input_cat_ref}_{name_input_cat_target}",
         storageClass="DataFrame",
         dimensions=("tract", "skymap"),
@@ -172,6 +172,11 @@ class DiffMatchedTractCatalogConfig(
         dtype=str,
         default='refExtendedness',
         doc='The target table column estimating the extendedness of the object (0 <= x <= 1)',
+    )
+    include_unmatched = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Whether to include unmatched rows in the matched table",
     )
 
     @property
@@ -613,7 +618,8 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
             A struct with output_ref and output_target attribute containing the
             output matched catalogs.
         """
-        config = self.config
+        # Would be nice if this could refer directly to ConfigClass
+        config: DiffMatchedTractCatalogConfig = self.config
 
         select_ref = catalog_match_ref['match_candidate'].values
         # Add additional selection criteria for target sources beyond those for matching
@@ -641,18 +647,9 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         matched_target = np.zeros(n_target, dtype=bool)
         matched_target[matched_row] = True
 
-        # Create a matched table, preserving the target catalog's named index (if it has one)
-        cat_left = cat_target.iloc[matched_row]
-        has_index_left = cat_left.index.name is not None
-        cat_right = cat_ref[matched_ref].reset_index()
-        cat_matched = pd.concat(objs=(cat_left.reset_index(drop=True), cat_right), axis=1, sort=False)
-        if has_index_left:
-            cat_matched.index = cat_left.index
-        cat_matched.columns.values[len(cat_target.columns):] = [f'refcat_{col}' for col in cat_right.columns]
-
         # Add/compute distance columns
         coord1_target_err, coord2_target_err = config.columns_target_coord_err
-        column_dist, column_dist_err = 'distance', 'distanceErr'
+        column_dist, column_dist_err = 'match_distance', 'match_distanceErr'
         dist = np.full(n_target, np.Inf)
 
         dist[matched_row] = np.hypot(
@@ -664,14 +661,49 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
                                          cat_target.iloc[matched_row][coord2_target_err].values)
         cat_target[column_dist], cat_target[column_dist_err] = dist, dist_err
 
+        # Create a matched table, preserving the target catalog's named index (if it has one)
+        cat_left = cat_target.iloc[matched_row]
+        has_index_left = cat_left.index.name is not None
+        cat_right = cat_ref[matched_ref].reset_index()
+        cat_matched = pd.concat(objs=(cat_left.reset_index(drop=not has_index_left), cat_right), axis=1)
+        cat_matched.columns.values[len(cat_target.columns) + has_index_left:] = [
+            f'refcat_{col}' for col in cat_right.columns
+        ]
+
+        if config.include_unmatched:
+            # Create an unmatched table with the same schema as the matched one
+            # ... but only for objects with no matches (for completeness/purity)
+            # and that were selected for matching (or inclusion via config)
+            cat_right = cat_ref[~matched_ref & select_ref].reset_index(drop=False)
+            cat_right.columns = (f"refcat_{col}" for col in cat_right.columns)
+            match_row_target = catalog_match_target['match_row'].values
+            cat_left = cat_target[~(match_row_target >= 0) & select_target].reset_index(
+                drop=not has_index_left)
+            # See https://github.com/pandas-dev/pandas/issues/46662
+            # astropy masked columns would handle this much more gracefully
+            # Unfortunately, that would require storageClass migration
+            # So we use pandas "extended" nullable types for now
+            for cat_i in (cat_left, cat_right):
+                for colname in cat_i.columns:
+                    column = cat_i[colname]
+                    dtype = str(column.dtype)
+                    if dtype == "bool":
+                        cat_i[colname] = column.astype("boolean")
+                    elif dtype.startswith("int"):
+                        cat_i[colname] = column.astype(f"Int{dtype[3:]}")
+                    elif dtype.startswith("uint"):
+                        cat_i[colname] = column.astype(f"UInt{dtype[3:]}")
+            cat_unmatched = pd.concat(objs=(cat_left, cat_right))
+
+        # TODO: Deprecate all matched difference output in DM-43831
+
         # Slightly smelly hack for when a column (like distance) is already relative to truth
         column_dummy = 'dummy'
         cat_ref[column_dummy] = np.zeros_like(ref.coord1)
 
         # Add a boolean column for whether a match is classified correctly
-        extended_ref = cat_ref[config.column_ref_extended]
-        if config.column_ref_extended_inverted:
-            extended_ref = 1 - extended_ref
+        # TODO: remove the assumption of a boolean column
+        extended_ref = cat_ref[config.column_ref_extended] == (not config.column_ref_extended_inverted)
 
         extended_target = cat_target[config.column_target_extended].values >= config.extendedness_cut
 
@@ -905,6 +937,9 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
                 flux_err_frac_first = flux_err_frac
                 mag_first = mag_model
                 mag_ref_first = mag_ref
+
+        if config.include_unmatched:
+            cat_matched = pd.concat((cat_matched, cat_unmatched))
 
         retStruct = pipeBase.Struct(cat_matched=cat_matched, diff_matched=pd.DataFrame(data))
         return retStruct
