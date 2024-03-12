@@ -714,6 +714,10 @@ funcs:
         functor: Column
         args: deblend_fluxOverlapFraction
         dataset: meas
+    deblend_zeroFlux:
+        functor: Column
+        args: deblend_zeroFlux
+        dataset: meas
     # DM-22247: Add Star/Galaxy sep columns
     #     - Morphological Star Galaxy Classifier (Names? float 0-1)]
     #     - Morphological + Color (SED-based) Star Galaxy Classifier (Names? float 0-1)]
@@ -779,6 +783,7 @@ flags:
     - deblend_dataCoverage
     - deblend_fluxOverlap
     - deblend_fluxOverlapFraction
+    - deblend_zeroFlux
     - slot_ApFlux_flag
     - slot_ApFlux_flag_apertureTruncated
     - slot_ApFlux_flag_sincCoeffsTruncated
