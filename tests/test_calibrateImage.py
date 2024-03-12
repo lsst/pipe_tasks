@@ -354,6 +354,17 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # Too few sources to reserve any in these tests.
         self.assertEqual(stars["calib_psf_reserved"].sum(), 0)
 
+    def test_match_psf_stars_no_matches(self):
+        """Check that _match_psf_stars handles the case of no cross-matches.
+        """
+        calibrate = CalibrateImageTask(config=self.config)
+        # Make two catalogs that cannot have matches.
+        stars = self.truth_cat[2:].copy(deep=True)
+        psf_stars = self.truth_cat[:2].copy(deep=True)
+
+        with self.assertRaisesRegex(RuntimeError, "0 psf_stars out of 2 matched"):
+            calibrate._match_psf_stars(psf_stars, stars)
+
 
 class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
     """Tests of ``CalibrateImageTask.runQuantum``, which need a test butler,
