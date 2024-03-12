@@ -725,6 +725,12 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         if n_unique != n_matches:
             self.log.warning("%d psf_stars matched only %d stars; ",
                              n_matches, n_unique)
+        if n_matches == 0:
+            msg = (f"0 psf_stars out of {len(psf_stars)} matched {len(stars)} calib stars."
+                   " Downstream processes probably won't have useful stars in this case."
+                   " Is `star_source_selector` too strict?")
+            # TODO DM-39842: Turn this into an AlgorithmicError.
+            raise RuntimeError(msg)
 
         # The indices of the IDs, so we can update the flag fields as arrays.
         idx_psf_stars = np.searchsorted(psf_stars["id"], ids[0])
