@@ -36,6 +36,7 @@ from lsst.meas.algorithms import (
     SourceDetectionTask,
     MeasureApCorrTask,
     MeasureApCorrError,
+    MaskStreaksTask,
 )
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
 from lsst.meas.astrom import displayAstrometry
@@ -50,7 +51,6 @@ from lsst.meas.deblender import SourceDeblendTask
 import lsst.meas.extensions.shapeHSM  # noqa: F401 needed for default shape plugin
 from .measurePsf import MeasurePsfTask
 from .repair import RepairTask
-from .maskStreaks import MaskStreaksTask
 from .computeExposureSummaryStats import ComputeExposureSummaryStatsTask
 from lsst.pex.exceptions import LengthError
 from lsst.utils.timer import timeMethod
