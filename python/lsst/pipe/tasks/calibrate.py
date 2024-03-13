@@ -50,8 +50,13 @@ from lsst.meas.deblender import SourceDeblendTask
 from lsst.utils.timer import timeMethod
 from .photoCal import PhotoCalTask
 from .computeExposureSummaryStats import ComputeExposureSummaryStatsTask
-from lsst.analysis.tools.tasks import CalexpSummaryTask
-from lsst.analysis.tools.atools import CalexpSummaryMetrics
+
+
+class _EmptyTargetTask(pipeBase.PipelineTask):
+    ConfigClass = pipeBase.PipelineTaskConfig
+
+    def __init__(self, **kwargs) -> None:
+        raise NotImplementedError("CreateSummaryMetrics must be retargeted")
 
 
 class CalibrateConnections(
@@ -314,7 +319,9 @@ class CalibrateConfig(
         doc="Subtask to run computeSummaryStats on exposure",
     )
     createSummaryMetrics = pexConfig.ConfigurableField(
-        target=CalexpSummaryTask, doc="Subtask to create summary stats metrics"
+        target=_EmptyTargetTask,
+        doc="Subtask to create summary stats metrics. This must be retargeted, likely to an"
+        "analysis_tools task such as CalexpSummaryMetrics.",
     )
     doWriteExposure = pexConfig.Field(
         dtype=bool,
@@ -341,8 +348,6 @@ class CalibrateConfig(
         self.measurement.plugins["base_PixelFlags"].masksFpAnywhere = ["STREAK"]
         self.measurement.plugins["base_PixelFlags"].masksFpCenter = ["STREAK"]
 
-        self.createSummaryMetrics.atools.calexpMetrics = CalexpSummaryMetrics
-        
 
 class CalibrateTask(pipeBase.PipelineTask):
     """Calibrate an exposure: measure sources and perform astrometric and
