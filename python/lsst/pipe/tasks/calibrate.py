@@ -34,21 +34,31 @@ from lsst.meas.algorithms import LoadReferenceObjectsConfig, SkyObjectsTask
 import lsst.daf.base as dafBase
 from lsst.afw.math import BackgroundList
 from lsst.afw.table import SourceTable
-from lsst.meas.algorithms import SourceDetectionTask, ReferenceObjectLoader, SetPrimaryFlagsTask
-from lsst.meas.base import (SingleFrameMeasurementTask,
-                            ApplyApCorrTask,
-                            CatalogCalculationTask,
-                            IdGenerator,
-                            DetectorVisitIdGeneratorConfig)
+from lsst.meas.algorithms import (
+    SourceDetectionTask,
+    ReferenceObjectLoader,
+    SetPrimaryFlagsTask,
+)
+from lsst.meas.base import (
+    SingleFrameMeasurementTask,
+    ApplyApCorrTask,
+    CatalogCalculationTask,
+    IdGenerator,
+    DetectorVisitIdGeneratorConfig,
+)
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.utils.timer import timeMethod
 from .photoCal import PhotoCalTask
 from .computeExposureSummaryStats import ComputeExposureSummaryStatsTask
+from lsst.analysis.tools.tasks import CalexpSummaryTask
+from lsst.analysis.tools.atools import CalexpSummaryMetrics
 
 
-class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instrument", "visit", "detector"),
-                           defaultTemplates={}):
-
+class CalibrateConnections(
+    pipeBase.PipelineTaskConnections,
+    dimensions=("instrument", "visit", "detector"),
+    defaultTemplates={},
+):
     icSourceSchema = cT.InitInput(
         doc="Schema produced by characterize image task, used to initialize this task",
         name="icSrc_schema",
@@ -97,7 +107,7 @@ class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instru
         storageClass="SimpleCatalog",
         dimensions=("skypix",),
         deferLoad=True,
-        multiple=True
+        multiple=True,
     )
 
     outputExposure = cT.Output(
@@ -135,6 +145,13 @@ class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instru
         dimensions=("instrument", "visit", "detector"),
     )
 
+    outputMetrics = cT.Output(
+        doc="Calexp summary metrics",
+        name="calexpMetrics",
+        storageClass="MetricMeasurementBundle",
+        dimensions=("instrument", "visit", "detector"),
+    )
+
     def __init__(self, *, config=None):
         super().__init__(config=config)
 
@@ -149,7 +166,9 @@ class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instru
             self.outputs.remove("matchesDenormalized")
 
 
-class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=CalibrateConnections):
+class CalibrateConfig(
+    pipeBase.PipelineTaskConfig, pipelineConnections=CalibrateConnections
+):
     """Config for CalibrateTask."""
 
     doWrite = pexConfig.Field(
@@ -161,7 +180,7 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         dtype=bool,
         default=True,
         doc="Include HeavyFootprint data in source table? If false then heavy "
-            "footprints are saved as normal footprints, which saves some space"
+        "footprints are saved as normal footprints, which saves some space",
     )
     doWriteMatches = pexConfig.Field(
         dtype=bool,
@@ -171,9 +190,11 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
     doWriteMatchesDenormalized = pexConfig.Field(
         dtype=bool,
         default=True,
-        doc=("Write reference matches in denormalized format? "
-             "This format uses more disk space, but is more convenient to "
-             "read for debugging. Ignored if doWriteMatches=False or doWrite=False."),
+        doc=(
+            "Write reference matches in denormalized format? "
+            "This format uses more disk space, but is more convenient to "
+            "read for debugging. Ignored if doWriteMatches=False or doWrite=False."
+        ),
     )
     doAstrometry = pexConfig.Field(
         dtype=bool,
@@ -195,8 +216,9 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
     requireAstrometry = pexConfig.Field(
         dtype=bool,
         default=True,
-        doc=("Raise an exception if astrometry fails? Ignored if doAstrometry "
-             "false."),
+        doc=(
+            "Raise an exception if astrometry fails? Ignored if doAstrometry " "false."
+        ),
     )
     doPhotoCal = pexConfig.Field(
         dtype=bool,
@@ -206,8 +228,7 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
     requirePhotoCal = pexConfig.Field(
         dtype=bool,
         default=True,
-        doc=("Raise an exception if photoCal fails? Ignored if doPhotoCal "
-             "false."),
+        doc=("Raise an exception if photoCal fails? Ignored if doPhotoCal " "false."),
     )
     photoCal = pexConfig.ConfigurableField(
         target=PhotoCalTask,
@@ -216,34 +237,36 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
     icSourceFieldsToCopy = pexConfig.ListField(
         dtype=str,
         default=("calib_psf_candidate", "calib_psf_used", "calib_psf_reserved"),
-        doc=("Fields to copy from the icSource catalog to the output catalog "
-             "for matching sources Any missing fields will trigger a "
-             "RuntimeError exception. Ignored if icSourceCat is not provided.")
+        doc=(
+            "Fields to copy from the icSource catalog to the output catalog "
+            "for matching sources Any missing fields will trigger a "
+            "RuntimeError exception. Ignored if icSourceCat is not provided."
+        ),
     )
     matchRadiusPix = pexConfig.Field(
         dtype=float,
         default=3,
-        doc=("Match radius for matching icSourceCat objects to sourceCat "
-             "objects (pixels)"),
+        doc=(
+            "Match radius for matching icSourceCat objects to sourceCat "
+            "objects (pixels)"
+        ),
     )
     checkUnitsParseStrict = pexConfig.Field(
-        doc=("Strictness of Astropy unit compatibility check, can be 'raise', "
-             "'warn' or 'silent'"),
+        doc=(
+            "Strictness of Astropy unit compatibility check, can be 'raise', "
+            "'warn' or 'silent'"
+        ),
         dtype=str,
         default="raise",
     )
     detection = pexConfig.ConfigurableField(
-        target=SourceDetectionTask,
-        doc="Detect sources"
+        target=SourceDetectionTask, doc="Detect sources"
     )
     doDeblend = pexConfig.Field(
-        dtype=bool,
-        default=True,
-        doc="Run deblender input exposure"
+        dtype=bool, default=True, doc="Run deblender input exposure"
     )
     deblend = pexConfig.ConfigurableField(
-        target=SourceDeblendTask,
-        doc="Split blended sources into their components"
+        target=SourceDeblendTask, doc="Split blended sources into their components"
     )
     doSkySources = pexConfig.Field(
         dtype=bool,
@@ -255,54 +278,58 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         doc="Generate sky sources",
     )
     measurement = pexConfig.ConfigurableField(
-        target=SingleFrameMeasurementTask,
-        doc="Measure sources"
+        target=SingleFrameMeasurementTask, doc="Measure sources"
     )
     postCalibrationMeasurement = pexConfig.ConfigurableField(
         target=SingleFrameMeasurementTask,
-        doc="Second round of measurement for plugins that need to be run after photocal"
+        doc="Second round of measurement for plugins that need to be run after photocal",
     )
     setPrimaryFlags = pexConfig.ConfigurableField(
         target=SetPrimaryFlagsTask,
-        doc=("Set flags for primary source classification in single frame "
-             "processing. True if sources are not sky sources and not a parent.")
+        doc=(
+            "Set flags for primary source classification in single frame "
+            "processing. True if sources are not sky sources and not a parent."
+        ),
     )
     doApCorr = pexConfig.Field(
-        dtype=bool,
-        default=True,
-        doc="Run subtask to apply aperture correction"
+        dtype=bool, default=True, doc="Run subtask to apply aperture correction"
     )
     applyApCorr = pexConfig.ConfigurableField(
-        target=ApplyApCorrTask,
-        doc="Subtask to apply aperture corrections"
+        target=ApplyApCorrTask, doc="Subtask to apply aperture corrections"
     )
     # If doApCorr is False, and the exposure does not have apcorrections
     # already applied, the active plugins in catalogCalculation almost
     # certainly should not contain the characterization plugin
     catalogCalculation = pexConfig.ConfigurableField(
         target=CatalogCalculationTask,
-        doc="Subtask to run catalogCalculation plugins on catalog"
+        doc="Subtask to run catalogCalculation plugins on catalog",
     )
     doComputeSummaryStats = pexConfig.Field(
         dtype=bool,
         default=True,
-        doc="Run subtask to measure exposure summary statistics?"
+        doc="Run subtask to measure exposure summary statistics?",
     )
     computeSummaryStats = pexConfig.ConfigurableField(
         target=ComputeExposureSummaryStatsTask,
-        doc="Subtask to run computeSummaryStats on exposure"
+        doc="Subtask to run computeSummaryStats on exposure",
+    )
+    createSummaryMetrics = pexConfig.ConfigurableField(
+        target=CalexpSummaryTask, doc="Subtask to create summary stats metrics"
     )
     doWriteExposure = pexConfig.Field(
         dtype=bool,
         default=True,
         doc="Write the calexp? If fakes have been added then we do not want to write out the calexp as a "
-            "normal calexp but as a fakes_calexp."
+        "normal calexp but as a fakes_calexp.",
     )
     idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
     def setDefaults(self):
         super().setDefaults()
-        self.postCalibrationMeasurement.plugins.names = ["base_LocalPhotoCalib", "base_LocalWcs"]
+        self.postCalibrationMeasurement.plugins.names = [
+            "base_LocalPhotoCalib",
+            "base_LocalWcs",
+        ]
         self.postCalibrationMeasurement.doReplaceWithNoise = False
         for key in self.postCalibrationMeasurement.slots:
             setattr(self.postCalibrationMeasurement.slots, key, None)
@@ -311,9 +338,11 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         self.photoCal.photoCatName = self.connections.photoRefCat
 
         # Keep track of which footprints contain streaks
-        self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['STREAK']
-        self.measurement.plugins['base_PixelFlags'].masksFpCenter = ['STREAK']
+        self.measurement.plugins["base_PixelFlags"].masksFpAnywhere = ["STREAK"]
+        self.measurement.plugins["base_PixelFlags"].masksFpCenter = ["STREAK"]
 
+        self.createSummaryMetrics.atools.calexpMetrics = CalexpSummaryMetrics
+        
 
 class CalibrateTask(pipeBase.PipelineTask):
     """Calibrate an exposure: measure sources and perform astrometric and
@@ -375,13 +404,18 @@ class CalibrateTask(pipeBase.PipelineTask):
     ConfigClass = CalibrateConfig
     _DefaultName = "calibrate"
 
-    def __init__(self, astromRefObjLoader=None,
-                 photoRefObjLoader=None, icSourceSchema=None,
-                 initInputs=None, **kwargs):
+    def __init__(
+        self,
+        astromRefObjLoader=None,
+        photoRefObjLoader=None,
+        icSourceSchema=None,
+        initInputs=None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
 
         if initInputs is not None:
-            icSourceSchema = initInputs['icSourceSchema'].schema
+            icSourceSchema = initInputs["icSourceSchema"].schema
 
         if icSourceSchema is not None:
             # use a schema mapper to avoid copying each field separately
@@ -395,8 +429,10 @@ class CalibrateTask(pipeBase.PipelineTask):
             # first find all missing fields in order to make the error message
             # more useful.
             self.calibSourceKey = self.schemaMapper.addOutputField(
-                afwTable.Field["Flag"]("calib_detected",
-                                       "Source was detected as an icSource"))
+                afwTable.Field["Flag"](
+                    "calib_detected", "Source was detected as an icSource"
+                )
+            )
             missingFieldNames = []
             for fieldName in self.config.icSourceFieldsToCopy:
                 try:
@@ -408,9 +444,10 @@ class CalibrateTask(pipeBase.PipelineTask):
                     self.schemaMapper.addMapping(schemaItem.getKey())
 
             if missingFieldNames:
-                raise RuntimeError("isSourceCat is missing fields {} "
-                                   "specified in icSourceFieldsToCopy"
-                                   .format(missingFieldNames))
+                raise RuntimeError(
+                    "isSourceCat is missing fields {} "
+                    "specified in icSourceFieldsToCopy".format(missingFieldNames)
+                )
 
             # produce a temporary schema to pass to the subtasks; finalize it
             # later
@@ -419,7 +456,7 @@ class CalibrateTask(pipeBase.PipelineTask):
             self.schemaMapper = None
             self.schema = afwTable.SourceTable.makeMinimalSchema()
         afwTable.CoordKey.addErrorFields(self.schema)
-        self.makeSubtask('detection', schema=self.schema)
+        self.makeSubtask("detection", schema=self.schema)
 
         self.algMetadata = dafBase.PropertyList()
 
@@ -427,28 +464,41 @@ class CalibrateTask(pipeBase.PipelineTask):
             self.makeSubtask("deblend", schema=self.schema)
         if self.config.doSkySources:
             self.makeSubtask("skySources")
-            self.skySourceKey = self.schema.addField("sky_source", type="Flag", doc="Sky objects.")
-        self.makeSubtask('measurement', schema=self.schema,
-                         algMetadata=self.algMetadata)
-        self.makeSubtask('postCalibrationMeasurement', schema=self.schema,
-                         algMetadata=self.algMetadata)
+            self.skySourceKey = self.schema.addField(
+                "sky_source", type="Flag", doc="Sky objects."
+            )
+        self.makeSubtask(
+            "measurement", schema=self.schema, algMetadata=self.algMetadata
+        )
+        self.makeSubtask(
+            "postCalibrationMeasurement",
+            schema=self.schema,
+            algMetadata=self.algMetadata,
+        )
         self.makeSubtask("setPrimaryFlags", schema=self.schema, isSingleFrame=True)
         if self.config.doApCorr:
-            self.makeSubtask('applyApCorr', schema=self.schema)
-        self.makeSubtask('catalogCalculation', schema=self.schema)
+            self.makeSubtask("applyApCorr", schema=self.schema)
+        self.makeSubtask("catalogCalculation", schema=self.schema)
 
         if self.config.doAstrometry:
-            self.makeSubtask("astrometry", refObjLoader=astromRefObjLoader,
-                             schema=self.schema)
+            self.makeSubtask(
+                "astrometry", refObjLoader=astromRefObjLoader, schema=self.schema
+            )
         if self.config.doPhotoCal:
-            self.makeSubtask("photoCal", refObjLoader=photoRefObjLoader,
-                             schema=self.schema)
+            self.makeSubtask(
+                "photoCal", refObjLoader=photoRefObjLoader, schema=self.schema
+            )
         if self.config.doComputeSummaryStats:
-            self.makeSubtask('computeSummaryStats')
+            self.makeSubtask("computeSummaryStats")
+            self.makeSubtask("createSummaryMetrics")
 
-        if initInputs is not None and (astromRefObjLoader is not None or photoRefObjLoader is not None):
-            raise RuntimeError("PipelineTask form of this task should not be initialized with "
-                               "reference object loaders.")
+        if initInputs is not None and (
+            astromRefObjLoader is not None or photoRefObjLoader is not None
+        ):
+            raise RuntimeError(
+                "PipelineTask form of this task should not be initialized with "
+                "reference object loaders."
+            )
 
         if self.schemaMapper is not None:
             # finalize the schema
@@ -461,23 +511,26 @@ class CalibrateTask(pipeBase.PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        inputs['idGenerator'] = self.config.idGenerator.apply(butlerQC.quantum.dataId)
+        inputs["idGenerator"] = self.config.idGenerator.apply(butlerQC.quantum.dataId)
 
         if self.config.doAstrometry:
-            refObjLoader = ReferenceObjectLoader(dataIds=[ref.datasetRef.dataId
-                                                          for ref in inputRefs.astromRefCat],
-                                                 refCats=inputs.pop('astromRefCat'),
-                                                 name=self.config.connections.astromRefCat,
-                                                 config=self.config.astromRefObjLoader, log=self.log)
+            refObjLoader = ReferenceObjectLoader(
+                dataIds=[ref.datasetRef.dataId for ref in inputRefs.astromRefCat],
+                refCats=inputs.pop("astromRefCat"),
+                name=self.config.connections.astromRefCat,
+                config=self.config.astromRefObjLoader,
+                log=self.log,
+            )
             self.astrometry.setRefObjLoader(refObjLoader)
 
         if self.config.doPhotoCal:
-            photoRefObjLoader = ReferenceObjectLoader(dataIds=[ref.datasetRef.dataId
-                                                      for ref in inputRefs.photoRefCat],
-                                                      refCats=inputs.pop('photoRefCat'),
-                                                      name=self.config.connections.photoRefCat,
-                                                      config=self.config.photoRefObjLoader,
-                                                      log=self.log)
+            photoRefObjLoader = ReferenceObjectLoader(
+                dataIds=[ref.datasetRef.dataId for ref in inputRefs.photoRefCat],
+                refCats=inputs.pop("photoRefCat"),
+                name=self.config.connections.photoRefCat,
+                config=self.config.photoRefObjLoader,
+                log=self.log,
+            )
             self.photoCal.match.setRefObjLoader(photoRefObjLoader)
 
         outputs = self.run(**inputs)
@@ -487,7 +540,9 @@ class CalibrateTask(pipeBase.PipelineTask):
                 normalizedMatches = afwTable.packMatches(outputs.astromMatches)
                 normalizedMatches.table.setMetadata(outputs.matchMeta)
                 if self.config.doWriteMatchesDenormalized:
-                    denormMatches = denormalizeMatches(outputs.astromMatches, outputs.matchMeta)
+                    denormMatches = denormalizeMatches(
+                        outputs.astromMatches, outputs.matchMeta
+                    )
                     outputs.matchesDenormalized = denormMatches
                 outputs.matches = normalizedMatches
             else:
@@ -497,8 +552,7 @@ class CalibrateTask(pipeBase.PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     @timeMethod
-    def run(self, exposure, background=None,
-            icSourceCat=None, idGenerator=None):
+    def run(self, exposure, background=None, icSourceCat=None, idGenerator=None):
         """Calibrate an exposure.
 
         Parameters
@@ -542,14 +596,15 @@ class CalibrateTask(pipeBase.PipelineTask):
         table = SourceTable.make(self.schema, idGenerator.make_table_id_factory())
         table.setMetadata(self.algMetadata)
 
-        detRes = self.detection.run(table=table, exposure=exposure,
-                                    doSmooth=True)
+        detRes = self.detection.run(table=table, exposure=exposure, doSmooth=True)
         sourceCat = detRes.sources
         if detRes.background:
             for bg in detRes.background:
                 background.append(bg)
         if self.config.doSkySources:
-            skySourceFootprints = self.skySources.run(mask=exposure.mask, seed=idGenerator.catalog_id)
+            skySourceFootprints = self.skySources.run(
+                mask=exposure.mask, seed=idGenerator.catalog_id
+            )
             if skySourceFootprints:
                 for foot in skySourceFootprints:
                     s = sourceCat.addNew()
@@ -565,8 +620,11 @@ class CalibrateTask(pipeBase.PipelineTask):
         if self.config.doApCorr:
             apCorrMap = exposure.getInfo().getApCorrMap()
             if apCorrMap is None:
-                self.log.warning("Image does not have valid aperture correction map for %r; "
-                                 "skipping aperture correction", idGenerator)
+                self.log.warning(
+                    "Image does not have valid aperture correction map for %r; "
+                    "skipping aperture correction",
+                    idGenerator,
+                )
             else:
                 self.applyApCorr.run(
                     catalog=sourceCat,
@@ -576,10 +634,8 @@ class CalibrateTask(pipeBase.PipelineTask):
 
         self.setPrimaryFlags.run(sourceCat)
 
-        if icSourceCat is not None and \
-           len(self.config.icSourceFieldsToCopy) > 0:
-            self.copyIcSourceFields(icSourceCat=icSourceCat,
-                                    sourceCat=sourceCat)
+        if icSourceCat is not None and len(self.config.icSourceFieldsToCopy) > 0:
+            self.copyIcSourceFields(icSourceCat=icSourceCat, sourceCat=sourceCat)
 
         # TODO DM-11568: this contiguous check-and-copy could go away if we
         # reserve enough space during SourceDetection and/or SourceDeblend.
@@ -601,22 +657,33 @@ class CalibrateTask(pipeBase.PipelineTask):
             matchMeta = astromRes.matchMeta
             if exposure.getWcs() is None:
                 if self.config.requireAstrometry:
-                    raise RuntimeError(f"WCS fit failed for {idGenerator} and requireAstrometry "
-                                       "is True.")
+                    raise RuntimeError(
+                        f"WCS fit failed for {idGenerator} and requireAstrometry "
+                        "is True."
+                    )
                 else:
-                    self.log.warning("Unable to perform astrometric calibration for %r but "
-                                     "requireAstrometry is False: attempting to proceed...",
-                                     idGenerator)
+                    self.log.warning(
+                        "Unable to perform astrometric calibration for %r but "
+                        "requireAstrometry is False: attempting to proceed...",
+                        idGenerator,
+                    )
 
         # compute photometric calibration
         if self.config.doPhotoCal:
-            if np.all(np.isnan(sourceCat["coord_ra"])) or np.all(np.isnan(sourceCat["coord_dec"])):
+            if np.all(np.isnan(sourceCat["coord_ra"])) or np.all(
+                np.isnan(sourceCat["coord_dec"])
+            ):
                 if self.config.requirePhotoCal:
-                    raise RuntimeError(f"Astrometry failed for {idGenerator}, so cannot do "
-                                       "photoCal, but requirePhotoCal is True.")
-                self.log.warning("Astrometry failed for %r, so cannot do photoCal. requirePhotoCal "
-                                 "is False, so skipping photometric calibration and setting photoCalib "
-                                 "to None.  Attempting to proceed...", idGenerator)
+                    raise RuntimeError(
+                        f"Astrometry failed for {idGenerator}, so cannot do "
+                        "photoCal, but requirePhotoCal is True."
+                    )
+                self.log.warning(
+                    "Astrometry failed for %r, so cannot do photoCal. requirePhotoCal "
+                    "is False, so skipping photometric calibration and setting photoCalib "
+                    "to None.  Attempting to proceed...",
+                    idGenerator,
+                )
                 exposure.setPhotoCalib(None)
                 self.setMetadata(exposure=exposure, photoRes=None)
             else:
@@ -627,14 +694,19 @@ class CalibrateTask(pipeBase.PipelineTask):
                     exposure.setPhotoCalib(photoRes.photoCalib)
                     # TODO: reword this to phrase it in terms of the
                     # calibration factor?
-                    self.log.info("Photometric zero-point: %f",
-                                  photoRes.photoCalib.instFluxToMagnitude(1.0))
+                    self.log.info(
+                        "Photometric zero-point: %f",
+                        photoRes.photoCalib.instFluxToMagnitude(1.0),
+                    )
                     self.setMetadata(exposure=exposure, photoRes=photoRes)
                 except Exception as e:
                     if self.config.requirePhotoCal:
                         raise
-                    self.log.warning("Unable to perform photometric calibration "
-                                     "(%s): attempting to proceed", e)
+                    self.log.warning(
+                        "Unable to perform photometric calibration "
+                        "(%s): attempting to proceed",
+                        e,
+                    )
                     self.setMetadata(exposure=exposure, photoRes=None)
 
         self.postCalibrationMeasurement.run(
@@ -644,9 +716,12 @@ class CalibrateTask(pipeBase.PipelineTask):
         )
 
         if self.config.doComputeSummaryStats:
-            summary = self.computeSummaryStats.run(exposure=exposure,
-                                                   sources=sourceCat,
-                                                   background=background)
+            summary = self.computeSummaryStats.run(
+                exposure=exposure, sources=sourceCat, background=background
+            )
+            summaryMetrics = self.createSummaryMetrics.run(
+                data=summary.__dict__
+            ).metrics
             exposure.getInfo().setSummaryStats(summary)
 
         frame = getDebugFrame(self._display, "calibrate")
@@ -666,6 +741,7 @@ class CalibrateTask(pipeBase.PipelineTask):
             outputExposure=exposure,
             outputCat=sourceCat,
             outputBackground=background,
+            outputMetrics=summaryMetrics,
         )
 
     def setMetadata(self, exposure, photoRes=None):
@@ -688,19 +764,20 @@ class CalibrateTask(pipeBase.PipelineTask):
         # convert zero-point to (mag/sec/adu) for task MAGZERO metadata
         try:
             exposureTime = exposure.getInfo().getVisitInfo().getExposureTime()
-            magZero = photoRes.zp - 2.5*math.log10(exposureTime)
+            magZero = photoRes.zp - 2.5 * math.log10(exposureTime)
         except Exception:
-            self.log.warning("Could not set normalized MAGZERO in header: no "
-                             "exposure time")
+            self.log.warning(
+                "Could not set normalized MAGZERO in header: no " "exposure time"
+            )
             magZero = math.nan
 
         try:
-            metadata.set('MAGZERO', magZero)
-            metadata.set('MAGZERO_RMS', photoRes.sigma)
-            metadata.set('MAGZERO_NOBJ', photoRes.ngood)
-            metadata.set('COLORTERM1', 0.0)
-            metadata.set('COLORTERM2', 0.0)
-            metadata.set('COLORTERM3', 0.0)
+            metadata.set("MAGZERO", magZero)
+            metadata.set("MAGZERO_RMS", photoRes.sigma)
+            metadata.set("MAGZERO_NOBJ", photoRes.ngood)
+            metadata.set("COLORTERM1", 0.0)
+            metadata.set("COLORTERM2", 0.0)
+            metadata.set("COLORTERM3", 0.0)
         except Exception as e:
             self.log.warning("Could not set exposure metadata: %s", e)
 
@@ -726,21 +803,25 @@ class CalibrateTask(pipeBase.PipelineTask):
             - icSourceFieldsToCopy is empty.
         """
         if self.schemaMapper is None:
-            raise RuntimeError("To copy icSource fields you must specify "
-                               "icSourceSchema and icSourceKeys when "
-                               "constructing this task")
+            raise RuntimeError(
+                "To copy icSource fields you must specify "
+                "icSourceSchema and icSourceKeys when "
+                "constructing this task"
+            )
         if icSourceCat is None or sourceCat is None:
-            raise RuntimeError("icSourceCat and sourceCat must both be "
-                               "specified")
+            raise RuntimeError("icSourceCat and sourceCat must both be " "specified")
         if len(self.config.icSourceFieldsToCopy) == 0:
-            self.log.warning("copyIcSourceFields doing nothing because "
-                             "icSourceFieldsToCopy is empty")
+            self.log.warning(
+                "copyIcSourceFields doing nothing because "
+                "icSourceFieldsToCopy is empty"
+            )
             return
 
         mc = afwTable.MatchControl()
         mc.findOnlyClosest = False  # return all matched objects
-        matches = afwTable.matchXy(icSourceCat, sourceCat,
-                                   self.config.matchRadiusPix, mc)
+        matches = afwTable.matchXy(
+            icSourceCat, sourceCat, self.config.matchRadiusPix, mc
+        )
         if self.config.doDeblend:
             deblendKey = sourceCat.schema["deblend_nChild"].asKey()
             # if deblended, keep children
@@ -764,11 +845,15 @@ class CalibrateTask(pipeBase.PipelineTask):
         numMatches = len(matches)
         numUniqueSources = len(set(m[1].getId() for m in matches))
         if numUniqueSources != numMatches:
-            self.log.warning("%d icSourceCat sources matched only %d sourceCat "
-                             "sources", numMatches, numUniqueSources)
+            self.log.warning(
+                "%d icSourceCat sources matched only %d sourceCat " "sources",
+                numMatches,
+                numUniqueSources,
+            )
 
-        self.log.info("Copying flags from icSourceCat to sourceCat for "
-                      "%d sources", numMatches)
+        self.log.info(
+            "Copying flags from icSourceCat to sourceCat for " "%d sources", numMatches
+        )
 
         # For each match: set the calibSourceKey flag and copy the desired
         # fields
