@@ -153,28 +153,23 @@ class DiffMatchedTractCatalogConfig(
     pipeBase.PipelineTaskConfig,
     pipelineConnections=DiffMatchedTractCatalogConnections,
 ):
-    column_matched_prefix_ref = pexConfig.Field(
-        dtype=str,
+    column_matched_prefix_ref = pexConfig.Field[str](
         default='refcat_',
         doc='The prefix for matched columns copied from the reference catalog',
     )
-    column_ref_extended = pexConfig.Field(
-        dtype=str,
+    column_ref_extended = pexConfig.Field[str](
         default='is_pointsource',
         doc='The boolean reference table column specifying if the target is extended',
     )
-    column_ref_extended_inverted = pexConfig.Field(
-        dtype=bool,
+    column_ref_extended_inverted = pexConfig.Field[bool](
         default=True,
         doc='Whether column_ref_extended specifies if the object is compact, not extended',
     )
-    column_target_extended = pexConfig.Field(
-        dtype=str,
+    column_target_extended = pexConfig.Field[str](
         default='refExtendedness',
         doc='The target table column estimating the extendedness of the object (0 <= x <= 1)',
     )
-    include_unmatched = pexConfig.Field(
-        dtype=bool,
+    include_unmatched = pexConfig.Field[bool](
         default=False,
         doc="Whether to include unmatched rows in the matched table",
     )
