@@ -359,7 +359,7 @@ class LineProfile:
         reducedHessianChi = hessianChi2 / self.lineMaskSize
         return reducedChi, reducedDChi, reducedHessianChi
 
-    def fit(self, dChi2Tol=0.1, maxIter=100):
+    def fit(self, dChi2Tol=0.1, maxIter=100, log=None):
         """Perform Newton-Raphson minimization to find line parameters.
 
         This method takes advantage of having known derivative and Hessian of
@@ -378,6 +378,8 @@ class LineProfile:
             Maximum number of fit iterations allowed. The fit should converge in
             ~10 iterations, depending on the value of dChi2Tol, but this
             maximum provides a backup.
+        log : `lsst.utils.logging.LsstLogAdapter`, optional
+            Logger to use for reporting more details for fitting failures.
 
         Returns
         -------
@@ -407,11 +409,18 @@ class LineProfile:
             if chi2 == 0:
                 break
             if not np.isfinite(A).all():
-                # TODO: DM-30797 Add warning here.
                 fitFailure = True
+                if log is not None:
+                    log.warning("Hessian matrix has non-finite elements.")
                 break
             dChi2 = oldChi2 - chi2
-            cholesky = scipy.linalg.cho_factor(A)
+            try:
+                cholesky = scipy.linalg.cho_factor(A)
+            except np.linalg.LinAlgError:
+                fitFailure = True
+                if log is not None:
+                    log.warning("Hessian matrix is not invertible.")
+                break
             dx = scipy.linalg.cho_solve(cholesky, b)
 
             factor, fmin, _, _ = scipy.optimize.brent(line_search, args=(dx,), full_output=True, tol=0.05)
@@ -645,6 +654,7 @@ class MaskStreaksTask(pipeBase.Task):
                                     self.config.clusterMinimumDeviation, self.config.delta,
                                     self.config.minimumKernelHeight, self.config.nSigma,
                                     self.config.absMinimumKernelHeight)
+        self.log.info("The Kernel Hough Transform detected %s line(s)", len(lines))
 
         return LineCollection(lines.rho, lines.theta)
 
@@ -695,6 +705,7 @@ class MaskStreaksTask(pipeBase.Task):
         finalRhos = finalClusters[0] * self.config.rhoBinSize
         finalThetas = finalClusters[1] * self.config.thetaBinSize
         result = LineCollection(finalRhos, finalThetas)
+        self.log.info("Lines were grouped into %s potential streak(s)", len(finalRhos))
 
         return result
 
@@ -726,6 +737,7 @@ class MaskStreaksTask(pipeBase.Task):
 
         lineFits = LineCollection([], [])
         finalLineMasks = [np.zeros(data.shape, dtype=bool)]
+        nFinalLines = 0
         for line in lines:
             line.sigma = self.config.invSigma**-1
             lineModel = LineProfile(data, weights, line=line)
@@ -733,16 +745,22 @@ class MaskStreaksTask(pipeBase.Task):
             if lineModel.lineMaskSize == 0:
                 continue
 
-            fit, chi2, fitFailure = lineModel.fit(dChi2Tol=self.config.dChi2Tolerance)
+            fit, chi2, fitFailure = lineModel.fit(dChi2Tol=self.config.dChi2Tolerance, log=self.log)
+            if fitFailure:
+                self.log.warning("Streak fit failed.")
 
             # Initial estimate should be quite close: fit is deemed unsuccessful if rho or theta
             # change more than the allowed bin in rho or theta:
             if ((abs(fit.rho - line.rho) > 2 * self.config.rhoBinSize)
                     or (abs(fit.theta - line.theta) > 2 * self.config.thetaBinSize)):
                 fitFailure = True
+                self.log.warning("Streak fit moved too far from initial estimate. Line will be dropped.")
 
             if fitFailure:
                 continue
+
+            self.log.debug("Best fit streak parameters are rho=%.2f, theta=%.2f, and sigma=%.2f", fit.rho,
+                           fit.theta, fit.sigma)
 
             # Make mask
             lineModel.setLineMask(fit)
@@ -757,7 +775,12 @@ class MaskStreaksTask(pipeBase.Task):
             fit.finalModelMax = finalModelMax
             lineFits.append(fit)
             finalLineMasks.append(finalLineMask)
+            nFinalLines += 1
 
         finalMask = np.array(finalLineMasks).any(axis=0)
+        nMaskedPixels = finalMask.sum()
+        percentMasked = (nMaskedPixels / finalMask.size) * 100
+        self.log.info("%d streak(s) fit, with %d pixels masked (%0.2f%% of image)", nFinalLines,
+                      nMaskedPixels, percentMasked)
 
         return lineFits, finalMask
