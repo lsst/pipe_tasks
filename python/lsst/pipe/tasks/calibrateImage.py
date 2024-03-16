@@ -486,7 +486,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # to run streak detection in this task in production.
         exposure.mask.addMaskPlane("STREAK")
 
-        psf_stars, background, candidates = self._compute_psf(exposure)
+        psf_stars, background, candidates = self._compute_psf(exposure, id_generator)
 
         self._measure_aperture_correction(exposure, psf_stars)
 
@@ -542,7 +542,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 case n:
                     raise RuntimeError(f"Can only process 1 or 2 snaps, not {n}.")
 
-    def _compute_psf(self, exposure, guess_psf=True):
+    def _compute_psf(self, exposure, id_generator):
         """Find bright sources detected on an exposure and fit a PSF model to
         them, repairing likely cosmic rays before detection.
 
@@ -553,6 +553,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         ----------
         exposure : `lsst.afw.image.Exposure`
             Exposure to detect and measure bright stars on.
+        id_generator : `lsst.meas.base.IdGenerator`, optional
+            Object that generates source IDs and provides random seeds.
 
         Returns
         -------
@@ -582,7 +584,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         log_psf("Initial PSF:")
         self.psf_repair.run(exposure=exposure, keepCRs=True)
 
-        table = afwTable.SourceTable.make(self.psf_schema)
+        table = afwTable.SourceTable.make(self.psf_schema, id_generator.make_table_id_factory())
         # Re-estimate the background during this detection step, so that
         # measurement uses the most accurate background-subtraction.
         detections = self.psf_detection.run(table=table, exposure=exposure, background=background)
@@ -653,7 +655,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             Sources that are very likely to be stars, with a limited set of
             measurements performed on them.
         """
-        table = afwTable.SourceTable.make(self.initial_stars_schema.schema)
+        table = afwTable.SourceTable.make(self.initial_stars_schema.schema,
+                                          id_generator.make_table_id_factory())
         # Re-estimate the background during this detection step, so that
         # measurement uses the most accurate background-subtraction.
         detections = self.star_detection.run(table=table, exposure=exposure, background=background)
