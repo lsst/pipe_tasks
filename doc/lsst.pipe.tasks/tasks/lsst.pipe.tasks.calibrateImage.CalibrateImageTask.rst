@@ -34,8 +34,6 @@ Processing summary
 
    #. Detect sources with a peak :math:`S/N >= 10`.
 
-   #. :py:class:`Find potential streaks <lsst.pipe.tasks.maskStreaks.MaskStreaksTask>` on the image from the detection `Mask`_ computed above, and `Mask`_ those streaks on the exposure.
-
    #. For the detected sources, :py:class:`deblend <lsst.meas.deblender.SourceDeblendTask>`, :py:class:`measure <lsst.meas.base.sfm.SingleFrameMeasurementTask>`, aperture correct, and set flags based on blendedness, footprint size, and other properties.
 
    #. Select non-"bad" flagged, unresolved, :math:`S/N >= 10`, isolated sources to pass to the subsequent calibration steps and to be saved as the ``initial_stars_detector`` and ``initial_stars_footprints_detector`` output catalogs. Note that these catalogs do not have sky coordinates or calibrated fluxes: those are computed at a later step.
