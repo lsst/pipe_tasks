@@ -116,9 +116,9 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         dtype = [('sourceId', 'i8'),
                  ('ra', 'f8'),
                  ('dec', 'f8'),
-                 ('apFlux_12_0_instFlux', 'f4'),
-                 ('apFlux_12_0_instFluxErr', 'f4'),
-                 ('apFlux_12_0_instFlux_flag', '?'),
+                 ('normCompGaussianFlux_instFlux', 'f4'),
+                 ('normCompGaussianFlux_instFluxErr', 'f4'),
+                 ('normCompGaussianFlux_instFlux_flag', '?'),
                  ('extendedness', 'f4'),
                  ('sizeExtendedness', 'f4'),
                  ('detect_isPrimary', bool),
@@ -173,8 +173,8 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                 table['sourceId'] = np.arange(nstar) + id_counter
                 table['ra'] = ras
                 table['dec'] = decs
-                table['apFlux_12_0_instFlux'] = 100.0
-                table['apFlux_12_0_instFluxErr'] = 1.0
+                table['normCompGaussianFlux_instFlux'] = 100.0
+                table['normCompGaussianFlux_instFluxErr'] = 1.0
                 table['physical_filter'] = filtername
                 table['band'] = band
                 table['extra_column'] = np.ones(nstar)
@@ -184,7 +184,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
 
                 if i == 0:
                     # Make one star have low s/n
-                    table['apFlux_12_0_instFlux'][0] = 1.0
+                    table['normCompGaussianFlux_instFlux'][0] = 1.0
 
                 df = pd.DataFrame(table)
                 df.set_index('sourceId', inplace=True)
@@ -303,7 +303,8 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                                                                              self.data_ref_dict)
 
         # Make sure we don't have any low s/n sources.
-        sn_min = np.min(source_cat['apFlux_12_0_instFlux']/source_cat['apFlux_12_0_instFluxErr'])
+        sn_min = np.min(source_cat['normCompGaussianFlux_instFlux']
+                        / source_cat['normCompGaussianFlux_instFluxErr'])
         self.assertGreater(sn_min, 10.0)
 
         # And make sure they are all within the tract outer boundary.
