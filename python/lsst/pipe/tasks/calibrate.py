@@ -50,7 +50,10 @@ class _EmptyTargetTask(pipeBase.PipelineTask):
     ConfigClass = pipeBase.PipelineTaskConfig
 
     def __init__(self, **kwargs) -> None:
-        raise NotImplementedError("CreateSummaryMetrics must be retargeted")
+        raise NotImplementedError(
+            "doCreateSummaryMetrics is set to True, in which case"
+            "CreateSummaryMetrics must be retargeted."
+        )
 
 
 class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instrument", "visit", "detector"),
@@ -312,7 +315,7 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
     doCreateSummaryMetrics = pexConfig.Field(
         dtype=bool,
         default=False,
-        doc="Run the subtask to create summary metrics, and then write those metrics?"
+        doc="Run the subtask to create summary metrics, and then write those metrics."
     )
     createSummaryMetrics = pexConfig.ConfigurableField(
         target=_EmptyTargetTask,
