@@ -355,6 +355,9 @@ flags:
    - base_CircularApertureFlux_50_0_flag
    - base_CircularApertureFlux_50_0_instFlux
    - base_CircularApertureFlux_50_0_instFluxErr
+   - base_NormalizedCompensatedGaussianFlux_flag
+   - base_NormalizedCompensatedGaussianFlux_instFlux
+   - base_NormalizedCompensatedGaussianFlux_instFluxErr
    - base_ClassificationExtendedness_flag
    - base_ClassificationSizeExtendedness_flag
    - base_FootprintArea_value
@@ -445,6 +448,7 @@ flag_rename_rules:
     - ['base_InvalidPsf_flag', 'invalidPsfFlag']
     - ['base_GaussianFlux', 'gaussianFlux']
     - ['base_CircularApertureFlux', 'apFlux']
+    - ['base_NormalizedCompensatedGaussianFlux', 'normCompGaussianFlux']
     - ['base_FootprintArea', 'footprintArea']
     - ['base_Jacobian', 'jacobian']
     - ['ext_shapeHSM_HsmPsfMomentsDebiased', 'iDebiasedPSF']
