@@ -36,6 +36,7 @@ from lsst.meas.algorithms import (
     SourceDetectionTask,
     MeasureApCorrTask,
     MeasureApCorrError,
+    NormalizedCalibrationFluxTask,
 )
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
 from lsst.meas.astrom import displayAstrometry
@@ -151,6 +152,15 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
         target=SingleFrameMeasurementTask,
         doc="Measure sources"
     )
+    doNormalizedCalibration = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Use normalized calibration flux (e.g. compensated gaussians)?",
+    )
+    normalizedCalibrationFlux = pexConfig.ConfigurableField(
+        target=NormalizedCalibrationFluxTask,
+        doc="Task to normalize the calibration flux (e.g. compensated gaussians).",
+    )
     doApCorr = pexConfig.Field(
         dtype=bool,
         default=True,
@@ -251,9 +261,12 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
             "base_GaussianFlux",
             "base_PsfFlux",
             "base_CircularApertureFlux",
+            "base_CompensatedGaussianFlux",
             "base_ClassificationSizeExtendedness",
         ]
         self.measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
+        self.measurement.algorithms["base_CompensatedGaussianFlux"].kernel_widths = [5]
+        self.measurement.algorithms["base_CompensatedGaussianFlux"].t = 1.5
 
     def validate(self):
         if self.doApCorr and not self.measurePsf:
@@ -324,6 +337,8 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         if self.config.doDeblend:
             self.makeSubtask("deblend", schema=self.schema)
         self.makeSubtask('measurement', schema=self.schema, algMetadata=self.algMetadata)
+        if self.config.doNormalizedCalibration:
+            self.makeSubtask('normalizedCalibrationFlux', schema=self.schema)
         if self.config.doApCorr:
             self.makeSubtask('measureApCorr', schema=self.schema)
             self.makeSubtask('applyApCorr', schema=self.schema)
@@ -427,7 +442,20 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         # if wanted
         self.measurement.run(measCat=dmeRes.sourceCat, exposure=dmeRes.exposure,
                              exposureId=idGenerator.catalog_id)
+
+        if self.config.doNormalizedCalibration:
+            normApCorrMap = self.normalizedCalibrationFlux.run(
+                exposure=dmeRes.exposure,
+                catalog=dmeRes.sourceCat,
+            ).ap_corr_map
+            dmeRes.exposure.info.setApCorrMap(normApCorrMap)
+        else:
+            normApCorrMap = None
+
         if self.config.doApCorr:
+            # This aperture correction is relative to slot_CalibFlux_instFlux
+            # which is now set to the normalized calibration flux if that
+            # has been run.
             try:
                 apCorrMap = self.measureApCorr.run(
                     exposure=dmeRes.exposure,
@@ -439,6 +467,10 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
                 # downstream.
                 dmeRes.exposure.info.setApCorrMap(None)
             else:
+                # Need to merge the aperture correction map from the normalization.
+                if normApCorrMap:
+                    for key in normApCorrMap:
+                        apCorrMap[key] = normApCorrMap[key]
                 dmeRes.exposure.info.setApCorrMap(apCorrMap)
                 self.applyApCorr.run(catalog=dmeRes.sourceCat, apCorrMap=exposure.getInfo().getApCorrMap())
 
