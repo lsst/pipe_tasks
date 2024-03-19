@@ -47,12 +47,19 @@ from .computeExposureSummaryStats import ComputeExposureSummaryStatsTask
 
 
 class _EmptyTargetTask(pipeBase.PipelineTask):
+    """
+    This is a placeholder target for CreateSummaryMetrics and must be retargeted at runtime.
+    CreateSummaryMetrics should target an analysis tool task, but that would, at the time
+    of writing, result in a circular import.
+
+    As a result, this class should not be used for anything else.
+    """
     ConfigClass = pipeBase.PipelineTaskConfig
 
     def __init__(self, **kwargs) -> None:
         raise NotImplementedError(
-            "doCreateSummaryMetrics is set to True, in which case"
-            "CreateSummaryMetrics must be retargeted."
+            "doCreateSummaryMetrics is set to True, in which case "
+            "createSummaryMetrics must be retargeted."
         )
 
 
