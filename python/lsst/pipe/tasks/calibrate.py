@@ -596,6 +596,8 @@ class CalibrateTask(pipeBase.PipelineTask):
                     s.set(self.skySourceKey, True)
         if self.config.doDeblend:
             self.deblend.run(exposure=exposure, sources=sourceCat)
+        if not sourceCat.isContiguous():
+            sourceCat = sourceCat.copy(deep=True)
         self.measurement.run(
             measCat=sourceCat,
             exposure=exposure,
