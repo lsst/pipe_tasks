@@ -46,6 +46,23 @@ from .photoCal import PhotoCalTask
 from .computeExposureSummaryStats import ComputeExposureSummaryStatsTask
 
 
+class _EmptyTargetTask(pipeBase.PipelineTask):
+    """
+    This is a placeholder target for CreateSummaryMetrics and must be retargeted at runtime.
+    CreateSummaryMetrics should target an analysis tool task, but that would, at the time
+    of writing, result in a circular import.
+
+    As a result, this class should not be used for anything else.
+    """
+    ConfigClass = pipeBase.PipelineTaskConfig
+
+    def __init__(self, **kwargs) -> None:
+        raise NotImplementedError(
+            "doCreateSummaryMetrics is set to True, in which case "
+            "createSummaryMetrics must be retargeted."
+        )
+
+
 class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instrument", "visit", "detector"),
                            defaultTemplates={}):
 
@@ -121,6 +138,13 @@ class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instru
         dimensions=("instrument", "visit", "detector"),
     )
 
+    outputSummaryMetrics = cT.Output(
+        doc="Summary metrics created by the calibration task",
+        name="calexpSummary_metrics",
+        storageClass="MetricMeasurementBundle",
+        dimensions=("instrument", "visit", "detector"),
+    )
+
     matches = cT.Output(
         doc="Source/refObj matches from the astrometry solver",
         name="srcMatch",
@@ -147,6 +171,9 @@ class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instru
             self.outputs.remove("matches")
         if config.doWriteMatchesDenormalized is False or config.doAstrometry is False:
             self.outputs.remove("matchesDenormalized")
+
+        if config.doCreateSummaryMetrics is False:
+            self.outputs.remove("outputSummaryMetrics")
 
 
 class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=CalibrateConnections):
@@ -291,6 +318,16 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
     computeSummaryStats = pexConfig.ConfigurableField(
         target=ComputeExposureSummaryStatsTask,
         doc="Subtask to run computeSummaryStats on exposure"
+    )
+    doCreateSummaryMetrics = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Run the subtask to create summary metrics, and then write those metrics."
+    )
+    createSummaryMetrics = pexConfig.ConfigurableField(
+        target=_EmptyTargetTask,
+        doc="Subtask to create metrics from the summary stats. This must be retargeted, likely to an"
+        "analysis_tools task such as CalexpSummaryMetrics."
     )
     doWriteExposure = pexConfig.Field(
         dtype=bool,
@@ -445,6 +482,8 @@ class CalibrateTask(pipeBase.PipelineTask):
                              schema=self.schema)
         if self.config.doComputeSummaryStats:
             self.makeSubtask('computeSummaryStats')
+            if self.config.doCreateSummaryMetrics:
+                self.makeSubtask('createSummaryMetrics')
 
         if initInputs is not None and (astromRefObjLoader is not None or photoRefObjLoader is not None):
             raise RuntimeError("PipelineTask form of this task should not be initialized with "
@@ -643,11 +682,14 @@ class CalibrateTask(pipeBase.PipelineTask):
             exposureId=idGenerator.catalog_id,
         )
 
+        summaryMetrics = None
         if self.config.doComputeSummaryStats:
             summary = self.computeSummaryStats.run(exposure=exposure,
                                                    sources=sourceCat,
                                                    background=background)
             exposure.getInfo().setSummaryStats(summary)
+            if self.config.doCreateSummaryMetrics:
+                summaryMetrics = self.createSummaryMetrics.run(data=summary.__dict__).metrics
 
         frame = getDebugFrame(self._display, "calibrate")
         if frame:
@@ -666,6 +708,7 @@ class CalibrateTask(pipeBase.PipelineTask):
             outputExposure=exposure,
             outputCat=sourceCat,
             outputBackground=background,
+            outputSummaryMetrics=summaryMetrics
         )
 
     def setMetadata(self, exposure, photoRes=None):
