@@ -76,9 +76,9 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
         storageClass="SourceCatalog",
     )
 
-    # TODO: We want some kind of flag on Exposures/Catalogs to make it obvious
-    # which components had failed to be computed/persisted
-    output_exposure = connectionTypes.Output(
+    # TODO DM-38732: We want some kind of flag on Exposures/Catalogs to make
+    # it obvious which components had failed to be computed/persisted.
+    exposure = connectionTypes.Output(
         doc="Photometrically calibrated exposure with fitted calibrations and summary statistics.",
         name="initial_pvi",
         storageClass="ExposureF",
@@ -408,6 +408,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
+        exposures = inputs.pop("exposures")
+
         id_generator = self.config.id_generator.apply(butlerQC.quantum.dataId)
 
         astrometry_loader = lsst.meas.algorithms.ReferenceObjectLoader(
@@ -424,12 +426,33 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             config=self.config.photometry_ref_loader, log=self.log)
         self.photometry.match.setRefObjLoader(photometry_loader)
 
-        outputs = self.run(id_generator=id_generator, **inputs)
+        # This should not happen with a properly configured execution context.
+        assert not inputs, "runQuantum got more inputs than expected"
 
-        butlerQC.put(outputs, outputRefs)
+        # Specify the fields that `annotate` needs below, to ensure they
+        # exist, even as None.
+        result = pipeBase.Struct(exposure=None,
+                                 stars_footprints=None,
+                                 psf_stars_footprints=None,
+                                 )
+        try:
+            self.run(exposures=exposures, result=result, id_generator=id_generator)
+        except pipeBase.AlgorithmError as e:
+            error = pipeBase.AnnotatedPartialOutputsError.annotate(
+                e,
+                self,
+                result.exposure,
+                result.psf_stars_footprints,
+                result.stars_footprints,
+                log=self.log
+            )
+            butlerQC.put(result, outputRefs)
+            raise error from e
+
+        butlerQC.put(result, outputRefs)
 
     @timeMethod
-    def run(self, *, exposures, id_generator=None):
+    def run(self, *, exposures, id_generator=None, result=None):
         """Find stars and perform psf measurement, then do a deeper detection
         and measurement and calibrate astrometry and photometry from that.
 
@@ -442,13 +465,17 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             before doing further processing.
         id_generator : `lsst.meas.base.IdGenerator`, optional
             Object that generates source IDs and provides random seeds.
+        result : `lsst.pipe.base.Struct`, optional
+            Result struct that is modified to allow saving of partial outputs
+            for some failure conditions. If the task completes successfully,
+            this is also returned.
 
         Returns
         -------
         result : `lsst.pipe.base.Struct`
             Results as a struct with attributes:
 
-            ``output_exposure``
+            ``exposure``
                 Calibrated exposure, with pixels in nJy units.
                 (`lsst.afw.image.Exposure`)
             ``stars``
@@ -477,40 +504,44 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 Reference catalog stars matches used in the photometric fit.
                 (`list` [`lsst.afw.table.ReferenceMatch`] or `lsst.afw.table.BaseCatalog`)
         """
+        if result is None:
+            result = pipeBase.Struct()
         if id_generator is None:
             id_generator = lsst.meas.base.IdGenerator()
 
-        exposure = self._handle_snaps(exposures)
+        result.exposure = self._handle_snaps(exposures)
 
         # TODO remove on DM-43083: work around the fact that we don't want
         # to run streak detection in this task in production.
-        exposure.mask.addMaskPlane("STREAK")
+        result.exposure.mask.addMaskPlane("STREAK")
 
-        psf_stars, background, candidates = self._compute_psf(exposure, id_generator)
+        result.psf_stars_footprints, result.background, candidates = self._compute_psf(result.exposure,
+                                                                                       id_generator)
+        result.psf_stars = result.psf_stars_footprints.asAstropy()
 
-        self._measure_aperture_correction(exposure, psf_stars)
+        self._measure_aperture_correction(result.exposure, result.psf_stars)
 
-        stars = self._find_stars(exposure, background, id_generator)
-        self._match_psf_stars(psf_stars, stars)
+        result.stars_footprints = self._find_stars(result.exposure, result.background, id_generator)
+        self._match_psf_stars(result.psf_stars_footprints, result.stars_footprints)
+        result.stars = result.stars_footprints.asAstropy()
 
-        astrometry_matches, astrometry_meta = self._fit_astrometry(exposure, stars)
-        stars, photometry_matches, photometry_meta, photo_calib = self._fit_photometry(exposure, stars)
-
-        self._summarize(exposure, stars, background)
-
+        astrometry_matches, astrometry_meta = self._fit_astrometry(result.exposure, result.stars_footprints)
         if self.config.optional_outputs:
-            astrometry_matches = lsst.meas.astrom.denormalizeMatches(astrometry_matches, astrometry_meta)
-            photometry_matches = lsst.meas.astrom.denormalizeMatches(photometry_matches, photometry_meta)
+            result.astrometry_matches = lsst.meas.astrom.denormalizeMatches(astrometry_matches,
+                                                                            astrometry_meta)
 
-        return pipeBase.Struct(output_exposure=exposure,
-                               stars_footprints=stars,
-                               stars=stars.asAstropy(),
-                               psf_stars_footprints=psf_stars,
-                               psf_stars=psf_stars.asAstropy(),
-                               background=background,
-                               applied_photo_calib=photo_calib,
-                               astrometry_matches=astrometry_matches,
-                               photometry_matches=photometry_matches)
+        result.stars_footprints, photometry_matches, \
+            photometry_meta, result.applied_photo_calib = self._fit_photometry(result.exposure,
+                                                                               result.stars_footprints)
+        # fit_photometry returns a new catalog, so we need a new astropy table view.
+        result.stars = result.stars_footprints.asAstropy()
+        if self.config.optional_outputs:
+            result.photometry_matches = lsst.meas.astrom.denormalizeMatches(photometry_matches,
+                                                                            photometry_meta)
+
+        self._summarize(result.exposure, result.stars_footprints, result.background)
+
+        return result
 
     def _handle_snaps(self, exposure):
         """Combine two snaps into one exposure, or return a single exposure.

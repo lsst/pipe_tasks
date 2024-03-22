@@ -20,6 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import unittest
+from unittest import mock
 import tempfile
 
 import astropy.units as u
@@ -27,6 +28,7 @@ from astropy.coordinates import SkyCoord
 import numpy as np
 
 import lsst.afw.image as afwImage
+import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.daf.base
 import lsst.daf.butler
@@ -150,16 +152,24 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # re-estimation during source detection.
         self.assertEqual(len(result.background), 4)
 
+        # Both afw and astropy psf_stars catalogs should be populated.
+        self.assertEqual(result.psf_stars["calib_psf_used"].sum(), 3)
+        self.assertEqual(result.psf_stars_footprints["calib_psf_used"].sum(), 3)
+
         # Check that the summary statistics are reasonable.
-        summary = result.output_exposure.info.getSummaryStats()
+        summary = result.exposure.info.getSummaryStats()
         self.assertFloatsAlmostEqual(summary.psfSigma, 2.0, rtol=1e-2)
         self.assertFloatsAlmostEqual(summary.ra, self.sky_center.getRa().asDegrees(), rtol=1e-7)
         self.assertFloatsAlmostEqual(summary.dec, self.sky_center.getDec().asDegrees(), rtol=1e-7)
 
+        # Should have finite sky coordinates in the afw and astropy catalogs.
+        self.assertTrue(np.isfinite(result.stars_footprints["coord_ra"]).all())
+        self.assertTrue(np.isfinite(result.stars["coord_ra"]).all())
+
         # Returned photoCalib should be the applied value, not the ==1 one on the exposure.
         self.assertFloatsAlmostEqual(result.applied_photo_calib.getCalibrationMean(),
                                      self.photo_calib, rtol=2e-3)
-        # Should have flux/magnitudes in the afw and astropy catalogs
+        # Should have calibrated flux/magnitudes in the afw and astropy catalogs
         self.assertIn("slot_PsfFlux_flux", result.stars_footprints.schema)
         self.assertIn("slot_PsfFlux_mag", result.stars_footprints.schema)
         self.assertEqual(result.stars["slot_PsfFlux_flux"].unit, u.nJy)
@@ -396,7 +406,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
     def setUp(self):
         instrument = "testCam"
         exposure0 = 101
-        exposure1 = 101
+        exposure1 = 102
         visit = 100101
         detector = 42
 
@@ -412,10 +422,10 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.repo.registry.syncDimensionData("instrument", instrumentRecord)
 
         # dataIds for fake data
+        butlerTests.addDataIdValue(self.repo, "detector", detector)
         butlerTests.addDataIdValue(self.repo, "exposure", exposure0)
         butlerTests.addDataIdValue(self.repo, "exposure", exposure1)
         butlerTests.addDataIdValue(self.repo, "visit", visit)
-        butlerTests.addDataIdValue(self.repo, "detector", detector)
 
         # inputs
         butlerTests.addDatasetType(self.repo, "postISRCCD", {"instrument", "exposure", "detector"},
@@ -465,6 +475,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         # put empty data
         self.butler = butlerTests.makeTestCollection(self.repo)
         self.butler.put(afwImage.ExposureF(), "postISRCCD", self.exposure0_id)
+        self.butler.put(afwImage.ExposureF(), "postISRCCD", self.exposure1_id)
         self.butler.put(afwTable.SimpleCatalog(), "gaia_dr3_20230707", self.htm_id)
         self.butler.put(afwTable.SimpleCatalog(), "ps1_pv3_3pi_20170110", self.htm_id)
 
@@ -481,7 +492,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              "astrometry_ref_cat": [self.htm_id],
              "photometry_ref_cat": [self.htm_id],
              # outputs
-             "output_exposure": self.visit_id,
+             "exposure": self.visit_id,
              "stars": self.visit_id,
              "stars_footprints": self.visit_id,
              "background": self.visit_id,
@@ -498,7 +509,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr3_20230707")
         self.assertEqual(task.photometry.match.refObjLoader.name, "ps1_pv3_3pi_20170110")
         # Check that the proper kwargs are passed to run().
-        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures", "id_generator"})
+        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures", "result", "id_generator"})
 
     def test_runQuantum_2_snaps(self):
         task = CalibrateImageTask()
@@ -510,7 +521,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              "astrometry_ref_cat": [self.htm_id],
              "photometry_ref_cat": [self.htm_id],
              # outputs
-             "output_exposure": self.visit_id,
+             "exposure": self.visit_id,
              "stars": self.visit_id,
              "stars_footprints": self.visit_id,
              "background": self.visit_id,
@@ -527,7 +538,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr3_20230707")
         self.assertEqual(task.photometry.match.refObjLoader.name, "ps1_pv3_3pi_20170110")
         # Check that the proper kwargs are passed to run().
-        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures", "id_generator"})
+        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures", "result", "id_generator"})
 
     def test_runQuantum_no_optional_outputs(self):
         config = CalibrateImageTask.ConfigClass()
@@ -541,7 +552,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              "astrometry_ref_cat": [self.htm_id],
              "photometry_ref_cat": [self.htm_id],
              # outputs
-             "output_exposure": self.visit_id,
+             "exposure": self.visit_id,
              "stars": self.visit_id,
              "stars_footprints": self.visit_id,
              "applied_photo_calib": self.visit_id,
@@ -553,13 +564,87 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr3_20230707")
         self.assertEqual(task.photometry.match.refObjLoader.name, "ps1_pv3_3pi_20170110")
         # Check that the proper kwargs are passed to run().
-        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures", "id_generator"})
+        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures", "result", "id_generator"})
 
     def test_lintConnections(self):
         """Check that the connections are self-consistent.
         """
         Connections = CalibrateImageTask.ConfigClass.ConnectionsClass
         lsst.pipe.base.testUtils.lintConnections(Connections)
+
+    def test_runQuantum_exception(self):
+        """Test exception handling in runQuantum.
+        """
+        task = CalibrateImageTask()
+        lsst.pipe.base.testUtils.assertValidInitOutput(task)
+
+        quantum = lsst.pipe.base.testUtils.makeQuantum(
+            task, self.butler, self.visit_id,
+            {"exposures": [self.exposure0_id],
+             "astrometry_ref_cat": [self.htm_id],
+             "photometry_ref_cat": [self.htm_id],
+             # outputs
+             "exposure": self.visit_id,
+             "stars": self.visit_id,
+             "stars_footprints": self.visit_id,
+             "background": self.visit_id,
+             "psf_stars": self.visit_id,
+             "psf_stars_footprints": self.visit_id,
+             "applied_photo_calib": self.visit_id,
+             "initial_pvi_background": self.visit_id,
+             "astrometry_matches": self.visit_id,
+             "photometry_matches": self.visit_id,
+             })
+
+        # A generic exception should raise directly.
+        msg = "mocked run exception"
+        with (
+            mock.patch.object(task, "run", side_effect=ValueError(msg)),
+            self.assertRaisesRegex(ValueError, "mocked run exception")
+        ):
+            lsst.pipe.base.testUtils.runTestQuantum(task, self.butler, quantum, mockRun=False)
+
+        # A AlgorimthError should write annotated partial outputs.
+        error = lsst.meas.algorithms.MeasureApCorrError(name="test", nSources=100, ndof=101)
+
+        def mock_run(exposures, result=None, id_generator=None):
+            """Mock success through compute_psf, but failure after.
+            """
+            result.exposure = afwImage.ExposureF(10, 10)
+            result.psf_stars_footprints = afwTable.SourceCatalog()
+            result.psf_stars = afwTable.SourceCatalog().asAstropy()
+            result.background = afwMath.BackgroundList()
+            raise error
+
+        with (
+            mock.patch.object(task, "run", side_effect=mock_run),
+            self.assertRaises(lsst.pipe.base.AnnotatedPartialOutputsError),
+            lsst.log.UsePythonLogging(),  # so that assertLogs works with lsst.log
+        ):
+            with self.assertLogs("lsst.calibrateImage", level="ERROR") as cm:
+                lsst.pipe.base.testUtils.runTestQuantum(task,
+                                                        self.butler,
+                                                        quantum,
+                                                        mockRun=False)
+
+        logged = "\n".join(cm.output)
+        self.assertIn("Task failed with only partial outputs", logged)
+        self.assertIn("MeasureApCorrError", logged)
+
+        # NOTE: This is an integration test of afw Exposure & SourceCatalog
+        # metadata with the error annotation system in pipe_base.
+        # Check that we did get the annotated partial outputs...
+        pvi = self.butler.get("initial_pvi", self.visit_id)
+        self.assertIn("Unable to measure aperture correction", pvi.metadata["failure.message"])
+        self.assertIn("MeasureApCorrError", pvi.metadata["failure.type"])
+        self.assertEqual(pvi.metadata["failure.metadata.ndof"], 101)
+        stars = self.butler.get("initial_psf_stars_footprints_detector", self.visit_id)
+        self.assertIn("Unable to measure aperture correction", stars.metadata["failure.message"])
+        self.assertIn("MeasureApCorrError", stars.metadata["failure.type"])
+        self.assertEqual(stars.metadata["failure.metadata.ndof"], 101)
+        # ... but not the un-produced outputs.
+        with self.assertRaises(FileNotFoundError):
+            self.butler.get("initial_stars_footprints_detector", self.visit_id)
 
 
 def setup_module(module):
