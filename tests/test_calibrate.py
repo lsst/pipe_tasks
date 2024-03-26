@@ -216,7 +216,9 @@ class CalibrateTaskTestCaseWithButler(lsst.utils.tests.TestCase):
         calibTask = CalibrateTask(config=calibConfig)
         with self.assertLogs(level=logging.WARNING) as cm:
             _ = calibTask.run(charImResults.exposure)
-        self.assertIn("Image does not have valid aperture correction map", cm.output[0])
+        # Other warnings may also be emitted.
+        warnings = '\n'.join(cm.output)
+        self.assertIn("Image does not have valid aperture correction map", warnings)
 
 
 def setup_module(module):
