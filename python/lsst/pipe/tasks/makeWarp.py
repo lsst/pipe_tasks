@@ -48,10 +48,7 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
                           defaultTemplates={"coaddName": "deep",
                                             "skyWcsName": "gbdesAstrometricFit",
                                             "photoCalibName": "fgcm",
-                                            "calexpType": ""},
-                          # TODO: remove on DM-39854.
-                          deprecatedTemplates={"skyWcsName": "Deprecated; will be removed after v26.",
-                                               "photoCalibName": "Deprecated; will be removed after v26."}):
+                                            "calexpType": ""}):
     calExpList = connectionTypes.Input(
         doc="Input exposures to be resampled and optionally PSF-matched onto a SkyMap projection/patch",
         name="{calexpType}calexp",
@@ -80,54 +77,6 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="SkyMap",
         dimensions=("skymap",),
     )
-    externalSkyWcsTractCatalog = connectionTypes.Input(
-        doc=("Per-tract, per-visit wcs calibrations.  These catalogs use the detector "
-             "id for the catalog id, sorted on id for fast lookup."),
-        name="{skyWcsName}SkyWcsCatalog",
-        storageClass="ExposureCatalog",
-        dimensions=("instrument", "visit", "tract"),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
-    )
-    externalSkyWcsGlobalCatalog = connectionTypes.Input(
-        doc=("Per-visit wcs calibrations computed globally (with no tract information). "
-             "These catalogs use the detector id for the catalog id, sorted on id for "
-             "fast lookup."),
-        name="finalVisitSummary",
-        storageClass="ExposureCatalog",
-        dimensions=("instrument", "visit"),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
-    )
-    externalPhotoCalibTractCatalog = connectionTypes.Input(
-        doc=("Per-tract, per-visit photometric calibrations.  These catalogs use the "
-             "detector id for the catalog id, sorted on id for fast lookup."),
-        name="{photoCalibName}PhotoCalibCatalog",
-        storageClass="ExposureCatalog",
-        dimensions=("instrument", "visit", "tract"),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
-    )
-    externalPhotoCalibGlobalCatalog = connectionTypes.Input(
-        doc=("Per-visit photometric calibrations computed globally (with no tract "
-             "information).  These catalogs use the detector id for the catalog id, "
-             "sorted on id for fast lookup."),
-        name="finalVisitSummary",
-        storageClass="ExposureCatalog",
-        dimensions=("instrument", "visit"),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
-    )
-    finalizedPsfApCorrCatalog = connectionTypes.Input(
-        doc=("Per-visit finalized psf models and aperture correction maps. "
-             "These catalogs use the detector id for the catalog id, "
-             "sorted on id for fast lookup."),
-        name="finalVisitSummary",
-        storageClass="ExposureCatalog",
-        dimensions=("instrument", "visit"),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of 'visitSummary'.  Will be removed after v26.",
-    )
     direct = connectionTypes.Output(
         doc=("Output direct warped exposure (previously called CoaddTempExp), produced by resampling ",
              "calexps onto the skyMap patch geometry."),
@@ -142,30 +91,6 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "visit", "instrument"),
     )
-    wcsList = connectionTypes.Input(
-        doc="WCSs of calexps used by SelectImages subtask to determine if the calexp overlaps the patch",
-        name="{calexpType}calexp.wcs",
-        storageClass="Wcs",
-        dimensions=("instrument", "visit", "detector"),
-        multiple=True,
-        # TODO: remove on DM-39854
-        deprecated=(
-            "Deprecated in favor of the 'visitSummary' connection (and already ignored). "
-            "Will be removed after v26."
-        )
-    )
-    bboxList = connectionTypes.Input(
-        doc="BBoxes of calexps used by SelectImages subtask to determine if the calexp overlaps the patch",
-        name="{calexpType}calexp.bbox",
-        storageClass="Box2I",
-        dimensions=("instrument", "visit", "detector"),
-        multiple=True,
-        # TODO: remove on DM-39854
-        deprecated=(
-            "Deprecated in favor of the 'visitSummary' connection (and already ignored). "
-            "Will be removed after v26."
-        )
-    )
     visitSummary = connectionTypes.Input(
         doc="Input visit-summary catalog with updated calibration objects.",
         name="finalVisitSummary",
@@ -178,37 +103,10 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
             del self.backgroundList
         if not config.doApplySkyCorr:
             del self.skyCorrList
-        # TODO: remove all "external" checks on DM-39854
-        if config.doApplyExternalSkyWcs:
-            if config.useGlobalExternalSkyWcs:
-                del self.externalSkyWcsTractCatalog
-            else:
-                del self.externalSkyWcsGlobalCatalog
-        else:
-            del self.externalSkyWcsTractCatalog
-            del self.externalSkyWcsGlobalCatalog
-        if config.doApplyExternalPhotoCalib:
-            if config.useGlobalExternalPhotoCalib:
-                del self.externalPhotoCalibTractCatalog
-            else:
-                del self.externalPhotoCalibGlobalCatalog
-        else:
-            del self.externalPhotoCalibTractCatalog
-            del self.externalPhotoCalibGlobalCatalog
-        if not config.doApplyFinalizedPsf:
-            del self.finalizedPsfApCorrCatalog
         if not config.makeDirect:
             del self.direct
         if not config.makePsfMatched:
             del self.psfMatched
-        # We always drop the deprecated wcsList and bboxList connections,
-        # since we can always get equivalents from the visitSummary dataset.
-        # Removing them here avoids the deprecation warning, but we do have
-        # to deprecate rather than immediately remove them to keep old configs
-        # usable for a bit.
-        # TODO: remove on DM-39854
-        del self.bboxList
-        del self.wcsList
 
 
 class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
