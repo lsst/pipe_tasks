@@ -145,8 +145,6 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
         doc=(
             "If True, use the PSF model and aperture corrections from the 'visitSummary' connection. "
             "If False, use the PSF model and aperture corrections from the 'exposure' connection. "
-            # TODO: remove this next sentence on DM-39854.
-            "The finalizedPsfApCorrCatalog connection (if enabled) takes precedence over either."
         ),
         dtype=bool,
         default=True,
@@ -165,13 +163,6 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
         dtype=bool,
         default=False,
         doc="Apply sky correction?",
-    )
-    doApplyFinalizedPsf = pexConfig.Field(
-        doc="Whether to apply finalized psf models and aperture correction map.",
-        dtype=bool,
-        default=False,
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of useVisitSummaryPsf.  Will be removed after v26.",
     )
     idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
@@ -256,27 +247,6 @@ class MakeWarpTask(CoaddBaseTask):
             wcsList.append(row.getWcs())
         inputs["bboxList"] = bboxList
         inputs["wcsList"] = wcsList
-
-        if self.config.doApplyExternalSkyWcs:
-            if self.config.useGlobalExternalSkyWcs:
-                externalSkyWcsCatalog = inputs.pop("externalSkyWcsGlobalCatalog")
-            else:
-                externalSkyWcsCatalog = inputs.pop("externalSkyWcsTractCatalog")
-        else:
-            externalSkyWcsCatalog = None
-
-        if self.config.doApplyExternalPhotoCalib:
-            if self.config.useGlobalExternalPhotoCalib:
-                externalPhotoCalibCatalog = inputs.pop("externalPhotoCalibGlobalCatalog")
-            else:
-                externalPhotoCalibCatalog = inputs.pop("externalPhotoCalibTractCatalog")
-        else:
-            externalPhotoCalibCatalog = None
-
-        if self.config.doApplyFinalizedPsf:
-            finalizedPsfApCorrCatalog = inputs.pop("finalizedPsfApCorrCatalog")
-        else:
-            finalizedPsfApCorrCatalog = None
 
         # Do an initial selection on inputs with complete wcs/photoCalib info.
         # Qualifying calexps will be read in the following call.
