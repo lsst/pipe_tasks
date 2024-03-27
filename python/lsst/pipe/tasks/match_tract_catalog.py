@@ -32,6 +32,7 @@ from lsst.skymap import BaseSkyMap
 
 from abc import ABC, abstractmethod
 
+import astropy.table as apTab
 import pandas as pd
 from typing import Tuple, Set
 
@@ -70,13 +71,13 @@ class MatchTractCatalogConnections(
     cat_output_ref = cT.Output(
         doc="Reference matched catalog with indices of target matches",
         name="match_ref_{name_input_cat_ref}_{name_input_cat_target}",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("tract", "skymap"),
     )
     cat_output_target = cT.Output(
         doc="Target matched catalog with indices of reference matches",
         name="match_target_{name_input_cat_ref}_{name_input_cat_target}",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("tract", "skymap"),
     )
 
@@ -217,6 +218,6 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
         output = self.match_tract_catalog.run(catalog_ref, catalog_target, wcs=wcs)
         if output.exceptions:
             self.log.warn('Exceptions: %s', output.exceptions)
-        retStruct = pipeBase.Struct(cat_output_ref=output.cat_output_ref,
-                                    cat_output_target=output.cat_output_target)
+        retStruct = pipeBase.Struct(cat_output_ref=apTab.Table.from_pandas(output.cat_output_ref),
+                                    cat_output_target=apTab.Table.from_pandas(output.cat_output_target))
         return retStruct
