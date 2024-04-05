@@ -27,7 +27,7 @@ __all__ = (
     "PrettyPictureConfig",
     "PrettyMosaicTask",
     "PrettyMosaicConnections",
-    "PrettyMosaicConfig"
+    "PrettyMosaicConfig",
 )
 
 from collections.abc import Iterable, Mapping
@@ -43,7 +43,7 @@ from lsst.pipe.base import (
     PipelineTaskConfig,
     PipelineTaskConnections,
     Struct,
-    InMemoryDatasetHandle
+    InMemoryDatasetHandle,
 )
 import cv2
 
@@ -52,6 +52,7 @@ from lsst.geom import Box2I, Point2I, Extent2I
 from lsst.afw.image import Exposure, Mask
 
 from ._plugins import plugins
+from ._gp_standin.interpolate_over import InterpolateOverDefectGaussianProcess
 from ._colorMapper import lsstRGB
 
 import tempfile
@@ -90,7 +91,7 @@ class PrettyPictureConnections(
         doc="A Mask corresponding to the fused masks of the input channels",
         name="rgbPicture_mask",
         storageClass="Mask",
-        dimensions=("tract", "patch", "skymap")
+        dimensions=("tract", "patch", "skymap"),
     )
 
 
@@ -101,6 +102,7 @@ class ChannelRGBConfig(Config):
     self.g = 0, self.b = 0. If the channel was cyan the values would be
     self.r = 0, self.g = 1, self.b = 1.
     """
+
     r = Field[float](doc="The amount of red contained in this channel")
     g = Field[float](doc="The amount of green contained in this channel")
     b = Field[float](doc="The amount of blue contained in this channel")
@@ -108,29 +110,26 @@ class ChannelRGBConfig(Config):
     def validate(self):
         for f in (self.r, self.g, self.b):
             if f < 0 or f > 1:
-                raise ValueError(f'Field {f} can not have a value less than 0 or greater than one')
+                raise ValueError(f"Field {f} can not have a value less than 0 or greater than one")
         return super().validate()
 
 
 class LumConfig(Config):
-    """Configurations to control how luminance is mapped in the rgb code
-    """
+    """Configurations to control how luminance is mapped in the rgb code"""
+
     stretch = Field[float](doc="The stretch of the luminance in asinh", default=50)
     max = Field[float](doc="The maximum allowed luminance on a 0 to 100 scale", default=85)
     A = Field[float](doc="A scaling factor to apply post asinh stretching", default=0.9)
     b0 = Field[float](doc="A linear offset to apply post asinh stretching", default=0.05)
     minimum = Field[float](
-        doc="The minimum intensity value after stretch, values lower will be set to zero",
-        default=0
+        doc="The minimum intensity value after stretch, values lower will be set to zero", default=0
     )
-    floor = Field[float](
-        doc="A scaling factor to apply to the luminance before asinh scaling",
-        default=0.0)
+    floor = Field[float](doc="A scaling factor to apply to the luminance before asinh scaling", default=0.0)
 
 
 class LocalContrastConfig(Config):
-    """Configuration to control local contrast enhancement of the luminance channel.
-    """
+    """Configuration to control local contrast enhancement of the luminance channel."""
+
     doLocalContrast = Field[bool](
         doc="Apply local contrast enhancements to the luminance channel", default=True
     )
@@ -138,42 +137,48 @@ class LocalContrastConfig(Config):
     shadows = Field[float](doc="Adjustment factor for the shadows", default=0.4)
     clarity = Field[float](doc="Amount of clarity to apply to contrast modification", default=0.2)
     sigma = Field[float](
-        doc="The scale size of what is considered local in the contrast enhancement",
-        default=20
+        doc="The scale size of what is considered local in the contrast enhancement", default=20
     )
 
 
 class ScaleColorConfig(Config):
-    """Controls how colors are scaled in the rgb generation process.
-    """
+    """Controls how colors are scaled in the rgb generation process."""
+
     saturation = Field[float](
-        doc=("The overall saturation factor with the scaled luminance between zero and one. "
-             "A value of one is not recommended as it makes bright pixels very saturated"),
-        default=0.5
+        doc=(
+            "The overall saturation factor with the scaled luminance between zero and one. "
+            "A value of one is not recommended as it makes bright pixels very saturated"
+        ),
+        default=0.5,
     )
     maxChroma = Field[float](
-        doc=("The maximum chromaticity in the CIELCh color space, large "
-             "values will cause bright pixels to fall outside the RGB gamut."),
-        default=50.0
+        doc=(
+            "The maximum chromaticity in the CIELCh color space, large "
+            "values will cause bright pixels to fall outside the RGB gamut."
+        ),
+        default=50.0,
     )
 
 
 class RemapBoundsConfig(Config):
-    """ Remaps input images to a known range of values.
+    """Remaps input images to a known range of values.
 
     Often input images are not mapped to any defined range of values
     (for instance if they are in count units). This controls how the units of
     and image will be mapped to a zero to one range by determining an upper
     bound.
     """
+
     quant = Field[float](
-        doc=("The maximum values of each of the three channels will be multiplied by this factor to "
-             "determine the maximum flux of the image, values larger than this quantity will be clipped."),
-        default=0.8
+        doc=(
+            "The maximum values of each of the three channels will be multiplied by this factor to "
+            "determine the maximum flux of the image, values larger than this quantity will be clipped."
+        ),
+        default=0.8,
     )
     absMax = Field[float](
         doc="Instead of determining the maximum value from the image, use this fixed value instead",
-        optional=True
+        optional=True,
     )
 
 
@@ -182,7 +187,7 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         doc="A dictionary that maps band names to their rgb channel configurations",
         keytype=str,
         itemtype=ChannelRGBConfig,
-        default={}
+        default={},
     )
     imageRemappingConfig = ConfigField[RemapBoundsConfig](
         doc="Configuration controlling channel normalization process"
@@ -197,9 +202,7 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         doc="Configuration to control the color scaling process in RGB image production"
     )
     cieWhitePoint = ListField[float](
-        doc="The white point of the input arrays in ciexz coordinates",
-        maxLength=2,
-        default=[0.28, 0.28]
+        doc="The white point of the input arrays in ciexz coordinates", maxLength=2, default=[0.28, 0.28]
     )
     arrayType = ChoiceField[str](
         doc="The dataset type for the output image array",
@@ -207,14 +210,14 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         allowed={
             "uint8": "Use 8 bit arrays, 255 max",
             "uint16": "Use 16 bit arrays, 65535 max",
-            "half": "Use 16 bit float arrays, 1 max"
-        }
+            "half": "Use 16 bit float arrays, 1 max",
+        },
     )
 
     def setDefaults(self):
-        self.channelConfig['i'] = ChannelRGBConfig(r=1, g=0, b=0)
-        self.channelConfig['r'] = ChannelRGBConfig(r=0, g=1, b=0)
-        self.channelConfig['g'] = ChannelRGBConfig(r=0, g=0, b=1)
+        self.channelConfig["i"] = ChannelRGBConfig(r=1, g=0, b=0)
+        self.channelConfig["r"] = ChannelRGBConfig(r=0, g=1, b=0)
+        self.channelConfig["g"] = ChannelRGBConfig(r=0, g=0, b=1)
         return super().setDefaults()
 
 
@@ -224,16 +227,29 @@ class PrettyPictureTask(PipelineTask):
 
     config: ConfigClass
 
-    def run(
-        self,
-        images: Mapping[str, Exposure]
-    ) -> Struct:
+    def run(self, images: Mapping[str, Exposure]) -> Struct:
         channels = {}
         shape = (0, 0)
         jointMask: None | NDArray = None
         maskDict: Mapping[str, int] = {}
         for channel, imageExposure in images.items():
-            imageArray = imageExposure.image.array
+            # This is a hack until gp is in the stack natively, or until a
+            # plugin is made with a GP interpolation based on numpy arrays.
+            GP = InterpolateOverDefectGaussianProcess(
+                imageExposure.maskedImage,
+                defects=["SAT", "NO_DATA"],
+                fwhm=15,
+                block_size=40,
+                solver="treegp",
+                method="spanset",
+                bin_spacing=15,
+                use_binning=True,
+            )
+            # This modifies the MaskedImage in place
+            GP.interpolate_over_defects()
+            maskedImage = GP.maskedImage
+            imageArray = maskedImage.image.array
+            # run all the plugins designed for array based interaction
             for plug in plugins.channel():
                 imageArray = plug(
                     imageArray, imageExposure.mask.array, imageExposure.mask.getMaskPlaneDict()
@@ -255,11 +271,11 @@ class PrettyPictureTask(PipelineTask):
             mix = self.config.channelConfig[band]
             channelSum = mix.r + mix.g + mix.b
             if mix.r:
-                imageRArray += mix.r/channelSum*image
+                imageRArray += mix.r / channelSum * image
             if mix.g:
-                imageGArray += mix.g/channelSum*image
+                imageGArray += mix.g / channelSum * image
             if mix.b:
-                imageBArray += mix.b/channelSum*image
+                imageBArray += mix.b / channelSum * image
 
         # Ignore type because Exposures do in fact have a bbox, but it is c++ and
         # not typed.
@@ -271,7 +287,7 @@ class PrettyPictureTask(PipelineTask):
             remapBoundsKwargs=self.config.imageRemappingConfig.toDict(),
             scaleColorKWargs=self.config.colorConfig.toDict(),
             **(self.config.localContrastConfig.toDict()),
-            cieWhitePoint=tuple(self.config.cieWhitePoint)  # type: ignore
+            cieWhitePoint=tuple(self.config.cieWhitePoint),  # type: ignore
         )
 
         # Find the dataset type and thus the maximum values as well
@@ -299,9 +315,7 @@ class PrettyPictureTask(PipelineTask):
 
         # pack the joint mask back into a mask object
         lsstMask = Mask(
-            width=jointMask.shape[1],
-            height=jointMask.shape[0],
-            planeDefs=maskDict
+            width=jointMask.shape[1], height=jointMask.shape[0], planeDefs=maskDict
         )  # type: ignore
         lsstMask.array = jointMask
         return Struct(outputRGB=colorImage.astype(dtype), outputRGBMask=lsstMask)
@@ -322,7 +336,7 @@ class PrettyPictureTask(PipelineTask):
     ) -> dict[str, Exposure]:
         sortedImages: dict[str, Exposure] = {}
         for ref in refs:
-            key: str = cast(str, ref.dataId['band'])
+            key: str = cast(str, ref.dataId["band"])
             image = butler.get(ref)
             sortedImages[key] = image
         return sortedImages
@@ -332,8 +346,7 @@ class PrettyPictureTask(PipelineTask):
         temp = {}
         for key, array in kwargs.items():
             temp[key] = Exposure(
-                Box2I(Point2I(0, 0), Extent2I(*array.shape)),
-                dtype=array.dtype
+                Box2I(Point2I(0, 0), Extent2I(*array.shape)), dtype=array.dtype
             )  # type: ignore
             temp[key].image.array[:] = array
 
@@ -391,10 +404,10 @@ class PrettyMosaicTask(PipelineTask):
     config: ConfigClass
 
     def run(
-            self,
-            inputRGB: Iterable[DeferredDatasetHandle],
-            skyMap: BaseSkyMap,
-            inputRGBMask: Iterable[DeferredDatasetHandle]
+        self,
+        inputRGB: Iterable[DeferredDatasetHandle],
+        skyMap: BaseSkyMap,
+        inputRGBMask: Iterable[DeferredDatasetHandle],
     ) -> Struct:
         # create the bounding region
         newBox = Box2I()
@@ -402,8 +415,8 @@ class PrettyMosaicTask(PipelineTask):
         boxes = []
         for handle in inputRGB:
             dataId = handle.dataId
-            tractInfo: TractInfo = skyMap[dataId['tract']]
-            patchInfo: PatchInfo = tractInfo[dataId['patch']]
+            tractInfo: TractInfo = skyMap[dataId["tract"]]
+            patchInfo: PatchInfo = tractInfo[dataId["patch"]]
             bbox = patchInfo.getOuterBBox()
             boxes.append(bbox)
             newBox.include(bbox)
@@ -415,12 +428,12 @@ class PrettyMosaicTask(PipelineTask):
         for iterBox in boxes:
             localOrigin = iterBox.getBegin() - origin
             localOrigin = Point2I(
-                x=int(np.floor(localOrigin.x/self.config.binFactor)),
-                y=int(np.floor(localOrigin.y/self.config.binFactor))
+                x=int(np.floor(localOrigin.x / self.config.binFactor)),
+                y=int(np.floor(localOrigin.y / self.config.binFactor)),
             )
             localExtent = Extent2I(
-                x=int(np.floor(iterBox.getWidth()/self.config.binFactor)),
-                y=int(np.floor(iterBox.getHeight()/self.config.binFactor))
+                x=int(np.floor(iterBox.getWidth() / self.config.binFactor)),
+                y=int(np.floor(iterBox.getHeight() / self.config.binFactor)),
             )
             tmpBox = Box2I(localOrigin, localExtent)
             modifiedBoxes.append(tmpBox)
@@ -429,8 +442,8 @@ class PrettyMosaicTask(PipelineTask):
         # scale the container box
         newBoxOrigin = Point2I(0, 0)
         newBoxExtent = Extent2I(
-            x=int(np.floor(newBox.getWidth()/self.config.binFactor)),
-            y=int(np.floor(newBox.getHeight()/self.config.binFactor))
+            x=int(np.floor(newBox.getWidth() / self.config.binFactor)),
+            y=int(np.floor(newBox.getHeight() / self.config.binFactor)),
         )
         newBox = Box2I(newBoxOrigin, newBoxExtent)
 
@@ -450,16 +463,16 @@ class PrettyMosaicTask(PipelineTask):
             if consolidatedImage is None:
                 consolidatedImage = np.memmap(
                     self.imageHandle.name,
-                    mode='w+',
+                    mode="w+",
                     shape=(newBox.getHeight(), newBox.getWidth(), 3),
-                    dtype=rgb.dtype
+                    dtype=rgb.dtype,
                 )
             if consolidatedMask is None:
                 consolidatedMask = np.memmap(
                     self.maskHandle.name,
-                    mode='w+',
+                    mode="w+",
                     shape=(newBox.getHeight(), newBox.getWidth()),
-                    dtype=rgbMask.array.dtype
+                    dtype=rgbMask.array.dtype,
                 )
 
             if self.config.binFactor > 1:
@@ -469,15 +482,15 @@ class PrettyMosaicTask(PipelineTask):
                     rgb,
                     dst=consolidatedImage[*box.slices],
                     dsize=shape,
-                    fx=shape[0]/self.config.binFactor,
-                    fy=shape[1]/self.config.binFactor
+                    fx=shape[0] / self.config.binFactor,
+                    fy=shape[1] / self.config.binFactor,
                 )
                 rgbMask = cv2.resize(
                     rgbMask.array.astype(np.float32),
                     dst=consolidatedMask[*box.slices],
                     dsize=shape,
-                    fx=shape[0]/self.config.binFactor,
-                    fy=shape[1]/self.config.binFactor
+                    fx=shape[0] / self.config.binFactor,
+                    fy=shape[1] / self.config.binFactor,
                 )
             else:
                 consolidatedImage[*box.slices] = rgb
@@ -508,8 +521,7 @@ class PrettyMosaicTask(PipelineTask):
             self.maskHandle.close()
 
     def makeInputsFromArrays(
-            self,
-            inputs: Iterable[tuple[Mapping[str, Any], NDArray]]
+        self, inputs: Iterable[tuple[Mapping[str, Any], NDArray]]
     ) -> Iterable[DeferredDatasetHandle]:
         structuredInputs = []
         for dataId, array in inputs:
