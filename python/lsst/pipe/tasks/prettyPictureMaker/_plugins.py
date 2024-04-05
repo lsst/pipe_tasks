@@ -35,6 +35,7 @@ from lsst.afw.image import Mask
 if TYPE_CHECKING:
     from numpy.typing import NDArray
     from collections.abc import Mapping
+
     PLUGIN_TYPE = Callable[[NDArray, NDArray, Mapping[str, int]], NDArray]
 
 
@@ -61,7 +62,7 @@ class PluginsRegistry:
 
     def register(self, order: float, kind: PluginType) -> Callable:
         def wrapper(
-                func: Callable[[NDArray, NDArray, Mapping[str, int]], NDArray]
+            func: Callable[[NDArray, NDArray, Mapping[str, int]], NDArray]
         ) -> Callable[[NDArray, NDArray, Mapping[str, int]], NDArray]:
             match kind:
                 case PluginType.PARTIAL:
@@ -110,13 +111,15 @@ def fixChromaticStars(image: NDArray, mask: NDArray, maskDict: Mapping[str, int]
     return np.array((0, 0))
 
 
-@plugins.register(1, PluginType.PARTIAL)
+# @plugins.register(1, PluginType.PARTIAL)
 def fixNoData(image: NDArray, mask: NDArray, maskDict: Mapping[str, int]) -> NDArray:
     print("running mask fixup")
-    m = (mask & 2**maskDict['NO_DATA']).astype(bool)
+    m = (mask & 2 ** maskDict["NO_DATA"]).astype(bool)
     print("done making mask")
     # loop over arrays and apply, this supports more than 8 bit arrays
     for i in range(3):
-        image[:, :, i] = cv2.inpaint(image[:, :, i].astype(np.float32), m.astype(np.uint8), 3, cv2.INPAINT_TELEA).astype(image.dtype)
+        image[:, :, i] = cv2.inpaint(
+            image[:, :, i].astype(np.float32), m.astype(np.uint8), 3, cv2.INPAINT_TELEA
+        ).astype(image.dtype)
     print("done mask fixup")
     return image
