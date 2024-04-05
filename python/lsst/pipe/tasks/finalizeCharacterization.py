@@ -189,6 +189,7 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
 
         # Set up measurement defaults
         self.measurement.plugins.names = [
+            'base_FPPosition',
             'base_PsfFlux',
             'base_GaussianFlux',
             'modelfit_DoubleShapeletPsfApprox',
