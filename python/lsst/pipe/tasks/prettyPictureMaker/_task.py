@@ -118,7 +118,7 @@ class LumConfig(Config):
     stretch = Field[float](doc="The stretch of the luminance in asinh", default=50)
     max = Field[float](doc="The maximum allowed luminance on a 0 to 100 scale", default=85)
     A = Field[float](doc="A scaling factor to apply post asinh stretching", default=0.9)
-    b0 = Field[float](doc="A linear offset to apply post asinh stretching", default=0.5)
+    b0 = Field[float](doc="A linear offset to apply post asinh stretching", default=0.05)
     minimum = Field[float](
         doc="The minimum intensity value after stretch, values lower will be set to zero",
         default=0
