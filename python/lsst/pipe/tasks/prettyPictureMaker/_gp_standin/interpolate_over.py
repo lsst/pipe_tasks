@@ -1,6 +1,6 @@
 from tqdm import tqdm
 import numpy as np
-from gaussian_processes import (
+from .gaussian_processes import (
     GaussianProcessTreegp,
     GaussianProcessHODLRSolver,
     GaussianProcessGPyTorch,
