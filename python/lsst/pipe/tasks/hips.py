@@ -497,8 +497,8 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
     """A custom a `lsst.pipe.base.QuantumGraphBuilder` for running
     `HighResolutionHipsTask` only.
 
-    This is a temporary workaround for incomplete butler query support for
-    HEALPix dimensions.
+    This is a workaround for incomplete butler query support for HEALPix
+    dimensions.
 
     Parameters
     ----------
@@ -568,7 +568,9 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
         common_skypix_name = self.butler.dimensions.commonSkyPix.name
         common_skypix_pixelization = self.butler.dimensions.commonSkyPix.pixelization
 
-        # We will need all the pixels at the quantum resolution as well
+        # We will need all the pixels at the quantum resolution as well.
+        # '4' appears here frequently because it's the number of pixels at
+        # level N in a single pixel at level N.
         (hpx_dimension,) = (
             self.butler.dimensions.skypix_dimensions[d] for d in task_node.dimensions.names if d != "band"
         )
@@ -606,10 +608,9 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
                 where_terms.append(f"({common_skypix_name} >= cpx{n}a AND {common_skypix_name} <= cpx{n}b)")
                 bind[f"cpx{n}a"] = begin
                 bind[f"cpx{n}b"] = stop
-        if not self.where:
-            where = " OR ".join(where_terms)
-        else:
-            where = f"({self.where}) AND ({' OR '.join(where_terms)})"
+        where = " OR ".join(where_terms)
+        if self.where:
+            where = f"({self.where}) AND ({where})"
         # Query for input datasets with this constraint, and ask for expanded
         # data IDs because we want regions.  Immediately group this by patch so
         # we don't do later geometric stuff n_bands more times than we need to.
