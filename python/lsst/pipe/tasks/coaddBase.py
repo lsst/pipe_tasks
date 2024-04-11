@@ -55,12 +55,6 @@ class CoaddBaseConfig(pexConfig.Config):
         doc="Subtask that helps fill CoaddInputs catalogs added to the final Exposure",
         target=CoaddInputRecorderTask
     )
-    doPsfMatch = pexConfig.Field(
-        dtype=bool,
-        doc="Match to modelPsf? Sets makePsfMatched=True, makeDirect=False",
-        deprecated="This field is no longer used. Will be removed after v26.",  # TODO: DM-39841
-        default=False
-    )
     includeCalibVar = pexConfig.Field(
         dtype=bool,
         doc="Add photometric calibration variance to warp variance plane.",
