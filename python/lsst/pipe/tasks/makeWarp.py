@@ -33,7 +33,7 @@ import lsst.utils as utils
 import lsst.geom
 from lsst.daf.butler import DeferredDatasetHandle
 from lsst.meas.base import DetectorVisitIdGeneratorConfig
-from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
+from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig, GaussianPsfFactory
 from lsst.skymap import BaseSkyMap
 from lsst.utils.timer import timeMethod
 from .coaddBase import CoaddBaseTask, makeSkyInfo, reorderAndPadList
@@ -139,6 +139,7 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
         dtype=bool,
         default=False,
     )
+    modelPsf = GaussianPsfFactory.makeField(doc="Model Psf factory")
     useVisitSummaryPsf = pexConfig.Field(
         doc=(
             "If True, use the PSF model and aperture corrections from the 'visitSummary' connection. "

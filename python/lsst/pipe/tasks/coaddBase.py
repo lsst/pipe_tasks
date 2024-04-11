@@ -24,7 +24,6 @@ __all__ = ["CoaddBaseTask", "makeSkyInfo"]
 import lsst.pex.config as pexConfig
 import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
-import lsst.meas.algorithms as measAlg
 import lsst.geom as geom
 
 from lsst.meas.algorithms import ScaleVarianceTask
@@ -62,7 +61,6 @@ class CoaddBaseConfig(pexConfig.Config):
         deprecated="This field is no longer used. Will be removed after v26.",  # TODO: DM-39841
         default=False
     )
-    modelPsf = measAlg.GaussianPsfFactory.makeField(doc="Model Psf factory")
     includeCalibVar = pexConfig.Field(
         dtype=bool,
         doc="Add photometric calibration variance to warp variance plane.",
