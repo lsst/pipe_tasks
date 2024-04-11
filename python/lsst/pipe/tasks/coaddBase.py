@@ -63,43 +63,6 @@ class CoaddBaseConfig(pexConfig.Config):
         default=False
     )
     modelPsf = measAlg.GaussianPsfFactory.makeField(doc="Model Psf factory")
-    doApplyExternalPhotoCalib = pexConfig.Field(
-        dtype=bool,
-        default=False,
-        doc=("Whether to apply external photometric calibration via an "
-             "`lsst.afw.image.PhotoCalib` object.  Uses the "
-             "`externalPhotoCalibName` field to determine which calibration "
-             "to load."),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v26.",
-    )
-    useGlobalExternalPhotoCalib = pexConfig.Field(
-        dtype=bool,
-        default=False,
-        doc=("When using doApplyExternalPhotoCalib, use 'global' calibrations "
-             "that are not run per-tract.  When False, use per-tract photometric "
-             "calibration files."),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v26.",
-    )
-    doApplyExternalSkyWcs = pexConfig.Field(
-        dtype=bool,
-        default=False,
-        doc=("Whether to apply external astrometric calibration via an "
-             "`lsst.afw.geom.SkyWcs` object.  Uses `externalSkyWcsName` "
-             "field to determine which calibration to load."),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v26.",
-    )
-    useGlobalExternalSkyWcs = pexConfig.Field(
-        dtype=bool,
-        default=False,
-        doc=("When using doApplyExternalSkyWcs, use 'global' calibrations "
-             "that are not run per-tract.  When False, use per-tract wcs "
-             "files."),
-        # TODO: remove on DM-39854.
-        deprecated="Deprecated in favor of the 'visitSummary' connection.  Will be removed after v26.",
-    )
     includeCalibVar = pexConfig.Field(
         dtype=bool,
         doc="Add photometric calibration variance to warp variance plane.",

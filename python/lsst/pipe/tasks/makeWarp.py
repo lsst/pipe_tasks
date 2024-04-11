@@ -46,8 +46,6 @@ log = logging.getLogger(__name__)
 class MakeWarpConnections(pipeBase.PipelineTaskConnections,
                           dimensions=("tract", "patch", "skymap", "instrument", "visit"),
                           defaultTemplates={"coaddName": "deep",
-                                            "skyWcsName": "gbdesAstrometricFit",
-                                            "photoCalibName": "fgcm",
                                             "calexpType": ""}):
     calExpList = connectionTypes.Input(
         doc="Input exposures to be resampled and optionally PSF-matched onto a SkyMap projection/patch",
