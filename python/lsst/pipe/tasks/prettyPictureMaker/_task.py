@@ -246,7 +246,8 @@ class PrettyPictureTask(PipelineTask):
                 use_binning=True,
             )
             # This modifies the MaskedImage in place
-            maskedImage = GP.interpolate_over_defects()
+            GP.interpolate_over_defects()
+            maskedImage = GP.maskedImage
             imageArray = maskedImage.image.array
             # run all the plugins designed for array based interaction
             for plug in plugins.channel():
