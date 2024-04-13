@@ -236,7 +236,7 @@ class PrettyPictureTask(PipelineTask):
             # This is a hack until gp is in the stack natively, or until a
             # plugin is made with a GP interpolation based on numpy arrays.
             GP = InterpolateOverDefectGaussianProcess(
-                imageExposure,
+                imageExposure.maskedImage,
                 defects=["SAT", "NO_DATA"],
                 fwhm=15,
                 block_size=40,
@@ -246,8 +246,8 @@ class PrettyPictureTask(PipelineTask):
                 use_binning=True,
             )
             # This modifies the MaskedImage in place
-            GP.interpolate_over_defects()
-            imageArray = imageExposure.image.array
+            maskedImage = GP.interpolate_over_defects()
+            imageArray = maskedImage.image.array
             # run all the plugins designed for array based interaction
             for plug in plugins.channel():
                 imageArray = plug(
