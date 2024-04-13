@@ -6,6 +6,7 @@ from .gaussian_processes import (
     GaussianProcessGPyTorch,
 )
 from lsst.meas.algorithms import CloughTocher2DInterpolatorUtils as ctUtils
+from lsst.geom import Box2I, Point2I, Extent2I
 from lsst.afw.geom import SpanSet
 from scipy.stats import binned_statistic_2d
 import copy
@@ -175,6 +176,11 @@ class InterpolateOverDefectGaussianProcess:
             xmin, xmax = max([glob_xmin, bbox.minX]), min(glob_xmax, bbox.maxX)
             ymin, ymax = max([glob_ymin, bbox.minY]), min(glob_ymax, bbox.maxY)
             problem_size = (xmax - xmin) * (ymax - ymin)
+            if not self.maskedImage.bbox.contains(
+                Box2I(Point2I(xmin, ymin), Extent2I(xmax - xmin, ymax - ymin))
+            ):
+                print("The interpolation lays outside the image, skipping")
+                continue
             if problem_size > 10000 and not self.use_binning:
                 # TO DO: need to implement a better way to interpolate over large areas
                 # TO DO: One suggested idea might be to bin the area and average and interpolate using
