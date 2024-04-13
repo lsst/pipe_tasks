@@ -176,7 +176,7 @@ class InterpolateOverDefectGaussianProcess:
             xmin, xmax = max([glob_xmin, bbox.minX]), min(glob_xmax, bbox.maxX)
             ymin, ymax = max([glob_ymin, bbox.minY]), min(glob_ymax, bbox.maxY)
             problem_size = (xmax - xmin) * (ymax - ymin)
-            if not self.maskedImage.getBbox().contains(
+            if not self.maskedImage.getBBox().contains(
                 Box2I(Point2I(xmin, ymin), Extent2I(xmax - xmin, ymax - ymin))
             ):
                 print("The interpolation lays outside the image, skipping")
