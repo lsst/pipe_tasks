@@ -40,7 +40,6 @@ class PipeTasksImportTestCase(ImportTestCase):
         "lsst.pipe.tasks": {
             "assembleCoadd.py",  # TODO: Remove in DM-40826
             "assembleChi2Coadd.py",  # TODO: Remove in DM-40826
-            "configurableActions.py",  # TODO: Remove in DM-38415
             "dcrAssembleCoadd.py",  # TODO: Remove in DM-40826
         }
     }
