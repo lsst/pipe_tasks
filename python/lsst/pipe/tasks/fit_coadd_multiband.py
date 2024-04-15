@@ -53,7 +53,7 @@ class CatalogExposureInputs(CatalogExposure):
         return self.catalog
 
 
-class CoaddMultibandFitConnections(
+class CoaddMultibandFitInputConnections(
     pipeBase.PipelineTaskConnections,
     dimensions=("tract", "patch", "skymap"),
     defaultTemplates=CoaddMultibandFitBaseTemplates,
@@ -90,12 +90,6 @@ class CoaddMultibandFitConnections(
         doc="Multiband scarlet models produced by the deblender",
         name="{name_coadd}Coadd_scarletModelData",
         storageClass="ScarletModelData",
-        dimensions=("tract", "patch", "skymap"),
-    )
-    cat_output = cT.Output(
-        doc="Output source model fit parameter catalog",
-        name="{name_coadd}Coadd_objects_{name_method}",
-        storageClass="ArrowTable",
         dimensions=("tract", "patch", "skymap"),
     )
 
@@ -172,6 +166,15 @@ class CoaddMultibandFitConnections(
         return adjusted_inputs, {}
 
 
+class CoaddMultibandFitConnections(CoaddMultibandFitInputConnections):
+    cat_output = cT.Output(
+        doc="Output source model fit parameter catalog",
+        name="{name_coadd}Coadd_objects_{name_method}",
+        storageClass="ArrowTable",
+        dimensions=("tract", "patch", "skymap"),
+    )
+
+
 class CoaddMultibandFitSubConfig(pexConfig.Config):
     """Configuration for implementing fitter subtasks.
     """
@@ -231,12 +234,12 @@ class CoaddMultibandFitSubTask(pipeBase.Task, ABC):
         """
 
 
-class CoaddMultibandFitConfig(
+class CoaddMultibandFitBaseConfig(
     pipeBase.PipelineTaskConfig,
-    pipelineConnections=CoaddMultibandFitConnections,
+    pipelineConnections=CoaddMultibandFitInputConnections,
 ):
-    """Configure a CoaddMultibandFitTask, including a configurable fitting subtask.
-    """
+    """Base class for multiband fitting."""
+
     fit_coadd_multiband = pexConfig.ConfigurableField(
         target=CoaddMultibandFitSubTask,
         doc="Task to fit sources using multiple bands",
@@ -262,19 +265,18 @@ class CoaddMultibandFitConfig(
         return tuple(list({band: None for band in bands}.keys()) for bands in (bands_fit, bands_read_only))
 
 
-class CoaddMultibandFitTask(pipeBase.PipelineTask):
-    """Fit deblended exposures in multiple bands simultaneously.
+class CoaddMultibandFitConfig(
+    CoaddMultibandFitBaseConfig,
+    pipelineConnections=CoaddMultibandFitConnections,
+):
+    """Configuration for a CoaddMultibandFitTask."""
 
-    It is generally assumed but not enforced (except optionally by the
-    configurable `fit_coadd_multiband` subtask) that there is only one exposure
-    per band, presumably a coadd.
+
+class CoaddMultibandFitBase:
+    """Base class for tasks that fit or rebuild multiband models.
+
+    This class only implements data reconstruction.
     """
-    ConfigClass = CoaddMultibandFitConfig
-    _DefaultName = "CoaddMultibandFit"
-
-    def __init__(self, initInputs, **kwargs):
-        super().__init__(initInputs=initInputs, **kwargs)
-        self.makeSubtask("fit_coadd_multiband")
 
     def build_catexps(self, butlerQC, inputRefs, inputs) -> list[CatalogExposureInputs]:
         id_tp = self.config.idGenerator.apply(butlerQC.quantum.dataId).catalog_id
@@ -305,6 +307,22 @@ class CoaddMultibandFitTask(pipeBase.PipelineTask):
             )
         catexps = [catexps[band] for band in self.config.get_band_sets()[0]]
         return catexps
+
+
+class CoaddMultibandFitTask(CoaddMultibandFitBase, pipeBase.PipelineTask):
+    """Fit deblended exposures in multiple bands simultaneously.
+
+    It is generally assumed but not enforced (except optionally by the
+    configurable `fit_coadd_multiband` subtask) that there is only one exposure
+    per band, presumably a coadd.
+    """
+
+    ConfigClass = CoaddMultibandFitConfig
+    _DefaultName = "CoaddMultibandFit"
+
+    def __init__(self, initInputs, **kwargs):
+        super().__init__(initInputs=initInputs, **kwargs)
+        self.makeSubtask("fit_coadd_multiband")
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)

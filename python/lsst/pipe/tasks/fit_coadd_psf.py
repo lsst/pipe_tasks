@@ -20,7 +20,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = [
-    "CoaddPsfFitConfig", "CoaddPsfFitSubConfig", "CoaddPsfFitSubTask", "CoaddPsfFitTask",
+    "CatalogExposurePsf", "CoaddPsfFitConfig", "CoaddPsfFitSubConfig", "CoaddPsfFitSubTask",
+    "CoaddPsfFitTask",
 ]
 
 from .fit_multiband import CatalogExposure, CatalogExposureConfig
@@ -39,6 +40,7 @@ class CatalogExposurePsf(CatalogExposure):
         return self.catalog
 
     def get_psf_image(self, source):
+        """Return the PSF image for this object."""
         bbox = source.getFootprint().getBBox()
         center = bbox.getCenter()
         return self.exposure.getPsf().computeKernelImage(center).array
