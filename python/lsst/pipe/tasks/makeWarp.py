@@ -169,13 +169,13 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
         CoaddBaseTask.ConfigClass.validate(self)
 
         if not self.makePsfMatched and not self.makeDirect:
-            raise RuntimeError("At least one of config.makePsfMatched and config.makeDirect must be True")
+            raise ValueError("At least one of config.makePsfMatched and config.makeDirect must be True")
         if self.warpAndPsfMatch.warp.cacheSize != self.coaddPsf.cacheSize:
             # This is an incomplete check: usually the CoaddPsf cache size
             # configured here in MakeWarpTask is superseded by the one in
             # AssembleCoaddTask.  A pipeline contract in the drp_pipe is
             # present to check that.
-            raise RuntimeError("Image warping cache size and CoaddPSf warping cache size do not agree.")
+            raise ValueError("Image warping cache size and CoaddPSf warping cache size do not agree.")
 
     def setDefaults(self):
         CoaddBaseTask.ConfigClass.setDefaults(self)
