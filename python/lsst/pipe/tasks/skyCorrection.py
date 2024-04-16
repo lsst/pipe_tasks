@@ -27,7 +27,7 @@ import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.pipe.base.connectionTypes as cT
 import numpy as np
-from lsst.pex.config import Config, ConfigField, ConfigurableField, Field, FieldValidationError
+from lsst.pex.config import Config, ConfigField, ConfigurableField, Field
 from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
 from lsst.pipe.tasks.background import (
     FocalPlaneBackground,
@@ -168,27 +168,9 @@ class SkyCorrectionConfig(PipelineTaskConfig, pipelineConnections=SkyCorrectionC
         default=True,
         doc="Iteratively mask objects to find good sky?",
     )
-    bgModel = ConfigField(
-        dtype=Config,
-        doc="Initial background model, prior to sky frame subtraction",
-        deprecated="This field is deprecated and will be removed after v26. Please use bgModel1 instead.",
-    )
-    doBgModel = Field(
-        dtype=bool,
-        default=None,
-        doc="Do initial background model subtraction (prior to sky frame subtraction)?",
-        optional=True,
-        deprecated="This field is deprecated and will be removed after v26. See RFC-898 for further details.",
-    )
     bgModel1 = ConfigField(
         dtype=FocalPlaneBackgroundConfig,
         doc="Initial background model, prior to sky frame subtraction",
-    )
-    doBgModel1 = Field(
-        dtype=bool,
-        default=True,
-        doc="Do initial background model subtraction (prior to sky frame subtraction)?",
-        deprecated="This field is deprecated and will be removed after v26. See RFC-898 for further details.",
     )
     sky = ConfigurableField(
         target=SkyMeasurementTask,
@@ -221,13 +203,6 @@ class SkyCorrectionConfig(PipelineTaskConfig, pipelineConnections=SkyCorrectionC
         self.bgModel2.xSize = 256
         self.bgModel2.ySize = 256
         self.bgModel2.smoothScale = 1.0
-
-    def validate(self):
-        # TODO: Entire validate method may be removed after v26 (a la DM-37242)
-        super().validate()
-        if self.doBgModel is not None and self.doBgModel != self.doBgModel1:
-            msg = "The doBgModel field will be removed after v26."
-            raise FieldValidationError(self.__class__.doBgModel, self, msg)
 
 
 class SkyCorrectionTask(PipelineTask):
@@ -272,8 +247,8 @@ class SkyCorrectionTask(PipelineTask):
         be iteratively updated (over nIter loops) by re-estimating the
         background each iteration and redetecting footprints.
 
-        If doBgModel1 is True, an initial full focal plane sky subtraction will
-        take place prior to scaling and subtracting the sky frame.
+        An initial full focal plane sky subtraction (bgModel1) will take place
+        prior to scaling and subtracting the sky frame.
 
         If doSky is True, the sky frame will be scaled to the flux in the input
         visit.
@@ -319,8 +294,7 @@ class SkyCorrectionTask(PipelineTask):
         _ = self._restoreBackgroundRefineMask(calExps, calBkgs)
 
         # Bin exposures, generate full-fp bg, map to CCDs and subtract in-place
-        if self.config.doBgModel1:
-            _ = self._subtractVisitBackground(calExps, calBkgs, camera, self.config.bgModel1)
+        _ = self._subtractVisitBackground(calExps, calBkgs, camera, self.config.bgModel1)
 
         # Subtract a scaled sky frame from all input exposures
         if self.config.doSky:
