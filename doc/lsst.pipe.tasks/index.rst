@@ -132,6 +132,9 @@ Python API reference
 .. automodapi:: lsst.pipe.tasks.functors
    :no-inheritance-diagram:
 
+.. automodapi:: lsst.pipe.tasks.getRegionTimeFromVisit
+   :no-inheritance-diagram:
+
 .. automodapi:: lsst.pipe.tasks.healSparseMapping
    :no-inheritance-diagram:
 
