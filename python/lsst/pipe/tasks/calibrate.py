@@ -29,7 +29,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
 import lsst.afw.table as afwTable
-from lsst.meas.astrom import AstrometryTask, displayAstrometry, denormalizeMatches
+from lsst.meas.astrom import AstrometryTask, displayAstrometry, denormalizeMatches, AstrometryError
 from lsst.meas.algorithms import LoadReferenceObjectsConfig, SkyObjectsTask
 import lsst.daf.base as dafBase
 from lsst.afw.math import BackgroundList
@@ -634,12 +634,13 @@ class CalibrateTask(pipeBase.PipelineTask):
         astromMatches = None
         matchMeta = None
         if self.config.doAstrometry:
-            astromRes = self.astrometry.run(
-                exposure=exposure,
-                sourceCat=sourceCat,
-            )
-            astromMatches = astromRes.matches
-            matchMeta = astromRes.matchMeta
+            try:
+                astromRes = self.astrometry.run(exposure=exposure, sourceCat=sourceCat)
+                astromMatches = astromRes.matches
+                matchMeta = astromRes.matchMeta
+            except AstrometryError as e:
+                # Maintain old behavior of not stopping for astrometry errors.
+                self.log.warning(e)
             if exposure.getWcs() is None:
                 if self.config.requireAstrometry:
                     raise RuntimeError(f"WCS fit failed for {idGenerator} and requireAstrometry "
