@@ -201,6 +201,8 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
             'ext_shapeHSM_HsmSourceMoments',
             'ext_shapeHSM_HsmPsfMoments',
             'ext_shapeHSM_HsmSourceMomentsRound',
+            'ext_shapeHSM_HigherOrderMomentsSource',
+            'ext_shapeHSM_HigherOrderMomentsPSF',
         ]
         self.measurement.slots.modelFlux = 'modelfit_CModel'
         self.measurement.plugins['ext_convolved_ConvolvedFlux'].seeing.append(8.0)
