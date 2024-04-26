@@ -66,8 +66,8 @@ class SimpleAssociationTask(pipeBase.Task):
         """Associate DiaSources into a collection of DiaObjects using a
         brute force matching algorithm.
 
-        Reproducible is for the same input data is assured by ordering the
-        DiaSource data by ccdVisit ordering.
+        Reproducible for the same input data is assured by ordering the
+        DiaSource data by visit,detector.
 
         Parameters
         ----------
@@ -96,9 +96,9 @@ class SimpleAssociationTask(pipeBase.Task):
         doDropIndex = diaSources.index.names[0] is None
         diaSources.reset_index(inplace=True, drop=doDropIndex)
 
-        # Sort by ccdVisit and diaSourceId to get a reproducible ordering for
-        # the association.
-        diaSources.set_index(["ccdVisitId", "diaSourceId"], inplace=True)
+        # Sort by visit, detector, and diaSourceId to get a reproducible
+        # ordering for the association.
+        diaSources.set_index(["visit", "detector", "diaSourceId"], inplace=True)
 
         # Empty lists to store matching and location data.
         diaObjectCat = []
@@ -110,25 +110,26 @@ class SimpleAssociationTask(pipeBase.Task):
             idGenerator = IdGenerator()
         idCat = idGenerator.make_source_catalog(afwTable.SourceTable.makeMinimalSchema())
 
-        for ccdVisit in diaSources.index.levels[0]:
-            # For the first ccdVisit, just copy the DiaSource info into the
+        for visit, detector in diaSources.index.levels[0]:
+            # For the first visit,detector, just copy the DiaSource info into the
             # diaObject data to create the first set of Objects.
-            ccdVisitSources = diaSources.loc[ccdVisit]
+            orderedSources = diaSources.loc[visit, detector]
             if len(diaObjectCat) == 0:
-                for diaSourceId, diaSrc in ccdVisitSources.iterrows():
+                for diaSourceId, diaSrc in orderedSources.iterrows():
                     self.addNewDiaObject(diaSrc,
                                          diaSources,
-                                         ccdVisit,
+                                         visit,
+                                         detector,
                                          diaSourceId,
                                          diaObjectCat,
                                          idCat,
                                          diaObjectCoords,
                                          healPixIndices)
                 continue
-            # Temp list to store DiaObjects already used for this ccdVisit.
+            # Temp list to store DiaObjects already used for this visit, detector.
             usedMatchIndicies = []
             # Run over subsequent data.
-            for diaSourceId, diaSrc in ccdVisitSources.iterrows():
+            for diaSourceId, diaSrc in orderedSources.iterrows():
                 # Find matches.
                 matchResult = self.findMatches(diaSrc["ra"],
                                                diaSrc["dec"],
@@ -141,7 +142,8 @@ class SimpleAssociationTask(pipeBase.Task):
                 if dists is None:
                     self.addNewDiaObject(diaSrc,
                                          diaSources,
-                                         ccdVisit,
+                                         visit,
+                                         detector,
                                          diaSourceId,
                                          diaObjectCat,
                                          idCat,
@@ -157,7 +159,8 @@ class SimpleAssociationTask(pipeBase.Task):
                         self.updateCatalogs(matchIndex,
                                             diaSrc,
                                             diaSources,
-                                            ccdVisit,
+                                            visit,
+                                            detector,
                                             diaSourceId,
                                             diaObjectCat,
                                             diaObjectCoords,
@@ -168,7 +171,8 @@ class SimpleAssociationTask(pipeBase.Task):
                     else:
                         self.addNewDiaObject(diaSrc,
                                              diaSources,
-                                             ccdVisit,
+                                             visit,
+                                             detector,
                                              diaSourceId,
                                              diaObjectCat,
                                              idCat,
@@ -179,7 +183,8 @@ class SimpleAssociationTask(pipeBase.Task):
                 else:
                     self.addNewDiaObject(diaSrc,
                                          diaSources,
-                                         ccdVisit,
+                                         visit,
+                                         detector,
                                          diaSourceId,
                                          diaObjectCat,
                                          idCat,
@@ -206,7 +211,8 @@ class SimpleAssociationTask(pipeBase.Task):
     def addNewDiaObject(self,
                         diaSrc,
                         diaSources,
-                        ccdVisit,
+                        visit,
+                        detector,
                         diaSourceId,
                         diaObjCat,
                         idCat,
@@ -221,9 +227,9 @@ class SimpleAssociationTask(pipeBase.Task):
         diaSources : `pandas.DataFrame`
             DiaSource catalog to update information in. The catalog is
             modified in place.
-        ccdVisit : `int`
-            Unique identifier of the ccdVisit where ``diaSrc`` was observed.
-        diaSourceId : `int`
+        visit, detector : `int`
+            Visit and detector ids where ``diaSrc`` was observed.
+       diaSourceId : `int`
             Unique identifier of the DiaSource.
         diaObjectCat : `list` of `dict`s
             Catalog of diaObjects to append the new object o.
@@ -251,13 +257,14 @@ class SimpleAssociationTask(pipeBase.Task):
         diaObjCat.append(self.createDiaObject(diaObjId,
                                               diaSrc["ra"],
                                               diaSrc["dec"]))
-        diaSources.loc[(ccdVisit, diaSourceId), "diaObjectId"] = diaObjId
+        diaSources.loc[(visit, detector, diaSourceId), "diaObjectId"] = diaObjId
 
     def updateCatalogs(self,
                        matchIndex,
                        diaSrc,
                        diaSources,
-                       ccdVisit,
+                       visit,
+                       detector,
                        diaSourceId,
                        diaObjCat,
                        diaObjCoords,
@@ -274,8 +281,8 @@ class SimpleAssociationTask(pipeBase.Task):
         diaSources : `pandas.DataFrame`
             DiaSource catalog to update information in. The catalog is
             modified in place.
-        ccdVisit : `int`
-            Unique identifier of the ccdVisit where ``diaSrc`` was observed.
+        visit, detector : `int`
+            Visit and detector ids where ``diaSrc`` was observed.
         diaSourceId : `int`
             Unique identifier of the DiaSource.
         diaObjectCat : `list` of `dict`s
@@ -301,7 +308,7 @@ class SimpleAssociationTask(pipeBase.Task):
                                              diaObjCat[matchIndex]["ra"],
                                              diaObjCat[matchIndex]["dec"])
         # Update DiaObject Id that this source is now associated to.
-        diaSources.loc[(ccdVisit, diaSourceId), "diaObjectId"] = \
+        diaSources.loc[(visit, detector, diaSourceId), "diaObjectId"] = \
             diaObjCat[matchIndex]["diaObjectId"]
 
     def findMatches(self, src_ra, src_dec, tol, hpIndices, diaObjs):

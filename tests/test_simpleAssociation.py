@@ -57,7 +57,8 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
         self.newDiaObjectVisit = 1236
         # Drop in two copies of the DiaObject locations to make DiaSources.
         diaSourceList = [
-            {"ccdVisitId": 1234,
+            {"visit": 1234,
+             "detector": 42,
              "diaSourceId": idx,
              "diaObjectId": 0,
              "ra": ra,
@@ -68,7 +69,8 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
             [geom.SpherePoint(diaSrc["ra"], diaSrc["dec"], geom.degrees)]
             for diaSrc in diaSourceList]
         moreDiaSources = [
-            {"ccdVisitId": 1235,
+            {"visit": 1235,
+             "detector": 43,
              "diaSourceId": idx + self.nDiaObjects,
              "diaObjectId": 0,
              "ra": ra,
@@ -84,12 +86,14 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
 
         self.nNewDiaSources = 2
         # Drop in two more DiaSources that are unassociated.
-        diaSourceList.append({"ccdVisitId": 1236,
+        diaSourceList.append({"visit": 1236,
+                              "detector": 44,
                               "diaSourceId": len(diaSourceList),
                               "diaObjectId": 0,
                               "ra": 0.0,
                               "dec": 0.0})
-        diaSourceList.append({"ccdVisitId": 1236,
+        diaSourceList.append({"visit": 1236,
+                              "detector": 45,
                               "diaSourceId": len(diaSourceList),
                               "diaObjectId": 0,
                               "ra": 1.0,
@@ -127,15 +131,17 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
         matchIndex = 4
         diaSrc = self.diaSources.iloc[matchIndex]
         self.diaObjects[matchIndex]["diaObjectId"] = 1234
-        ccdVisit = diaSrc["ccdVisitId"]
+        visit = diaSrc["visit"]
+        detector = diaSrc["detector"]
         diaSourceId = diaSrc["diaSourceId"]
-        self.diaSources.set_index(["ccdVisitId", "diaSourceId"], inplace=True)
+        self.diaSources.set_index(["visit", "detector", "diaSourceId"], inplace=True)
 
         simpleAssoc = SimpleAssociationTask()
         simpleAssoc.updateCatalogs(matchIndex,
                                    diaSrc,
                                    self.diaSources,
-                                   ccdVisit,
+                                   visit,
+                                   detector,
                                    diaSourceId,
                                    self.diaObjects,
                                    self.coordList,
@@ -145,7 +151,7 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
         # Should be 3 source coordinates.
         self.assertEqual(len(self.coordList[matchIndex]), 3)
         self.assertEqual(len(self.diaObjects), self.nDiaObjects)
-        self.assertEqual(self.diaSources.loc[(ccdVisit, diaSourceId),
+        self.assertEqual(self.diaSources.loc[(visit, detector, diaSourceId),
                                              "diaObjectId"],
                          self.diaObjects[matchIndex]["diaObjectId"])
 
@@ -153,16 +159,18 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
         """Test adding data to existing DiaObjects/Sources.
         """
         diaSrc = self.diaSources.iloc[-1]
-        ccdVisit = diaSrc["ccdVisitId"]
+        visit = diaSrc["visit"]
+        detector = diaSrc["detector"]
         diaSourceId = diaSrc["diaSourceId"]
-        self.diaSources.set_index(["ccdVisitId", "diaSourceId"], inplace=True)
+        self.diaSources.set_index(["visit", "detector", "diaSourceId"], inplace=True)
         idCat = afwTable.SourceCatalog(
             afwTable.SourceTable.make(afwTable.SourceTable.makeMinimalSchema()))
 
         simpleAssoc = SimpleAssociationTask()
         simpleAssoc.addNewDiaObject(diaSrc,
                                     self.diaSources,
-                                    ccdVisit,
+                                    visit,
+                                    detector,
                                     diaSourceId,
                                     self.diaObjects,
                                     idCat,
@@ -171,7 +179,7 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
         self.assertEqual(len(self.hpIndices), self.nDiaObjects + 1)
         self.assertEqual(len(self.coordList), self.nDiaObjects + 1)
         self.assertEqual(len(self.diaObjects), self.nDiaObjects + 1)
-        self.assertEqual(self.diaSources.loc[(ccdVisit, diaSourceId),
+        self.assertEqual(self.diaSources.loc[(visit, detector, diaSourceId),
                                              "diaObjectId"],
                          idCat[0].get("id"))
 
