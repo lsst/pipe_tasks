@@ -187,7 +187,7 @@ class DiffMatchedTractCatalogConfig(
             for column_list in column_lists:
                 columns_all.extend(column_list)
 
-        return set(columns_all)
+        return list({column: None for column in columns_all}.keys())
 
     @property
     def columns_in_target(self) -> list[str]:
