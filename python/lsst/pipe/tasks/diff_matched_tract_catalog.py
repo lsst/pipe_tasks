@@ -37,6 +37,7 @@ from lsst.skymap import BaseSkyMap
 
 from abc import ABCMeta, abstractmethod
 from astropy.stats import mad_std
+import astropy.units as u
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
@@ -215,6 +216,10 @@ class DiffMatchedTractCatalogConfig(
         itemtype=MatchedCatalogFluxesConfig,
         default={},
     )
+    columns_ref_mag_to_nJy = pexConfig.DictField[str, str](
+        doc='Reference table AB mag columns to convert to nJy flux columns with new names',
+        default={},
+    )
     columns_ref_copy = pexConfig.ListField[str](
         doc='Reference table columns to copy into cat_matched',
         default=[],
@@ -228,6 +233,10 @@ class DiffMatchedTractCatalogConfig(
         doc='Target table columns to copy into cat_matched',
         default=('patch',),
         listCheck=is_sequence_set,
+    )
+    columns_target_mag_to_nJy = pexConfig.DictField[str, str](
+        doc='Target table AB mag columns to convert to nJy flux columns with new names',
+        default={},
     )
     columns_target_select_true = pexConfig.ListField[str](
         doc='Target table columns to require to be True for selecting sources',
@@ -279,6 +288,30 @@ class DiffMatchedTractCatalogConfig(
         itemCheck=is_percentile,
         listCheck=is_sequence_set,
     )
+
+    def validate(self):
+        super().validate()
+
+        errors = []
+
+        for columns_mag, columns_in, name_columns_copy in (
+            (self.columns_ref_mag_to_nJy, self.columns_in_ref, "columns_ref_copy"),
+            (self.columns_target_mag_to_nJy, self.columns_in_target, "columns_target_copy"),
+        ):
+            columns_copy = getattr(self, name_columns_copy)
+            for column_old, column_new in columns_mag.items():
+                if column_old not in columns_in:
+                    errors.append(
+                        f"{column_old=} key in self.columns_mag_to_nJy not found in {columns_in=}; did you"
+                        f" forget to add it to self.{name_columns_copy}={columns_copy}?"
+                    )
+                if column_new in columns_copy:
+                    errors.append(
+                        f"{column_new=} value found in self.{name_columns_copy}={columns_copy}"
+                        f" this will cause a collision. Please choose a different name."
+                    )
+        if errors:
+            raise ValueError("\n".join(errors))
 
 
 @dataclass(frozen=True)
@@ -665,6 +698,7 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         cat_left = cat_target.iloc[matched_row]
         has_index_left = cat_left.index.name is not None
         cat_right = cat_ref[matched_ref].reset_index()
+        cat_right.columns = [f'refcat_{col}' for col in cat_right.columns]
         cat_matched = pd.concat(objs=(cat_left.reset_index(drop=not has_index_left), cat_right), axis=1)
 
         if config.include_unmatched:
@@ -692,7 +726,20 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
                         cat_i[colname] = column.astype(f"UInt{dtype[3:]}")
             cat_unmatched = pd.concat(objs=(cat_left, cat_right))
 
-        # TODO: Deprecate all matched difference output in DM-43831
+        for columns_convert_base, prefix in (
+            (config.columns_ref_mag_to_nJy, "refcat_"),
+            (config.columns_target_mag_to_nJy, ""),
+        ):
+            if columns_convert_base:
+                columns_convert = {
+                    f"{prefix}{k}": f"{prefix}{v}" for k, v in columns_convert_base.items()
+                } if prefix else columns_convert_base
+                for cat_convert in (cat_matched, cat_unmatched):
+                    cat_convert.rename(columns=columns_convert, inplace=True)
+                    for column_flux in columns_convert.values():
+                        cat_convert[column_flux] = u.ABmag.to(u.nJy, cat_convert[column_flux])
+
+        # TODO: Deprecate all matched difference output in DM-43831 (per RFC-1008)
 
         # Slightly smelly hack for when a column (like distance) is already relative to truth
         column_dummy = 'dummy'
