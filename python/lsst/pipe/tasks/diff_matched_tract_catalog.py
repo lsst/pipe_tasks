@@ -637,6 +637,10 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         cat_target = target.catalog
         n_target = len(cat_target)
 
+        if config.include_unmatched:
+            for cat_add, cat_match in ((cat_ref, catalog_match_ref), (cat_target, catalog_match_target)):
+                cat_add['match_candidate'] = cat_match['match_candidate'].values
+
         match_row = catalog_match_ref['match_row'].values
         matched_ref = match_row >= 0
         matched_row = match_row[matched_ref]
