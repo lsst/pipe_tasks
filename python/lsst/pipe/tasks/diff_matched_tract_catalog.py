@@ -666,9 +666,6 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         has_index_left = cat_left.index.name is not None
         cat_right = cat_ref[matched_ref].reset_index()
         cat_matched = pd.concat(objs=(cat_left.reset_index(drop=not has_index_left), cat_right), axis=1)
-        cat_matched.columns.values[len(cat_target.columns) + has_index_left:] = [
-            f'refcat_{col}' for col in cat_right.columns
-        ]
 
         if config.include_unmatched:
             # Create an unmatched table with the same schema as the matched one
