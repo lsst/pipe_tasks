@@ -646,13 +646,13 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         # Add/compute distance columns
         coord1_target_err, coord2_target_err = config.columns_target_coord_err
         column_dist, column_dist_err = 'match_distance', 'match_distanceErr'
-        dist = np.full(n_target, np.Inf)
+        dist = np.full(n_target, np.nan)
 
         dist[matched_row] = np.hypot(
             target.coord1[matched_row] - ref.coord1[matched_ref],
             target.coord2[matched_row] - ref.coord2[matched_ref],
         )
-        dist_err = np.full(n_target, np.Inf)
+        dist_err = np.full(n_target, np.nan)
         dist_err[matched_row] = np.hypot(cat_target.iloc[matched_row][coord1_target_err].values,
                                          cat_target.iloc[matched_row][coord2_target_err].values)
         cat_target[column_dist], cat_target[column_dist_err] = dist, dist_err
