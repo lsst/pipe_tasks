@@ -73,7 +73,7 @@ class IsolatedStarAssociationConfig(pipeBase.PipelineTaskConfig,
              'The associated flag will be implicity included in bad_flags. '
              'Note that this is expected to end in ``instFlux``.'),
         dtype=str,
-        default='normCompGaussianFlux_instFlux',
+        default='normCompTophatFlux_instFlux',
     )
     match_radius = pexConfig.Field(
         doc='Match radius (arcseconds)',
@@ -155,7 +155,7 @@ class IsolatedStarAssociationConfig(pipeBase.PipelineTaskConfig,
         source_selector.doRequireFiniteRaDec = True
         source_selector.doRequirePrimary = True
 
-        source_selector.signalToNoise.minimum = 20.0
+        source_selector.signalToNoise.minimum = 10.0
         source_selector.signalToNoise.maximum = 1000.0
 
         flux_flag_name = self.inst_flux_field.replace("instFlux", "flag")

@@ -155,11 +155,11 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
     doNormalizedCalibration = pexConfig.Field(
         dtype=bool,
         default=True,
-        doc="Use normalized calibration flux (e.g. compensated gaussians)?",
+        doc="Use normalized calibration flux (e.g. compensated tophats)?",
     )
     normalizedCalibrationFlux = pexConfig.ConfigurableField(
         target=NormalizedCalibrationFluxTask,
-        doc="Task to normalize the calibration flux (e.g. compensated gaussians).",
+        doc="Task to normalize the calibration flux (e.g. compensated tophats).",
     )
     doApCorr = pexConfig.Field(
         dtype=bool,
@@ -265,12 +265,11 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
             "base_GaussianFlux",
             "base_PsfFlux",
             "base_CircularApertureFlux",
-            "base_CompensatedGaussianFlux",
+            "base_CompensatedTophatFlux",
             "base_ClassificationSizeExtendedness",
         ]
         self.measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
-        self.measurement.algorithms["base_CompensatedGaussianFlux"].kernel_widths = [5]
-        self.measurement.algorithms["base_CompensatedGaussianFlux"].t = 1.5
+        self.measurement.algorithms["base_CompensatedTophatFlux"].apertures = [12]
 
     def validate(self):
         if self.doApCorr and not self.measurePsf:

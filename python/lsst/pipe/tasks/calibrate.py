@@ -351,7 +351,7 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
 
     def setDefaults(self):
         super().setDefaults()
-        self.measurement.plugins.names |= ["base_CompensatedGaussianFlux"]
+        self.measurement.plugins.names |= ["base_CompensatedTophatFlux"]
         self.postCalibrationMeasurement.plugins.names = ["base_LocalPhotoCalib", "base_LocalWcs"]
         self.postCalibrationMeasurement.doReplaceWithNoise = False
         for key in self.postCalibrationMeasurement.slots:
@@ -362,8 +362,7 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
 
         self.normalizedCalibrationFlux.do_measure_ap_corr = False
 
-        self.measurement.algorithms["base_CompensatedGaussianFlux"].kernel_widths = [5]
-        self.measurement.algorithms["base_CompensatedGaussianFlux"].t = 1.5
+        self.measurement.algorithms["base_CompensatedTophatFlux"].apertures = [12]
 
         # Keep track of which footprints contain streaks
         self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['STREAK']

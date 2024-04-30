@@ -132,11 +132,11 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
     do_normalized_calibration = pexConfig.Field(
         dtype=bool,
         default=True,
-        doc="Use normalized calibration flux (e.g. compensated gaussians?)",
+        doc="Use normalized calibration flux (e.g. compensated tophats?)",
     )
     normalized_calibration_flux = pexConfig.ConfigurableField(
         target=NormalizedCalibrationFluxTask,
-        doc="Task to normalize the calibration flux (e.g. compensated gaussians).",
+        doc="Task to normalize the calibration flux (e.g. compensated tophats).",
     )
     measure_ap_corr = pexConfig.ConfigurableField(
         target=MeasureApCorrTask,
@@ -202,7 +202,7 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
         # Set up measurement defaults
         self.measurement.plugins.names = [
             'base_FPPosition',
-            'base_CompensatedGaussianFlux',
+            'base_CompensatedTophatFlux',
             'base_PsfFlux',
             'base_GaussianFlux',
             'modelfit_DoubleShapeletPsfApprox',
@@ -219,8 +219,7 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
         ]
         self.measurement.slots.modelFlux = 'modelfit_CModel'
 
-        self.measurement.algorithms["base_CompensatedGaussianFlux"].kernel_widths = [5]
-        self.measurement.algorithms["base_CompensatedGaussianFlux"].t = 1.5
+        self.measurement.algorithms["base_CompensatedTophatFlux"].apertures = [12]
 
         self.measurement.plugins['ext_convolved_ConvolvedFlux'].seeing.append(8.0)
         self.measurement.plugins['ext_gaap_GaapFlux'].sigmas = [
