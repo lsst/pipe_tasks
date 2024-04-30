@@ -134,7 +134,9 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
         visit = diaSrc["visit"]
         detector = diaSrc["detector"]
         diaSourceId = diaSrc["diaSourceId"]
-        self.diaSources.set_index(["visit", "detector", "diaSourceId"], inplace=True)
+        self.diaSources[("visit,detector")] = list(zip(self.diaSources["visit"],
+                                                       self.diaSources["detector"]))
+        self.diaSources.set_index(["visit,detector", "diaSourceId"], inplace=True)
 
         simpleAssoc = SimpleAssociationTask()
         simpleAssoc.updateCatalogs(matchIndex,
@@ -151,8 +153,7 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
         # Should be 3 source coordinates.
         self.assertEqual(len(self.coordList[matchIndex]), 3)
         self.assertEqual(len(self.diaObjects), self.nDiaObjects)
-        self.assertEqual(self.diaSources.loc[(visit, detector, diaSourceId),
-                                             "diaObjectId"],
+        self.assertEqual(self.diaSources.loc[((visit, detector), diaSourceId), "diaObjectId"].iloc[0],
                          self.diaObjects[matchIndex]["diaObjectId"])
 
     def testAddDiaObject(self):
@@ -162,7 +163,8 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
         visit = diaSrc["visit"]
         detector = diaSrc["detector"]
         diaSourceId = diaSrc["diaSourceId"]
-        self.diaSources.set_index(["visit", "detector", "diaSourceId"], inplace=True)
+        self.diaSources[("visit,detector")] = list(zip(self.diaSources["visit"], self.diaSources["detector"]))
+        self.diaSources.set_index(["visit,detector", "diaSourceId"], inplace=True)
         idCat = afwTable.SourceCatalog(
             afwTable.SourceTable.make(afwTable.SourceTable.makeMinimalSchema()))
 
@@ -179,8 +181,7 @@ class TestSimpleAssociation(lsst.utils.tests.TestCase):
         self.assertEqual(len(self.hpIndices), self.nDiaObjects + 1)
         self.assertEqual(len(self.coordList), self.nDiaObjects + 1)
         self.assertEqual(len(self.diaObjects), self.nDiaObjects + 1)
-        self.assertEqual(self.diaSources.loc[(visit, detector, diaSourceId),
-                                             "diaObjectId"],
+        self.assertEqual(self.diaSources.loc[((visit, detector), diaSourceId), "diaObjectId"].iloc[0],
                          idCat[0].get("id"))
 
     def testFindMatches(self):

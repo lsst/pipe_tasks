@@ -72,8 +72,8 @@ class SimpleAssociationTask(pipeBase.Task):
         Parameters
         ----------
         diaSources : `pandas.DataFrame`
-            DiaSources grouped by CcdVisitId to spatially associate into
-            DiaObjects.
+            DiaSources in clusters of visit, detector to spatially associate
+            into DiaObjects.
         idGenerator : `lsst.meas.base.IdGenerator`, optional
             Object that generates Object IDs and random number generator seeds.
 
@@ -88,17 +88,17 @@ class SimpleAssociationTask(pipeBase.Task):
             ``diaObjects``
                 Table of DiaObjects from matching DiaSources
                 (`pandas.DataFrame`).
-
         """
-
         # Expected indexes include diaSourceId or meaningless range index
         # If meaningless range index, drop it, else keep it.
         doDropIndex = diaSources.index.names[0] is None
         diaSources.reset_index(inplace=True, drop=doDropIndex)
 
         # Sort by visit, detector, and diaSourceId to get a reproducible
-        # ordering for the association.
-        diaSources.set_index(["visit", "detector", "diaSourceId"], inplace=True)
+        # ordering for the association. Use a temporary combined visit,detector
+        # to simplify multi-index operations below; we delete it at the end.
+        diaSources[("visit,detector")] = list(zip(diaSources["visit"], diaSources["detector"]))
+        diaSources.set_index([("visit,detector"), "diaSourceId"], inplace=True)
 
         # Empty lists to store matching and location data.
         diaObjectCat = []
@@ -113,7 +113,7 @@ class SimpleAssociationTask(pipeBase.Task):
         for visit, detector in diaSources.index.levels[0]:
             # For the first visit,detector, just copy the DiaSource info into the
             # diaObject data to create the first set of Objects.
-            orderedSources = diaSources.loc[visit, detector]
+            orderedSources = diaSources.loc[(visit, detector)]
             if len(diaObjectCat) == 0:
                 for diaSourceId, diaSrc in orderedSources.iterrows():
                     self.addNewDiaObject(diaSrc,
@@ -193,6 +193,7 @@ class SimpleAssociationTask(pipeBase.Task):
 
         # Drop indices before returning associated diaSource catalog.
         diaSources.reset_index(inplace=True)
+        del diaSources["visit,detector"]
         diaSources.set_index("diaSourceId", inplace=True, verify_integrity=True)
 
         objs = diaObjectCat if diaObjectCat else np.array([], dtype=[('diaObjectId', 'int64'),
@@ -226,7 +227,8 @@ class SimpleAssociationTask(pipeBase.Task):
             Full unassociated DiaSource to create a DiaObject from.
         diaSources : `pandas.DataFrame`
             DiaSource catalog to update information in. The catalog is
-            modified in place.
+            modified in place. Must be indexed on:
+            `(visit, detector), diaSourceId`.
         visit, detector : `int`
             Visit and detector ids where ``diaSrc`` was observed.
        diaSourceId : `int`
@@ -257,7 +259,7 @@ class SimpleAssociationTask(pipeBase.Task):
         diaObjCat.append(self.createDiaObject(diaObjId,
                                               diaSrc["ra"],
                                               diaSrc["dec"]))
-        diaSources.loc[(visit, detector, diaSourceId), "diaObjectId"] = diaObjId
+        diaSources.loc[((visit, detector), diaSourceId), "diaObjectId"] = diaObjId
 
     def updateCatalogs(self,
                        matchIndex,
@@ -280,7 +282,8 @@ class SimpleAssociationTask(pipeBase.Task):
             Full unassociated DiaSource to create a DiaObject from.
         diaSources : `pandas.DataFrame`
             DiaSource catalog to update information in. The catalog is
-            modified in place.
+            modified in place. Must be indexed on:
+            `(visit, detector), diaSourceId`.
         visit, detector : `int`
             Visit and detector ids where ``diaSrc`` was observed.
         diaSourceId : `int`
@@ -308,7 +311,7 @@ class SimpleAssociationTask(pipeBase.Task):
                                              diaObjCat[matchIndex]["ra"],
                                              diaObjCat[matchIndex]["dec"])
         # Update DiaObject Id that this source is now associated to.
-        diaSources.loc[(visit, detector, diaSourceId), "diaObjectId"] = \
+        diaSources.loc[((visit, detector), diaSourceId), "diaObjectId"] = \
             diaObjCat[matchIndex]["diaObjectId"]
 
     def findMatches(self, src_ra, src_dec, tol, hpIndices, diaObjs):
