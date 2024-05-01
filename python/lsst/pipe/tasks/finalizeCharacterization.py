@@ -154,7 +154,7 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
         source_selector.doUnresolved = False
         source_selector.doIsolated = False
 
-        source_selector.signalToNoise.minimum = 20.0
+        source_selector.signalToNoise.minimum = 50.0
         source_selector.signalToNoise.maximum = 1000.0
 
         source_selector.signalToNoise.fluxField = 'base_GaussianFlux_instFlux'
