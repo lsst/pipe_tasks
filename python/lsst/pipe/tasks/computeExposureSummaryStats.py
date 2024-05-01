@@ -86,6 +86,13 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         "caclulations grid (the tradeoff is between adequate sampling versus speed).",
         default=96,
     )
+    minPsfApRadiusPix = pexConfig.Field(
+        dtype=float,
+        doc="Minimum radius in pixels of the aperture within which to measure the flux of "
+        "the PSF model for the psfApFluxDelta metric calculation (the radius is computed as "
+        "max(``minPsfApRadius``, 3*psfSigma)).",
+        default=2.0,
+    )
     psfBadMaskPlanes = pexConfig.ListField(
         dtype=str,
         doc="Mask planes that, if set, the associated pixel should not be included in the PSF model "
@@ -177,6 +184,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     (against, e.g., extrapolation instability):
     - maxDistToNearestPsf
     - psfTraceRadiusDelta
+    - psfApFluxDelta
 
     These quantities are computed to assess depth:
     - effTime
@@ -278,6 +286,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.psfStarScaledDeltaSizeScatter = nan
         summary.maxDistToNearestPsf = nan
         summary.psfTraceRadiusDelta = nan
+        summary.psfApFluxDelta = nan
 
         if psf is None:
             return
@@ -294,13 +303,17 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.psfArea = float(np.sum(im.array)/np.sum(im.array**2.))
 
         if image_mask is not None:
-            psfTraceRadiusDelta = psf_trace_radius_delta(
+            psfApRadius = max(self.config.minPsfApRadiusPix, 3.0*summary.psfSigma)
+            self.log.debug("Using radius of %.3f (pixels) for psfApFluxDelta metric", psfApRadius)
+            psfTraceRadiusDelta, psfApFluxDelta = compute_psf_image_deltas(
                 image_mask,
                 psf,
                 sampling=self.config.psfGridSampling,
+                ap_radius_pix=psfApRadius,
                 bad_mask_bits=self.config.psfBadMaskPlanes
             )
             summary.psfTraceRadiusDelta = float(psfTraceRadiusDelta)
+            summary.psfApFluxDelta = float(psfApFluxDelta)
 
         if sources is None:
             # No sources are available (as in some tests and rare cases where
@@ -648,10 +661,11 @@ def maximum_nearest_psf_distance(
     return max_dist_to_nearest_psf
 
 
-def psf_trace_radius_delta(
+def compute_psf_image_deltas(
     image_mask,
     image_psf,
     sampling=96,
+    ap_radius_pix=3.0,
     bad_mask_bits=["BAD", "CR", "INTRP", "SAT", "SUSPECT", "NO_DATA", "EDGE"],
 ):
     """Compute the delta between the maximum and minimum model PSF trace radius
@@ -664,24 +678,29 @@ def psf_trace_radius_delta(
         The mask plane associated with the exposure.
     image_psf : `lsst.afw.detection.Psf`
         The PSF model associated with the exposure.
-    sampling : `int`
+    sampling : `int`, optional
         Sampling rate in each dimension to create the grid of points at which
         to evaluate ``image_psf``s trace radius value. The tradeoff is between
         adequate sampling versus speed.
-    bad_mask_bits : `list` [`str`]
+    ap_radius_pix : `float`, optional
+        Radius in pixels of the aperture on which to measure the flux of the
+        PSF model.
+    bad_mask_bits : `list` [`str`], optional
         Mask bits required to be absent for a pixel to be considered
         "unmasked".
 
     Returns
     -------
-    psf_trace_radius_delta : `float`
+    psf_trace_radius_delta, psf_ap_flux_delta : `float`
         The delta (in pixels) between the maximum and minimum model PSF trace
-        radius values evaluated on the x,y-grid subsampled on the unmasked
-        detector pixels by a factor of ``sampling``.  If any model PSF trace
-        radius value on the grid evaluates to NaN, then NaN is returned
-        immediately.
+        radius values and the PSF aperture fluxes (with aperture radius of
+        max(2, 3*psfSigma)) evaluated on the x,y-grid subsampled on the
+        unmasked detector pixels by a factor of ``sampling``.  If both the
+        model PSF trace radius value and aperture flux value on the grid
+        evaluate to NaN, then NaNs are returned immediately.
     """
     psf_trace_radius_list = []
+    psf_ap_flux_list = []
     mask_arr = image_mask.array[::sampling, ::sampling]
     bitmask = image_mask.getPlaneBitMask(bad_mask_bits)
     good = ((mask_arr & bitmask) == 0)
@@ -693,11 +712,18 @@ def psf_trace_radius_delta(
     for x_mesh, y_mesh, good_mesh in zip(xx, yy, good):
         for x_point, y_point, is_good in zip(x_mesh, y_mesh, good_mesh):
             if is_good:
-                psf_trace_radius = image_psf.computeShape(geom.Point2D(x_point, y_point)).getTraceRadius()
-                if ~np.isfinite(psf_trace_radius):
-                    return float("nan")
+                position = geom.Point2D(x_point, y_point)
+                psf_trace_radius = image_psf.computeShape(position).getTraceRadius()
+                psf_ap_flux = image_psf.computeApertureFlux(ap_radius_pix, position)
+                if ~np.isfinite(psf_trace_radius) and ~np.isfinite(psf_ap_flux):
+                    return float("nan"), float("nan")
                 psf_trace_radius_list.append(psf_trace_radius)
+                psf_ap_flux_list.append(psf_ap_flux)
 
     psf_trace_radius_delta = np.max(psf_trace_radius_list) - np.min(psf_trace_radius_list)
+    if np.any(np.asarray(psf_ap_flux_list) < 0.0):  # Consider any -ve flux entry as "bad".
+        psf_ap_flux_delta = float("nan")
+    else:
+        psf_ap_flux_delta = np.max(psf_ap_flux_list) - np.min(psf_ap_flux_list)
 
-    return psf_trace_radius_delta
+    return psf_trace_radius_delta, psf_ap_flux_delta
