@@ -698,7 +698,7 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         cat_left = cat_target.iloc[matched_row]
         has_index_left = cat_left.index.name is not None
         cat_right = cat_ref[matched_ref].reset_index()
-        cat_right.columns = [f'refcat_{col}' for col in cat_right.columns]
+        cat_right.columns = [f'{config.column_matched_prefix_ref}{col}' for col in cat_right.columns]
         cat_matched = pd.concat(objs=(cat_left.reset_index(drop=not has_index_left), cat_right), axis=1)
 
         if config.include_unmatched:
@@ -706,7 +706,7 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
             # ... but only for objects with no matches (for completeness/purity)
             # and that were selected for matching (or inclusion via config)
             cat_right = cat_ref[~matched_ref & select_ref].reset_index(drop=False)
-            cat_right.columns = (f"refcat_{col}" for col in cat_right.columns)
+            cat_right.columns = (f'{config.column_matched_prefix_ref}{col}' for col in cat_right.columns)
             match_row_target = catalog_match_target['match_row'].values
             cat_left = cat_target[~(match_row_target >= 0) & select_target].reset_index(
                 drop=not has_index_left)
@@ -727,7 +727,7 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
             cat_unmatched = pd.concat(objs=(cat_left, cat_right))
 
         for columns_convert_base, prefix in (
-            (config.columns_ref_mag_to_nJy, "refcat_"),
+            (config.columns_ref_mag_to_nJy, config.column_matched_prefix_ref),
             (config.columns_target_mag_to_nJy, ""),
         ):
             if columns_convert_base:
