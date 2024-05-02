@@ -255,7 +255,8 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
         self.log.info("Generating DataFrame from src catalog visit,detector=%i,%i", visit, detector)
         df = catalog.asAstropy().to_pandas().set_index('id', drop=True)
         df['visit'] = visit
-        df['detector'] = detector
+        # int16 instead of uint8 because databases don't like unsigned bytes.
+        df['detector'] = np.int16(detector)
 
         return pipeBase.Struct(table=df)
 
@@ -748,7 +749,11 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
         if dataId and self.config.columnsFromDataId:
             for key in self.config.columnsFromDataId:
                 if key in dataId:
-                    df[key] = dataId[key]
+                    if key == "detector":
+                        # int16 instead of uint8 because databases don't like unsigned bytes.
+                        df[key] = np.int16(dataId[key])
+                    else:
+                        df[key] = dataId[key]
                 else:
                     raise ValueError(f"'{key}' in config.columnsFromDataId not found in dataId: {dataId}")
 
@@ -1457,7 +1462,8 @@ class WriteForcedSourceTableTask(pipeBase.PipelineTask):
             df = table.asAstropy().to_pandas().set_index(self.config.key, drop=False)
             df = df.reindex(sorted(df.columns), axis=1)
             df["visit"] = visit
-            df["detector"] = detector
+            # int16 instead of uint8 because databases don't like unsigned bytes.
+            df["detector"] = np.int16(detector)
             df['band'] = band if band else pd.NA
             df.columns = pd.MultiIndex.from_tuples([(dataset, c) for c in df.columns],
                                                    names=('dataset', 'column'))
