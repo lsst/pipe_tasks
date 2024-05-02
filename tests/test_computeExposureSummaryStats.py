@@ -82,6 +82,13 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         zp = 2.5*np.log10(photoCalib.getInstFluxAtZeroMagnitude())
         exposure.setPhotoCalib(photoCalib)
 
+        # Install a simple apCorrMap
+        apCorrMap = afwImage.ApCorrMap()
+        apCorrMap.set(
+            "base_PsfFlux_instFlux", afwMath.ChebyshevBoundedField(exposure.getBBox(), np.zeros((3, 3)))
+        )
+        exposure.setApCorrMap(apCorrMap)
+
         # Compute the background image
         bgGridSize = 10
         bctrl = afwMath.BackgroundControl(afwMath.Interpolate.NATURAL_SPLINE)
@@ -106,6 +113,10 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         self.assertFloatsAlmostEqual(summary.psfIyy, psfSize**2.)
         self.assertFloatsAlmostEqual(summary.psfIxy, 0.0)
         self.assertFloatsAlmostEqual(summary.psfArea, 23.088975164455444)
+
+        self.assertFloatsAlmostEqual(summary.psfTraceRadiusDelta, 0.0)
+        self.assertFloatsAlmostEqual(summary.psfApFluxDelta, 0.0)
+        self.assertFloatsAlmostEqual(summary.psfApCorrSigmaScaledDelta, 0.0)
 
         delta = (scale*50).asDegrees()
         for a, b in zip(summary.raCorners,
