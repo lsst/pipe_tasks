@@ -67,6 +67,7 @@ class MatchTractCatalogConnections(
         storageClass="SkyMap",
         dimensions=("skymap",),
     )
+    # TODO: Change outputs to ArrowAstropy in DM-44159
     cat_output_ref = cT.Output(
         doc="Reference matched catalog with indices of target matches",
         name="match_ref_{name_input_cat_ref}_{name_input_cat_target}",

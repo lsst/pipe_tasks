@@ -45,22 +45,22 @@ filename_diff_matched = os.path.join(ROOT, "data", "test_diff_matched.txt")
 class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
     """DiffMatchedTractCatalogTask test case."""
     def setUp(self):
-        ra = np.array([-5.1, -2.2, 0., 3.1, -3.2])
-        dec = np.array([-4.15, 1.15, 0, 2.15, -7.15])
-        mag_g = np.array([23., 24., 25., 25.5, 26.])
-        mag_r = mag_g + [0.5, -0.2, -0.8, -0.5, -1.5]
+        ra = np.array([-5.1, -2.2, 0., 3.1, -3.2, 2.01, -4.1])
+        dec = np.array([-4.15, 1.15, 0, 2.15, -7.15, -3.05, 5.7])
+        mag_g = np.array([23., 24., 25., 25.5, 26., 24.7, 23.3])
+        mag_r = mag_g + [0.5, -0.2, -0.8, -0.5, -1.5, 0.8, -0.4]
 
         coord_format = ConvertCatalogCoordinatesConfig
         zeropoint = coord_format.mag_zeropoint_ref.default
         fluxes = tuple(10**(-0.4*(mag - zeropoint)) for mag in (mag_g, mag_r))
         # Percent error in measurement
-        err_flux = np.array((0.02, 0.015, -0.035, 0.02, -0.04))
+        err_flux = np.array((0.02, 0.015, -0.035, 0.02, -0.04, 0.06, 0.01))
         # Absolute error
-        eps_coord = np.array((2.3, 0.6, -1.7, 3.6, -2.4))
+        eps_coord = np.array((2.3, 0.6, -1.7, 3.6, -2.4, 55.0, -40.8))
         err_coord = np.full_like(eps_coord, 0.02)
         eps_coord *= err_coord
-        extended_ref = [True, False, True, False, True]
-        extended_target = [False, False, True, True, True]
+        extended_ref = [True, False, True, False, True, False, True]
+        extended_target = [False, False, True, True, True, False, True]
         flags = np.ones_like(eps_coord, dtype=bool)
 
         bands = ['g', 'r']
@@ -77,11 +77,18 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             _error_format(col) for col in (column_ra_target, column_dec_target)
         ]
 
+        n_points = len(ra)
+        n_unmatched = 2
+        n_matched = n_points - n_unmatched
+        # Reorder some indices to make arbitrary differences
+        idx_ref = np.empty(n_points, dtype=int)
+        idx_ref[:n_matched] = np.arange(n_matched)[::-1]
+        idx_ref[n_matched:] = np.arange(n_matched, n_points)
         data_ref = {
-            column_ra_ref: ra[::-1],
-            column_dec_ref: dec[::-1],
-            columns_flux[0]: fluxes[0][::-1],
-            columns_flux[1]: fluxes[1][::-1],
+            column_ra_ref: ra[idx_ref],
+            column_dec_ref: dec[idx_ref],
+            columns_flux[0]: fluxes[0][idx_ref],
+            columns_flux[1]: fluxes[1][idx_ref],
             DiffMatchedTractCatalogConfig.column_ref_extended.default: extended_ref,
         }
         self.catalog_ref = pd.DataFrame(data=data_ref)
@@ -101,14 +108,16 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
         }
         self.catalog_target = pd.DataFrame(data=data_target)
 
+        # Make the last two rows unmatched (we set eps_coord very large)
+        match_row = np.arange(len(ra))[::-1] - n_unmatched
         self.catalog_match_ref = pd.DataFrame(data={
             'match_candidate': flags,
-            'match_row': np.arange(len(ra))[::-1],
+            'match_row': match_row,
         })
 
         self.catalog_match_target = pd.DataFrame(data={
             'match_candidate': flags,
-            'match_row': np.arange(len(ra))[::-1],
+            'match_row': match_row,
         })
 
         self.diff_matched = np.loadtxt(filename_diff_matched)
@@ -150,11 +159,12 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             catalog_match_target=self.catalog_match_target,
             wcs=self.wcs,
         )
-        columns_expect = columns_target
+        columns_result = list(result.cat_matched.columns)
+        columns_expect = list(columns_target) + ["match_distance", "match_distanceErr"]
         prefix = DiffMatchedTractCatalogConfig.column_matched_prefix_ref.default
         columns_expect.append(f'{prefix}index')
         columns_expect.extend((f'{prefix}{col}' for col in columns_ref))
-        self.assertEqual(columns_expect, list(result.cat_matched.columns))
+        self.assertEqual(columns_expect, columns_result)
 
         row = result.diff_matched.iloc[0].values.astype(float)
         # Run to re-save reference data. Will be loaded after this test completes.
