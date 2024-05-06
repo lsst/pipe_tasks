@@ -21,10 +21,14 @@ funcs:
         functor: CoordColumn
         dataset: calexp
         args: coord_dec
-    ccdVisitId:
+    visit:
         functor: Column
         dataset: calexp
-        args: ccdVisitId
+        args: visit
+    detector:
+        functor: Column
+        dataset: calexp
+        args: detector
     band:
         functor: Column
         dataset: calexp

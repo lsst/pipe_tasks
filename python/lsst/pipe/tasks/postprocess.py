@@ -215,7 +215,7 @@ class WriteSourceTableConnections(pipeBase.PipelineTaskConnections,
 
 class WriteSourceTableConfig(pipeBase.PipelineTaskConfig,
                              pipelineConnections=WriteSourceTableConnections):
-    idGenerator = DetectorVisitIdGeneratorConfig.make_field()
+    pass
 
 
 class WriteSourceTableTask(pipeBase.PipelineTask):
@@ -226,20 +226,21 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        inputs['ccdVisitId'] = self.config.idGenerator.apply(butlerQC.quantum.dataId).catalog_id
+        inputs["visit"] = butlerQC.quantum.dataId["visit"]
+        inputs["detector"] = butlerQC.quantum.dataId["detector"]
         result = self.run(**inputs)
         outputs = pipeBase.Struct(outputCatalog=result.table)
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, catalog, ccdVisitId=None, **kwargs):
+    def run(self, catalog, visit, detector, **kwargs):
         """Convert `src` catalog to DataFrame
 
         Parameters
         ----------
         catalog: `afwTable.SourceCatalog`
             catalog to be converted
-        ccdVisitId: `int`
-            ccdVisitId to be added as a column
+        visit, detector: `int`
+            Visit and detector ids to be added as columns.
         **kwargs
             Additional keyword arguments are ignored as a convenience for
             subclasses that pass the same arguments to several different
@@ -251,9 +252,11 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
             ``table``
                 `DataFrame` version of the input catalog
         """
-        self.log.info("Generating DataFrame from src catalog ccdVisitId=%s", ccdVisitId)
+        self.log.info("Generating DataFrame from src catalog visit,detector=%i,%i", visit, detector)
         df = catalog.asAstropy().to_pandas().set_index('id', drop=True)
-        df['ccdVisitId'] = ccdVisitId
+        df['visit'] = visit
+        # int16 instead of uint8 because databases don't like unsigned bytes.
+        df['detector'] = np.int16(detector)
 
         return pipeBase.Struct(table=df)
 
@@ -293,7 +296,6 @@ class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
         default=True,
         doc=("Add or replace local WCS columns and update the coord columns, coord_ra and coord_dec"),
     )
-    idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
 
 class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
@@ -305,9 +307,8 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
 
-        idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
-        inputs['idGenerator'] = idGenerator
-        inputs['ccdVisitId'] = idGenerator.catalog_id
+        inputs['visit'] = butlerQC.quantum.dataId["visit"]
+        inputs['detector'] = butlerQC.quantum.dataId["detector"]
 
         if self.config.doReevaluatePhotoCalib or self.config.doReevaluateSkyWcs:
             inputs['exposure'] = self.prepareCalibratedExposure(
@@ -360,7 +361,7 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
 
         return exposure
 
-    def addCalibColumns(self, catalog, exposure, idGenerator, **kwargs):
+    def addCalibColumns(self, catalog, exposure, **kwargs):
         """Add replace columns with calibs evaluated at each centroid
 
         Add or replace 'base_LocalWcs' `base_LocalPhotoCalib' columns in a
@@ -373,8 +374,6 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         exposure : `lsst.afw.image.exposure.Exposure`
             Exposure with attached PhotoCalibs and SkyWcs attributes to be
             reevaluated at local centroids. Pixels are not required.
-        idGenerator : `lsst.meas.base.IdGenerator`
-            Object that generates Source IDs and random seeds.
         **kwargs
             Additional keyword arguments are ignored to facilitate passing the
             same arguments to several methods.
@@ -750,7 +749,11 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
         if dataId and self.config.columnsFromDataId:
             for key in self.config.columnsFromDataId:
                 if key in dataId:
-                    df[key] = dataId[key]
+                    if key == "detector":
+                        # int16 instead of uint8 because databases don't like unsigned bytes.
+                        df[key] = np.int16(dataId[key])
+                    else:
+                        df[key] = dataId[key]
                 else:
                     raise ValueError(f"'{key}' in config.columnsFromDataId not found in dataId: {dataId}")
 
@@ -1429,7 +1432,6 @@ class WriteForcedSourceTableConfig(pipeBase.PipelineTaskConfig,
         dtype=str,
         default="objectId",
     )
-    idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
 
 class WriteForcedSourceTableTask(pipeBase.PipelineTask):
@@ -1448,19 +1450,20 @@ class WriteForcedSourceTableTask(pipeBase.PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        # Add ccdVisitId to allow joining with CcdVisitTable
-        idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
-        inputs['ccdVisitId'] = idGenerator.catalog_id
+        inputs["visit"] = butlerQC.quantum.dataId["visit"]
+        inputs["detector"] = butlerQC.quantum.dataId["detector"]
         inputs['band'] = butlerQC.quantum.dataId['band']
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, inputCatalog, inputCatalogDiff, ccdVisitId=None, band=None):
+    def run(self, inputCatalog, inputCatalogDiff, visit, detector, band=None):
         dfs = []
         for table, dataset, in zip((inputCatalog, inputCatalogDiff), ('calexp', 'diff')):
             df = table.asAstropy().to_pandas().set_index(self.config.key, drop=False)
             df = df.reindex(sorted(df.columns), axis=1)
-            df['ccdVisitId'] = ccdVisitId if ccdVisitId else pd.NA
+            df["visit"] = visit
+            # int16 instead of uint8 because databases don't like unsigned bytes.
+            df["detector"] = np.int16(detector)
             df['band'] = band if band else pd.NA
             df.columns = pd.MultiIndex.from_tuples([(dataset, c) for c in df.columns],
                                                    names=('dataset', 'column'))
