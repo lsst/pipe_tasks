@@ -113,12 +113,6 @@ class WriteObjectTableConnections(pipeBase.PipelineTaskConnections,
 
 class WriteObjectTableConfig(pipeBase.PipelineTaskConfig,
                              pipelineConnections=WriteObjectTableConnections):
-    engine = pexConfig.Field(
-        dtype=str,
-        default="pyarrow",
-        doc="Parquet engine for writing (pyarrow or fastparquet)",
-        deprecated="This config is no longer used, and will be removed after v26."
-    )
     coaddName = pexConfig.Field(
         dtype=str,
         default="deep",
@@ -794,17 +788,6 @@ class TransformObjectCatalogConfig(TransformCatalogBaseConfig,
         dtype=str,
         default="deep",
         doc="Name of coadd"
-    )
-    # TODO: remove in DM-27177
-    filterMap = pexConfig.DictField(
-        keytype=str,
-        itemtype=str,
-        default={},
-        doc=("Dictionary mapping full filter name to short one for column name munging."
-             "These filters determine the output columns no matter what filters the "
-             "input data actually contain."),
-        deprecated=("Coadds are now identified by the band, so this transform is unused."
-                    "Will be removed after v22.")
     )
     outputBands = pexConfig.ListField(
         dtype=str,
