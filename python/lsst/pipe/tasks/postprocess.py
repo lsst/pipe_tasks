@@ -48,7 +48,7 @@ import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 from lsst.pipe.base import connectionTypes
 import lsst.afw.table as afwTable
-from lsst.afw.image import ExposureSummaryStats
+from lsst.afw.image import ExposureSummaryStats, ExposureF
 from lsst.meas.base import SingleFrameMeasurementTask, DetectorVisitIdGeneratorConfig
 
 from .functors import CompositeFunctor, Column
@@ -258,17 +258,6 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
 class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
                                               defaultTemplates={"catalogType": ""},
                                               dimensions=("instrument", "visit", "detector", "skymap")):
-    exposure = connectionTypes.Input(
-        doc="Input exposure to perform photometry on.",
-        name="calexp",
-        storageClass="ExposureF",
-        dimensions=["instrument", "visit", "detector"],
-        # TODO: remove on DM-39584
-        deprecated=(
-            "Deprecated, as the `calexp` is not needed and just creates unnecessary i/o.  "
-            "Will be removed after v26."
-        ),
-    )
     visitSummary = connectionTypes.Input(
         doc="Input visit-summary catalog with updated calibration objects.",
         name="finalVisitSummary",
@@ -305,8 +294,9 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         inputs['detector'] = butlerQC.quantum.dataId["detector"]
 
         if self.config.doReevaluatePhotoCalib or self.config.doReevaluateSkyWcs:
+            exposure = ExposureF()
             inputs['exposure'] = self.prepareCalibratedExposure(
-                exposure=inputs["exposure"],
+                exposure=exposure,
                 visitSummary=inputs["visitSummary"],
                 detectorId=butlerQC.quantum.dataId["detector"]
             )
@@ -323,7 +313,7 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         Parameters
         ----------
         exposure : `lsst.afw.image.exposure.Exposure`
-            Input exposure to adjust calibrations.  May be empty.
+            Input exposure to adjust calibrations. May be an empty Exposure.
         detectorId : `int`
             Detector ID associated with the exposure.
         visitSummary : `lsst.afw.table.ExposureCatalog`, optional
