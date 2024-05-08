@@ -95,6 +95,11 @@ class CoaddTempExpInputRecorder:
             Number of good pixels this image will contribute to the CoaddTempExp.
             If saveEmptyCcds is not set and this value is zero, no record will be
             added.
+
+        Returns
+        -------
+        record : `lsst.afw.image.ExposureRecord`
+            The record corresponding to this CCD.
         """
         if nGoodPix == 0 and not self.task.config.saveEmptyCcds:
             return
@@ -113,6 +118,8 @@ class CoaddTempExpInputRecorder:
             if self.task.config.saveCcdWeights:
                 record.setD(self.task.ccdWeightKey, 1.0)  # No weighting or overlap when warping
             record.set(self.task.ccdFilterKey, calExp.getFilter().physicalLabel)
+
+        return record
 
     def finish(self, coaddTempExp, nGoodPix=None):
         """Finish creating the CoaddInputs for a CoaddTempExp.
