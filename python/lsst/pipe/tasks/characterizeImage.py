@@ -226,8 +226,12 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
 
     def setDefaults(self):
         super().setDefaults()
-        # just detect bright stars; includeThresholdMultipler=10 seems large,
-        # but these are the values we have been using
+        # Just detect bright stars.
+        # The thresholdValue sets the minimum flux in a pixel to be included in the
+        # footprint, while peaks are only detected when they are above
+        # thresholdValue * includeThresholdMultiplier. The low thresholdValue
+        # ensures that the footprints are large enough for the noise replacer
+        # to mask out faint undetected neighbors that are not to be measured.
         self.detection.thresholdValue = 5.0
         self.detection.includeThresholdMultiplier = 10.0
         # do not deblend, as it makes a mess

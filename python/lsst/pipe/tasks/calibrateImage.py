@@ -265,6 +265,11 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         self.install_simple_psf.fwhm = 4
 
         # S/N>=50 sources for PSF determination, but detection to S/N=5.
+        # The thresholdValue sets the minimum flux in a pixel to be included in the
+        # footprint, while peaks are only detected when they are above
+        # thresholdValue * includeThresholdMultiplier. The low thresholdValue
+        # ensures that the footprints are large enough for the noise replacer
+        # to mask out faint undetected neighbors that are not to be measured.
         self.psf_detection.thresholdValue = 5.0
         self.psf_detection.includeThresholdMultiplier = 10.0
         # TODO investigation: Probably want False here, but that may require

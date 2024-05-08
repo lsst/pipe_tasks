@@ -610,6 +610,9 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         measured_src : `lsst.afw.table.SourceCatalog`
             Updated source catalog with measurements, flags and aperture corrections.
         """
+        # Extract footprints from the input src catalog for noise replacement.
+        footprints = SingleFrameMeasurementTask.getFootprintsFromCatalog(src)
+
         # Apply source selector (s/n, flags, etc.)
         good_src = self.source_selector.selectSources(src)
         if sum(good_src.selected) == 0:
@@ -699,8 +702,9 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         measured_src['calib_psf_used'] = measured_used
 
         # Next, we do the measurement on all the psf candidate, used, and reserved stars.
+        # We use the full footprint list from the input src catalog for noise replacement.
         try:
-            self.measurement.run(measCat=measured_src, exposure=exposure)
+            self.measurement.run(measCat=measured_src, exposure=exposure, footprints=footprints)
         except Exception as e:
             self.log.warning('Failed to make measurements for visit %d, detector %d: %s',
                              visit, detector, e)
