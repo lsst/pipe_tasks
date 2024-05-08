@@ -157,6 +157,12 @@ class SkyCorrectionConnections(PipelineTaskConnections, dimensions=("instrument"
         dimensions=["instrument", "visit"],
     )
 
+    def __init__(self, *, config: "SkyCorrectionConfig | None" = None):
+        super().__init__(config=config)
+        assert config is not None
+        if not config.doSky:
+            del self.skyFrames
+
 
 class SkyCorrectionConfig(PipelineTaskConfig, pipelineConnections=SkyCorrectionConnections):
     maskObjects = ConfigurableField(
@@ -227,9 +233,13 @@ class SkyCorrectionTask(PipelineTask):
         inputRefs.calBkgs = _reorderAndPadList(
             inputRefs.calBkgs, [ref.dataId["detector"] for ref in inputRefs.calBkgs], detectorOrder
         )
-        inputRefs.skyFrames = _reorderAndPadList(
-            inputRefs.skyFrames, [ref.dataId["detector"] for ref in inputRefs.skyFrames], detectorOrder
-        )
+        # Only attempt to fetch sky frames if they are going to be applied.
+        if self.config.doSky:
+            inputRefs.skyFrames = _reorderAndPadList(
+                inputRefs.skyFrames, [ref.dataId["detector"] for ref in inputRefs.skyFrames], detectorOrder
+            )
+        else:
+            inputRefs.skyFrames = []
         outputRefs.skyCorr = _reorderAndPadList(
             outputRefs.skyCorr, [ref.dataId["detector"] for ref in outputRefs.skyCorr], detectorOrder
         )
