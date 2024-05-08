@@ -24,10 +24,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Iterable
 
 import numpy as np
-from lsst.afw.geom import makeWcsPairTransform
+from lsst.afw.geom import makeWcsPairTransform, Polygon
 from lsst.afw.image import ExposureF, Mask
 from lsst.afw.math import Warper
 from lsst.coadd.utils import copyGoodPixels
+from lsst.geom import Box2D, Point2D
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig, WarpedPsf
 from lsst.meas.algorithms.cloughTocher2DInterpolator import (
     CloughTocher2DInterpolateTask,
@@ -405,9 +406,15 @@ class MakeDirectWarpTask(PipelineTask):
                 old_background,
                 new_background,
                 visit_summary,
-                destBBox=target_bbox,
+                maxBBox=target_bbox,
             )
             warpedExposure.setPsf(psfWarped)
+
+            # Calculate the valid polygon of the warped exposure.
+            polygon = Polygon(
+                [xyTransform.applyForward(Point2D(corner)) for corner in calexp.getBBox().getCorners()]
+            )
+            polygon = polygon.intersectionSingle(Box2D(warpedExposure.getBBox()))
 
             # Accumulate the partial warps in an online fashion.
             nGood = copyGoodPixels(
@@ -416,8 +423,9 @@ class MakeDirectWarpTask(PipelineTask):
                 final_warp.mask.getPlaneBitMask(["NO_DATA"]),
             )
             ccdId = self.config.idGenerator.apply(dataId).catalog_id
-            inputRecorder.addCalExp(calexp, ccdId, nGood)
+            record = inputRecorder.addCalExp(calexp, ccdId, nGood)
             totalGoodPixels += nGood
+            record.setValidPolygon(polygon)
 
             # Obtain the masked fraction exposure and warp it.
             if self.config.doPreWarpInterpolation:
