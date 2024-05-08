@@ -773,6 +773,7 @@ flags:
     - base_PixelFlags_flag_streakCenter
     - base_ClassificationExtendedness_flag
     - base_ClassificationSizeExtendedness_flag
+    - base_InvalidPsf_flag
     - calib_astrometry_used
     - calib_photometry_reserved
     - calib_photometry_used
@@ -849,6 +850,7 @@ flag_rename_rules:
     - ['slot_ApFlux', 'apFlux']
     - ['base_Blendedness', 'blendedness']
     - ['base_PixelFlags_flag', 'pixelFlags']
+    - ['base_InvalidPsf_flag', 'invalidPsfFlag']
     - ['base_ClassificationE', 'e']
     - ['base_ClassificationS', 's']
     - ['base_Psf', 'psf']

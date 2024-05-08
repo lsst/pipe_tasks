@@ -358,6 +358,7 @@ flags:
    - base_ClassificationExtendedness_flag
    - base_ClassificationSizeExtendedness_flag
    - base_FootprintArea_value
+   - base_InvalidPsf_flag
    - base_Jacobian_flag
    - base_Jacobian_value
    - base_LocalBackground_instFlux
@@ -441,6 +442,7 @@ flag_rename_rules:
     - ['base_SdssCentroid', 'centroid']
     - ['base_Variance', 'variance']
     - ['base_Psf', 'psf']
+    - ['base_InvalidPsf_flag', 'invalidPsfFlag']
     - ['base_GaussianFlux', 'gaussianFlux']
     - ['base_CircularApertureFlux', 'apFlux']
     - ['base_FootprintArea', 'footprintArea']
