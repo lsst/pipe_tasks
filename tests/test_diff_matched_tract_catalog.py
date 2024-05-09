@@ -45,8 +45,10 @@ filename_diff_matched = os.path.join(ROOT, "data", "test_diff_matched.txt")
 class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
     """DiffMatchedTractCatalogTask test case."""
     def setUp(self):
-        ra = np.array([-5.1, -2.2, 0., 3.1, -3.2, 2.01, -4.1])
-        dec = np.array([-4.15, 1.15, 0, 2.15, -7.15, -3.05, 5.7])
+        ra_cen = 180.
+        ra = ra_cen + np.array([-5.1, -2.2, 0., 3.1, -3.2, 2.01, -4.1])/60
+        dec_cen = 0.
+        dec = dec_cen + np.array([-4.15, 1.15, 0, 2.15, -7.15, -3.05, 5.7])/60
         mag_g = np.array([23., 24., 25., 25.5, 26., 24.7, 23.3])
         mag_r = mag_g + [0.5, -0.2, -0.8, -0.5, -1.5, 0.8, -0.4]
 
@@ -137,7 +139,7 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             mag_num_bins=1,
         ))
         self.wcs = afwGeom.makeSkyWcs(crpix=lsst.geom.Point2D(9000, 9000),
-                                      crval=lsst.geom.SpherePoint(180., 0., lsst.geom.degrees),
+                                      crval=lsst.geom.SpherePoint(ra_cen, dec_cen, lsst.geom.degrees),
                                       cdMatrix=afwGeom.makeCdMatrix(scale=0.2*lsst.geom.arcseconds))
 
     def tearDown(self):

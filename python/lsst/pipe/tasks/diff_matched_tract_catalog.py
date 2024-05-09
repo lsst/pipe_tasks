@@ -44,6 +44,7 @@ from enum import Enum
 import numpy as np
 import pandas as pd
 from scipy.stats import iqr
+from smatch.matcher import sphdist
 from typing import Dict, Sequence
 
 
@@ -664,7 +665,6 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         ref, target = config.coord_format.format_catalogs(
             catalog_ref=catalog_ref, catalog_target=catalog_target,
             select_ref=None, select_target=select_target, wcs=wcs, radec_to_xy_func=radec_to_xy,
-            return_converted_columns=config.coord_format.coords_ref_to_convert is not None,
         )
         cat_ref = ref.catalog
         cat_target = target.catalog
@@ -685,13 +685,24 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         column_dist, column_dist_err = 'match_distance', 'match_distanceErr'
         dist = np.full(n_target, np.nan)
 
-        dist[matched_row] = np.hypot(
-            target.coord1[matched_row] - ref.coord1[matched_ref],
-            target.coord2[matched_row] - ref.coord2[matched_ref],
-        )
+        target_match_c1, target_match_c2 = (coord[matched_row] for coord in (target.coord1, target.coord2))
+        target_ref_c1, target_ref_c2 = (coord[matched_ref] for coord in (ref.coord1, ref.coord2))
+
         dist_err = np.full(n_target, np.nan)
-        dist_err[matched_row] = np.hypot(cat_target.iloc[matched_row][coord1_target_err].values,
-                                         cat_target.iloc[matched_row][coord2_target_err].values)
+        dist[matched_row] = sphdist(
+            target_match_c1, target_match_c2, target_ref_c1, target_ref_c2
+        ) if config.coord_format.coords_spherical else np.hypot(
+            target_match_c1 - target_ref_c1, target_match_c2 - target_ref_c2,
+        )
+        # Should probably explicitly add cosine terms if ref has errors too
+        dist_err[matched_row] = sphdist(
+            target_match_c1, target_match_c2,
+            target_match_c1 + cat_target.iloc[matched_row][coord1_target_err].values,
+            target_match_c2 + cat_target.iloc[matched_row][coord2_target_err].values,
+        ) if config.coord_format.coords_spherical else np.hypot(
+            cat_target.iloc[matched_row][coord1_target_err].values,
+            cat_target.iloc[matched_row][coord2_target_err].values
+        )
         cat_target[column_dist], cat_target[column_dist_err] = dist, dist_err
 
         # Create a matched table, preserving the target catalog's named index (if it has one)
