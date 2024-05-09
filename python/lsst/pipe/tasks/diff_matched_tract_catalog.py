@@ -45,7 +45,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import iqr
 from smatch.matcher import sphdist
-from typing import Dict, Sequence
+from typing import Sequence
 
 
 def is_sequence_set(x: Sequence):
@@ -508,8 +508,8 @@ class MatchType(Enum):
     MATCH_WRONG = 'match_wrong'
 
 
-def _get_columns(bands_columns: Dict, suffixes: Dict, suffixes_flux: Dict, suffixes_mag: Dict,
-                 stats: Dict, target: ComparableCatalog, column_dist: str):
+def _get_columns(bands_columns: dict, suffixes: dict, suffixes_flux: dict, suffixes_mag: dict,
+                 stats: dict, target: ComparableCatalog, column_dist: str):
     """Get column names for a table of difference statistics.
 
     Parameters
