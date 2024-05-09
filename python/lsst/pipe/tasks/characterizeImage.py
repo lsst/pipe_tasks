@@ -335,6 +335,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         self._initialFrame = getDebugFrame(self._display, "frame") or 1
         self._frame = self._initialFrame
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
+        afwTable.CoordKey.addErrorFields(self.schema)
         self.outputSchema = afwTable.SourceCatalog(self.schema)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
