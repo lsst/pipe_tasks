@@ -33,24 +33,23 @@ __all__ = ["init_fromDict", "Functor", "CompositeFunctor", "mag_aware_eval",
            "LocalDipoleDiffFluxErr", "Ebv",
            ]
 
-import yaml
-import re
-from itertools import product
 import logging
 import os.path
+import re
 import warnings
+from itertools import product
 
-import pandas as pd
-import numpy as np
 import astropy.units as u
-from astropy.coordinates import SkyCoord
-
-from lsst.utils import doImport
-from lsst.utils.introspection import get_full_type_name
-from lsst.daf.butler import DeferredDatasetHandle
-from lsst.pipe.base import InMemoryDatasetHandle
 import lsst.geom as geom
 import lsst.sphgeom as sphgeom
+import numpy as np
+import pandas as pd
+import yaml
+from astropy.coordinates import SkyCoord
+from lsst.daf.butler import DeferredDatasetHandle
+from lsst.pipe.base import InMemoryDatasetHandle
+from lsst.utils import doImport
+from lsst.utils.introspection import get_full_type_name
 
 
 def init_fromDict(initDict, basePath='lsst.pipe.tasks.functors',
