@@ -34,9 +34,11 @@ __all__ = ["init_fromDict", "Functor", "CompositeFunctor", "mag_aware_eval",
            ]
 
 import logging
+import os
 import os.path
 import re
 import warnings
+from contextlib import redirect_stdout
 from itertools import product
 
 import astropy.units as u
@@ -1819,7 +1821,10 @@ class Ebv(Functor):
 
     def __init__(self, **kwargs):
         # Import is only needed for Ebv.
-        from dustmaps.sfd import SFDQuery
+        # Suppress unnecessary .dustmapsrc log message on import.
+        with open(os.devnull, "w") as devnull:
+            with redirect_stdout(devnull):
+                from dustmaps.sfd import SFDQuery
         self._columns = ['coord_ra', 'coord_dec']
         self.sfd = SFDQuery()
         super().__init__(**kwargs)
