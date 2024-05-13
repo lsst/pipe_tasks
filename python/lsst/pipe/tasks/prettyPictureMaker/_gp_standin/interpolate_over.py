@@ -104,7 +104,7 @@ class InterpolateOverDefectGaussianProcess:
         self,
         maskedImage,
         defects=["SAT"],
-        fwhm=5,
+        fwhm=10,
         block_size=100,
         solver="treegp",
         method="block",
@@ -165,6 +165,7 @@ class InterpolateOverDefectGaussianProcess:
         glob_xmin, glob_xmax = bbox.minX, bbox.maxX
         glob_ymin, glob_ymax = bbox.minY, bbox.maxY
 
+        condition = False
         for i in tqdm(range(len(badMaskSpanSet))):
             spanset = badMaskSpanSet[i]
             bbox = spanset.getBBox()
@@ -175,12 +176,8 @@ class InterpolateOverDefectGaussianProcess:
             bbox = bbox.dilatedBy(self.correlation_length * 5)
             xmin, xmax = max([glob_xmin, bbox.minX]), min(glob_xmax, bbox.maxX)
             ymin, ymax = max([glob_ymin, bbox.minY]), min(glob_ymax, bbox.maxY)
+            localBox = Box2I(Point2I(xmin, ymin), Extent2I(xmax - xmin, ymax - ymin))
             problem_size = (xmax - xmin) * (ymax - ymin)
-            if not self.maskedImage.getBBox().contains(
-                Box2I(Point2I(xmin, ymin), Extent2I(xmax - xmin, ymax - ymin))
-            ):
-                print("The interpolation lays outside the image, skipping")
-                continue
             if problem_size > 10000 and not self.use_binning:
                 # TO DO: need to implement a better way to interpolate over large areas
                 # TO DO: One suggested idea might be to bin the area and average and interpolate using
@@ -190,13 +187,27 @@ class InterpolateOverDefectGaussianProcess:
                 print("xmin, xmax, ymin, ymax: ", xmin, xmax, ymin, ymax)
                 print("bbox: ", bbox)
                 print("Use interpolate_over_defects_block instead for this spanset.")
-                sub_masked_image = self.maskedImage[xmin:xmax, ymin:ymax]
-                sub_masked_image = self._interpolate_over_defects_block(maskedImage=sub_masked_image)
-                self.maskedImage[xmin:xmax, ymin:ymax] = sub_masked_image
+                try:
+                    sub_masked_image = self.maskedImage[localBox] except: condition = True
+                    break
+                try:
+                    sub_masked_image = self._interpolate_over_defects_block(maskedImage=sub_masked_image)
+                except:
+                    continue
+                self.maskedImage[localBox] = sub_masked_image
             else:
-                sub_masked_image = self.maskedImage[xmin:xmax, ymin:ymax]
-                sub_masked_image = self.interpolate_sub_masked_image(sub_masked_image)
-                self.maskedImage[xmin:xmax, ymin:ymax] = sub_masked_image
+                try:
+                    sub_masked_image = self.maskedImage[localBox]
+                except:
+                    condition = True
+                    break
+                try:
+                    sub_masked_image = self.interpolate_sub_masked_image(sub_masked_image)
+                except:
+                    continue
+                self.maskedImage[localBox] = sub_masked_image
+        if condition:
+            breakpoint()
 
     def _interpolate_over_defects_block(self, maskedImage=None):
         """
@@ -283,7 +294,8 @@ class InterpolateOverDefectGaussianProcess:
         else:
             # gp interpolation
             mean = np.mean(good_pixel[:, 2:])
-            white_noise = np.sqrt(np.mean(sub_masked_image.getVariance().array))
+            sub_image_array = sub_masked_image.getVariance().array
+            white_noise = np.sqrt(np.mean(sub_image_array[np.isfinite(sub_image_array)]))
             kernel_amplitude = np.std(good_pixel[:, 2:])
             if self.use_binning:
                 good_pixel = self._good_pixel_binning(copy.deepcopy(good_pixel))
@@ -294,6 +306,8 @@ class InterpolateOverDefectGaussianProcess:
                 white_noise=white_noise,
                 mean=mean,
             )
+            if bad_pixel.size > 20000:
+                raise ValueError("Too many pixels")
             gp.fit(good_pixel[:, :2], np.squeeze(good_pixel[:, 2:]))
             gp_predict = gp.predict(bad_pixel[:, :2])
 
