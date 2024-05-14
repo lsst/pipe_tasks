@@ -177,6 +177,15 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(len(row), len(self.diff_matched))
         self.assertFloatsAlmostEqual(row, self.diff_matched, rtol=1e-15)
 
+        self.task.config.coord_format.coords_spherical = not self.task.config.coord_format.coords_spherical
+        self.task.run(
+            catalog_ref=self.catalog_ref,
+            catalog_target=self.catalog_target,
+            catalog_match_ref=self.catalog_match_ref,
+            catalog_match_target=self.catalog_match_target,
+            wcs=self.wcs,
+        )
+
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
     pass
