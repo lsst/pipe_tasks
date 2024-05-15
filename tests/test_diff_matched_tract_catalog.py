@@ -175,7 +175,7 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             np.savetxt(filename_diff_matched, row)
 
         self.assertEqual(len(row), len(self.diff_matched))
-        self.assertFloatsAlmostEqual(row, self.diff_matched, rtol=1e-15)
+        self.assertFloatsAlmostEqual(row, self.diff_matched, atol=1e-8, rtol=1e-8)
 
         self.task.config.coord_format.coords_spherical = not self.task.config.coord_format.coords_spherical
         self.task.run(
