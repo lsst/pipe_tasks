@@ -49,6 +49,11 @@ class MeasurePsfConfig(pexConfig.Config):
         doc="Reserve sources from fitting"
     )
 
+    def setDefaults(self):
+        super().setDefaults()
+        if self.psfDeterminer.name == "piff" and self.psfDeterminer["piff"].useCoordinates == "sky":
+            self.makePsfCandidates.kernelSize = 35
+
     def validate(self):
         super().validate()
         if (self.psfDeterminer.name == "piff" and self.psfDeterminer["piff"].stampSize
