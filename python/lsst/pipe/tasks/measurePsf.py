@@ -56,11 +56,43 @@ class MeasurePsfConfig(pexConfig.Config):
 
     def validate(self):
         super().validate()
-        if (self.psfDeterminer.name == "piff" and self.psfDeterminer["piff"].stampSize
-                and self.psfDeterminer["piff"].stampSize > self.makePsfCandidates.kernelSize):
-            msg = (f"PIFF kernelSize={self.psfDeterminer['piff'].stampSize}"
-                   f" must be >= psf candidate kernelSize={self.makePsfCandidates.kernelSize}.")
-            raise pexConfig.FieldValidationError(MeasurePsfConfig.makePsfCandidates, self, msg)
+
+        match self.psfDeterminer.name:
+            # Perform Piff-specific validations.
+            case "piff":
+                if (
+                    self.psfDeterminer["piff"].stampSize
+                    and self.psfDeterminer["piff"].stampSize
+                    > self.makePsfCandidates.kernelSize
+                ):
+                    # Allowing this would result in a cutout size globally.
+                    msg = (
+                        f"PIFF stampSize={self.psfDeterminer['piff'].stampSize}"
+                        f" must be >= psf candidate kernelSize={self.makePsfCandidates.kernelSize}."
+                    )
+                    raise pexConfig.FieldValidationError(
+                        MeasurePsfConfig.makePsfCandidates, self, msg
+                    )
+
+                model_size = self.psfDeterminer["piff"].modelSize
+                sampling_size = self.psfDeterminer["piff"].samplingSize
+                # Calculate the minimum cutout size for stars, given how large
+                # the PSF model is and the sampling size.
+                if self.psfDeterminer["piff"].useCoordinates == "sky":
+                    min_kernel_size = int(
+                        1.415 * model_size / sampling_size
+                    )  # 1.415 = sqrt(2)
+                else:
+                    min_kernel_size = int(model_size / sampling_size)
+
+                if self.makePsfCandidates.kernelSize < min_kernel_size:
+                    msg = (
+                        f"psf candidate kernelSize={self.makePsfCandidates.kernelSize}"
+                        f" must be >= {min_kernel_size} for PIFF modelSize={model_size}."
+                    )
+                    raise pexConfig.FieldValidationError(
+                        MeasurePsfConfig.makePsfCandidates, self, msg
+                    )
 
 
 class MeasurePsfTask(pipeBase.Task):
