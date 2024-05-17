@@ -94,7 +94,7 @@ class SubtractBrightStarsConnections(
     )
     refCat = PrerequisiteInput(
         doc="Reference catalog that contains bright star positions",
-        name="gaia_dr2_20200414",
+        name="gaia_dr3_20230707",
         storageClass="SimpleCatalog",
         dimensions=("skypix",),
         multiple=True,
