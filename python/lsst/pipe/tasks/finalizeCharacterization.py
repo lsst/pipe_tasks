@@ -36,7 +36,7 @@ import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
 import lsst.meas.extensions.piff.piffPsfDeterminer  # noqa: F401
-from lsst.meas.algorithms import MeasureApCorrTask, NormalizedCalibrationFluxTask
+from lsst.meas.algorithms import MeasureApCorrTask
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask
 from lsst.meas.algorithms.sourceSelector import sourceSelectorRegistry
 
@@ -129,15 +129,6 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
         target=SingleFrameMeasurementTask,
         doc='Measure sources for aperture corrections'
     )
-    do_normalized_calibration = pexConfig.Field(
-        dtype=bool,
-        default=True,
-        doc="Use normalized calibration flux (e.g. compensated tophats?)",
-    )
-    normalized_calibration_flux = pexConfig.ConfigurableField(
-        target=NormalizedCalibrationFluxTask,
-        doc="Task to normalize the calibration flux (e.g. compensated tophats).",
-    )
     measure_ap_corr = pexConfig.ConfigurableField(
         target=MeasureApCorrTask,
         doc="Subtask to measure aperture corrections"
@@ -190,9 +181,6 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
         ap_selector.doFlags = False
         ap_selector.doUnresolved = False
 
-        # We only apply the pre-existing normalization correction.
-        self.normalized_calibration_flux.do_measure_ap_corr = False
-
         import lsst.meas.modelfit  # noqa: F401
         import lsst.meas.extensions.photometryKron  # noqa: F401
         import lsst.meas.extensions.convolved  # noqa: F401
@@ -202,7 +190,6 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
         # Set up measurement defaults
         self.measurement.plugins.names = [
             'base_FPPosition',
-            'base_CompensatedTophatFlux',
             'base_PsfFlux',
             'base_GaussianFlux',
             'modelfit_DoubleShapeletPsfApprox',
@@ -218,8 +205,6 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
             'ext_shapeHSM_HigherOrderMomentsPSF',
         ]
         self.measurement.slots.modelFlux = 'modelfit_CModel'
-
-        self.measurement.algorithms["base_CompensatedTophatFlux"].apertures = [12]
 
         self.measurement.plugins['ext_convolved_ConvolvedFlux'].seeing.append(8.0)
         self.measurement.plugins['ext_gaap_GaapFlux'].sigmas = [
@@ -268,8 +253,6 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         self.makeSubtask('make_psf_candidates')
         self.makeSubtask('psf_determiner')
         self.makeSubtask('measurement', schema=self.schema)
-        if self.config.do_normalized_calibration:
-            self.makeSubtask('normalized_calibration_flux', schema=self.schema)
         self.makeSubtask('measure_ap_corr', schema=self.schema)
         self.makeSubtask('apply_ap_corr', schema=self.schema)
 
@@ -425,6 +408,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             mapper.addMapping(item.key)
 
         # The following two may be redundant, but then the mapping is a no-op.
+        # Note that the slot_CalibFlux mapping will copy over any
+        # normalized compensated fluxes that are used for calibration.
         apflux_fields = input_schema.extract('slot_ApFlux_*')
         for field, item in apflux_fields.items():
             mapper.addMapping(item.key)
@@ -727,18 +712,6 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             self.log.warning('Failed to make measurements for visit %d, detector %d: %s',
                              visit, detector, e)
             return psf, None, measured_src
-
-        # If we are doing a normalized calibration flux, apply that here.
-        if self.config.do_normalized_calibration:
-            try:
-                self.normalized_calibration_flux.run(
-                    exposure=exposure,
-                    catalog=measured_src,
-                )
-            except Exception as e:
-                self.log.warning('Failed to apply calib flux normalization for visit %d, detector %d: %s',
-                                 visit, detector, e)
-                return psf, None, measured_src
 
         # And finally the ap corr map.
         try:
