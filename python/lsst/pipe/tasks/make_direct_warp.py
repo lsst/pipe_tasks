@@ -406,7 +406,7 @@ class MakeDirectWarpTask(PipelineTask):
                 old_background,
                 new_background,
                 visit_summary,
-                maxBBox=target_bbox,
+                destBBox=target_bbox,
             )
             warpedExposure.setPsf(psfWarped)
 
