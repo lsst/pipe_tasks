@@ -101,6 +101,33 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
         # Ensure the warp has the correct WCS
         self.assertEqual(warp.getWcs(), self.skyInfo.wcs)
 
+    def test_psfMatched(self):
+        self.config.makePsfMatched = False
+        task1 = MakeWarpTask(config=self.config)
+        self.config.makePsfMatched = True
+        task2 = MakeWarpTask(config=self.config)
+
+        result1 = task1.run(
+            calExpList=[self.exposure],
+            ccdIdList=[self.detector],
+            skyInfo=self.skyInfo,
+            visitId=self.visit,
+            dataIdList=[{'visit': self.visit, 'detector': self.detector}],
+        )
+
+        result2 = task2.run(
+            calExpList=[self.exposure],
+            ccdIdList=[self.detector],
+            skyInfo=self.skyInfo,
+            visitId=self.visit,
+            dataIdList=[{'visit': self.visit, 'detector': self.detector}],
+        )
+
+        # Ensure we got an exposure out
+        self.assertIsInstance(result2.exposures['psfMatched'], lsst.afw.image.ExposureF)
+        self.assertMaskedImagesEqual(result1.exposures['direct'].maskedImage,
+                result2.exposures['direct'].maskedImage)
+
 
 def setup_module(module):
     lsst.utils.tests.init()
