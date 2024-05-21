@@ -222,6 +222,9 @@ class MakeDirectWarpConfig(
         doc="Add photometric calibration variance to warp variance plane?",
         default=False,
     )
+    border = Field[int](
+        doc="Pad the patch boundary of the warp by these many pixels, so as to allow for PSF-matching later",
+        default=0,
     )
     warper = ConfigField(
         doc="Configuration for the warper that warps the image and noise",
@@ -341,6 +344,7 @@ class MakeDirectWarpTask(PipelineTask):
             A Struct object containing the warped exposure, noise exposure(s),
             and masked fraction image.
         """
+        sky_info.bbox.grow(self.config.border)
         target_bbox, target_wcs = sky_info.bbox, sky_info.wcs
 
         # Initialize the objects that will hold the warp.
