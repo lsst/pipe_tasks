@@ -29,6 +29,7 @@ import lsst.afw.image
 from lsst.daf.butler import DataCoordinate, DimensionUniverse
 from lsst.pipe.base import InMemoryDatasetHandle
 from lsst.pipe.tasks.make_direct_warp import (MakeDirectWarpConfig, MakeDirectWarpTask,)
+from lsst.pipe.tasks.make_psf_matched_warp import MakePsfMatchedWarpTask
 from lsst.pipe.tasks.coaddBase import makeSkyInfo
 import lsst.skymap as skyMap
 from lsst.afw.detection import GaussianPsf
@@ -208,6 +209,36 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
         # Ensure that mfrac has pixels between 0 and 1
         self.assertTrue(np.nanmax(mfrac.array) <= 1)
         self.assertTrue(np.nanmin(mfrac.array) >= 0)
+
+
+class MakePsfMatchedWarpTestCase(MakeWarpTestCase):
+    def test_makeWarp(self):
+        """Test basic MakePsfMatchedWarpTask"""
+
+        makeWarp = MakeDirectWarpTask(config=self.config)
+        inputs = {"calexp_list": [self.dataRef]}
+        result = makeWarp.run(
+            inputs,
+            sky_info=self.skyInfo,
+            visit_summary=None
+        )
+
+        warp = result.warp
+
+        config = MakePsfMatchedWarpTask.ConfigClass()
+        makePsfMatchedWarp = MakePsfMatchedWarpTask(config=config)
+        result = makePsfMatchedWarp.run(
+            warp
+        )
+
+        psf_matched_warp = result.psf_matched_warp
+        # Ensure we got an exposure out
+        self.assertIsInstance(psf_matched_warp, lsst.afw.image.ExposureF)
+        # Ensure the warp has valid pixels
+        self.assertGreater(np.isfinite(psf_matched_warp.image.array.ravel()).sum(), 0)
+        # Check that the PSF has the size we put in
+        psf = psf_matched_warp.getPsf()
+        assert psf is not None
 
 
 def setup_module(module):
