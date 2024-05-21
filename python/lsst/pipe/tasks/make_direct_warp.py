@@ -434,7 +434,7 @@ class MakeDirectWarpTask(PipelineTask):
                 badMaskPlanes = []
             masked_fraction_exp = self._get_bad_mask(calexp, badMaskPlanes)
             masked_fraction_warp = self.maskedFractionWarper.warpExposure(
-                target_wcs, masked_fraction_exp, destBBox=target_bbox
+                target_wcs, masked_fraction_exp, maxBBox=target_bbox,
             )
             copyGoodPixels(
                 final_masked_fraction_warp.maskedImage,
@@ -452,7 +452,7 @@ class MakeDirectWarpTask(PipelineTask):
                     old_background,
                     new_background,
                     visit_summary,
-                    destBBox=target_bbox,
+                    maxBBox=target_bbox,
                 )
                 copyGoodPixels(
                     final_noise_warps[n_noise].maskedImage,
@@ -652,8 +652,7 @@ class MakeDirectWarpTask(PipelineTask):
         exp.maskedImage /= photo_calib.getCalibrationMean()
 
     # This method is copied from makeWarp.py
-    @classmethod
-    def _prepareEmptyExposure(cls, sky_info):
+    def _prepareEmptyExposure(self, sky_info):
         """Produce an empty exposure for a given patch.
 
         Parameters

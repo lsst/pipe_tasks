@@ -101,6 +101,7 @@ class WarpAndPsfMatchTask(pipeBase.Task):
             # grow warped region to provide sufficient area for PSF-matching
             pixToGrow = 2 * max(self.psfMatch.kConfig.sizeCellX,
                                 self.psfMatch.kConfig.sizeCellY)
+            pixToGrow = 0
             # replace with copy
             maxBBox = geom.Box2I(maxBBox)
             maxBBox.grow(pixToGrow)
@@ -109,12 +110,16 @@ class WarpAndPsfMatchTask(pipeBase.Task):
             exposure = self.warper.warpExposure(wcs, exposure, maxBBox=maxBBox, destBBox=destBBox)
             exposure.setPsf(psfWarped)
 
+        exposure.writeFits("/sdf/home/k/kannawad/DM-43064/warpExposure.fits")
         if makePsfMatched:
+            exposure.writeFits("/sdf/home/k/kannawad/DM-43064/warpExposure.fits")
             try:
                 exposurePsfMatched = self.psfMatch.run(exposure, modelPsf).psfMatchedExposure
             except Exception as e:
                 exposurePsfMatched = None
                 self.log.info("Cannot PSF-Match: %s", e)
+                raise e
+            exposurePsfMatched.writeFits("/sdf/home/k/kannawad/DM-43064/psfMatched.fits")
 
         return pipeBase.Struct(
             direct=exposure if makeDirect else None,

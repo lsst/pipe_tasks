@@ -137,7 +137,7 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
     makePsfMatched = pexConfig.Field(
         doc="Make Psf-Matched Warp/Coadd?",
         dtype=bool,
-        default=False,
+        default=True,
     )
     modelPsf = GaussianPsfFactory.makeField(doc="Model Psf factory")
     useVisitSummaryPsf = pexConfig.Field(
@@ -345,6 +345,7 @@ class MakeWarpTask(CoaddBaseTask):
                         mimg *= (warp.getPhotoCalib().getInstFluxAtZeroMagnitude()
                                  / exposure.getPhotoCalib().getInstFluxAtZeroMagnitude())
                         del mimg
+                    exposure.writeFits("/sdf/home/k/kannawad/DM-43064/after.fits")
                     numGoodPix[warpType] = coaddUtils.copyGoodPixels(
                         warp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask())
                     totGoodPix[warpType] += numGoodPix[warpType]
