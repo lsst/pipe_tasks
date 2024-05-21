@@ -223,10 +223,6 @@ class MakeDirectWarpConfig(
         doc="Add photometric calibration variance to warp variance plane?",
         default=False,
     )
-    matchingKernelSize = Field[int](
-        doc="Size in pixels of matching kernel. Must be odd.",
-        default=21,
-        check=lambda x: x % 2 == 1,
     )
     warper = ConfigField(
         doc="Configuration for the warper that warps the image and noise",
