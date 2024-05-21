@@ -262,6 +262,7 @@ class MakeDirectWarpConfig(
     def setDefaults(self) -> None:
         super().setDefaults()
         self.warper.warpingKernelName = "lanczos3"
+        self.warper.cacheSize = 0
         self.maskedFractionWarper.warpingKernelName = "bilinear"
 
 
