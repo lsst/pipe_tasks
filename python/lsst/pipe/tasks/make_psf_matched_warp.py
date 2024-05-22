@@ -21,6 +21,8 @@
 
 from __future__ import annotations
 
+__all__ = ("MakePsfMatchedWarpConfig", "MakePsfMatchedWarpConnections", "MakePsfMatchedWarpTask",)
+
 from typing import TYPE_CHECKING
 
 import lsst.geom as geom
@@ -84,15 +86,6 @@ class MakePsfMatchedWarpConfig(
         doc="Task to warp and PSF-match calexp",
     )
 
-    # matchingKernelSize is there just for backward compatibility.
-    @property
-    def matchingKernelSize(self):
-        return self.psfMatch.kernel.active.kernelSize
-
-    @matchingKernelSize.setter
-    def matchingKernelSize(self, value):
-        self.psfMatch.kernel.active.kernelSize = value
-
     def setDefaults(self):
         super().setDefaults()
         self.psfMatch.kernel["AL"].alardSigGauss = [1.0, 2.0, 4.5]
@@ -119,8 +112,7 @@ class MakePsfMatchedWarpTask(PipelineTask):
         Notes
         -----
         Pixels that receive no inputs are set to NaN, for e.g, chip gaps. This
-        violates LSST algorithms group policy, but will be fixed during the
-        coaddition stage.
+        violates LSST algorithms group policy.
 
         Parameters
         ----------
@@ -157,12 +149,12 @@ class MakePsfMatchedWarpTask(PipelineTask):
                 destination_polygon = src_polygon.transform(transform).intersectionSingle(
                     geom.Box2D(direct_warp.getBBox())
                 )
-                self.log.trace("Polygon for detector=%d is calculated as %s",
+                self.log.debug("Polygon for detector=%d is calculated as %s",
                                row["ccd"],
                                destination_polygon
                                )
             else:
-                self.log.trace("Polygon for detector=%d is read from the input calexp as %s",
+                self.log.debug("Polygon for detector=%d is read from the input calexp as %s",
                                row["ccd"],
                                destination_polygon
                                )
@@ -175,7 +167,7 @@ class MakePsfMatchedWarpTask(PipelineTask):
                 bbox.include(geom.Point2I(corner))
             bbox.clip(direct_warp.getBBox())  # Additional safeguard
 
-            self.log.trace("PSF-matching CCD %d with bbox %s", row["ccd"], bbox)
+            self.log.debug("PSF-matching CCD %d with bbox %s", row["ccd"], bbox)
 
             ccd_mask_array = ~(destination_polygon.createImage(bbox).array <= 0)
 
@@ -205,11 +197,11 @@ class MakePsfMatchedWarpTask(PipelineTask):
 
             del temp_psf_matched
 
-            self.log.trace(
-                "Copied %d pixels from temp_warp to exposure_psf_matched", num_good_pixels
+            self.log.info(
+                "Copied %d pixels from CCD %d to exposure_psf_matched", num_good_pixels, row["ccd"],
             )
             total_good_pixels += num_good_pixels
 
-        self.log.debug("Total number of good pixels = %d", total_good_pixels)
+        self.log.info("Total number of good pixels = %d", total_good_pixels)
 
         return Struct(psf_matched_warp=exposure_psf_matched)
