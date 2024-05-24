@@ -408,6 +408,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             mapper.addMapping(item.key)
 
         # The following two may be redundant, but then the mapping is a no-op.
+        # Note that the slot_CalibFlux mapping will copy over any
+        # normalized compensated fluxes that are used for calibration.
         apflux_fields = input_schema.extract('slot_ApFlux_*')
         for field, item in apflux_fields.items():
             mapper.addMapping(item.key)
