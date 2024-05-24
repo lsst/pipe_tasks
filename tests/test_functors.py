@@ -30,6 +30,7 @@ import logging
 
 import lsst.daf.base as dafBase
 import lsst.afw.geom as afwGeom
+import lsst.afw.table as afwTable
 import lsst.geom as geom
 from lsst.sphgeom import HtmPixelization
 import lsst.meas.base as measBase
@@ -43,7 +44,9 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
                                       LocalDipoleMeanFlux, LocalDipoleMeanFluxErr,
                                       LocalDipoleDiffFlux, LocalDipoleDiffFluxErr,
                                       LocalWcs, ComputePixelScale, ConvertPixelToArcseconds,
-                                      ConvertPixelSqToArcsecondsSq, HtmIndex20, Ebv)
+                                      ConvertPixelSqToArcsecondsSq,
+                                      ConvertDetectorAngleToPositionAngle,
+                                      HtmIndex20, Ebv)
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
@@ -581,14 +584,163 @@ class FunctorTestCase(unittest.TestCase):
                                     atol=1e-13,
                                     rtol=0))
 
+    def testComputePositionAngle(self, offset=0.0001):
+        """Test computation of position angle from (RA1, Dec1) to (RA2, Dec2)
+
+        offset : `float`
+            Arc length of the offset vector to set up test points. [radian]
+        """
+
+        d = offset
+        columns = ("ra1", "dec1", "ra2", "dec2", "expected")
+        position_angle_test_values = [
+            # Get 0, 0 right
+            (0, 0, d, 0, np.pi/2),
+            (0, 0, 0, d, 0),
+            (0, 0, -d, 0, -np.pi/2),
+            (0, 0, 0, -d, np.pi),
+            # Make sure we get wrap-around to 0, 0 right
+            (2*np.pi, 0, d, 0, np.pi/2),
+            (2*np.pi, 0, 0, d, 0),
+            (2*np.pi, 0, -d, 0, -np.pi/2),
+            (2*np.pi, 0, 0, -d, np.pi),
+            (+0.0015, 0, 2*np.pi - 0.05, 0, -np.pi/2),
+            # Get another somewhat arbitrary location right [these are in rad]
+            # It's not really important to rescale d by 1/cos(dec)
+            # because we're just looking at orientation of vector
+            # but foreshadowing to the poles...
+            (0.0015, 1, 0.0015 + d*np.cos(-1), 1, np.pi/2),
+            (0.0015, 1, 0.0015, 1 + d, 0),
+            (0.0015, 1, 0.0015 - d*np.cos(-1), 1, - np.pi/2),
+            (0.0015, 1, 0.0015, 1 - d, np.pi),
+            # Negative dec
+            (0.0015, -1, 0.0015 + d*np.cos(-1), -1, np.pi/2),
+            (0.0015, -1, 0.0015, -1 + d, 0),
+            (0.0015, -1, 0.0015 - d*np.cos(-1), -1, - np.pi/2),
+            (0.0015, -1, 0.0015, -1 - d, np.pi),
+            # Make sure we get wrap-around on that right
+            (2*np.pi + 0.0015, 1, 2*np.pi + 0.0015 + d*np.cos(1), 1, np.pi/2),
+            (2*np.pi + 0.0015, 1, 2*np.pi + 0.0015, 1 + d, 0),
+            (2*np.pi + 0.0015, 1, 0.0015 - d*np.cos(1), 1, - np.pi/2),
+            (2*np.pi + 0.0015, 1, 0.0015, 1 - d, np.pi),
+            # Get relative wrap-around right
+            (2*np.pi + 0.0015, 1, 0.0015 + d*np.cos(1), 1, np.pi/2),
+            (0.0015, 1, 2*np.pi + 0.0015, 1 + d, 0),
+            (0.0015, 1, 2*np.pi + 0.0015 - d*np.cos(1), 1, - np.pi/2),
+            (2*np.pi + 0.0015, 1, 0.0015, 1 - d, np.pi),
+            # Get either side of RA=0 right
+            (+ d*np.cos(1) / 2, 1, 2*np.pi - d*np.cos(1) / 2, 1, - np.pi/2),
+            (+ d*np.cos(1) / 2, 1, - d*np.cos(1) / 2, 1, -np.pi/2),
+            (2*np.pi + d*np.cos(1) / 2, 1, - d*np.cos(1) / 2, 1, -np.pi/2),
+            (-d*np.cos(1) / 2, 1, +0.0015, 1, np.pi/2),
+            (0.0015, 1, 0.0015, 1 + d, 0),
+            (0.0015, 1, 0.0015 - d*np.cos(1), 1, - np.pi/2),
+            (0.0015, 1, 0.0015, 1 - d, np.pi),
+            # Try it near the poles
+            (0, np.pi/2, 0, np.pi/2 - d, np.pi),
+            (0, np.pi/2 - d, 0, np.pi/2, 0),
+            (0, -np.pi/2, 0, -np.pi/2 + d, 0),
+            (0, -np.pi/2 + d, 0, -np.pi/2, np.pi),
+        ]
+
+        df = pd.DataFrame(position_angle_test_values, columns=columns)
+
+        cd_matrix = np.array([[1, 0], [0, -1]])  # Doesn't matter because we don't use it.
+        local_wcs = LocalWcs(*cd_matrix.flatten())
+        pa = local_wcs.computePositionAngle(df["ra1"], df["dec1"], df["ra2"], df["dec2"])
+        expected = df["expected"]
+        tolerance_deg = 0.05  # degrees
+        tolerance_rad = np.deg2rad(tolerance_deg)
+
+        # Use SphereGeom to handle wrap-around separations correctly.
+        diff = [
+            geom.Angle(o, geom.radians).separation(geom.Angle(e, geom.radians)).asRadians()
+            for o, e in zip(pa, expected)
+        ]
+
+        np.testing.assert_allclose(diff, 0, rtol=0, atol=tolerance_rad)
+
+    # Test position angle
+    def testConvertDetectorAngleToPositionAngle(self):
+        """Test conversion of position angle in detector degrees to position angle on sky
+
+        There is overlap with testConvertPixelToArcseconds
+        But we also test additional rotation angles so this is separate.
+        """
+        dipoleSep = 10
+        ixx = 10
+        testPixelDeltas = np.random.uniform(-100, 100, size=(self.nRecords, 2))
+        # testConvertPixelToArcSecond uses a meas_base LocalWcsPlugin
+        # but we're using a simple WCS as our example, so this doesn't really matter
+        # and we'll just use the WCS directly
+        for dec in np.linspace(-90, 90, 10):
+            for theta in (-45, 0, 90):
+                for x, y in zip(np.random.uniform(2 * 1109.99981456774, size=10),
+                                np.random.uniform(2 * 560.018167811613, size=10)):
+                    wcs = self._makeWcs(dec=dec, theta=theta)
+                    cd_matrix = wcs.getCdMatrix()
+
+                    self.dataDict["dipoleSep"] = np.full(self.nRecords, dipoleSep)
+                    self.dataDict["ixx"] = np.full(self.nRecords, ixx)
+                    self.dataDict["slot_Centroid_x"] = np.full(self.nRecords, x)
+                    self.dataDict["slot_Centroid_y"] = np.full(self.nRecords, y)
+                    self.dataDict["someCentroid_x"] = x + testPixelDeltas[:, 0]
+                    self.dataDict["someCentroid_y"] = y + testPixelDeltas[:, 1]
+                    self.dataDict["orientation"] = np.arctan2(
+                        self.dataDict["someCentroid_y"] - self.dataDict["slot_Centroid_y"],
+                        self.dataDict["someCentroid_x"] - self.dataDict["slot_Centroid_x"],
+                    )
+
+                    self.dataDict["base_LocalWcs_CDMatrix_1_1"] = np.full(self.nRecords,
+                                                                          cd_matrix[0, 0])
+                    self.dataDict["base_LocalWcs_CDMatrix_1_2"] = np.full(self.nRecords,
+                                                                          cd_matrix[0, 1])
+                    self.dataDict["base_LocalWcs_CDMatrix_2_1"] = np.full(self.nRecords,
+                                                                          cd_matrix[1, 0])
+                    self.dataDict["base_LocalWcs_CDMatrix_2_2"] = np.full(self.nRecords,
+                                                                          cd_matrix[1, 1])
+                    df = self.getMultiIndexDataFrame(self.dataDict)
+
+                    # Test detector angle to position angle conversion
+                    func = ConvertDetectorAngleToPositionAngle(
+                        "orientation",
+                        "base_LocalWcs_CDMatrix_1_1",
+                        "base_LocalWcs_CDMatrix_1_2",
+                        "base_LocalWcs_CDMatrix_2_1",
+                        "base_LocalWcs_CDMatrix_2_2"
+                    )
+                    val = self._funcVal(func, df)
+
+                    delta_ra, delta_dec = func.computeDeltaRaDec(
+                        self.dataDict["someCentroid_x"] - self.dataDict["slot_Centroid_x"],
+                        self.dataDict["someCentroid_y"] - self.dataDict["slot_Centroid_y"],
+                        self.dataDict["base_LocalWcs_CDMatrix_1_1"],
+                        self.dataDict["base_LocalWcs_CDMatrix_1_2"],
+                        self.dataDict["base_LocalWcs_CDMatrix_2_1"],
+                        self.dataDict["base_LocalWcs_CDMatrix_2_2"],
+                    )
+
+                    dx = np.cos(0) * np.tan(delta_dec) - np.sin(0) * np.cos(delta_ra)
+                    dy = np.sin(delta_ra)
+                    comparison_pa = np.arctan2(dy, dx)
+                    comparison_pa = np.rad2deg(comparison_pa)
+
+                    coord_diff = []
+                    for v, c in zip(val.values, comparison_pa):
+                        observed_angle = geom.Angle(v, geom.degrees)
+                        expected_angle = geom.Angle(c, geom.degrees)
+                        diff = observed_angle.separation(expected_angle).asRadians()
+                        coord_diff.append(diff)
+
+                    np.testing.assert_allclose(coord_diff, 0, rtol=0, atol=5e-6)
+
     def testConvertPixelToArcseconds(self):
-        """Test calculations of the pixel scale and conversions of pixel to
+        """Test calculations of the pixel scale, conversions of pixel to
         arcseconds.
         """
         dipoleSep = 10
         ixx = 10
         testPixelDeltas = np.random.uniform(-100, 100, size=(self.nRecords, 2))
-        import lsst.afw.table as afwTable
         localWcsPlugin = measBase.EvaluateLocalWcsPlugin(
             None,
             "base_LocalWcs",
@@ -609,6 +761,7 @@ class FunctorTestCase(unittest.TestCase):
                 self.dataDict["slot_Centroid_y"] = np.full(self.nRecords, y)
                 self.dataDict["someCentroid_x"] = x + testPixelDeltas[:, 0]
                 self.dataDict["someCentroid_y"] = y + testPixelDeltas[:, 1]
+
                 self.dataDict["base_LocalWcs_CDMatrix_1_1"] = np.full(self.nRecords,
                                                                       linAffMatrix[0, 0])
                 self.dataDict["base_LocalWcs_CDMatrix_1_2"] = np.full(self.nRecords,
@@ -678,8 +831,13 @@ class FunctorTestCase(unittest.TestCase):
                                             atol=1e-16,
                                             rtol=1e-16))
 
-    def _makeWcs(self, dec=53.1595451514076):
-        """Create a wcs from real CFHT values.
+    def _makeWcs(self, dec=53.1595451514076, theta=0):
+        """Create a wcs from real CFHT values, rotated by an optional theta.
+
+        dec : `float`
+            Set reference declination of CRVAL2 [degrees]
+        theta : `float`
+            Rotate CD matrix by theta [degrees]
 
         Returns
         -------
@@ -703,10 +861,26 @@ class FunctorTestCase(unittest.TestCase):
         metadata.set("CTYPE1", 'RA---SIN')
         metadata.set("CTYPE2", 'DEC--SIN')
 
-        metadata.setDouble("CD1_1", 5.10808596133527E-05)
-        metadata.setDouble("CD1_2", 1.85579539217196E-07)
-        metadata.setDouble("CD2_2", -5.10281493481982E-05)
-        metadata.setDouble("CD2_1", -8.27440751733828E-07)
+        cd_matrix = np.array(
+            [
+                [5.10808596133527E-05, 1.85579539217196E-07],
+                [-8.27440751733828E-07, -5.10281493481982E-05]
+            ]
+        )
+        # rotate CD matrix
+        theta_rad = np.deg2rad(theta)
+        rotation_matrix = np.array(
+            [
+                [np.cos(theta_rad), -np.sin(theta_rad)],
+                [np.sin(theta_rad), np.cos(theta_rad)],
+            ]
+        )
+        cd_matrix = rotation_matrix @ cd_matrix
+
+        metadata.setDouble("CD1_1", cd_matrix[0, 0])
+        metadata.setDouble("CD1_2", cd_matrix[0, 1])
+        metadata.setDouble("CD2_1", cd_matrix[1, 0])
+        metadata.setDouble("CD2_2", cd_matrix[1, 1])
 
         return afwGeom.makeSkyWcs(metadata)
 

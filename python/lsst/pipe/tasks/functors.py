@@ -26,7 +26,9 @@ __all__ = ["init_fromDict", "Functor", "CompositeFunctor", "mag_aware_eval",
            "PsfSdssTraceSizeDiff", "HsmTraceSize", "PsfHsmTraceSizeDiff",
            "HsmFwhm", "E1", "E2", "RadiusFromQuadrupole", "LocalWcs",
            "ComputePixelScale", "ConvertPixelToArcseconds",
-           "ConvertPixelSqToArcsecondsSq", "ReferenceBand", "Photometry",
+           "ConvertPixelSqToArcsecondsSq",
+           "ConvertDetectorAngleToPositionAngle",
+           "ReferenceBand", "Photometry",
            "NanoJansky", "NanoJanskyErr", "LocalPhotometry", "LocalNanojansky",
            "LocalNanojanskyErr", "LocalDipoleMeanFlux",
            "LocalDipoleMeanFluxErr", "LocalDipoleDiffFlux",
@@ -1203,7 +1205,7 @@ class LocalWcs(Functor):
         super().__init__(**kwargs)
 
     def computeDeltaRaDec(self, x, y, cd11, cd12, cd21, cd22):
-        """Compute the distance on the sphere from x2, y1 to x1, y1.
+        """Compute the dRA, dDec from dx, dy.
 
         Parameters
         ----------
@@ -1211,8 +1213,6 @@ class LocalWcs(Functor):
             X pixel coordinate.
         y : `~pandas.Series`
             Y pixel coordinate.
-        cd11 : `~pandas.Series`
-            [1, 1] element of the local Wcs affine transform.
         cd11 : `~pandas.Series`
             [1, 1] element of the local Wcs affine transform.
         cd12 : `~pandas.Series`
@@ -1225,9 +1225,13 @@ class LocalWcs(Functor):
         Returns
         -------
         raDecTuple : tuple
-            RA and dec conversion of x and y given the local Wcs.
+            RA and Dec conversion of x and y given the local Wcs.
             Returned units are in radians.
 
+        Notes
+        -----
+        If x and y are with respect to the CRVAL1, CRVAL2
+        then this will return the RA, Dec for that WCS.
         """
         return (x * cd11 + y * cd12, x * cd21 + y * cd22)
 
@@ -1272,8 +1276,6 @@ class LocalWcs(Functor):
             Y pixel coordinate.
         cd11 : `~pandas.Series`
             [1, 1] element of the local Wcs affine transform.
-        cd11 : `~pandas.Series`
-            [1, 1] element of the local Wcs affine transform.
         cd12 : `~pandas.Series`
             [1, 2] element of the local Wcs affine transform.
         cd21 : `~pandas.Series`
@@ -1290,6 +1292,76 @@ class LocalWcs(Functor):
         ra2, dec2 = self.computeDeltaRaDec(x2, y2, cd11, cd12, cd21, cd22)
         # Great circle distance for small separations.
         return self.computeSkySeparation(ra1, dec1, ra2, dec2)
+
+    def computePositionAngle(self, ra1, dec1, ra2, dec2):
+        """Compute position angle (E of N) from (ra1, dec1) to (ra2, dec2).
+
+        Parameters
+        ----------
+        ra1 : iterable [`float`]
+            RA of the first coordinate [radian].
+        dec1 : iterable [`float`]
+            Dec of the first coordinate [radian].
+        ra2 : iterable [`float`]
+            RA of the second coordinate [radian].
+        dec2 : iterable [`float`]
+            Dec of the second coordinate [radian].
+
+        Returns
+        -------
+        Position Angle: `~pandas.Series`
+            radians E of N
+
+        Notes
+        -----
+        (ra1, dec1) -> (ra2, dec2) is interpreted as the shorter way around the sphere
+
+        For a separation of 0.0001 rad, the position angle is good to 0.0009 rad
+        all over the sphere.
+        """
+        # lsst.geom.SpherePoint has "bearingTo", which returns angle N of E
+        # We instead want the astronomy convention of "Position Angle", which is angle E of N
+        position_angle = np.zeros(len(ra1))
+        for i, (r1, d1, r2, d2) in enumerate(zip(ra1, dec1, ra2, dec2)):
+            point1 = geom.SpherePoint(r1, d1, geom.radians)
+            point2 = geom.SpherePoint(r2, d2, geom.radians)
+            bearing = point1.bearingTo(point2)
+            pa_ref_angle = geom.Angle(np.pi/2, geom.radians)  # in bearing system
+            pa = pa_ref_angle - bearing
+            # Wrap around to get Delta_RA from -pi to +pi
+            pa = pa.wrapCtr()
+            position_angle[i] = pa.asRadians()
+
+        return pd.Series(position_angle)
+
+    def getPositionAngleFromDetectorAngle(self, theta, cd11, cd12, cd21, cd22):
+        """Compute position angle (E of N) from detector angle (+y of +x).
+
+        Parameters
+        ----------
+        theta : `float`
+            detector angle [radian]
+        cd11 : `float`
+            [1, 1] element of the local Wcs affine transform.
+        cd12 : `float`
+            [1, 2] element of the local Wcs affine transform.
+        cd21 : `float`
+            [2, 1] element of the local Wcs affine transform.
+        cd22 : `float`
+            [2, 2] element of the local Wcs affine transform.
+
+        Returns
+        -------
+        Position Angle: `~pandas.Series`
+            Degrees E of N.
+        """
+        # Create a unit vector in (x, y) along da
+        dx = np.cos(theta)
+        dy = np.sin(theta)
+        ra1, dec1 = self.computeDeltaRaDec(0, 0, cd11, cd12, cd21, cd22)
+        ra2, dec2 = self.computeDeltaRaDec(dx, dy, cd11, cd12, cd21, cd22)
+        # Position angle of vector from (RA1, Dec1) to (RA2, Dec2)
+        return np.rad2deg(self.computePositionAngle(ra1, dec1, ra2, dec2))
 
 
 class ComputePixelScale(LocalWcs):
@@ -1407,6 +1479,48 @@ class ConvertPixelSqToArcsecondsSq(ComputePixelScale):
                                              df[self.colCD_2_1],
                                              df[self.colCD_2_2])
         return df[self.col] * pixScale * pixScale
+
+
+class ConvertDetectorAngleToPositionAngle(LocalWcs):
+    """Compute a position angle from a detector angle and the stored CDMatrix.
+
+    Returns
+    -------
+    position angle : degrees
+    """
+
+    name = "PositionAngle"
+
+    def __init__(
+        self,
+        theta_col,
+        colCD_1_1,
+        colCD_1_2,
+        colCD_2_1,
+        colCD_2_2,
+        **kwargs
+    ):
+        self.theta_col = theta_col
+        super().__init__(colCD_1_1, colCD_1_2, colCD_2_1, colCD_2_2, **kwargs)
+
+    @property
+    def columns(self):
+        return [
+            self.theta_col,
+            self.colCD_1_1,
+            self.colCD_1_2,
+            self.colCD_2_1,
+            self.colCD_2_2
+        ]
+
+    def _func(self, df):
+        return self.getPositionAngleFromDetectorAngle(
+            df[self.theta_col],
+            df[self.colCD_1_1],
+            df[self.colCD_1_2],
+            df[self.colCD_2_1],
+            df[self.colCD_2_2]
+        )
 
 
 class ReferenceBand(Functor):
