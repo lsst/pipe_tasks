@@ -123,10 +123,15 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
             dataIdList=[{'visit': self.visit, 'detector': self.detector}],
         )
 
-        # Ensure we got an exposure out
-        self.assertIsInstance(result2.exposures['psfMatched'], lsst.afw.image.ExposureF)
-        self.assertMaskedImagesEqual(result1.exposures['direct'].maskedImage,
-                result2.exposures['direct'].maskedImage)
+        # Ensure we got a valid exposure out
+        warp = result2.exposures['psfMatched']
+        self.assertIsInstance(warp, lsst.afw.image.ExposureF)
+        self.assertGreater(np.isfinite(warp.image.array.ravel()).sum(), 0)
+        # Check that the direct images are the same.
+        self.assertMaskedImagesEqual(
+            result1.exposures['direct'].maskedImage,
+            result2.exposures['direct'].maskedImage
+        )
 
 
 def setup_module(module):
