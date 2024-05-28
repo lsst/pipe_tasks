@@ -53,9 +53,9 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
         # An external skyWcs to return
         self.externalSkyWcs = lsst.afw.geom.makeSkyWcs(crpix, crval, externalCdMatrix)
 
-        self.exposure = lsst.afw.image.ExposureF(10, 10)
-        self.exposure.maskedImage.image.array = np.random.random((10, 10)).astype(np.float32) * 1000
-        self.exposure.maskedImage.variance.array = np.random.random((10, 10)).astype(np.float32)
+        self.exposure = lsst.afw.image.ExposureF(100, 150)
+        self.exposure.maskedImage.image.array = np.random.random((150, 100)).astype(np.float32) * 1000
+        self.exposure.maskedImage.variance.array = np.random.random((150, 100)).astype(np.float32)
         # mask at least one pixel
         self.exposure.maskedImage.mask[5, 5] = 3
         # set the PhotoCalib and Wcs objects of this exposure.
