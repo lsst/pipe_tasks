@@ -29,6 +29,8 @@ import lsst.utils.tests
 
 import lsst.afw.image
 from lsst.daf.butler import DataCoordinate, DimensionUniverse
+from lsst.pipe.base import InMemoryDatasetHandle
+from lsst.pipe.tasks.make_direct_warp import MakeDirectWarpTask
 from lsst.pipe.tasks.makeWarp import (MakeWarpTask, MakeWarpConfig)
 from lsst.pipe.tasks.coaddBase import makeSkyInfo
 import lsst.skymap as skyMap
@@ -234,6 +236,45 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
             result1.exposures['direct'].maskedImage,
             result2.exposures['direct'].maskedImage
         )
+
+    def test_compare_warps(self):
+        """Test that the warp from MakeWarpTask and MakeDirectWarpTask agree.
+        """
+        dataIdList = [{'visit_id': self.visit, 'detector_id': self.detector, "band": "i"}]
+
+        dataRefs = [
+            InMemoryDatasetHandle(self.exposure, dataId=self.generate_data_id(**dataId))
+            for dataId in dataIdList
+        ]
+        inputs = {"calexp_list": dataRefs}
+
+        for dataId in dataIdList:
+            dataId["detector"] = dataId.pop("detector_id")
+            dataId["visit"] = dataId.pop("visit_id")
+
+        self.config.makePsfMatched = True
+        makeWarp = MakeWarpTask(config=self.config)
+        result0 = makeWarp.run(
+            calExpList=[self.exposure],
+            ccdIdList=[self.detector],
+            skyInfo=self.skyInfo,
+            visitId=self.visit,
+            dataIdList=dataIdList,
+        )
+
+        config = MakeDirectWarpTask.ConfigClass()
+        config.doPreWarpInterpolation = False
+        task = MakeDirectWarpTask(config=config)
+        result1 = task.run(
+            inputs,
+            sky_info=self.skyInfo,
+            visit_summary=None
+        )
+
+        warp0 = result0.exposures["direct"]
+        warp1 = result1.warp
+
+        self.assertMaskedImagesAlmostEqual(warp0.maskedImage, warp1.maskedImage, rtol=3e-7, atol=6e-6)
 
 
 def setup_module(module):
