@@ -255,7 +255,6 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
             "base_GaussianFlux",
             "base_PsfFlux",
             "base_CircularApertureFlux",
-            "base_ClassificationSizeExtendedness",
         ]
         self.measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
 
