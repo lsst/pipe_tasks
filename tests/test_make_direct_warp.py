@@ -19,6 +19,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
+from typing import Self, Type
+
 import unittest
 
 import numpy as np
@@ -33,102 +37,6 @@ from lsst.pipe.tasks.coaddBase import makeSkyInfo
 import lsst.skymap as skyMap
 from lsst.afw.detection import GaussianPsf
 import lsst.afw.cameraGeom.testUtils
-
-
-def generate_data_id(
-    *,
-    tract: int = 9813,
-    patch: int = 42,
-    band: str = "r",
-    detector_id: int = 9,
-    visit_id: int = 1234,
-    detector_max: int = 109,
-    visit_max: int = 10000
-) -> DataCoordinate:
-    """Generate a DataCoordinate instance to use as data_id.
-
-    Parameters
-    ----------
-    tract : `int`, optional
-        Tract ID for the data_id
-    patch : `int`, optional
-        Patch ID for the data_id
-    band : `str`, optional
-        Band for the data_id
-    detector_id : `int`, optional
-        Detector ID for the data_id
-    visit_id : `int`, optional
-        Visit ID for the data_id
-    detector_max : `int`, optional
-        Maximum detector ID for the data_id
-    visit_max : `int`, optional
-        Maximum visit ID for the data_id
-
-    Returns
-    -------
-    data_id : `lsst.daf.butler.DataCoordinate`
-        An expanded data_id instance.
-    """
-    universe = DimensionUniverse()
-
-    instrument = universe["instrument"]
-    instrument_record = instrument.RecordClass(
-        name="DummyCam",
-        class_name="lsst.obs.base.instrument_tests.DummyCam",
-        detector_max=detector_max,
-        visit_max=visit_max,
-    )
-
-    skymap = universe["skymap"]
-    skymap_record = skymap.RecordClass(name="test_skymap")
-
-    band_element = universe["band"]
-    band_record = band_element.RecordClass(name=band)
-
-    visit = universe["visit"]
-    visit_record = visit.RecordClass(id=visit_id, instrument="test")
-
-    detector = universe["detector"]
-    detector_record = detector.RecordClass(id=detector_id, instrument="test")
-
-    physical_filter = universe["physical_filter"]
-    physical_filter_record = physical_filter.RecordClass(name=band, instrument="test", band=band)
-
-    patch_element = universe["patch"]
-    patch_record = patch_element.RecordClass(
-        skymap="test_skymap", tract=tract, patch=patch,
-    )
-
-    if "day_obs" in universe:
-        day_obs_element = universe["day_obs"]
-        day_obs_record = day_obs_element.RecordClass(id=20240201, instrument="test")
-    else:
-        day_obs_record = None
-
-    # A dictionary with all the relevant records.
-    record = {
-        "instrument": instrument_record,
-        "visit": visit_record,
-        "detector": detector_record,
-        "patch": patch_record,
-        "tract": 9813,
-        "band": band_record.name,
-        "skymap": skymap_record.name,
-        "physical_filter": physical_filter_record,
-    }
-
-    if day_obs_record:
-        record["day_obs"] = day_obs_record
-
-    # A dictionary with all the relevant recordIds.
-    record_id = record.copy()
-    for key in ("visit", "detector"):
-        record_id[key] = record_id[key].id
-
-    # TODO: Catching mypy failures on Github Actions should be made easier,
-    # perhaps in DM-36873. Igroring these for now.
-    data_id = DataCoordinate.standardize(record_id, universe=universe)
-    return data_id.expanded(record)
 
 
 class MakeWarpTestCase(lsst.utils.tests.TestCase):
@@ -169,7 +77,7 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
         self.exposure.setDetector(detector)
 
         dataId_dict = {"detector_id": self.detector, "visit_id": 1248, "band": "i"}
-        dataId = generate_data_id(**dataId_dict)
+        dataId = self.generate_data_id(**dataId_dict)
         self.dataRef = InMemoryDatasetHandle(self.exposure, dataId=dataId)
         simpleMapConfig = skyMap.discreteSkyMap.DiscreteSkyMapConfig()
         simpleMapConfig.raList = [crval.getRa().asDegrees()]
@@ -180,6 +88,103 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
         self.tractId = 0
         self.patchId = self.simpleMap[0].findPatch(crval).sequential_index
         self.skyInfo = makeSkyInfo(self.simpleMap, self.tractId, self.patchId)
+
+    @classmethod
+    def generate_data_id(
+        cls: Type[Self],
+        *,
+        tract: int = 9813,
+        patch: int = 42,
+        band: str = "r",
+        detector_id: int = 9,
+        visit_id: int = 1234,
+        detector_max: int = 109,
+        visit_max: int = 10000
+    ) -> DataCoordinate:
+        """Generate a DataCoordinate instance to use as data_id.
+
+        Parameters
+        ----------
+        tract : `int`, optional
+            Tract ID for the data_id
+        patch : `int`, optional
+            Patch ID for the data_id
+        band : `str`, optional
+            Band for the data_id
+        detector_id : `int`, optional
+            Detector ID for the data_id
+        visit_id : `int`, optional
+            Visit ID for the data_id
+        detector_max : `int`, optional
+            Maximum detector ID for the data_id
+        visit_max : `int`, optional
+            Maximum visit ID for the data_id
+
+        Returns
+        -------
+        data_id : `lsst.daf.butler.DataCoordinate`
+            An expanded data_id instance.
+        """
+        universe = DimensionUniverse()
+
+        instrument = universe["instrument"]
+        instrument_record = instrument.RecordClass(
+            name="DummyCam",
+            class_name="lsst.obs.base.instrument_tests.DummyCam",
+            detector_max=detector_max,
+            visit_max=visit_max,
+        )
+
+        skymap = universe["skymap"]
+        skymap_record = skymap.RecordClass(name="test_skymap")
+
+        band_element = universe["band"]
+        band_record = band_element.RecordClass(name=band)
+
+        visit = universe["visit"]
+        visit_record = visit.RecordClass(id=visit_id, instrument="test")
+
+        detector = universe["detector"]
+        detector_record = detector.RecordClass(id=detector_id, instrument="test")
+
+        physical_filter = universe["physical_filter"]
+        physical_filter_record = physical_filter.RecordClass(name=band, instrument="test", band=band)
+
+        patch_element = universe["patch"]
+        patch_record = patch_element.RecordClass(
+            skymap="test_skymap", tract=tract, patch=patch,
+        )
+
+        if "day_obs" in universe:
+            day_obs_element = universe["day_obs"]
+            day_obs_record = day_obs_element.RecordClass(id=20240201, instrument="test")
+        else:
+            day_obs_record = None
+
+        # A dictionary with all the relevant records.
+        record = {
+            "instrument": instrument_record,
+            "visit": visit_record,
+            "detector": detector_record,
+            "patch": patch_record,
+            "tract": 9813,
+            "band": band_record.name,
+            "skymap": skymap_record.name,
+            "physical_filter": physical_filter_record,
+        }
+
+        if day_obs_record:
+            record["day_obs"] = day_obs_record
+
+        # A dictionary with all the relevant recordIds.
+        record_id = record.copy()
+        for key in ("visit", "detector"):
+            record_id[key] = record_id[key].id
+
+        # TODO: Catching mypy failures on Github Actions should be made easier,
+        # perhaps in DM-36873. Igroring these for now.
+        data_id = DataCoordinate.standardize(record_id, universe=universe)
+        return data_id.expanded(record)
 
     def test_makeWarp(self):
         """Test basic MakeWarpTask."""
