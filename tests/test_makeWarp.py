@@ -21,11 +21,16 @@
 
 import unittest
 
+from typing import Self, Type
+
 import numpy as np
 
 import lsst.utils.tests
 
 import lsst.afw.image
+from lsst.daf.butler import DataCoordinate, DimensionUniverse
+from lsst.pipe.base import InMemoryDatasetHandle
+from lsst.pipe.tasks.make_direct_warp import MakeDirectWarpTask
 from lsst.pipe.tasks.makeWarp import (MakeWarpTask, MakeWarpConfig)
 from lsst.pipe.tasks.coaddBase import makeSkyInfo
 import lsst.skymap as skyMap
@@ -53,9 +58,9 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
         # An external skyWcs to return
         self.externalSkyWcs = lsst.afw.geom.makeSkyWcs(crpix, crval, externalCdMatrix)
 
-        self.exposure = lsst.afw.image.ExposureF(10, 10)
-        self.exposure.maskedImage.image.array = np.random.random((10, 10)).astype(np.float32) * 1000
-        self.exposure.maskedImage.variance.array = np.random.random((10, 10)).astype(np.float32)
+        self.exposure = lsst.afw.image.ExposureF(100, 150)
+        self.exposure.maskedImage.image.array = np.random.random((150, 100)).astype(np.float32) * 1000
+        self.exposure.maskedImage.variance.array = np.random.random((150, 100)).astype(np.float32)
         # mask at least one pixel
         self.exposure.maskedImage.mask[5, 5] = 3
         # set the PhotoCalib and Wcs objects of this exposure.
@@ -80,6 +85,103 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
         self.patchId = self.simpleMap[0].findPatch(crval).sequential_index
         self.skyInfo = makeSkyInfo(self.simpleMap, self.tractId, self.patchId)
 
+    @classmethod
+    def generate_data_id(
+        cls: Type[Self],
+        *,
+        tract: int = 9813,
+        patch: int = 42,
+        band: str = "r",
+        detector_id: int = 9,
+        visit_id: int = 1234,
+        detector_max: int = 109,
+        visit_max: int = 10000
+    ) -> DataCoordinate:
+        """Generate a DataCoordinate instance to use as data_id.
+
+        Parameters
+        ----------
+        tract : `int`, optional
+            Tract ID for the data_id
+        patch : `int`, optional
+            Patch ID for the data_id
+        band : `str`, optional
+            Band for the data_id
+        detector_id : `int`, optional
+            Detector ID for the data_id
+        visit_id : `int`, optional
+            Visit ID for the data_id
+        detector_max : `int`, optional
+            Maximum detector ID for the data_id
+        visit_max : `int`, optional
+            Maximum visit ID for the data_id
+
+        Returns
+        -------
+        data_id : `lsst.daf.butler.DataCoordinate`
+            An expanded data_id instance.
+        """
+        universe = DimensionUniverse()
+
+        instrument = universe["instrument"]
+        instrument_record = instrument.RecordClass(
+            name="DummyCam",
+            class_name="lsst.obs.base.instrument_tests.DummyCam",
+            detector_max=detector_max,
+            visit_max=visit_max,
+        )
+
+        skymap = universe["skymap"]
+        skymap_record = skymap.RecordClass(name="test_skymap")
+
+        band_element = universe["band"]
+        band_record = band_element.RecordClass(name=band)
+
+        visit = universe["visit"]
+        visit_record = visit.RecordClass(id=visit_id, instrument="test")
+
+        detector = universe["detector"]
+        detector_record = detector.RecordClass(id=detector_id, instrument="test")
+
+        physical_filter = universe["physical_filter"]
+        physical_filter_record = physical_filter.RecordClass(name=band, instrument="test", band=band)
+
+        patch_element = universe["patch"]
+        patch_record = patch_element.RecordClass(
+            skymap="test_skymap", tract=tract, patch=patch,
+        )
+
+        if "day_obs" in universe:
+            day_obs_element = universe["day_obs"]
+            day_obs_record = day_obs_element.RecordClass(id=20240201, instrument="test")
+        else:
+            day_obs_record = None
+
+        # A dictionary with all the relevant records.
+        record = {
+            "instrument": instrument_record,
+            "visit": visit_record,
+            "detector": detector_record,
+            "patch": patch_record,
+            "tract": 9813,
+            "band": band_record.name,
+            "skymap": skymap_record.name,
+            "physical_filter": physical_filter_record,
+        }
+
+        if day_obs_record:
+            record["day_obs"] = day_obs_record
+
+        # A dictionary with all the relevant recordIds.
+        record_id = record.copy()
+        for key in ("visit", "detector"):
+            record_id[key] = record_id[key].id
+
+        # TODO: Catching mypy failures on Github Actions should be made easier,
+        # perhaps in DM-36873. Igroring these for now.
+        data_id = DataCoordinate.standardize(record_id, universe=universe)
+        return data_id.expanded(record)
+
     def test_makeWarp(self):
         """Test basic MakeWarpTask."""
         makeWarp = MakeWarpTask(config=self.config)
@@ -100,6 +202,79 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
         self.assertGreater(np.isfinite(warp.image.array.ravel()).sum(), 0)
         # Ensure the warp has the correct WCS
         self.assertEqual(warp.getWcs(), self.skyInfo.wcs)
+
+    def test_psfMatched(self):
+        """Test that the direct warp is independent of makePsfMatched config.
+        """
+        self.config.makePsfMatched = False
+        task1 = MakeWarpTask(config=self.config)
+        self.config.makePsfMatched = True
+        task2 = MakeWarpTask(config=self.config)
+
+        result1 = task1.run(
+            calExpList=[self.exposure],
+            ccdIdList=[self.detector],
+            skyInfo=self.skyInfo,
+            visitId=self.visit,
+            dataIdList=[{'visit': self.visit, 'detector': self.detector}],
+        )
+
+        result2 = task2.run(
+            calExpList=[self.exposure],
+            ccdIdList=[self.detector],
+            skyInfo=self.skyInfo,
+            visitId=self.visit,
+            dataIdList=[{'visit': self.visit, 'detector': self.detector}],
+        )
+
+        # Ensure we got a valid exposure out
+        warp = result2.exposures['psfMatched']
+        self.assertIsInstance(warp, lsst.afw.image.ExposureF)
+        self.assertGreater(np.isfinite(warp.image.array.ravel()).sum(), 0)
+        # Check that the direct images are the same.
+        self.assertMaskedImagesEqual(
+            result1.exposures['direct'].maskedImage,
+            result2.exposures['direct'].maskedImage
+        )
+
+    def test_compare_warps(self):
+        """Test that the warp from MakeWarpTask and MakeDirectWarpTask agree.
+        """
+        dataIdList = [{'visit_id': self.visit, 'detector_id': self.detector, "band": "i"}]
+
+        dataRefs = [
+            InMemoryDatasetHandle(self.exposure, dataId=self.generate_data_id(**dataId))
+            for dataId in dataIdList
+        ]
+        inputs = {"calexp_list": dataRefs}
+
+        for dataId in dataIdList:
+            dataId["detector"] = dataId.pop("detector_id")
+            dataId["visit"] = dataId.pop("visit_id")
+
+        self.config.makePsfMatched = True
+        makeWarp = MakeWarpTask(config=self.config)
+        result0 = makeWarp.run(
+            calExpList=[self.exposure],
+            ccdIdList=[self.detector],
+            skyInfo=self.skyInfo,
+            visitId=self.visit,
+            dataIdList=dataIdList,
+        )
+
+        config = MakeDirectWarpTask.ConfigClass()
+        config.doPreWarpInterpolation = False
+        task = MakeDirectWarpTask(config=config)
+        result1 = task.run(
+            inputs,
+            sky_info=self.skyInfo,
+            visit_summary=None
+        )
+
+        warp0 = result0.exposures["direct"]
+        warp1 = result1.warp
+
+        self.assertMaskedImagesAlmostEqual(warp0.maskedImage, warp1.maskedImage, rtol=3e-7, atol=6e-6)
 
 
 def setup_module(module):

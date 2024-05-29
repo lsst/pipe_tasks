@@ -222,10 +222,9 @@ class MakeDirectWarpConfig(
         doc="Add photometric calibration variance to warp variance plane?",
         default=False,
     )
-    matchingKernelSize = Field[int](
-        doc="Size in pixels of matching kernel. Must be odd.",
-        default=21,
-        check=lambda x: x % 2 == 1,
+    border = Field[int](
+        doc="Pad the patch boundary of the warp by these many pixels, so as to allow for PSF-matching later",
+        default=0,
     )
     warper = ConfigField(
         doc="Configuration for the warper that warps the image and noise",
@@ -262,6 +261,7 @@ class MakeDirectWarpConfig(
     def setDefaults(self) -> None:
         super().setDefaults()
         self.warper.warpingKernelName = "lanczos3"
+        self.warper.cacheSize = 0
         self.maskedFractionWarper.warpingKernelName = "bilinear"
 
 
@@ -344,6 +344,7 @@ class MakeDirectWarpTask(PipelineTask):
             A Struct object containing the warped exposure, noise exposure(s),
             and masked fraction image.
         """
+        sky_info.bbox.grow(self.config.border)
         target_bbox, target_wcs = sky_info.bbox, sky_info.wcs
 
         # Initialize the objects that will hold the warp.
