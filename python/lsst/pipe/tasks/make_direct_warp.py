@@ -28,6 +28,7 @@ from lsst.afw.geom import makeWcsPairTransform
 from lsst.afw.image import ExposureF, Mask
 from lsst.afw.math import Warper
 from lsst.coadd.utils import copyGoodPixels
+from lsst.geom import Box2D
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig, WarpedPsf
 from lsst.meas.algorithms.cloughTocher2DInterpolator import (
     CloughTocher2DInterpolateTask,
@@ -48,6 +49,7 @@ from lsst.pipe.base import (
 )
 from lsst.pipe.base.connectionTypes import Input, Output
 from lsst.pipe.tasks.coaddBase import makeSkyInfo
+from lsst.pipe.tasks.selectImages import PsfWcsSelectImagesTask
 from lsst.skymap import BaseSkyMap
 
 from .coaddInputRecorder import CoaddInputRecorderTask
@@ -205,6 +207,14 @@ class MakeDirectWarpConfig(
             "aperture corrections from the 'calexp' connection.",
         default=True,
     )
+    doSelectPreWarp = Field[bool](
+        doc="Select ccds before warping?",
+        default=False,
+    )
+    select = ConfigurableField(
+        doc="Image selection subtask.",
+        target=PsfWcsSelectImagesTask,
+    )
     doPreWarpInterpolation = Field[bool](
         doc="Interpolate over bad pixels before warping?",
         default=True,
@@ -292,6 +302,8 @@ class MakeDirectWarpTask(PipelineTask):
         super().__init__(**kwargs)
         self.makeSubtask("inputRecorder")
         self.makeSubtask("preWarpInterpolation")
+        if self.config.doSelectPreWarp:
+            self.makeSubtask("select")
 
         self.warper = Warper.fromConfig(self.config.warper)
         self.maskedFractionWarper = Warper.fromConfig(self.config.maskedFractionWarper)
@@ -314,12 +326,37 @@ class MakeDirectWarpTask(PipelineTask):
             patchId=quantumDataId["patch"],
         )
 
-        visit_summary = inputs["visit_summary"] if self.config.useVisitSummaryPsf else None
-
-        results = self.run(inputs, sky_info, visit_summary)
+        results = self.run(inputs, sky_info)
         butlerQC.put(results, outputRefs)
 
-    def run(self, inputs, sky_info, visit_summary):
+    def _preselect_inputs(self, inputs, sky_info):
+        dataIdList = [ref.dataId for ref in inputs["calexp_list"]]
+        visit_summary = inputs["visit_summary"]
+
+        bboxList, wcsList = [], []
+        for dataId in dataIdList:
+            row = visit_summary.find(dataId["detector"])
+            if row is None:
+                raise RuntimeError(f"Unexpectedly incomplete visit_summary: {dataId=} is missing.")
+            bboxList.append(row.getBBox())
+            wcsList.append(row.getWcs())
+
+        cornerPosList = Box2D(sky_info.bbox).getCorners()
+        coordList = [sky_info.wcs.pixelToSky(pos) for pos in cornerPosList]
+
+        goodIndices = self.select.run(
+            **inputs,
+            bboxList=bboxList,
+            wcsList=wcsList,
+            visitSummary=visit_summary,
+            coordList=coordList,
+            dataIds=dataIdList,
+        )
+        inputs = self._filterInputs(indices=goodIndices, inputs=inputs)
+
+        return inputs
+
+    def run(self, inputs, sky_info, **kwargs):
         """Create a Warp dataset from inputs.
 
         Parameters
@@ -344,8 +381,16 @@ class MakeDirectWarpTask(PipelineTask):
             A Struct object containing the warped exposure, noise exposure(s),
             and masked fraction image.
         """
+
+        if self.config.doSelectPreWarp:
+            inputs = self._preselect_inputs(inputs, sky_info)
+            if not inputs["calexp_list"]:
+                raise NoWorkFound("No input warps remain after selection for co-addition")
+
         sky_info.bbox.grow(self.config.border)
         target_bbox, target_wcs = sky_info.bbox, sky_info.wcs
+
+        visit_summary = inputs["visit_summary"] if self.config.useVisitSummaryPsf else None
 
         # Initialize the objects that will hold the warp.
         final_warp = ExposureF(target_bbox, target_wcs)
@@ -546,6 +591,32 @@ class MakeDirectWarpTask(PipelineTask):
         # Potentially a post-warp interpolation here? Relies on DM-38630.
 
         return warped_exposure
+
+    @staticmethod
+    def _filterInputs(indices, inputs):
+        """Filter inputs by their indices.
+
+        This method down-selects the list entries in ``inputs`` dictionary by
+        keeping only those items in the lists that correspond to ``indices``.
+        This is intended to select input visits that go into the warps.
+
+        Parameters
+        ----------
+        indices : `list` [`int`]
+        inputs : `dict`
+            A dictionary of input connections to be passed to run.
+
+        Returns
+        -------
+        inputs : `dict`
+            Task inputs with their lists filtered by indices.
+        """
+        for key in inputs.keys():
+            # Only down-select on list inputs
+            if isinstance(inputs[key], list):
+                inputs[key] = [inputs[key][ind] for ind in indices]
+
+        return inputs
 
     @staticmethod
     def _apply_all_calibrations(
