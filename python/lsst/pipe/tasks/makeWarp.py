@@ -31,6 +31,7 @@ import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as connectionTypes
 import lsst.utils as utils
 import lsst.geom
+from lsst.afw.geom import Polygon
 from lsst.daf.butler import DeferredDatasetHandle
 from lsst.meas.base import DetectorVisitIdGeneratorConfig
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig, GaussianPsfFactory
@@ -572,6 +573,27 @@ class MakeWarpTask(CoaddBaseTask):
         if self.config.makePsfMatched:
             warpTypeList.append("psfMatched")
         return warpTypeList
+
+    def _shrinkValidPolygons(self, coaddInputs):
+        """Shrink coaddInputs' ccds' ValidPolygons in place.
+
+        Either modify each ccd's validPolygon in place, or if CoaddInputs
+        does not have a validPolygon, create one from its bbox.
+
+        Parameters
+        ----------
+        coaddInputs : `lsst.afw.image.coaddInputs`
+            Original mask.
+        """
+        for ccd in coaddInputs.ccds:
+            polyOrig = ccd.getValidPolygon()
+            validPolyBBox = polyOrig.getBBox() if polyOrig else ccd.getBBox()
+            validPolyBBox.grow(-self.config.matchingKernelSize // 2)
+            if polyOrig:
+                validPolygon = polyOrig.intersectionSingle(validPolyBBox)
+            else:
+                validPolygon = Polygon(lsst.geom.Box2D(validPolyBBox))
+            ccd.setValidPolygon(validPolygon)
 
 
 def reorderRefs(inputRefs, outputSortKeyOrder, dataIdKey):
