@@ -28,6 +28,7 @@ from lsst.afw.geom import makeWcsPairTransform
 from lsst.afw.image import ExposureF, Mask
 from lsst.afw.math import Warper
 from lsst.coadd.utils import copyGoodPixels
+from lsst.geom import Box2D
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig, WarpedPsf
 from lsst.meas.algorithms.cloughTocher2DInterpolator import (
     CloughTocher2DInterpolateTask,
@@ -48,6 +49,7 @@ from lsst.pipe.base import (
 )
 from lsst.pipe.base.connectionTypes import Input, Output
 from lsst.pipe.tasks.coaddBase import makeSkyInfo
+from lsst.pipe.tasks.selectImages import PsfWcsSelectImagesTask
 from lsst.skymap import BaseSkyMap
 
 from .coaddInputRecorder import CoaddInputRecorderTask
@@ -205,6 +207,14 @@ class MakeDirectWarpConfig(
             "aperture corrections from the 'calexp' connection.",
         default=True,
     )
+    doSelectPreWarp = Field[bool](
+        doc="Select ccds before warping?",
+        default=False,
+    )
+    select = ConfigurableField(
+        doc="Image selection subtask.",
+        target=PsfWcsSelectImagesTask,
+    )
     doPreWarpInterpolation = Field[bool](
         doc="Interpolate over bad pixels before warping?",
         default=True,
@@ -292,6 +302,8 @@ class MakeDirectWarpTask(PipelineTask):
         super().__init__(**kwargs)
         self.makeSubtask("inputRecorder")
         self.makeSubtask("preWarpInterpolation")
+        if self.config.doSelectPreWarp:
+            self.makeSubtask("select")
 
         self.warper = Warper.fromConfig(self.config.warper)
         self.maskedFractionWarper = Warper.fromConfig(self.config.maskedFractionWarper)
@@ -315,6 +327,28 @@ class MakeDirectWarpTask(PipelineTask):
         )
 
         visit_summary = inputs["visit_summary"] if self.config.useVisitSummaryPsf else None
+
+        # Can this go in the run method?
+        if self.config.doSelectPreWarp:
+            dataIdList = [ref.datasetRef.dataId for ref in inputRefs.calexp_list]
+            bboxList, wcsList = [], []
+            for dataId in dataIdList:
+                row = visit_summary.find(dataId["detector"])
+                if row is None:
+                    raise RuntimeError(f"Unexpectedly incomplete visit_summary: {dataId=} is missing.")
+                bboxList.append(row.getBBox())
+                wcsList.append(row.getWcs())
+
+            # inputs["bboxList"] = bboxList
+            # inputs["wcsList"] = wcsList
+
+            cornerPosList = Box2D(sky_info.bbox).getCorners()
+            coordList = [sky_info.wcs.pixelToSky(pos) for pos in cornerPosList]
+
+            goodIndices = self.select.run(**inputs, coordList=coordList, dataIds=dataIdList)
+            inputs = self._filterInputs(indices=goodIndices, inputs=inputs)
+
+            # inputs = self.select.run(inputs, sky_info, visit_summary)
 
         results = self.run(inputs, sky_info, visit_summary)
         butlerQC.put(results, outputRefs)
@@ -546,6 +580,28 @@ class MakeDirectWarpTask(PipelineTask):
         # Potentially a post-warp interpolation here? Relies on DM-38630.
 
         return warped_exposure
+
+    @staticmethod
+    def _filterInputs(indices, inputs):
+        """Filter task inputs by their indices.
+
+        Parameters
+        ----------
+        indices : `list` [`int`]
+        inputs : `dict` [`list`]
+            A dictionary of input connections to be passed to run.
+
+        Returns
+        -------
+        inputs : `dict` [`list`]
+            Task inputs with their lists filtered by indices.
+        """
+        for key in inputs.keys():
+            # Only down-select on list inputs
+            if isinstance(inputs[key], list):
+                inputs[key] = [inputs[key][ind] for ind in indices]
+
+        return inputs
 
     @staticmethod
     def _apply_all_calibrations(
