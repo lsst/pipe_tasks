@@ -31,7 +31,6 @@ import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as connectionTypes
 import lsst.utils as utils
 import lsst.geom
-from lsst.afw.geom import Polygon
 from lsst.daf.butler import DeferredDatasetHandle
 from lsst.meas.base import DetectorVisitIdGeneratorConfig
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig, GaussianPsfFactory
