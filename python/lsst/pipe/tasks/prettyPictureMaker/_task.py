@@ -125,10 +125,12 @@ class LumConfig(Config):
         doc="The minimum intensity value after stretch, values lower will be set to zero", default=0
     )
     floor = Field[float](doc="A scaling factor to apply to the luminance before asinh scaling", default=0.0)
+    Q = Field[float](doc="softening parameter", default=8)
 
 
 class LocalContrastConfig(Config):
-    """Configuration to control local contrast enhancement of the luminance channel."""
+    """Configuration to control local contrast enhancement of the luminance
+    channel."""
 
     doLocalContrast = Field[bool](
         doc="Apply local contrast enhancements to the luminance channel", default=True
@@ -138,6 +140,10 @@ class LocalContrastConfig(Config):
     clarity = Field[float](doc="Amount of clarity to apply to contrast modification", default=0.2)
     sigma = Field[float](
         doc="The scale size of what is considered local in the contrast enhancement", default=20
+    )
+    maxLevel = Field[int](
+        doc="The maximum number of scales the contrast should be enhanced over, if None then all",
+        optional=True,
     )
 
 
@@ -211,6 +217,7 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
             "uint8": "Use 8 bit arrays, 255 max",
             "uint16": "Use 16 bit arrays, 65535 max",
             "half": "Use 16 bit float arrays, 1 max",
+            "float": "Use 32 bit float arrays, 1 max",
         },
     )
 
@@ -255,7 +262,8 @@ class PrettyPictureTask(PipelineTask):
                     imageArray, imageExposure.mask.array, imageExposure.mask.getMaskPlaneDict()
                 ).astype(np.float32)
             channels[channel] = imageArray
-            # This will get done each loop, but they are trivial lookups so it does not matter
+            # This will get done each loop, but they are trivial lookups so it
+            # does not matter
             shape = imageArray.shape
             maskDict = imageExposure.mask.getMaskPlaneDict()
             if jointMask is None:
@@ -269,7 +277,8 @@ class PrettyPictureTask(PipelineTask):
 
         for band, image in channels.items():
             mix = self.config.channelConfig[band]
-            channelSum = mix.r + mix.g + mix.b
+            # channelSum = mix.r + mix.g + mix.b
+            channelSum = 1
             if mix.r:
                 imageRArray += mix.r / channelSum * image
             if mix.g:
@@ -277,8 +286,12 @@ class PrettyPictureTask(PipelineTask):
             if mix.b:
                 imageBArray += mix.b / channelSum * image
 
-        # Ignore type because Exposures do in fact have a bbox, but it is c++ and
-        # not typed.
+        exposure = next(iter(images.values()))
+        box: Box2I = exposure.getBBox()
+        boxCenter = box.getCenter()
+        psf = exposure.psf.computeImage(boxCenter).array
+        # Ignore type because Exposures do in fact have a bbox, but it is c++
+        # and not typed.
         colorImage = lsstRGB(
             imageRArray,
             imageGArray,
@@ -288,9 +301,11 @@ class PrettyPictureTask(PipelineTask):
             scaleColorKWargs=self.config.colorConfig.toDict(),
             **(self.config.localContrastConfig.toDict()),
             cieWhitePoint=tuple(self.config.cieWhitePoint),  # type: ignore
+            psf=psf,
         )
 
         # Find the dataset type and thus the maximum values as well
+        maxVal: int | float
         match self.config.arrayType:
             case "uint8":
                 dtype = np.uint8
@@ -301,11 +316,14 @@ class PrettyPictureTask(PipelineTask):
             case "half":
                 dtype = np.half
                 maxVal = 1.0
+            case "float":
+                dtype = np.float32
+                maxVal = 1.0
             case _:
                 assert True, "This code path should be unreachable"
 
         # lsstRGB returns an image in 0-1 scale it to the maximum value
-        colorImage *= maxVal
+        colorImage *= maxVal  # type: ignore
 
         # assert for typing reasons
         assert jointMask is not None
@@ -317,8 +335,8 @@ class PrettyPictureTask(PipelineTask):
         lsstMask = Mask(
             width=jointMask.shape[1], height=jointMask.shape[0], planeDefs=maskDict
         )  # type: ignore
-        lsstMask.array = jointMask
-        return Struct(outputRGB=colorImage.astype(dtype), outputRGBMask=lsstMask)
+        lsstMask.array = jointMask  # type: ignore
+        return Struct(outputRGB=colorImage.astype(dtype), outputRGBMask=lsstMask)  # type: ignore
 
     def runQuantum(
         self,

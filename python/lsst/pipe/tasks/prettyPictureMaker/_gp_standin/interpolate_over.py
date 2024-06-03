@@ -103,7 +103,7 @@ class InterpolateOverDefectGaussianProcess:
     def __init__(
         self,
         maskedImage,
-        defects=["SAT"],
+        defects=["SAT", "INTRP"],
         fwhm=10,
         block_size=100,
         solver="treegp",
@@ -188,7 +188,9 @@ class InterpolateOverDefectGaussianProcess:
                 print("bbox: ", bbox)
                 print("Use interpolate_over_defects_block instead for this spanset.")
                 try:
-                    sub_masked_image = self.maskedImage[localBox] except: condition = True
+                    sub_masked_image = self.maskedImage[localBox]
+                except:
+                    condition = True
                     break
                 try:
                     sub_masked_image = self._interpolate_over_defects_block(maskedImage=sub_masked_image)

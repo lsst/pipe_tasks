@@ -1,0 +1,6 @@
+# -*- python -*-
+from lsst.sconsUtils import scripts
+scripts.BasicSConscript.python(['_pipeTasksLib'], [
+	'_pipeTasksLib.cc',
+	'prettyPictureMaker/_gamutFixer.cpp'
+], libs=None)

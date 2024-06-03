@@ -41,9 +41,9 @@ def r_old(img: NDArray, out: NDArray, g: float, sigma: float, beta: float, alpha
         for j in range(out.shape[1]):
             if np.abs(diff[i, j]) <= sigma:
                 out[i, j] = g + np.sign(diff[i, j]) * sigma * (np.abs(diff[i, j]) / sigma) ** alpha
-                #out[i, j] = img[i,j] + (np.abs(diff[i, j]) / sigma)*np.exp(-1*(np.abs(diff[i, j]) / sigma)**2/2*alpha**2)/alpha**2
+                # out[i, j] = img[i,j] + (np.abs(diff[i, j]) / sigma)*np.exp(-1*(np.abs(diff[i, j]) / sigma)**2/2*alpha**2)/alpha**2
             else:
-                out[i, j] = beta*img[i, j]
+                out[i, j] = beta * img[i, j]
 
     # out[smallMask] = g + np.sign(diff[smallMask])*sigma*(diff[smallMask]/sigma)**alpha
     # no need to do this if alpha is one because it is a no op
@@ -52,121 +52,81 @@ def r_old(img: NDArray, out: NDArray, g: float, sigma: float, beta: float, alpha
     return out
 
 
-@njit(fastmath=True, parallel=True, error_model='numpy', nogil=True)
-def r(img: NDArray, out: NDArray, g: float, sigma: float, shadows: float, highlights: float, clarity: float) -> NDArray:
-    #diff = img - g
-    # smallMask = np.abs(diff) < sigma
-    # smallMask = smallMask.astype(np.bool_)
+@njit(fastmath=True, parallel=True, error_model="numpy", nogil=True)
+def r(
+    img: NDArray, out: NDArray, g: float, sigma: float, shadows: float, highlights: float, clarity: float
+) -> NDArray:
     h_s = (highlights, shadows)
     for i in prange(out.shape[0]):
-        #diffI = diff[i]
         imgI = img[i]
         outI = out[i]
         for j in prange(out.shape[1]):
-        #    c = diffI[j]
             c = imgI[j] - g
             s = np.sign(c)
-            t = s*c/(2.0*sigma)
-            #if t > 1:
-            #    t = 1
+            t = s * c / (2.0 * sigma)
             t = max(0, min(t, 1))
-            t2 = t*t
-            mt = 1.0-t
-            index = np.uint8(np.bool_(1+s))
-            val = g + s*sigma * 2*mt*t + t2*(s*sigma + s*sigma*h_s[index])
-            #if c > 0:
-            #    t = c / (2.0*sigma)
-            #    #if t < 0:
-            #    #    t = 0
-            #    if t > 1:
-            #        t = 0
-            #    t2 = t * t
-            #    mt = 1.0-t
-            #    val = g + sigma * 2.0*mt*t + t2*(sigma + sigma*shadows)
-            #else:
-            #    t = -c / (2.0*sigma)
-            #    #if t < 0:
-            #        #t = 0
-            #    if t > 1:
-            #        t = 0
-            #    t2 = t * t
-            #    mt = 1.0-t
-            #    val = g - sigma * 2.0*mt*t + t2*(- sigma - sigma*highlights)
-            val = val + clarity * c * np.exp(-(c*c)/(2.0*sigma*sigma/3.0))
+            t2 = t * t
+            mt = 1.0 - t
+            index = np.uint8(np.bool_(1 + s))
+            val = g + s * sigma * 2 * mt * t + t2 * (s * sigma + s * sigma * h_s[index])
+            val = val + clarity * c * np.exp(-(c * c) / (2.0 * sigma * sigma / 3.0))
             outI[j] = val
 
-    # out[smallMask] = g + np.sign(diff[smallMask])*sigma*(diff[smallMask]/sigma)**alpha
-    # no need to do this if alpha is one because it is a no op
-    # if beta != 1:
-    #    out[~smallMask] = g + np.sign(diff[~smallMask])*(diff[~smallMask])
     return out
 
 
-def makeGaussianPyramid(img: NDArray, padY: list[int], padX: list[int], out: List[NDArray] | None) -> Sequence[NDArray]:
+def makeGaussianPyramid(
+    img: NDArray, padY: list[int], padX: list[int], out: List[NDArray] | None
+) -> Sequence[NDArray]:
     if out is None:
         pyramid = List()
     else:
         pyramid = out
     if padY[0] or padX[0]:
-        paddedImage = cv2.copyMakeBorder(img, *(0, padY[0]), *(0, padX[0]), cv2.BORDER_REPLICATE, None if out is None else pyramid[0], None).astype(img.dtype) 
+        paddedImage = cv2.copyMakeBorder(
+            img, *(0, padY[0]), *(0, padX[0]), cv2.BORDER_REPLICATE, None if out is None else pyramid[0], None
+        ).astype(img.dtype)
     else:
         paddedImage = img
     if out is None:
         pyramid.append(paddedImage)
     else:
-        #np.copyto(pyramid[0], paddedImage)
         # This might not be sound all the time, copy might be needed!
         pyramid[0] = paddedImage
     for i in range(1, len(padY)):
         if padY[i] or padX[i]:
-            paddedImage = cv2.copyMakeBorder(paddedImage, *(0, padY[i]), *(0, padX[i]), cv2.BORDER_REPLICATE, None, None).astype(img.dtype) 
+            paddedImage = cv2.copyMakeBorder(
+                paddedImage, *(0, padY[i]), *(0, padX[i]), cv2.BORDER_REPLICATE, None, None
+            ).astype(img.dtype)
         paddedImage = cv2.pyrDown(paddedImage, None if out is None else pyramid[i])
         if out is None:
             pyramid.append(paddedImage)
-    #pyramid = List()
-    #pyramid.append(img)
-    #for i in range(1, maxLevel):
-        #pyramid.append(cv2.pyrDown(pyramid[i - 1]))
     return pyramid
 
 
-@njit(parallel=True, fastmath=True, error_model='numpy', nogil=True)
-def _subtract_out(a, b, out):
-    for i in prange(a.shape[0]):
-        outI = out[i]
-        aI = a[i]
-        bI = b[i]
-        for j in prange(a.shape[1]):
-            outI[j] = aI[j] - bI[j]
-
-
-#def makeLapPyramid(img: NDArray, maxLevel: int) -> Sequence[NDArray]:
-def makeLapPyramid(img: NDArray, padY: list[int], padX: list[int], gaussOut, lapOut, upscratch=None) -> Sequence[NDArray]:
+def makeLapPyramid(
+    img: NDArray, padY: list[int], padX: list[int], gaussOut, lapOut, upscratch=None
+) -> Sequence[NDArray]:
     pyramid = makeGaussianPyramid(img, padY, padX, gaussOut)
     if lapOut is None:
         lapPyramid = List()
     else:
         lapPyramid = lapOut
     for i in range(len(pyramid) - 1):
-        upsampled = cv2.pyrUp(pyramid[i + 1], None if upscratch is None else upscratch[i+1])
+        upsampled = cv2.pyrUp(pyramid[i + 1], None if upscratch is None else upscratch[i + 1])
         if padY[i + 1] or padX[i + 1]:
-            upsampled = upsampled[:upsampled.shape[0]-2*padY[i + 1], : upsampled.shape[1]-2*padX[i + 1]]
+            upsampled = upsampled[
+                : upsampled.shape[0] - 2 * padY[i + 1], : upsampled.shape[1] - 2 * padX[i + 1]
+            ]
         if lapOut is None:
             lapPyramid.append(pyramid[i] - upsampled)
         else:
-            #_subtract_out(pyramid[i], upsampled, lapPyramid[i])
             cv2.subtract(pyramid[i], upsampled, dst=lapPyramid[i])
     if lapOut is None:
         lapPyramid.append(pyramid[-1])
     else:
         lapPyramid[-1][:, :] = pyramid[-1]
     return lapPyramid
-    #pyramid = makeGaussianPyramid(img, maxLevel)
-    #lapPyramid = List()
-    #for i in range(len(pyramid) - 1):
-        #lapPyramid.append(pyramid[i] - cv2.pyrUp(pyramid[i + 1]))
-    #lapPyramid.append(pyramid[-1])
-    #return lapPyramid
 
 
 def padImage(image: NDArray) -> tuple[NDArray, list[tuple[int, int]]]:
@@ -182,41 +142,16 @@ def padImage(image: NDArray) -> tuple[NDArray, list[tuple[int, int]]]:
     return imagePadded, padding
 
 
-#@njit(fastmath=True, parallel=False)
-#def _calculateOutput(
-#    out: List[NDArray], pyramid: List[NDArray], gamma: NDArray, pyramidVectors: List[NDArray]
-#):
-#    # loop over each pixel in the gaussian pyramid
-#    #gammaDiff = gamma[1] - gamma[0]
-#    for level in prange(0, len(pyramid) - 1):
-#        positions = np.searchsorted(gamma, pyramid[level])
-#        positions = np.where(positions == 0, 1, positions)
-#        yshape = pyramid[level].shape[0]
-#        xshape = pyramid[level].shape[1]
-#        plevel = pyramid[level]
-#        outlevel = out[level]
-#        basis = pyramidVectors[level]
-#        for y in prange(yshape):
-#            plevelY = plevel[y]
-#            positionY = positions[y]
-#            outLevelY = outlevel[y]
-#            basisY = basis[y]
-#            for x in prange(xshape):
-#                # this is zero indexed, and we want 1 level past where we are
-#                # end point is not inclusive
-#                position = positionY[x]
-#                #a = (plevelY[x] - gamma[position - 1]) / (gammaDiff)
-#                a = (plevelY[x] - gamma[position - 1]) / (gamma[position] - gamma[position-1])
-#                outLevelY[x] = (1 - a) * basisY[x, position - 1] + a * basisY[x, position]
-#                #outLevelY[x] = (1 - a) * basisY[x, position] + a * basisY[x, position-1]
-
-@njit(fastmath=True, parallel=True, error_model='numpy', nogil=True)
+@njit(fastmath=True, parallel=True, error_model="numpy", nogil=True)
 def _calculateOutput(
-    #out: List[NDArray], pyramid: List[NDArray], gamma: NDArray, pyramidVectors: List[NDArray]
-    out: List[NDArray], pyramid: List[NDArray], gamma: NDArray, pyramidVectorsBottom: List[NDArray], pyramidVectorsTop: List[NDArray]
+    out: List[NDArray],
+    pyramid: List[NDArray],
+    gamma: NDArray,
+    pyramidVectorsBottom: List[NDArray],
+    pyramidVectorsTop: List[NDArray],
 ):
     # loop over each pixel in the gaussian pyramid
-    #gammaDiff = gamma[1] - gamma[0]
+    # gammaDiff = gamma[1] - gamma[0]
     for level in prange(0, len(pyramid) - 1):
         yshape = pyramid[level].shape[0]
         xshape = pyramid[level].shape[1]
@@ -233,21 +168,35 @@ def _calculateOutput(
                 val = plevelY[x]
                 if not (val >= gamma[0] and val <= gamma[1]):
                     continue
-                #a = (plevelY[x] - gamma[position - 1]) / (gammaDiff)
                 a = (plevelY[x] - gamma[0]) / (gamma[1] - gamma[0])
                 outLevelY[x] = (1 - a) * basisBottomY[x] + a * basisTopY[x]
-                #outLevelY[x] = (1 - a) * basisY[x, 0] + a * basisY[x, 1]
-                #outLevelY[x] = (1 - a) * basisY[x, position] + a * basisY[x, position-1]
 
 
-def levelPadder(numb, levels):
+def levelPadder(numb: int, levels: int) -> list[int]:
+    """Determine if each level of transform will need to be padded by
+    one in order to make the level divisible by two.
+
+    Parameters
+    ----------
+    numb : int
+        The size of the input dimension
+    levels : int
+        The number of times the dimensions will be reduced by a factor of two
+
+    Returns
+    -------
+    padds : list of int
+        A list where the entries are either zero or one depending on if the
+        size will need padded to be a power of two.
+
+    """
     pads = []
     if numb % 2 != 0:
         pads.append(1)
         numb += 1
     else:
         pads.append(0)
-    for i in range(levels):
+    for _ in range(levels):
         numb /= 2
         if numb % 2 != 0:
             pads.append(1)
@@ -257,53 +206,93 @@ def levelPadder(numb, levels):
     return pads
 
 
-def localContrast(image: NDArray, sigma: float, highlights: float = -0.9, shadows: float = 0.4, clarity: float = 0.15):
+def localContrast(
+    image: NDArray,
+    sigma: float,
+    highlights: float = -0.9,
+    shadows: float = 0.4,
+    clarity: float = 0.15,
+    maxLevel: int | None = None,
+    numGamma: int = 20,
+) -> NDArray:
+    """Enhance the local contrast of an input image.
+
+    Parameters
+    ----------
+    image : `NDArray`
+        Two dimensional numpy array representing the image to have contrast
+        increased.
+    sigma : `float`
+        The scale over which edges are to be considered real and not noise.
+    highlights : `float`
+        A parameter that controls how highlights will be enhansed or reduced,
+        contrary to intuition, negative values increase highlights.
+    shadows : `float`
+        A parameter that controls how shadows are deepened.
+    clarity : `float`
+        A parameter that relates to the contrast between highlights and
+        shadow.
+    maxLevel : `int` or `None`
+        The maximum number of image pyramid levels to enhanse the contrast over.
+        Each level has a spatial scale of roughly 2^(level) pixles.
+    numGamma : `int`
+        This is an optimization parameter. This algorithm divides up contrast
+        space into a certain numbers over which the expensive computation
+        is done. Contrast values in the image which fall between two of these
+        values are interpolated to get the outcome. The higher the numGamma,
+        the smoother the image will be post contrast enhancement, though above
+        some number there is no decerable difference.
+
+    Returns
+    -------
+    image : `NDArray`
+        Two dimensional numpy array of the input image with increased local
+        contrast.
+
+    Raises
+    ------
+    ValueError
+        Raised if the max level to enhance to is greater than the image
+        supports.
+
+    """
+    # ensure the supplied values are floats, and not ints
     highlights = float(highlights)
     shadows = float(shadows)
     clarity = float(clarity)
-    maxLevel = int(np.min(np.log2(image.shape)))
-    support = 1 << (maxLevel-1)
-    padY_amounts = levelPadder(image.shape[0]+support, maxLevel)
-    padX_amounts = levelPadder(image.shape[1]+support, maxLevel)
-    imagePadded = cv2.copyMakeBorder(image, *(0, support), *(0, support), cv2.BORDER_REPLICATE, None, None).astype(image.dtype) 
-    #imagePadded, pads = padImage(image)
-    # find the padding for the y direction
+
+    # Determine the maximum level over which the image will be inhanced
+    # and the amount of padding that will be needed to be added to the
+    # image.
+    maxImageLevel = int(np.min(np.log2(image.shape)))
+    if maxLevel is None:
+        maxLevel = maxImageLevel
+    if maxImageLevel < maxLevel:
+        raise ValueError(
+            f"The supplied max level {maxLevel} is is greater than the max of the image: {maxImageLevel}"
+        )
+    support = 1 << (maxLevel - 1)
+    padY_amounts = levelPadder(image.shape[0] + support, maxLevel)
+    padX_amounts = levelPadder(image.shape[1] + support, maxLevel)
+    imagePadded = cv2.copyMakeBorder(
+        image, *(0, support), *(0, support), cv2.BORDER_REPLICATE, None, None
+    ).astype(image.dtype)
 
     # build a list of intensities
-    #numGamma = 2*int(np.ceil((image.max() - image.min())/sigma))
-    numGamma = 20
     gamma = np.linspace(image.min(), image.max(), numGamma)
-    #gamma = (image.max() - np.geomspace(image.min(), image.max(), numGamma))[::-1] + image.min()
-
-    #pyramidVectors = List()
-    #for value in gamma:
-    #    out = np.copy(imagePadded)
-    #    newImg = r(imagePadded, out, value, sigma, beta, alpha)
-    #    pyramidVectors.append(makeLapPyramid(newImg, maxLevel))
-
-    ## re-arange pyramidVectors by level and squash into 3d arrays per level
-    #newBasis = List()
-    #for level in pyramidVectors[0]:
-    #    newBasis.append(np.zeros((*level.shape, numGamma)))
-    #    newBasis[-1][:, :, 0] = level
-
-    #for j, basis in enumerate(pyramidVectors[1:]):
-    #    for i, level in enumerate(basis):
-    #        newBasis[i][:, :, j+1] = level
 
     # make gaussian pyramid
-    #pyramid = makeGaussianPyramid(image, maxLevel)
     pyramid = makeGaussianPyramid(imagePadded, padY_amounts, padX_amounts, None)
-    #breakpoint()
 
     finalPyramid = List()
     for sample in pyramid[:-1]:
         finalPyramid.append(np.zeros_like(sample))
     finalPyramid.append(pyramid[-1])
 
-    # new
     # make a working array for gaussian pyramid in Lap
-    # make two working arrays for laplace
+    # make two working arrays for laplace as the true value is interpolated
+    # between the endpoints.
+    # This prevents needing re-allocations which can be time consuming.
     tmpGauss = List()
     tmpLap1 = List()
     tmpLap2 = List()
@@ -315,45 +304,51 @@ def localContrast(image: NDArray, sigma: float, highlights: float = -0.9, shadow
         if i == 0:
             upscratch.append(np.empty((0, 0), dtype=image.dtype))
             continue
-        upscratch.append(np.empty((sample.shape[0]*2, sample.shape[1]*2), dtype=image.dtype))
+        upscratch.append(np.empty((sample.shape[0] * 2, sample.shape[1] * 2), dtype=image.dtype))
+    # cycle between the endpoints, because there is no reason to recalculate both
+    # endpoints as only one changes for each bin.
     cycler = iter(cycle((tmpLap1, tmpLap2)))
+    # allocate temporary arrays to use for each bin
     outCycle = iter(cycle((np.copy(imagePadded), np.copy(imagePadded))))
-    prevImg = r(imagePadded, next(outCycle), gamma[0], sigma, shadows=shadows, highlights=highlights, clarity=clarity)
-    prevLapPyr = makeLapPyramid(prevImg, padY_amounts, padX_amounts, tmpGauss, next(cycler), upscratch=upscratch)
-    #prevLapPyr = makeLapPyramid(prevImg, padY_amounts, padX_amounts, tmpGauss, None)
+    prevImg = r(
+        imagePadded, next(outCycle), gamma[0], sigma, shadows=shadows, highlights=highlights, clarity=clarity
+    )
+    prevLapPyr = makeLapPyramid(
+        prevImg, padY_amounts, padX_amounts, tmpGauss, next(cycler), upscratch=upscratch
+    )
+
     for value in range(1, len(gamma) - 1):
         pyramidVectors = List()
         pyramidVectors.append(prevLapPyr)
-        newImg = r(imagePadded, next(outCycle), gamma[value], sigma, shadows=shadows, highlights=highlights, clarity=clarity)
-        prevLapPyr = makeLapPyramid(newImg, padY_amounts, padX_amounts, tmpGauss, next(cycler), upscratch=upscratch)
+        newImg = r(
+            imagePadded,
+            next(outCycle),
+            gamma[value],
+            sigma,
+            shadows=shadows,
+            highlights=highlights,
+            clarity=clarity,
+        )
+        prevLapPyr = makeLapPyramid(
+            newImg, padY_amounts, padX_amounts, tmpGauss, next(cycler), upscratch=upscratch
+        )
         pyramidVectors.append(prevLapPyr)
 
-        #tmpGamma = (gamma[value], gamma[value+1])
-        #for g in tmpGamma:
-            #out = np.copy(imagePadded)
-            #newImg = r(imagePadded, out, g, sigma, shadows=beta, highlights=alpha, clarity=clarity)
-            #pyramidVectors.append(makeLapPyramid(newImg, padY_amounts, padX_amounts))
-        #newBasis = List()
-        #for level in pyramidVectors[0]:
-            #newBasis.append(np.empty((*level.shape, 2)))
-            #newBasis[-1][:, :, 0] = level
-
-        #for i, level in enumerate(pyramidVectors[1]):
-            #newBasis.append(np.empty((*level.shape, 2)))
-            #newBasis[i][:, :, 1] = level
-
-        _calculateOutput(finalPyramid, pyramid, np.array((gamma[value-1], gamma[value])), pyramidVectors[0], pyramidVectors[1])
+        _calculateOutput(
+            finalPyramid,
+            pyramid,
+            np.array((gamma[value - 1], gamma[value])),
+            pyramidVectors[0],
+            pyramidVectors[1],
+        )
         del pyramidVectors
-        #del newBasis
 
     # time to reconstruct
     output = finalPyramid[-1]
-    for i in range(-2, -1*len(finalPyramid) - 1, -1):
+    for i in range(-2, -1 * len(finalPyramid) - 1, -1):
         upsampled = cv2.pyrUp(output)
-        upsampled = upsampled[:upsampled.shape[0]-2*padY_amounts[i+1], : upsampled.shape[1] -2*padX_amounts[i+1]]
+        upsampled = upsampled[
+            : upsampled.shape[0] - 2 * padY_amounts[i + 1], : upsampled.shape[1] - 2 * padX_amounts[i + 1]
+        ]
         output = finalPyramid[i] + upsampled
     return output[:-support, :-support]
-    #output = finalPyramid[-1]
-    #for i in range(-2, -1 * len(finalPyramid) - 1, -1):
-    #    output = finalPyramid[i] + cv2.pyrUp(output)
-    #return output[pads[0][0]:output.shape[0]-pads[0][1], pads[1][0]:output.shape[1]-pads[1][1]]
