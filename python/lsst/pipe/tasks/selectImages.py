@@ -268,6 +268,21 @@ class PsfWcsSelectImagesConfig(pipeBase.PipelineTaskConfig,
         default=0.7,
         optional=True,
     )
+    maxPsfApFluxDelta = pexConfig.Field(
+        doc="Maximum delta (max - min) of model PSF aperture flux (with aperture radius of "
+        "max(2, 3*psfSigma)) values evaluated on a grid on the unmasked detector pixels (based "
+        "on a normalized-to-one flux).",
+        dtype=float,
+        default=0.24,
+        optional=True,
+    )
+    maxPsfApCorrSigmaScaledDelta = pexConfig.Field(
+        doc="Maximum delta (max - min) of model PSF aperture correction values evaluated on a grid "
+        "on the unmasked detector pixels scaled (divided) by the measured model psfSigma.",
+        dtype=float,
+        default=0.22,
+        optional=True,
+    )
 
 
 class PsfWcsSelectImagesTask(WcsSelectImagesTask):
@@ -349,6 +364,8 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         scatterSize = row["psfStarDeltaSizeScatter"]
         scaledScatterSize = row["psfStarScaledDeltaSizeScatter"]
         psfTraceRadiusDelta = row["psfTraceRadiusDelta"]
+        psfApFluxDelta = row["psfApFluxDelta"]
+        psfApCorrSigmaScaledDelta = row["psfApCorrSigmaScaledDelta"]
 
         valid = True
         if self.config.maxEllipResidual and not (medianE <= self.config.maxEllipResidual):
@@ -371,6 +388,27 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
                 "Removing visit %d detector %d because max-min delta of model PSF trace radius values "
                 "across the unmasked detector pixels is not finite or too large: %.3f vs %.3f (pixels)",
                 row["visit"], detectorId, psfTraceRadiusDelta, self.config.maxPsfTraceRadiusDelta
+            )
+            valid = False
+        elif (
+                self.config.maxPsfApFluxDelta is not None
+                and not (psfApFluxDelta <= self.config.maxPsfApFluxDelta)
+        ):
+            self.log.info(
+                "Removing visit %d detector %d because max-min delta of model PSF aperture flux values "
+                "across the unmasked detector pixels is not finite or too large: %.3f vs %.3f (pixels)",
+                row["visit"], detectorId, psfApFluxDelta, self.config.maxPsfApFluxDelta
+            )
+            valid = False
+        elif (
+                self.config.maxPsfApCorrSigmaScaledDelta is not None
+                and not (psfApCorrSigmaScaledDelta <= self.config.maxPsfApCorrSigmaScaledDelta)
+        ):
+            self.log.info(
+                "Removing visit %d detector %d because max-min delta of the model PSF apterture correction "
+                "values scaled (divided) by the psfSigma across the unmasked detector pixels is not "
+                "finite or too large: %.3f vs %.3f (fatcor)",
+                row["visit"], detectorId, psfApCorrSigmaScaledDelta, self.config.maxPsfApCorrSigmaScaledDelta
             )
             valid = False
 

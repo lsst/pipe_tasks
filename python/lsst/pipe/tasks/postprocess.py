@@ -1224,8 +1224,9 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
                              'psfStarDeltaE1Median', 'psfStarDeltaE2Median',
                              'psfStarDeltaE1Scatter', 'psfStarDeltaE2Scatter',
                              'psfStarDeltaSizeMedian', 'psfStarDeltaSizeScatter',
-                             'psfStarScaledDeltaSizeScatter',
-                             'psfTraceRadiusDelta', 'maxDistToNearestPsf',
+                             'psfStarScaledDeltaSizeScatter', 'psfTraceRadiusDelta',
+                             'psfApFluxDelta', 'psfApCorrSigmaScaledDelta',
+                             'maxDistToNearestPsf',
                              'effTime', 'effTimePsfSigmaScale',
                              'effTimeSkyBgScale', 'effTimeZeroPointScale']
             ccdEntry = summaryTable[selectColumns].to_pandas().set_index('id')

@@ -86,6 +86,19 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         "caclulations grid (the tradeoff is between adequate sampling versus speed).",
         default=96,
     )
+    minPsfApRadiusPix = pexConfig.Field(
+        dtype=float,
+        doc="Minimum radius in pixels of the aperture within which to measure the flux of "
+        "the PSF model for the psfApFluxDelta metric calculation (the radius is computed as "
+        "max(``minPsfApRadius``, 3*psfSigma)).",
+        default=2.0,
+    )
+    psfApCorrFieldName = pexConfig.Field(
+        doc="Name of the flux column associated with the aperture correction of the PSF model "
+        "to use for the psfApCorrSigmaScaledDelta metric calculation.",
+        dtype=str,
+        default="base_PsfFlux_instFlux"
+    )
     psfBadMaskPlanes = pexConfig.ListField(
         dtype=str,
         doc="Mask planes that, if set, the associated pixel should not be included in the PSF model "
@@ -177,6 +190,12 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     (against, e.g., extrapolation instability):
     - maxDistToNearestPsf
     - psfTraceRadiusDelta
+    - psfApFluxDelta
+
+    This quantity is computed based on the aperture correction map, the
+    psfSigma, and the image mask to assess the robustness of the aperture
+    corrections across a given detector:
+    - psfApCorrSigmaScaledDelta
 
     These quantities are computed to assess depth:
     - effTime
@@ -214,7 +233,9 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         bbox = exposure.getBBox()
 
         psf = exposure.getPsf()
-        self.update_psf_stats(summary, psf, bbox, sources, image_mask=exposure.mask)
+        self.update_psf_stats(
+            summary, psf, bbox, sources, image_mask=exposure.mask, image_ap_corr_map=exposure.apCorrMap
+        )
 
         wcs = exposure.getWcs()
         visitInfo = exposure.getInfo().getVisitInfo()
@@ -236,7 +257,16 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
         return summary
 
-    def update_psf_stats(self, summary, psf, bbox, sources=None, image_mask=None, sources_is_astropy=False):
+    def update_psf_stats(
+            self,
+            summary,
+            psf,
+            bbox,
+            sources=None,
+            image_mask=None,
+            image_ap_corr_map=None,
+            sources_is_astropy=False,
+    ):
         """Compute all summary-statistic fields that depend on the PSF model.
 
         Parameters
@@ -278,6 +308,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.psfStarScaledDeltaSizeScatter = nan
         summary.maxDistToNearestPsf = nan
         summary.psfTraceRadiusDelta = nan
+        summary.psfApFluxDelta = nan
+        summary.psfApCorrSigmaScaledDelta = nan
 
         if psf is None:
             return
@@ -294,13 +326,32 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.psfArea = float(np.sum(im.array)/np.sum(im.array**2.))
 
         if image_mask is not None:
-            psfTraceRadiusDelta = psf_trace_radius_delta(
+            psfApRadius = max(self.config.minPsfApRadiusPix, 3.0*summary.psfSigma)
+            self.log.debug("Using radius of %.3f (pixels) for psfApFluxDelta metric", psfApRadius)
+            psfTraceRadiusDelta, psfApFluxDelta = compute_psf_image_deltas(
                 image_mask,
                 psf,
                 sampling=self.config.psfGridSampling,
+                ap_radius_pix=psfApRadius,
                 bad_mask_bits=self.config.psfBadMaskPlanes
             )
             summary.psfTraceRadiusDelta = float(psfTraceRadiusDelta)
+            summary.psfApFluxDelta = float(psfApFluxDelta)
+            if image_ap_corr_map is not None:
+                if self.config.psfApCorrFieldName not in image_ap_corr_map.keys():
+                    self.log.warn(f"{self.config.psfApCorrFieldName} not found in "
+                                  "image_ap_corr_map.  Setting psfApCorrSigmaScaledDelta to NaN.")
+                    psfApCorrSigmaScaledDelta = nan
+                else:
+                    image_ap_corr_field = image_ap_corr_map[self.config.psfApCorrFieldName]
+                    psfApCorrSigmaScaledDelta = compute_ap_corr_sigma_scaled_delta(
+                        image_mask,
+                        image_ap_corr_field,
+                        summary.psfSigma,
+                        sampling=self.config.psfGridSampling,
+                        bad_mask_bits=self.config.psfBadMaskPlanes,
+                    )
+                summary.psfApCorrSigmaScaledDelta = float(psfApCorrSigmaScaledDelta)
 
         if sources is None:
             # No sources are available (as in some tests and rare cases where
@@ -648,10 +699,11 @@ def maximum_nearest_psf_distance(
     return max_dist_to_nearest_psf
 
 
-def psf_trace_radius_delta(
+def compute_psf_image_deltas(
     image_mask,
     image_psf,
     sampling=96,
+    ap_radius_pix=3.0,
     bad_mask_bits=["BAD", "CR", "INTRP", "SAT", "SUSPECT", "NO_DATA", "EDGE"],
 ):
     """Compute the delta between the maximum and minimum model PSF trace radius
@@ -664,24 +716,29 @@ def psf_trace_radius_delta(
         The mask plane associated with the exposure.
     image_psf : `lsst.afw.detection.Psf`
         The PSF model associated with the exposure.
-    sampling : `int`
+    sampling : `int`, optional
         Sampling rate in each dimension to create the grid of points at which
         to evaluate ``image_psf``s trace radius value. The tradeoff is between
         adequate sampling versus speed.
-    bad_mask_bits : `list` [`str`]
+    ap_radius_pix : `float`, optional
+        Radius in pixels of the aperture on which to measure the flux of the
+        PSF model.
+    bad_mask_bits : `list` [`str`], optional
         Mask bits required to be absent for a pixel to be considered
         "unmasked".
 
     Returns
     -------
-    psf_trace_radius_delta : `float`
+    psf_trace_radius_delta, psf_ap_flux_delta : `float`
         The delta (in pixels) between the maximum and minimum model PSF trace
-        radius values evaluated on the x,y-grid subsampled on the unmasked
-        detector pixels by a factor of ``sampling``.  If any model PSF trace
-        radius value on the grid evaluates to NaN, then NaN is returned
-        immediately.
+        radius values and the PSF aperture fluxes (with aperture radius of
+        max(2, 3*psfSigma)) evaluated on the x,y-grid subsampled on the
+        unmasked detector pixels by a factor of ``sampling``.  If both the
+        model PSF trace radius value and aperture flux value on the grid
+        evaluate to NaN, then NaNs are returned immediately.
     """
     psf_trace_radius_list = []
+    psf_ap_flux_list = []
     mask_arr = image_mask.array[::sampling, ::sampling]
     bitmask = image_mask.getPlaneBitMask(bad_mask_bits)
     good = ((mask_arr & bitmask) == 0)
@@ -693,11 +750,75 @@ def psf_trace_radius_delta(
     for x_mesh, y_mesh, good_mesh in zip(xx, yy, good):
         for x_point, y_point, is_good in zip(x_mesh, y_mesh, good_mesh):
             if is_good:
-                psf_trace_radius = image_psf.computeShape(geom.Point2D(x_point, y_point)).getTraceRadius()
-                if ~np.isfinite(psf_trace_radius):
-                    return float("nan")
+                position = geom.Point2D(x_point, y_point)
+                psf_trace_radius = image_psf.computeShape(position).getTraceRadius()
+                psf_ap_flux = image_psf.computeApertureFlux(ap_radius_pix, position)
+                if ~np.isfinite(psf_trace_radius) and ~np.isfinite(psf_ap_flux):
+                    return float("nan"), float("nan")
                 psf_trace_radius_list.append(psf_trace_radius)
+                psf_ap_flux_list.append(psf_ap_flux)
 
     psf_trace_radius_delta = np.max(psf_trace_radius_list) - np.min(psf_trace_radius_list)
+    if np.any(np.asarray(psf_ap_flux_list) < 0.0):  # Consider any -ve flux entry as "bad".
+        psf_ap_flux_delta = float("nan")
+    else:
+        psf_ap_flux_delta = np.max(psf_ap_flux_list) - np.min(psf_ap_flux_list)
 
-    return psf_trace_radius_delta
+    return psf_trace_radius_delta, psf_ap_flux_delta
+
+
+def compute_ap_corr_sigma_scaled_delta(
+    image_mask,
+    image_ap_corr_field,
+    psfSigma,
+    sampling=96,
+    bad_mask_bits=["BAD", "CR", "INTRP", "SAT", "SUSPECT", "NO_DATA", "EDGE"],
+):
+    """Compute the delta between the maximum and minimum aperture correction
+    values scaled (divided) by ``psfSigma`` for the given field representation,
+    ``image_ap_corr_field`` evaluated on a grid of points lying in the
+    unmasked region of the image.
+
+    Parameters
+    ----------
+    image_mask : `lsst.afw.image.Mask`
+        The mask plane associated with the exposure.
+    image_ap_corr_field : `lsst.afw.math.ChebyshevBoundedField`
+        The ChebyshevBoundedField representation of the aperture correction
+        of interest for the exposure.
+    psfSigma : `float`
+        The PSF model second-moments determinant radius (center of chip)
+        in pixels.
+    sampling : `int`, optional
+        Sampling rate in each dimension to create the grid of points at which
+        to evaluate ``image_psf``s trace radius value. The tradeoff is between
+        adequate sampling versus speed.
+    bad_mask_bits : `list` [`str`], optional
+        Mask bits required to be absent for a pixel to be considered
+        "unmasked".
+
+    Returns
+    -------
+    ap_corr_sigma_scaled_delta : `float`
+        The delta between the maximum and minimum of the (multiplicative)
+        aperture correction values scaled (divided) by ``psfSigma`` evaluated
+        on the x,y-grid subsampled on the unmasked detector pixels by a factor
+        of ``sampling``.  If the aperture correction evaluates to NaN on any
+        of the grid points, this is set to NaN.
+    """
+    mask_arr = image_mask.array[::sampling, ::sampling]
+    bitmask = image_mask.getPlaneBitMask(bad_mask_bits)
+    good = ((mask_arr & bitmask) == 0)
+
+    x = np.arange(good.shape[1], dtype=np.float64) * sampling
+    y = np.arange(good.shape[0], dtype=np.float64) * sampling
+    xx, yy = np.meshgrid(x, y)
+
+    ap_corr = image_ap_corr_field.evaluate(xx.ravel(), yy.ravel()).reshape(xx.shape)
+    ap_corr_good = ap_corr[good]
+    if ~np.isfinite(ap_corr_good).all():
+        ap_corr_sigma_scaled_delta = float("nan")
+    else:
+        ap_corr_sigma_scaled_delta = (np.max(ap_corr_good) - np.min(ap_corr_good))/psfSigma
+
+    return ap_corr_sigma_scaled_delta
