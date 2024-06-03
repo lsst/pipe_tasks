@@ -1,4 +1,3 @@
-
 __all__ = ("mapUpperBounds", "latLum", "colorConstantSat", "lsstRGB", "mapUpperBounds")
 
 import logging
@@ -69,14 +68,7 @@ def calcIntersection2(a, b, fy, vert0, vert1):
     c = np.sqrt(a**2 + b**2)
     h = np.arctan2(b, a)
 
-    coeff0 = (
-        fy**3
-        - c**3 * m / 500**3
-        - 3 * m * c**2 * fy / 500**2
-        - 3 * c * m * fy**2 / 500
-        - m * fy**3
-        - n
-    )
+    coeff0 = fy**3 - c**3 * m / 500**3 - 3 * m * c**2 * fy / 500**2 - 3 * c * m * fy**2 / 500 - m * fy**3 - n
     coeff1 = -3 * c * fy**2 / 100
     coeff2 = (
         3 * c**2 * fy / 100**2
@@ -97,9 +89,7 @@ def calcIntersection2(a, b, fy, vert0, vert1):
         - 3 * m * fy
     )
     coeff5 = -3 * c * fy**2 / 100
-    coeff6 = (
-        1 + c**3 * m / 500**3 - 3 * m * c**2 * fy / 500**2 + 3 * m * c * fy**2 / 500 - m * fy**3
-    )
+    coeff6 = 1 + c**3 * m / 500**3 - 3 * m * c**2 * fy / 500**2 + 3 * m * c * fy**2 / 500 - m * fy**3
 
     prop_a = []
     prop_b = []
@@ -123,16 +113,24 @@ def calcIntersection2(a, b, fy, vert0, vert1):
 
 def logAsinhLum(values: NDArray, stretch: float = 80, max=80, impact=0.8, minimum=0) -> NDArray:
     intensities = np.log(impact * np.arcsinh(values * stretch) + 1)
-    intensities = intensities/intensities.max() * max
+    intensities = intensities / intensities.max() * max
     intensities[intensities < minimum] = 0
     return intensities
-    #return (s := np.log(impact * np.arcsinh(values * stretch) + 1)) / s.max() * max
+    # return (s := np.log(impact * np.arcsinh(values * stretch) + 1)) / s.max() * max
 
 
-#def latLum(values, stretch: float = 80, max: float = 90, A: float = 0.9, b0: float = 1.2, minimum=0):
-def latLum(values, stretch: float = 100, max: float = 85, A: float = 0.9, b0: float = 0.05, minimum=0, floor: float = 0.00):
-    intensities = A*np.arcsinh((values+floor)*stretch)/np.arcsinh(stretch)+b0
-    intensities = intensities/intensities.max()*max
+# def latLum(values, stretch: float = 80, max: float = 90, A: float = 0.9, b0: float = 1.2, minimum=0):
+def latLum(
+    values,
+    stretch: float = 100,
+    max: float = 85,
+    A: float = 0.9,
+    b0: float = 0.05,
+    minimum=0,
+    floor: float = 0.00,
+):
+    intensities = A * np.arcsinh((values + floor) * stretch) / np.arcsinh(stretch) + b0
+    intensities = intensities / intensities.max() * max
     intensities[intensities < minimum] = 0
     return intensities
 
@@ -165,9 +163,9 @@ def mapUpperBounds(img: NDArray, quant=0.8, absMax=None) -> NDArray:
 
     if absMax is None:
         turnover = np.max(np.vstack((r, g, b)))
-        #scale = turnover / quant
+        # scale = turnover / quant
         scale = turnover * quant
-        #scale = np.quantile(np.vstack((r, g, b)), quant)
+        # scale = np.quantile(np.vstack((r, g, b)), quant)
 
     else:
         scale = absMax
@@ -219,8 +217,8 @@ def lsstRGB(
     sigma: float = 20,
     highlights: float = -1.5,
     shadows: float = 0.4,
-    clarity: float = 0.2
-
+    clarity: float = 0.2,
+    maxLevel: int | None = None,
 ) -> NDArray:
     """Enhance the lightness and color preserving hue using perceptual methods.
 
@@ -252,6 +250,19 @@ def lsstRGB(
         input if the inputs are all less than 1. Scaling is done by mapping
         the 98th quantile to the value of 2 which is then put though an arctan
         transformation.
+    sigma : `float`
+        The scale over which edges are to be considered real and not noise.
+    highlights : `float`
+        A parameter that controls how highlights will be enhansed or reduced,
+        contrary to intuition, negative values increase highlights.
+    shadows : `float`
+        A parameter that controls how shadows are deepened.
+    clarity : `float`
+        A parameter that relates to the contrast between highlights and
+        shadow.
+    maxLevel : `int` or `None`
+        The maximum number of image pyramid levels to enhanse the contrast over.
+        Each level has a spatial scale of roughly 2^(level) pixles.
 
     Returns
     -------
@@ -278,20 +289,27 @@ def lsstRGB(
 
     # Lab = cv2.cvtColor(img.astype(np.float32), cv2.COLOR_RGB2Lab)
     # Lab = colour.XYZ_to_Lab(colour.sRGB_to_XYZ(img))
-    #Lab = colour.XYZ_to_Lab(colour.RGB_to_XYZ(img, colourspace="Display P3"))
-    # d65 =(0.31373, 0.32903 
-    Lab = colour.XYZ_to_Lab(colour.RGB_to_XYZ(img, colourspace="CIE RGB", illuminant=np.array(cieWhitePoint), chromatic_adaptation_transform="bradford"))
+    # Lab = colour.XYZ_to_Lab(colour.RGB_to_XYZ(img, colourspace="Display P3"))
+    # d65 =(0.31373, 0.32903
+    Lab = colour.XYZ_to_Lab(
+        colour.RGB_to_XYZ(
+            img,
+            colourspace="CIE RGB",
+            illuminant=np.array(cieWhitePoint),
+            chromatic_adaptation_transform="bradford",
+        )
+    )
 
     lum = Lab[:, :, 0]
     if doLocalContrast:
-        newLum = localContrast(lum, sigma, highlights, shadows, clarity=clarity)
+        newLum = localContrast(lum, sigma, highlights, shadows, clarity=clarity, maxLevel=maxLevel)
     else:
         newLum = lum
     if scaleLum is not None:
         lRemapped = scaleLum(newLum, **(scaleLumKWargs or {}))
     else:
         lRemapped = newLum
-    #if doLocalContrast:
+    # if doLocalContrast:
     #    lumMax = lRemapped.max()
     #    lRemapped = localContrast(lRemapped, sigma, alpha, beta, clarity=clarity)
     #    lRemapped = lRemapped/lRemapped.max() * lumMax
