@@ -291,6 +291,9 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
                                                "base_GaussianFlux",
                                                "base_PsfFlux",
                                                ]
+        # Set injected pixel flags.
+        self.psf_source_measurement.plugins["base_PixelFlags"].masksFpAnywhere.append("INJECTED")
+        self.psf_source_measurement.plugins["base_PixelFlags"].masksFpCenter.append("INJECTED_CORE")
         self.psf_source_measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
         # Only measure apertures we need for PSF measurement.
         self.psf_source_measurement.plugins["base_CircularApertureFlux"].radii = [12.0]
@@ -317,6 +320,9 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
                                          "base_CircularApertureFlux",
                                          "base_ClassificationSizeExtendedness",
                                          ]
+        # Set injected pixel flags.
+        self.star_measurement.plugins["base_PixelFlags"].masksFpAnywhere.append("INJECTED")
+        self.star_measurement.plugins["base_PixelFlags"].masksFpCenter.append("INJECTED_CORE")
         self.star_measurement.slots.psfShape = "ext_shapeHSM_HsmPsfMoments"
         self.star_measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
         # Only measure the apertures we need for star selection.
