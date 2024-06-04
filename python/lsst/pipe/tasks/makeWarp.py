@@ -392,7 +392,7 @@ class MakeWarpTask(CoaddBaseTask):
                 else:  # warpType == "psfMached"
                     growValidPolygons(
                         inputRecorder[warpType].coaddInputs,
-                        -self.config.matchingKernelSize // 2,
+                        -self.config.warpAndPsfMatch.psfMatch.kernel.active.kernelSize // 2,
                     )
             else:
                 if not self.config.doWriteEmptyWarps:
