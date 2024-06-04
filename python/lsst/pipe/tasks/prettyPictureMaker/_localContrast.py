@@ -267,7 +267,7 @@ def localContrast(
     maxImageLevel = int(np.min(np.log2(image.shape)))
     if maxLevel is None:
         maxLevel = maxImageLevel
-    if maxImageLevel > maxLevel:
+    if maxImageLevel < maxLevel:
         raise ValueError(
             f"The supplied max level {maxLevel} is is greater than the max of the image: {maxImageLevel}"
         )
