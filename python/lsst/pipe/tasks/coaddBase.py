@@ -64,7 +64,8 @@ class CoaddBaseConfig(pexConfig.Config):
         dtype=int,
         doc="Size in pixels of matching kernel. Must be odd.",
         default=21,
-        check=lambda x: x % 2 == 1
+        check=lambda x: x % 2 == 1,
+        deprecated=True,
     )
 
 
