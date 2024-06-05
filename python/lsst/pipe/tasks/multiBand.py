@@ -448,6 +448,8 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
                                            'base_Variance',
                                            'base_LocalPhotoCalib',
                                            'base_LocalWcs']
+
+        # TODO: Remove STREAK in DM-44658, streak masking to happen only in ip_diffim
         self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['CLIPPED', 'SENSOR_EDGE',
                                                                        'INEXACT_PSF', 'STREAK']
         self.measurement.plugins['base_PixelFlags'].masksFpCenter = ['CLIPPED', 'SENSOR_EDGE',

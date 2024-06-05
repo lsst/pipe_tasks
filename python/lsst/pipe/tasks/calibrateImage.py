@@ -515,10 +515,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         result.exposure = self._handle_snaps(exposures)
 
-        # TODO remove on DM-43083: work around the fact that we don't want
-        # to run streak detection in this task in production.
-        result.exposure.mask.addMaskPlane("STREAK")
-
         result.psf_stars_footprints, result.background, candidates = self._compute_psf(result.exposure,
                                                                                        id_generator)
         result.psf_stars = result.psf_stars_footprints.asAstropy()
