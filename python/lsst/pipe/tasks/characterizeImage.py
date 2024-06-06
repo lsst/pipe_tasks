@@ -214,13 +214,17 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
     )
     doMaskStreaks = pexConfig.Field(
         doc="Mask streaks",
-        default=True,
+        default=False,
         dtype=bool,
+        deprecated=("This subtask has been moved to detectAndMeasureTask in "
+                    "ip_diffim with DM-43370 and will be removed in DM-44658.")
     )
     maskStreaks = pexConfig.ConfigurableField(
         target=MaskStreaksTask,
         doc="Subtask for masking streaks. Only used if doMaskStreaks is True. "
             "Adds a mask plane to an exposure, with the mask plane name set by streakMaskName.",
+        deprecated=("This subtask has been moved to detectAndMeasureTask in "
+                    "ip_diffim with DM-43370 and will be removed in DM-44658.")
     )
     idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
@@ -273,7 +277,6 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
     e.g. as output by `~lsst.ip.isr.IsrTask`):
     - detect and measure bright sources
     - repair cosmic rays
-    - detect and mask streaks
     - measure and subtract background
     - measure PSF
 
@@ -319,6 +322,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         self.makeSubtask("background")
         self.makeSubtask("installSimplePsf")
         self.makeSubtask("repair")
+        # TODO: DM-44658, streak masking to happen only in ip_diffim
         if self.config.doMaskStreaks:
             self.makeSubtask("maskStreaks")
         self.makeSubtask("measurePsf", schema=self.schema)
@@ -424,8 +428,11 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         self.display("repair", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 
         # mask streaks
+        # TODO: Remove in DM-44658, streak masking to happen only in ip_diffim
         if self.config.doMaskStreaks:
             _ = self.maskStreaks.run(dmeRes.exposure)
+        else:
+            dmeRes.exposure.mask.addMaskPlane('STREAK')
 
         # perform final measurement with final PSF, including measuring and applying aperture correction,
         # if wanted

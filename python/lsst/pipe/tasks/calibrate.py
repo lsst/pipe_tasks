@@ -347,6 +347,7 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         # The photoRefCat connection is the name to use for the colorterms.
         self.photoCal.photoCatName = self.connections.photoRefCat
 
+        # TODO: Remove in DM-44658, streak masking to happen only in ip_diffim
         # Keep track of which footprints contain streaks
         self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['STREAK']
         self.measurement.plugins['base_PixelFlags'].masksFpCenter = ['STREAK']
