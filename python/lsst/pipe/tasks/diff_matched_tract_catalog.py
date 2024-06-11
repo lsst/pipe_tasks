@@ -121,6 +121,19 @@ class DiffMatchedTractCatalogConnections(
         dimensions=("tract", "skymap"),
     )
 
+    def __init__(self, *, config=None):
+        if config.refcat_sharding_type != "tract":
+            if config.refcat_sharding_type == "none":
+                old = self.cat_ref
+                del self.cat_ref
+                self.cat_ref = cT.Input(
+                    doc=old.doc,
+                    name=old.name,
+                    storageClass=old.storageClass,
+                    dimensions=(),
+                    deferLoad=old.deferLoad,
+                )
+
 
 class MatchedCatalogFluxesConfig(pexConfig.Config):
     column_ref_flux = pexConfig.Field(
@@ -288,6 +301,11 @@ class DiffMatchedTractCatalogConfig(
         default=('2.275', '15.866', '84.134', '97.725'),
         itemCheck=is_percentile,
         listCheck=is_sequence_set,
+    )
+    refcat_sharding_type = pexConfig.ChoiceField[str](
+        doc="The type of sharding (spatial splitting) for the reference catalog",
+        allowed={"tract": "Tract-based shards", "none": "No sharding at all"},
+        default="tract",
     )
 
     def validate(self):

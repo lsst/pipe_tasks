@@ -81,6 +81,19 @@ class MatchTractCatalogConnections(
         dimensions=("tract", "skymap"),
     )
 
+    def __init__(self, *, config=None):
+        if config.refcat_sharding_type != "tract":
+            if config.refcat_sharding_type == "none":
+                old = self.cat_ref
+                del self.cat_ref
+                self.cat_ref = cT.Input(
+                    doc=old.doc,
+                    name=old.name,
+                    storageClass=old.storageClass,
+                    dimensions=(),
+                    deferLoad=old.deferLoad,
+                )
+
 
 class MatchTractCatalogSubConfig(pexConfig.Config):
     """Config class for the MatchTractCatalogSubTask to define methods returning
@@ -148,6 +161,11 @@ class MatchTractCatalogConfig(
     match_tract_catalog = pexConfig.ConfigurableField(
         target=MatchTractCatalogSubTask,
         doc="Task to match sources in a reference tract catalog with a target catalog",
+    )
+    refcat_sharding_type = pexConfig.ChoiceField[str](
+        doc="The type of sharding (spatial splitting) for the reference catalog",
+        allowed={"tract": "Tract-based shards", "none": "No sharding at all"},
+        default="tract",
     )
 
     def get_columns_in(self) -> Tuple[Set, Set]:
