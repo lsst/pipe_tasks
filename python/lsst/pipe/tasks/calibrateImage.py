@@ -543,12 +543,12 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         return result
 
-    def _handle_snaps(self, exposure):
+    def _handle_snaps(self, exposures):
         """Combine two snaps into one exposure, or return a single exposure.
 
         Parameters
         ----------
-        exposure : `lsst.afw.image.Exposure` or `list` [`lsst.afw.image.Exposure]`
+        exposures : `lsst.afw.image.Exposure` or `list` [`lsst.afw.image.Exposure]`
             One or two exposures to combine as snaps.
 
         Returns
@@ -561,15 +561,15 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         RuntimeError
             Raised if input does not contain either 1 or 2 exposures.
         """
-        if isinstance(exposure, lsst.afw.image.Exposure):
-            return exposure
+        if isinstance(exposures, lsst.afw.image.Exposure):
+            return exposures
 
-        if isinstance(exposure, collections.abc.Sequence):
-            match len(exposure):
+        if isinstance(exposures, collections.abc.Sequence):
+            match len(exposures):
                 case 1:
-                    return exposure[0]
+                    return exposures[0]
                 case 2:
-                    return self.snap_combine.run(exposure[0], exposure[1]).exposure
+                    return self.snap_combine.run(exposures[0], exposures[1]).exposure
                 case n:
                     raise RuntimeError(f"Can only process 1 or 2 snaps, not {n}.")
 
