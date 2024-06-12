@@ -41,6 +41,23 @@ from lsst.utils.timer import timeMethod
 from . import measurePsf, repair, photoCal, computeExposureSummaryStats, snapCombine
 
 
+class _EmptyTargetTask(pipeBase.PipelineTask):
+    """
+    This is a placeholder target for create_summary_metrics and must be retargeted at
+    runtime. create_summary_metrics should target an analysis tool task, but that
+    would, at the time of writing, result in a circular import.
+
+    As a result, this class should not be used for anything else.
+    """
+    ConfigClass = pipeBase.PipelineTaskConfig
+
+    def __init__(self, **kwargs) -> None:
+        raise NotImplementedError(
+            "do_create_summary_metrics is set to True, in which "
+            "case create_summary_metrics must be retargeted."
+        )
+
+
 class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
                                 dimensions=("instrument", "visit", "detector")):
 
@@ -136,6 +153,11 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
         storageClass="Catalog",
         dimensions=("instrument", "visit", "detector"),
     )
+    summary_metrics = connectionTypes.Output(
+        name="initial_summary_metrics",
+        storageClass="MetricMeasurementBundle",
+        dimensions=("instrument", "visit", "detector"),
+    )
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
@@ -147,6 +169,8 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
             del self.astrometry_matches
         if config.optional_outputs is None or "photometry_matches" not in config.optional_outputs:
             del self.photometry_matches
+        if not config.do_create_summary_metrics:
+            del self.summary_metrics
 
 
 class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=CalibrateImageConnections):
@@ -258,6 +282,16 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     compute_summary_stats = pexConfig.ConfigurableField(
         target=computeExposureSummaryStats.ComputeExposureSummaryStatsTask,
         doc="Task to to compute summary statistics on the calibrated exposure."
+    )
+    do_create_summary_metrics = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Run the subtask to create summary metrics, and then write those metrics."
+    )
+    create_summary_metrics = pexConfig.ConfigurableField(
+        target=_EmptyTargetTask,
+        doc="Subtask to create metrics from the summary stats. This must be retargeted, likely to an"
+        "analysis_tools task such as CalexpSummaryMetrics."
     )
 
     def setDefaults(self):
@@ -411,6 +445,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         self.makeSubtask("compute_summary_stats")
 
+        if self.config.do_create_summary_metrics:
+            self.makeSubtask("create_summary_metrics")
+
         # For the butler to persist it.
         self.initial_stars_schema = afwTable.SourceCatalog(initial_stars_schema)
 
@@ -543,7 +580,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             result.photometry_matches = lsst.meas.astrom.denormalizeMatches(photometry_matches,
                                                                             photometry_meta)
 
-        self._summarize(result.exposure, result.stars_footprints, result.background)
+        result.summary_metrics = self._summarize(result.exposure,
+                                                 result.stars_footprints,
+                                                 result.background)
 
         return result
 
@@ -856,3 +895,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # applied calibration). This needs to be checked.
         summary = self.compute_summary_stats.run(exposure, stars, background)
         exposure.info.setSummaryStats(summary)
+
+        summaryMetrics = None
+        if self.config.do_create_summary_metrics:
+            summaryMetrics = self.create_summary_metrics.run(data=summary.__dict__).metrics
+        return summaryMetrics
