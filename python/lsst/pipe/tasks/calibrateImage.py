@@ -564,7 +564,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         if isinstance(exposures, lsst.afw.image.Exposure):
             return exposures
 
-        if isinstance(exposures, collections.abc.Sequence):
+        if isinstance(exposures, collections.abc.Sequence) and not isinstance(exposures, str):
             match len(exposures):
                 case 1:
                     return exposures[0]
@@ -572,6 +572,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                     return self.snap_combine.run(exposures[0], exposures[1]).exposure
                 case n:
                     raise RuntimeError(f"Can only process 1 or 2 snaps, not {n}.")
+        else:
+            raise RuntimeError("`exposures` must be either an afw Exposure (single snap visit), or a "
+                               "list/tuple of one or two of them.")
 
     def _compute_psf(self, exposure, id_generator):
         """Find bright sources detected on an exposure and fit a PSF model to
