@@ -139,16 +139,20 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
-        if not config.optional_outputs:
+        if config.optional_outputs is None or "psf_stars" not in config.optional_outputs:
             del self.psf_stars
+        if config.optional_outputs is None or "psf_stars_footprints" not in config.optional_outputs:
             del self.psf_stars_footprints
+        if config.optional_outputs is None or "astrometry_matches" not in config.optional_outputs:
             del self.astrometry_matches
+        if config.optional_outputs is None or "photometry_matches" not in config.optional_outputs:
             del self.photometry_matches
 
 
 class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=CalibrateImageConnections):
     optional_outputs = pexConfig.ListField(
-        doc="Which optional outputs to save (as their connection name)?",
+        doc="Which optional outputs to save (as their connection name)?"
+            " If None, do not output any of these datasets.",
         dtype=str,
         # TODO: note somewhere to disable this for benchmarking, but should
         # we always have it on for production runs?
@@ -526,7 +530,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         result.stars = result.stars_footprints.asAstropy()
 
         astrometry_matches, astrometry_meta = self._fit_astrometry(result.exposure, result.stars_footprints)
-        if self.config.optional_outputs:
+        if self.config.optional_outputs is not None and "astrometry_matches" in self.config.optional_outputs:
             result.astrometry_matches = lsst.meas.astrom.denormalizeMatches(astrometry_matches,
                                                                             astrometry_meta)
 
@@ -535,7 +539,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                                                                result.stars_footprints)
         # fit_photometry returns a new catalog, so we need a new astropy table view.
         result.stars = result.stars_footprints.asAstropy()
-        if self.config.optional_outputs:
+        if self.config.optional_outputs is not None and "photometry_matches" in self.config.optional_outputs:
             result.photometry_matches = lsst.meas.astrom.denormalizeMatches(photometry_matches,
                                                                             photometry_meta)
 
