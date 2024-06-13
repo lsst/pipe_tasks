@@ -207,6 +207,22 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         self._check_run(calibrate, result)
 
+    def test_run_no_optionals(self):
+        """Test that disabling optional outputs removes them from the output
+        struct, as appropriate.
+        """
+        self.config.optional_outputs = None
+        calibrate = CalibrateImageTask(config=self.config)
+        calibrate.astrometry.setRefObjLoader(self.ref_loader)
+        calibrate.photometry.match.setRefObjLoader(self.ref_loader)
+        result = calibrate.run(exposures=self.exposure)
+
+        self._check_run(calibrate, result)
+        # These are the only optional outputs that require extra computation,
+        # the others are included in the output struct regardless.
+        self.assertNotIn("astrometry_matches", result.getDict())
+        self.assertNotIn("photometry_matches", result.getDict())
+
     def test_handle_snaps(self):
         calibrate = CalibrateImageTask(config=self.config)
         self.assertEqual(calibrate._handle_snaps(self.exposure), self.exposure)
@@ -216,6 +232,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
             calibrate._handle_snaps([])
         with self.assertRaisesRegex(RuntimeError, "Can only process 1 or 2 snaps, not 3."):
             calibrate._handle_snaps(3*[self.exposure])
+        with self.assertRaisesRegex(RuntimeError, "must be either an afw Exposure"):
+            calibrate._handle_snaps("")
 
     def test_compute_psf(self):
         """Test that our brightest sources are found by _compute_psf(),
@@ -541,30 +559,39 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures", "result", "id_generator"})
 
     def test_runQuantum_no_optional_outputs(self):
-        config = CalibrateImageTask.ConfigClass()
-        config.optional_outputs = None
-        task = CalibrateImageTask(config=config)
-        lsst.pipe.base.testUtils.assertValidInitOutput(task)
+        # All the possible connections: we modify this to test each one by
+        # popping off the removed connection, then re-setting it.
+        connections = {"exposures": [self.exposure0_id, self.exposure1_id],
+                       "astrometry_ref_cat": [self.htm_id],
+                       "photometry_ref_cat": [self.htm_id],
+                       # outputs
+                       "exposure": self.visit_id,
+                       "stars": self.visit_id,
+                       "stars_footprints": self.visit_id,
+                       "background": self.visit_id,
+                       "psf_stars": self.visit_id,
+                       "psf_stars_footprints": self.visit_id,
+                       "applied_photo_calib": self.visit_id,
+                       "initial_pvi_background": self.visit_id,
+                       "astrometry_matches": self.visit_id,
+                       "photometry_matches": self.visit_id,
+                       }
 
-        quantum = lsst.pipe.base.testUtils.makeQuantum(
-            task, self.butler, self.visit_id,
-            {"exposures": [self.exposure0_id],
-             "astrometry_ref_cat": [self.htm_id],
-             "photometry_ref_cat": [self.htm_id],
-             # outputs
-             "exposure": self.visit_id,
-             "stars": self.visit_id,
-             "stars_footprints": self.visit_id,
-             "applied_photo_calib": self.visit_id,
-             "background": self.visit_id,
-             })
-        mock_run = lsst.pipe.base.testUtils.runTestQuantum(task, self.butler, quantum)
-
-        # Ensure the reference loaders have been configured.
-        self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr3_20230707")
-        self.assertEqual(task.photometry.match.refObjLoader.name, "ps1_pv3_3pi_20170110")
-        # Check that the proper kwargs are passed to run().
-        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures", "result", "id_generator"})
+        # Check that we can turn off one output at a time.
+        for optional in ["psf_stars", "psf_stars_footprints", "astrometry_matches", "photometry_matches"]:
+            config = CalibrateImageTask.ConfigClass()
+            config.optional_outputs.remove(optional)
+            task = CalibrateImageTask(config=config)
+            lsst.pipe.base.testUtils.assertValidInitOutput(task)
+            # Save the removed one for the next test.
+            temp = connections.pop(optional)
+            # This will fail with "Error in connection ..." if we don't pop
+            # the optional item from the connections list just above.
+            quantum = lsst.pipe.base.testUtils.makeQuantum(task, self.butler, self.visit_id, connections)
+            # This confirms that the outputs did skip the removed one.
+            self.assertNotIn(optional, quantum.outputs)
+            # Restore the one we removed for the next test.
+            connections[optional] = temp
 
     def test_lintConnections(self):
         """Check that the connections are self-consistent.
