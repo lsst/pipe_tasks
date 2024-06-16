@@ -36,6 +36,7 @@ __all__ = ["WriteObjectTableConfig", "WriteObjectTableTask",
            "ConsolidateTractConfig", "ConsolidateTractTask"]
 
 import functools
+import dataclasses
 import pandas as pd
 import logging
 import numpy as np
@@ -206,11 +207,18 @@ class WriteSourceTableConnections(pipeBase.PipelineTaskConnections,
         dimensions=("instrument", "visit", "detector")
     )
 
+    def __init__(self, *, config):
+        if config.fromAstropy:
+            self.catalog = dataclasses.replace(self.catalog, storageClass="ArrowAstropy")
+
 
 class WriteSourceTableConfig(pipeBase.PipelineTaskConfig,
                              pipelineConnections=WriteSourceTableConnections):
-    pass
-
+    fromAstropy = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Set to True if the input catalog is an astropy table."
+    )
 
 class WriteSourceTableTask(pipeBase.PipelineTask):
     """Write source table to DataFrame Parquet format.
@@ -247,7 +255,9 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
                 `DataFrame` version of the input catalog
         """
         self.log.info("Generating DataFrame from src catalog visit,detector=%i,%i", visit, detector)
-        df = catalog.asAstropy().to_pandas().set_index('id', drop=True)
+        if not self.config.fromAstropy:
+            catalog = catalog.asAstropy()
+        df = catalog.to_pandas().set_index('id', drop=True)
         df['visit'] = visit
         # int16 instead of uint8 because databases don't like unsigned bytes.
         df['detector'] = np.int16(detector)
@@ -678,8 +688,13 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
         else:
             self.funcs = None
 
+    def shimInputs(self, inputs, butlerQC):
+        """Subclasses override if needed"""
+        return inputs
+
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
+        inputs = self.shimInputs(inputs, butlerQC)
         if self.funcs is None:
             raise ValueError("config.functorFile is None. "
                              "Must be a valid path to yaml in order to run Task as a PipelineTask.")
@@ -973,10 +988,19 @@ class TransformSourceTableConnections(pipeBase.PipelineTaskConnections,
         dimensions=("instrument", "visit", "detector")
     )
 
+    def __init__(self, *, config):
+        if config.fromAstropy:
+            self.inputCatalog = dataclasses.replace(self.inputCatalog, storageClass="ArrowAstropy")
+
+
 
 class TransformSourceTableConfig(TransformCatalogBaseConfig,
                                  pipelineConnections=TransformSourceTableConnections):
-
+    fromAstropy = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Set to True if the input catalog is an astropy table."
+    )
     def setDefaults(self):
         super().setDefaults()
         self.functorFile = os.path.join('$PIPE_TASKS_DIR', 'schemas', 'Source.yaml')
@@ -989,6 +1013,16 @@ class TransformSourceTableTask(TransformCatalogBaseTask):
     """
     _DefaultName = "transformSourceTable"
     ConfigClass = TransformSourceTableConfig
+
+    def shimInputs(self, inputs, butlerQC):
+        """Run WriteSourceTable if the inputCatalog is an Astropy table"""
+        if inputs['inputCatalog'].ref.datasetType.storageClass.name == "ArrowAstropy":
+            task = WriteSourceTableTask(config=WriteSourceTableConfig(fromAstropy=True))
+            table = task.run(inputs["inputCatalog"].get(),
+                             butlerQC.quantum.dataId["visit"],
+                             butlerQC.quantum.dataId["detector"]).table
+        inputs["inputCatalog"] = table
+        return inputs
 
 
 class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,

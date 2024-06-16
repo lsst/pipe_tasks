@@ -1,0 +1,256 @@
+# This file defines the mapping between the columns in a single visit+detector
+# source table and their respective DPDD-style column names, as used by
+# `lsst.pipe.tasks.postprocess.TransformSourceTableTask`.
+# See the DPDD for more information about the output: https://lse-163.lsst.io
+funcs:
+    sourceId:
+        functor: Index
+    coord_ra:
+        # reference position required by db. Not in DPDD
+        functor: CoordColumn
+        args: coord_ra
+    coord_dec:
+        # Reference position required by db. Not in DPDD
+        functor: CoordColumn
+        args: coord_dec
+    # objectId: not avaliable
+    # ssObjectId: not avaliable
+    parentSourceId:
+        functor: Column
+        args: parent
+    # htmId20: not avaliable
+    x:
+        functor: Column
+        args: slot_Centroid_x
+    y:
+        functor: Column
+        args: slot_Centroid_y
+    xErr:
+        functor: Column
+        args: slot_Centroid_xErr
+    yErr:
+        functor: Column
+        args: slot_Centroid_yErr
+    # x_y_Cov: not available
+    ra:
+        functor: RAColumn
+    dec:
+        functor: DecColumn
+
+   # RFC-924: Temporarily keep a duplicate "decl" entry for backwards
+   # compatibility. To be removed after September 2023.
+    decl:
+        functor: DecColumn
+    raErr:
+        functor: RAErrColumn
+    decErr:
+        functor: DecErrColumn
+    ra_dec_Cov:
+        functor: RADecCovColumn
+    # One calibrated Calib flux is important:
+    calibFlux:
+        functor: Column
+        args: slot_CalibFlux_instFlux
+    calibFluxErr:
+        functor: Column
+        args: slot_CalibFlux_instFluxErr
+   # Not in DPDD. Used for QA
+    ap03Flux:
+        functor: Column
+        args: base_CircularApertureFlux_3_0_instFlux
+    ap03FluxErr:
+        functor: Column
+        args: base_CircularApertureFlux_3_0_instFluxErr
+    ap03Flux_flag:
+        functor: Column
+        args: base_CircularApertureFlux_3_0_flag
+    ap09Flux:
+        functor: Column
+        args: base_CircularApertureFlux_9_0_instFlux
+    ap09FluxErr:
+        functor: Column
+        args: base_CircularApertureFlux_9_0_instFluxErr
+    ap09Flux_flag:
+        functor: Column
+        args: base_CircularApertureFlux_9_0_flag
+    ap12Flux:
+        functor: Column
+        args: base_CircularApertureFlux_12_0_instFlux
+    ap12FluxErr:
+        functor: Column
+        args: base_CircularApertureFlux_12_0_instFluxErr
+    ap12Flux_flag:
+        functor: Column
+        args: base_CircularApertureFlux_12_0_flag
+    ap17Flux:
+        functor: Column
+        args: base_CircularApertureFlux_17_0_instFlux
+    ap17FluxErr:
+        functor: Column
+        args: base_CircularApertureFlux_17_0_instFluxErr
+    ap17Flux_flag:
+        functor: Column
+        args: base_CircularApertureFlux_17_0_flag
+    ap25Flux:
+        functor: Column
+        args: base_CircularApertureFlux_25_0_instFlux
+    ap25FluxErr:
+        functor: Column
+        args: base_CircularApertureFlux_25_0_instFluxErr
+    ap25Flux_flag:
+        functor: Column
+        args: base_CircularApertureFlux_25_0_flag
+    ap35Flux:
+        functor: Column
+        args: base_CircularApertureFlux_35_0_instFlux
+    ap35FluxErr:
+        functor: Column
+        args: base_CircularApertureFlux_35_0_instFluxErr
+    ap35Flux_flag:
+        functor: Column
+        args: base_CircularApertureFlux_35_0_flag
+    ap50Flux:
+        functor: Column
+        args: base_CircularApertureFlux_50_0_instFlux
+    ap50FluxErr:
+        functor: Column
+        args: base_CircularApertureFlux_50_0_instFluxErr
+    ap50Flux_flag:
+        functor: Column
+        args: base_CircularApertureFlux_50_0_flag
+    ap70Flux:
+        functor: Column
+        args: base_CircularApertureFlux_70_0_instFlux
+    ap70FluxErr:
+        functor: Column
+        args: base_CircularApertureFlux_70_0_instFluxErr
+    ap70Flux_flag:
+        functor: Column
+        args: base_CircularApertureFlux_70_0_flag
+    psfFlux:
+        functor: Column
+        args: slot_PsfFlux_instFlux
+    psfFluxErr:
+        functor: Column
+        args: slot_PsfFlux_instFluxErr
+    ixx:
+        functor: Column
+        args: slot_Shape_xx
+    iyy:
+        functor: Column
+        args: slot_Shape_yy
+    ixy:
+        functor: Column
+        args: slot_Shape_xy
+    # DPDD should include Psf Shape
+    ixxPSF:
+        functor: Column
+        args: slot_PsfShape_xx
+    iyyPSF:
+        functor: Column
+        args: slot_PsfShape_yy
+    ixyPSF:
+        functor: Column
+        args: slot_PsfShape_xy
+    # apNann: Replaced by raw Aperture instFluxes in flags section below
+    # apMeanSb: Replaced by raw Aperture instFluxes in flags section below
+    # apMeanSbErr: Replaced by raw Aperture instFluxes in flags section below
+
+    # DPDD does not include gaussianFluxes, however they are used for
+    # the single frame extendedness column which is used for QA.
+    gaussianFlux:
+        functor: Column
+        args: base_GaussianFlux_instFlux
+    gaussianFluxErr:
+        functor: Column
+        args: base_GaussianFlux_instFluxErr
+    extendedness:
+        functor: Column
+        args: base_ClassificationExtendedness_value
+    sizeExtendedness:
+        functor: Column
+        args: base_ClassificationSizeExtendedness_value
+flags:
+   - base_ClassificationExtendedness_flag
+   - base_ClassificationSizeExtendedness_flag
+   - base_LocalBackground_instFlux  # needed by isolatedStarAssociation
+   - base_LocalBackground_instFluxErr  # needed by isolatedStarAssociation
+   - base_LocalBackground_flag   # needed by isolatedStarAssociation
+   - base_CircularApertureFlux_12_0_flag
+   - base_CircularApertureFlux_12_0_flag_apertureTruncated
+   - base_CircularApertureFlux_12_0_instFlux
+   - base_CircularApertureFlux_12_0_instFluxErr
+   - base_CircularApertureFlux_17_0_flag
+   - base_CircularApertureFlux_17_0_instFlux
+   - base_CircularApertureFlux_17_0_instFluxErr
+   - base_CircularApertureFlux_35_0_flag
+   - base_CircularApertureFlux_35_0_instFlux
+   - base_CircularApertureFlux_35_0_instFluxErr
+   - base_FootprintArea_value
+   - base_PixelFlags_flag_bad
+   - base_PixelFlags_flag_cr
+   - base_PixelFlags_flag_crCenter
+   - base_PixelFlags_flag_edge
+   - base_PixelFlags_flag_interpolated
+   - base_PixelFlags_flag_interpolatedCenter
+   - base_PixelFlags_flag_offimage
+   - base_PixelFlags_flag_saturated
+   - base_PixelFlags_flag_saturatedCenter
+   - base_PixelFlags_flag_suspect
+   - base_PixelFlags_flag_suspectCenter
+   - base_PsfFlux_apCorr
+   - base_PsfFlux_apCorrErr
+   - base_PsfFlux_area
+   - base_PsfFlux_flag
+   - base_PsfFlux_flag_apCorr
+   - base_PsfFlux_flag_edge
+   - base_PsfFlux_flag_noGoodPixels
+   - base_GaussianFlux_flag
+   - base_SdssCentroid_flag
+   - base_SdssCentroid_flag_almostNoSecondDerivative
+   - base_SdssCentroid_flag_badError
+   - base_SdssCentroid_flag_edge
+   - base_SdssCentroid_flag_noSecondDerivative
+   - base_SdssCentroid_flag_notAtMaximum
+   - base_SdssCentroid_flag_resetToPeak
+   - calib_astrometry_used
+   - calib_photometry_reserved
+   - calib_photometry_used
+   - calib_psf_candidate
+   - calib_psf_reserved
+   - calib_psf_used
+   - deblend_deblendedAsPsf
+   - deblend_hasStrayFlux
+   - deblend_masked
+   - deblend_nChild
+   - deblend_parentTooBig
+   - deblend_patchedTemplate
+   - deblend_rampedTemplate
+   - deblend_skipped
+   - deblend_tooManyPeaks
+   - sky_source
+   - detect_isPrimary
+
+flag_rename_rules:
+    # Taken from db-meas-forced
+    - ['ext_photometryKron_', '']
+    - ['base_Blendedness', 'base_blendedness']
+    - ['base_Local', 'local']
+    - ['base_PixelFlags_flag', 'pixelFlags']
+    - ['base_ClassificationE', 'e']
+    - ['base_ClassificationS', 's']
+    - ['base_SdssCentroid', 'centroid']
+    - ['base_Variance', 'variance']
+    - ['base_Psf', 'psf']
+    - ['base_GaussianFlux', 'gaussianFlux']
+    - ['base_CircularApertureFlux', 'apFlux']
+    - ['base_FootprintArea', 'footprintArea']
+    - ['base_Jacobian', 'jacobian']
+    - ['ext_shapeHSM_HsmPsfMomentsDebiased', 'iDebiasedPSF']
+    - ['ext_shapeHSM_Hsm', 'hsm']
+    - ['ext_convolved_', '']
+    - ['undeblended_base', 'undeblended']
+    - ['undeblended_ext_photometryKron', 'undeblended']
+    - ['ext_photometryKron_', '']
+    - ['base_', '']
+    - ['slot_', '']
