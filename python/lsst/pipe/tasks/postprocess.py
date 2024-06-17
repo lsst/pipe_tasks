@@ -1219,7 +1219,7 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
             ccdEntry = {}
             summaryTable = visitSummary.asAstropy()
             selectColumns = ["id", "visit", "physical_filter", "band", "ra", "dec", "zenithDistance",
-                             "zeroPoint", "psfSigma", "skyBg", "skyNoise",
+                             "expTime", "zeroPoint", "psfSigma", "skyBg", "skyNoise",
                              "astromOffsetMean", "astromOffsetStd", "nPsfStar",
                              "psfStarDeltaE1Median", "psfStarDeltaE2Median",
                              "psfStarDeltaE1Scatter", "psfStarDeltaE2Scatter",
@@ -1260,10 +1260,10 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
             ccdEntry["skyRotation"] = visitInfo.getBoresightRotAngle().asDegrees()
             ccdEntry["expMidpt"] = visitInfo.getDate().toPython()
             ccdEntry["expMidptMJD"] = visitInfo.getDate().get(dafBase.DateTime.MJD)
-            expTime = visitInfo.getExposureTime()
-            ccdEntry["expTime"] = expTime
-            ccdEntry["obsStart"] = ccdEntry["expMidpt"] - 0.5 * pd.Timedelta(seconds=expTime)
-            expTime_days = expTime / (60*60*24)
+            ccdEntry["obsStart"] = (
+                ccdEntry["expMidpt"] - 0.5 * pd.Timedelta(seconds=ccdEntry["expTime"].values[0])
+            )
+            expTime_days = ccdEntry["expTime"] / (60*60*24)
             ccdEntry["obsStartMJD"] = ccdEntry["expMidptMJD"] - 0.5 * expTime_days
             ccdEntry["darkTime"] = visitInfo.getDarkTime()
             ccdEntry["xSize"] = summaryTable["bbox_max_x"] - summaryTable["bbox_min_x"]

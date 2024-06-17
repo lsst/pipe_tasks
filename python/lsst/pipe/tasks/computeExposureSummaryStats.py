@@ -159,6 +159,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
     This task computes various quantities suitable for DPDD and other
     downstream processing at the detector centers, including:
+    - expTime
     - psfSigma
     - psfArea
     - psfIxx
@@ -229,6 +230,10 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         self.log.info("Measuring exposure statistics")
 
         summary = afwImage.ExposureSummaryStats()
+
+        # Set exposure time.
+        exposureTime = exposure.getInfo().getVisitInfo().getExposureTime()
+        summary.expTime = exposureTime
 
         bbox = exposure.getBBox()
 
