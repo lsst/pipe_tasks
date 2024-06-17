@@ -21,9 +21,21 @@
 
 """Tasks for making and manipulating HIPS images."""
 
-__all__ = ["HighResolutionHipsTask", "HighResolutionHipsConfig", "HighResolutionHipsConnections",
-           "HighResolutionHipsQuantumGraphBuilder",
-           "GenerateHipsTask", "GenerateHipsConfig", "GenerateColorHipsTask", "GenerateColorHipsConfig"]
+__all__ = [
+    "HighResolutionHipsTask",
+    "HighResolutionHipsConfig",
+    "HighResolutionHipsConnections",
+    "HighResolutionHipsQuantumGraphBuilder",
+    "HighResolutionVisitHipsTask",
+    "HighResolutionVisitHipsConfig",
+    "HighResolutionVisitHipsConnections",
+    "GenerateHipsTask",
+    "GenerateHipsConfig",
+    "GenerateColorHipsTask",
+    "GenerateColorHipsConfig",
+    "GenerateVisitHipsTask",
+    "GenerateVisitHipsConfig",
+]
 
 from collections import defaultdict
 import numpy as np
@@ -193,7 +205,7 @@ class HipsTaskNameDescriptor:
 
 
 class HighResolutionHipsTask(pipeBase.PipelineTask):
-    """Task for making high resolution HiPS images."""
+    """Task for making high resolution HiPS images for a coadd."""
     ConfigClass = HighResolutionHipsConfig
     _DefaultName = HipsTaskNameDescriptor("highResolutionHips")
 
@@ -217,15 +229,15 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
         for pixel, hips_exposure in outputs.hips_exposures.items():
             butlerQC.put(hips_exposure, hips_exposure_ref_dict[pixel])
 
-    def run(self, pixels, coadd_exposure_handles):
+    def run(self, pixels, exposure_handles):
         """Run the HighResolutionHipsTask.
 
         Parameters
         ----------
         pixels : `Iterable` [ `int` ]
             Iterable of healpix pixels (nest ordering) to warp to.
-        coadd_exposure_handles : `list` [`lsst.daf.butler.DeferredDatasetHandle`]
-            Handles for the coadd exposures.
+        exposure_handles : `list` [`lsst.daf.butler.DeferredDatasetHandle`]
+            Handles for the exposures to convert.
 
         Returns
         -------
@@ -250,14 +262,14 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
             warp_dict[pixel] = []
 
         first_handle = True
-        # Loop over input coadd exposures to minimize i/o (this speeds things
+        # Loop over input exposures to minimize i/o (this speeds things
         # up by ~8x to batch together pixels that overlap a given coadd).
-        for handle in coadd_exposure_handles:
-            coadd_exp = handle.get()
+        for handle in exposure_handles:
+            input_exp = handle.get()
 
-            # For each pixel, warp the coadd to the HPX WCS for the pixel.
+            # For each pixel, warp the input to the HPX WCS for the pixel.
             for pixel in pixels:
-                warped = self.warper.warpExposure(exp_hpx_dict[pixel].getWcs(), coadd_exp, maxBBox=bbox_hpx)
+                warped = self.warper.warpExposure(exp_hpx_dict[pixel].getWcs(), input_exp, maxBBox=bbox_hpx)
 
                 exp = afwImage.ExposureF(exp_hpx_dict[pixel].getBBox(), exp_hpx_dict[pixel].getWcs())
                 exp.maskedImage.set(np.nan, afwImage.Mask.getPlaneBitMask("NO_DATA"), np.nan)
@@ -265,9 +277,9 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
                 if first_handle:
                     # Make sure the mask planes, filter, and photocalib of the output
                     # exposure match the (first) input exposure.
-                    exp_hpx_dict[pixel].mask.conformMaskPlanes(coadd_exp.mask.getMaskPlaneDict())
-                    exp_hpx_dict[pixel].setFilter(coadd_exp.getFilter())
-                    exp_hpx_dict[pixel].setPhotoCalib(coadd_exp.getPhotoCalib())
+                    exp_hpx_dict[pixel].mask.conformMaskPlanes(input_exp.mask.getMaskPlaneDict())
+                    exp_hpx_dict[pixel].setFilter(input_exp.getFilter())
+                    exp_hpx_dict[pixel].setPhotoCalib(input_exp.getPhotoCalib())
 
                 if warped.getBBox().getArea() == 0 or not np.any(np.isfinite(warped.image.array)):
                     # There is no overlap, skip.
@@ -493,6 +505,211 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
         return parser
 
 
+class HighResolutionVisitHipsConnections(pipeBase.PipelineTaskConnections,
+                                         dimensions=("visit",)):
+    exposure_handles = pipeBase.connectionTypes.Input(
+        doc="Exposures to convert to HIPS format.",
+        name="calexp",
+        storageClass="ExposureF",
+        dimensions=("visit", "detector"),
+        multiple=True,
+        deferLoad=True,
+    )
+    hips_exposures = pipeBase.connectionTypes.Output(
+        doc="HiPS-compatible HPX image.",
+        name="calexp_hpx",
+        storageClass="ExposureF",
+        dimensions=("healpix11", "visit"),
+        multiple=True,
+    )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+
+        order = None
+        for dim in self.hips_exposures.dimensions:
+            if "healpix" in dim:
+                if order is not None:
+                    raise ValueError("Must not specify more than one healpix dimension.")
+                order = int(dim.split("healpix")[1])
+        if order is None:
+            raise ValueError("Must specify a healpix dimension in hips_exposure dimensions.")
+
+        if order != config.hips_order:
+            raise ValueError("healpix dimension order must match config.hips_order.")
+
+
+class HighResolutionVisitHipsConfig(HighResolutionHipsConfig,
+                                    pipelineConnections=HighResolutionVisitHipsConnections):
+    pass
+
+
+class HighResolutionVisitHipsTask(HighResolutionHipsTask):
+    """Task for making high resolution HiPS images for a single visit."""
+    ConfigClass = HighResolutionVisitHipsConfig
+    _DefaultName = "highResolutionVisitHips"
+
+    @timeMethod
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+
+        healpix_dim = f"healpix{self.config.hips_order}"
+
+        pixels = [hips_exposure.dataId[healpix_dim]
+                  for hips_exposure in outputRefs.hips_exposures]
+
+        outputs = self.run(pixels=pixels, exposure_handles=inputs["exposure_handles"])
+
+        hips_exposure_ref_dict = {hips_exposure_ref.dataId[healpix_dim]:
+                                  hips_exposure_ref for hips_exposure_ref in outputRefs.hips_exposures}
+        for pixel, hips_exposure in outputs.hips_exposures.items():
+            butlerQC.put(hips_exposure, hips_exposure_ref_dict[pixel])
+
+    @classmethod
+    def build_quantum_graph_cli(cls, argv):
+        parser = cls._make_cli_parser()
+
+        args = parser.parse_args(argv)
+
+        if args.subparser_name is None:
+            parser.print_help()
+            sys.exit(1)
+
+        # Check that the pipeline has the appropriate tasks.
+        pipeline = pipeBase.Pipeline.from_uri(args.pipeline)
+        pipeline_graph = pipeline.to_graph()
+        if len(pipeline_graph.tasks) != 2:
+            raise RuntimeError(f"Pipeline file {args.pipeline} should contain two tasks.")
+
+        (task_node1, task_node2) = pipeline_graph.tasks.values()
+        if task_node1.task_class != HighResolutionVisitHipsTask:
+            raise RuntimeError(f"First task in {args.pipeline} must be HighResolutionVisitHipsTask.")
+        if task_node2.task_class != GenerateVisitHipsTask:
+            raise RuntimeError(f"Second task in {args.pipeline} must be GenerateVisitHipsTask.")
+        # Extract the label of the second task.
+        generate_label = task_node2.label
+
+        # Regenerate the pipeline, overriding the hips_base_uri config.
+        pipeline = pipeBase.Pipeline.from_uri(args.pipeline)
+        pipeline.addConfigOverride(generate_label, "hips_base_uri", args.hips_base_uri)
+        pipeline_graph = pipeline.to_graph()
+
+        butler = Butler(args.butler_config, collections=args.input)
+
+        if args.subparser_name == "build":
+            # Build the quantum graph.
+
+            # Figure out collection names.
+            if args.output_run is None:
+                if args.output is None:
+                    raise ValueError("At least one of --output or --output-run options is required.")
+                args.output_run = "{}/{}".format(args.output, pipeBase.Instrument.makeCollectionTimestamp())
+
+            # Metadata includes a subset of attributes defined in CmdLineFwk.
+            metadata = {
+                "input": args.input,
+                "butler_argument": args.butler_config,
+                "output": args.output,
+                "output_run": args.output_run,
+                "data_query": args.where,
+                "time": f"{datetime.now()}",
+            }
+
+            builder = HighResolutionVisitHipsQuantumGraphBuilder(
+                pipeline_graph,
+                butler,
+                input_collections=args.input,
+                output_run=args.output_run,
+                where=args.where,
+            )
+            qg = builder.build(metadata, attach_datastore_records=True)
+            qg.saveUri(args.save_qgraph)
+
+    @classmethod
+    def _make_cli_parser(cls):
+        parser = argparse.ArgumentParser(
+            description=(
+                "Build a QuantumGraph that runs HighResolutionVisitHipsTask on existing calexp datasets."
+            ),
+        )
+        subparsers = parser.add_subparsers(help="sub-command help", dest="subparser_name")
+
+        parser_build = subparsers.add_parser("build",
+                                             help="Build quantum graph for HighResolutionHipsTask")
+
+        for sub in [parser_build]:
+            # These arguments are in common.
+            sub.add_argument(
+                "-b",
+                "--butler-config",
+                type=str,
+                help="Path to data repository or butler configuration.",
+                required=True,
+            )
+            sub.add_argument(
+                "-p",
+                "--pipeline",
+                type=str,
+                help="Pipeline file, limited to one task.",
+                required=True,
+            )
+            sub.add_argument(
+                "-i",
+                "--input",
+                type=str,
+                nargs="+",
+                help="Input collection(s) to search for coadd exposures.",
+                required=True,
+            )
+            sub.add_argument(
+                "-w",
+                "--where",
+                type=str,
+                default=None,
+                help="Data ID expression used when querying for input coadd datasets.",
+            )
+            sub.add_argument(
+                "-u",
+                "--hips-base-uri",
+                type=str,
+                default=None,
+                help="Base URI for HiPS tree.",
+                required=True,
+            )
+
+        parser_build.add_argument(
+            "--output",
+            type=str,
+            help=(
+                "Name of the output CHAINED collection. If this options is specified and "
+                "--output-run is not, then a new RUN collection will be created by appending "
+                "a timestamp to the value of this option."
+            ),
+            default=None,
+            metavar="COLL",
+        )
+        parser_build.add_argument(
+            "--output-run",
+            type=str,
+            help=(
+                "Output RUN collection to write resulting images. If not provided "
+                "then --output must be provided and a new RUN collection will be created "
+                "by appending a timestamp to the value passed with --output."
+            ),
+            default=None,
+            metavar="RUN",
+        )
+        parser_build.add_argument(
+            "-q",
+            "--save-qgraph",
+            type=str,
+            help="Output filename for QuantumGraph.",
+            required=True,
+        )
+
+        return parser
+
+
 class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
     """A custom a `lsst.pipe.base.QuantumGraphBuilder` for running
     `HighResolutionHipsTask` only.
@@ -678,6 +895,121 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
         return skeleton
 
 
+class HighResolutionVisitHipsQuantumGraphBuilder(QuantumGraphBuilder):
+    """A custom a `lsst.pipe.base.QuantumGraphBuilder` for running
+    `HighResolutionVisitHipsTask` only.
+
+    This is a workaround for incomplete butler query support for HEALPix
+    dimensions.
+
+    Parameters
+    ----------
+    pipeline_graph : `lsst.pipe.base.PipelineGraph`
+        Pipeline graph with exactly one task, which must be a configuration
+        of `HighResolutionVisitHipsTask`.
+    butler : `lsst.daf.butler.Butler`
+        Client for the butler data repository.
+    input_collections : `str` or `Iterable` [ `str` ], optional
+        Collection or collections to search for input datasets, in order.
+        If not provided, ``butler.collections`` will be searched.
+    output_run : `str`, optional
+        Name of the output collection.  If not provided, ``butler.run`` will
+        be used.
+    where : `str`, optional
+        A boolean `str` expression of the form accepted by
+        `Registry.queryDatasets` to constrain input datasets.  This may
+        contain a constraint on visits, but not HEALPix indices.
+    """
+
+    def __init__(
+        self,
+        pipeline_graph,
+        butler,
+        *,
+        input_collections=None,
+        output_run=None,
+        where="",
+    ):
+        super().__init__(pipeline_graph, butler, input_collections=input_collections, output_run=output_run)
+        self.where = where
+
+    def process_subgraph(self, subgraph):
+        # Docstring inherited.
+
+        # task_node1: HighResolutionVisitHipsTask
+        # task_node2: GenerateVisitHipsTask
+        (task_node1, task_node2) = subgraph.tasks.values()
+
+        # Confirm we have a valid hips_base_uri
+        if task_node2.config.hips_base_uri == "INVALID":
+            raise RuntimeError("Must override the hips_base_uri configuration variable.")
+
+        # We first work on task_node1, the HighResolutionVisitHipsTask
+        (input_dataset_type_node,) = subgraph.inputs_of(task_node1.label).values()
+        assert input_dataset_type_node is not None, "PipelineGraph should be resolved by base class."
+        (output_edge,) = task_node1.outputs.values()
+        output_dataset_type_node = subgraph.dataset_types[output_edge.parent_dataset_type_name]
+        (hpx_output_dimension,) = (
+            self.butler.dimensions.skypix_dimensions[d]
+            for d in output_dataset_type_node.dimensions.skypix.names
+        )
+        hpx_output_pixelization = hpx_output_dimension.pixelization
+
+        # Query for input datasets.
+        input_refs = self.butler.registry.queryDatasets(
+            input_dataset_type_node.dataset_type,
+            where=self.where,
+            findFirst=True,
+            collections=self.input_collections,
+        ).expanded()
+        inputs_by_visit = defaultdict(set)
+        visit_dimensions = self.butler.dimensions.conform(["visit"])
+        for input_ref in input_refs:
+            dataset_key = DatasetKey(input_ref.datasetType.name, input_ref.dataId.required_values)
+            self.existing_datasets.inputs[dataset_key] = input_ref
+            inputs_by_visit[input_ref.dataId.subset(visit_dimensions)].add(dataset_key)
+        if not inputs_by_visit:
+            message_body = "\n".join(input_refs.explain_no_results())
+            raise RuntimeError(f"No inputs found:\n{message_body}")
+
+        # Create preliminary quanta
+        skeleton = QuantumGraphSkeleton([task_node1.label, task_node2.label])
+
+        # Iterate over visits to make quanta for task_node1 and task_node2.
+        for visit_data_id, input_keys_for_visit in inputs_by_visit.items():
+            quantum_key1 = skeleton.add_quantum_node(task_node1.label, visit_data_id)
+            quantum_key2 = skeleton.add_quantum_node(task_node2.label, visit_data_id)
+
+            # Add inputs to the skeleton
+            skeleton.add_input_edges(quantum_key1, input_keys_for_visit)
+            # Add the regular outputs.
+            visit_hpx_ranges = hpx_output_pixelization.envelope(visit_data_id.region)
+            for begin, end in visit_hpx_ranges:
+                for hpx_output_index in range(begin, end):
+                    dataset_key = skeleton.add_dataset_node(
+                        output_dataset_type_node.name,
+                        self.butler.registry.expandDataId(
+                            {hpx_output_dimension: hpx_output_index, "visit": visit_data_id.visit.id}
+                        ),
+                    )
+                    skeleton.add_output_edge(quantum_key1, dataset_key)
+                    skeleton.add_input_edge(quantum_key2, dataset_key)
+
+            # Add auxiliary outputs (log, metadata).
+            for write_edge in task_node1.iter_all_outputs():
+                if write_edge.connection_name == output_edge.connection_name:
+                    continue
+                dataset_key = skeleton.add_dataset_node(write_edge.parent_dataset_type_name, visit_data_id)
+                skeleton.add_output_edge(quantum_key1, dataset_key)
+            for write_edge in task_node2.iter_all_outputs():
+                if write_edge.connection_name == output_edge.connection_name:
+                    continue
+                dataset_key = skeleton.add_dataset_node(write_edge.parent_dataset_type_name, visit_data_id)
+                skeleton.add_output_edge(quantum_key2, dataset_key)
+
+        return skeleton
+
+
 class HipsPropertiesSpectralTerm(pexConfig.Config):
     lambda_min = pexConfig.Field(
         doc="Minimum wavelength (nm)",
@@ -854,6 +1186,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
     ConfigClass = GenerateHipsConfig
     _DefaultName = "generateHips"
     color_task = False
+    visit_task = False
 
     @timeMethod
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
@@ -879,11 +1212,17 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                       for hips_exposure_handle in inputs["hips_exposure_handles"]}
         bands = self._check_data_bands(data_bands)
 
+        if self.visit_task:
+            visit = butlerQC.quantum.dataId["visit"]
+        else:
+            visit = None
+
         self.run(
             bands=bands,
             max_order=order,
             hips_exposure_handle_dict=hips_exposure_handle_dict,
             do_color=self.color_task,
+            visit=visit,
         )
 
     def _check_data_bands(self, data_bands):
@@ -909,7 +1248,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         return list(data_bands)
 
     @timeMethod
-    def run(self, bands, max_order, hips_exposure_handle_dict, do_color=False):
+    def run(self, bands, max_order, hips_exposure_handle_dict, do_color=False, visit=None):
         """Run the GenerateHipsTask.
 
         Parameters
@@ -923,6 +1262,8 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             Key is (pixel number, ``band``).
         do_color : `bool`, optional
             Do color pngs instead of per-band grayscale.
+        visit : `int`, optional
+            Visit number (for visit-level HiPS).
         """
         min_order = self.config.min_order
 
@@ -1002,7 +1343,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
 
                 # We can now write out the images for each band.
                 # Note this will always trigger at the max order where each pixel is unique.
-                if not do_color:
+                if not do_color and visit is None:
                     for band in bands:
                         self._write_hips_image(
                             hips_base_path.join(f"band_{band}", forceDirectory=True),
@@ -1011,8 +1352,9 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                             exposures[(band, order)].image,
                             png_grayscale_mapping,
                             shift_order=shift_order,
+                            visit=visit,
                         )
-                else:
+                elif visit is None:
                     # Make a color png.
                     self._write_hips_color_png(
                         hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
@@ -1022,6 +1364,17 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                         exposures[(self.config.green_channel_band, order)].image,
                         exposures[(self.config.blue_channel_band, order)].image,
                         png_color_mapping,
+                    )
+                else:
+                    band = bands[0]
+                    self._write_hips_image(
+                        hips_base_path.join(f"visit_{visit}", forceDirectory=True),
+                        order,
+                        pixels_shifted[order][pixel_counter],
+                        exposures[(band, order)].image,
+                        png_grayscale_mapping,
+                        shift_order=shift_order,
+                        visit=visit,
                     )
 
                 log_level = self.log.INFO if order == (max_order - 3) else self.log.DEBUG
@@ -1074,7 +1427,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                         exposures[(band, order)].image.array[:, :] = np.nan
 
         # Write the properties files and MOCs.
-        if not do_color:
+        if not do_color and visit is None:
             for band in bands:
                 band_pixels = np.array([pixel
                                         for pixel, band_ in hips_exposure_handle_dict.keys()
@@ -1094,7 +1447,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                     hips_base_path.join(f"band_{band}", forceDirectory=True),
                     min_order,
                 )
-        else:
+        elif visit is None:
             self._write_properties_and_moc(
                 hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
                 max_order,
@@ -1108,8 +1461,23 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                 hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
                 min_order,
             )
+        else:
+            self._write_properties_and_moc(
+                hips_base_path.join(f"visit_{visit}", forceDirectory=True),
+                max_order,
+                pixels[:-1],
+                exp0,
+                shift_order,
+                bands[0],
+                False,
+                visit=visit,
+            )
+            self._write_allsky_file(
+                hips_base_path.join(f"visit_{visit}", forceDirectory=True),
+                min_order,
+            )
 
-    def _write_hips_image(self, hips_base_path, order, pixel, image, png_mapping, shift_order=9):
+    def _write_hips_image(self, hips_base_path, order, pixel, image, png_mapping, shift_order=9, visit=None):
         """Write a HiPS image.
 
         Parameters
@@ -1126,6 +1494,8 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             Mapping to convert image to scaled png.
         shift_order : `int`, optional
             HPX shift_order.
+        visit : `int`, optional
+            Visit number (for per-visit HiPS).
         """
         # WARNING: In general PipelineTasks are not allowed to do any outputs
         # outside of the butler.  This task has been given (temporary)
@@ -1235,7 +1605,8 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             exposure,
             shift_order,
             band,
-            multiband
+            multiband,
+            visit=None,
     ):
         """Write HiPS properties file and MOC.
 
@@ -1255,6 +1626,8 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             Band (or color).
         multiband : `bool`
             Is band multiband / color?
+        visit : `int`, optional
+            Visit number for visit-level HiPS.
         """
         area = hpg.nside_to_pixel_area(2**max_order, degrees=True)*len(pixels)
 
@@ -1290,6 +1663,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             initial_ra,
             initial_dec,
             initial_fov,
+            visit=visit,
         )
 
         # Write the MOC coverage
@@ -1311,7 +1685,8 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             area,
             initial_ra,
             initial_dec,
-            initial_fov
+            initial_fov,
+            visit=None,
     ):
         """Write HiPS properties file.
 
@@ -1340,6 +1715,8 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             Initial HiPS Dec position (degrees).
         initial_fov : `float`
             Initial HiPS display size (degrees).
+        visit : `int`, optional
+            Visit number for visit-level HiPS.
         """
         # WARNING: In general PipelineTasks are not allowed to do any outputs
         # outside of the butler.  This task has been given (temporary)
@@ -1379,24 +1756,45 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         uri = hips_base_path.join("properties")
         with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
             with open(temporary_uri.ospath, "w") as fh:
-                _write_property(
-                    fh,
-                    "creator_did",
-                    properties_config.creator_did_template.format(band=band),
-                )
-                if properties_config.obs_collection is not None:
-                    _write_property(fh, "obs_collection", properties_config.obs_collection)
-                _write_property(
-                    fh,
-                    "obs_title",
-                    properties_config.obs_title_template.format(band=band),
-                )
-                if properties_config.obs_description_template is not None:
+                if visit is None:
                     _write_property(
                         fh,
-                        "obs_description",
-                        properties_config.obs_description_template.format(band=band),
+                        "creator_did",
+                        properties_config.creator_did_template.format(band=band),
                     )
+                else:
+                    _write_property(
+                        fh,
+                        "creator_did",
+                        properties_config.creator_did_template.format(visit=visit),
+                    )
+                if properties_config.obs_collection is not None:
+                    _write_property(fh, "obs_collection", properties_config.obs_collection)
+                if visit is None:
+                    _write_property(
+                        fh,
+                        "obs_title",
+                        properties_config.obs_title_template.format(band=band),
+                    )
+                else:
+                    _write_property(
+                        fh,
+                        "obs_title",
+                        properties_config.obs_title_template.format(visit=visit),
+                    )
+                if properties_config.obs_description_template is not None:
+                    if visit is None:
+                        _write_property(
+                            fh,
+                            "obs_description",
+                            properties_config.obs_description_template.format(band=band),
+                        )
+                    else:
+                        _write_property(
+                            fh,
+                            "obs_description",
+                            properties_config.obs_description_template.format(visit=visit),
+                        )
                 if len(properties_config.prov_progenitor) > 0:
                     for prov_progenitor in properties_config.prov_progenitor:
                         _write_property(fh, "prov_progenitor", prov_progenitor)
@@ -1692,3 +2090,27 @@ class GenerateColorHipsTask(GenerateHipsTask):
         ]
 
         return bands
+
+
+class GenerateVisitHipsConnections(pipeBase.PipelineTaskConnections,
+                                   dimensions=("instrument", "visit", )):
+    hips_exposure_handles = pipeBase.connectionTypes.Input(
+        doc="HiPS-compatible HPX images",
+        name="calexp_hpx",
+        storageClass="ExposureF",
+        dimensions=("healpix11", "visit"),
+        multiple=True,
+        deferLoad=True,
+    )
+
+
+class GenerateVisitHipsConfig(GenerateHipsConfig,
+                              pipelineConnections=GenerateVisitHipsConnections):
+    pass
+
+
+class GenerateVisitHipsTask(GenerateHipsTask):
+    """Task for making a single-visit HiPS tree with FITS and grayscale PNGs."""
+    ConfigClass = GenerateVisitHipsConfig
+    _DefaultName = "generateVisitHips"
+    visit_task = True
