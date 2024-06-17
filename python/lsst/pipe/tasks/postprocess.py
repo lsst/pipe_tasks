@@ -56,7 +56,7 @@ from .functors import CompositeFunctor, Column
 log = logging.getLogger(__name__)
 
 
-def flattenFilters(df, noDupCols=['coord_ra', 'coord_dec'], camelCase=False, inputBands=None):
+def flattenFilters(df, noDupCols=["coord_ra", "coord_dec"], camelCase=False, inputBands=None):
     """Flattens a dataframe with multilevel column index.
     """
     newDf = pd.DataFrame()
@@ -64,7 +64,7 @@ def flattenFilters(df, noDupCols=['coord_ra', 'coord_dec'], camelCase=False, inp
     dfBands = df.columns.unique(level=0).values
     for band in dfBands:
         subdf = df[band]
-        columnFormat = '{0}{1}' if camelCase else '{0}_{1}'
+        columnFormat = "{0}{1}" if camelCase else "{0}_{1}"
         newColumns = {c: columnFormat.format(band, c)
                       for c in subdf.columns if c not in noDupCols}
         cols = list(newColumns.keys())
@@ -127,26 +127,26 @@ class WriteObjectTableTask(pipeBase.PipelineTask):
     ConfigClass = WriteObjectTableConfig
 
     # Names of table datasets to be merged
-    inputDatasets = ('forced_src', 'meas', 'ref')
+    inputDatasets = ("forced_src", "meas", "ref")
 
     # Tag of output dataset written by `MergeSourcesTask.write`
-    outputDataset = 'obj'
+    outputDataset = "obj"
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
 
-        measDict = {ref.dataId['band']: {'meas': cat} for ref, cat in
-                    zip(inputRefs.inputCatalogMeas, inputs['inputCatalogMeas'])}
-        forcedSourceDict = {ref.dataId['band']: {'forced_src': cat} for ref, cat in
-                            zip(inputRefs.inputCatalogForcedSrc, inputs['inputCatalogForcedSrc'])}
+        measDict = {ref.dataId["band"]: {"meas": cat} for ref, cat in
+                    zip(inputRefs.inputCatalogMeas, inputs["inputCatalogMeas"])}
+        forcedSourceDict = {ref.dataId["band"]: {"forced_src": cat} for ref, cat in
+                            zip(inputRefs.inputCatalogForcedSrc, inputs["inputCatalogForcedSrc"])}
 
         catalogs = {}
         for band in measDict.keys():
-            catalogs[band] = {'meas': measDict[band]['meas'],
-                              'forced_src': forcedSourceDict[band]['forced_src'],
-                              'ref': inputs['inputCatalogRef']}
+            catalogs[band] = {"meas": measDict[band]["meas"],
+                              "forced_src": forcedSourceDict[band]["forced_src"],
+                              "ref": inputs["inputCatalogRef"]}
         dataId = butlerQC.quantum.dataId
-        df = self.run(catalogs=catalogs, tract=dataId['tract'], patch=dataId['patch'])
+        df = self.run(catalogs=catalogs, tract=dataId["tract"], patch=dataId["patch"])
         outputs = pipeBase.Struct(outputCatalog=df)
         butlerQC.put(outputs, outputRefs)
 
@@ -171,7 +171,7 @@ class WriteObjectTableTask(pipeBase.PipelineTask):
         for filt, tableDict in catalogs.items():
             for dataset, table in tableDict.items():
                 # Convert afwTable to pandas DataFrame
-                df = table.asAstropy().to_pandas().set_index('id', drop=True)
+                df = table.asAstropy().to_pandas().set_index("id", drop=True)
 
                 # Sort columns by name, to ensure matching schema among patches
                 df = df.reindex(sorted(df.columns), axis=1)
@@ -179,7 +179,7 @@ class WriteObjectTableTask(pipeBase.PipelineTask):
 
                 # Make columns a 3-level MultiIndex
                 df.columns = pd.MultiIndex.from_tuples([(dataset, filt, c) for c in df.columns],
-                                                       names=('dataset', 'band', 'column'))
+                                                       names=("dataset", "band", "column"))
                 dfs.append(df)
 
         # We do this dance and not `pd.concat(dfs)` because the pandas
@@ -247,10 +247,10 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
                 `DataFrame` version of the input catalog
         """
         self.log.info("Generating DataFrame from src catalog visit,detector=%i,%i", visit, detector)
-        df = catalog.asAstropy().to_pandas().set_index('id', drop=True)
-        df['visit'] = visit
+        df = catalog.asAstropy().to_pandas().set_index("id", drop=True)
+        df["visit"] = visit
         # int16 instead of uint8 because databases don't like unsigned bytes.
-        df['detector'] = np.int16(detector)
+        df["detector"] = np.int16(detector)
 
         return pipeBase.Struct(table=df)
 
@@ -290,17 +290,17 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
 
-        inputs['visit'] = butlerQC.quantum.dataId["visit"]
-        inputs['detector'] = butlerQC.quantum.dataId["detector"]
+        inputs["visit"] = butlerQC.quantum.dataId["visit"]
+        inputs["detector"] = butlerQC.quantum.dataId["detector"]
 
         if self.config.doReevaluatePhotoCalib or self.config.doReevaluateSkyWcs:
             exposure = ExposureF()
-            inputs['exposure'] = self.prepareCalibratedExposure(
+            inputs["exposure"] = self.prepareCalibratedExposure(
                 exposure=exposure,
                 visitSummary=inputs["visitSummary"],
                 detectorId=butlerQC.quantum.dataId["detector"]
             )
-            inputs['catalog'] = self.addCalibColumns(**inputs)
+            inputs["catalog"] = self.addCalibColumns(**inputs)
 
         result = self.run(**inputs)
         outputs = pipeBase.Struct(outputCatalog=result.table)
@@ -348,7 +348,7 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
     def addCalibColumns(self, catalog, exposure, **kwargs):
         """Add replace columns with calibs evaluated at each centroid
 
-        Add or replace 'base_LocalWcs' `base_LocalPhotoCalib' columns in a
+        Add or replace 'base_LocalWcs' and 'base_LocalPhotoCalib' columns in
         a source catalog, by rerunning the plugins.
 
         Parameters
@@ -506,9 +506,9 @@ class PostprocessAnalysis(object):
     @property
     def func(self):
         additionalFuncs = self.defaultFuncs
-        additionalFuncs.update({flag: Column(flag, dataset='forced_src') for flag in self.forcedFlags})
-        additionalFuncs.update({flag: Column(flag, dataset='ref') for flag in self.refFlags})
-        additionalFuncs.update({flag: Column(flag, dataset='meas') for flag in self.flags})
+        additionalFuncs.update({flag: Column(flag, dataset="forced_src") for flag in self.forcedFlags})
+        additionalFuncs.update({flag: Column(flag, dataset="ref") for flag in self.refFlags})
+        additionalFuncs.update({flag: Column(flag, dataset="meas") for flag in self.flags})
 
         if isinstance(self.functors, CompositeFunctor):
             func = self.functors
@@ -522,7 +522,7 @@ class PostprocessAnalysis(object):
 
     @property
     def noDupCols(self):
-        return [name for name, func in self.func.funcDict.items() if func.noDup or func.dataset == 'ref']
+        return [name for name, func in self.func.funcDict.items() if func.noDup or func.dataset == "ref"]
 
     @property
     def df(self):
@@ -638,12 +638,12 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
     untransformed. They can be of any datatype.
     In the special case of transforming a multi-level oject table with
     band and dataset indices (deepCoadd_obj), these will be taked from the
-    `meas` dataset and exploded out per band.
+    ``meas`` dataset and exploded out per band.
 
     There are two special shortcuts that only apply when transforming
     multi-level Object (deepCoadd_obj) tables:
      -  The "refFlags" entry is shortcut for `Column` functor
-        taken from the `'ref'` dataset if transforming an ObjectTable.
+        taken from the ``ref`` dataset if transforming an ObjectTable.
      -  The "forcedFlags" entry is shortcut for `Column` functors.
         taken from the ``forced_src`` dataset if transforming an ObjectTable.
         These are expanded out per band.
@@ -654,24 +654,24 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
     """
     @property
     def _DefaultName(self):
-        raise NotImplementedError('Subclass must define "_DefaultName" attribute')
+        raise NotImplementedError("Subclass must define the \"_DefaultName\" attribute.")
 
     @property
     def outputDataset(self):
-        raise NotImplementedError('Subclass must define "outputDataset" attribute')
+        raise NotImplementedError("Subclass must define the \"outputDataset\" attribute.")
 
     @property
     def inputDataset(self):
-        raise NotImplementedError('Subclass must define "inputDataset" attribute')
+        raise NotImplementedError("Subclass must define \"inputDataset\" attribute.")
 
     @property
     def ConfigClass(self):
-        raise NotImplementedError('Subclass must define "ConfigClass" attribute')
+        raise NotImplementedError("Subclass must define \"ConfigClass\" attribute.")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.config.functorFile:
-            self.log.info('Loading tranform functor definitions from %s',
+            self.log.info("Loading tranform functor definitions from %s",
                           self.config.functorFile)
             self.funcs = CompositeFunctor.from_file(self.config.functorFile)
             self.funcs.update(dict(PostprocessAnalysis._defaultFuncs))
@@ -683,7 +683,7 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
         if self.funcs is None:
             raise ValueError("config.functorFile is None. "
                              "Must be a valid path to yaml in order to run Task as a PipelineTask.")
-        result = self.run(handle=inputs['inputCatalog'], funcs=self.funcs,
+        result = self.run(handle=inputs["inputCatalog"], funcs=self.funcs,
                           dataId=dict(outputRefs.outputCatalog.dataId.mapping))
         outputs = pipeBase.Struct(outputCatalog=result)
         butlerQC.put(outputs, outputRefs)
@@ -818,15 +818,15 @@ class TransformObjectCatalogConfig(TransformCatalogBaseConfig,
 
     def setDefaults(self):
         super().setDefaults()
-        self.functorFile = os.path.join('$PIPE_TASKS_DIR', 'schemas', 'Object.yaml')
-        self.primaryKey = 'objectId'
-        self.columnsFromDataId = ['tract', 'patch']
-        self.goodFlags = ['calib_astrometry_used',
-                          'calib_photometry_reserved',
-                          'calib_photometry_used',
-                          'calib_psf_candidate',
-                          'calib_psf_reserved',
-                          'calib_psf_used']
+        self.functorFile = os.path.join("$PIPE_TASKS_DIR", "schemas", "Object.yaml")
+        self.primaryKey = "objectId"
+        self.columnsFromDataId = ["tract", "patch"]
+        self.goodFlags = ["calib_astrometry_used",
+                          "calib_photometry_reserved",
+                          "calib_photometry_used",
+                          "calib_psf_candidate",
+                          "calib_psf_reserved",
+                          "calib_psf_used"]
 
 
 class TransformObjectCatalogTask(TransformCatalogBaseTask):
@@ -849,7 +849,7 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
         analysisDict = {}
         templateDf = pd.DataFrame()
 
-        columns = handle.get(component='columns')
+        columns = handle.get(component="columns")
         inputBands = columns.unique(level=1).values
 
         outputBands = self.config.outputBands if self.config.outputBands else inputBands
@@ -893,7 +893,7 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
                 dfDict[filt] = dfTemp
 
         # This makes a multilevel column index, with band as first level
-        df = pd.concat(dfDict, axis=1, names=['band', 'column'])
+        df = pd.concat(dfDict, axis=1, names=["band", "column"])
 
         if not self.config.multilevelOutput:
             noDupCols = list(set.union(*[set(v.noDupCols) for v in analysisDict.values()]))
@@ -943,14 +943,14 @@ class ConsolidateObjectTableTask(pipeBase.PipelineTask):
     _DefaultName = "consolidateObjectTable"
     ConfigClass = ConsolidateObjectTableConfig
 
-    inputDataset = 'objectTable'
-    outputDataset = 'objectTable_tract'
+    inputDataset = "objectTable"
+    outputDataset = "objectTable_tract"
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         self.log.info("Concatenating %s per-patch Object Tables",
-                      len(inputs['inputCatalogs']))
-        df = pd.concat(inputs['inputCatalogs'])
+                      len(inputs["inputCatalogs"]))
+        df = pd.concat(inputs["inputCatalogs"])
         butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
 
 
@@ -979,9 +979,9 @@ class TransformSourceTableConfig(TransformCatalogBaseConfig,
 
     def setDefaults(self):
         super().setDefaults()
-        self.functorFile = os.path.join('$PIPE_TASKS_DIR', 'schemas', 'Source.yaml')
-        self.primaryKey = 'sourceId'
-        self.columnsFromDataId = ['visit', 'detector', 'band', 'physical_filter']
+        self.functorFile = os.path.join("$PIPE_TASKS_DIR", "schemas", "Source.yaml")
+        self.primaryKey = "sourceId"
+        self.columnsFromDataId = ["visit", "detector", "band", "physical_filter"]
 
 
 class TransformSourceTableTask(TransformCatalogBaseTask):
@@ -1047,15 +1047,15 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.schema = afwTable.ExposureTable.makeMinimalSchema()
-        self.schema.addField('visit', type='L', doc='Visit number')
-        self.schema.addField('physical_filter', type='String', size=32, doc='Physical filter')
-        self.schema.addField('band', type='String', size=32, doc='Name of band')
+        self.schema.addField("visit", type="L", doc="Visit number")
+        self.schema.addField("physical_filter", type="String", size=32, doc="Physical filter")
+        self.schema.addField("band", type="String", size=32, doc="Name of band")
         ExposureSummaryStats.update_schema(self.schema)
         self.visitSummarySchema = afwTable.ExposureCatalog(self.schema)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         dataRefs = butlerQC.get(inputRefs.calexp)
-        visit = dataRefs[0].dataId['visit']
+        visit = dataRefs[0].dataId["visit"]
 
         self.log.debug("Concatenating metadata from %d per-detector calexps (visit %d)",
                        len(dataRefs), visit)
@@ -1084,18 +1084,18 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
         cat = afwTable.ExposureCatalog(self.schema)
         cat.resize(len(dataRefs))
 
-        cat['visit'] = visit
+        cat["visit"] = visit
 
         for i, dataRef in enumerate(dataRefs):
-            visitInfo = dataRef.get(component='visitInfo')
-            filterLabel = dataRef.get(component='filter')
-            summaryStats = dataRef.get(component='summaryStats')
-            detector = dataRef.get(component='detector')
-            wcs = dataRef.get(component='wcs')
-            photoCalib = dataRef.get(component='photoCalib')
-            detector = dataRef.get(component='detector')
-            bbox = dataRef.get(component='bbox')
-            validPolygon = dataRef.get(component='validPolygon')
+            visitInfo = dataRef.get(component="visitInfo")
+            filterLabel = dataRef.get(component="filter")
+            summaryStats = dataRef.get(component="summaryStats")
+            detector = dataRef.get(component="detector")
+            wcs = dataRef.get(component="wcs")
+            photoCalib = dataRef.get(component="photoCalib")
+            detector = dataRef.get(component="detector")
+            bbox = dataRef.get(component="bbox")
+            validPolygon = dataRef.get(component="validPolygon")
 
             rec = cat[i]
             rec.setBBox(bbox)
@@ -1104,8 +1104,8 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
             rec.setPhotoCalib(photoCalib)
             rec.setValidPolygon(validPolygon)
 
-            rec['physical_filter'] = filterLabel.physicalLabel if filterLabel.hasPhysicalLabel() else ""
-            rec['band'] = filterLabel.bandLabel if filterLabel.hasBandLabel() else ""
+            rec["physical_filter"] = filterLabel.physicalLabel if filterLabel.hasPhysicalLabel() else ""
+            rec["band"] = filterLabel.bandLabel if filterLabel.hasBandLabel() else ""
             rec.setId(detector.getId())
             summaryStats.update_record(rec)
 
@@ -1145,22 +1145,22 @@ class ConsolidateSourceTableConfig(pipeBase.PipelineTaskConfig,
 class ConsolidateSourceTableTask(pipeBase.PipelineTask):
     """Concatenate `sourceTable` list into a per-visit `sourceTable_visit`
     """
-    _DefaultName = 'consolidateSourceTable'
+    _DefaultName = "consolidateSourceTable"
     ConfigClass = ConsolidateSourceTableConfig
 
-    inputDataset = 'sourceTable'
-    outputDataset = 'sourceTable_visit'
+    inputDataset = "sourceTable"
+    outputDataset = "sourceTable_visit"
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         from .makeWarp import reorderRefs
 
-        detectorOrder = [ref.dataId['detector'] for ref in inputRefs.inputCatalogs]
+        detectorOrder = [ref.dataId["detector"] for ref in inputRefs.inputCatalogs]
         detectorOrder.sort()
-        inputRefs = reorderRefs(inputRefs, detectorOrder, dataIdKey='detector')
+        inputRefs = reorderRefs(inputRefs, detectorOrder, dataIdKey="detector")
         inputs = butlerQC.get(inputRefs)
         self.log.info("Concatenating %s per-detector Source Tables",
-                      len(inputs['inputCatalogs']))
-        df = pd.concat(inputs['inputCatalogs'])
+                      len(inputs["inputCatalogs"]))
+        df = pd.concat(inputs["inputCatalogs"])
         butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
 
 
@@ -1191,7 +1191,7 @@ class MakeCcdVisitTableConfig(pipeBase.PipelineTaskConfig,
 class MakeCcdVisitTableTask(pipeBase.PipelineTask):
     """Produce a `ccdVisitTable` from the visit summary exposure catalogs.
     """
-    _DefaultName = 'makeCcdVisitTable'
+    _DefaultName = "makeCcdVisitTable"
     ConfigClass = MakeCcdVisitTableConfig
 
     def run(self, visitSummaryRefs):
@@ -1218,18 +1218,18 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
 
             ccdEntry = {}
             summaryTable = visitSummary.asAstropy()
-            selectColumns = ['id', 'visit', 'physical_filter', 'band', 'ra', 'dec', 'zenithDistance',
-                             'zeroPoint', 'psfSigma', 'skyBg', 'skyNoise',
-                             'astromOffsetMean', 'astromOffsetStd', 'nPsfStar',
-                             'psfStarDeltaE1Median', 'psfStarDeltaE2Median',
-                             'psfStarDeltaE1Scatter', 'psfStarDeltaE2Scatter',
-                             'psfStarDeltaSizeMedian', 'psfStarDeltaSizeScatter',
-                             'psfStarScaledDeltaSizeScatter', 'psfTraceRadiusDelta',
-                             'psfApFluxDelta', 'psfApCorrSigmaScaledDelta',
-                             'maxDistToNearestPsf',
-                             'effTime', 'effTimePsfSigmaScale',
-                             'effTimeSkyBgScale', 'effTimeZeroPointScale']
-            ccdEntry = summaryTable[selectColumns].to_pandas().set_index('id')
+            selectColumns = ["id", "visit", "physical_filter", "band", "ra", "dec", "zenithDistance",
+                             "zeroPoint", "psfSigma", "skyBg", "skyNoise",
+                             "astromOffsetMean", "astromOffsetStd", "nPsfStar",
+                             "psfStarDeltaE1Median", "psfStarDeltaE2Median",
+                             "psfStarDeltaE1Scatter", "psfStarDeltaE2Scatter",
+                             "psfStarDeltaSizeMedian", "psfStarDeltaSizeScatter",
+                             "psfStarScaledDeltaSizeScatter", "psfTraceRadiusDelta",
+                             "psfApFluxDelta", "psfApCorrSigmaScaledDelta",
+                             "maxDistToNearestPsf",
+                             "effTime", "effTimePsfSigmaScale",
+                             "effTimeSkyBgScale", "effTimeZeroPointScale"]
+            ccdEntry = summaryTable[selectColumns].to_pandas().set_index("id")
             # 'visit' is the human readable visit number.
             # 'visitId' is the key to the visitId table. They are the same.
             # Technically you should join to get the visit from the visit
@@ -1240,7 +1240,7 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
             # compatibility. To be removed after September 2023.
             ccdEntry["decl"] = ccdEntry.loc[:, "dec"]
 
-            ccdEntry['ccdVisitId'] = [
+            ccdEntry["ccdVisitId"] = [
                 self.config.idGenerator.apply(
                     visitSummaryRef.dataId,
                     detector=detector_id,
@@ -1250,39 +1250,39 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
                               # with a {visit, detector}, and that's the main
                               # use case for IdGenerator.  This usage for a
                               # summary table is rare.
-                for detector_id in summaryTable['id']
+                for detector_id in summaryTable["id"]
             ]
-            ccdEntry['detector'] = summaryTable['id']
+            ccdEntry["detector"] = summaryTable["id"]
             pixToArcseconds = np.array([vR.getWcs().getPixelScale().asArcseconds() if vR.getWcs()
                                         else np.nan for vR in visitSummary])
-            ccdEntry["seeing"] = visitSummary['psfSigma'] * np.sqrt(8 * np.log(2)) * pixToArcseconds
+            ccdEntry["seeing"] = visitSummary["psfSigma"] * np.sqrt(8 * np.log(2)) * pixToArcseconds
 
             ccdEntry["skyRotation"] = visitInfo.getBoresightRotAngle().asDegrees()
             ccdEntry["expMidpt"] = visitInfo.getDate().toPython()
             ccdEntry["expMidptMJD"] = visitInfo.getDate().get(dafBase.DateTime.MJD)
             expTime = visitInfo.getExposureTime()
-            ccdEntry['expTime'] = expTime
+            ccdEntry["expTime"] = expTime
             ccdEntry["obsStart"] = ccdEntry["expMidpt"] - 0.5 * pd.Timedelta(seconds=expTime)
             expTime_days = expTime / (60*60*24)
             ccdEntry["obsStartMJD"] = ccdEntry["expMidptMJD"] - 0.5 * expTime_days
-            ccdEntry['darkTime'] = visitInfo.getDarkTime()
-            ccdEntry['xSize'] = summaryTable['bbox_max_x'] - summaryTable['bbox_min_x']
-            ccdEntry['ySize'] = summaryTable['bbox_max_y'] - summaryTable['bbox_min_y']
-            ccdEntry['llcra'] = summaryTable['raCorners'][:, 0]
-            ccdEntry['llcdec'] = summaryTable['decCorners'][:, 0]
-            ccdEntry['ulcra'] = summaryTable['raCorners'][:, 1]
-            ccdEntry['ulcdec'] = summaryTable['decCorners'][:, 1]
-            ccdEntry['urcra'] = summaryTable['raCorners'][:, 2]
-            ccdEntry['urcdec'] = summaryTable['decCorners'][:, 2]
-            ccdEntry['lrcra'] = summaryTable['raCorners'][:, 3]
-            ccdEntry['lrcdec'] = summaryTable['decCorners'][:, 3]
+            ccdEntry["darkTime"] = visitInfo.getDarkTime()
+            ccdEntry["xSize"] = summaryTable["bbox_max_x"] - summaryTable["bbox_min_x"]
+            ccdEntry["ySize"] = summaryTable["bbox_max_y"] - summaryTable["bbox_min_y"]
+            ccdEntry["llcra"] = summaryTable["raCorners"][:, 0]
+            ccdEntry["llcdec"] = summaryTable["decCorners"][:, 0]
+            ccdEntry["ulcra"] = summaryTable["raCorners"][:, 1]
+            ccdEntry["ulcdec"] = summaryTable["decCorners"][:, 1]
+            ccdEntry["urcra"] = summaryTable["raCorners"][:, 2]
+            ccdEntry["urcdec"] = summaryTable["decCorners"][:, 2]
+            ccdEntry["lrcra"] = summaryTable["raCorners"][:, 3]
+            ccdEntry["lrcdec"] = summaryTable["decCorners"][:, 3]
             # TODO: DM-30618, Add raftName, nExposures, ccdTemp, binX, binY,
             # and flags, and decide if WCS, and llcx, llcy, ulcx, ulcy, etc.
             # values are actually wanted.
             ccdEntries.append(ccdEntry)
 
         outputCatalog = pd.concat(ccdEntries)
-        outputCatalog.set_index('ccdVisitId', inplace=True, verify_integrity=True)
+        outputCatalog.set_index("ccdVisitId", inplace=True, verify_integrity=True)
         return pipeBase.Struct(outputCatalog=outputCatalog)
 
 
@@ -1313,7 +1313,7 @@ class MakeVisitTableConfig(pipeBase.PipelineTaskConfig,
 class MakeVisitTableTask(pipeBase.PipelineTask):
     """Produce a `visitTable` from the visit summary exposure catalogs.
     """
-    _DefaultName = 'makeVisitTable'
+    _DefaultName = "makeVisitTable"
     ConfigClass = MakeVisitTableConfig
 
     def run(self, visitSummaries):
@@ -1338,10 +1338,10 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
             visitInfo = visitRow.getVisitInfo()
 
             visitEntry = {}
-            visitEntry["visitId"] = visitRow['visit']
-            visitEntry["visit"] = visitRow['visit']
-            visitEntry["physical_filter"] = visitRow['physical_filter']
-            visitEntry["band"] = visitRow['band']
+            visitEntry["visitId"] = visitRow["visit"]
+            visitEntry["visit"] = visitRow["visit"]
+            visitEntry["physical_filter"] = visitRow["physical_filter"]
+            visitEntry["band"] = visitRow["band"]
             raDec = visitInfo.getBoresightRaDec()
             visitEntry["ra"] = raDec.getRa().asDegrees()
             visitEntry["dec"] = raDec.getDec().asDegrees()
@@ -1370,7 +1370,7 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
             # dimmSeeing, pwvGPS, pwvMW, flags, nExposures.
 
         outputCatalog = pd.DataFrame(data=visitEntries)
-        outputCatalog.set_index('visitId', inplace=True, verify_integrity=True)
+        outputCatalog.set_index("visitId", inplace=True, verify_integrity=True)
         return pipeBase.Struct(outputCatalog=outputCatalog)
 
 
@@ -1426,21 +1426,21 @@ class WriteForcedSourceTableTask(pipeBase.PipelineTask):
         inputs = butlerQC.get(inputRefs)
         inputs["visit"] = butlerQC.quantum.dataId["visit"]
         inputs["detector"] = butlerQC.quantum.dataId["detector"]
-        inputs['band'] = butlerQC.quantum.dataId['band']
+        inputs["band"] = butlerQC.quantum.dataId["band"]
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
     def run(self, inputCatalog, inputCatalogDiff, visit, detector, band=None):
         dfs = []
-        for table, dataset, in zip((inputCatalog, inputCatalogDiff), ('calexp', 'diff')):
+        for table, dataset, in zip((inputCatalog, inputCatalogDiff), ("calexp", "diff")):
             df = table.asAstropy().to_pandas().set_index(self.config.key, drop=False)
             df = df.reindex(sorted(df.columns), axis=1)
             df["visit"] = visit
             # int16 instead of uint8 because databases don't like unsigned bytes.
             df["detector"] = np.int16(detector)
-            df['band'] = band if band else pd.NA
+            df["band"] = band if band else pd.NA
             df.columns = pd.MultiIndex.from_tuples([(dataset, c) for c in df.columns],
-                                                   names=('dataset', 'column'))
+                                                   names=("dataset", "column"))
 
             dfs.append(df)
 
@@ -1498,8 +1498,8 @@ class TransformForcedSourceTableConfig(TransformCatalogBaseConfig,
 
     def setDefaults(self):
         super().setDefaults()
-        self.functorFile = os.path.join('$PIPE_TASKS_DIR', 'schemas', 'ForcedSource.yaml')
-        self.columnsFromDataId = ['tract', 'patch']
+        self.functorFile = os.path.join("$PIPE_TASKS_DIR", "schemas", "ForcedSource.yaml")
+        self.columnsFromDataId = ["tract", "patch"]
 
 
 class TransformForcedSourceTableTask(TransformCatalogBaseTask):
@@ -1527,7 +1527,7 @@ class TransformForcedSourceTableTask(TransformCatalogBaseTask):
         if self.funcs is None:
             raise ValueError("config.functorFile is None. "
                              "Must be a valid path to yaml in order to run Task as a PipelineTask.")
-        outputs = self.run(inputs['inputCatalogs'], inputs['referenceCatalog'], funcs=self.funcs,
+        outputs = self.run(inputs["inputCatalogs"], inputs["referenceCatalog"], funcs=self.funcs,
                            dataId=dict(outputRefs.outputCatalog.dataId.mapping))
 
         butlerQC.put(outputs, outputRefs)
@@ -1539,7 +1539,7 @@ class TransformForcedSourceTableTask(TransformCatalogBaseTask):
         for handle in inputCatalogs:
             result = self.transform(None, handle, funcs, dataId)
             # Filter for only rows that were detected on (overlap) the patch
-            dfs.append(result.df.join(ref, how='inner'))
+            dfs.append(result.df.join(ref, how="inner"))
 
         outputCatalog = pd.concat(dfs)
 
@@ -1587,7 +1587,7 @@ class ConsolidateTractTask(pipeBase.PipelineTask):
     """Concatenate any per-patch, dataframe list into a single
     per-tract DataFrame.
     """
-    _DefaultName = 'ConsolidateTract'
+    _DefaultName = "ConsolidateTract"
     ConfigClass = ConsolidateTractConfig
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
@@ -1595,7 +1595,7 @@ class ConsolidateTractTask(pipeBase.PipelineTask):
         # Not checking at least one inputCatalog exists because that'd be an
         # empty QG.
         self.log.info("Concatenating %s per-patch %s Tables",
-                      len(inputs['inputCatalogs']),
+                      len(inputs["inputCatalogs"]),
                       inputRefs.inputCatalogs[0].datasetType.name)
-        df = pd.concat(inputs['inputCatalogs'])
+        df = pd.concat(inputs["inputCatalogs"])
         butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
