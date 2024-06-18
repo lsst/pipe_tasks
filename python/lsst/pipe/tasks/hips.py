@@ -991,7 +991,9 @@ class HighResolutionVisitHipsQuantumGraphBuilder(QuantumGraphBuilder):
             # Add inputs to the skeleton
             skeleton.add_input_edges(quantum_key1, input_keys_for_visit)
             # Add the regular outputs.
-            visit_hpx_ranges = hpx_output_pixelization.envelope(visit_data_id.region)
+            # We use the bounding circle here for cases when the region may have
+            # a strange shape.
+            visit_hpx_ranges = hpx_output_pixelization.envelope(visit_data_id.region.getBoundingCircle())
             for begin, end in visit_hpx_ranges:
                 for hpx_output_index in range(begin, end):
                     dataset_key = skeleton.add_dataset_node(
