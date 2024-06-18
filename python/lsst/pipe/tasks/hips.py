@@ -45,6 +45,7 @@ import sys
 import re
 import warnings
 import math
+import time
 from datetime import datetime
 import hpgeom as hpg
 import healsparse as hsp
@@ -933,8 +934,11 @@ class HighResolutionVisitHipsQuantumGraphBuilder(QuantumGraphBuilder):
         super().__init__(pipeline_graph, butler, input_collections=input_collections, output_run=output_run)
         self.where = where
 
+        # self.log.setLevel(self.log.INFO)
+
     def process_subgraph(self, subgraph):
         # Docstring inherited.
+        start_time = time.time()
 
         # task_node1: HighResolutionVisitHipsTask
         # task_node2: GenerateVisitHipsTask
@@ -972,6 +976,10 @@ class HighResolutionVisitHipsQuantumGraphBuilder(QuantumGraphBuilder):
             message_body = "\n".join(input_refs.explain_no_results())
             raise RuntimeError(f"No inputs found:\n{message_body}")
 
+        # The logger doesn't work right now; using print temporarily.
+        # self.log.info("Generating visit-level HiPS quantum graph for %d visits.", len(inputs_by_visit))
+        print("Generating visit-level HiPS quantum graph for %d visits." % (len(inputs_by_visit)))
+
         # Create preliminary quanta
         skeleton = QuantumGraphSkeleton([task_node1.label, task_node2.label])
 
@@ -1006,6 +1014,15 @@ class HighResolutionVisitHipsQuantumGraphBuilder(QuantumGraphBuilder):
                     continue
                 dataset_key = skeleton.add_dataset_node(write_edge.parent_dataset_type_name, visit_data_id)
                 skeleton.add_output_edge(quantum_key2, dataset_key)
+
+        # The logger doesn't work right now; using print temporarily.
+        # self.log.info(
+        #     "Visit-level HiPS quantum graph for %d visits completed in %.2f seconds.",
+        #     len(inputs_by_visit),
+        #     time.time() - start_time,
+        # )
+        print("Visit-level HiPS quantum graph for %d visits completed in %.2f seconds." %
+              (len(inputs_by_visit), time.time() - start_time))
 
         return skeleton
 
