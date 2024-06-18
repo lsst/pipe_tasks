@@ -167,6 +167,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     - psfIxy
     - ra
     - dec
+    - pixelScale (arcsec/pixel)
     - zenithDistance
     - zeroPoint
     - skyBg
@@ -448,6 +449,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.decCorners = [nan]*4
         summary.ra = nan
         summary.dec = nan
+        summary.pixelScale = nan
         summary.zenithDistance = nan
 
         if wcs is None:
@@ -460,6 +462,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         sph_pt = wcs.pixelToSky(bbox.getCenter())
         summary.ra = sph_pt.getRa().asDegrees()
         summary.dec = sph_pt.getDec().asDegrees()
+        summary.pixelScale = wcs.getPixelScale().asArcseconds()
 
         date = visitInfo.getDate()
 

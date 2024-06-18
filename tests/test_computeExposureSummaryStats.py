@@ -76,6 +76,7 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         skyWcs = makeSkyWcs(crpix=exposure.getBBox().getCenter(),
                             crval=lsst.geom.SpherePoint(raCenter, decCenter),
                             cdMatrix=cdMatrix)
+        pixelScale = skyWcs.getPixelScale().asArcseconds()
         exposure.setWcs(skyWcs)
 
         # Install a simple photoCalib
@@ -131,6 +132,8 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
 
         self.assertFloatsAlmostEqual(summary.ra, raCenter.asDegrees(), atol=1e-10)
         self.assertFloatsAlmostEqual(summary.dec, decCenter.asDegrees(), atol=1e-10)
+
+        self.assertFloatsAlmostEqual(summary.pixelScale, pixelScale)
 
         self.assertFloatsAlmostEqual(summary.zeroPoint, zp)
         self.assertFloatsAlmostEqual(summary.expTime, expTime)

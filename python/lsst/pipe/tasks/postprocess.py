@@ -1218,7 +1218,8 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
 
             ccdEntry = {}
             summaryTable = visitSummary.asAstropy()
-            selectColumns = ["id", "visit", "physical_filter", "band", "ra", "dec", "zenithDistance",
+            selectColumns = ["id", "visit", "physical_filter", "band", "ra", "dec",
+                             "pixelScale", "zenithDistance",
                              "expTime", "zeroPoint", "psfSigma", "skyBg", "skyNoise",
                              "astromOffsetMean", "astromOffsetStd", "nPsfStar",
                              "psfStarDeltaE1Median", "psfStarDeltaE2Median",
