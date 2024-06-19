@@ -159,6 +159,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
     This task computes various quantities suitable for DPDD and other
     downstream processing at the detector centers, including:
+    - expTime
     - psfSigma
     - psfArea
     - psfIxx
@@ -166,6 +167,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     - psfIxy
     - ra
     - dec
+    - pixelScale (arcsec/pixel)
     - zenithDistance
     - zeroPoint
     - skyBg
@@ -229,6 +231,10 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         self.log.info("Measuring exposure statistics")
 
         summary = afwImage.ExposureSummaryStats()
+
+        # Set exposure time.
+        exposureTime = exposure.getInfo().getVisitInfo().getExposureTime()
+        summary.expTime = exposureTime
 
         bbox = exposure.getBBox()
 
@@ -443,6 +449,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.decCorners = [nan]*4
         summary.ra = nan
         summary.dec = nan
+        summary.pixelScale = nan
         summary.zenithDistance = nan
 
         if wcs is None:
@@ -455,6 +462,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         sph_pt = wcs.pixelToSky(bbox.getCenter())
         summary.ra = sph_pt.getRa().asDegrees()
         summary.dec = sph_pt.getDec().asDegrees()
+        summary.pixelScale = wcs.getPixelScale().asArcseconds()
 
         date = visitInfo.getDate()
 

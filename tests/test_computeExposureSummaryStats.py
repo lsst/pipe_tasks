@@ -57,7 +57,8 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         date = DateTime(date=59234.7083333334, system=DateTime.DateSystem.MJD)
         observatory = Observatory(-70.7366*lsst.geom.degrees, -30.2407*lsst.geom.degrees,
                                   2650.)
-        visitInfo = afwImage.VisitInfo(exposureTime=10.0,
+        expTime = 10.0
+        visitInfo = afwImage.VisitInfo(exposureTime=expTime,
                                        date=date,
                                        observatory=observatory)
         exposure.getInfo().setVisitInfo(visitInfo)
@@ -75,6 +76,7 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         skyWcs = makeSkyWcs(crpix=exposure.getBBox().getCenter(),
                             crval=lsst.geom.SpherePoint(raCenter, decCenter),
                             cdMatrix=cdMatrix)
+        pixelScale = skyWcs.getPixelScale().asArcseconds()
         exposure.setWcs(skyWcs)
 
         # Install a simple photoCalib
@@ -131,7 +133,10 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         self.assertFloatsAlmostEqual(summary.ra, raCenter.asDegrees(), atol=1e-10)
         self.assertFloatsAlmostEqual(summary.dec, decCenter.asDegrees(), atol=1e-10)
 
+        self.assertFloatsAlmostEqual(summary.pixelScale, pixelScale)
+
         self.assertFloatsAlmostEqual(summary.zeroPoint, zp)
+        self.assertFloatsAlmostEqual(summary.expTime, expTime)
 
         # Need to compare background level and noise
         # These are only approximately 0+/-10 because of the small image
