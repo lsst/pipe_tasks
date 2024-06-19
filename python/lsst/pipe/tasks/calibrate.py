@@ -34,7 +34,10 @@ from lsst.meas.algorithms import LoadReferenceObjectsConfig, SkyObjectsTask
 import lsst.daf.base as dafBase
 from lsst.afw.math import BackgroundList
 from lsst.afw.table import SourceTable
-from lsst.meas.algorithms import SourceDetectionTask, ReferenceObjectLoader, SetPrimaryFlagsTask
+from lsst.meas.algorithms import (SourceDetectionTask,
+                                  ReferenceObjectLoader,
+                                  SetPrimaryFlagsTask,
+                                  NormalizedCalibrationFluxTask)
 from lsst.meas.base import (SingleFrameMeasurementTask,
                             ApplyApCorrTask,
                             CatalogCalculationTask,
@@ -285,6 +288,15 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         target=SingleFrameMeasurementTask,
         doc="Measure sources"
     )
+    doNormalizedCalibration = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Use normalized calibration flux (e.g. compensated tophats)?",
+    )
+    normalizedCalibrationFlux = pexConfig.ConfigurableField(
+        target=NormalizedCalibrationFluxTask,
+        doc="Task to normalize the calibration flux (e.g. compensated tophats).",
+    )
     postCalibrationMeasurement = pexConfig.ConfigurableField(
         target=SingleFrameMeasurementTask,
         doc="Second round of measurement for plugins that need to be run after photocal"
@@ -339,6 +351,7 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
 
     def setDefaults(self):
         super().setDefaults()
+        self.measurement.plugins.names |= ["base_CompensatedTophatFlux"]
         self.postCalibrationMeasurement.plugins.names = ["base_LocalPhotoCalib", "base_LocalWcs"]
         self.postCalibrationMeasurement.doReplaceWithNoise = False
         for key in self.postCalibrationMeasurement.slots:
@@ -346,6 +359,9 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         self.astromRefObjLoader.anyFilterMapsToThis = "phot_g_mean"
         # The photoRefCat connection is the name to use for the colorterms.
         self.photoCal.photoCatName = self.connections.photoRefCat
+
+        self.normalizedCalibrationFlux.do_measure_ap_corr = False
+        self.measurement.algorithms["base_CompensatedTophatFlux"].apertures = [12]
 
         # TODO: Remove in DM-44658, streak masking to happen only in ip_diffim
         # Keep track of which footprints contain streaks
@@ -468,6 +484,8 @@ class CalibrateTask(pipeBase.PipelineTask):
             self.skySourceKey = self.schema.addField("sky_source", type="Flag", doc="Sky objects.")
         self.makeSubtask('measurement', schema=self.schema,
                          algMetadata=self.algMetadata)
+        if self.config.doNormalizedCalibration:
+            self.makeSubtask('normalizedCalibrationFlux', schema=self.schema)
         self.makeSubtask('postCalibrationMeasurement', schema=self.schema,
                          algMetadata=self.algMetadata)
         self.makeSubtask("setPrimaryFlags", schema=self.schema, isSingleFrame=True)
@@ -604,6 +622,15 @@ class CalibrateTask(pipeBase.PipelineTask):
             exposure=exposure,
             exposureId=idGenerator.catalog_id,
         )
+        if self.config.doNormalizedCalibration:
+            if exposure.getInfo().getApCorrMap() is None:
+                self.log.warning("Image does not have valid aperture correction map for %r; "
+                                 "skipping normalized calibration flux", idGenerator)
+            else:
+                self.normalizedCalibrationFlux.run(
+                    exposure=exposure,
+                    catalog=sourceCat,
+                )
         if self.config.doApCorr:
             apCorrMap = exposure.getInfo().getApCorrMap()
             if apCorrMap is None:
