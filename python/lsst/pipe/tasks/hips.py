@@ -262,25 +262,38 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
             exp_hpx_dict[pixel] = exp_hpx
             warp_dict[pixel] = []
 
+        hpx_pixelization = HealpixPixelization(self.config.hips_order)
+
         first_handle = True
         # Loop over input exposures to minimize i/o (this speeds things
         # up by ~8x to batch together pixels that overlap a given coadd).
         for handle in exposure_handles:
             input_exp = handle.get()
 
+            if first_handle:
+                # Make sure the mask planes, filter, and photocalib of the output
+                # exposure match the (first) input exposure.
+                for pixel in pixels:
+                    exp_hpx_dict[pixel].mask.conformMaskPlanes(input_exp.mask.getMaskPlaneDict())
+                    exp_hpx_dict[pixel].setFilter(input_exp.getFilter())
+                    exp_hpx_dict[pixel].setPhotoCalib(input_exp.getPhotoCalib())
+                first_handle = False
+
+
+            # Find which pixels overlap this exposure.
+            exposure_hpx_ranges = hpx_pixelization.envelope(input_exp.getConvexPolygon())
+            exposure_pixels = []
+            for begin, end in exposure_hpx_ranges:
+                for pixel in range(begin, end):
+                    if pixel in pixels:
+                        exposure_pixels.append(pixel)
+
             # For each pixel, warp the input to the HPX WCS for the pixel.
-            for pixel in pixels:
+            for pixel in exposure_pixels:
                 warped = self.warper.warpExposure(exp_hpx_dict[pixel].getWcs(), input_exp, maxBBox=bbox_hpx)
 
                 exp = afwImage.ExposureF(exp_hpx_dict[pixel].getBBox(), exp_hpx_dict[pixel].getWcs())
                 exp.maskedImage.set(np.nan, afwImage.Mask.getPlaneBitMask("NO_DATA"), np.nan)
-
-                if first_handle:
-                    # Make sure the mask planes, filter, and photocalib of the output
-                    # exposure match the (first) input exposure.
-                    exp_hpx_dict[pixel].mask.conformMaskPlanes(input_exp.mask.getMaskPlaneDict())
-                    exp_hpx_dict[pixel].setFilter(input_exp.getFilter())
-                    exp_hpx_dict[pixel].setPhotoCalib(input_exp.getPhotoCalib())
 
                 if warped.getBBox().getArea() == 0 or not np.any(np.isfinite(warped.image.array)):
                     # There is no overlap, skip.
@@ -293,8 +306,6 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
 
                 exp.maskedImage.assign(warped.maskedImage, warped.getBBox())
                 warp_dict[pixel].append(exp.maskedImage)
-
-            first_handle = False
 
         stats_flags = afwMath.stringToStatisticsProperty("MEAN")
         stats_ctrl = afwMath.StatisticsControl()
