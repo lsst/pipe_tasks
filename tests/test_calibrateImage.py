@@ -41,6 +41,9 @@ import lsst.meas.base
 import lsst.meas.base.tests
 import lsst.pipe.base.testUtils
 from lsst.pipe.tasks.calibrateImage import CalibrateImageTask
+from lsst.analysis.tools.tasks import CalexpSummaryAnalysisTask
+from lsst.analysis.tools.atools import CalexpSummaryMetrics
+from lsst.analysis.tools.interfaces import MetricMeasurementBundle
 import lsst.utils.tests
 
 
@@ -138,6 +141,10 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # Something about this test dataset prefers a larger threshold here.
         self.config.star_selector["science"].unresolved.maximum = 0.2
 
+        self.config.do_create_summary_metrics = True
+        self.config.create_summary_metrics.retarget(CalexpSummaryAnalysisTask)
+        self.config.create_summary_metrics.atools.initial_pvi_metrics = CalexpSummaryMetrics
+
     def _check_run(self, calibrate, result):
         """Test the result of CalibrateImage.run().
 
@@ -161,6 +168,27 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.assertFloatsAlmostEqual(summary.psfSigma, 2.0, rtol=1e-2)
         self.assertFloatsAlmostEqual(summary.ra, self.sky_center.getRa().asDegrees(), rtol=1e-7)
         self.assertFloatsAlmostEqual(summary.dec, self.sky_center.getDec().asDegrees(), rtol=1e-7)
+
+        # Check that the summary metrics are reasonable.
+        metrics = result.summary_metrics
+        if self.config.do_create_summary_metrics:
+            self.assertIsInstance(metrics, MetricMeasurementBundle)
+
+            for metric in metrics['initial_pvi_metrics']:
+                if metric.metric_name.metric == 'psfSigma':
+                    self.assertFloatsAlmostEqual(metric.quantity.value, 2.0, rtol=1e-2)
+                if metric.metric_name.metric == 'ra':
+                    self.assertFloatsAlmostEqual(
+                        metric.quantity.value,
+                        self.sky_center.getRa().asDegrees(),
+                        rtol=1e-7)
+                if metric.metric_name.metric == 'dec':
+                    self.assertFloatsAlmostEqual(
+                        metric.quantity.value,
+                        self.sky_center.getDec().asDegrees(),
+                        rtol=1e-7)
+        else:
+            self.assertIsNone(metrics)
 
         # Should have finite sky coordinates in the afw and astropy catalogs.
         self.assertTrue(np.isfinite(result.stars_footprints["coord_ra"]).all())
@@ -212,6 +240,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         struct, as appropriate.
         """
         self.config.optional_outputs = None
+        self.config.do_create_summary_metrics = False
         calibrate = CalibrateImageTask(config=self.config)
         calibrate.astrometry.setRefObjLoader(self.ref_loader)
         calibrate.photometry.match.setRefObjLoader(self.ref_loader)
@@ -480,6 +509,10 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
                                    "initial_photometry_match_detector",
                                    {"instrument", "visit", "detector"},
                                    "Catalog")
+        butlerTests.addDatasetType(self.repo,
+                                   "initial_summary_metrics",
+                                   {"instrument", "visit", "detector"},
+                                   "MetricMeasurementBundle")
 
         # dataIds
         self.exposure0_id = self.repo.registry.expandDataId(
@@ -520,6 +553,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              "initial_pvi_background": self.visit_id,
              "astrometry_matches": self.visit_id,
              "photometry_matches": self.visit_id,
+             "summary_metrics": self.visit_id,
              })
         mock_run = lsst.pipe.base.testUtils.runTestQuantum(task, self.butler, quantum)
 
@@ -549,6 +583,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              "initial_pvi_background": self.visit_id,
              "astrometry_matches": self.visit_id,
              "photometry_matches": self.visit_id,
+             "summary_metrics": self.visit_id,
              })
         mock_run = lsst.pipe.base.testUtils.runTestQuantum(task, self.butler, quantum)
 
@@ -575,6 +610,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
                        "initial_pvi_background": self.visit_id,
                        "astrometry_matches": self.visit_id,
                        "photometry_matches": self.visit_id,
+                       "summary_metrics": self.visit_id,
                        }
 
         # Check that we can turn off one output at a time.
@@ -621,6 +657,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              "initial_pvi_background": self.visit_id,
              "astrometry_matches": self.visit_id,
              "photometry_matches": self.visit_id,
+             "summary_metrics": self.visit_id,
              })
 
         # A generic exception should raise directly.
