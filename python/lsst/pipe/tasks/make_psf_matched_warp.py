@@ -21,7 +21,12 @@
 
 from __future__ import annotations
 
-__all__ = ("MakePsfMatchedWarpConfig", "MakePsfMatchedWarpConnections", "MakePsfMatchedWarpTask",)
+__all__ = (
+    "growValidPolygons",
+    "MakePsfMatchedWarpConfig",
+    "MakePsfMatchedWarpConnections",
+    "MakePsfMatchedWarpTask",
+)
 
 from typing import TYPE_CHECKING
 
@@ -205,3 +210,35 @@ class MakePsfMatchedWarpTask(PipelineTask):
         self.log.info("Total number of good pixels = %d", total_good_pixels)
 
         return Struct(psf_matched_warp=exposure_psf_matched)
+
+
+# Note that this is implemented as a free-floating function to enable reuse in
+# makeWarp.py without creating any relationships between the two classes.
+# This may be converted to a method after makeWarp.py is removed altogether.
+def growValidPolygons(coaddInputs, growBy: int) -> None:
+    """Grow coaddInputs' ccds' ValidPolygons in place.
+
+    Either modify each ccd's validPolygon in place, or if CoaddInputs
+    does not have a validPolygon, create one from its bbox.
+
+    Parameters
+    ----------
+    coaddInputs : `lsst.afw.image.coaddInputs`
+        CoaddInputs object containing the ccds to grow the valid polygons of.
+    growBy : `int`
+        The value to grow the valid polygons by.
+
+    Notes
+    -----
+    Negative values for ``growBy`` can shrink the polygons.
+    """
+    for ccd in coaddInputs.ccds:
+        polyOrig = ccd.getValidPolygon()
+        validPolyBBox = polyOrig.getBBox() if polyOrig else ccd.getBBox()
+        validPolyBBox.grow(growBy)
+        if polyOrig:
+            validPolygon = polyOrig.intersectionSingle(validPolyBBox)
+        else:
+            validPolygon = Polygon(geom.Box2D(validPolyBBox))
+
+        ccd.validPolygon = validPolygon
