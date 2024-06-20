@@ -52,7 +52,7 @@ class TestMatchFakes(lsst.utils.tests.TestCase):
 
         self.simpleMap = skyMap.DiscreteSkyMap(simpleMapConfig)
         self.tractId = 0
-        bCircle = self.simpleMap.generateTract(self.tractId).getInnerSkyPolygon().getBoundingCircle()
+        bCircle = self.simpleMap.generateTract(self.tractId).getOuterSkyPolygon().getBoundingCircle()
         bCenter = sphgeom.LonLat(bCircle.getCenter())
         bRadius = bCircle.getOpeningAngle().asRadians()
         targetSources = 10000
