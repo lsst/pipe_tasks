@@ -83,7 +83,7 @@ class RegisterSkymapConfigTest(unittest.TestCase):
                 # assert that the first argument to the call to makeSkyMap was a butler
                 self.assertIsInstance(mock.call_args[0][0], Butler)
                 # assert that the second argument matches the expected config
-                self.assertEqual(mock.call_args[0][1], expectedConfig)
+                self.assertTrue(mock.call_args[0][1].compare(expectedConfig))
 
     def testConfigOverride(self):
         """Verify expected arguments are passed to makeSkyMap with config
@@ -102,7 +102,7 @@ class RegisterSkymapConfigTest(unittest.TestCase):
                 # assert that the first argument to the makeSkyMap call was a butler
                 self.assertIsInstance(mock.call_args[0][0], Butler)
                 # assert that the second argument matches the expected config
-                self.assertEqual(mock.call_args[0][1], expectedConfig)
+                self.assertTrue(mock.call_args[0][1].compare(expectedConfig))
 
     def testNonExistantConfigFile(self):
         """Verify an expected error when a given config override file does not
