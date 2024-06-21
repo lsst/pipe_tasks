@@ -521,9 +521,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         result.psf_stars_footprints, result.background, candidates = self._compute_psf(result.exposure,
                                                                                        id_generator)
-        result.psf_stars = result.psf_stars_footprints.asAstropy()
+        self._measure_aperture_correction(result.exposure, result.psf_stars_footprints)
 
-        self._measure_aperture_correction(result.exposure, result.psf_stars)
+        result.psf_stars = result.psf_stars_footprints.asAstropy()
 
         result.stars_footprints = self._find_stars(result.exposure, result.background, id_generator)
         self._match_psf_stars(result.psf_stars_footprints, result.stars_footprints)
