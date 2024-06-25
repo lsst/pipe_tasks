@@ -37,6 +37,7 @@ from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig, GaussianPsfFactory
 from lsst.skymap import BaseSkyMap
 from lsst.utils.timer import timeMethod
 from .coaddBase import CoaddBaseTask, makeSkyInfo, reorderAndPadList
+from .make_psf_matched_warp import growValidPolygons
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from collections.abc import Iterable
 
@@ -388,6 +389,11 @@ class MakeWarpTask(CoaddBaseTask):
                     warps[warpType].setPsf(
                         CoaddPsf(inputRecorder[warpType].coaddInputs.ccds, skyInfo.wcs,
                                  self.config.coaddPsf.makeControl()))
+                else:  # warpType == "psfMached"
+                    growValidPolygons(
+                        inputRecorder[warpType].coaddInputs,
+                        -self.config.warpAndPsfMatch.psfMatch.kernel.active.kernelSize // 2,
+                    )
             else:
                 if not self.config.doWriteEmptyWarps:
                     # No good pixels. Exposure still empty.
