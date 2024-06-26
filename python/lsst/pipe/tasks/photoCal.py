@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["PhotoCalTask", "PhotoCalConfig"]
+__all__ = ["PhotoCalTask", "PhotoCalConfig", "PhotoCalInputFluxError"]
 
 import math
 import sys
@@ -36,6 +36,35 @@ import lsst.afw.display as afwDisplay
 from lsst.meas.algorithms import getRefFluxField, ReserveSourcesTask
 from lsst.utils.timer import timeMethod
 from .colorterms import ColortermLibrary
+
+
+class PhotoCalInputFluxError(pipeBase.AlgorithmError):
+    """Raised if photoCal fails in a non-recoverable way.
+
+    Parameters
+    ----------
+    nMatches : `int`
+        Number of nMatches available to the fitter at the point of failure.
+    nFiniteInstFluxes : `int`
+        Number of calibration instFluxes that are are finite (non-NaN).
+    nFiniteInstFluxes : `int`
+        Number of calibration instFluxErrs that are are finite (non-NaN).
+    """
+    def __init__(self, *, nMatches, nFiniteInstFluxes, nFiniteInstFluxErrs):
+        msg = (f"No finite calibration instFluxes ({nFiniteInstFluxes}) or "
+               f"instFluxErrs ({nFiniteInstFluxErrs}) for {nMatches} matches.")
+        super().__init__(msg)
+        self.nMatches = nMatches
+        self.nFiniteInstFluxes = nFiniteInstFluxes
+        self.nFiniteInstFluxErrs = nFiniteInstFluxErrs
+
+    @property
+    def metadata(self):
+        metadata = {"nMatches": self.nMatches,
+                    "nFiniteInstFluxes": self.nFiniteInstFluxes,
+                    "nFiniteInstFluxErrs": self.nFiniteInstFluxErrs,
+                    }
+        return metadata
 
 
 class PhotoCalConfig(pexConf.Config):
@@ -238,10 +267,13 @@ class PhotoCalTask(pipeBase.Task):
         """
         srcInstFluxArr = np.array([m.second.get(sourceKeys.instFlux) for m in matches])
         srcInstFluxErrArr = np.array([m.second.get(sourceKeys.instFluxErr) for m in matches])
-        if not np.all(np.isfinite(srcInstFluxErrArr)):
-            # this is an unpleasant hack; see DM-2308 requesting a better solution
-            self.log.warning("Source catalog does not have flux uncertainties; using sqrt(flux).")
-            srcInstFluxErrArr = np.sqrt(srcInstFluxArr)
+
+        nFiniteInstFluxes = np.isfinite(srcInstFluxArr).sum()
+        nFiniteInstFluxErrs = np.isfinite(srcInstFluxErrArr).sum()
+
+        if not nFiniteInstFluxes or not nFiniteInstFluxErrs:
+            raise PhotoCalInputFluxError(nMatches=len(matches), nFiniteInstFluxes=nFiniteInstFluxes,
+                                         nFiniteInstFluxErrs=nFiniteInstFluxErrs)
 
         # convert source instFlux from DN to an estimate of nJy
         referenceFlux = (0*u.ABmag).to_value(u.nJy)

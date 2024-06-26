@@ -32,7 +32,7 @@ import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.utils.tests
 from lsst.utils import getPackageDir
-from lsst.pipe.tasks.photoCal import PhotoCalTask, PhotoCalConfig
+from lsst.pipe.tasks.photoCal import PhotoCalTask, PhotoCalConfig, PhotoCalInputFluxError
 from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary
 from lsst.utils.logging import TRACE
 from lsst.meas.algorithms.testUtils import MockReferenceObjectLoaderFromFiles
@@ -198,6 +198,24 @@ class PhotoCalTest(unittest.TestCase):
         self.log.debug('zeropoint: %g', self.zp)
         # zeropoint: 32.3145
         self.assertLess(abs(self.zp - (31.3145 + zeroPointOffset)), 0.05)
+
+    def testNoFiniteFluxes(self):
+        """Test case where matches exist but calib fluxes are NaN"""
+        catalog = self.srcCat.copy(deep=True)
+        catalog['slot_ApFlux_instFlux'] = np.nan
+        task = PhotoCalTask(self.refObjLoader, config=self.config, schema=self.srcCat.schema)
+        with self.assertRaisesRegex(PhotoCalInputFluxError,
+                                    r"No finite calibration instFluxes \(0\) or instFluxErrs \(\d+\)"):
+            task.run(exposure=self.exposure, sourceCat=catalog)
+
+    def testNoFiniteFluxErrs(self):
+        """Test case where matches exist but calib fluxErrs are NaN"""
+        catalog = self.srcCat.copy(deep=True)
+        catalog['slot_ApFlux_instFluxErr'] = np.nan
+        task = PhotoCalTask(self.refObjLoader, config=self.config, schema=self.srcCat.schema)
+        with self.assertRaisesRegex(PhotoCalInputFluxError,
+                                    r"No finite calibration instFluxes \(\d+\) or instFluxErrs \(0\)"):
+            task.run(exposure=self.exposure, sourceCat=catalog)
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
