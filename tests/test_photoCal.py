@@ -19,34 +19,47 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
+import glob
+import logging
 import os
 import unittest
-import logging
-import glob
 
-import numpy as np
 import astropy.units as u
-
-import lsst.geom as geom
-import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
+import lsst.afw.table as afwTable
+import lsst.geom as geom
 import lsst.utils.tests
-from lsst.pipe.tasks.photoCal import PhotoCalTask, PhotoCalConfig
-from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary
-from lsst.utils.logging import TRACE
+import numpy as np
 from lsst.meas.algorithms.testUtils import MockReferenceObjectLoaderFromFiles
+from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary
+from lsst.pipe.tasks.photoCal import (
+    PhotoCalConfig,
+    PhotoCalInputFluxError,
+    PhotoCalTask,
+)
+from lsst.utils.logging import TRACE
 
 TESTDIR = os.path.abspath(os.path.dirname(__file__))
 RefCatDir = os.path.join(TESTDIR, "data", "sdssrefcat")
 
-testColorterms = ColortermLibrary(data={
-    "test*": ColortermDict(data={
-        "test-g": Colorterm(primary="g", secondary="r", c0=0.00, c1=0.00),
-        "test-r": Colorterm(primary="r", secondary="i", c0=0.00, c1=0.00, c2=0.00),
-        "test-i": Colorterm(primary="i", secondary="z", c0=1.00, c1=0.00, c2=0.00),
-        "test-z": Colorterm(primary="z", secondary="i", c0=0.00, c1=0.00, c2=0.00),
-    })
-})
+testColorterms = ColortermLibrary(
+    data={
+        "test*": ColortermDict(
+            data={
+                "test-g": Colorterm(primary="g", secondary="r", c0=0.00, c1=0.00),
+                "test-r": Colorterm(
+                    primary="r", secondary="i", c0=0.00, c1=0.00, c2=0.00
+                ),
+                "test-i": Colorterm(
+                    primary="i", secondary="z", c0=1.00, c1=0.00, c2=0.00
+                ),
+                "test-z": Colorterm(
+                    primary="z", secondary="i", c0=0.00, c1=0.00, c2=0.00
+                ),
+            }
+        )
+    }
+)
 
 
 def setup_module(module):
@@ -60,7 +73,8 @@ class PhotoCalTest(unittest.TestCase):
         # Load sample input from disk
         testDir = os.path.dirname(__file__)
         self.srcCat = afwTable.SourceCatalog.readFits(
-            os.path.join(testDir, "data", "v695833-e0-c000.xy.fits"))
+            os.path.join(testDir, "data", "v695833-e0-c000.xy.fits")
+        )
 
         self.srcCat["slot_ApFlux_instFluxErr"] = 1
         self.srcCat["slot_PsfFlux_instFluxErr"] = 1
@@ -68,7 +82,9 @@ class PhotoCalTest(unittest.TestCase):
         # The .xy.fits file has sources in the range ~ [0,2000],[0,4500]
         # which is bigger than the exposure
         self.bbox = geom.Box2I(geom.Point2I(0, 0), geom.Extent2I(2048, 4612))
-        smallExposure = afwImage.ExposureF(os.path.join(testDir, "data", "v695833-e0-c000-a00.sci.fits"))
+        smallExposure = afwImage.ExposureF(
+            os.path.join(testDir, "data", "v695833-e0-c000-a00.sci.fits")
+        )
         self.exposure = afwImage.ExposureF(self.bbox)
         self.exposure.setWcs(smallExposure.getWcs())
         self.exposure.setFilter(afwImage.FilterLabel(band="i", physical="test-i"))
@@ -81,9 +97,11 @@ class PhotoCalTest(unittest.TestCase):
             src.set(coordKey, wcs.pixelToSky(src.get(centroidKey)))
 
         # Make a reference loader
-        filenames = sorted(glob.glob(os.path.join(RefCatDir, 'ref_cats', 'cal_ref_cat', '??????.fits')))
+        filenames = sorted(
+            glob.glob(os.path.join(RefCatDir, "ref_cats", "cal_ref_cat", "??????.fits"))
+        )
         self.refObjLoader = MockReferenceObjectLoaderFromFiles(filenames, htmLevel=8)
-        self.log = logging.getLogger('lsst.testPhotoCal')
+        self.log = logging.getLogger("lsst.testPhotoCal")
         self.log.setLevel(TRACE)
 
         self.config = PhotoCalConfig()
@@ -92,10 +110,14 @@ class PhotoCalTest(unittest.TestCase):
         self.config.match.referenceSelection.magLimit.maximum = 22.0
         self.config.match.referenceSelection.magLimit.fluxField = "i_flux"
         self.config.match.referenceSelection.doFlags = True
-        self.config.match.referenceSelection.flags.good = ['photometric']
-        self.config.match.referenceSelection.flags.bad = ['resolved']
-        self.config.match.sourceSelection.doUnresolved = False  # Don't have star/galaxy in the srcCat
-        self.config.match.sourceSelection.doRequirePrimary = False  # Don't have detect_isPrimary in srcCat
+        self.config.match.referenceSelection.flags.good = ["photometric"]
+        self.config.match.referenceSelection.flags.bad = ["resolved"]
+        self.config.match.sourceSelection.doUnresolved = (
+            False  # Don't have star/galaxy in the srcCat
+        )
+        self.config.match.sourceSelection.doRequirePrimary = (
+            False  # Don't have detect_isPrimary in srcCat
+        )
 
         # The test and associated data have been prepared on the basis that we
         # use the PsfFlux to perform photometry.
@@ -109,7 +131,9 @@ class PhotoCalTest(unittest.TestCase):
 
     def _runTask(self):
         """All the common setup to actually test the results"""
-        task = PhotoCalTask(self.refObjLoader, config=self.config, schema=self.srcCat.schema)
+        task = PhotoCalTask(
+            self.refObjLoader, config=self.config, schema=self.srcCat.schema
+        )
         pCal = task.run(exposure=self.exposure, sourceCat=self.srcCat)
         matches = pCal.matches
         refFluxField = pCal.arrays.refFluxFieldList[0]
@@ -128,7 +152,7 @@ class PhotoCalTest(unittest.TestCase):
             diff.append(instMag - refMag)
         self.diff = np.array(diff)
         # Differences of matched objects that were used in the fit.
-        self.zp = pCal.photoCalib.instFluxToMagnitude(1.)
+        self.zp = pCal.photoCalib.instFluxToMagnitude(1.0)
         self.fitdiff = pCal.arrays.srcMag + self.zp - pCal.arrays.refMag
 
     def testFlags(self):
@@ -152,18 +176,20 @@ class PhotoCalTest(unittest.TestCase):
         self.assertGreater(used, 0)
 
     def testZeroPoint(self):
-        """ Test to see if we can compute a photometric zeropoint given a reference task"""
+        """Test to see if we can compute a photometric zeropoint given a reference task"""
         self._runTask()
         self.assertGreater(len(self.diff), 50)
-        self.log.info('%i magnitude differences; mean difference %g; mean abs diff %g' %
-                      (len(self.diff), np.mean(self.diff), np.mean(np.abs(self.diff))))
+        self.log.info(
+            "%i magnitude differences; mean difference %g; mean abs diff %g"
+            % (len(self.diff), np.mean(self.diff), np.mean(np.abs(self.diff)))
+        )
         self.assertLess(np.mean(self.diff), 0.6)
 
         # Differences of matched objects that were used in the fit.
-        self.log.debug('zeropoint: %g', self.zp)
-        self.log.debug('number of sources used in fit: %i', len(self.fitdiff))
-        self.log.debug('rms diff: %g', np.mean(self.fitdiff**2)**0.5)
-        self.log.debug('median abs(diff): %g', np.median(np.abs(self.fitdiff)))
+        self.log.debug("zeropoint: %g", self.zp)
+        self.log.debug("number of sources used in fit: %i", len(self.fitdiff))
+        self.log.debug("rms diff: %g", np.mean(self.fitdiff**2) ** 0.5)
+        self.log.debug("median abs(diff): %g", np.median(np.abs(self.fitdiff)))
 
         # zeropoint: 31.3145
         # number of sources used in fit: 65
@@ -177,12 +203,14 @@ class PhotoCalTest(unittest.TestCase):
         # Tolerances are somewhat arbitrary; they're set simply to avoid regressions, and
         # are not based on we'd expect to get given the data quality.
         lq, uq = np.percentile(self.fitdiff, (25, 75))
-        rms = 0.741*(uq - lq)  # Convert IQR to stdev assuming a Gaussian
-        self.assertLess(rms, 0.07)    # rms difference
-        self.assertLess(np.median(np.abs(self.fitdiff)), 0.06)  # median absolution difference
+        rms = 0.741 * (uq - lq)  # Convert IQR to stdev assuming a Gaussian
+        self.assertLess(rms, 0.07)  # rms difference
+        self.assertLess(
+            np.median(np.abs(self.fitdiff)), 0.06
+        )  # median absolution difference
 
     def testColorTerms(self):
-        """ Test to see if we can apply colorterm corrections while computing photometric zeropoints"""
+        """Test to see if we can apply colorterm corrections while computing photometric zeropoints"""
         # Turn colorterms on. The colorterm library used here is simple - we just apply a 1 mag
         # color-independentcolorterm correction to everything. This should change the photometric zeropoint.
         # by 1 mag.
@@ -191,13 +219,39 @@ class PhotoCalTest(unittest.TestCase):
         self.config.photoCatName = "testglob"  # Check glo expansion
         # zerPointOffset is the offset in the zeropoint that we expect from a uniform (i.e. color-independent)
         # colorterm correction.
-        zeroPointOffset = testColorterms.data['test*'].data['test-i'].c0
+        zeroPointOffset = testColorterms.data["test*"].data["test-i"].c0
         self._runTask()
 
         self.assertLess(np.mean(self.diff), 0.6 + zeroPointOffset)
-        self.log.debug('zeropoint: %g', self.zp)
+        self.log.debug("zeropoint: %g", self.zp)
         # zeropoint: 32.3145
         self.assertLess(abs(self.zp - (31.3145 + zeroPointOffset)), 0.05)
+
+    def testNoFiniteFluxes(self):
+        """Test case where matches exist but calib fluxes are NaN"""
+        catalog = self.srcCat.copy(deep=True)
+        catalog["slot_ApFlux_instFlux"] = np.nan
+        task = PhotoCalTask(
+            self.refObjLoader, config=self.config, schema=self.srcCat.schema
+        )
+        with self.assertRaisesRegex(
+            PhotoCalInputFluxError,
+            r"No finite calibration instFluxes \(0\) or instFluxErrs \(\d+\)",
+        ):
+            task.run(exposure=self.exposure, sourceCat=catalog)
+
+    def testNoFiniteFluxErrs(self):
+        """Test case where matches exist but calib fluxErrs are NaN"""
+        catalog = self.srcCat.copy(deep=True)
+        catalog["slot_ApFlux_instFluxErr"] = np.nan
+        task = PhotoCalTask(
+            self.refObjLoader, config=self.config, schema=self.srcCat.schema
+        )
+        with self.assertRaisesRegex(
+            PhotoCalInputFluxError,
+            r"No finite calibration instFluxes \(\d+\) or instFluxErrs \(0\)",
+        ):
+            task.run(exposure=self.exposure, sourceCat=catalog)
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
