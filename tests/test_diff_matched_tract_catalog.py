@@ -24,6 +24,7 @@ import unittest
 import lsst.utils.tests
 
 import lsst.afw.geom as afwGeom
+import pytest
 from lsst.meas.astrom import ConvertCatalogCoordinatesConfig
 from lsst.pipe.tasks.diff_matched_tract_catalog import (
     DiffMatchedTractCatalogConfig, DiffMatchedTractCatalogTask, MatchedCatalogFluxesConfig,
@@ -133,11 +134,13 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             for idx, band in enumerate(bands)
         }
 
-        self.task = DiffMatchedTractCatalogTask(config=DiffMatchedTractCatalogConfig(
+        # TODO: To be removed in DM-44988
+        self.config, self.config_stats = (DiffMatchedTractCatalogConfig(
             columns_target_coord_err=[column_ra_target_err, column_dec_target_err],
             columns_flux=columns_flux_configs,
             mag_num_bins=1,
-        ))
+        ) for _ in range(2))
+
         self.wcs = afwGeom.makeSkyWcs(crpix=lsst.geom.Point2D(9000, 9000),
                                       crval=lsst.geom.SpherePoint(ra_cen, dec_cen, lsst.geom.degrees),
                                       cdMatrix=afwGeom.makeCdMatrix(scale=0.2*lsst.geom.arcseconds))
@@ -147,20 +150,24 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
         del self.catalog_target
         del self.catalog_match_ref
         del self.catalog_match_target
+        del self.config
+        del self.config_stats
         del self.diff_matched
-        del self.task
         del self.wcs
 
     def test_DiffMatchedTractCatalogTask(self):
         # These tables will have columns added to them in run
         columns_ref, columns_target = (list(x.columns) for x in (self.catalog_ref, self.catalog_target))
-        result = self.task.run(
-            catalog_ref=self.catalog_ref,
-            catalog_target=self.catalog_target,
-            catalog_match_ref=self.catalog_match_ref,
-            catalog_match_target=self.catalog_match_target,
-            wcs=self.wcs,
-        )
+        task = DiffMatchedTractCatalogTask(config=self.config_stats)
+        with pytest.warns(FutureWarning):
+            task.config.compute_stats = True
+            result = task.run(
+                catalog_ref=self.catalog_ref,
+                catalog_target=self.catalog_target,
+                catalog_match_ref=self.catalog_match_ref,
+                catalog_match_target=self.catalog_match_target,
+                wcs=self.wcs,
+            )
         columns_result = list(result.cat_matched.columns)
         columns_expect = list(columns_target) + ["match_distance", "match_distanceErr"]
         prefix = DiffMatchedTractCatalogConfig.column_matched_prefix_ref.default
@@ -177,8 +184,10 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(len(row), len(self.diff_matched))
         self.assertFloatsAlmostEqual(row, self.diff_matched, atol=1e-8, rtol=1e-8)
 
-        self.task.config.coord_format.coords_spherical = not self.task.config.coord_format.coords_spherical
-        self.task.run(
+    def test_spherical(self):
+        task = DiffMatchedTractCatalogTask(config=self.config)
+        task.config.coord_format.coords_spherical = not task.config.coord_format.coords_spherical
+        task.run(
             catalog_ref=self.catalog_ref,
             catalog_target=self.catalog_target,
             catalog_match_ref=self.catalog_match_ref,
