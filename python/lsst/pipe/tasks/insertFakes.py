@@ -56,7 +56,7 @@ def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
         exposure+catalog.  This is used to produce the correct instrumental fluxes
         within the radius.  The value should match that of the field defined in
         slot_CalibFlux_instFlux.
-    logger : `lsst.log.log.log.Log` or `logging.Logger`, optional
+    logger : `logging.Logger`, optional
         Logger.
     """
     exposure.mask.addMaskPlane("FAKE")

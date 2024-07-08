@@ -646,7 +646,6 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         with (
             mock.patch.object(task, "run", side_effect=mock_run),
             self.assertRaises(lsst.pipe.base.AnnotatedPartialOutputsError),
-            lsst.log.UsePythonLogging(),  # so that assertLogs works with lsst.log
         ):
             with self.assertLogs("lsst.calibrateImage", level="ERROR") as cm:
                 lsst.pipe.base.testUtils.runTestQuantum(task,
