@@ -623,19 +623,16 @@ class CalibrateTask(pipeBase.PipelineTask):
             exposureId=idGenerator.catalog_id,
         )
         if self.config.doNormalizedCalibration:
-            if exposure.getInfo().getApCorrMap() is None:
-                self.log.warning("Image does not have valid aperture correction map for %r; "
-                                 "skipping normalized calibration flux", idGenerator)
-            else:
-                self.normalizedCalibrationFlux.run(
-                    exposure=exposure,
-                    catalog=sourceCat,
-                )
+            self.normalizedCalibrationFlux.run(
+                exposure=exposure,
+                catalog=sourceCat,
+                exposure_id=idGenerator.catalog_id,
+            )
         if self.config.doApCorr:
             apCorrMap = exposure.getInfo().getApCorrMap()
             if apCorrMap is None:
                 self.log.warning("Image does not have valid aperture correction map for %r; "
-                                 "skipping aperture correction", idGenerator)
+                                 "skipping aperture correction", idGenerator.catalog_id)
             else:
                 self.applyApCorr.run(
                     catalog=sourceCat,
