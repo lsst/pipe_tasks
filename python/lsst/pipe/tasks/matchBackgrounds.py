@@ -21,7 +21,7 @@
 
 __all__ = ["MatchBackgroundsConfig", "MatchBackgroundsTask"]
 
-import numpy
+import numpy as np
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.geom as geom
@@ -37,28 +37,34 @@ import pdb
 
 
 class MatchBackgroundsConnections(PipelineTaskConnections,
-                                  defaultTemplates={},
-                                  dimensions={"instrument",}):
+                                  dimensions=("tract", "patch", "band", "skymap"),
+                                  defaultTemplates={"inputCoaddName": "deep",
+                                                    "outputCoaddName": "deep",
+                                                    "warpType": "direct",
+                                                    "warpTypeSuffix": ""}):
 
-    calExpList = cT.Input(
-        doc="Input exposures to process",
-        dimensions=("visit", "detector",),
+    psfMatchedWarps = pipeBase.connectionTypes.Input(
+        doc=("PSF-matched warps to be subtracted from the reference warp"),
+        name="{inputCoaddName}Coadd_psfMatchedWarp",
         storageClass="ExposureF",
-        name="calexp",
-        multiple=True,  # Probably this will be needed for the List format
-        deferLoad=True,  # All image calls currently use .get(), so...
+        dimensions=("tract", "patch", "skymap", "visit"),
+        deferLoad=True,
+        multiple=True,
     )
-    # refCalExp = cT.Input(
+    # The reference exposure needs to be another psfMatchedWarp
+    # Let the software choose it automatically for now
+    # refMatchedWarp = cT.Input(
     #     doc="Reference exposure",
     #     dimensions=("visit", "detector", "band"),
     #     storageClass="ExposureF",
     #     name="calexp",
     # )
+    # This needs to be the models of each differential BG in warped coords
     backgroundInfoList = cT.Output(
         doc="List of differential backgrounds, w/goodness of fit params",
+        name="calexpBackground_diff",  # This needs to change
         dimensions=("visit", "detector",),
         storageClass="Background",
-        name="calexpBackground_diff",
         multiple=True,
     )
 
@@ -177,12 +183,12 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
     ConfigClass = MatchBackgroundsConfig
     _DefaultName = "matchBackgrounds"
 
-    # def __init__(self, *args, **kwargs):
-    #     pipeBase.Task.__init__(self, *args, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(**kwargs)
 
-    #     self.sctrl = afwMath.StatisticsControl()
-    #     self.sctrl.setAndMask(afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes))
-    #     self.sctrl.setNanSafe(True)
+        self.sctrl = afwMath.StatisticsControl()
+        self.sctrl.setAndMask(afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes))
+        self.sctrl.setNanSafe(True)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         '''
@@ -193,20 +199,20 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     @timeMethod
-    def run(self, calExpList):
+    def run(self, psfMatchedWarps):
         """Match the backgrounds of a list of science exposures to a reference science exposure.
 
-        Choose a refCalExp automatically if none supplied.
+        Choose a refMatchedWarp automatically if none supplied.
 
         Parameters
         ----------
-        calExpList : `list` of `lsst.afw.image.Exposure`
-            List of science exposures to be background-matched;
+        psfMatchedWarps : `list` of `lsst.afw.image.Exposure`
+            List of warped science exposures to be background-matched;
             all exposures must exist.
-        refCalExp : `lsst.afw.image.Exposure`, optional
+        refMatchedWarp : `lsst.afw.image.Exposure`, optional
             Reference science exposure.
-            If None, then this task selects the best exposures from calExpList.
-            If not None then must be one of the exposures in calExpList.
+            If None, then this task selects the best exposures from psfMatchedWarps.
+            If not None then must be one of the exposures in psfMatchedWarps.
 
         Returns
         -------
@@ -214,7 +220,7 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
             Results as a struct with attributes:
 
             ``backgroundInfoList``
-                A `list` of `pipeBase.Struct`, one per exposure in expRefList,
+                A `list` of `pipeBase.Struct`, one per exposure in psfMatchedWarps\s,
                 each of which contains these fields:
                 - ``isReference``: This is the reference exposure (only one
                                    returned Struct will contain True for this
@@ -234,37 +240,39 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
         RuntimeError
             Raised if an exposure does not exist on disk.
         """
-        numExp = len(calExpList)
+        numExp = len(psfMatchedWarps)
         if numExp < 1:
             raise pipeBase.TaskError("No exposures to match")
 
-        # Removed several raise statements that no longer apply
-        breakpoint()
-
         # The selectRefExposure() method now only requires one input
-        # refInd is the index in calExpList corresponding to refCalExp
-        refInd = None
-        #if refCalExp is None:
-        # select the best reference exposure from calExpList
+        # refInd is the index in psfMatchedWarps corresponding to refMatchedWarp
+        # refInd = None
+        # if refMatchedWarp is None:
+        # select the best reference exposure from psfMatchedWarps
+        # note: just selecting from the set for testing purposes
         refInd = self.selectRefExposure(
-            calExpList=calExpList,
+            psfMatchedWarps=psfMatchedWarps,
         )
-        refCalExp = calExpList[refInd]
+        refMatchedWarp = psfMatchedWarps[refInd]
 
-        # refIndSet is the index of all exposures in expDataList that match the reference.
+        # refIndSet is the index of all exposures in psfMatchedWarps that match the reference.
         # It is used to avoid background-matching an exposure to itself. It is a list
-        # because it is possible (though unlikely) that expDataList will contain duplicates.
-        refId = refCalExp.getInfo().id  # Must be a better ID to use
-        expIds = numpy.array([exp.getInfo().id for exp in calExpList])
-        refIndSet = list(numpy.where(expIds == refId)[0])
+        # because it is possible (though unlikely) that psfMatchedWarps will contain duplicates.
+        refId = refMatchedWarp.dataId
+        expIds = [exp.dataId for exp in psfMatchedWarps]
+        try:
+            refIndSet = [expIds.index(i) for i in [refId]]
+        except ValueError:
+            raise RuntimeError("Internal error: selected reference %s not found in psfMatchedWarps")
 
-        if refInd is not None and refInd not in refIndSet:
-            raise RuntimeError("Internal error: selected reference %s not found in calExpList")
+        # This is the original check, probably no longer needed.
+        # if refInd is not None and refInd not in refIndSet:
+        #     raise RuntimeError("Internal error: selected reference %s not found in psfMatchedWarps")
 
         # Images must be scaled to a common ZP
         # Converting everything to nJy to accomplish this
-        refZp = refCalExp.getPhotoCalib().instFluxToNanojansky(1)
-        refCalExp.image.array *= refZp
+        refExposure = refMatchedWarp.get()
+        refMI = self._fluxScale(refExposure)  # Also modifies refExposure
 
         # Will determine later what this is supposed to be
         # All unknown quantities being logged currently commented out
@@ -273,7 +281,7 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
         self.log.info("Matching %d Exposures", numExp)
 
         backgroundInfoList = []
-        for ind, exp in enumerate(calExpList):
+        for ind, exp in enumerate(psfMatchedWarps):
             if ind in refIndSet:
                 backgroundInfoStruct = pipeBase.Struct(
                     isReference=True,
@@ -283,18 +291,17 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
                     diffImVar=None,
                 )
             else:
-                # For L245: find the Gen3 equivalent to these IDs?
-                # self.log.info("Matching background of %s to %s", toMatchRef.dataId, refExpDataRef.dataId)
+                self.log.info("Matching background of %s to %s", exp.dataId, refMatchedWarp.dataId)
+                toMatchExposure = exp.get()
                 try:
-                    toMatchExposure = exp.get()
-                    toMatchMI = toMatchExposure.getMaskedImage()
-                    fluxZp = toMatchExposure.getPhotoCalib().instFluxToNanojansky(1)
-                    toMatchMI.image.array *= fluxZp  # Left off here
+                    # Why use exposure and not maskedImage?
+                    toMatchMI = self._fluxScale(toMatchExposure)
+
                     # store a string specifying the visit to label debug plot
                     # self.debugDataIdString = ''.join([str(toMatchRef.dataId[vk]) for vk in debugIdKeyList])
 
                     backgroundInfoStruct = self.matchBackgrounds(
-                        refExposure=refCalExp,
+                        refExposure=refExposure,
                         sciExposure=toMatchExposure,
                     )
                     backgroundInfoStruct.isReference = False
@@ -314,7 +321,7 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
             backgroundInfoList=backgroundInfoList)
 
     @timeMethod
-    def selectRefExposure(self, calExpList):
+    def selectRefExposure(self, psfMatchedWarps):
         """Find best exposure to use as the reference exposure.
 
         Calculate an appropriate reference exposure by minimizing a cost function that penalizes
@@ -325,7 +332,7 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
 
         Parameters
         ----------
-        calExpList : `list` of `lsst.afw.image.Exposure`
+        psfMatchedWarps : `list` of `lsst.afw.image.Exposure`
             List of science exposures.
             If an exposure is not found, it is skipped with a warning.
 
@@ -337,25 +344,23 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
         Raises
         ------
         RuntimeError
-            Raised if none of the exposures in calExpList are found.
+            Raised if none of the exposures in psfMatchedWarps are found.
         """
         self.log.info("Calculating best reference visit")
         varList = []
         meanBkgdLevelList = []
         coverageList = []
 
-        for exp in calExpList:
+        for exp in psfMatchedWarps:
             exposure = exp.get()
-            maskedImage = exposure.getMaskedImage()
             # Convert images to nJy before doing statistics
             try:
-                fluxZp = exposure.getPhotoCalib().instFluxToNanojansky(1)
-                exposure.image.array *= fluxZp
+                maskedImage = self._fluxScale(exposure)
             except Exception:
                 # need to put a place holder in Arr
-                varList.append(numpy.nan)
-                meanBkgdLevelList.append(numpy.nan)
-                coverageList.append(numpy.nan)
+                varList.append(np.nan)
+                meanBkgdLevelList.append(np.nan)
+                coverageList.append(np.nan)
                 continue
             statObjIm = afwMath.makeStatistics(maskedImage.getImage(), maskedImage.getMask(),
                                                afwMath.MEAN | afwMath.NPOINT | afwMath.VARIANCE, self.sctrl)
@@ -370,14 +375,14 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
                 "None of the candidates exist; cannot select best reference exposure")
 
         # Normalize metrics to range from  0 to 1
-        varArr = numpy.array(varList)/numpy.nanmax(varList)
-        meanBkgdLevelArr = numpy.array(meanBkgdLevelList)/numpy.nanmax(meanBkgdLevelList)
-        coverageArr = numpy.nanmin(coverageList)/numpy.array(coverageList)
+        varArr = np.array(varList)/np.nanmax(varList)
+        meanBkgdLevelArr = np.array(meanBkgdLevelList)/np.nanmax(meanBkgdLevelList)
+        coverageArr = np.nanmin(coverageList)/np.array(coverageList)
 
         costFunctionArr = self.config.bestRefWeightVariance * varArr
         costFunctionArr += self.config.bestRefWeightLevel * meanBkgdLevelArr
         costFunctionArr += self.config.bestRefWeightCoverage * coverageArr
-        return numpy.nanargmin(costFunctionArr)
+        return np.nanargmin(costFunctionArr)
 
     @timeMethod
     def matchBackgrounds(self, refExposure, sciExposure):
@@ -489,7 +494,7 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
                     self.log.warning("Decreasing binsize to %d", newBinSize)
 
             # If there is no variance in any image pixels, do not weight bins by inverse variance
-            isUniformImageDiff = not numpy.any(bgdZ > self.config.gridStdevEpsilon)
+            isUniformImageDiff = not np.any(bgdZ > self.config.gridStdevEpsilon)
             weightByInverseVariance = False if isUniformImageDiff else self.config.approxWeighting
 
         # Add offset to sciExposure
@@ -514,11 +519,11 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
         rms = 0.0
         X, Y, Z, dZ = self._gridImage(diffMI, self.config.binSize, statsFlag)
         x0, y0 = diffMI.getXY0()
-        modelValueArr = numpy.empty(len(Z))
+        modelValueArr = np.empty(len(Z))
         for i in range(len(X)):
             modelValueArr[i] = bkgdImage[int(X[i]-x0), int(Y[i]-y0), afwImage.LOCAL]
         resids = Z - modelValueArr
-        rms = numpy.sqrt(numpy.mean(resids[~numpy.isnan(resids)]**2))
+        rms = np.sqrt(np.mean(resids[~np.isnan(resids)]**2))
 
         if lsstDebug.Info(__name__).savefits:
             sciExposure.writeFits(lsstDebug.Info(__name__).figpath + 'sciMatchedExposure.fits')
@@ -546,6 +551,25 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
             matchedMSE=mse,
             diffImVar=meanVar)
 
+    def _fluxScale(self, exposure):
+        """Scales image to nJy flux using photometric calibration.
+
+        Parameters
+        ----------
+        exposure: ``
+            Exposure to scale.
+
+        Returns
+        -------
+        maskedImage: ``
+            Flux-scaled masked exposure.
+        """
+        maskedImage = exposure.getMaskedImage()
+        fluxZp = exposure.getPhotoCalib().instFluxToNanojansky(1)
+        exposure.image.array *= fluxZp
+
+        return maskedImage
+
     def _debugPlot(self, X, Y, Z, dZ, modelImage, bbox, model, resids):
         """Generate a plot showing the background fit and residuals.
 
@@ -555,17 +579,17 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
 
         Parameters
         ----------
-        X : `numpy.ndarray`, (N,)
+        X : `np.ndarray`, (N,)
             Array of x positions.
-        Y : `numpy.ndarray`, (N,)
+        Y : `np.ndarray`, (N,)
             Array of y positions.
-        Z : `numpy.ndarray`
+        Z : `np.ndarray`
             Array of the grid values that were interpolated.
-        dZ : `numpy.ndarray`, (len(Z),)
+        dZ : `np.ndarray`, (len(Z),)
             Array of the error on the grid values.
         modelImage : `Unknown`
             Image of the model of the fit.
-        model : `numpy.ndarray`, (len(Z),)
+        model : `np.ndarray`, (len(Z),)
             Array of len(Z) containing the grid values predicted by the model.
         resids : `Unknown`
             Z - model.
@@ -580,13 +604,13 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
         if len(Z) == 0:
             self.log.warning("No grid. Skipping plot generation.")
         else:
-            max, min = numpy.max(Z), numpy.min(Z)
+            max, min = np.max(Z), np.min(Z)
             norm = matplotlib.colors.normalize(vmax=max, vmin=min)
-            maxdiff = numpy.max(numpy.abs(resids))
+            maxdiff = np.max(np.abs(resids))
             diffnorm = matplotlib.colors.normalize(vmax=maxdiff, vmin=-maxdiff)
-            rms = numpy.sqrt(numpy.mean(resids**2))
+            rms = np.sqrt(np.mean(resids**2))
             fig = plt.figure(1, (8, 6))
-            meanDz = numpy.mean(dZ)
+            meanDz = np.mean(dZ)
             grid = ImageGrid(fig, 111, nrows_ncols=(1, 2), axes_pad=0.1,
                              share_all=True, label_mode="L", cbar_mode="each",
                              cbar_size="7%", cbar_pad="2%", cbar_location="top")
@@ -613,10 +637,10 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
         """Private method to grid an image for debugging."""
         width, height = maskedImage.getDimensions()
         x0, y0 = maskedImage.getXY0()
-        xedges = numpy.arange(0, width, binsize)
-        yedges = numpy.arange(0, height, binsize)
-        xedges = numpy.hstack((xedges, width))  # add final edge
-        yedges = numpy.hstack((yedges, height))  # add final edge
+        xedges = np.arange(0, width, binsize)
+        yedges = np.arange(0, height, binsize)
+        xedges = np.hstack((xedges, width))  # add final edge
+        yedges = np.hstack((yedges, height))  # add final edge
 
         # Use lists/append to protect against the case where
         # a bin has no valid pixels and should not be included in the fit
@@ -641,11 +665,11 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
                         stdev = self.config.gridStdevEpsilon
                     bgX.append(0.5 * (x0 + xmin + x0 + xmax))
                     bgY.append(0.5 * (y0 + ymin + y0 + ymax))
-                    bgdZ.append(stdev/numpy.sqrt(npoints))
+                    bgdZ.append(stdev/np.sqrt(npoints))
                     est, _ = stats.getResult(statsFlag)
                     bgZ.append(est)
 
-        return numpy.array(bgX), numpy.array(bgY), numpy.array(bgZ), numpy.array(bgdZ)
+        return np.array(bgX), np.array(bgY), np.array(bgZ), np.array(bgdZ)
 
 
 class DataRefMatcher:
