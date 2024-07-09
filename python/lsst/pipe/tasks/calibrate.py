@@ -626,7 +626,6 @@ class CalibrateTask(pipeBase.PipelineTask):
             self.normalizedCalibrationFlux.run(
                 exposure=exposure,
                 catalog=sourceCat,
-                exposure_id=idGenerator.catalog_id,
             )
         if self.config.doApCorr:
             apCorrMap = exposure.getInfo().getApCorrMap()
