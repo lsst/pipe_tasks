@@ -62,8 +62,8 @@ class MatchBackgroundsConnections(PipelineTaskConnections,
     # This needs to be the models of each differential BG in warped coords
     backgroundInfoList = cT.Output(
         doc="List of differential backgrounds, w/goodness of fit params",
-        name="calexpBackground_diff",  # This needs to change
-        dimensions=("visit", "detector",),
+        name="psfMatchedWarpBackground_diff",  # This needs to change
+        dimensions=("tract", "patch", "skymap", "visit"),
         storageClass="Background",
         multiple=True,
     )
@@ -280,16 +280,35 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
 
         self.log.info("Matching %d Exposures", numExp)
 
+        # Creating a null BackgroundList object by fitting a blank image
+        statsFlag = getattr(afwMath, self.config.gridStatistic)
+        self.sctrl.setNumSigmaClip(self.config.numSigmaClip)
+        self.sctrl.setNumIter(self.config.numIter)
+
+        # TODO: refactor below to construct blank bg model
+        im = refExposure.getMaskedImage()
+        blankIm = im.Factory(im, True)  # Don't do this
+        blankIm.image.array *= 0
+
+        width = blankIm.getWidth()
+        height = blankIm.getHeight()
+        nx = width // self.config.binSize
+        if width % self.config.binSize != 0:
+            nx += 1
+        ny = height // self.config.binSize
+        if height % self.config.binSize != 0:
+            ny += 1
+
+        bctrl = afwMath.BackgroundControl(nx, ny, self.sctrl, statsFlag)
+        bctrl.setUndersampleStyle(self.config.undersampleStyle)
+
+        bkgd = afwMath.makeBackground(blankIm, bctrl)
+
+
         backgroundInfoList = []
         for ind, exp in enumerate(psfMatchedWarps):
             if ind in refIndSet:
-                backgroundInfoStruct = pipeBase.Struct(
-                    isReference=True,
-                    backgroundModel=None,
-                    fitRMS=0.0,
-                    matchedMSE=None,
-                    diffImVar=None,
-                )
+                backgroundInfoStruct = afwMath.BackgroundList(bkgd,)
             else:
                 self.log.info("Matching background of %s to %s", exp.dataId, refMatchedWarp.dataId)
                 toMatchExposure = exp.get()
@@ -307,13 +326,7 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
                     backgroundInfoStruct.isReference = False
                 except Exception as e:
                     # self.log.warning("Failed to fit background %s: %s", toMatchRef.dataId, e)
-                    backgroundInfoStruct = pipeBase.Struct(
-                        isReference=False,
-                        backgroundModel=None,
-                        fitRMS=None,
-                        matchedMSE=None,
-                        diffImVar=None,
-                    )
+                    backgroundInfoStruct = afwMath.BackgroundList(bkgd,)
 
             backgroundInfoList.append(backgroundInfoStruct)
 
@@ -545,11 +558,14 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
 
         outBkgd = approx if self.config.usePolynomial else bkgd
 
-        return pipeBase.Struct(
-            backgroundModel=outBkgd,
-            fitRMS=rms,
-            matchedMSE=mse,
-            diffImVar=meanVar)
+        # Type `Background` can't use a struct.  Should fitRMS &c. be added to
+        # a log instead of output?
+        # return pipeBase.Struct(
+        #     backgroundModel=afwMath.BackgroundList(outBkgd),
+        #     fitRMS=rms,
+        #     matchedMSE=mse,
+        #     diffImVar=meanVar)
+        return afwMath.BackgroundList(outBkgd,)
 
     def _fluxScale(self, exposure):
         """Scales image to nJy flux using photometric calibration.
