@@ -412,7 +412,7 @@ class CompositeFunctor(Functor):
 
     def __init__(self, funcs, **kwargs):
 
-        if type(funcs) == dict:
+        if type(funcs) is dict:
             self.funcDict = funcs
         else:
             self.funcDict = {f.shortname: f for f in funcs}
