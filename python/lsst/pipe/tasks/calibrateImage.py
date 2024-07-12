@@ -265,7 +265,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     )
     star_selector = lsst.meas.algorithms.sourceSelectorRegistry.makeField(
         default="science",
-        doc="Task to select isolated stars to use for calibration."
+        doc="Task to select reliable stars to use for calibration."
     )
 
     # final calibrations and statistics
@@ -366,11 +366,10 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         # aperture correction for the full list of stars.
         self.star_normalized_calibration_flux.do_measure_ap_corr = False
 
-        # Select isolated stars with reliable measurements and no bad flags.
+        # Select stars with reliable measurements and no bad flags.
         self.star_selector["science"].doFlags = True
         self.star_selector["science"].doUnresolved = True
         self.star_selector["science"].doSignalToNoise = True
-        self.star_selector["science"].doIsolated = True
         self.star_selector["science"].signalToNoise.minimum = 10.0
         # Keep sky sources in the output catalog, even though they aren't
         # wanted for calibration.

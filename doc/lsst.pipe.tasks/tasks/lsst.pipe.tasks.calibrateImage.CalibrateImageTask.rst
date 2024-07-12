@@ -6,7 +6,7 @@ CalibrateImageTask
 
 `~lsst.pipe.tasks.calibrateImage.CalibrateImageTask` performs "single frame processing" on one (single *visit*) or two (two *snap* visit) post- :ref:`Instrument Signature Removal <lsst.ip.isr>` single detector exposure (``postISRCCD``).
 This involves merging two *snaps* (if provided) into one *visit* exposure, repairing cosmic rays and defects, detecting and measuring sources on the exposure to make an initial estimation of the point spread function (PSF), re-doing detection and measurement with that fitted PSF to compute the astrometric and photometric calibrations, and computing summary statistics of the exposure and measured catalog.
-Its primary outputs are a calibrated exposure (``initial_pvi``, pixel values in nanojansky) and catalog (``initial_stars_detector``) of bright (S/N >= 10) isolated point-like sources that were used as inputs to calibration and that are suitable for downstream use (for example as kernel candidates in difference imaging).
+Its primary outputs are a calibrated exposure (``initial_pvi``, pixel values in nanojansky) and catalog (``initial_stars_detector``) of bright, well-measured point-like sources that were used as inputs to calibration and that are suitable for downstream use (for example as kernel candidates in difference imaging).
 This task replaces the two older tasks `~lsst.pipe.tasks.characterizeImage.CharacterizeImageTask` (roughly repair/estimate PSF/aperture correct) and `~lsst.pipe.tasks.calibrate.CalibrateTask` (roughly detect/measure/astrometry/photometry).
 
 .. _lsst.pipe.tasks.calibrateImage.CalibrateImageTask-summary:
@@ -36,7 +36,7 @@ Processing summary
 
    #. For the detected sources, :py:class:`deblend <lsst.meas.deblender.SourceDeblendTask>`, :py:class:`measure <lsst.meas.base.sfm.SingleFrameMeasurementTask>`, aperture correct, and set flags based on blendedness, footprint size, and other properties.
 
-   #. Select non-"bad" flagged, unresolved, :math:`S/N >= 10`, isolated sources to pass to the subsequent calibration steps and to be saved as the ``initial_stars_detector`` and ``initial_stars_footprints_detector`` output catalogs. Note that these catalogs do not have sky coordinates or calibrated fluxes: those are computed at a later step.
+   #. Select non-"bad" flagged, unresolved, :math:`S/N >= 10` sources to pass to the subsequent calibration steps and to be saved as the ``initial_stars_detector`` and ``initial_stars_footprints_detector`` output catalogs. Note that these catalogs do not have sky coordinates or calibrated fluxes: those are computed at a later step.
 
 #. Match the list of stars from the two steps above, to propagate flags (e.g. ``calib_psf_candidate``, ``calib_psf_used``) from the psf stars catalog into the second, primary output catalog.
 
