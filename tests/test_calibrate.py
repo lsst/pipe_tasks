@@ -216,7 +216,7 @@ class CalibrateTaskTestCaseNoButler(lsst.utils.tests.TestCase):
         calibConfig.doComputeSummaryStats = False
 
         # Force the aperture correction map to None (DM-39626)
-        exposure.info.setApCorrMap(None)
+        charImResults.exposure.info.setApCorrMap(None)
         calibTask = CalibrateTask(config=calibConfig)
         with self.assertLogs(level=logging.WARNING) as cm:
             _ = calibTask.run(charImResults.exposure)
