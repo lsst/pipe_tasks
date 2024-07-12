@@ -37,8 +37,8 @@ from lsst.pipe.tasks.calexpCutout import CalexpCutoutTask
 
 random.seed(208241138)
 
-packageDir = lsst.utils.getPackageDir('pipe_tasks')
-datadir = os.path.join(packageDir, 'tests', "data")
+TESTDIR = os.path.abspath(os.path.dirname(__file__))
+datadir = os.path.join(TESTDIR, "data")
 
 
 def make_data(bbox, wcs, border=100, ngood=13, nbad=7, nedge=3):

@@ -28,7 +28,6 @@ from lsst.skymap import TractInfo
 from lsst.skymap.patchInfo import PatchInfo
 import lsst.afw.image as afwImage
 import lsst.utils.tests
-from lsst.utils import getPackageDir
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
 from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 from lsst.meas.algorithms import SourceDetectionTask, SkyObjectsTask, SetPrimaryFlagsTask
@@ -36,6 +35,8 @@ import lsst.meas.extensions.scarlet as mes
 from lsst.meas.extensions.scarlet.scarletDeblendTask import ScarletDeblendTask
 from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.afw.table import SourceCatalog
+
+TESTDIR = os.path.abspath(os.path.dirname(__file__))
 
 
 class NullTract(TractInfo):
@@ -155,7 +156,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
 
     def setUp(self):
         # Load sample input from disk
-        expPath = os.path.join(getPackageDir("pipe_tasks"), "tests", "data", "v695833-e0-c000-a00.sci.fits")
+        expPath = os.path.join(TESTDIR, "data", "v695833-e0-c000-a00.sci.fits")
         self.exposure = afwImage.ExposureF(expPath)
 
         # Characterize the image (create PSF, etc.)

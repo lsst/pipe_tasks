@@ -32,11 +32,12 @@ import lsst.afw.image
 import lsst.afw.math
 import lsst.afw.table
 import lsst.daf.butler.tests as butlerTests
-from lsst.utils import getPackageDir
 from lsst.pipe.base import testUtils
 from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
 import lsst.meas.extensions.piff.piffPsfDeterminer
+
+TESTDIR = os.path.abspath(os.path.dirname(__file__))
 
 
 class CalibrateTaskTestCaseWithButler(lsst.utils.tests.TestCase):
@@ -196,7 +197,7 @@ class CalibrateTaskTestCaseWithButler(lsst.utils.tests.TestCase):
                          {"exposure", "idGenerator", "background", "icSourceCat"})
 
     def testNoAperCorrMap(self):
-        expPath = os.path.join(getPackageDir("pipe_tasks"), "tests", "data", "v695833-e0-c000-a00.sci.fits")
+        expPath = os.path.join(TESTDIR, "data", "v695833-e0-c000-a00.sci.fits")
         exposure = lsst.afw.image.ExposureF(expPath)
 
         charImConfig = CharacterizeImageConfig()
