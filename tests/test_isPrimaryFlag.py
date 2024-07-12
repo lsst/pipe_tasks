@@ -22,7 +22,6 @@
 import os
 import unittest
 import numpy as np
-import logging
 
 from lsst.geom import Point2I, Box2I, Extent2I
 from lsst.skymap import TractInfo
@@ -164,9 +163,6 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         charImConfig.measureApCorr.sourceSelector["science"].doSignalToNoise = False
         charImTask = CharacterizeImageTask(config=charImConfig)
         self.charImResults = charImTask.run(self.exposure)
-
-        # set log level so that warnings do not display
-        logging.getLogger("lsst.calibrate").setLevel(logging.ERROR)
 
     def tearDown(self):
         del self.exposure
