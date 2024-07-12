@@ -196,6 +196,9 @@ class CalibrateTaskTestCaseWithButler(lsst.utils.tests.TestCase):
         self.assertEqual(run.call_args[1].keys(),
                          {"exposure", "idGenerator", "background", "icSourceCat"})
 
+
+class CalibrateTaskTestCaseNoButler(lsst.utils.tests.TestCase):
+
     def testNoAperCorrMap(self):
         expPath = os.path.join(TESTDIR, "data", "v695833-e0-c000-a00.sci.fits")
         exposure = lsst.afw.image.ExposureF(expPath)
