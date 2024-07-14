@@ -31,13 +31,13 @@ import lsst.geom as geom
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.utils.tests
-from lsst.utils import getPackageDir
 from lsst.pipe.tasks.photoCal import PhotoCalTask, PhotoCalConfig
 from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary
 from lsst.utils.logging import TRACE
 from lsst.meas.algorithms.testUtils import MockReferenceObjectLoaderFromFiles
 
-RefCatDir = os.path.join(getPackageDir("pipe_tasks"), "tests", "data", "sdssrefcat")
+TESTDIR = os.path.abspath(os.path.dirname(__file__))
+RefCatDir = os.path.join(TESTDIR, "data", "sdssrefcat")
 
 testColorterms = ColortermLibrary(data={
     "test*": ColortermDict(data={

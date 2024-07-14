@@ -21,23 +21,21 @@
 #
 import os
 import unittest
-import logging
 
 import lsst.afw.image as afwImage
 import lsst.utils.tests
 import lsst.meas.extensions.piff.piffPsfDeterminer
-from lsst.utils import getPackageDir
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
+
+TESTDIR = os.path.abspath(os.path.dirname(__file__))
 
 
 class PsfFlagTestCase(lsst.utils.tests.TestCase):
 
     def setUp(self):
         # Load sample input from disk
-        expPath = os.path.join(getPackageDir("pipe_tasks"), "tests", "data", "v695833-e0-c000-a00.sci.fits")
+        expPath = os.path.join(TESTDIR, "data", "v695833-e0-c000-a00.sci.fits")
         self.exposure = afwImage.ExposureF(expPath)
-        # set log level so that warnings do not display
-        logging.getLogger("lsst.characterizeImage").setLevel(logging.ERROR)
 
     def tearDown(self):
         del self.exposure

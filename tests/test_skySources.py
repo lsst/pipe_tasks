@@ -21,24 +21,22 @@
 
 import os
 import unittest
-import logging
 
 import lsst.afw.image as afwImage
 import lsst.meas.extensions.piff.piffPsfDeterminer
 import lsst.utils.tests
-from lsst.utils import getPackageDir
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
 from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
+
+TESTDIR = os.path.abspath(os.path.dirname(__file__))
 
 
 class SkySourcesTestCase(lsst.utils.tests.TestCase):
 
     def setUp(self):
         # Load sample input from disk
-        expPath = os.path.join(getPackageDir("pipe_tasks"), "tests", "data", "v695833-e0-c000-a00.sci.fits")
+        expPath = os.path.join(TESTDIR, "data", "v695833-e0-c000-a00.sci.fits")
         self.exposure = afwImage.ExposureF(expPath)
-        # set log level so that warnings do not display
-        logging.getLogger("lsst.calibrate").setLevel(logging.ERROR)
 
     def tearDown(self):
         del self.exposure
