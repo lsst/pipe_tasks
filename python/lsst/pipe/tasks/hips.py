@@ -560,7 +560,7 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
         output_dataset_type_node = subgraph.dataset_types[output_edge.parent_dataset_type_name]
         (hpx_output_dimension,) = (
             self.butler.dimensions.skypix_dimensions[d]
-            for d in output_dataset_type_node.dimensions.skypix.names
+            for d in output_dataset_type_node.dimensions.skypix
         )
         constraint_hpx_pixelization = (
             self.butler.dimensions.skypix_dimensions[f"healpix{self.constraint_order}"].pixelization
