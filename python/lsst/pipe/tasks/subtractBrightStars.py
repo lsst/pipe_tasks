@@ -266,6 +266,8 @@ class SubtractBrightStarsTask(PipelineTask):
         if self.config.doWriteSubtractedExposure:
             outputExposure = inputs["inputExposure"].clone()
             outputExposure.image -= subtractor.image
+            if self.config.doApplySkyCorr and (inputs["skyCorr"] is not None):
+                outputExposure.image += inputs["skyCorr"].getImage()
         else:
             outputExposure = None
         outputBackgroundExposure = subtractor if self.config.doWriteSubtractor else None
