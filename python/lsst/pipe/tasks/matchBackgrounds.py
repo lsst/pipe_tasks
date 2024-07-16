@@ -21,27 +21,30 @@
 
 __all__ = ["MatchBackgroundsConfig", "MatchBackgroundsTask"]
 
-import numpy as np
+import pdb
+
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.geom as geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+import lsst.pipe.base.connectionTypes as cT
 import lsstDebug
+import numpy as np
+from lsst.pipe.base import PipelineTaskConfig, PipelineTaskConnections
 from lsst.utils.timer import timeMethod
 
-from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections
-import lsst.pipe.base.connectionTypes as cT
 
-import pdb
-
-
-class MatchBackgroundsConnections(PipelineTaskConnections,
-                                  dimensions=("tract", "patch", "band", "skymap"),
-                                  defaultTemplates={"inputCoaddName": "deep",
-                                                    "outputCoaddName": "deep",
-                                                    "warpType": "direct",
-                                                    "warpTypeSuffix": ""}):
+class MatchBackgroundsConnections(
+    PipelineTaskConnections,
+    dimensions=("tract", "patch", "band", "skymap"),
+    defaultTemplates={
+        "inputCoaddName": "deep",
+        "outputCoaddName": "deep",
+        "warpType": "direct",
+        "warpTypeSuffix": "",
+    },
+):
 
     psfMatchedWarps = pipeBase.connectionTypes.Input(
         doc=("PSF-matched warps to be subtracted from the reference warp"),
@@ -70,34 +73,30 @@ class MatchBackgroundsConnections(PipelineTaskConnections,
 
 
 # class MatchBackgroundsConfig(pexConfig.Config):
-class MatchBackgroundsConfig(PipelineTaskConfig,
-                             pipelineConnections=MatchBackgroundsConnections):
+class MatchBackgroundsConfig(PipelineTaskConfig, pipelineConnections=MatchBackgroundsConnections):
 
     usePolynomial = pexConfig.Field(
         dtype=bool,
         doc="Fit background difference with Chebychev polynomial interpolation "
         "(using afw.math.Approximate)? If False, fit with spline interpolation using afw.math.Background",
-        default=False
+        default=False,
     )
     order = pexConfig.Field(
         dtype=int,
         doc="Order of Chebyshev polynomial background model. Ignored if usePolynomial False",
-        default=8
+        default=8,
     )
     badMaskPlanes = pexConfig.ListField(
         doc="Names of mask planes to ignore while estimating the background",
-        dtype=str, default=["NO_DATA", "DETECTED", "DETECTED_NEGATIVE", "SAT", "BAD", "INTRP", "CR"],
+        dtype=str,
+        default=["NO_DATA", "DETECTED", "DETECTED_NEGATIVE", "SAT", "BAD", "INTRP", "CR"],
         itemCheck=lambda x: x in afwImage.Mask().getMaskPlaneDict(),
     )
     gridStatistic = pexConfig.ChoiceField(
         dtype=str,
         doc="Type of statistic to estimate pixel value for the grid points",
         default="MEAN",
-        allowed={
-            "MEAN": "mean",
-            "MEDIAN": "median",
-            "MEANCLIP": "clipped mean"
-        }
+        allowed={"MEAN": "mean", "MEDIAN": "median", "MEANCLIP": "clipped mean"},
     )
     undersampleStyle = pexConfig.ChoiceField(
         doc="Behaviour if there are too few points in grid for requested interpolation style. "
@@ -108,12 +107,10 @@ class MatchBackgroundsConfig(PipelineTaskConfig,
             "THROW_EXCEPTION": "throw an exception if there are too few points",
             "REDUCE_INTERP_ORDER": "use an interpolation style with a lower order.",
             "INCREASE_NXNYSAMPLE": "Increase the number of samples used to make the interpolation grid.",
-        }
+        },
     )
     binSize = pexConfig.Field(
-        doc="Bin size for gridding the difference image and fitting a spatial model",
-        dtype=int,
-        default=256
+        doc="Bin size for gridding the difference image and fitting a spatial model", dtype=int, default=256
     )
     interpStyle = pexConfig.ChoiceField(
         dtype=str,
@@ -126,17 +123,15 @@ class MatchBackgroundsConfig(PipelineTaskConfig,
             "NATURAL_SPLINE": "cubic spline with zero second derivative at endpoints",
             "AKIMA_SPLINE": "higher-level nonlinear spline that is more robust to outliers",
             "NONE": "No background estimation is to be attempted",
-        }
+        },
     )
     numSigmaClip = pexConfig.Field(
-        dtype=int,
-        doc="Sigma for outlier rejection; ignored if gridStatistic != 'MEANCLIP'.",
-        default=3
+        dtype=int, doc="Sigma for outlier rejection; ignored if gridStatistic != 'MEANCLIP'.", default=3
     )
     numIter = pexConfig.Field(
         dtype=int,
         doc="Number of iterations of outlier rejection; ignored if gridStatistic != 'MEANCLIP'.",
-        default=2
+        default=2,
     )
     bestRefWeightCoverage = pexConfig.RangeField(
         dtype=float,
@@ -144,14 +139,16 @@ class MatchBackgroundsConfig(PipelineTaskConfig,
         "when calculating best reference exposure. Higher weight prefers exposures with high coverage."
         "Ignored when reference visit is supplied",
         default=0.4,
-        min=0., max=1.
+        min=0.0,
+        max=1.0,
     )
     bestRefWeightVariance = pexConfig.RangeField(
         dtype=float,
         doc="Weight given to image variance when calculating best reference exposure. "
         "Higher weight prefers exposures with low image variance. Ignored when reference visit is supplied",
         default=0.4,
-        min=0., max=1.
+        min=0.0,
+        max=1.0,
     )
     bestRefWeightLevel = pexConfig.RangeField(
         dtype=float,
@@ -159,14 +156,17 @@ class MatchBackgroundsConfig(PipelineTaskConfig,
         "Higher weight prefers exposures with low mean background level. "
         "Ignored when reference visit is supplied.",
         default=0.2,
-        min=0., max=1.
+        min=0.0,
+        max=1.0,
     )
     approxWeighting = pexConfig.Field(
         dtype=bool,
-        doc=("Use inverse-variance weighting when approximating background offset model? "
-             "This will fail when the background offset is constant "
-             "(this is usually only the case in testing with artificial images)."
-             "(usePolynomial=True)"),
+        doc=(
+            "Use inverse-variance weighting when approximating background offset model? "
+            "This will fail when the background offset is constant "
+            "(this is usually only the case in testing with artificial images)."
+            "(usePolynomial=True)"
+        ),
         default=True,
     )
     gridStdevEpsilon = pexConfig.RangeField(
@@ -175,7 +175,7 @@ class MatchBackgroundsConfig(PipelineTaskConfig,
         "If all bins have a standard deviation below this value, the background offset model "
         "is approximated without inverse-variance weighting. (usePolynomial=True)",
         default=1e-8,
-        min=0.
+        min=0.0,
     )
 
 
@@ -191,18 +191,17 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
         self.sctrl.setNanSafe(True)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        '''
-        Boilerplate for now, until bug-testing commences
-        '''
         inputs = butlerQC.get(inputRefs)
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
     @timeMethod
     def run(self, psfMatchedWarps):
-        """Match the backgrounds of a list of science exposures to a reference science exposure.
+        """Match the backgrounds of a list of science exposures to a reference
+        science exposure.
 
         Choose a refMatchedWarp automatically if none supplied.
+        (above is legacy: right now this only does it automatically)
 
         Parameters
         ----------
@@ -211,29 +210,15 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
             all exposures must exist.
         refMatchedWarp : `lsst.afw.image.Exposure`, optional
             Reference science exposure.
-            If None, then this task selects the best exposures from psfMatchedWarps.
+            If None, then this task selects the best exposures from
+            psfMatchedWarps.
             If not None then must be one of the exposures in psfMatchedWarps.
 
         Returns
         -------
-        result : `lsst.pipe.base.Struct`
-            Results as a struct with attributes:
-
-            ``backgroundInfoList``
-                A `list` of `pipeBase.Struct`, one per exposure in psfMatchedWarps\s,
-                each of which contains these fields:
-                - ``isReference``: This is the reference exposure (only one
-                                   returned Struct will contain True for this
-                                   value, unless the ref exposure is listed multiple times).
-                - ``backgroundModel``: Differential background model
-                                       (afw.Math.Background or afw.Math.Approximate).
-                                       Add this to the science exposure to match the reference exposure.
-                - ``fitRMS``: The RMS of the fit. This is the sqrt(mean(residuals**2)).
-                - ``matchedMSE``: The MSE of the reference and matched images:
-                                  mean((refImage - matchedSciImage)**2);
-                    should be comparable to difference image's mean variance.
-                - ``diffImVar``: The mean variance of the difference image.
-                All fields except isReference will be None if isReference True or the fit failed.
+        result : `lsst.afw.math._backgroundList.BackgroundList`
+            Differential background model
+            Add this to the science exposure to match the reference exposure.
 
         Raises
         ------
@@ -244,8 +229,7 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
         if numExp < 1:
             raise pipeBase.TaskError("No exposures to match")
 
-        # The selectRefExposure() method now only requires one input
-        # refInd is the index in psfMatchedWarps corresponding to refMatchedWarp
+        # refInd: index in psfMatchedWarps corresponding to refMatchedWarp
         # refInd = None
         # if refMatchedWarp is None:
         # select the best reference exposure from psfMatchedWarps
@@ -255,9 +239,10 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
         )
         refMatchedWarp = psfMatchedWarps[refInd]
 
-        # refIndSet is the index of all exposures in psfMatchedWarps that match the reference.
-        # It is used to avoid background-matching an exposure to itself. It is a list
-        # because it is possible (though unlikely) that psfMatchedWarps will contain duplicates.
+        # refIndSet: indices of exposures in psfMatchedWarps matching ref.
+        # It is used to avoid background-matching an exposure to itself.
+        # It is a list because it is possible (though unlikely) that
+        # psfMatchedWarps will contain duplicates.
         refId = refMatchedWarp.dataId
         expIds = [exp.dataId for exp in psfMatchedWarps]
         try:
@@ -265,17 +250,12 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
         except ValueError:
             raise RuntimeError("Internal error: selected reference %s not found in psfMatchedWarps")
 
-        # This is the original check, probably no longer needed.
-        # if refInd is not None and refInd not in refIndSet:
-        #     raise RuntimeError("Internal error: selected reference %s not found in psfMatchedWarps")
-
         # Images must be scaled to a common ZP
         # Converting everything to nJy to accomplish this
         refExposure = refMatchedWarp.get()
         refMI = self._fluxScale(refExposure)  # Also modifies refExposure
 
-        # Will determine later what this is supposed to be
-        # All unknown quantities being logged currently commented out
+        # TODO: figure out what this was creating and why
         # debugIdKeyList = tuple(set(expKeyList) - set(['tract', 'patch']))
 
         self.log.info("Matching %d Exposures", numExp)
@@ -304,16 +284,26 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
 
         bkgd = afwMath.makeBackground(blankIm, bctrl)
 
-
         backgroundInfoList = []
         for ind, exp in enumerate(psfMatchedWarps):
             if ind in refIndSet:
-                backgroundInfoStruct = afwMath.BackgroundList(bkgd,)
+                backgroundInfoStruct = afwMath.BackgroundList(
+                    (
+                        bkgd,
+                        afwMath.stringToInterpStyle(self.config.interpStyle),
+                        afwMath.stringToUndersampleStyle(self.config.undersampleStyle),
+                        afwMath.ApproximateControl.UNKNOWN,
+                        0,
+                        0,
+                        False,
+                    )
+                )
             else:
+                # TODO: simplify this maybe, using only visit IDs?
                 self.log.info("Matching background of %s to %s", exp.dataId, refMatchedWarp.dataId)
                 toMatchExposure = exp.get()
                 try:
-                    # Why use exposure and not maskedImage?
+                    # Seems to require exposure, not masked exposure.
                     toMatchMI = self._fluxScale(toMatchExposure)
 
                     # store a string specifying the visit to label debug plot
@@ -325,20 +315,30 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
                     )
                     backgroundInfoStruct.isReference = False
                 except Exception as e:
-                    # self.log.warning("Failed to fit background %s: %s", toMatchRef.dataId, e)
-                    backgroundInfoStruct = afwMath.BackgroundList(bkgd,)
+                    self.log.warning("Failed to fit background %s: %s", exp.dataId, e)
+                    backgroundInfoStruct = afwMath.BackgroundList(
+                        (
+                            bkgd,
+                            afwMath.stringToInterpStyle(self.config.interpStyle),
+                            afwMath.stringToUndersampleStyle(self.config.undersampleStyle),
+                            afwMath.ApproximateControl.UNKNOWN,
+                            0,
+                            0,
+                            False,
+                        )
+                    )
 
             backgroundInfoList.append(backgroundInfoStruct)
 
-        return pipeBase.Struct(
-            backgroundInfoList=backgroundInfoList)
+        return pipeBase.Struct(backgroundInfoList=backgroundInfoList)
 
     @timeMethod
     def selectRefExposure(self, psfMatchedWarps):
         """Find best exposure to use as the reference exposure.
 
-        Calculate an appropriate reference exposure by minimizing a cost function that penalizes
-        high variance,  high background level, and low coverage. Use the following config parameters:
+        Calculate an appropriate reference exposure by minimizing a cost
+        function that penalizes high variance,  high background level, and low
+        coverage. Use the following config parameters:
         - bestRefWeightCoverage
         - bestRefWeightVariance
         - bestRefWeightLevel
@@ -375,8 +375,12 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
                 meanBkgdLevelList.append(np.nan)
                 coverageList.append(np.nan)
                 continue
-            statObjIm = afwMath.makeStatistics(maskedImage.getImage(), maskedImage.getMask(),
-                                               afwMath.MEAN | afwMath.NPOINT | afwMath.VARIANCE, self.sctrl)
+            statObjIm = afwMath.makeStatistics(
+                maskedImage.getImage(),
+                maskedImage.getMask(),
+                afwMath.MEAN | afwMath.NPOINT | afwMath.VARIANCE,
+                self.sctrl,
+            )
             meanVar, meanVarErr = statObjIm.getResult(afwMath.VARIANCE)
             meanBkgdLevel, meanBkgdLevelErr = statObjIm.getResult(afwMath.MEAN)
             npoints, npointsErr = statObjIm.getResult(afwMath.NPOINT)
@@ -384,13 +388,12 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
             meanBkgdLevelList.append(meanBkgdLevel)
             coverageList.append(npoints)
         if not coverageList:
-            raise pipeBase.TaskError(
-                "None of the candidates exist; cannot select best reference exposure")
+            raise pipeBase.TaskError("None of the candidates exist; cannot select best reference exposure")
 
         # Normalize metrics to range from  0 to 1
-        varArr = np.array(varList)/np.nanmax(varList)
-        meanBkgdLevelArr = np.array(meanBkgdLevelList)/np.nanmax(meanBkgdLevelList)
-        coverageArr = np.nanmin(coverageList)/np.array(coverageList)
+        varArr = np.array(varList) / np.nanmax(varList)
+        meanBkgdLevelArr = np.array(meanBkgdLevelList) / np.nanmax(meanBkgdLevelList)
+        coverageArr = np.nanmin(coverageList) / np.array(coverageList)
 
         costFunctionArr = self.config.bestRefWeightVariance * varArr
         costFunctionArr += self.config.bestRefWeightLevel * meanBkgdLevelArr
@@ -399,16 +402,19 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
 
     @timeMethod
     def matchBackgrounds(self, refExposure, sciExposure):
-        """Match science exposure's background level to that of reference exposure.
+        """Match science exposure's background level to that of reference
+        exposure.
 
-        Process creates a difference image of the reference exposure minus the science exposure, and then
-        generates an afw.math.Background object. It assumes (but does not require/check) that the mask plane
-        already has detections set. If detections have not been set/masked, sources will bias the
-        background estimation.
+        Process creates a difference image of the reference exposure minus the
+        science exposure, and then generates an afw.math.Background object. It
+        assumes (but does not require/check) that the mask plane already has
+        detections set. If detections have not been set/masked, sources will
+        bias the background estimation.
 
-        The 'background' of the difference image is smoothed by spline interpolation (by the Background class)
-        or by polynomial interpolation by the Approximate class. This model of difference image
-        is added to the science exposure in memory.
+        The 'background' of the difference image is smoothed by spline
+        interpolation (by the Background class) or by polynomial interpolation
+        by the Approximate class. This model of difference image is added to
+        the science exposure in memory.
 
         Fit diagnostics are also calculated and returned.
 
@@ -428,24 +434,27 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
             ``backgroundModel``
                 An afw.math.Approximate or an afw.math.Background.
             ``fitRMS``
-                RMS of the fit. This is the sqrt(mean(residuals**2)), (`float`).
+                RMS of the fit = sqrt(mean(residuals**2)), (`float`).
             ``matchedMSE``
-                The MSE of the reference and matched images: mean((refImage - matchedSciImage)**2);
-                should be comparable to difference image's mean variance (`float`).
+                The MSE of the reference and matched images:
+                mean((refImage - matchedSciImage)**2);
+                Should be comparable to difference image's mean variance
+                (`float`).
             ``diffImVar``
                 The mean variance of the difference image (`float`).
         """
         if lsstDebug.Info(__name__).savefits:
-            refExposure.writeFits(lsstDebug.Info(__name__).figpath + 'refExposure.fits')
-            sciExposure.writeFits(lsstDebug.Info(__name__).figpath + 'sciExposure.fits')
+            refExposure.writeFits(lsstDebug.Info(__name__).figpath + "refExposure.fits")
+            sciExposure.writeFits(lsstDebug.Info(__name__).figpath + "sciExposure.fits")
 
         # Check Configs for polynomials:
         if self.config.usePolynomial:
             x, y = sciExposure.getDimensions()
             shortSideLength = min(x, y)
             if shortSideLength < self.config.binSize:
-                raise ValueError("%d = config.binSize > shorter dimension = %d" % (self.config.binSize,
-                                                                                   shortSideLength))
+                raise ValueError(
+                    "%d = config.binSize > shorter dimension = %d" % (self.config.binSize, shortSideLength)
+                )
             npoints = shortSideLength // self.config.binSize
             if shortSideLength % self.config.binSize != 0:
                 npoints += 1
@@ -454,12 +463,12 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
                 raise ValueError("%d = config.order > npoints - 1 = %d" % (self.config.order, npoints - 1))
 
         # Check that exposures are same shape
-        if (sciExposure.getDimensions() != refExposure.getDimensions()):
+        if sciExposure.getDimensions() != refExposure.getDimensions():
             wSci, hSci = sciExposure.getDimensions()
             wRef, hRef = refExposure.getDimensions()
             raise RuntimeError(
-                "Exposures are different dimensions. sci:(%i, %i) vs. ref:(%i, %i)" %
-                (wSci, hSci, wRef, hRef))
+                "Exposures are different dimensions. sci:(%i, %i) vs. ref:(%i, %i)" % (wSci, hSci, wRef, hRef)
+            )
 
         statsFlag = getattr(afwMath, self.config.gridStatistic)
         self.sctrl.setNumSigmaClip(self.config.numSigmaClip)
@@ -500,7 +509,7 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
                     self.log.warning("Reducing order to %d", (minNumberGridPoints - 1))
                     order = minNumberGridPoints - 1
                 elif self.config.undersampleStyle == "INCREASE_NXNYSAMPLE":
-                    newBinSize = (minNumberGridPoints*self.config.binSize) // (self.config.order + 1)
+                    newBinSize = (minNumberGridPoints * self.config.binSize) // (self.config.order + 1)
                     bctrl.setNxSample(newBinSize)
                     bctrl.setNySample(newBinSize)
                     bkgd = afwMath.makeBackground(diffMI, bctrl)  # do over
@@ -513,16 +522,18 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
         # Add offset to sciExposure
         try:
             if self.config.usePolynomial:
-                actrl = afwMath.ApproximateControl(afwMath.ApproximateControl.CHEBYSHEV,
-                                                   order, order, weightByInverseVariance)
+                actrl = afwMath.ApproximateControl(
+                    afwMath.ApproximateControl.CHEBYSHEV, order, order, weightByInverseVariance
+                )
                 undersampleStyle = getattr(afwMath, self.config.undersampleStyle)
                 approx = bkgd.getApproximate(actrl, undersampleStyle)
                 bkgdImage = approx.getImage()
             else:
                 bkgdImage = bkgd.getImageF(self.config.interpStyle, self.config.undersampleStyle)
         except Exception as e:
-            raise RuntimeError("Background/Approximation failed to interp image %s: %s" % (
-                self.debugDataIdString, e))
+            raise RuntimeError(
+                "Background/Approximation failed to interp image %s: %s" % (self.debugDataIdString, e)
+            )
 
         sciMI = sciExposure.getMaskedImage()
         sciMI += bkgdImage
@@ -534,22 +545,23 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
         x0, y0 = diffMI.getXY0()
         modelValueArr = np.empty(len(Z))
         for i in range(len(X)):
-            modelValueArr[i] = bkgdImage[int(X[i]-x0), int(Y[i]-y0), afwImage.LOCAL]
+            modelValueArr[i] = bkgdImage[int(X[i] - x0), int(Y[i] - y0), afwImage.LOCAL]
         resids = Z - modelValueArr
-        rms = np.sqrt(np.mean(resids[~np.isnan(resids)]**2))
+        rms = np.sqrt(np.mean(resids[~np.isnan(resids)] ** 2))
 
         if lsstDebug.Info(__name__).savefits:
-            sciExposure.writeFits(lsstDebug.Info(__name__).figpath + 'sciMatchedExposure.fits')
+            sciExposure.writeFits(lsstDebug.Info(__name__).figpath + "sciMatchedExposure.fits")
 
         if lsstDebug.Info(__name__).savefig:
             bbox = geom.Box2D(refExposure.getMaskedImage().getBBox())
             try:
                 self._debugPlot(X, Y, Z, dZ, bkgdImage, bbox, modelValueArr, resids)
             except Exception as e:
-                self.log.warning('Debug plot not generated: %s', e)
+                self.log.warning("Debug plot not generated: %s", e)
 
-        meanVar = afwMath.makeStatistics(diffMI.getVariance(), diffMI.getMask(),
-                                         afwMath.MEANCLIP, self.sctrl).getValue()
+        meanVar = afwMath.makeStatistics(
+            diffMI.getVariance(), diffMI.getMask(), afwMath.MEANCLIP, self.sctrl
+        ).getValue()
 
         diffIm = diffMI.getImage()
         diffIm -= bkgdImage  # diffMI should now have a mean ~ 0
@@ -558,14 +570,25 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
 
         outBkgd = approx if self.config.usePolynomial else bkgd
 
-        # Type `Background` can't use a struct.  Should fitRMS &c. be added to
-        # a log instead of output?
-        # return pipeBase.Struct(
-        #     backgroundModel=afwMath.BackgroundList(outBkgd),
-        #     fitRMS=rms,
-        #     matchedMSE=mse,
-        #     diffImVar=meanVar)
-        return afwMath.BackgroundList(outBkgd,)
+        self.log.info(
+            "Visit %d; difference BG fit RMS=%.1f cts, matched MSE=%.1f cts, mean variance=%.1f cts",
+            sciExposure.getInfo().getVisitInfo().id,
+            rms,
+            mse,
+            meanVar,
+        )
+        # TODO: verify this is correct (borrowed from background.py)
+        return afwMath.BackgroundList(
+            (
+                outBkgd,
+                afwMath.stringToInterpStyle(self.config.interpStyle),
+                afwMath.stringToUndersampleStyle(self.config.undersampleStyle),
+                afwMath.ApproximateControl.UNKNOWN,
+                0,
+                0,
+                False,
+            )
+        )
 
     def _fluxScale(self, exposure):
         """Scales image to nJy flux using photometric calibration.
@@ -610,9 +633,10 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
         resids : `Unknown`
             Z - model.
         """
-        import matplotlib.pyplot as plt
         import matplotlib.colors
+        import matplotlib.pyplot as plt
         from mpl_toolkits.axes_grid1 import ImageGrid
+
         zeroIm = afwImage.MaskedImageF(geom.Box2I(bbox))
         zeroIm += modelImage
         x0, y0 = zeroIm.getXY0()
@@ -627,24 +651,33 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
             rms = np.sqrt(np.mean(resids**2))
             fig = plt.figure(1, (8, 6))
             meanDz = np.mean(dZ)
-            grid = ImageGrid(fig, 111, nrows_ncols=(1, 2), axes_pad=0.1,
-                             share_all=True, label_mode="L", cbar_mode="each",
-                             cbar_size="7%", cbar_pad="2%", cbar_location="top")
-            im = grid[0].imshow(zeroIm.getImage().getArray(),
-                                extent=(x0, x0+dx, y0+dy, y0), norm=norm,
-                                cmap='Spectral')
-            im = grid[0].scatter(X, Y, c=Z, s=15.*meanDz/dZ, edgecolor='none', norm=norm,
-                                 marker='o', cmap='Spectral')
-            im2 = grid[1].scatter(X, Y, c=resids, edgecolor='none', norm=diffnorm,
-                                  marker='s', cmap='seismic')
+            grid = ImageGrid(
+                fig,
+                111,
+                nrows_ncols=(1, 2),
+                axes_pad=0.1,
+                share_all=True,
+                label_mode="L",
+                cbar_mode="each",
+                cbar_size="7%",
+                cbar_pad="2%",
+                cbar_location="top",
+            )
+            im = grid[0].imshow(
+                zeroIm.getImage().getArray(), extent=(x0, x0 + dx, y0 + dy, y0), norm=norm, cmap="Spectral"
+            )
+            im = grid[0].scatter(
+                X, Y, c=Z, s=15.0 * meanDz / dZ, edgecolor="none", norm=norm, marker="o", cmap="Spectral"
+            )
+            im2 = grid[1].scatter(X, Y, c=resids, edgecolor="none", norm=diffnorm, marker="s", cmap="seismic")
             grid.cbar_axes[0].colorbar(im)
             grid.cbar_axes[1].colorbar(im2)
-            grid[0].axis([x0, x0+dx, y0+dy, y0])
-            grid[1].axis([x0, x0+dx, y0+dy, y0])
+            grid[0].axis([x0, x0 + dx, y0 + dy, y0])
+            grid[1].axis([x0, x0 + dx, y0 + dy, y0])
             grid[0].set_xlabel("model and grid")
-            grid[1].set_xlabel("residuals. rms = %0.3f"%(rms))
+            grid[1].set_xlabel("residuals. rms = %0.3f" % (rms))
             if lsstDebug.Info(__name__).savefig:
-                fig.savefig(lsstDebug.Info(__name__).figpath + self.debugDataIdString + '.png')
+                fig.savefig(lsstDebug.Info(__name__).figpath + self.debugDataIdString + ".png")
             if lsstDebug.Info(__name__).display:
                 plt.show()
             plt.clf()
@@ -667,13 +700,16 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
 
         for ymin, ymax in zip(yedges[0:-1], yedges[1:]):
             for xmin, xmax in zip(xedges[0:-1], xedges[1:]):
-                subBBox = geom.Box2I(geom.PointI(int(x0 + xmin), int(y0 + ymin)),
-                                     geom.PointI(int(x0 + xmax-1), int(y0 + ymax-1)))
+                subBBox = geom.Box2I(
+                    geom.PointI(int(x0 + xmin), int(y0 + ymin)),
+                    geom.PointI(int(x0 + xmax - 1), int(y0 + ymax - 1)),
+                )
                 subIm = afwImage.MaskedImageF(maskedImage, subBBox, afwImage.PARENT, False)
-                stats = afwMath.makeStatistics(subIm,
-                                               afwMath.MEAN | afwMath.MEANCLIP | afwMath.MEDIAN
-                                               | afwMath.NPOINT | afwMath.STDEV,
-                                               self.sctrl)
+                stats = afwMath.makeStatistics(
+                    subIm,
+                    afwMath.MEAN | afwMath.MEANCLIP | afwMath.MEDIAN | afwMath.NPOINT | afwMath.STDEV,
+                    self.sctrl,
+                )
                 npoints, _ = stats.getResult(afwMath.NPOINT)
                 if npoints >= 2:
                     stdev, _ = stats.getResult(afwMath.STDEV)
@@ -681,7 +717,7 @@ class MatchBackgroundsTask(pipeBase.PipelineTask):
                         stdev = self.config.gridStdevEpsilon
                     bgX.append(0.5 * (x0 + xmin + x0 + xmax))
                     bgY.append(0.5 * (y0 + ymin + y0 + ymax))
-                    bgdZ.append(stdev/np.sqrt(npoints))
+                    bgdZ.append(stdev / np.sqrt(npoints))
                     est, _ = stats.getResult(statsFlag)
                     bgZ.append(est)
 
