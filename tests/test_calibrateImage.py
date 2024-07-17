@@ -40,7 +40,7 @@ import lsst.meas.extensions.psfex
 import lsst.meas.base
 import lsst.meas.base.tests
 import lsst.pipe.base.testUtils
-from lsst.pipe.tasks.calibrateImage import CalibrateImageTask
+from lsst.pipe.tasks.calibrateImage import CalibrateImageTask, NoPsfStarsToStarsMatchError
 import lsst.utils.tests
 
 
@@ -418,7 +418,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         stars = self.truth_cat[2:].copy(deep=True)
         psf_stars = self.truth_cat[:2].copy(deep=True)
 
-        with self.assertRaisesRegex(RuntimeError, "0 psf_stars out of 2 matched"):
+        with self.assertRaisesRegex(NoPsfStarsToStarsMatchError,
+                                    "No psf stars out of 2 matched 5 calib stars"):
             calibrate._match_psf_stars(psf_stars, stars)
 
 
