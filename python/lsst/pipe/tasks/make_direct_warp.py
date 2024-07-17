@@ -234,7 +234,7 @@ class MakeDirectWarpConfig(
     )
     border = Field[int](
         doc="Pad the patch boundary of the warp by these many pixels, so as to allow for PSF-matching later",
-        default=0,
+        default=256,
     )
     warper = ConfigField(
         doc="Configuration for the warper that warps the image and noise",
