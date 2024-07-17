@@ -146,23 +146,24 @@ class MakePsfMatchedWarpTask(PipelineTask):
             transform = makeWcsPairTransform(row.wcs, direct_warp.wcs)
             warp_psf = WarpedPsf(row.getPsf(), transform)
 
-            if (destination_polygon := row.validPolygon) is None:
+            if (src_polygon := row.validPolygon) is None:
                 # Calculate the polygon for this detector.
                 src_polygon = Polygon(
                     [geom.Point2D(corner) for corner in row.getBBox().getCorners()]
                 )
-                destination_polygon = src_polygon.transform(transform).intersectionSingle(
-                    geom.Box2D(direct_warp.getBBox())
-                )
                 self.log.debug("Polygon for detector=%d is calculated as %s",
                                row["ccd"],
-                               destination_polygon
+                               src_polygon
                                )
             else:
                 self.log.debug("Polygon for detector=%d is read from the input calexp as %s",
                                row["ccd"],
-                               destination_polygon
+                               src_polygon
                                )
+
+            destination_polygon = src_polygon.transform(transform).intersectionSingle(
+                geom.Box2D(direct_warp.getBBox())
+            )
 
             # Compute the minimum possible bounding box that overlaps the CCD.
             # First find the intersection polygon between the per-detector warp
