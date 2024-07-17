@@ -272,7 +272,7 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
         )
 
         warp0 = result0.exposures["direct"]
-        warp1 = result1.warp
+        warp1 = result1.warp[warp0.getBBox()]
 
         self.assertMaskedImagesAlmostEqual(warp0.maskedImage, warp1.maskedImage, rtol=3e-7, atol=6e-6)
 
