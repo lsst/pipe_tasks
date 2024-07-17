@@ -840,13 +840,14 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         if (n_matches := len(matches)) == 0:
             raise NoPsfStarsToStarsMatchError(n_psf_stars=len(psf_stars), n_stars=len(stars))
 
+        self.log.info("%d psf stars out of %d matched %d calib stars", n_matches, len(psf_stars), len(stars))
+
         # Check that no stars sources are listed twice; we already know
         # that each match has a unique psf_stars id, due to using as the key
         # in best above.
         n_unique = len(set(m[1].getId() for m in matches))
         if n_unique != n_matches:
-            self.log.warning("%d psf_stars matched only %d stars; ",
-                             n_matches, n_unique)
+            self.log.warning("%d psf_stars matched only %d stars", n_matches, n_unique)
 
         # The indices of the IDs, so we can update the flag fields as arrays.
         idx_psf_stars = np.searchsorted(psf_stars["id"], ids[0])
