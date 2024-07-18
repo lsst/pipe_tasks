@@ -47,7 +47,7 @@ from lsst.pipe.base import (
 )
 from lsst.pipe.base.connectionTypes import Input, Output
 from lsst.pipe.tasks.coaddBase import makeSkyInfo
-from lsst.skymap.base import BaseSkyMap
+from lsst.skymap import BaseSkyMap
 from lsst.utils.timer import timeMethod
 
 if TYPE_CHECKING:
