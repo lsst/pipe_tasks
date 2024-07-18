@@ -345,7 +345,14 @@ class MakeDirectWarpTask(PipelineTask):
             cornerPosList = Box2D(sky_info.bbox).getCorners()
             coordList = [sky_info.wcs.pixelToSky(pos) for pos in cornerPosList]
 
-            goodIndices = self.select.run(**inputs, coordList=coordList, dataIds=dataIdList)
+            goodIndices = self.select.run(
+                **inputs,
+                bboxList=bboxList,
+                wcsList=wcsList,
+                visitSummary=visit_summary,
+                coordList=coordList,
+                dataIds=dataIdList,
+            )
             inputs = self._filterInputs(indices=goodIndices, inputs=inputs)
 
             # inputs = self.select.run(inputs, sky_info, visit_summary)
