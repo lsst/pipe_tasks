@@ -194,7 +194,7 @@ class MakeDirectWarpConfig(
     doRevertOldBackground = Field[bool](
         doc="Revert the old backgrounds from the `background_revert_list` "
             "connection?",
-        default=True,
+        default=False,
     )
     doApplyNewBackground = Field[bool](
         doc="Apply the new backgrounds from the `background_apply_list` "
@@ -209,7 +209,7 @@ class MakeDirectWarpConfig(
     )
     doSelectPreWarp = Field[bool](
         doc="Select ccds before warping?",
-        default=False,
+        default=True,
     )
     select = ConfigurableField(
         doc="Image selection subtask.",
@@ -217,7 +217,7 @@ class MakeDirectWarpConfig(
     )
     doPreWarpInterpolation = Field[bool](
         doc="Interpolate over bad pixels before warping?",
-        default=True,
+        default=False,
     )
     preWarpInterpolation = ConfigurableField(
         doc="Interpolation task to use for pre-warping interpolation",
@@ -234,7 +234,7 @@ class MakeDirectWarpConfig(
     )
     border = Field[int](
         doc="Pad the patch boundary of the warp by these many pixels, so as to allow for PSF-matching later",
-        default=0,
+        default=256,
     )
     warper = ConfigField(
         doc="Configuration for the warper that warps the image and noise",
