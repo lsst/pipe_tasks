@@ -497,6 +497,7 @@ class MakeDirectWarpTask(PipelineTask):
         )
 
         final_warp.setPsf(coaddPsf)
+        final_warp.setPhotoCalib(warpedExposure.getPhotoCalib())
         final_warp.setFilter(calexp.getFilter())
         final_warp.getInfo().setVisitInfo(calexp.getInfo().getVisitInfo())
 
