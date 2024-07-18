@@ -209,7 +209,7 @@ class MakeDirectWarpConfig(
     )
     doSelectPreWarp = Field[bool](
         doc="Select ccds before warping?",
-        default=False,
+        default=True,
     )
     select = ConfigurableField(
         doc="Image selection subtask.",
@@ -217,7 +217,7 @@ class MakeDirectWarpConfig(
     )
     doPreWarpInterpolation = Field[bool](
         doc="Interpolate over bad pixels before warping?",
-        default=True,
+        default=False,
     )
     preWarpInterpolation = ConfigurableField(
         doc="Interpolation task to use for pre-warping interpolation",
