@@ -221,6 +221,9 @@ class MakePsfMatchedWarpTask(PipelineTask):
             # Set pixels outside the intersection polygon to NO_DATA.
             temp_psf_matched.maskedImage[bbox].mask.array |= (~ccd_mask_array) * bit_mask
 
+            # Clip the bbox to the PSF-matched warp bounding box.
+            bbox.clip(exposure_psf_matched.getBBox())
+
             num_good_pixels = copyGoodPixels(
                 exposure_psf_matched.maskedImage[bbox],
                 temp_psf_matched.maskedImage[bbox],
