@@ -363,7 +363,7 @@ class SubtractBrightStarsTask(PipelineTask):
                 discardNanFluxObjects=False,
                 forceFindFlux=True,
             )
-
+            self.metadata["subtractedStarCount"] = len(inputBrightStarStamps) + len(brightStarStamps)
             self.psf_annular_fluxes = self.findPsfAnnularFluxes(brightStarStamps)
             subtractor, invImages = self.buildSubtractor(
                 brightStarStamps, subtractor, invImages, multipleAnnuli=True
@@ -569,6 +569,7 @@ class SubtractBrightStarsTask(PipelineTask):
                     zip(self.warpOutputs.warpedStars, self.warpOutputs.warpTransforms)
                 )
             ]
+            self.metadata["allStarCount"] = len(inputBrightStarStamps) + len(brightStarList)
         else:
             brightStarList = []
         return brightStarList
