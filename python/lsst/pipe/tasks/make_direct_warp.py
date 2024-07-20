@@ -199,7 +199,7 @@ class MakeDirectWarpConfig(
     doApplyNewBackground = Field[bool](
         doc="Apply the new backgrounds from the `background_apply_list` "
             "connection?",
-        default=False,
+        default=True,
     )
     useVisitSummaryPsf = Field[bool](
         doc="If True, use the PSF model and aperture corrections from the "
