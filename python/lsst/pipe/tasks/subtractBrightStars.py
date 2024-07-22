@@ -369,6 +369,7 @@ class SubtractBrightStarsTask(PipelineTask):
                 brightStarStamps, subtractor, invImages, multipleAnnuli=True
             )
         else:
+            self.metadata["subtractedStarCount"] = len(inputBrightStarStamps)
             badStamps = []
         badStamps = BrightStarStamps(badStamps)
 
@@ -572,6 +573,7 @@ class SubtractBrightStarsTask(PipelineTask):
             self.metadata["allStarCount"] = len(inputBrightStarStamps) + len(brightStarList)
         else:
             brightStarList = []
+            self.metadata["allStarCount"] = len(inputBrightStarStamps)
         return brightStarList
 
     def initAnnulusImage(self):
