@@ -684,7 +684,7 @@ class MakeDirectWarpTask(PipelineTask):
                 raise RuntimeError(f"Unexpectedly incomplete visit_summary: {detector=} is missing.")
 
             if photo_calib := row.getPhotoCalib():
-                exp.setPhotoCalib(photo_calib)
+                exp.photoCalib = photo_calib
             else:
                 logger.warning(
                     "No photometric calibration found in visit summary for detector = %s.",
@@ -711,7 +711,7 @@ class MakeDirectWarpTask(PipelineTask):
 
         # Calibrate the (masked) image.
         # This should likely happen even if visit_summary is None.
-        photo_calib = exp.getPhotoCalib()
+        photo_calib = exp.photoCalib
         exp.maskedImage = photo_calib.calibrateImage(
             exp.maskedImage, includeScaleUncertainty=includeScaleUncertainty
         )
