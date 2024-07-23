@@ -468,7 +468,7 @@ class MakeDirectWarpTask(PipelineTask):
             )
 
             if final_warp.photoCalib is None and nGood > 0:
-                final_warp.photoCalib = warpedExposure.photoCalib
+                final_warp.setPhotoCalib(warpedExposure.photoCalib)
 
             ccdId = self.config.idGenerator.apply(dataId).catalog_id
             inputRecorder.addCalExp(calexp, ccdId, nGood)
@@ -684,7 +684,7 @@ class MakeDirectWarpTask(PipelineTask):
                 raise RuntimeError(f"Unexpectedly incomplete visit_summary: {detector=} is missing.")
 
             if photo_calib := row.getPhotoCalib():
-                exp.photoCalib = photo_calib
+                exp.setPhotoCalib(photo_calib)
             else:
                 logger.warning(
                     "No photometric calibration found in visit summary for detector = %s.",
