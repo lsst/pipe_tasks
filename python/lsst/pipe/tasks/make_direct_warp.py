@@ -483,9 +483,12 @@ class MakeDirectWarpTask(PipelineTask):
             masked_fraction_warp = self.maskedFractionWarper.warpExposure(
                 target_wcs, masked_fraction_exp, destBBox=target_bbox
             )
+
+            masked_fraction_warp.maskedImage *= ratio
+
             copyGoodPixels(
                 final_masked_fraction_warp.maskedImage,
-                masked_fraction_warp.maskedImage * ratio,
+                masked_fraction_warp.maskedImage,
                 final_masked_fraction_warp.mask.getPlaneBitMask(["NO_DATA"]),
             )
 
@@ -501,9 +504,12 @@ class MakeDirectWarpTask(PipelineTask):
                     visit_summary,
                     destBBox=target_bbox,
                 )
+
+                warpedNoise.maskedImage *= ratio
+
                 copyGoodPixels(
                     final_noise_warps[n_noise].maskedImage,
-                    warpedNoise.maskedImage * ratio,
+                    warpedNoise.maskedImage,
                     final_noise_warps[n_noise].mask.getPlaneBitMask(["NO_DATA"]),
                 )
 
