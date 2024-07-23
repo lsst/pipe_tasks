@@ -450,12 +450,26 @@ class MakeDirectWarpTask(PipelineTask):
             )
             warpedExposure.setPsf(psfWarped)
 
+            if final_warp.photoCalib is not None:
+                ratio = (
+                    final_warp.photoCalib.getInstFluxAtZeroMagnitude()
+                    /warpedExposure.photoCalib.getInstFluxAtZeroMagnitude()
+                )
+            else:
+                ratio = 1
+
+            warpedExposure.maskedImage *= ratio
+
             # Accumulate the partial warps in an online fashion.
             nGood = copyGoodPixels(
                 final_warp.maskedImage,
                 warpedExposure.maskedImage,
                 final_warp.mask.getPlaneBitMask(["NO_DATA"]),
             )
+
+            if final_warp.photoCalib is None and nGood > 0:
+                final_warp.photoCalib = warpedExposure.photoCalib
+
             ccdId = self.config.idGenerator.apply(dataId).catalog_id
             inputRecorder.addCalExp(calexp, ccdId, nGood)
             totalGoodPixels += nGood
@@ -471,7 +485,7 @@ class MakeDirectWarpTask(PipelineTask):
             )
             copyGoodPixels(
                 final_masked_fraction_warp.maskedImage,
-                masked_fraction_warp.maskedImage,
+                masked_fraction_warp.maskedImage * ratio,
                 final_masked_fraction_warp.mask.getPlaneBitMask(["NO_DATA"]),
             )
 
@@ -489,7 +503,7 @@ class MakeDirectWarpTask(PipelineTask):
                 )
                 copyGoodPixels(
                     final_noise_warps[n_noise].maskedImage,
-                    warpedNoise.maskedImage,
+                    warpedNoise.maskedImage * ratio,
                     final_noise_warps[n_noise].mask.getPlaneBitMask(["NO_DATA"]),
                 )
 
@@ -504,7 +518,6 @@ class MakeDirectWarpTask(PipelineTask):
         )
 
         final_warp.setPsf(coaddPsf)
-        final_warp.setPhotoCalib(warpedExposure.getPhotoCalib())
         final_warp.setFilter(calexp.getFilter())
         final_warp.getInfo().setVisitInfo(calexp.getInfo().getVisitInfo())
 
