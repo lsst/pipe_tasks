@@ -194,6 +194,11 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         target=measurePsf.MeasurePsfTask,
         doc="Task to measure the psf on bright sources."
     )
+    psf_normalized_calibration_flux = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.NormalizedCalibrationFluxTask,
+        doc="Task to normalize the calibration flux (e.g. compensated tophats) "
+            "for the bright stars used for psf estimation.",
+    )
 
     # TODO DM-39203: we can remove aperture correction from this task once we are
     # using the shape-based star/galaxy code.
@@ -218,6 +223,11 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     star_measurement = pexConfig.ConfigurableField(
         target=lsst.meas.base.SingleFrameMeasurementTask,
         doc="Task to measure stars to return in the output catalog."
+    )
+    star_normalized_calibration_flux = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.NormalizedCalibrationFluxTask,
+        doc="Task to apply the normalization for calibration fluxes (e.g. compensated tophats) "
+            "for the final output star catalog.",
     )
     star_apply_aperture_correction = pexConfig.ConfigurableField(
         target=lsst.meas.base.ApplyApCorrTask,
@@ -294,10 +304,12 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
                                                "base_CircularApertureFlux",
                                                "base_GaussianFlux",
                                                "base_PsfFlux",
+                                               "base_CompensatedTophatFlux",
                                                ]
         self.psf_source_measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
         # Only measure apertures we need for PSF measurement.
         self.psf_source_measurement.plugins["base_CircularApertureFlux"].radii = [12.0]
+        self.psf_source_measurement.plugins["base_CompensatedTophatFlux"].apertures = [12]
         # TODO DM-40843: Remove this line once this is the psfex default.
         self.psf_measure_psf.psfDeterminer["psfex"].photometricFluxField = \
             "base_CircularApertureFlux_12_0_instFlux"
@@ -320,11 +332,18 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
                                          "base_PsfFlux",
                                          "base_CircularApertureFlux",
                                          "base_ClassificationSizeExtendedness",
+                                         "base_CompensatedTophatFlux",
                                          ]
         self.star_measurement.slots.psfShape = "ext_shapeHSM_HsmPsfMoments"
         self.star_measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
         # Only measure the apertures we need for star selection.
         self.star_measurement.plugins["base_CircularApertureFlux"].radii = [12.0]
+        self.star_measurement.plugins["base_CompensatedTophatFlux"].apertures = [12]
+
+        # We measure and apply the normalization aperture correction with the
+        # psf_normalized_calibration_flux task, and we only apply the normalization
+        # aperture correction for the full list of stars.
+        self.star_normalized_calibration_flux.do_measure_ap_corr = False
 
         # Select isolated stars with reliable measurements and no bad flags.
         self.star_selector["science"].doFlags = True
@@ -351,6 +370,25 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         # TODO: These should both be changed to calib_psf_used with DM-41640.
         self.compute_summary_stats.starSelection = "calib_photometry_used"
         self.compute_summary_stats.starSelector.flags.good = ["calib_photometry_used"]
+
+    def validate(self):
+        super().validate()
+
+        # Ensure that the normalization calibration flux tasks
+        # are configured correctly.
+        if not self.psf_normalized_calibration_flux.do_measure_ap_corr:
+            msg = ("psf_normalized_calibration_flux task must be configured with do_measure_ap_corr=True "
+                   "or else the normalization and calibration flux will not be properly measured.")
+            raise pexConfig.FieldValidationError(
+                CalibrateImageConfig.psf_normalized_calibration_flux, self, msg,
+            )
+        if self.star_normalized_calibration_flux.do_measure_ap_corr:
+            msg = ("star_normalized_calibration_flux task must be configured with do_measure_ap_corr=False "
+                   "to apply the previously measured normalization to the full catalog of calibration "
+                   "fluxes.")
+            raise pexConfig.FieldValidationError(
+                CalibrateImageConfig.star_normalized_calibration_flux, self, msg,
+            )
 
 
 class CalibrateImageTask(pipeBase.PipelineTask):
@@ -379,6 +417,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.makeSubtask("psf_detection", schema=self.psf_schema)
         self.makeSubtask("psf_source_measurement", schema=self.psf_schema)
         self.makeSubtask("psf_measure_psf", schema=self.psf_schema)
+        self.makeSubtask("psf_normalized_calibration_flux", schema=self.psf_schema)
 
         self.makeSubtask("measure_aperture_correction", schema=self.psf_schema)
 
@@ -401,6 +440,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.makeSubtask("star_sky_sources", schema=initial_stars_schema)
         self.makeSubtask("star_deblend", schema=initial_stars_schema)
         self.makeSubtask("star_measurement", schema=initial_stars_schema)
+        self.makeSubtask("star_normalized_calibration_flux", schema=initial_stars_schema)
+
         self.makeSubtask("star_apply_aperture_correction", schema=initial_stars_schema)
         self.makeSubtask("star_catalog_calculation", schema=initial_stars_schema)
         self.makeSubtask("star_set_primary_flags", schema=initial_stars_schema, isSingleFrame=True)
@@ -521,9 +562,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         result.psf_stars_footprints, result.background, candidates = self._compute_psf(result.exposure,
                                                                                        id_generator)
-        result.psf_stars = result.psf_stars_footprints.asAstropy()
+        self._measure_aperture_correction(result.exposure, result.psf_stars_footprints)
 
-        self._measure_aperture_correction(result.exposure, result.psf_stars)
+        result.psf_stars = result.psf_stars_footprints.asAstropy()
 
         result.stars_footprints = self._find_stars(result.exposure, result.background, id_generator)
         self._match_psf_stars(result.psf_stars_footprints, result.stars_footprints)
@@ -654,12 +695,17 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # Final measurement with the CRs removed.
         self.psf_source_measurement.run(detections.sources, exposure)
 
-        # PSF is set on exposure; only return candidates for optional saving.
+        # PSF is set on exposure; candidates are returned to use for
+        # calibration flux normalization and aperture corrections.
         return detections.sources, background, psf_result.cellSet
 
     def _measure_aperture_correction(self, exposure, bright_sources):
         """Measure and set the ApCorrMap on the Exposure, using
         previously-measured bright sources.
+
+        This function first normalizes the calibration flux and then
+        the full set of aperture corrections are measured relative
+        to this normalized calibration flux.
 
         Parameters
         ----------
@@ -670,8 +716,18 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             necessary for point source determination for the aperture correction
             calculation.
         """
-        result = self.measure_aperture_correction.run(exposure, bright_sources)
-        exposure.setApCorrMap(result.apCorrMap)
+        norm_ap_corr_map = self.psf_normalized_calibration_flux.run(
+            exposure=exposure,
+            catalog=bright_sources,
+        ).ap_corr_map
+
+        ap_corr_map = self.measure_aperture_correction.run(exposure, bright_sources).apCorrMap
+
+        # Need to merge the aperture correction map from the normalization.
+        for key in norm_ap_corr_map:
+            ap_corr_map[key] = norm_ap_corr_map[key]
+
+        exposure.info.setApCorrMap(ap_corr_map)
 
     def _find_stars(self, exposure, background, id_generator):
         """Detect stars on an exposure that has a PSF model, and measure their
@@ -710,7 +766,11 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         # Measure everything, and use those results to select only stars.
         self.star_measurement.run(sources, exposure)
-        self.star_apply_aperture_correction.run(sources, exposure.info.getApCorrMap())
+        # Run the normalization calibration flux task to apply the
+        # normalization correction to create normalized
+        # calibration fluxes.
+        self.star_normalized_calibration_flux.run(exposure=exposure, catalog=sources)
+        self.star_apply_aperture_correction.run(sources, exposure.apCorrMap)
         self.star_catalog_calculation.run(sources)
         self.star_set_primary_flags.run(sources)
 

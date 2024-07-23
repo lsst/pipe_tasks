@@ -167,8 +167,10 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.assertTrue(np.isfinite(result.stars["coord_ra"]).all())
 
         # Returned photoCalib should be the applied value, not the ==1 one on the exposure.
+        # Note that this is very approximate because we are basing this comparison
+        # on just 2-3 stars.
         self.assertFloatsAlmostEqual(result.applied_photo_calib.getCalibrationMean(),
-                                     self.photo_calib, rtol=2e-3)
+                                     self.photo_calib, rtol=1e-2)
         # Should have calibrated flux/magnitudes in the afw and astropy catalogs
         self.assertIn("slot_PsfFlux_flux", result.stars_footprints.schema)
         self.assertIn("slot_PsfFlux_mag", result.stars_footprints.schema)
@@ -283,6 +285,9 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.assertIsNone(self.exposure.apCorrMap)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
         self.assertIsInstance(self.exposure.apCorrMap, afwImage.ApCorrMap)
+        # We know that there are 2 fields from the normalization, plus more from
+        # other configured plugins.
+        self.assertGreater(len(self.exposure.apCorrMap), 2)
 
     def test_find_stars(self):
         """Test that _find_stars() correctly identifies the S/N>10 stars
@@ -346,10 +351,10 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         # NOTE: With this test data, PhotoCalTask returns calibrationErr==0,
         # so we can't check that the photoCal error has been set.
-        self.assertFloatsAlmostEqual(photoCalib.getCalibrationMean(), self.photo_calib, rtol=2e-3)
+        self.assertFloatsAlmostEqual(photoCalib.getCalibrationMean(), self.photo_calib, rtol=1e-2)
         # The exposure should be calibrated by the applied photoCalib.
         self.assertFloatsAlmostEqual(self.exposure.image.array/self.truth_exposure.image.array,
-                                     self.photo_calib, rtol=2e-3)
+                                     self.photo_calib, rtol=1e-2)
         # PhotoCalib on the exposure must be identically 1.
         self.assertEqual(self.exposure.photoCalib.getCalibrationMean(), 1.0)
 
