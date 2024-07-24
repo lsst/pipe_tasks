@@ -312,7 +312,7 @@ class MakeDirectWarpTask(PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         # Docstring inherited.
 
-        detectorOrder = [ref.datasetRef.dataId['detector'] for ref in inputRefs.calExpList]
+        detectorOrder = [ref.datasetRef.dataId['detector'] for ref in inputRefs.calexp_list]
         detectorOrder.sort()
         inputRefs = reorderRefs(inputRefs, detectorOrder, dataIdKey='detector')
 
