@@ -168,6 +168,13 @@ class MakePsfMatchedWarpTask(PipelineTask):
         bit_mask = direct_warp.mask.getPlaneBitMask("NO_DATA")
         total_good_pixels = 0  # Total number of pixels copied to output.
 
+        fluxRatio = {
+            41: 1.0,
+            42: 1.0072830862435564,
+            49: 1.0004500757508954,
+            50: 1.0021470969288642,
+            58: 0.9867788644380154,
+        }
         for row in direct_warp.info.getCoaddInputs().ccds:
             transform = makeWcsPairTransform(row.wcs, direct_warp.wcs)
             warp_psf = WarpedPsf(row.getPsf(), transform)
@@ -223,6 +230,8 @@ class MakePsfMatchedWarpTask(PipelineTask):
 
             # Clip the bbox to the PSF-matched warp bounding box.
             bbox.clip(exposure_psf_matched.getBBox())
+
+            temp_psf_matched.maskedImage *= fluxRatio[row["ccd"]]
 
             num_good_pixels = copyGoodPixels(
                 exposure_psf_matched.maskedImage[bbox],

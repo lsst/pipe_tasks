@@ -460,10 +460,11 @@ class MakeDirectWarpTask(PipelineTask):
                     final_warp.photoCalib.getInstFluxAtZeroMagnitude()
                     /warpedExposure.photoCalib.getInstFluxAtZeroMagnitude()
                 )
+                ratio = 1
             else:
                 ratio = 1
 
-            self.log.info("Scaling exposure %s by %f", dataId, ratio)
+            self.log.debug("Scaling exposure %s by %f", dataId, ratio)
             warpedExposure.maskedImage *= ratio
 
             # Accumulate the partial warps in an online fashion.
