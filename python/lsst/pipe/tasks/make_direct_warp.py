@@ -463,6 +463,7 @@ class MakeDirectWarpTask(PipelineTask):
             else:
                 ratio = 1
 
+            self.log.info("Scaling exposure %s by %f", dataId, ratio)
             warpedExposure.maskedImage *= ratio
 
             # Accumulate the partial warps in an online fashion.
