@@ -48,7 +48,8 @@ from lsst.pipe.base import (
     Struct,
 )
 from lsst.pipe.base.connectionTypes import Input, Output
-from lsst.pipe.tasks.coaddBase import makeSkyInfo
+from lsst.pipe.tasks.coaddBase import makeSkyInfo, reorderAndPadList
+from lsst.pipe.tasks.makeWarp import reorderRefs
 from lsst.pipe.tasks.selectImages import PsfWcsSelectImagesTask
 from lsst.skymap import BaseSkyMap
 
@@ -310,6 +311,10 @@ class MakeDirectWarpTask(PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         # Docstring inherited.
+
+        detectorOrder = [ref.datasetRef.dataId['detector'] for ref in inputRefs.calExpList]
+        detectorOrder.sort()
+        inputRefs = reorderRefs(inputRefs, detectorOrder, dataIdKey='detector')
 
         # Read in all inputs.
         inputs = butlerQC.get(inputRefs)
