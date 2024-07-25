@@ -231,7 +231,7 @@ class MakePsfMatchedWarpTask(PipelineTask):
             # Clip the bbox to the PSF-matched warp bounding box.
             bbox.clip(exposure_psf_matched.getBBox())
 
-            temp_psf_matched.maskedImage *= fluxRatio[row["ccd"]]
+            # temp_psf_matched.maskedImage *= fluxRatio[row["ccd"]]
 
             num_good_pixels = copyGoodPixels(
                 exposure_psf_matched.maskedImage[bbox],

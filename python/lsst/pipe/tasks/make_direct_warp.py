@@ -460,7 +460,6 @@ class MakeDirectWarpTask(PipelineTask):
                     final_warp.photoCalib.getInstFluxAtZeroMagnitude()
                     /warpedExposure.photoCalib.getInstFluxAtZeroMagnitude()
                 )
-                ratio = 1
             else:
                 ratio = 1
 
