@@ -355,6 +355,14 @@ class MakeWarpTask(CoaddBaseTask):
                     if exposure is None:
                         continue
                     warp = warps[warpType]
+
+                    if self.config.doWritePartials:
+                        # Write out the partial warps
+                        exposure.writeFits(
+                            "/sdf/home/k/kannawad/DM-44232/"
+                            f"old_{warpType}_{dataId['visit']}_{dataId['detector']}.fits"
+                        )
+
                     if didSetMetadata[warpType]:
                         mimg = exposure.getMaskedImage()
                         ratio = (warp.getPhotoCalib().getInstFluxAtZeroMagnitude()
@@ -363,12 +371,6 @@ class MakeWarpTask(CoaddBaseTask):
                         mimg *= (warp.getPhotoCalib().getInstFluxAtZeroMagnitude()
                                  / exposure.getPhotoCalib().getInstFluxAtZeroMagnitude())
                         del mimg
-                    if self.config.doWritePartials:
-                        # Write out the partial warps
-                        exposure.writeFits(
-                            "/sdf/home/k/kannawad/DM-44232/"
-                            f"old_{warpType}_{dataId['visit']}_{dataId['detector']}.fits"
-                        )
 
                     numGoodPix[warpType] = coaddUtils.copyGoodPixels(
                         warp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask())

@@ -459,6 +459,12 @@ class MakeDirectWarpTask(PipelineTask):
             )
             warpedExposure.setPsf(psfWarped)
 
+            if self.config.doWritePartials:
+                warpedExposure.writeFits(
+                    "/sdf/home/k/kannawad/DM-44232/"
+                    f"new_directWarp_{dataId['visit']}_{dataId['detector']}.fits"
+                )
+
             if final_warp.photoCalib is not None:
                 ratio = (
                     final_warp.photoCalib.getInstFluxAtZeroMagnitude()
@@ -469,12 +475,6 @@ class MakeDirectWarpTask(PipelineTask):
 
             self.log.info("Scaling exposure %s by %f", dataId, ratio)
             warpedExposure.maskedImage *= ratio
-
-            if self.config.doWritePartials:
-                warpedExposure.writeFits(
-                    "/sdf/home/k/kannawad/DM-44232/"
-                    f"new_directWarp_{dataId['visit']}_{dataId['detector']}.fits"
-                )
 
             # Accumulate the partial warps in an online fashion.
             nGood = copyGoodPixels(
