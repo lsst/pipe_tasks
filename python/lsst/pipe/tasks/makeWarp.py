@@ -362,7 +362,7 @@ class MakeWarpTask(CoaddBaseTask):
                         del mimg
                     if self.config.doWritePartials:
                         # Write out the partial warps
-                        warp.writeFits(
+                        exposure.writeFits(
                             "/sdf/home/k/kannawad/DM-44232/"
                             f"old_{warpType}_{dataId['visit']}_{dataId['detector']}.fits"
                         )
