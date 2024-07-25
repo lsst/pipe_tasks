@@ -500,8 +500,6 @@ class MakeDirectWarpTask(PipelineTask):
                 target_wcs, masked_fraction_exp, destBBox=target_bbox
             )
 
-            masked_fraction_warp.maskedImage *= ratio
-
             copyGoodPixels(
                 final_masked_fraction_warp.maskedImage,
                 masked_fraction_warp.maskedImage,
