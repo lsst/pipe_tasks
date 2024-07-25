@@ -250,6 +250,10 @@ class MakeDirectWarpConfig(
         dtype=CoaddPsfConfig,
     )
     idGenerator = DetectorVisitIdGeneratorConfig.make_field()
+    doWritePartials = Field[bool](
+        doc="Write partial warps to disk?",
+        default=False,
+    )
 
     # Use bgSubtracted and doApplySkyCorr to match the old MakeWarpConfig,
     # but as properties instead of config fields.
@@ -465,6 +469,12 @@ class MakeDirectWarpTask(PipelineTask):
 
             self.log.debug("Scaling exposure %s by %f", dataId, ratio)
             warpedExposure.maskedImage *= ratio
+
+            if self.config.doWritePartials:
+                warpedExposure.writeFits(
+                    "/sdf/home/k/kannawad/DM-44232/"
+                    f"new_directWarp_{dataId['visit']}_{dataId['detector']}.fits"
+                )
 
             # Accumulate the partial warps in an online fashion.
             nGood = copyGoodPixels(

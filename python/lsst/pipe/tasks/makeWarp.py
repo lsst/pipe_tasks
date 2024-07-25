@@ -165,6 +165,11 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
         doc="Apply sky correction?",
     )
     idGenerator = DetectorVisitIdGeneratorConfig.make_field()
+    doWritePartials = pexConfig.Field(
+        doc="Write out partial warps",
+        dtype=bool,
+        default=False,
+    )
 
     def validate(self):
         CoaddBaseTask.ConfigClass.validate(self)
@@ -355,6 +360,13 @@ class MakeWarpTask(CoaddBaseTask):
                         mimg *= (warp.getPhotoCalib().getInstFluxAtZeroMagnitude()
                                  / exposure.getPhotoCalib().getInstFluxAtZeroMagnitude())
                         del mimg
+                    if self.config.doWritePartials:
+                        # Write out the partial warps
+                        warp.writeFits(
+                            "/sdf/home/k/kannawad/DM-44232/"
+                            f"old_{warpType}_{dataId['visit']}_{dataId['detector']}.fits"
+                        )
+
                     numGoodPix[warpType] = coaddUtils.copyGoodPixels(
                         warp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask())
                     totGoodPix[warpType] += numGoodPix[warpType]

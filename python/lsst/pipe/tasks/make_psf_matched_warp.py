@@ -38,7 +38,7 @@ from lsst.afw.geom import Polygon, makeWcsPairTransform
 from lsst.coadd.utils import copyGoodPixels
 from lsst.ip.diffim import ModelPsfMatchTask
 from lsst.meas.algorithms import GaussianPsfFactory, WarpedPsf
-from lsst.pex.config import ConfigurableField
+from lsst.pex.config import ConfigurableField, Field
 from lsst.pipe.base import (
     PipelineTask,
     PipelineTaskConfig,
@@ -97,6 +97,10 @@ class MakePsfMatchedWarpConfig(
     psfMatch = ConfigurableField(
         target=ModelPsfMatchTask,
         doc="Task to warp and PSF-match calexp",
+    )
+    doWritePartials = Field[bool](
+        default=False,
+        doc="Write the intermediate PSF-matched warps for each CCD",
     )
 
     def setDefaults(self):
@@ -238,6 +242,12 @@ class MakePsfMatchedWarpTask(PipelineTask):
                 temp_psf_matched.maskedImage[bbox],
                 bit_mask,
             )
+
+            if self.config.doWritePartials:
+                temp_psf_matched.writeFits(
+                    "/sdf/home/k/kannawad/DM-44232/"
+                    f"new_psfMatchedWarp_{row['visit']}_{row['ccd']}.fits"
+                )
 
             del temp_psf_matched
 
