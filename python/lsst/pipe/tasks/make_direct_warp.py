@@ -450,12 +450,27 @@ class MakeDirectWarpTask(PipelineTask):
             )
             warpedExposure.setPsf(psfWarped)
 
+            if final_warp.photoCalib is not None and warpedExposure.photoCalib is not None:
+                ratio = (
+                    final_warp.photoCalib.getInstFluxAtZeroMagnitude()
+                    / warpedExposure.photoCalib.getInstFluxAtZeroMagnitude()
+                )
+            else:
+                ratio = 1
+
+            self.log.debug("Scaling exposure %s by %f", dataId, ratio)
+            warpedExposure.maskedImage *= ratio
+
             # Accumulate the partial warps in an online fashion.
             nGood = copyGoodPixels(
                 final_warp.maskedImage,
                 warpedExposure.maskedImage,
                 final_warp.mask.getPlaneBitMask(["NO_DATA"]),
             )
+
+            if final_warp.photoCalib is None and nGood > 0:
+                final_warp.setPhotoCalib(warpedExposure.photoCalib)
+
             ccdId = self.config.idGenerator.apply(dataId).catalog_id
             inputRecorder.addCalExp(calexp, ccdId, nGood)
             totalGoodPixels += nGood
@@ -469,6 +484,7 @@ class MakeDirectWarpTask(PipelineTask):
             masked_fraction_warp = self.maskedFractionWarper.warpExposure(
                 target_wcs, masked_fraction_exp, destBBox=target_bbox
             )
+
             copyGoodPixels(
                 final_masked_fraction_warp.maskedImage,
                 masked_fraction_warp.maskedImage,
@@ -487,6 +503,9 @@ class MakeDirectWarpTask(PipelineTask):
                     visit_summary,
                     destBBox=target_bbox,
                 )
+
+                warpedNoise.maskedImage *= ratio
+
                 copyGoodPixels(
                     final_noise_warps[n_noise].maskedImage,
                     warpedNoise.maskedImage,
@@ -700,7 +719,7 @@ class MakeDirectWarpTask(PipelineTask):
 
         # Calibrate the (masked) image.
         # This should likely happen even if visit_summary is None.
-        photo_calib = exp.getPhotoCalib()
+        photo_calib = exp.photoCalib
         exp.maskedImage = photo_calib.calibrateImage(
             exp.maskedImage, includeScaleUncertainty=includeScaleUncertainty
         )
