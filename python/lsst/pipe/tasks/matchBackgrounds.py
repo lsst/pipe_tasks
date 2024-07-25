@@ -23,7 +23,7 @@ __all__ = ["MatchBackgroundsConnections", "MatchBackgroundsConfig", "MatchBackgr
 
 import lsstDebug
 import numpy as np
-from lsst.afw.image import LOCAL, PARENT, Mask, MaskedImageF
+from lsst.afw.image import LOCAL, PARENT, ImageF, Mask, MaskedImageF
 from lsst.afw.math import (
     MEAN,
     MEANCLIP,
@@ -250,12 +250,11 @@ class MatchBackgroundsTask(PipelineTask):
             raise TaskError("No exposures to match")
 
         # Define a reference warp; 'warps' is modified in-place to exclude it
-        refWarp = self._defineWarps(warps=warps, refWarpVisit=self.config.refWarpVisit)
-        breakpoint()
+        refWarp, refInd = self._defineWarps(warps=warps, refWarpVisit=self.config.refWarpVisit)
 
         # Images must be scaled to a common ZP
         # Converting everything to nJy to accomplish this
-        refExposure = refMatchedWarp.get()
+        refExposure = refWarp.get()
         refMI = self._fluxScale(refExposure)  # Also modifies refExposure
 
         # TODO: figure out what this was creating and why
@@ -270,7 +269,7 @@ class MatchBackgroundsTask(PipelineTask):
 
         # TODO: refactor below to construct blank bg model
         im = refExposure.getMaskedImage()
-        blankIm = im.Factory(im, True)  # Don't do this
+        blankIm = im.Factory(im, True)
         blankIm.image.array *= 0
 
         width = blankIm.getWidth()
@@ -286,53 +285,43 @@ class MatchBackgroundsTask(PipelineTask):
         bctrl.setUndersampleStyle(self.config.undersampleStyle)
 
         bkgd = makeBackground(blankIm, bctrl)
+        blank = BackgroundList(
+            (
+                bkgd,
+                stringToInterpStyle(self.config.interpStyle),
+                stringToUndersampleStyle(self.config.undersampleStyle),
+                ApproximateControl.UNKNOWN,
+                0,
+                0,
+                False,
+            )
+        )
 
         backgroundInfoList = []
         for ind, exp in enumerate(warps):
-            if ind in refIndSet:
-                backgroundInfoStruct = BackgroundList(
-                    (
-                        bkgd,
-                        stringToInterpStyle(self.config.interpStyle),
-                        stringToUndersampleStyle(self.config.undersampleStyle),
-                        ApproximateControl.UNKNOWN,
-                        0,
-                        0,
-                        False,
-                    )
+            # TODO: simplify this maybe, using only visit IDs?
+            self.log.info("Matching background of %s to %s", exp.dataId, refWarp.dataId)
+            toMatchExposure = exp.get()
+            try:
+                # TODO: adjust logic to avoid creating spurious MIs like this
+                toMatchMI = self._fluxScale(toMatchExposure)
+
+                # store a string specifying the visit to label debug plot
+                # self.debugDataIdString = ''.join([str(toMatchRef.dataId[vk]) for vk in debugIdKeyList])
+
+                backgroundInfoStruct = self.matchBackgrounds(
+                    refExposure=refExposure,
+                    sciExposure=toMatchExposure,
                 )
-            else:
-                # TODO: simplify this maybe, using only visit IDs?
-                self.log.info("Matching background of %s to %s", exp.dataId, refMatchedWarp.dataId)
-                toMatchExposure = exp.get()
-                try:
-                    # Seems to require exposure, not masked exposure.
-                    toMatchMI = self._fluxScale(toMatchExposure)
-
-                    # store a string specifying the visit to label debug plot
-                    # self.debugDataIdString = ''.join([str(toMatchRef.dataId[vk]) for vk in debugIdKeyList])
-
-                    backgroundInfoStruct = self.matchBackgrounds(
-                        refExposure=refExposure,
-                        sciExposure=toMatchExposure,
-                    )
-                    backgroundInfoStruct.isReference = False
-                except Exception as e:
-                    self.log.warning("Failed to fit background %s: %s", exp.dataId, e)
-                    backgroundInfoStruct = BackgroundList(
-                        (
-                            bkgd,
-                            stringToInterpStyle(self.config.interpStyle),
-                            stringToUndersampleStyle(self.config.undersampleStyle),
-                            ApproximateControl.UNKNOWN,
-                            0,
-                            0,
-                            False,
-                        )
-                    )
+                backgroundInfoStruct.isReference = False
+            except Exception as e:
+                self.log.warning("Failed to fit background %s: %s", exp.dataId, e)
+                backgroundInfoStruct = blank
 
             backgroundInfoList.append(backgroundInfoStruct)
 
+        # TODO: more elegant solution than inserting blank model at ref ind?
+        backgroundInfoList.insert(refInd, blank)
         return Struct(backgroundInfoList=backgroundInfoList)
 
     @timeMethod
@@ -377,14 +366,37 @@ class MatchBackgroundsTask(PipelineTask):
         warpNPoints = []
         for warpDDH in warps:
             warp = warpDDH.get()
+
+            # First check if any image edge is all NaN
+            # If so, don't use
+            leftBool = np.all(np.isnan(warp.image.array[:, 0]))
+            rightBool = np.all(np.isnan(warp.image.array[:, warp.image.getHeight() - 1]))
+            bottomBool = np.all(np.isnan(warp.image.array[0, :]))
+            topBool = np.all(np.isnan(warp.image.array[warp.image.getWidth() - 1, :]))
+            if np.any([leftBool, rightBool, bottomBool, topBool]):
+                continue
+
             warp.image.array *= warp.getPhotoCalib().instFluxToNanojansky(1)  # Convert image plane to nJy
-            warpStats = makeStatistics(warp.image, warp.mask, MEAN | VARIANCE | NPOINT, self.statsCtrl)
+
+            # Select reference based on BG of plane sky-subtracted images
+            bkgd, __, __, __ = self._setupBackground(warp)
+
+            weightByInverseVariance = self.config.approxWeighting
+            actrl = ApproximateControl(ApproximateControl.CHEBYSHEV, 1, 1, weightByInverseVariance)
+            undersampleStyle = stringToUndersampleStyle(self.config.undersampleStyle)
+            approx = bkgd.getApproximate(actrl, undersampleStyle)
+            bgSubImage = ImageF(warp.image.array - approx.getImage().array)
+
+            warpStats = makeStatistics(bgSubImage, warp.mask, MEAN | VARIANCE | NPOINT, self.statsCtrl)
             warpMean, _ = warpStats.getResult(MEAN)
             warpVar, _ = warpStats.getResult(VARIANCE)
             warpNPoint, _ = warpStats.getResult(NPOINT)
             warpMeans.append(warpMean)
             warpVars.append(warpVar)
             warpNPoints.append(int(warpNPoint))
+
+        if len(warpNPoints) == 0:
+            raise TaskError("No suitable reference visit found in list of warps.")
 
         # Normalize mean/var/npoints to range from  0 to 1
         warpMeansFrac = np.array(warpMeans) / np.nanmax(warpMeans)
@@ -396,21 +408,22 @@ class MatchBackgroundsTask(PipelineTask):
         costFunctionVals += self.config.bestRefWeightVariance * warpVarsFrac
         costFunctionVals += self.config.bestRefWeightCoverage * warpNPointsFrac
 
-        refWarp = warps.pop(np.nanargmin(costFunctionVals))
+        ind = np.nanargmin(costFunctionVals)
+        refWarp = warps.pop(ind)
         self.log.info("Using best reference visit %d", refWarp.dataId["visit"])
-        return refWarp
+        return refWarp, ind
 
     def _fluxScale(self, exposure):
         """Scales image to nJy flux using photometric calibration.
 
         Parameters
         ----------
-        exposure: ``
+        exposure: `lsst.afw.image._exposure.ExposureF`
             Exposure to scale.
 
         Returns
         -------
-        maskedImage: ``
+        maskedImage: `lsst.afw.image._maskedImage.MaskedImageF`
             Flux-scaled masked exposure.
         """
         maskedImage = exposure.getMaskedImage()
@@ -418,6 +431,56 @@ class MatchBackgroundsTask(PipelineTask):
         exposure.image.array *= fluxZp
 
         return maskedImage
+
+    def _setupBackground(self, warp):
+        """Set up and return a background model container and associated images
+        and controllers.
+
+        Uses the following config parameters:
+        - ``gridStatistic``
+        - ``numSigmaClip``
+        - ``numIter``
+        - ``binSize``
+        - ``undersampleStyle``
+
+        Parameters
+        ----------
+        warp: `lsst.afw.image._exposure.ExposureF`
+            Warped exposure or difference image for which to estimate
+            background.
+
+        Returns
+        -------
+        bkgd: `lsst.afw.math.BackgroundMI`
+            Background model container.
+        bctrl: `lsst.afw.math.BackgroundControl`
+            Background model control
+        warpMI: `lsst.afw.image._maskedImage.MaskedImageF`
+            Masked image associated with warp
+        statsFlag: `lsst.afw.math.Property`
+            Flag for grid statistic property (self.config.gridStatistic)
+        """
+        statsFlag = stringToStatisticsProperty(self.config.gridStatistic)
+        self.statsCtrl.setNumSigmaClip(self.config.numSigmaClip)
+        self.statsCtrl.setNumIter(self.config.numIter)
+
+        warpMI = warp.getMaskedImage()
+
+        width = warpMI.getWidth()
+        height = warpMI.getHeight()
+        nx = width // self.config.binSize
+        if width % self.config.binSize != 0:
+            nx += 1
+        ny = height // self.config.binSize
+        if height % self.config.binSize != 0:
+            ny += 1
+
+        bctrl = BackgroundControl(nx, ny, self.statsCtrl, statsFlag)
+        bctrl.setUndersampleStyle(self.config.undersampleStyle)
+
+        bkgd = makeBackground(warpMI, bctrl)
+
+        return bkgd, bctrl, warpMI, statsFlag
 
     @timeMethod
     def matchBackgrounds(self, refExposure, sciExposure):
@@ -489,27 +552,7 @@ class MatchBackgroundsTask(PipelineTask):
                 "Exposures are different dimensions. sci:(%i, %i) vs. ref:(%i, %i)" % (wSci, hSci, wRef, hRef)
             )
 
-        statsFlag = stringToStatisticsProperty(self.config.gridStatistic)
-        self.statsCtrl.setNumSigmaClip(self.config.numSigmaClip)
-        self.statsCtrl.setNumIter(self.config.numIter)
-
-        im = refExposure.getMaskedImage()
-        diffMI = im.Factory(im, True)
-        diffMI -= sciExposure.getMaskedImage()
-
-        width = diffMI.getWidth()
-        height = diffMI.getHeight()
-        nx = width // self.config.binSize
-        if width % self.config.binSize != 0:
-            nx += 1
-        ny = height // self.config.binSize
-        if height % self.config.binSize != 0:
-            ny += 1
-
-        bctrl = BackgroundControl(nx, ny, self.statsCtrl, statsFlag)
-        bctrl.setUndersampleStyle(self.config.undersampleStyle)
-
-        bkgd = makeBackground(diffMI, bctrl)
+        bkgd, bctrl, diffMI, statsFlag = self._setupBackground(refExposure)
 
         # Some config and input checks if config.usePolynomial:
         # 1) Check that order/bin size make sense:
