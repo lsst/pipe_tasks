@@ -22,12 +22,13 @@
 __all__ = ["ObjectMaskCatalog", "RegionFileFormatter"]
 
 import re
-import os.path
 import logging
 import lsst.daf.base as dafBase
 import lsst.geom as geom
 import lsst.afw.table as afwTable
-from lsst.daf.butler.formatters.file import FileFormatter
+from typing import Any
+from lsst.daf.butler import FormatterV2, FormatterNotImplementedError
+from lsst.resources import ResourcePath
 
 
 class ObjectMaskCatalog:
@@ -232,18 +233,19 @@ def convertToAngle(var, varUnit, what, fileName, lineNo):
     return var*geom.degrees
 
 
-class RegionFileFormatter(FileFormatter):
+class RegionFileFormatter(FormatterV2):
     """Plugin for reading DS9 region file catalogs with Gen3 Butler.
     """
-    extension = ".reg"
+    default_extension = ".reg"
+    can_read_from_local_file = True
 
-    def _readFile(self, path, pytype):
-        # Docstring inherited from FileFormatter._readFile
-        if not os.path.exists(path):
-            return None
-
+    def read_from_local_file(
+        self, path: str, component: str | None = None, expected_size: int = -1
+    ) -> Any:
+        # Docstring inherited.
+        pytype = self.file_descriptor.storageClass.pytype
         return pytype.read(path)
 
-    def _writeFile(self, inMemoryDataset, fileDescriptor):
-        # Docstring inherited from FileFormatter._writeFile
-        raise NotImplementedError("Write not implemented.")
+    def write_local_file(self, in_memory_dataset: Any, uri: ResourcePath) -> None:
+        # Docstring inherited.
+        raise FormatterNotImplementedError("Write not implemented.")
