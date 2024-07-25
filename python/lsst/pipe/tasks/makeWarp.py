@@ -357,6 +357,9 @@ class MakeWarpTask(CoaddBaseTask):
                     warp = warps[warpType]
                     if didSetMetadata[warpType]:
                         mimg = exposure.getMaskedImage()
+                        ratio = (warp.getPhotoCalib().getInstFluxAtZeroMagnitude()
+                                 / exposure.getPhotoCalib().getInstFluxAtZeroMagnitude())
+                        self.log.info("Scaling %sWarp by %.3f", warpType, ratio)
                         mimg *= (warp.getPhotoCalib().getInstFluxAtZeroMagnitude()
                                  / exposure.getPhotoCalib().getInstFluxAtZeroMagnitude())
                         del mimg

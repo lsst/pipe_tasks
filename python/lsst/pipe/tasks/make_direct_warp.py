@@ -467,7 +467,7 @@ class MakeDirectWarpTask(PipelineTask):
             else:
                 ratio = 1
 
-            self.log.debug("Scaling exposure %s by %f", dataId, ratio)
+            self.log.info("Scaling exposure %s by %f", dataId, ratio)
             warpedExposure.maskedImage *= ratio
 
             if self.config.doWritePartials:
