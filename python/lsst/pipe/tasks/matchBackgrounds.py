@@ -23,7 +23,7 @@ __all__ = ["MatchBackgroundsConnections", "MatchBackgroundsConfig", "MatchBackgr
 
 import lsstDebug
 import numpy as np
-from lsst.afw.image import LOCAL, PARENT, ImageF, Mask, MaskedImageF
+from lsst.afw.image import LOCAL, PARENT, ExposureF, ImageF, Mask, MaskedImageF
 from lsst.afw.math import (
     MEAN,
     MEANCLIP,
@@ -35,6 +35,7 @@ from lsst.afw.math import (
     ApproximateControl,
     BackgroundControl,
     BackgroundList,
+    BackgroundMI,
     StatisticsControl,
     makeBackground,
     makeStatistics,
@@ -84,11 +85,11 @@ class MatchBackgroundsConfig(PipelineTaskConfig, pipelineConnections=MatchBackgr
         doc="Visit ID of the reference warp. If None, the best warp is chosen from the list of warps.",
         optional=True,
     )
-    bestRefWeightCoverage = RangeField(
+    bestRefWeightChi2 = RangeField(
         dtype=float,
-        doc="Coverage weight (Number of pixels overlapping the patch) when calculating the best reference "
-        "exposure. Higher weights prefer exposures with high coverage. Ignored when a ref visit supplied.",
-        default=0.4,
+        doc="Mean background goodness of fit statistic weight when calculating the best reference exposure. "
+        "Higher weights prefer exposures with flatter backgrounds. Ignored when ref visit supplied.",
+        default=0.2,
         min=0.0,
         max=1.0,
     )
@@ -100,10 +101,18 @@ class MatchBackgroundsConfig(PipelineTaskConfig, pipelineConnections=MatchBackgr
         min=0.0,
         max=1.0,
     )
-    bestRefWeightLevel = RangeField(
+    bestRefWeightGlobalCoverage = RangeField(
         dtype=float,
-        doc="Mean background level weight when calculating the best reference exposure. "
-        "Higher weights prefer exposures with low mean background levels. Ignored when ref visit supplied.",
+        doc="Global coverage weight (total number of valid pixels) when calculating the best reference "
+        "exposure. Higher weights prefer exposures with high coverage. Ignored when a ref visit supplied.",
+        default=0.2,
+        min=0.0,
+        max=1.0,
+    )
+    bestRefWeightEdgeCoverage = RangeField(
+        dtype=float,
+        doc="Edge coverage weight (number of valid edge pixels) when calculating the best reference "
+        "exposure. Higher weights prefer exposures with high coverage. Ignored when a ref visit supplied.",
         default=0.2,
         min=0.0,
         max=1.0,
@@ -143,7 +152,7 @@ class MatchBackgroundsConfig(PipelineTaskConfig, pipelineConnections=MatchBackgr
     )
     binSize = Field[int](
         doc="Bin size for gridding the difference image and fitting a spatial model.",
-        default=256,
+        default=1024,
     )
     interpStyle = ChoiceField(
         dtype=str,
@@ -213,11 +222,16 @@ class MatchBackgroundsTask(PipelineTask):
 
     def __init__(self, *args, **kwargs):
         super().__init__(**kwargs)
+        self.statsFlag = stringToStatisticsProperty(self.config.gridStatistic)
         self.statsCtrl = StatisticsControl()
         # TODO: Check that setting the mask planes here work - these planes
         # can vary from exposure to exposure, I think?
         self.statsCtrl.setAndMask(Mask.getPlaneBitMask(self.config.badMaskPlanes))
         self.statsCtrl.setNanSafe(True)
+        self.statsCtrl.setNumSigmaClip(self.config.numSigmaClip)
+        self.statsCtrl.setNumIter(self.config.numIter)
+        self.stringToInterpStyle = stringToInterpStyle(self.config.interpStyle)
+        self.undersampleStyle = stringToUndersampleStyle(self.config.undersampleStyle)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -333,85 +347,110 @@ class MatchBackgroundsTask(PipelineTask):
         minimizing a cost function that penalizes high variance, high
         background level, and low coverage.
 
-        To find a reference warp, the following config parameters are used:
-        - ``bestRefWeightCoverage``
-        - ``bestRefWeightVariance``
-        - ``bestRefWeightLevel``
-
         Parameters
         ----------
-        warps : `list`[`~lsst.afw.image.Exposure`]
-            List of warped science exposures.
+        warps : `list`[`~lsst.daf.butler.DeferredDatasetHandle`]
+            List of warped exposures (of type `~lsst.afw.image.ExposureF`).
+        refWarpVisit : `int`, optional
+            Visit ID of the reference warp.
+            If None, the best warp is chosen from the list of warps.
 
         Returns
         -------
-        refWarp : `~lsst.afw.image.Exposure`
+        refWarp : `~lsst.afw.image.ExposureF`
             Reference warped exposure.
-        compWarps : `list`[`~lsst.afw.image.Exposure`]
-            List of warped science exposures to compare to the reference.
+        refWarpIndex : `int`
+            Index of the reference removed from the list of warps.
+
+        Notes
+        -----
+        This method modifies the input list of warps in place by removing the
+        reference warp from it.
         """
-        # User a reference visit, if one has been supplied
+        # User-defined reference visit, if one has been supplied
         if refWarpVisit:
-            warpVisits = [warp.dataId["visit"] for warp in warps]
+            warpVisits = [warpDDH.dataId["visit"] for warpDDH in warps]
             try:
-                refWarp = warps.pop(warpVisits.index(refWarpVisit))
+                refWarpIndex = warpVisits.index(refWarpVisit)
+                refWarpDDH = warps.pop(refWarpIndex)
                 self.log.info("Using user-supplied reference visit %d", refWarpVisit)
-                return refWarp
+                return refWarpDDH.get(), refWarpIndex
             except ValueError:
                 raise TaskError(f"Reference visit {refWarpVisit} is not found in the list of warps.")
 
         # Extract mean/var/npoints for each warp
-        warpMeans = []
-        warpVars = []
-        warpNPoints = []
+        warpChi2s = []  # Background goodness of fit
+        warpVars = []  # Variance
+        warpNPointsGlobal = []  # Global coverage
+        warpNPointsEdge = []  # Edge coverage
         for warpDDH in warps:
             warp = warpDDH.get()
+            instFluxToNanojansky = warp.getPhotoCalib().instFluxToNanojansky(1)
+            warp.image *= instFluxToNanojansky  # Images in nJy to facilitate difference imaging
+            warp.variance *= instFluxToNanojansky
+            warpBg, _ = self._makeBackground(warp)
 
-            # First check if any image edge is all NaN
-            # If so, don't use
-            leftBool = np.all(np.isnan(warp.image.array[:, 0]))
-            rightBool = np.all(np.isnan(warp.image.array[:, warp.image.getHeight() - 1]))
-            bottomBool = np.all(np.isnan(warp.image.array[0, :]))
-            topBool = np.all(np.isnan(warp.image.array[warp.image.getWidth() - 1, :]))
-            if np.any([leftBool, rightBool, bottomBool, topBool]):
-                continue
+            # Return an approximation to the background
+            approxCtrl = ApproximateControl(ApproximateControl.CHEBYSHEV, 1, 1, self.config.approxWeighting)
+            warpApprox = warpBg.getApproximate(approxCtrl, self.undersampleStyle)
+            warpBgSub = ImageF(warp.image.array - warpApprox.getImage().array)
 
-            warp.image.array *= warp.getPhotoCalib().instFluxToNanojansky(1)  # Convert image plane to nJy
-
-            # Select reference based on BG of plane sky-subtracted images
-            bkgd, __, __, __ = self._setupBackground(warp)
-
-            weightByInverseVariance = self.config.approxWeighting
-            actrl = ApproximateControl(ApproximateControl.CHEBYSHEV, 1, 1, weightByInverseVariance)
-            undersampleStyle = stringToUndersampleStyle(self.config.undersampleStyle)
-            approx = bkgd.getApproximate(actrl, undersampleStyle)
-            bgSubImage = ImageF(warp.image.array - approx.getImage().array)
-
-            warpStats = makeStatistics(bgSubImage, warp.mask, MEAN | VARIANCE | NPOINT, self.statsCtrl)
-            warpMean, _ = warpStats.getResult(MEAN)
+            warpStats = makeStatistics(warpBgSub, warp.mask, VARIANCE | NPOINT, self.statsCtrl)
+            # TODO: need to modify this to account for the background mask
+            warpChi2 = np.nansum(warpBgSub.array**2 / warp.variance.array)
             warpVar, _ = warpStats.getResult(VARIANCE)
-            warpNPoint, _ = warpStats.getResult(NPOINT)
-            warpMeans.append(warpMean)
+            warpNPointGlobal, _ = warpStats.getResult(NPOINT)
+            warpNPointEdge = (
+                np.sum(~np.isnan(warp.image.array[:, 0]))  # Left edge
+                + np.sum(~np.isnan(warp.image.array[:, -1]))  # Right edge
+                + np.sum(~np.isnan(warp.image.array[0, :]))  # Bottom edge
+                + np.sum(~np.isnan(warp.image.array[-1, :]))  # Top edge
+            )
+            warpChi2s.append(warpChi2)
             warpVars.append(warpVar)
-            warpNPoints.append(int(warpNPoint))
-
-        if len(warpNPoints) == 0:
-            raise TaskError("No suitable reference visit found in list of warps.")
+            warpNPointsGlobal.append(int(warpNPointGlobal))
+            warpNPointsEdge.append(warpNPointEdge)
 
         # Normalize mean/var/npoints to range from  0 to 1
-        warpMeansFrac = np.array(warpMeans) / np.nanmax(warpMeans)
+        warpChi2sFrac = np.array(warpChi2s) / np.nanmax(warpChi2s)
         warpVarsFrac = np.array(warpVars) / np.nanmax(warpVars)
-        warpNPointsFrac = np.nanmin(warpNPoints) / np.array(warpNPoints)
+        warpNPointsGlobalFrac = np.nanmin(warpNPointsGlobal) / np.array(warpNPointsGlobal)
+        warpNPointsEdgeFrac = np.nanmin(warpNPointsEdge) / np.array(warpNPointsEdge)
 
         # Calculate cost function values
-        costFunctionVals = self.config.bestRefWeightLevel * warpMeansFrac
+        costFunctionVals = self.config.bestRefWeightChi2 * warpChi2sFrac
         costFunctionVals += self.config.bestRefWeightVariance * warpVarsFrac
-        costFunctionVals += self.config.bestRefWeightCoverage * warpNPointsFrac
+        costFunctionVals += self.config.bestRefWeightGlobalCoverage * warpNPointsGlobalFrac
+        costFunctionVals += self.config.bestRefWeightEdgeCoverage * warpNPointsEdgeFrac
 
         ind = np.nanargmin(costFunctionVals)
         refWarp = warps.pop(ind)
         self.log.info("Using best reference visit %d", refWarp.dataId["visit"])
         return refWarp, ind
+
+    def _makeBackground(self, warp: ExposureF) -> tuple[BackgroundMI, BackgroundControl]:
+        """Generate a simple binned background masked image for warped data.
+
+        Parameters
+        ----------
+        warp: `~lsst.afw.image.ExposureF`
+            Warped exposure for which to estimate background.
+
+        Returns
+        -------
+        warpBgMI: `~lsst.afw.math.BackgroundMI`
+            Background-subtracted masked image.
+        bgCtrl: `~lsst.afw.math.BackgroundControl`
+            Background control object.
+        """
+        nx = warp.getWidth() // self.config.binSize
+        ny = warp.getHeight() // self.config.binSize
+
+        bgCtrl = BackgroundControl(nx, ny, self.statsCtrl, self.statsFlag)
+        bgCtrl.setUndersampleStyle(self.config.undersampleStyle)
+        warpBgMI = makeBackground(warp.getMaskedImage(), bgCtrl)
+
+        return warpBgMI, bgCtrl
 
     def _fluxScale(self, exposure):
         """Scales image to nJy flux using photometric calibration.
@@ -431,56 +470,6 @@ class MatchBackgroundsTask(PipelineTask):
         exposure.image.array *= fluxZp
 
         return maskedImage
-
-    def _setupBackground(self, warp):
-        """Set up and return a background model container and associated images
-        and controllers.
-
-        Uses the following config parameters:
-        - ``gridStatistic``
-        - ``numSigmaClip``
-        - ``numIter``
-        - ``binSize``
-        - ``undersampleStyle``
-
-        Parameters
-        ----------
-        warp: `lsst.afw.image._exposure.ExposureF`
-            Warped exposure or difference image for which to estimate
-            background.
-
-        Returns
-        -------
-        bkgd: `lsst.afw.math.BackgroundMI`
-            Background model container.
-        bctrl: `lsst.afw.math.BackgroundControl`
-            Background model control
-        warpMI: `lsst.afw.image._maskedImage.MaskedImageF`
-            Masked image associated with warp
-        statsFlag: `lsst.afw.math.Property`
-            Flag for grid statistic property (self.config.gridStatistic)
-        """
-        statsFlag = stringToStatisticsProperty(self.config.gridStatistic)
-        self.statsCtrl.setNumSigmaClip(self.config.numSigmaClip)
-        self.statsCtrl.setNumIter(self.config.numIter)
-
-        warpMI = warp.getMaskedImage()
-
-        width = warpMI.getWidth()
-        height = warpMI.getHeight()
-        nx = width // self.config.binSize
-        if width % self.config.binSize != 0:
-            nx += 1
-        ny = height // self.config.binSize
-        if height % self.config.binSize != 0:
-            ny += 1
-
-        bctrl = BackgroundControl(nx, ny, self.statsCtrl, statsFlag)
-        bctrl.setUndersampleStyle(self.config.undersampleStyle)
-
-        bkgd = makeBackground(warpMI, bctrl)
-
-        return bkgd, bctrl, warpMI, statsFlag
 
     @timeMethod
     def matchBackgrounds(self, refExposure, sciExposure):
