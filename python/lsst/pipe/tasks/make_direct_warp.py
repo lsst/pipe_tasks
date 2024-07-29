@@ -363,7 +363,8 @@ class MakeDirectWarpTask(PipelineTask):
             )
             inputs = self._filterInputs(indices=goodIndices, inputs=inputs)
 
-            # inputs = self.select.run(inputs, sky_info, visit_summary)
+        if not inputs["calexp_list"]:
+            raise NoWorkFound("No input warps provided for co-addition")
 
         results = self.run(inputs, sky_info, visit_summary)
         butlerQC.put(results, outputRefs)
