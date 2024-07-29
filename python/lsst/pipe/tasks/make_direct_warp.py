@@ -729,9 +729,6 @@ class MakeDirectWarpTask(PipelineTask):
                     detector,
                 )
 
-        if new_background:
-            exp.maskedImage -= new_background.getImage()
-
         # Calibrate the (masked) image.
         # This should likely happen even if visit_summary is None.
         photo_calib = exp.photoCalib
@@ -739,6 +736,9 @@ class MakeDirectWarpTask(PipelineTask):
             exp.maskedImage, includeScaleUncertainty=includeScaleUncertainty
         )
         exp.maskedImage /= photo_calib.getCalibrationMean()
+
+        if new_background:
+            exp.maskedImage -= new_background.getImage()
 
     # This method is copied from makeWarp.py
     @classmethod
