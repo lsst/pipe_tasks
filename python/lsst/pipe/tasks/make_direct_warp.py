@@ -137,6 +137,9 @@ class MakeDirectWarpConnections(
         if not config.doApplyNewBackground:
             del self.background_apply_list
 
+        if not config.doWarpMaskedFraction:
+            del self.masked_fraction_warp
+
         # Dynamically set output connections for noise images, depending on the
         # number of noise realization specified in the config.
         for n in range(config.numberOfNoiseRealizations):
@@ -240,6 +243,10 @@ class MakeDirectWarpConfig(
         doc="Configuration for the warper that warps the image and noise",
         dtype=Warper.ConfigClass,
     )
+    doWarpMaskedFraction = Field[bool](
+        doc="Warp the masked fraction image?",
+        default=False,
+    )
     maskedFractionWarper = ConfigField(
         doc="Configuration for the warp that warps the mask fraction image",
         dtype=Warper.ConfigClass,
@@ -306,7 +313,8 @@ class MakeDirectWarpTask(PipelineTask):
             self.makeSubtask("select")
 
         self.warper = Warper.fromConfig(self.config.warper)
-        self.maskedFractionWarper = Warper.fromConfig(self.config.maskedFractionWarper)
+        if self.config.doWarpMaskedFraction:
+            self.maskedFractionWarper = Warper.fromConfig(self.config.maskedFractionWarper)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         # Docstring inherited.
@@ -479,21 +487,23 @@ class MakeDirectWarpTask(PipelineTask):
             inputRecorder.addCalExp(calexp, ccdId, nGood)
             totalGoodPixels += nGood
 
-            # Obtain the masked fraction exposure and warp it.
-            if self.config.doPreWarpInterpolation:
-                badMaskPlanes = self.preWarpInterpolation.config.badMaskPlanes
-            else:
-                badMaskPlanes = []
-            masked_fraction_exp = self._get_bad_mask(calexp, badMaskPlanes)
-            masked_fraction_warp = self.maskedFractionWarper.warpExposure(
-                target_wcs, masked_fraction_exp, destBBox=target_bbox
-            )
+            if self.config.doWarpMaskedFraction:
+                # Obtain the masked fraction exposure and warp it.
+                if self.config.doPreWarpInterpolation:
+                    badMaskPlanes = self.preWarpInterpolation.config.badMaskPlanes
+                else:
+                    badMaskPlanes = []
+                masked_fraction_exp = self._get_bad_mask(calexp, badMaskPlanes)
 
-            copyGoodPixels(
-                final_masked_fraction_warp.maskedImage,
-                masked_fraction_warp.maskedImage,
-                final_masked_fraction_warp.mask.getPlaneBitMask(["NO_DATA"]),
-            )
+                masked_fraction_warp = self.maskedFractionWarper.warpExposure(
+                    target_wcs, masked_fraction_exp, destBBox=target_bbox
+                )
+
+                copyGoodPixels(
+                    final_masked_fraction_warp.maskedImage,
+                    masked_fraction_warp.maskedImage,
+                    final_masked_fraction_warp.mask.getPlaneBitMask(["NO_DATA"]),
+                )
 
             # Process and accumulate noise images.
             for n_noise in range(self.config.numberOfNoiseRealizations):
@@ -532,8 +542,10 @@ class MakeDirectWarpTask(PipelineTask):
 
         results = Struct(
             warp=final_warp,
-            masked_fraction_warp=final_masked_fraction_warp.image,
         )
+
+        if self.config.doWarpMaskedFraction:
+            results.masked_fraction_warp = final_masked_fraction_warp.image
 
         for noise_index, noise_exposure in final_noise_warps.items():
             setattr(results, f"noise_warp{noise_index}", noise_exposure.maskedImage)
