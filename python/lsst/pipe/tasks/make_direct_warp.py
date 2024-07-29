@@ -175,7 +175,7 @@ class MakeDirectWarpConfig(
 
     numberOfNoiseRealizations = RangeField[int](
         doc="Number of noise realizations to simulate and persist.",
-        default=1,
+        default=0,
         min=0,
         max=MAX_NUMBER_OF_NOISE_REALIZATIONS,
         inclusiveMax=True,
