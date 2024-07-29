@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ["CalibrateImageTask", "CalibrateImageConfig", "NoPsfStarsToStarsMatchError"]
+
 import collections.abc
 
 import numpy as np
@@ -39,6 +41,23 @@ from lsst.pipe.base import connectionTypes
 from lsst.utils.timer import timeMethod
 
 from . import measurePsf, repair, photoCal, computeExposureSummaryStats, snapCombine
+
+
+class NoPsfStarsToStarsMatchError(pipeBase.AlgorithmError):
+    """Raised when there are no matches between the psf_stars and stars
+    catalogs.
+    """
+    def __init__(self, *, n_psf_stars, n_stars):
+        msg = (f"No psf stars out of {n_psf_stars} matched {n_stars} calib stars."
+               " Downstream processes probably won't have useful stars in this case."
+               " Is `star_source_selector` too strict or is this a bad image?")
+        super().__init__(msg)
+
+    @property
+    def metadata(self):
+        return {"n_psf_stars": self.n_psf_stars,
+                "n_stars": self.n_stars
+                }
 
 
 class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
@@ -818,20 +837,17 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # We'll use this to construct index arrays into each catalog.
         ids = np.array([(match_psf.getId(), match_stars.getId()) for match_psf, match_stars, d in matches]).T
 
+        if (n_matches := len(matches)) == 0:
+            raise NoPsfStarsToStarsMatchError(n_psf_stars=len(psf_stars), n_stars=len(stars))
+
+        self.log.info("%d psf stars out of %d matched %d calib stars", n_matches, len(psf_stars), len(stars))
+
         # Check that no stars sources are listed twice; we already know
         # that each match has a unique psf_stars id, due to using as the key
         # in best above.
-        n_matches = len(matches)
         n_unique = len(set(m[1].getId() for m in matches))
         if n_unique != n_matches:
-            self.log.warning("%d psf_stars matched only %d stars; ",
-                             n_matches, n_unique)
-        if n_matches == 0:
-            msg = (f"0 psf_stars out of {len(psf_stars)} matched {len(stars)} calib stars."
-                   " Downstream processes probably won't have useful stars in this case."
-                   " Is `star_source_selector` too strict?")
-            # TODO DM-39842: Turn this into an AlgorithmicError.
-            raise RuntimeError(msg)
+            self.log.warning("%d psf_stars matched only %d stars", n_matches, n_unique)
 
         # The indices of the IDs, so we can update the flag fields as arrays.
         idx_psf_stars = np.searchsorted(psf_stars["id"], ids[0])
