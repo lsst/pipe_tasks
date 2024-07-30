@@ -76,7 +76,7 @@ class MakeDirectWarpConnections(
     calexp_list = Input(
         doc="Input exposures to be interpolated and resampled onto a SkyMap "
             "projection/patch.",
-        name="{calexpType}calexp",
+        name="{calexpType}initial_pvi",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
         multiple=True,
@@ -85,7 +85,7 @@ class MakeDirectWarpConnections(
     background_revert_list = Input(
         doc="Background to be reverted (i.e., added back to the calexp). "
         "This connection is used only if doRevertOldBackground=False.",
-        name="calexpBackground",
+        name="initial_pvi_background",
         storageClass="Background",
         dimensions=("instrument", "visit", "detector"),
         multiple=True,
