@@ -41,7 +41,7 @@ class NumberDeblendedSourcesMetricConnections(
 ):
     sources = connectionTypes.Input(
         doc="The catalog of science sources.",
-        name="src",
+        name="initial_stars_footprints_detector",
         storageClass="SourceCatalog",
         dimensions={"instrument", "visit", "detector"},
     )
@@ -120,7 +120,7 @@ class NumberDeblendChildSourcesMetricConnections(
 ):
     sources = connectionTypes.Input(
         doc="The catalog of science sources.",
-        name="src",
+        name="initial_stars_footprints_detector",
         storageClass="SourceCatalog",
         dimensions={"instrument", "visit", "detector"},
     )

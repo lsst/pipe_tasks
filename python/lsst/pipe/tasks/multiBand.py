@@ -260,7 +260,7 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
         doc="Source catalogs for visits which overlap input tract, patch, band. Will be "
             "further filtered in the task for the purpose of propagating flags from image calibration "
             "and characterization to coadd objects. Only used in legacy PropagateVisitFlagsTask.",
-        name="src",
+        name="initial_stars_footprints_detector",
         dimensions=("instrument", "visit", "detector"),
         storageClass="SourceCatalog",
         multiple=True

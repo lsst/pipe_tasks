@@ -48,12 +48,12 @@ class FinalizeCharacterizationConnections(pipeBase.PipelineTaskConnections,
                                           defaultTemplates={}):
     src_schema = pipeBase.connectionTypes.InitInput(
         doc='Input schema used for src catalogs.',
-        name='src_schema',
+        name='initial_stars_schema',
         storageClass='SourceCatalog',
     )
     srcs = pipeBase.connectionTypes.Input(
         doc='Source catalogs for the visit',
-        name='src',
+        name='initial_stars_footprints_detector',
         storageClass='SourceCatalog',
         dimensions=('instrument', 'visit', 'detector'),
         deferLoad=True,
@@ -61,7 +61,7 @@ class FinalizeCharacterizationConnections(pipeBase.PipelineTaskConnections,
     )
     calexps = pipeBase.connectionTypes.Input(
         doc='Calexps for the visit',
-        name='calexp',
+        name='initial_pvi',
         storageClass='ExposureF',
         dimensions=('instrument', 'visit', 'detector'),
         deferLoad=True,
