@@ -109,7 +109,7 @@ class SkyCorrectionConnections(PipelineTaskConnections, dimensions=("instrument"
     )
     calExps = cT.Input(
         doc="Background-subtracted calibrated exposures.",
-        name="calexp",
+        name="initial_pvi",
         multiple=True,
         storageClass="ExposureF",
         dimensions=["instrument", "visit", "detector"],
@@ -117,7 +117,7 @@ class SkyCorrectionConnections(PipelineTaskConnections, dimensions=("instrument"
     calBkgs = cT.Input(
         doc="Subtracted backgrounds for input calibrated exposures.",
         multiple=True,
-        name="calexpBackground",
+        name="initial_pvi_background",
         storageClass="Background",
         dimensions=["instrument", "visit", "detector"],
     )
