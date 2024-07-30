@@ -194,14 +194,14 @@ class WriteSourceTableConnections(pipeBase.PipelineTaskConnections,
 
     catalog = connectionTypes.Input(
         doc="Input full-depth catalog of sources produced by CalibrateTask",
-        name="{catalogType}src",
+        name="{catalogType}initial_stars_footprints_detector",
         storageClass="SourceCatalog",
         dimensions=("instrument", "visit", "detector")
     )
     outputCatalog = connectionTypes.Output(
         doc="Catalog of sources, `src` in DataFrame/Parquet format. The 'id' column is "
             "replaced with an index; all other columns are unchanged.",
-        name="{catalogType}source",
+        name="{catalogType}initial_stars_detector",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector")
     )
@@ -959,8 +959,8 @@ class TransformSourceTableConnections(pipeBase.PipelineTaskConnections,
                                       dimensions=("instrument", "visit", "detector")):
 
     inputCatalog = connectionTypes.Input(
-        doc="Wide input catalog of sources produced by WriteSourceTableTask",
-        name="{catalogType}source",
+        doc="Wide input catalog of sources produced by WriteSourceTableTask or CalibrateImage.",
+        name="{catalogType}sources_detector",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector"),
         deferLoad=True
@@ -996,7 +996,7 @@ class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
                                          defaultTemplates={"calexpType": ""}):
     calexp = connectionTypes.Input(
         doc="Processed exposures used for metadata",
-        name="calexp",
+        name="initial_pvi",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
         deferLoad=True,
