@@ -188,6 +188,7 @@ class WriteObjectTableTask(pipeBase.PipelineTask):
         return catalog
 
 
+# TODO: should deprecate this?
 class WriteSourceTableConnections(pipeBase.PipelineTaskConnections,
                                   defaultTemplates={"catalogType": ""},
                                   dimensions=("instrument", "visit", "detector")):
@@ -207,11 +208,13 @@ class WriteSourceTableConnections(pipeBase.PipelineTaskConnections,
     )
 
 
+# TODO: should deprecate this!
 class WriteSourceTableConfig(pipeBase.PipelineTaskConfig,
                              pipelineConnections=WriteSourceTableConnections):
     pass
 
 
+# TODO: should deprecate this!
 class WriteSourceTableTask(pipeBase.PipelineTask):
     """Write source table to DataFrame Parquet format.
     """
@@ -281,6 +284,7 @@ class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
     )
 
 
+# TODO: deprecate, since reprocessVisitImage does this more thoroughly?
 class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
     """Write source table to DataFrame Parquet format.
     """
@@ -1122,6 +1126,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
 class ConsolidateSourceTableConnections(pipeBase.PipelineTaskConnections,
                                         defaultTemplates={"catalogType": ""},
                                         dimensions=("instrument", "visit")):
+    # TODO: Deprecate the dataframe connection?
     inputCatalogs = connectionTypes.Input(
         doc="Input per-detector Source Tables",
         name="{catalogType}sourceTable",
