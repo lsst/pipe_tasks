@@ -982,7 +982,9 @@ class TransformSourceTableConfig(TransformCatalogBaseConfig,
 
     def setDefaults(self):
         super().setDefaults()
-        self.functorFile = os.path.join("$PIPE_TASKS_DIR", "schemas", "Source.yaml")
+        self.functorFile = os.path.join("$PIPE_TASKS_DIR", "schemas",
+                                        "initial_stars_detector_standardized.yaml")
+        # self.functorFile = os.path.join("$PIPE_TASKS_DIR", "schemas", "Source.yaml")
         self.primaryKey = "sourceId"
         self.columnsFromDataId = ["visit", "detector", "band", "physical_filter"]
 
