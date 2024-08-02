@@ -460,7 +460,7 @@ class MakeDirectWarpTask(PipelineTask):
             )
             warpedExposure.setPsf(psfWarped)
 
-            if final_warp.photoCalib is not None and warpedExposure.photoCalib is not None:
+            if final_warp.photoCalib is not None:
                 ratio = (
                     final_warp.photoCalib.getInstFluxAtZeroMagnitude()
                     / warpedExposure.photoCalib.getInstFluxAtZeroMagnitude()
