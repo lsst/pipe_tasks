@@ -632,12 +632,12 @@ class MakeDirectWarpTask(PipelineTask):
         Parameters
         ----------
         indices : `list` [`int`]
-        inputs : `dict` [`list`]
+        inputs : `dict`
             A dictionary of input connections to be passed to run.
 
         Returns
         -------
-        inputs : `dict` [`list`]
+        inputs : `dict`
             Task inputs with their lists filtered by indices.
         """
         for key in inputs.keys():
