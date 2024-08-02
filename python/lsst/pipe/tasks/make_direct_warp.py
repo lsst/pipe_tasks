@@ -206,8 +206,8 @@ class MakeDirectWarpConfig(
     )
     useVisitSummaryPsf = Field[bool](
         doc="If True, use the PSF model and aperture corrections from the "
-            "'visit_summary' connection. If False, use the PSF model and "
-            "aperture corrections from the 'calexp' connection.",
+            "'visit_summary' connection to make the warp. If False, use the "
+            "PSF model and aperture corrections from the 'calexp' connection.",
         default=True,
     )
     doSelectPreWarp = Field[bool](
@@ -649,8 +649,8 @@ class MakeDirectWarpTask(PipelineTask):
 
         return inputs
 
-    @staticmethod
     def _apply_all_calibrations(
+        self,
         exp: Exposure,
         old_background,
         new_background,
@@ -693,15 +693,10 @@ class MakeDirectWarpTask(PipelineTask):
             Raised if ``visit_summary`` is provided but does not contain a
             record corresponding to ``exp``.
         """
-        if not visit_summary:
-            logger.debug("No visit summary provided.")
-        else:
-            logger.debug("Updating calibration from visit summary.")
-
         if old_background:
             exp.maskedImage += old_background.getImage()
 
-        if visit_summary:
+        if self.config.useVisitSummaryPsf:
             detector = exp.info.getDetector().getId()
             row = visit_summary.find(detector)
 
