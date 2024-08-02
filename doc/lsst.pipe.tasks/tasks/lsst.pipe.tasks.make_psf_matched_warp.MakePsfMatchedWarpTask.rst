@@ -51,15 +51,15 @@ All assume the default Alard-Lupton kernel, with configs accessed via `config.ps
 Each item in the list is formatted as Problem, Explanation. *Solution*.
 
 Troubleshooting PSF-Matching Configuration
-*****************************************
+******************************************
 
 Matched PSFs look boxy
-**********************
+-----------------------
 
 The matching kernel is too small.
 
 Solution
-********
+^^^^^^^^
 
 Increase the matching kernel size. For example:
 
@@ -71,12 +71,12 @@ Increase the matching kernel size. For example:
 Note that increasing the kernel size also increases runtime.
 
 Matched PSFs look ugly (dipoles, quadrupoles, donuts)
-*****************************************************
+-----------------------------------------------------
 
 Unable to find good solution for matching kernel.
 
 Solution
-********
+^^^^^^^^
 
 Provide the matcher with more data by either increasing the spatial sampling by decreasing the spatial cell size.
 
@@ -104,12 +104,12 @@ Optionally, for debugging the effects of padding, the level of padding may be ma
     # pixels. default 0
 
 Ripple Noise Pattern
-********************
+--------------------
 
  Matching a large PSF to a smaller PSF produces a telltale noise pattern which looks like ripples or a brain.
 
 Solution
-********
+^^^^^^^^
 
 Increase the size of the requested model PSF. For example:
 
@@ -118,14 +118,15 @@ Increase the size of the requested model PSF. For example:
     config.modelPsf.defaultFwhm = 11  # Gaussian sigma in units of pixels.
 
 High frequency (sometimes checkered) noise
-******************************************
+------------------------------------------
 
 The matching basis functions are too small.
 
 Solution
-********
+^^^^^^^^
 
-Increase the width of the Gaussian basis functions. For example:
+Increase the width of the Gaussian basis functions.
+For example:
 
 .. code-block:: python
 
