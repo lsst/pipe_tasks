@@ -347,9 +347,6 @@ class MakeDirectWarpTask(PipelineTask):
                 bboxList.append(row.getBBox())
                 wcsList.append(row.getWcs())
 
-            # inputs["bboxList"] = bboxList
-            # inputs["wcsList"] = wcsList
-
             cornerPosList = Box2D(sky_info.bbox).getCorners()
             coordList = [sky_info.wcs.pixelToSky(pos) for pos in cornerPosList]
 
