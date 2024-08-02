@@ -622,7 +622,11 @@ class MakeDirectWarpTask(PipelineTask):
 
     @staticmethod
     def _filterInputs(indices, inputs):
-        """Filter task inputs by their indices.
+        """Filter inputs by their indices.
+
+        This method down-selects the list entries in ``inputs`` dictionary by
+        keeping only those items in the lists that correspond to ``indices``.
+        This is intended to select input visits that go into the warps.
 
         Parameters
         ----------
