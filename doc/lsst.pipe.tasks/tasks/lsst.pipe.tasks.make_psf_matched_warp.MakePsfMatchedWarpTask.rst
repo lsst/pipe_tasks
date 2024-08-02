@@ -41,7 +41,7 @@ Config Guidelines
 *****************
 
 The user must specify the size of the model PSF to which to match by setting `config.modelPsf.defaultFwhm` in units of pixels.
-The appropriate values depends on science case.
+The appropriate values depend on science case.
 In general, for a set of input images, this config should equal the FWHM of the visit with the worst seeing.
 The smallest it should be set to is the median FWHM.
 The defaults of the other config options offer a reasonable starting point.
