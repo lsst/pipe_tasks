@@ -336,35 +336,33 @@ class MakeDirectWarpTask(PipelineTask):
 
         visit_summary = inputs["visit_summary"] if self.config.useVisitSummaryPsf else None
 
-        # Can this go in the run method?
-        if self.config.doSelectPreWarp:
-            dataIdList = [ref.datasetRef.dataId for ref in inputRefs.calexp_list]
-            bboxList, wcsList = [], []
-            for dataId in dataIdList:
-                row = visit_summary.find(dataId["detector"])
-                if row is None:
-                    raise RuntimeError(f"Unexpectedly incomplete visit_summary: {dataId=} is missing.")
-                bboxList.append(row.getBBox())
-                wcsList.append(row.getWcs())
-
-            cornerPosList = Box2D(sky_info.bbox).getCorners()
-            coordList = [sky_info.wcs.pixelToSky(pos) for pos in cornerPosList]
-
-            goodIndices = self.select.run(
-                **inputs,
-                bboxList=bboxList,
-                wcsList=wcsList,
-                visitSummary=visit_summary,
-                coordList=coordList,
-                dataIds=dataIdList,
-            )
-            inputs = self._filterInputs(indices=goodIndices, inputs=inputs)
-
-        if not inputs["calexp_list"]:
-            raise NoWorkFound("No input warps provided for co-addition")
-
         results = self.run(inputs, sky_info, visit_summary)
         butlerQC.put(results, outputRefs)
+
+    def _preselect_inputs(self, inputs, sky_info, visit_summary):
+        dataIdList = [ref.dataId for ref in inputs["calexp_list"]]
+        bboxList, wcsList = [], []
+        for dataId in dataIdList:
+            row = visit_summary.find(dataId["detector"])
+            if row is None:
+                raise RuntimeError(f"Unexpectedly incomplete visit_summary: {dataId=} is missing.")
+            bboxList.append(row.getBBox())
+            wcsList.append(row.getWcs())
+
+        cornerPosList = Box2D(sky_info.bbox).getCorners()
+        coordList = [sky_info.wcs.pixelToSky(pos) for pos in cornerPosList]
+
+        goodIndices = self.select.run(
+            **inputs,
+            bboxList=bboxList,
+            wcsList=wcsList,
+            visitSummary=visit_summary,
+            coordList=coordList,
+            dataIds=dataIdList,
+        )
+        inputs = self._filterInputs(indices=goodIndices, inputs=inputs)
+
+        return inputs
 
     def run(self, inputs, sky_info, visit_summary):
         """Create a Warp dataset from inputs.
@@ -391,6 +389,12 @@ class MakeDirectWarpTask(PipelineTask):
             A Struct object containing the warped exposure, noise exposure(s),
             and masked fraction image.
         """
+
+        if self.config.doSelectPreWarp:
+            inputs = self._preselect_inputs(inputs, sky_info, visit_summary)
+            if not inputs["calexp_list"]:
+                raise NoWorkFound("No input warps remain after selection for co-addition")
+
         sky_info.bbox.grow(self.config.border)
         target_bbox, target_wcs = sky_info.bbox, sky_info.wcs
 
