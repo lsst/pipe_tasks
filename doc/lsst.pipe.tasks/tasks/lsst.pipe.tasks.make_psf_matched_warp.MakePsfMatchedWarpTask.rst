@@ -4,20 +4,14 @@
 MakePsfMatchedWarpTask
 ######################
 
-Convolve a direct warp by a kernel to produce a PSF-matched warp, whose PSF
-matches a desired target PSF.
+Convolve a direct warp by a kernel to produce a PSF-matched warp, whose PSF matches a desired target PSF.
 
-This task separates the warp into a set of non-overlapping polygons
-corresponding to each detector.
+This task separates the warp into a set of non-overlapping polygons corresponding to each detector.
 The PSF-matching is done on each detector separately.
-The subtask `~lsst.ip.diffim.modelPsfMatch.ModelPsfMatchTask`
-is responsible for the PSF-Matching, and its config is accessed via
-`config.psfMatch`.
+The subtask `~lsst.ip.diffim.modelPsfMatch.ModelPsfMatchTask` is responsible for the PSF-Matching, and its config is accessed via `config.psfMatch`.
 
-The optimal configuration depends on aspects of dataset: the pixel scale,
-average PSF FWHM and dimensions of the PSF kernel. These configs include
-the requested model PSF, the matching kernel size, padding of the science
-PSF thumbnail and spatial sampling frequency of the PSF.
+The optimal configuration depends on aspects of dataset: the pixel scale, average PSF FWHM and dimensions of the PSF kernel.
+These configs include the requested model PSF, the matching kernel size, padding of the science PSF thumbnail and spatial sampling frequency of the PSF.
 
 .. _lsst.pipe.tasks.make_psf_matched_warp.MakePsfMatchedWarpTask-api:
 
@@ -46,22 +40,17 @@ In Depth
 Config Guidelines
 *****************
 
-The user must specify the size of the model PSF to
-which to match by setting `config.modelPsf.defaultFwhm` in units of pixels.
-The appropriate values depends on science case. In general, for a set of
-input images, this config should equal the FWHM of the visit with the worst
-seeing. The smallest it should be set to is the median FWHM. The defaults
-of the other config options offer a reasonable starting point.
+The user must specify the size of the model PSF to which to match by setting `config.modelPsf.defaultFwhm` in units of pixels.
+The appropriate values depends on science case.
+In general, for a set of input images, this config should equal the FWHM of the visit with the worst seeing.
+The smallest it should be set to is the median FWHM.
+The defaults of the other config options offer a reasonable starting point.
 
-The following list presents the most common problems that arise from a
-misconfigured `~ip.diffim.modelPsfMatch.ModelPsfMatchTask`
-and corresponding solutions. All assume the default Alard-Lupton kernel,
-with configs accessed via
-`config.psfMatch.kernel['AL']`. Each item in the list
-is formatted as:
-Problem: Explanation. *Solution*
+The following list presents the most common problems that arise from a misconfigured `~lsst.ip.diffim.modelPsfMatch.ModelPsfMatchTask` and corresponding solutions.
+All assume the default Alard-Lupton kernel, with configs accessed via `config.psfMatch.kernel['AL']`.
+Each item in the list is formatted as Problem, Explanation. *Solution*.
 
-Troublshooting PSF-Matching Configuration
+Troubleshooting PSF-Matching Configuration
 *****************************************
 
 Matched PSFs look boxy
@@ -104,13 +93,8 @@ Provide the matcher with more data by either increasing the spatial sampling by 
 
     config.psfMatch.autoPadPsfTo=1.6  # default 1.4
 
-Increasing `autoPadPsfTo` increases the minimum ratio of input PSF
-dimensions to the matching kernel dimensions, thus increasing the
-number of pixels available to fit after convolving the PSF with the
-matching kernel. Optionally, for debugging the effects of padding, the
-level of padding may be manually controlled by setting turning off the
-automatic padding and setting the number of pixels by which to pad the
-PSF:
+Increasing `autoPadPsfTo` increases the minimum ratio of input PSF dimensions to the matching kernel dimensions, thus increasing the number of pixels available to fit after convolving the PSF with the matching kernel.
+Optionally, for debugging the effects of padding, the level of padding may be manually controlled by setting turning off the automatic padding and setting the number of pixels by which to pad the PSF:
 
 .. code-block:: python
 
