@@ -337,8 +337,10 @@ class MakeDirectWarpTask(PipelineTask):
         results = self.run(inputs, sky_info, visit_summary)
         butlerQC.put(results, outputRefs)
 
-    def _preselect_inputs(self, inputs, sky_info, visit_summary):
+    def _preselect_inputs(self, inputs, sky_info):
         dataIdList = [ref.dataId for ref in inputs["calexp_list"]]
+        visit_summary = inputs["visit_summary"]
+
         bboxList, wcsList = [], []
         for dataId in dataIdList:
             row = visit_summary.find(dataId["detector"])
@@ -362,7 +364,7 @@ class MakeDirectWarpTask(PipelineTask):
 
         return inputs
 
-    def run(self, inputs, sky_info, visit_summary):
+    def run(self, inputs, sky_info, **kwargs):
         """Create a Warp dataset from inputs.
 
         Parameters
@@ -389,12 +391,14 @@ class MakeDirectWarpTask(PipelineTask):
         """
 
         if self.config.doSelectPreWarp:
-            inputs = self._preselect_inputs(inputs, sky_info, visit_summary)
+            inputs = self._preselect_inputs(inputs, sky_info)
             if not inputs["calexp_list"]:
                 raise NoWorkFound("No input warps remain after selection for co-addition")
 
         sky_info.bbox.grow(self.config.border)
         target_bbox, target_wcs = sky_info.bbox, sky_info.wcs
+
+        visit_summary = inputs["visit_summary"] if self.config.useVisitSummaryPsf else None
 
         # Initialize the objects that will hold the warp.
         final_warp = ExposureF(target_bbox, target_wcs)
