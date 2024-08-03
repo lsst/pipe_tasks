@@ -264,6 +264,8 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
 
         config = MakeDirectWarpTask.ConfigClass()
         config.doPreWarpInterpolation = False
+        config.doSelectPreWarp = False
+        config.useVisitSummaryPsf = False
         task = MakeDirectWarpTask(config=config)
         result1 = task.run(
             inputs,
