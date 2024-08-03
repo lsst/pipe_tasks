@@ -46,6 +46,8 @@ from lsst.pipe.base import (
     Struct,
 )
 from lsst.pipe.base.connectionTypes import Input, Output
+from lsst.pipe.tasks.coaddBase import makeSkyInfo
+from lsst.skymap import BaseSkyMap
 from lsst.utils.timer import timeMethod
 
 if TYPE_CHECKING:
@@ -60,6 +62,12 @@ class MakePsfMatchedWarpConnections(
     },
 ):
     """Connections for MakePsfMatchedWarpTask"""
+    sky_map = Input(
+        doc="Input definition of geometry/bbox and projection/wcs for warps.",
+        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
+        storageClass="SkyMap",
+        dimensions=("skymap",),
+    )
 
     direct_warp = Input(
         doc="Direct warped exposure produced by resampling calexps onto the skyMap patch geometry",
@@ -105,8 +113,26 @@ class MakePsfMatchedWarpTask(PipelineTask):
         super().__init__(**kwargs)
         self.makeSubtask("psfMatch")
 
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        # Docstring inherited.
+
+        # Read in all inputs.
+        inputs = butlerQC.get(inputRefs)
+
+        sky_map = inputs.pop("sky_map")
+
+        quantumDataId = butlerQC.quantum.dataId
+        sky_info = makeSkyInfo(
+            sky_map,
+            tractId=quantumDataId["tract"],
+            patchId=quantumDataId["patch"],
+        )
+
+        results = self.run(inputs["direct_warp"], sky_info.bbox)
+        butlerQC.put(results, outputRefs)
+
     @timeMethod
-    def run(self, direct_warp: Exposure):
+    def run(self, direct_warp: Exposure, bbox: geom.Box2I):
         """Make a PSF-matched warp from a direct warp.
 
         Each individual detector from the direct warp is isolated, one at a
@@ -134,7 +160,7 @@ class MakePsfMatchedWarpTask(PipelineTask):
 
         # Prepare the output exposure. We clone the input image to keep the
         # metadata, but reset the image and variance plans.
-        exposure_psf_matched = direct_warp.clone()
+        exposure_psf_matched = direct_warp[bbox].clone()
         exposure_psf_matched.image.array[:, :] = np.nan
         exposure_psf_matched.variance.array[:, :] = np.inf
         exposure_psf_matched.setPsf(modelPsf)
@@ -146,23 +172,24 @@ class MakePsfMatchedWarpTask(PipelineTask):
             transform = makeWcsPairTransform(row.wcs, direct_warp.wcs)
             warp_psf = WarpedPsf(row.getPsf(), transform)
 
-            if (destination_polygon := row.validPolygon) is None:
+            if (src_polygon := row.validPolygon) is None:
                 # Calculate the polygon for this detector.
                 src_polygon = Polygon(
                     [geom.Point2D(corner) for corner in row.getBBox().getCorners()]
                 )
-                destination_polygon = src_polygon.transform(transform).intersectionSingle(
-                    geom.Box2D(direct_warp.getBBox())
-                )
                 self.log.debug("Polygon for detector=%d is calculated as %s",
                                row["ccd"],
-                               destination_polygon
+                               src_polygon
                                )
             else:
                 self.log.debug("Polygon for detector=%d is read from the input calexp as %s",
                                row["ccd"],
-                               destination_polygon
+                               src_polygon
                                )
+
+            destination_polygon = src_polygon.transform(transform).intersectionSingle(
+                geom.Box2D(direct_warp.getBBox())
+            )
 
             # Compute the minimum possible bounding box that overlaps the CCD.
             # First find the intersection polygon between the per-detector warp
@@ -193,6 +220,9 @@ class MakePsfMatchedWarpTask(PipelineTask):
 
             # Set pixels outside the intersection polygon to NO_DATA.
             temp_psf_matched.maskedImage[bbox].mask.array |= (~ccd_mask_array) * bit_mask
+
+            # Clip the bbox to the PSF-matched warp bounding box.
+            bbox.clip(exposure_psf_matched.getBBox())
 
             num_good_pixels = copyGoodPixels(
                 exposure_psf_matched.maskedImage[bbox],

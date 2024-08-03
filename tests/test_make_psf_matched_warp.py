@@ -57,7 +57,8 @@ class MakePsfMatchedWarpTestCase(MakeWarpTestCase):
         config = MakePsfMatchedWarpTask.ConfigClass()
         makePsfMatchedWarp = MakePsfMatchedWarpTask(config=config)
         result = makePsfMatchedWarp.run(
-            warp
+            warp,
+            bbox=self.skyInfo.bbox,
         )
 
         psf_matched_warp = result.psf_matched_warp
