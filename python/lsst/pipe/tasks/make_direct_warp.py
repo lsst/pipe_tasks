@@ -334,7 +334,7 @@ class MakeDirectWarpTask(PipelineTask):
             patchId=quantumDataId["patch"],
         )
 
-        results = self.run(inputs, sky_info, visit_summary)
+        results = self.run(inputs, sky_info)
         butlerQC.put(results, outputRefs)
 
     def _preselect_inputs(self, inputs, sky_info):
