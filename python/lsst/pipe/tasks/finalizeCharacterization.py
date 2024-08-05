@@ -325,6 +325,21 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         NoWorkFound
             Raised if the selector returns no good sources.
         """
+        # Check if we have the same inputs for each of the
+        # src_dict and calexp_dict.
+        src_detectors = set(src_dict.keys())
+        calexp_detectors = set(calexp_dict.keys())
+
+        if src_detectors != calexp_detectors:
+            detector_keys = sorted(src_detectors.intersection(calexp_detectors))
+            self.log.warning(
+                "Input src and calexp have mismatched detectors; "
+                "running intersection of %d detectors.",
+                len(detector_keys),
+            )
+        else:
+            detector_keys = sorted(src_detectors)
+
         # We do not need the isolated star table in this task.
         # However, it is used in tests to confirm consistency of indexes.
         _, isolated_source_table = self.concat_isolated_star_cats(
@@ -346,7 +361,9 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         measured_src_tables = []
         measured_src_table = None
 
-        for detector in src_dict:
+        self.log.info("Running finalizeCharacterization on %d detectors.", len(detector_keys))
+        for detector in detector_keys:
+            self.log.info("Starting finalizeCharacterization on detector ID %d.", detector)
             src = src_dict[detector].get()
             exposure = calexp_dict[detector].get()
 
