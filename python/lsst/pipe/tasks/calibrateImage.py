@@ -52,6 +52,8 @@ class NoPsfStarsToStarsMatchError(pipeBase.AlgorithmError):
                " Downstream processes probably won't have useful stars in this case."
                " Is `star_source_selector` too strict or is this a bad image?")
         super().__init__(msg)
+        self.n_psf_stars = n_psf_stars
+        self.n_stars = n_stars
 
     @property
     def metadata(self):
