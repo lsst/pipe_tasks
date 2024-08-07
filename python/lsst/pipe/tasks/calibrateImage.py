@@ -52,6 +52,8 @@ class NoPsfStarsToStarsMatchError(pipeBase.AlgorithmError):
                " Downstream processes probably won't have useful stars in this case."
                " Is `star_source_selector` too strict or is this a bad image?")
         super().__init__(msg)
+        self.n_psf_stars = n_psf_stars
+        self.n_stars = n_stars
 
     @property
     def metadata(self):
@@ -384,6 +386,10 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         self.astrometry.sourceSelector["science"].flags.bad = ["sky_source"]
         self.photometry.match.sourceSelection.doFlags = True
         self.photometry.match.sourceSelection.flags.bad = ["sky_source"]
+        # Unset the (otherwise reasonable, but we've already made the
+        # selections we want above) selection settings in PhotoCalTask.
+        self.photometry.match.sourceSelection.doRequirePrimary = False
+        self.photometry.match.sourceSelection.doUnresolved = False
 
         # All sources should be good for PSF summary statistics.
         # TODO: These should both be changed to calib_psf_used with DM-41640.

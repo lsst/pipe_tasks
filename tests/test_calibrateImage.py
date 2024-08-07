@@ -419,8 +419,10 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         psf_stars = self.truth_cat[:2].copy(deep=True)
 
         with self.assertRaisesRegex(NoPsfStarsToStarsMatchError,
-                                    "No psf stars out of 2 matched 5 calib stars"):
+                                    "No psf stars out of 2 matched 5 calib stars") as cm:
             calibrate._match_psf_stars(psf_stars, stars)
+        self.assertEqual(cm.exception.metadata["n_psf_stars"], 2)
+        self.assertEqual(cm.exception.metadata["n_stars"], 5)
 
 
 class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
