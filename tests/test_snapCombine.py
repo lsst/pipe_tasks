@@ -79,7 +79,7 @@ class SnapCombineTestCase(lsst.utils.tests.TestCase):
         bad_pixel_mask = afwImage.MaskX.getPlaneBitMask(config.bad_mask_planes)
         task = SnapCombineTask(config=config)
 
-        result = task.run(self.snap0, self.snap1).exposure
+        result = task.run([self.snap0, self.snap1]).exposure
 
         expect = simple_add(self.snap0, self.snap1, bad_pixel_mask)
         self.assertMaskedImagesAlmostEqual(result.maskedImage, expect.maskedImage)
@@ -91,7 +91,7 @@ class SnapCombineTestCase(lsst.utils.tests.TestCase):
         config = SnapCombineTask.ConfigClass()
         task = SnapCombineTask(config=config)
 
-        result = task.run(self.snap0, self.snap1).exposure
+        result = task.run([self.snap0, self.snap1]).exposure
 
         expect = self.snap0.maskedImage.Factory(self.snap0.maskedImage, True)
         expect += self.snap1.maskedImage
@@ -107,6 +107,21 @@ class SnapCombineTestCase(lsst.utils.tests.TestCase):
         task = SnapCombineTask()
         visit_info = task._merge_visit_info(self.snap0.visitInfo, self.snap1.visitInfo)
         self._check_visitInfo(visit_info)
+
+    def test_handle_snaps(self):
+        expect = self.snap0.maskedImage.Factory(self.snap0.maskedImage, True)
+        expect += self.snap1.maskedImage
+
+        task = SnapCombineTask()
+        self.assertEqual(task.run(self.snap0).exposure, self.snap0)
+        self.assertEqual(task.run((self.snap0, )).exposure, self.snap0)
+        self.assertMaskedImagesAlmostEqual(task.run((self.snap0, self.snap1)).exposure.maskedImage, expect)
+        with self.assertRaisesRegex(RuntimeError, "Can only process 1 or 2 snaps, not 0."):
+            task.run([])
+        with self.assertRaisesRegex(RuntimeError, "Can only process 1 or 2 snaps, not 3."):
+            task.run(3*[self.snap0])
+        with self.assertRaisesRegex(RuntimeError, "must be either an afw Exposure"):
+            task.run("")
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
