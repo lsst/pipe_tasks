@@ -728,7 +728,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         Parameters
         ----------
         exposure : `lsst.afw.image.Exposure`
-            Exposure to set the ApCorrMap on.
+            Exposure to detect and measure stars on.
         background : `lsst.afw.math.BackgroundList`
             Background that was fit to the exposure during detection;
             modified in-place during subsequent detection.
