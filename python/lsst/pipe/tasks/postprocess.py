@@ -1254,10 +1254,9 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
                 for detector_id in summaryTable["id"]
             ]
             ccdEntry["detector"] = summaryTable["id"]
-            pixToArcseconds = np.array([vR.getWcs().getPixelScale().asArcseconds() if vR.getWcs()
-                                        else np.nan for vR in visitSummary])
-            ccdEntry["seeing"] = visitSummary["psfSigma"] * np.sqrt(8 * np.log(2)) * pixToArcseconds
-
+            ccdEntry["seeing"] = (
+                visitSummary["psfSigma"] * visitSummary["pixelScale"] * np.sqrt(8 * np.log(2))
+            )
             ccdEntry["skyRotation"] = visitInfo.getBoresightRotAngle().asDegrees()
             ccdEntry["expMidpt"] = visitInfo.getDate().toPython()
             ccdEntry["expMidptMJD"] = visitInfo.getDate().get(dafBase.DateTime.MJD)

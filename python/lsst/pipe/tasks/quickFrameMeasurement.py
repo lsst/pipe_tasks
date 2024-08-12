@@ -503,7 +503,7 @@ class QuickFrameMeasurementTask(pipeBase.Task):
         if donutDiameter is None:
             donutDiameter = self.config.donutDiameter
 
-        self.plateScale = exp.getWcs().getPixelScale().asArcseconds()
+        self.plateScale = exp.getWcs().getPixelScale(exp.getBBox().getCenter()).asArcseconds()
         median = np.nanmedian(exp.image.array)
         exp.image -= median  # is put back later
         self.installPsf.run(exp)
