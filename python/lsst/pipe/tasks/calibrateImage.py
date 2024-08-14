@@ -601,7 +601,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         result.stars_footprints, photometry_matches, \
             photometry_meta, result.applied_photo_calib = self._fit_photometry(result.exposure,
-                                                                               result.stars_footprints)
+                                                                               result.stars_footprints,
+                                                                               result.background)
         # fit_photometry returns a new catalog, so we need a new astropy table view.
         result.stars = result.stars_footprints.asAstropy()
         if self.config.optional_outputs is not None and "photometry_matches" in self.config.optional_outputs:
@@ -883,7 +884,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         result = self.astrometry.run(stars, exposure)
         return result.matches, result.matchMeta
 
-    def _fit_photometry(self, exposure, stars):
+    def _fit_photometry(self, exposure, stars, background):
         """Fit a photometric model to the data and return the reference
         matches used in the fit, and the fitted PhotoCalib.
 
@@ -913,6 +914,13 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                        result.photoCalib.getCalibrationErr(),
                                        bbox=exposure.getBBox())
         exposure.setPhotoCalib(identity)
+
+        assert result.photoCalib._isConstant, \
+            "Background calibration assumes a constant PhotoCalib; PhotoCalTask should always return that."
+        for bg in background:
+            # The statsImage is a view, but we can't assign to a function call in python.
+            binned_image = bg[0].getStatsImage()
+            binned_image *= result.photoCalib.getCalibrationMean()
 
         return calibrated_stars, result.matches, result.matchMeta, result.photoCalib
 
