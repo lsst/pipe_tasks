@@ -44,13 +44,43 @@ from lsst.afw.detection import Psf
 from lsst.afw.geom.ellipses import Quadrupole
 from lsst.afw.image import ImageD
 from lsst.afw.table import SourceTable
-from lsst.atmospec.utils import isDispersedExp
 from lsst.geom import Box2I, Extent2I, LinearTransform, Point2D, Point2I, SpherePoint, arcseconds, degrees
 from lsst.meas.algorithms import SourceDetectionTask, SubtractBackgroundTask
 from lsst.meas.algorithms.installGaussianPsf import InstallGaussianPsfTask
 from lsst.meas.base import IdGenerator, SingleFrameMeasurementTask
+from lsst.meas.extensions import shapeHSM  # noqa: F401
 
 IDX_SENTINEL = -99999
+
+# Adding obs_lsst to the table file isn't possible, so hard code this because
+# importing it from obs_lsst isn't possible without a deferred import, which
+# isn't possible because of the tests and the build order.
+FILTER_DELIMITER = "~"
+
+
+def isDispersedExp(exp):
+    """Check if an exposure is dispersed.
+
+    Note this is copied from `atmospec.utils.isDispersedExp` to avoid a
+    circular import.
+
+    Parameters
+    ----------
+    exp : `lsst.afw.image.Exposure`
+        The exposure.
+
+    Returns
+    -------
+    isDispersed : `bool`
+        Whether it is a dispersed image or not.
+    """
+    filterFullName = exp.filter.physicalLabel
+    if FILTER_DELIMITER not in filterFullName:
+        raise RuntimeError(f"Error parsing filter name {filterFullName}")
+    filt, grating = filterFullName.split(FILTER_DELIMITER)
+    if grating.upper().startswith('EMPTY'):
+        return False
+    return True
 
 
 def _estimateMode(data: npt.NDArray[np.float64], frac: float = 0.5) -> float:
