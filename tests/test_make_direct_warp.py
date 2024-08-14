@@ -44,6 +44,10 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
         np.random.seed(12345)
 
         self.config = MakeDirectWarpConfig()
+        self.config.useVisitSummaryPsf = False
+        self.config.doSelectPreWarp = False
+        self.config.doWarpMaskedFraction = True
+        self.config.numberOfNoiseRealizations = 1
 
         meanCalibration = 1e-4
         calibrationErr = 1e-5

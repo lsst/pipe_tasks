@@ -28,6 +28,7 @@ from lsst.afw.geom import makeWcsPairTransform
 from lsst.afw.image import ExposureF, Mask
 from lsst.afw.math import Warper
 from lsst.coadd.utils import copyGoodPixels
+from lsst.geom import Box2D
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig, WarpedPsf
 from lsst.meas.algorithms.cloughTocher2DInterpolator import (
     CloughTocher2DInterpolateTask,
@@ -48,6 +49,7 @@ from lsst.pipe.base import (
 )
 from lsst.pipe.base.connectionTypes import Input, Output
 from lsst.pipe.tasks.coaddBase import makeSkyInfo
+from lsst.pipe.tasks.selectImages import PsfWcsSelectImagesTask
 from lsst.skymap import BaseSkyMap
 
 from .coaddInputRecorder import CoaddInputRecorderTask
@@ -135,6 +137,9 @@ class MakeDirectWarpConnections(
         if not config.doApplyNewBackground:
             del self.background_apply_list
 
+        if not config.doWarpMaskedFraction:
+            del self.masked_fraction_warp
+
         # Dynamically set output connections for noise images, depending on the
         # number of noise realization specified in the config.
         for n in range(config.numberOfNoiseRealizations):
@@ -173,7 +178,7 @@ class MakeDirectWarpConfig(
 
     numberOfNoiseRealizations = RangeField[int](
         doc="Number of noise realizations to simulate and persist.",
-        default=1,
+        default=0,
         min=0,
         max=MAX_NUMBER_OF_NOISE_REALIZATIONS,
         inclusiveMax=True,
@@ -192,7 +197,7 @@ class MakeDirectWarpConfig(
     doRevertOldBackground = Field[bool](
         doc="Revert the old backgrounds from the `background_revert_list` "
             "connection?",
-        default=True,
+        default=False,
     )
     doApplyNewBackground = Field[bool](
         doc="Apply the new backgrounds from the `background_apply_list` "
@@ -201,13 +206,21 @@ class MakeDirectWarpConfig(
     )
     useVisitSummaryPsf = Field[bool](
         doc="If True, use the PSF model and aperture corrections from the "
-            "'visit_summary' connection. If False, use the PSF model and "
-            "aperture corrections from the 'calexp' connection.",
+            "'visit_summary' connection to make the warp. If False, use the "
+            "PSF model and aperture corrections from the 'calexp' connection.",
         default=True,
+    )
+    doSelectPreWarp = Field[bool](
+        doc="Select ccds before warping?",
+        default=True,
+    )
+    select = ConfigurableField(
+        doc="Image selection subtask.",
+        target=PsfWcsSelectImagesTask,
     )
     doPreWarpInterpolation = Field[bool](
         doc="Interpolate over bad pixels before warping?",
-        default=True,
+        default=False,
     )
     preWarpInterpolation = ConfigurableField(
         doc="Interpolation task to use for pre-warping interpolation",
@@ -224,11 +237,15 @@ class MakeDirectWarpConfig(
     )
     border = Field[int](
         doc="Pad the patch boundary of the warp by these many pixels, so as to allow for PSF-matching later",
-        default=0,
+        default=256,
     )
     warper = ConfigField(
         doc="Configuration for the warper that warps the image and noise",
         dtype=Warper.ConfigClass,
+    )
+    doWarpMaskedFraction = Field[bool](
+        doc="Warp the masked fraction image?",
+        default=False,
     )
     maskedFractionWarper = ConfigField(
         doc="Configuration for the warp that warps the mask fraction image",
@@ -292,9 +309,12 @@ class MakeDirectWarpTask(PipelineTask):
         super().__init__(**kwargs)
         self.makeSubtask("inputRecorder")
         self.makeSubtask("preWarpInterpolation")
+        if self.config.doSelectPreWarp:
+            self.makeSubtask("select")
 
         self.warper = Warper.fromConfig(self.config.warper)
-        self.maskedFractionWarper = Warper.fromConfig(self.config.maskedFractionWarper)
+        if self.config.doWarpMaskedFraction:
+            self.maskedFractionWarper = Warper.fromConfig(self.config.maskedFractionWarper)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         # Docstring inherited.
@@ -314,12 +334,37 @@ class MakeDirectWarpTask(PipelineTask):
             patchId=quantumDataId["patch"],
         )
 
-        visit_summary = inputs["visit_summary"] if self.config.useVisitSummaryPsf else None
-
-        results = self.run(inputs, sky_info, visit_summary)
+        results = self.run(inputs, sky_info)
         butlerQC.put(results, outputRefs)
 
-    def run(self, inputs, sky_info, visit_summary):
+    def _preselect_inputs(self, inputs, sky_info):
+        dataIdList = [ref.dataId for ref in inputs["calexp_list"]]
+        visit_summary = inputs["visit_summary"]
+
+        bboxList, wcsList = [], []
+        for dataId in dataIdList:
+            row = visit_summary.find(dataId["detector"])
+            if row is None:
+                raise RuntimeError(f"Unexpectedly incomplete visit_summary: {dataId=} is missing.")
+            bboxList.append(row.getBBox())
+            wcsList.append(row.getWcs())
+
+        cornerPosList = Box2D(sky_info.bbox).getCorners()
+        coordList = [sky_info.wcs.pixelToSky(pos) for pos in cornerPosList]
+
+        goodIndices = self.select.run(
+            **inputs,
+            bboxList=bboxList,
+            wcsList=wcsList,
+            visitSummary=visit_summary,
+            coordList=coordList,
+            dataIds=dataIdList,
+        )
+        inputs = self._filterInputs(indices=goodIndices, inputs=inputs)
+
+        return inputs
+
+    def run(self, inputs, sky_info, **kwargs):
         """Create a Warp dataset from inputs.
 
         Parameters
@@ -344,8 +389,16 @@ class MakeDirectWarpTask(PipelineTask):
             A Struct object containing the warped exposure, noise exposure(s),
             and masked fraction image.
         """
+
+        if self.config.doSelectPreWarp:
+            inputs = self._preselect_inputs(inputs, sky_info)
+            if not inputs["calexp_list"]:
+                raise NoWorkFound("No input warps remain after selection for co-addition")
+
         sky_info.bbox.grow(self.config.border)
         target_bbox, target_wcs = sky_info.bbox, sky_info.wcs
+
+        visit_summary = inputs["visit_summary"] if self.config.useVisitSummaryPsf else None
 
         # Initialize the objects that will hold the warp.
         final_warp = ExposureF(target_bbox, target_wcs)
@@ -409,30 +462,48 @@ class MakeDirectWarpTask(PipelineTask):
             )
             warpedExposure.setPsf(psfWarped)
 
+            if final_warp.photoCalib is not None:
+                ratio = (
+                    final_warp.photoCalib.getInstFluxAtZeroMagnitude()
+                    / warpedExposure.photoCalib.getInstFluxAtZeroMagnitude()
+                )
+            else:
+                ratio = 1
+
+            self.log.debug("Scaling exposure %s by %f", dataId, ratio)
+            warpedExposure.maskedImage *= ratio
+
             # Accumulate the partial warps in an online fashion.
             nGood = copyGoodPixels(
                 final_warp.maskedImage,
                 warpedExposure.maskedImage,
                 final_warp.mask.getPlaneBitMask(["NO_DATA"]),
             )
+
+            if final_warp.photoCalib is None and nGood > 0:
+                final_warp.setPhotoCalib(warpedExposure.photoCalib)
+
             ccdId = self.config.idGenerator.apply(dataId).catalog_id
             inputRecorder.addCalExp(calexp, ccdId, nGood)
             totalGoodPixels += nGood
 
-            # Obtain the masked fraction exposure and warp it.
-            if self.config.doPreWarpInterpolation:
-                badMaskPlanes = self.preWarpInterpolation.config.badMaskPlanes
-            else:
-                badMaskPlanes = []
-            masked_fraction_exp = self._get_bad_mask(calexp, badMaskPlanes)
-            masked_fraction_warp = self.maskedFractionWarper.warpExposure(
-                target_wcs, masked_fraction_exp, destBBox=target_bbox
-            )
-            copyGoodPixels(
-                final_masked_fraction_warp.maskedImage,
-                masked_fraction_warp.maskedImage,
-                final_masked_fraction_warp.mask.getPlaneBitMask(["NO_DATA"]),
-            )
+            if self.config.doWarpMaskedFraction:
+                # Obtain the masked fraction exposure and warp it.
+                if self.config.doPreWarpInterpolation:
+                    badMaskPlanes = self.preWarpInterpolation.config.badMaskPlanes
+                else:
+                    badMaskPlanes = []
+                masked_fraction_exp = self._get_bad_mask(calexp, badMaskPlanes)
+
+                masked_fraction_warp = self.maskedFractionWarper.warpExposure(
+                    target_wcs, masked_fraction_exp, destBBox=target_bbox
+                )
+
+                copyGoodPixels(
+                    final_masked_fraction_warp.maskedImage,
+                    masked_fraction_warp.maskedImage,
+                    final_masked_fraction_warp.mask.getPlaneBitMask(["NO_DATA"]),
+                )
 
             # Process and accumulate noise images.
             for n_noise in range(self.config.numberOfNoiseRealizations):
@@ -446,6 +517,9 @@ class MakeDirectWarpTask(PipelineTask):
                     visit_summary,
                     destBBox=target_bbox,
                 )
+
+                warpedNoise.maskedImage *= ratio
+
                 copyGoodPixels(
                     final_noise_warps[n_noise].maskedImage,
                     warpedNoise.maskedImage,
@@ -468,8 +542,10 @@ class MakeDirectWarpTask(PipelineTask):
 
         results = Struct(
             warp=final_warp,
-            masked_fraction_warp=final_masked_fraction_warp.image,
         )
+
+        if self.config.doWarpMaskedFraction:
+            results.masked_fraction_warp = final_masked_fraction_warp.image
 
         for noise_index, noise_exposure in final_noise_warps.items():
             setattr(results, f"noise_warp{noise_index}", noise_exposure.maskedImage)
@@ -548,7 +624,33 @@ class MakeDirectWarpTask(PipelineTask):
         return warped_exposure
 
     @staticmethod
+    def _filterInputs(indices, inputs):
+        """Filter inputs by their indices.
+
+        This method down-selects the list entries in ``inputs`` dictionary by
+        keeping only those items in the lists that correspond to ``indices``.
+        This is intended to select input visits that go into the warps.
+
+        Parameters
+        ----------
+        indices : `list` [`int`]
+        inputs : `dict`
+            A dictionary of input connections to be passed to run.
+
+        Returns
+        -------
+        inputs : `dict`
+            Task inputs with their lists filtered by indices.
+        """
+        for key in inputs.keys():
+            # Only down-select on list inputs
+            if isinstance(inputs[key], list):
+                inputs[key] = [inputs[key][ind] for ind in indices]
+
+        return inputs
+
     def _apply_all_calibrations(
+        self,
         exp: Exposure,
         old_background,
         new_background,
@@ -591,15 +693,10 @@ class MakeDirectWarpTask(PipelineTask):
             Raised if ``visit_summary`` is provided but does not contain a
             record corresponding to ``exp``.
         """
-        if not visit_summary:
-            logger.debug("No visit summary provided.")
-        else:
-            logger.debug("Updating calibration from visit summary.")
-
         if old_background:
             exp.maskedImage += old_background.getImage()
 
-        if visit_summary:
+        if self.config.useVisitSummaryPsf:
             detector = exp.info.getDetector().getId()
             row = visit_summary.find(detector)
 
@@ -637,7 +734,7 @@ class MakeDirectWarpTask(PipelineTask):
 
         # Calibrate the (masked) image.
         # This should likely happen even if visit_summary is None.
-        photo_calib = exp.getPhotoCalib()
+        photo_calib = exp.photoCalib
         exp.maskedImage = photo_calib.calibrateImage(
             exp.maskedImage, includeScaleUncertainty=includeScaleUncertainty
         )
