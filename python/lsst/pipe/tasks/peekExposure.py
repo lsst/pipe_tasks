@@ -112,7 +112,7 @@ def _estimateMode(data: npt.NDArray[np.float64], frac: float = 0.5) -> float:
     interval = int(np.ceil(frac * len(data)))
     spans = data[interval:] - data[:-interval]
     start = np.argmin(spans)
-    return np.median(data[start : start + interval])
+    return np.median(data[start: start + interval])
 
 
 def _bearingToUnitVector(
@@ -228,7 +228,7 @@ class DonutPsf(Psf):
     ) -> ImageD:
         bbox = self.computeBBox(self.getAveragePosition())
         img = ImageD(bbox, 0.0)
-        x, y = np.ogrid[bbox.minY : bbox.maxY + 1, bbox.minX : bbox.maxX + 1]
+        x, y = np.ogrid[bbox.minY: bbox.maxY + 1, bbox.minX: bbox.maxX + 1]
         rsqr = x**2 + y**2
         w = (rsqr < self.outerRad**2) & (rsqr > self.innerRad**2)
         img.array[w] = 1.0

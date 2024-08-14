@@ -211,7 +211,7 @@ def main(args: argparse.Namespace) -> None:
         warnings.simplefilter("ignore", category=AstropyUserWarning)
         table = Table.read(path)
     table["exposureId"] = table["day_obs"] * 100_000 + table["sequence_number"]
-    table = table[args.start : args.end]
+    table = table[args.start: args.end]
     intags = np.unique(table["finalTag"])
 
     # Possible PET outcomes
