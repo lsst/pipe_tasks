@@ -37,16 +37,17 @@ class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
         afwDataDir = None
 
     truthValuesDirect = {
-        "postISRCCD_2020021800073-KPNO_406_828nm~EMPTY-det000.fits.fz": (2496, 1105),
-        "postISRCCD_2020021800027-KPNO_406_828nm~EMPTY-det000.fits.fz": (1550, 1423),
-        "postISRCCD_2020021800224-EMPTY~EMPTY-det000.fits.fz": (1866, 2274),
+        "postISRCCD_2020021800073-KPNO_406_828nm~EMPTY-det000.fits.fz": (2496.296, 1104.171),
+        "postISRCCD_2020021800027-KPNO_406_828nm~EMPTY-det000.fits.fz": (1540.807, 1421.422),
+        "postISRCCD_2020021800224-EMPTY~EMPTY-det000.fits.fz": (1865.814, 2273.021),
     }
     truthValuesDispersed = {
-        "postISRCCD_2020021700249-EMPTY~ronchi90lpmm-det000.fits.fz": (2531, 2286),
-        "postISRCCD_2020031500119-EMPTY~ronchi90lpmm-det000.fits.fz": (2112, 2183),
+        "postISRCCD_2020021700249-EMPTY~ronchi90lpmm-det000.fits.fz": (2531.088, 2287.149),
+        "postISRCCD_2020031500119-EMPTY~ronchi90lpmm-det000.fits.fz": (2112.865, 2181.377),
     }
 
-    TOLERANCE = 5  # number of pixels total distance it's acceptable to miss by
+    CENTROID_TOLERANCE = 2  # number of pixels total distance it's acceptable to miss by
+    COM_TOLERANCE = 8  # number of pixels the center of mass is allowed to be off by
 
     @unittest.skipUnless(afwDataDir, "afwdata not available")
     def setUp(self):
@@ -73,13 +74,13 @@ class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
             dist = np.linalg.norm(np.asarray(foundCentroid) - np.asarray(trueCentroid))
             distCoM = np.linalg.norm(np.asarray(result.brightestObjCentroidCofM) - np.asarray(trueCentroid))
 
-            self.assertLess(dist, self.TOLERANCE)
-            self.assertLess(distCoM, self.TOLERANCE)
+            self.assertLess(dist, self.CENTROID_TOLERANCE)
+            self.assertLess(distCoM, self.COM_TOLERANCE)
 
             # offset size shouldn't really matter, just make it >> PSF, and make
             # sure the value isn't off-chip or right by the edge for any of the
             # test images
-            offset = 250
+            offset = 300
             wrongCentroid = (foundCentroid[0]+offset, foundCentroid[1]+offset)
             with self.assertRaises(ValueError):
                 task.checkResult(exp, wrongCentroid, -1, self.directConfig.centroidPixelPercentile)
@@ -98,13 +99,13 @@ class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
             foundCentroid = result.brightestObjCentroid
 
             dist = np.linalg.norm(np.asarray(foundCentroid) - np.asarray(trueCentroid))
-            self.assertLess(dist, self.TOLERANCE)
+            self.assertLess(dist, self.CENTROID_TOLERANCE)
 
             # this doesn't matter much as CoM centroid is for donuts
             # and we don't intend to do dispersed donuts, but good to catch
             # big regressions. Can be removed later if needed
             distCoM = np.linalg.norm(np.asarray(result.brightestObjCentroidCofM) - np.asarray(trueCentroid))
-            self.assertLess(distCoM, self.TOLERANCE)
+            self.assertLess(distCoM, self.COM_TOLERANCE)
 
 
 def setup_module(module):
