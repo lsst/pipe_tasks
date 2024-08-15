@@ -103,7 +103,7 @@ class InterpolateOverDefectGaussianProcess:
     def __init__(
         self,
         maskedImage,
-        defects=["SAT"],
+        defects=["SAT", "INTRP"],
         fwhm=10,
         block_size=100,
         solver="treegp",

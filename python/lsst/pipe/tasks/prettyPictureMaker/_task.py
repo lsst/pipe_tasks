@@ -125,6 +125,7 @@ class LumConfig(Config):
         doc="The minimum intensity value after stretch, values lower will be set to zero", default=0
     )
     floor = Field[float](doc="A scaling factor to apply to the luminance before asinh scaling", default=0.0)
+    Q = Field[float](doc="softening parameter", default=8)
 
 
 class LocalContrastConfig(Config):
@@ -216,6 +217,7 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
             "uint8": "Use 8 bit arrays, 255 max",
             "uint16": "Use 16 bit arrays, 65535 max",
             "half": "Use 16 bit float arrays, 1 max",
+            "float": "Use 32 bit float arrays, 1 max",
         },
     )
 
@@ -275,7 +277,8 @@ class PrettyPictureTask(PipelineTask):
 
         for band, image in channels.items():
             mix = self.config.channelConfig[band]
-            channelSum = mix.r + mix.g + mix.b
+            # channelSum = mix.r + mix.g + mix.b
+            channelSum = 1
             if mix.r:
                 imageRArray += mix.r / channelSum * image
             if mix.g:
@@ -283,6 +286,10 @@ class PrettyPictureTask(PipelineTask):
             if mix.b:
                 imageBArray += mix.b / channelSum * image
 
+        exposure = next(iter(images.values()))
+        box: Box2I = exposure.getBBox()
+        boxCenter = box.getCenter()
+        psf = exposure.psf.computeImage(boxCenter).array
         # Ignore type because Exposures do in fact have a bbox, but it is c++
         # and not typed.
         colorImage = lsstRGB(
@@ -294,6 +301,7 @@ class PrettyPictureTask(PipelineTask):
             scaleColorKWargs=self.config.colorConfig.toDict(),
             **(self.config.localContrastConfig.toDict()),
             cieWhitePoint=tuple(self.config.cieWhitePoint),  # type: ignore
+            psf=psf,
         )
 
         # Find the dataset type and thus the maximum values as well
@@ -307,6 +315,9 @@ class PrettyPictureTask(PipelineTask):
                 maxVal = 65535
             case "half":
                 dtype = np.half
+                maxVal = 1.0
+            case "float":
+                dtype = np.float32
                 maxVal = 1.0
             case _:
                 assert True, "This code path should be unreachable"
