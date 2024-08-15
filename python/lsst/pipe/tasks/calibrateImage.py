@@ -100,7 +100,9 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
     # TODO DM-38732: We want some kind of flag on Exposures/Catalogs to make
     # it obvious which components had failed to be computed/persisted.
     exposure = connectionTypes.Output(
-        doc="Photometrically calibrated exposure with fitted calibrations and summary statistics.",
+        doc="Photometrically calibrated, background-subtracted exposure with fitted calibrations and "
+            "summary statistics. To recover the original exposure, first add the background "
+            "(`initial_pvi_background`), and then uncalibrate (divide by `initial_photoCalib_detector`).",
         name="initial_pvi",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
@@ -125,7 +127,7 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
         dimensions=("instrument", "visit", "detector"),
     )
     background = connectionTypes.Output(
-        doc="Background models estimated during calibration task.",
+        doc="Background models estimated during calibration task; calibrated to be in nJy units.",
         name="initial_pvi_background",
         storageClass="Background",
         dimensions=("instrument", "visit", "detector"),
@@ -601,7 +603,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         result.stars_footprints, photometry_matches, \
             photometry_meta, result.applied_photo_calib = self._fit_photometry(result.exposure,
-                                                                               result.stars_footprints)
+                                                                               result.stars_footprints,
+                                                                               result.background)
         # fit_photometry returns a new catalog, so we need a new astropy table view.
         result.stars = result.stars_footprints.asAstropy()
         if self.config.optional_outputs is not None and "photometry_matches" in self.config.optional_outputs:
@@ -883,7 +886,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         result = self.astrometry.run(stars, exposure)
         return result.matches, result.matchMeta
 
-    def _fit_photometry(self, exposure, stars):
+    def _fit_photometry(self, exposure, stars, background):
         """Fit a photometric model to the data and return the reference
         matches used in the fit, and the fitted PhotoCalib.
 
@@ -913,6 +916,13 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                        result.photoCalib.getCalibrationErr(),
                                        bbox=exposure.getBBox())
         exposure.setPhotoCalib(identity)
+
+        assert result.photoCalib._isConstant, \
+            "Background calibration assumes a constant PhotoCalib; PhotoCalTask should always return that."
+        for bg in background:
+            # The statsImage is a view, but we can't assign to a function call in python.
+            binned_image = bg[0].getStatsImage()
+            binned_image *= result.photoCalib.getCalibrationMean()
 
         return calibrated_stars, result.matches, result.matchMeta, result.photoCalib
 

@@ -80,6 +80,9 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         schema = dataset.makeMinimalSchema()
         self.truth_exposure, self.truth_cat = dataset.realize(noise=noise, schema=schema)
+        # Add in a significant background, so we can test that the output
+        # background is self-consistent with the calibrated exposure.
+        self.truth_exposure.image += 500
         # To make it look like a version=1 (nJy fluxes) refcat
         self.truth_cat = self.truth_exposure.photoCalib.calibrateCatalog(self.truth_cat)
         self.ref_loader = testUtils.MockReferenceObjectLoaderFromMemory([self.truth_cat])
@@ -93,7 +96,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         # Copy the truth exposure, because CalibrateImage modifies the input.
         # Post-ISR ccds only contain: initial WCS, VisitInfo, filter
-        self.exposure = afwImage.ExposureF(self.truth_exposure.maskedImage)
+        self.exposure = afwImage.ExposureF(self.truth_exposure, deep=True)
         self.exposure.setWcs(self.truth_exposure.wcs)
         self.exposure.info.setVisitInfo(self.truth_exposure.visitInfo)
         # "truth" filter, to match the "truth" refcat.
@@ -347,14 +350,17 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         stars = calibrate._find_stars(self.exposure, background, self.id_generator)
         calibrate._fit_astrometry(self.exposure, stars)
 
-        stars, matches, meta, photoCalib = calibrate._fit_photometry(self.exposure, stars)
+        stars, matches, meta, photoCalib = calibrate._fit_photometry(self.exposure, stars, background)
 
         # NOTE: With this test data, PhotoCalTask returns calibrationErr==0,
         # so we can't check that the photoCal error has been set.
         self.assertFloatsAlmostEqual(photoCalib.getCalibrationMean(), self.photo_calib, rtol=1e-2)
-        # The exposure should be calibrated by the applied photoCalib.
-        self.assertFloatsAlmostEqual(self.exposure.image.array/self.truth_exposure.image.array,
-                                     self.photo_calib, rtol=1e-2)
+        # The exposure should be calibrated by the applied photoCalib,
+        # and the background should be calibrated to match.
+        uncalibrated = self.exposure.image.clone()
+        uncalibrated += background.getImage()
+        uncalibrated /= self.photo_calib
+        self.assertFloatsAlmostEqual(uncalibrated.array, self.truth_exposure.image.array, rtol=1e-2)
         # PhotoCalib on the exposure must be identically 1.
         self.assertEqual(self.exposure.photoCalib.getCalibrationMean(), 1.0)
 
