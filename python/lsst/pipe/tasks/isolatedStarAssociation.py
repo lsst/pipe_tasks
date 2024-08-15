@@ -23,6 +23,8 @@ __all__ = ['IsolatedStarAssociationConnections',
            'IsolatedStarAssociationConfig',
            'IsolatedStarAssociationTask']
 
+import esutil
+import hpgeom as hpg
 import numpy as np
 import pandas as pd
 from smatch.matcher import Matcher
@@ -31,6 +33,8 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.skymap import BaseSkyMap
 from lsst.meas.algorithms.sourceSelector import sourceSelectorRegistry
+
+from .healSparseMapping import _is_power_of_two
 
 
 class IsolatedStarAssociationConnections(pipeBase.PipelineTaskConnections,
@@ -79,6 +83,12 @@ class IsolatedStarAssociationConfig(pipeBase.PipelineTaskConfig,
         doc='Match radius (arcseconds)',
         dtype=float,
         default=1.0,
+    )
+    nside_split = pexConfig.Field(
+        doc="HealPix nside to use for splitting tract for reduced memory. Must be power of 2.",
+        dtype=int,
+        default=32,
+        check=_is_power_of_two,
     )
     isolation_radius = pexConfig.Field(
         doc=('Isolation radius (arcseconds).  Any stars with average centroids '
@@ -390,6 +400,21 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
 
         dtype = self._get_primary_dtype(primary_bands)
 
+        # Figure out nside for computing boundary pixels.
+        # We want to be 10x the match radius to be conservative.
+        nside_split = self.config.nside_split
+        nside_boundary = nside_split
+        res = hpg.nside_to_resolution(nside_boundary)*3600.
+        while res > 10.*self.config.match_radius:
+            nside_boundary *= 2
+            res = hpg.nside_to_resolution(nside_boundary)*3600.
+
+        # Cancel out last jump.
+        nside_boundary //= 2
+
+        # Compute healpix nest bit shift between resolutions.
+        bit_shift = 2*int(np.round(np.log2(nside_boundary / nside_split)))
+
         primary_star_cat = None
         for primary_band in primary_bands:
             use = (star_source_cat['band'] == primary_band)
@@ -397,42 +422,63 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
             ra = star_source_cat[ra_col][use]
             dec = star_source_cat[dec_col][use]
 
-            with Matcher(ra, dec) as matcher:
-                try:
-                    # New smatch API
+            hpix_split = np.unique(hpg.angle_to_pixel(nside_split, ra, dec))
+            hpix_highres = hpg.angle_to_pixel(nside_boundary, ra, dec)
+
+            band_cats = []
+            for pix in hpix_split:
+                self.log.info("Matching primary stars in %s band in pixel %d", primary_band, pix)
+                # We take all the high resolution pixels in this pixel, and
+                # add in all the boundary pixels to ensure objects do not get split.
+                pixels_highres = np.left_shift(pix, bit_shift) + np.arange(2**bit_shift)
+                pixels_highres = np.unique(hpg.neighbors(nside_boundary, pixels_highres).ravel())
+                a, b = esutil.numpy_util.match(pixels_highres, hpix_highres)
+
+                _ra = ra[b]
+                _dec = dec[b]
+
+                with Matcher(_ra, _dec) as matcher:
                     idx = matcher.query_groups(self.config.match_radius/3600., min_match=1)
-                except AttributeError:
-                    # Old smatch API
-                    idx = matcher.query_self(self.config.match_radius/3600., min_match=1)
 
-            count = len(idx)
+                count = len(idx)
 
-            if count == 0:
+                if count == 0:
+                    continue
+
+                band_cat = np.zeros(count, dtype=dtype)
+                band_cat['primary_band'] = primary_band
+
+                # If the tract cross ra=0 (that is, it has both low ra and high ra)
+                # then we need to remap all ra values from [0, 360) to [-180, 180)
+                # before doing any position averaging.
+                remapped = False
+                if _ra.min() < 60.0 and _ra.max() > 300.0:
+                    _ra_temp = (_ra + 180.0) % 360. - 180.
+                    remapped = True
+                else:
+                    _ra_temp = _ra
+
+                # Compute mean position for each primary star
+                for i, row in enumerate(idx):
+                    row = np.array(row)
+                    band_cat[ra_col][i] = np.mean(_ra_temp[row])
+                    band_cat[dec_col][i] = np.mean(_dec[row])
+
+                if remapped:
+                    # Remap ra back to [0, 360)
+                    band_cat[ra_col] %= 360.0
+
+                # And cut down to objects that are not in the boundary region
+                # after association.
+                inpix = (hpg.angle_to_pixel(nside_split, band_cat[ra_col], band_cat[dec_col]) == pix)
+                if inpix.sum() > 0:
+                    band_cats.append(band_cat[inpix])
+
+            if len(band_cats) == 0:
                 self.log.info('Found 0 primary stars in %s band.', primary_band)
                 continue
 
-            band_cat = np.zeros(count, dtype=dtype)
-            band_cat['primary_band'] = primary_band
-
-            # If the tract cross ra=0 (that is, it has both low ra and high ra)
-            # then we need to remap all ra values from [0, 360) to [-180, 180)
-            # before doing any position averaging.
-            remapped = False
-            if ra.min() < 60.0 and ra.max() > 300.0:
-                ra_temp = (ra + 180.0) % 360. - 180.
-                remapped = True
-            else:
-                ra_temp = ra
-
-            # Compute mean position for each primary star
-            for i, row in enumerate(idx):
-                row = np.array(row)
-                band_cat[ra_col][i] = np.mean(ra_temp[row])
-                band_cat[dec_col][i] = np.mean(dec[row])
-
-            if remapped:
-                # Remap ra back to [0, 360)
-                band_cat[ra_col] %= 360.0
+            band_cat = np.concatenate(band_cats)
 
             # Match to previous band catalog(s), and remove duplicates.
             if primary_star_cat is None or len(primary_star_cat) == 0:
