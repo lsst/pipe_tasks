@@ -6,7 +6,7 @@ CalibrateImageTask
 
 `~lsst.pipe.tasks.calibrateImage.CalibrateImageTask` performs "single frame processing" on one (single *visit*) or two (two *snap* visit) post- :ref:`Instrument Signature Removal <lsst.ip.isr>` single detector exposure (``postISRCCD``).
 This involves merging two *snaps* (if provided) into one *visit* exposure, repairing cosmic rays and defects, detecting and measuring sources on the exposure to make an initial estimation of the point spread function (PSF), re-doing detection and measurement with that fitted PSF to compute the astrometric and photometric calibrations, and computing summary statistics of the exposure and measured catalog.
-Its primary outputs are a calibrated exposure (``initial_pvi``, pixel values in nanojansky) and catalog (``initial_stars_detector``) of bright, well-measured point-like sources that were used as inputs to calibration and that are suitable for downstream use (for example as kernel candidates in difference imaging).
+Its primary outputs are a calibrated, background-subtracted exposure (``initial_pvi``, pixel values in nanojansky) and catalog (``initial_stars_detector``) of bright, well-measured point-like sources that were used as inputs to calibration and that are suitable for downstream use (for example as kernel candidates in difference imaging).
 This task replaces the two older tasks `~lsst.pipe.tasks.characterizeImage.CharacterizeImageTask` (roughly repair/estimate PSF/aperture correct) and `~lsst.pipe.tasks.calibrate.CalibrateTask` (roughly detect/measure/astrometry/photometry).
 
 .. _lsst.pipe.tasks.calibrateImage.CalibrateImageTask-summary:
@@ -40,7 +40,7 @@ Processing summary
 
 #. Match the list of stars from the two steps above, to propagate flags (e.g. ``calib_psf_candidate``, ``calib_psf_used``) from the psf stars catalog into the second, primary output catalog.
 
-#. The steps above perform several rounds of background fitting, which together are saved as the ``initial_pvi_background`` output.
+#. The steps above perform several rounds of background fitting, which together are saved as the ``initial_pvi_background`` output; this saved background has been calibrated to be in the same nJy units as the ``initial_pvi`` output exposure.
 
 #. Fit the :py:class:`astrometry <lsst.meas.astrom.AstrometryTask>` to a reference catalog using an :py:class:`affine WCS fitter <lsst.meas.astrom.FitAffineWcsTask>` that requires a reasonable model of the :ref:`camera geometry <section_CameraGeom_Overview>`, to produce a `SkyWcs`_ for the exposure and compute on-sky coordinates for the catalog of stars. The star/refcat matches used in the astrometric fit is saved as the optional ``initial_astrometry_match_detector`` catalog.
 

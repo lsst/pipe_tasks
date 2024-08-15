@@ -100,7 +100,9 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
     # TODO DM-38732: We want some kind of flag on Exposures/Catalogs to make
     # it obvious which components had failed to be computed/persisted.
     exposure = connectionTypes.Output(
-        doc="Photometrically calibrated exposure with fitted calibrations and summary statistics.",
+        doc="Photometrically calibrated, background-subtracted exposure with fitted calibrations and "
+            "summary statistics. To recover the original exposure, first add the background "
+            "(`initial_pvi_background`), and then uncalibrate (divide by `initial_photoCalib_detector`).",
         name="initial_pvi",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
@@ -125,7 +127,7 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
         dimensions=("instrument", "visit", "detector"),
     )
     background = connectionTypes.Output(
-        doc="Background models estimated during calibration task.",
+        doc="Background models estimated during calibration task; calibrated to be in nJy units.",
         name="initial_pvi_background",
         storageClass="Background",
         dimensions=("instrument", "visit", "detector"),
