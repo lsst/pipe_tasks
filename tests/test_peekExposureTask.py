@@ -27,7 +27,7 @@ import numpy as np
 import lsst.afw.image as afwImage
 import lsst.utils
 import lsst.utils.tests
-from lsst.pipe.tasks.quickFrameMeasurement import QuickFrameMeasurementTask, QuickFrameMeasurementTaskConfig
+from lsst.pipe.tasks.peekExposure import PeekExposureTask, PeekExposureTaskConfig
 
 
 class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
@@ -37,26 +37,25 @@ class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
         afwDataDir = None
 
     truthValuesDirect = {
-        "postISRCCD_2020021800073-KPNO_406_828nm~EMPTY-det000.fits.fz": (2496.296, 1104.171),
-        "postISRCCD_2020021800027-KPNO_406_828nm~EMPTY-det000.fits.fz": (1540.807, 1421.422),
-        "postISRCCD_2020021800224-EMPTY~EMPTY-det000.fits.fz": (1865.814, 2273.021),
+        "postISRCCD_2020021800073-KPNO_406_828nm~EMPTY-det000.fits.fz": (2497.5, 1105.5),
+        "postISRCCD_2020021800027-KPNO_406_828nm~EMPTY-det000.fits.fz": (1545.5, 1421.5),
+        "postISRCCD_2020021800224-EMPTY~EMPTY-det000.fits.fz": (1865.5, 2269.5),
     }
     truthValuesDispersed = {
-        "postISRCCD_2020021700249-EMPTY~ronchi90lpmm-det000.fits.fz": (2531.088, 2287.149),
-        "postISRCCD_2020031500119-EMPTY~ronchi90lpmm-det000.fits.fz": (2112.865, 2181.377),
+        "postISRCCD_2020021700249-EMPTY~ronchi90lpmm-det000.fits.fz": (2528.5, 2288.5),
+        "postISRCCD_2020031500119-EMPTY~ronchi90lpmm-det000.fits.fz": (2117, 2182),
     }
 
-    CENTROID_TOLERANCE = 2  # number of pixels total distance it's acceptable to miss by
-    COM_TOLERANCE = 8  # number of pixels the center of mass is allowed to be off by
+    TOLERANCE = 2  # number of pixels total distance it's acceptable to miss by
 
     @unittest.skipUnless(afwDataDir, "afwdata not available")
     def setUp(self):
-        self.directConfig = QuickFrameMeasurementTaskConfig()
-        self.directTask = QuickFrameMeasurementTask(config=self.directConfig)
+        self.directConfig = PeekExposureTaskConfig()
+        self.directTask = PeekExposureTask(config=self.directConfig)
 
         # support for handling dispersed images seperately in future via config
-        self.dispersedConfig = QuickFrameMeasurementTaskConfig()
-        self.dispersedTask = QuickFrameMeasurementTask(config=self.dispersedConfig)
+        self.dispersedConfig = PeekExposureTaskConfig()
+        self.dispersedTask = PeekExposureTask(config=self.dispersedConfig)
 
     @unittest.skipUnless(afwDataDir, "afwdata not available")
     def testDirectCentroiding(self):
@@ -69,21 +68,11 @@ class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
 
             exp = afwImage.ExposureF(fullName)
             result = task.run(exp)
-            foundCentroid = result.brightestObjCentroid
+            foundCentroid = result.brightestCentroid
 
             dist = np.linalg.norm(np.asarray(foundCentroid) - np.asarray(trueCentroid))
-            distCoM = np.linalg.norm(np.asarray(result.brightestObjCentroidCofM) - np.asarray(trueCentroid))
 
-            self.assertLess(dist, self.CENTROID_TOLERANCE)
-            self.assertLess(distCoM, self.COM_TOLERANCE)
-
-            # offset size shouldn't really matter, just make it >> PSF, and make
-            # sure the value isn't off-chip or right by the edge for any of the
-            # test images
-            offset = 300
-            wrongCentroid = (foundCentroid[0]+offset, foundCentroid[1]+offset)
-            with self.assertRaises(ValueError):
-                task.checkResult(exp, wrongCentroid, -1, self.directConfig.centroidPixelPercentile)
+            self.assertLess(dist, self.TOLERANCE)
 
     @unittest.skipUnless(afwDataDir, "afwdata not available")
     def testDispersedCentroiding(self):
@@ -96,16 +85,10 @@ class QuickFrameMeasurementTaskTestCase(lsst.utils.tests.TestCase):
 
             exp = afwImage.ExposureF(fullName)
             result = task.run(exp)
-            foundCentroid = result.brightestObjCentroid
+            foundCentroid = result.brightestCentroid
 
             dist = np.linalg.norm(np.asarray(foundCentroid) - np.asarray(trueCentroid))
-            self.assertLess(dist, self.CENTROID_TOLERANCE)
-
-            # this doesn't matter much as CoM centroid is for donuts
-            # and we don't intend to do dispersed donuts, but good to catch
-            # big regressions. Can be removed later if needed
-            distCoM = np.linalg.norm(np.asarray(result.brightestObjCentroidCofM) - np.asarray(trueCentroid))
-            self.assertLess(distCoM, self.COM_TOLERANCE)
+            self.assertLess(dist, self.TOLERANCE)
 
 
 def setup_module(module):
