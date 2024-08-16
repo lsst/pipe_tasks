@@ -381,8 +381,9 @@ flags:
    - base_PixelFlags_flag_saturatedCenter
    - base_PixelFlags_flag_suspect
    - base_PixelFlags_flag_suspectCenter
-   - base_PixelFlags_flag_streak
-   - base_PixelFlags_flag_streakCenter
+   # Streak flags not yet propagated from difference imaging.
+   # - base_PixelFlags_flag_streak
+   # - base_PixelFlags_flag_streakCenter
    - base_PsfFlux_apCorr
    - base_PsfFlux_apCorrErr
    - base_PsfFlux_area
