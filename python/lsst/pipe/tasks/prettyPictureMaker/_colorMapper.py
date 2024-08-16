@@ -444,11 +444,18 @@ def colorConstantSat(
     # Calculate the square of the chroma, which is the distance from origin in
     # the a-b plane.
     chroma1_2 = a**2 + b**2
+    chroma1 = np.sqrt(chroma1_2)
 
     # Calculate the hue angle, taking the absolute value to ensure non-negative
     # angle representation.
     # hue = abs(np.arctan2(b, a))
-    tanHue = abs(b / a)
+    # tanHue = abs(b / a)
+    chromaMask = chroma1 == 0
+    chroma1[chromaMask] = 1
+    sinHue = b / chroma1
+    cosHue = a / chroma1
+    sinHue[chromaMask] = 0
+    cosHue[chromaMask] = 0
 
     # Compute a divisor for saturation calculation, adding 1 to avoid division
     # by zero.
@@ -468,11 +475,15 @@ def colorConstantSat(
 
     # Compute new 'a' values using the square root of adjusted chroma and
     # considering hue direction.
-    new_a = np.sign(a) * np.sqrt(chroma2_2 / (1 + tanHue**2))
+    # new_a = np.sign(a) * np.sqrt(chroma2_2 / (1 + tanHue**2))
+    chroma2 = np.sqrt(chroma2_2)
+    new_a = chroma2 * cosHue
 
     # Compute new 'b' values by scaling 'new_a' with the tangent of the hue
     # angle.
-    new_b = np.sign(b) * new_a * tanHue
+    ################# THis is the wrong sign!
+    # new_b = np.sign(b) * new_a * tanHue
+    new_b = chroma2 * sinHue
 
     return new_a, new_b
 

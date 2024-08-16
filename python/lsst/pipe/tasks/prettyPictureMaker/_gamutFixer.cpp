@@ -71,7 +71,7 @@ py::array_t<double> fixGamut(py::array_t<double, py::array::c_style | py::array:
       R = 3.2410*X + -1.5374*Y + -0.4986*Z;
       G = -0.9692*X + 1.8760*Y + 0.0416*Z;
       B = 0.0556*X + -0.2040*Y + 1.0570*Z;
-      sat_factor *= 0.995;
+      sat_factor *= 0.98;
     }
     // double new_a = 500*(std::cbrt(X/xn) - Fy);
     // double new_b = 200*(Fy - std::cbrt(Z/zn));
