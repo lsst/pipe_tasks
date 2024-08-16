@@ -95,8 +95,9 @@ calexpFlags:
     - base_PixelFlags_flag_saturatedCenter
     - base_PixelFlags_flag_crCenter
     - base_PixelFlags_flag_suspectCenter
-    - base_PixelFlags_flag_streak
-    - base_PixelFlags_flag_streakCenter
+    # Streak flags not yet propagated from difference imaging.
+    # - base_PixelFlags_flag_streak
+    # - base_PixelFlags_flag_streakCenter
     - base_InvalidPsf_flag
 flag_rename_rules:
     - ['base_PixelFlags_flag', 'pixelFlags']
