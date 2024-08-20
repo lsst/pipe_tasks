@@ -20,8 +20,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = [
-    "CatalogExposurePsf", "CoaddPsfFitConfig", "CoaddPsfFitSubConfig", "CoaddPsfFitSubTask",
-    "CoaddPsfFitTask",
+    "CatalogExposurePsf", "CoaddPsfFitConfig", "CoaddPsfFitConnections",
+    "CoaddPsfFitSubConfig", "CoaddPsfFitSubTask", "CoaddPsfFitTask",
 ]
 
 from .fit_multiband import CatalogExposure, CatalogExposureConfig

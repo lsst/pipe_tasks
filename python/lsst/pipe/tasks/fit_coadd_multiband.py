@@ -20,8 +20,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = [
-    "CoaddMultibandFitConfig", "CoaddMultibandFitSubConfig", "CoaddMultibandFitSubTask",
-    "CoaddMultibandFitTask",
+    "CoaddMultibandFitConfig", "CoaddMultibandFitConnections", "CoaddMultibandFitSubConfig",
+    "CoaddMultibandFitSubTask", "CoaddMultibandFitTask",
 ]
 
 from .fit_multiband import CatalogExposure, CatalogExposureConfig
