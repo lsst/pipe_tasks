@@ -42,6 +42,7 @@ from typing import Iterable
 CoaddMultibandFitBaseTemplates = {
     "name_coadd": "deep",
     "name_method": "multiprofit",
+    "name_table": "objects",
 }
 
 
@@ -173,7 +174,7 @@ class CoaddMultibandFitInputConnections(
 class CoaddMultibandFitConnections(CoaddMultibandFitInputConnections):
     cat_output = cT.Output(
         doc="Output source model fit parameter catalog",
-        name="{name_coadd}Coadd_objects_{name_method}",
+        name="{name_coadd}Coadd_{name_table}_{name_method}",
         storageClass="ArrowTable",
         dimensions=("tract", "patch", "skymap"),
     )
@@ -335,7 +336,7 @@ class CoaddMultibandFitTask(CoaddMultibandFitBase, pipeBase.PipelineTask):
     """
 
     ConfigClass = CoaddMultibandFitConfig
-    _DefaultName = "CoaddMultibandFit"
+    _DefaultName = "coaddMultibandFit"
 
     def __init__(self, initInputs, **kwargs):
         super().__init__(initInputs=initInputs, **kwargs)
