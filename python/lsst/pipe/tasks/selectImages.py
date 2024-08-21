@@ -535,11 +535,10 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
             # visitSummary.
             mjd = visitSummary[0].getVisitInfo().getDate().get(system=DateTime.MJD)
 
-            pixToArcseconds = [vs.getWcs().getPixelScale(vs.getBBox().getCenter()).asArcseconds()
-                               for vs in visitSummary if vs.getWcs()]
+            pixelScales = np.array([vs['pixelScale'] for vs in visitSummary if vs.getWcs()])
             # psfSigma is PSF model determinant radius at chip center in pixels
             psfSigmas = np.array([vs['psfSigma'] for vs in visitSummary if vs.getWcs()])
-            fwhm = np.nanmean(psfSigmas * pixToArcseconds) * np.sqrt(8.*np.log(2.))
+            fwhm = np.nanmean(psfSigmas * pixelScales) * np.sqrt(8.*np.log(2.))
 
             if self.config.maxPsfFwhm and fwhm > self.config.maxPsfFwhm:
                 continue

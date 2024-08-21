@@ -462,7 +462,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         sph_pt = wcs.pixelToSky(bbox.getCenter())
         summary.ra = sph_pt.getRa().asDegrees()
         summary.dec = sph_pt.getDec().asDegrees()
-        summary.pixelScale = wcs.getPixelScale().asArcseconds()
+        summary.pixelScale = wcs.getPixelScale(bbox.getCenter()).asArcseconds()
 
         date = visitInfo.getDate()
 

@@ -166,7 +166,7 @@ class HealSparseInputMapTask(pipeBase.Task):
         self._bbox = bbox
         self._ccds = ccds
 
-        pixel_scale = wcs.getPixelScale().asArcseconds()
+        pixel_scale = wcs.getPixelScale(bbox.getCenter()).asArcseconds()
         hpix_area_arcsec2 = hpg.nside_to_pixel_area(self.config.nside, degrees=True)*(3600.**2.)
         self._min_bad = self.config.bad_mask_min_coverage*hpix_area_arcsec2/(pixel_scale**2.)
 
