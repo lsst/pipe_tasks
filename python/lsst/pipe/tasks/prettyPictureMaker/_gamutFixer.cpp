@@ -17,18 +17,17 @@ py::array_t<double> fixGamut(py::array_t<double, py::array::c_style | py::array:
                              double yn,
                              double zn) {
   py::buffer_info Lab_buffer = Lab_points.request();
-  // double ** Lab_ptr = static_cast<double **>(Lab_buffer.ptr);
   auto Lab_ptr = Lab_points.unchecked<2>();
   py::array_t<double> result(Lab_buffer.shape);
   py::buffer_info result_buffer = result.request();
   auto result_ptr = result.mutable_unchecked<2>();
-  // double ** result_ptr = static_cast<double **>(result_buffer.ptr);
 
   for (int pixel_number=0; pixel_number < Lab_buffer.shape[0]; pixel_number++){
     double L = Lab_ptr(pixel_number, 0);
     double a = Lab_ptr(pixel_number, 1);
     double b = Lab_ptr(pixel_number, 2);
 
+    double lum_save = L;
 
     // calculate various constants
     double chroma_sq = a*a + b*b;
@@ -50,15 +49,16 @@ py::array_t<double> fixGamut(py::array_t<double, py::array::c_style | py::array:
 
     double Lp = L;
     double new_a, new_b;
-    double sat_factor = 0.95;
-    while (R > 1 || G > 1 || B > 1) {
-      L -= 0.01;
-      if (L < 0){
+    double sat_factor = 1;
+    // double sat_factor = 0.95;
+    double new_chroma = chroma_sq;
+    // Find the maximum in gamut lum at a given saturation
+    while (R > 0.98 || G > 0.98 || B > 0.98) {
+      new_chroma -= 0.1;
+      if (new_chroma <0){
         break;
       }
-
-
-      double new_chroma = sat_factor*s_sq * (L*L)/(1 - s_sq);
+      // new_chroma = sat_factor*s_sq * (L*L)/(1 - s_sq);
       new_a = std::copysign(sqrt(new_chroma/(1+tanh*tanh)), a);
       new_b = std::copysign(new_a*tanh, b);
       
@@ -71,13 +71,11 @@ py::array_t<double> fixGamut(py::array_t<double, py::array::c_style | py::array:
       R = 3.2410*X + -1.5374*Y + -0.4986*Z;
       G = -0.9692*X + 1.8760*Y + 0.0416*Z;
       B = 0.0556*X + -0.2040*Y + 1.0570*Z;
-      sat_factor *= 0.98;
     }
-    // double new_a = 500*(std::cbrt(X/xn) - Fy);
-    // double new_b = 200*(Fy - std::cbrt(Z/zn));
     result_ptr(pixel_number, 0) = L;
     result_ptr(pixel_number, 1) = new_a;
     result_ptr(pixel_number, 2) = new_b;
+
   }
   return result;
 }

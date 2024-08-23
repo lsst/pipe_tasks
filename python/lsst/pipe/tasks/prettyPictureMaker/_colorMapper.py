@@ -6,6 +6,7 @@ import skimage
 import colour
 
 from ._localContrast import localContrast
+from .._pipeTasksLib import _fixGamut
 
 from numpy.typing import NDArray
 from typing import Callable, Mapping
@@ -348,6 +349,15 @@ def latLum(
     # Scale intensities to a maximum value of 'max' and normalize
     intensities = intensities / intensities.max() * max
 
+    # If values end up near 100 it's best to "bend" them a little to help
+    # the out of gamut fixer to appropriately handle luminosity and chroma
+    # issues. This is an empirically derived formula that returns
+    # scaling factors. For most of the domain it will return a value that
+    # is close to 1. Right near the upper part of the domain, it
+    # returns values slightly below 1 such that it scales a value of 100
+    # to a value near 95.
+    intensities *= (-1 * erf(-1 * (1 / dom * 210))) ** 15
+
     # Set pixel values below the specified minimum to zero
     intensities[intensities < minimum] = 0
 
@@ -408,7 +418,7 @@ def mapUpperBounds(img: NDArray, quant: float = 0.8, absMax: float | None = None
     return image
 
 
-def colorConstantSat(
+def colorConstantSat_old(
     oldLum: NDArray, luminance: NDArray, a: NDArray, b: NDArray, saturation: float = 1, maxChroma: float = 50
 ) -> tuple[NDArray, NDArray]:
     """
@@ -488,6 +498,75 @@ def colorConstantSat(
     return new_a, new_b
 
 
+def colorConstantSat(
+    oldLum: NDArray, luminance: NDArray, a: NDArray, b: NDArray, saturation: float = 1, maxChroma: float = 50
+) -> tuple[NDArray, NDArray]:
+    """
+    Adjusts the color saturation while keeping the hue constant.
+
+    This function adjusts the chromaticity (a, b) of colors to maintain a
+    consistent saturation level, based on their original luminance. It uses
+    the CIELAB color space representation and the `luminance` is the new target
+    luminance for all colors.
+
+    Parameters
+    ----------
+    oldLum : `NDArray`
+        Luminance values of the original colors.
+    luminance : `NDArray`
+        Target luminance values for the transformed colors.
+    a : `NDArray`
+        Chromaticity parameter 'a' corresponding to green-red axis in CIELAB.
+    b : `NDArray`
+        Chromaticity parameter 'b' corresponding to blue-yellow axis in CIELAB.
+    saturation : `float`, optional
+        Desired saturation level for the output colors. Defaults to 1.
+    maxChroma : `float`, optional
+        Maximum chroma value allowed for any color. Defaults to 50.
+
+    Returns
+    -------
+    new_a : NDArray
+        New a values representing the adjusted chromaticity.
+    new_b : NDArray
+        New b values representing the adjusted chromaticity.
+    """
+    # Calculate the square of the chroma, which is the distance from origin in
+    # the a-b plane.
+    chroma1_2 = a**2 + b**2
+    chroma1 = np.sqrt(chroma1_2)
+
+    # Calculate the hue angle
+    chromaMask = chroma1 == 0
+    chroma1[chromaMask] = 1
+    sinHue = b / chroma1
+    cosHue = a / chroma1
+    sinHue[chromaMask] = 0
+    cosHue[chromaMask] = 0
+
+    # Compute a divisor for saturation calculation, adding 1 to avoid division
+    # by zero.
+    div = np.sqrt(1.155 + oldLum)
+    div[div <= 0] = 1
+
+    # Calculate the square of the new chroma based on desired saturation
+    sat = chroma1 / div
+    chroma2 = saturation * sat * np.sqrt(1.155 + luminance)
+
+    # Cap the chroma to avoid excessive values that are visually unrealistic
+    chroma2[chroma2 > maxChroma**2] = maxChroma**2
+
+    # Compute new 'a' values using the adjusted chroma and considering hue
+    # direction.
+    new_a = chroma2 * cosHue
+
+    # Compute new 'b' values by scaling 'new_a' with the tangent of the hue
+    # angle.
+    new_b = chroma2 * sinHue
+
+    return new_a, new_b
+
+
 def fixOutOfGamutColors(
     Lab: NDArray,
     inputWhitepoint: tuple[float, float],
@@ -533,6 +612,12 @@ def fixOutOfGamutColors(
         return
 
     logging.info("There are out of gamut pixels, remapping colors")
+    xn, yn, zn = colour.xyY_to_XYZ(colour.xy_to_xyY(inputWhitepoint))
+    results = _fixGamut(Lab[outOfBounds], xn, yn, zn)
+    Lab[outOfBounds] = results
+    return
+
+    # older solution, held onto for now
     Y = xyz_prime[:, :, 1]
 
     bounds = (
@@ -719,10 +804,14 @@ def fixOutOfGamutColors(
                 a_container[dist_mask] = pa[dist_mask]
                 b_container[dist_mask] = pb[dist_mask]
                 dist_cur[dist_mask] = dist_prop[dist_mask]
+        # testing something
+        a_container = a_container / (1 + (a_container / b_container) ** 2) ** 0.5
+        b_container = b_container / (1 + (a_container / b_container) ** 2) ** 0.5
 
         totalRemapped += a_container.size
         Lab[mask, 1] = a_container
         Lab[mask, 2] = b_container
+        breakpoint()
         allMask += mask
 
     # make this a log message
@@ -849,6 +938,10 @@ def lsstRGB(
             chromatic_adaptation_transform="bradford",
         )
     )
+    # adjust lab for perceptual uniformity CIE94
+    Lab[Lab[:, :, 2] == 0, 2] = 1e-7
+    Lab[:, :, 1] = Lab[:, :, 1] / (1 + (Lab[:, :, 1] / Lab[:, :, 2]) ** 2) ** 0.5
+    Lab[:, :, 2] = Lab[:, :, 2] / (1 + (Lab[:, :, 1] / Lab[:, :, 2]) ** 2) ** 0.5
 
     # make an alias for the luminance channel.
     lum = Lab[:, :, 0]
