@@ -447,7 +447,7 @@ class VisualizeMosaicCalibFilterConnections(pipeBase.PipelineTaskConnections,
         name="flatFocalPlane",
         doc="Output binned mosaicked frame.",
         storageClass="ImageF",
-        dimensions=("instrument",),
+        dimensions=("instrument", "physical_filter"),
     )
 
 
