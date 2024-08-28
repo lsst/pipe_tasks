@@ -526,9 +526,19 @@ class MakeDirectWarpTask(PipelineTask):
                     final_noise_warps[n_noise].mask.getPlaneBitMask(["NO_DATA"]),
                 )
 
+        # If there are no good pixels, return a Struct filled with None.
+        if totalGoodPixels == 0:
+            results = Struct(
+                warp=None,
+                masked_fraction_warp=None,
+            )
+            for noise_index in range(self.config.numberOfNoiseRealizations):
+                setattr(results, f"noise_warp{noise_index}", None)
+
+            return results
+
         # Finish the inputRecorder and add the coaddPsf to the final warp.
-        if totalGoodPixels > 0:
-            inputRecorder.finish(final_warp, totalGoodPixels)
+        inputRecorder.finish(final_warp, totalGoodPixels)
 
         coaddPsf = CoaddPsf(
             inputRecorder.coaddInputs.ccds,
