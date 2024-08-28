@@ -218,6 +218,23 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
         self.assertTrue(np.nanmax(mfrac.array) <= 1)
         self.assertTrue(np.nanmin(mfrac.array) >= 0)
 
+    def test_noInput(self):
+        """Test MakeDirectWarpTask with no input."""
+        makeWarp = MakeDirectWarpTask(config=self.config)
+        inputs = {"calexp_list": []}
+        result = makeWarp.run(
+            inputs,
+            sky_info=self.skyInfo,
+            visit_summary=None
+        )
+
+        # Ensure we got an exposure out
+        self.assertIsInstance(result.warp, lsst.afw.image.ExposureF)
+        # Ensure that masked fraction is an ImageF object.
+        self.assertIsInstance(result.masked_fraction_warp, lsst.afw.image.ImageF)
+        # Ensure that the noise image is a MaskedImageF object.
+        self.assertIsInstance(result.noise_warp0, lsst.afw.image.MaskedImageF)
+
 
 def setup_module(module):
     lsst.utils.tests.init()
