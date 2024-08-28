@@ -530,13 +530,14 @@ class MakeDirectWarpTask(PipelineTask):
         if totalGoodPixels > 0:
             inputRecorder.finish(final_warp, totalGoodPixels)
 
-        coaddPsf = CoaddPsf(
-            inputRecorder.coaddInputs.ccds,
-            sky_info.wcs,
-            self.config.coaddPsf.makeControl(),
-        )
+            coaddPsf = CoaddPsf(
+                inputRecorder.coaddInputs.ccds,
+                sky_info.wcs,
+                self.config.coaddPsf.makeControl(),
+            )
 
-        final_warp.setPsf(coaddPsf)
+            final_warp.setPsf(coaddPsf)
+
         final_warp.setFilter(calexp.getFilter())
         final_warp.getInfo().setVisitInfo(calexp.getInfo().getVisitInfo())
 
