@@ -219,6 +219,31 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
         self.assertTrue(np.nanmin(mfrac.array) >= 0)
 
 
+class MakeWarpNoGoodPixelsTestCase(MakeWarpTestCase):
+    def setUp(self):
+        super().setUp()
+        self.exposure.mask.array |= self.exposure.mask.getPlaneBitMask("NO_DATA")
+        self.dataRef = InMemoryDatasetHandle(self.exposure, dataId=self.dataRef.dataId)
+
+    def test_makeWarp(self):
+        """Test MakeDirectWarpTask fails gracefully with no good pixels.
+
+        It should return an empty exposure, with no PSF.
+        """
+        makeWarp = MakeDirectWarpTask(config=self.config)
+        inputs = {"calexp_list": [self.dataRef]}
+        result = makeWarp.run(
+            inputs,
+            sky_info=self.skyInfo,
+            visit_summary=None
+        )
+
+        # Ensure we got None
+        self.assertIsNone(result.warp)
+        self.assertIsNone(result.masked_fraction_warp)
+        self.assertIsNone(result.noise_warp0)
+
+
 def setup_module(module):
     lsst.utils.tests.init()
 

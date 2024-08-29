@@ -199,6 +199,16 @@ class MakePsfMatchedWarpTask(PipelineTask):
                 bbox.include(geom.Point2I(corner))
             bbox.clip(direct_warp.getBBox())  # Additional safeguard
 
+            # Because the direct warps are larger, it is possible that after
+            # clipping, `bbox` lies outside PSF-matched warp's bounding box.
+            if not bbox.overlaps(exposure_psf_matched.getBBox()):
+                self.log.debug(
+                    "Skipping CCD %d as its bbox %s does not overlap the PSF-matched warp",
+                    row["ccd"],
+                    bbox,
+                )
+                continue
+
             self.log.debug("PSF-matching CCD %d with bbox %s", row["ccd"], bbox)
 
             ccd_mask_array = ~(destination_polygon.createImage(bbox).array <= 0)
