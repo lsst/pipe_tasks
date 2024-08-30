@@ -49,7 +49,7 @@ from lsst.daf.butler import Butler
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilder
-from lsst.pipe.base.quantum_graph_skeleton import QuantumGraphSkeleton, DatasetKey
+from lsst.pipe.base.quantum_graph_skeleton import QuantumGraphSkeleton
 import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
@@ -626,9 +626,10 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
         ).expanded()
         inputs_by_patch = defaultdict(set)
         patch_dimensions = self.butler.dimensions.conform(["patch"])
+        skeleton = QuantumGraphSkeleton([task_node.label])
         for input_ref in input_refs:
-            dataset_key = DatasetKey(input_ref.datasetType.name, input_ref.dataId.required_values)
-            self.existing_datasets.inputs[dataset_key] = input_ref
+            dataset_key = skeleton.add_dataset_node(input_ref.datasetType.name, input_ref.dataId)
+            skeleton.set_dataset_ref(input_ref, dataset_key)
             inputs_by_patch[input_ref.dataId.subset(patch_dimensions)].add(dataset_key)
         if not inputs_by_patch:
             message_body = "\n".join(input_refs.explain_no_results())
@@ -645,12 +646,12 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
                     inputs_by_hpx[hpx_index].update(input_keys_for_patch)
 
         # Iterate over the dict we just created and create preliminary quanta.
-        skeleton = QuantumGraphSkeleton([task_node.label])
         for hpx_index, input_keys_for_hpx_index in inputs_by_hpx.items():
             # Group inputs by band.
             input_keys_by_band = defaultdict(list)
             for input_key in input_keys_for_hpx_index:
-                input_ref = self.existing_datasets.inputs[input_key]
+                input_ref = skeleton.get_dataset_ref(input_key)
+                assert input_ref is not None, "Code above adds the same nodes to the graph with refs."
                 input_keys_by_band[input_ref.dataId["band"]].append(input_key)
             # Iterate over bands to make quanta.
             for band, input_keys_for_band in input_keys_by_band.items():
