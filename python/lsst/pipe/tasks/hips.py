@@ -573,7 +573,7 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
 
         # We will need all the pixels at the quantum resolution as well.
         # '4' appears here frequently because it's the number of pixels at
-        # level N in a single pixel at level N.
+        # level N in a single pixel at level (N-1).
         (hpx_dimension,) = (
             self.butler.dimensions.skypix_dimensions[d] for d in task_node.dimensions.names if d != "band"
         )
