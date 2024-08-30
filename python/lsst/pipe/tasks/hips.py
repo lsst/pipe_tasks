@@ -350,7 +350,8 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
             # Do the segmentation
             hpix_pixelization = HealpixPixelization(level=args.hpix_build_order)
             dataset = task_node.inputs["coadd_exposure_handles"].dataset_type_name
-            data_ids = set(butler.registry.queryDataIds("tract", datasets=dataset).expanded())
+            with butler.query() as q:
+                data_ids = list(q.join_dataset_search(dataset).data_ids("tract").with_dimension_records())
             region_pixels = []
             for data_id in data_ids:
                 region = data_id.region
@@ -527,7 +528,7 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
         ``constraint_order``) to constrain generated quanta.
     where : `str`, optional
         A boolean `str` expression of the form accepted by
-        `Registry.queryDatasets` to constrain input datasets.  This may
+        `lsst.daf.butler.Butler` to constrain input datasets.  This may
         contain a constraint on tracts, patches, or bands, but not HEALPix
         indices.  Constraints on tracts and patches should usually be
         unnecessary, however - existing coadds that overlap the given
@@ -617,23 +618,24 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
         # Query for input datasets with this constraint, and ask for expanded
         # data IDs because we want regions.  Immediately group this by patch so
         # we don't do later geometric stuff n_bands more times than we need to.
-        input_refs = self.butler.registry.queryDatasets(
-            input_dataset_type_node.dataset_type,
-            where=where,
-            findFirst=True,
-            collections=self.input_collections,
-            bind=bind
-        ).expanded()
-        inputs_by_patch = defaultdict(set)
-        patch_dimensions = self.butler.dimensions.conform(["patch"])
-        skeleton = QuantumGraphSkeleton([task_node.label])
-        for input_ref in input_refs:
-            dataset_key = skeleton.add_dataset_node(input_ref.datasetType.name, input_ref.dataId)
-            skeleton.set_dataset_ref(input_ref, dataset_key)
-            inputs_by_patch[input_ref.dataId.subset(patch_dimensions)].add(dataset_key)
-        if not inputs_by_patch:
-            message_body = "\n".join(input_refs.explain_no_results())
-            raise RuntimeError(f"No inputs found:\n{message_body}")
+        with self.butler.query() as query:
+            input_refs = query.datasets(
+                input_dataset_type_node.dataset_type,
+                collections=self.input_collections
+            ).where(
+                where,
+                bind=bind,
+            ).with_dimension_records()
+            inputs_by_patch = defaultdict(set)
+            patch_dimensions = self.butler.dimensions.conform(["patch"])
+            skeleton = QuantumGraphSkeleton([task_node.label])
+            for input_ref in input_refs:
+                dataset_key = skeleton.add_dataset_node(input_ref.datasetType.name, input_ref.dataId)
+                skeleton.set_dataset_ref(input_ref, dataset_key)
+                inputs_by_patch[input_ref.dataId.subset(patch_dimensions)].add(dataset_key)
+            if not inputs_by_patch:
+                message_body = "\n".join(input_refs.explain_no_results())
+                raise RuntimeError(f"No inputs found:\n{message_body}")
 
         # Iterate over patches and compute the set of output healpix pixels
         # that overlap each one.  Use that to associate inputs with output
