@@ -256,12 +256,15 @@ class MakePsfMatchedWarpTask(PipelineTask):
 
         self.log.info("Total number of good pixels = %d", total_good_pixels)
 
-        growValidPolygons(
-            exposure_psf_matched.info.getCoaddInputs(),
-            -self.config.psfMatch.kernel.active.kernelSize // 2
-        )
+        if total_good_pixels > 0:
+            growValidPolygons(
+                exposure_psf_matched.info.getCoaddInputs(),
+                -self.config.psfMatch.kernel.active.kernelSize // 2
+            )
 
-        return Struct(psf_matched_warp=exposure_psf_matched)
+            return Struct(psf_matched_warp=exposure_psf_matched)
+        else:
+            return Struct(psf_matched_warp=None)
 
 
 # Note that this is implemented as a free-floating function to enable reuse in
