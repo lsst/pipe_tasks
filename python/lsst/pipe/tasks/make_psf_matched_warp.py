@@ -34,7 +34,7 @@ import lsst.geom as geom
 import numpy as np
 import warnings
 
-from lsst.afw.geom import Polygon, makeWcsPairTransform
+from lsst.afw.geom import Polygon, makeWcsPairTransform, SinglePolygonException
 from lsst.coadd.utils import copyGoodPixels
 from lsst.ip.diffim import ModelPsfMatchTask
 from lsst.meas.algorithms import GaussianPsfFactory, WarpedPsf
@@ -187,9 +187,16 @@ class MakePsfMatchedWarpTask(PipelineTask):
                                src_polygon
                                )
 
-            destination_polygon = src_polygon.transform(transform).intersectionSingle(
-                geom.Box2D(direct_warp.getBBox())
-            )
+            try:
+                destination_polygon = src_polygon.transform(transform).intersectionSingle(
+                    geom.Box2D(direct_warp.getBBox())
+                )
+            except SinglePolygonException:
+                self.log.info(
+                    "Skipping CCD %d as its polygon does not intersect the direct warp",
+                    row["ccd"],
+                )
+                continue
 
             # Compute the minimum possible bounding box that overlaps the CCD.
             # First find the intersection polygon between the per-detector warp
@@ -249,12 +256,15 @@ class MakePsfMatchedWarpTask(PipelineTask):
 
         self.log.info("Total number of good pixels = %d", total_good_pixels)
 
-        growValidPolygons(
-            exposure_psf_matched.info.getCoaddInputs(),
-            -self.config.psfMatch.kernel.active.kernelSize // 2
-        )
+        if total_good_pixels > 0:
+            growValidPolygons(
+                exposure_psf_matched.info.getCoaddInputs(),
+                -self.config.psfMatch.kernel.active.kernelSize // 2
+            )
 
-        return Struct(psf_matched_warp=exposure_psf_matched)
+            return Struct(psf_matched_warp=exposure_psf_matched)
+        else:
+            return Struct(psf_matched_warp=None)
 
 
 # Note that this is implemented as a free-floating function to enable reuse in
