@@ -34,7 +34,7 @@ import lsst.geom as geom
 import numpy as np
 import warnings
 
-from lsst.afw.geom import Polygon, makeWcsPairTransform
+from lsst.afw.geom import Polygon, makeWcsPairTransform, SinglePolygonException
 from lsst.coadd.utils import copyGoodPixels
 from lsst.ip.diffim import ModelPsfMatchTask
 from lsst.meas.algorithms import GaussianPsfFactory, WarpedPsf
@@ -187,9 +187,16 @@ class MakePsfMatchedWarpTask(PipelineTask):
                                src_polygon
                                )
 
-            destination_polygon = src_polygon.transform(transform).intersectionSingle(
-                geom.Box2D(direct_warp.getBBox())
-            )
+            try:
+                destination_polygon = src_polygon.transform(transform).intersectionSingle(
+                    geom.Box2D(direct_warp.getBBox())
+                )
+            except SinglePolygonException:
+                self.log.info(
+                    "Skipping CCD %d as its polygon does not intersect the direct warp",
+                    row["ccd"],
+                )
+                continue
 
             # Compute the minimum possible bounding box that overlaps the CCD.
             # First find the intersection polygon between the per-detector warp
