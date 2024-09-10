@@ -29,6 +29,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
 import lsst.afw.table as afwTable
+from lsst.ip.diffim.utils import evaluateMaskFraction
 from lsst.meas.astrom import AstrometryTask, displayAstrometry, denormalizeMatches, AstrometryError
 from lsst.meas.algorithms import LoadReferenceObjectsConfig, SkyObjectsTask
 import lsst.daf.base as dafBase
@@ -602,6 +603,11 @@ class CalibrateTask(pipeBase.PipelineTask):
 
         detRes = self.detection.run(table=table, exposure=exposure,
                                     doSmooth=True)
+
+        self.recordFlaggedPixelFractions(exposure)
+        self.metadata['positive_footprint_count'] = detRes.numPos
+        self.metadata['negative_footprint_count'] = detRes.numNeg
+
         sourceCat = detRes.sources
         if detRes.background:
             for bg in detRes.background:
@@ -609,6 +615,7 @@ class CalibrateTask(pipeBase.PipelineTask):
         if self.config.doSkySources:
             skySourceFootprints = self.skySources.run(mask=exposure.mask, seed=idGenerator.catalog_id)
             if skySourceFootprints:
+                self.metadata['sky_footprint_count'] = len(skySourceFootprints)
                 for foot in skySourceFootprints:
                     s = sourceCat.addNew()
                     s.setFootprint(foot)
@@ -617,10 +624,17 @@ class CalibrateTask(pipeBase.PipelineTask):
             self.deblend.run(exposure=exposure, sources=sourceCat)
         if not sourceCat.isContiguous():
             sourceCat = sourceCat.copy(deep=True)
+        self.metadata['source_count'] = len(sourceCat)
         self.measurement.run(
             measCat=sourceCat,
             exposure=exposure,
             exposureId=idGenerator.catalog_id,
+        )
+        self.metadata['saturated_source_count'] = (
+            np.sum(sourceCat['base_PixelFlags_flag_saturated'])
+        )
+        self.metadata['bad_source_count'] = (
+            np.sum(sourceCat['base_PixelFlags_flag_bad'])
         )
         if self.config.doNormalizedCalibration:
             self.normalizedCalibrationFlux.run(
@@ -854,3 +868,21 @@ class CalibrateTask(pipeBase.PipelineTask):
                 src.assign(icSrc, self.schemaMapper)
             finally:
                 icSrc.setFootprint(icSrcFootprint)
+
+    def recordFlaggedPixelFractions(self, exposure):
+        """Record the fraction of all the pixels in an exposure
+        that are flagged. Each fraction is recorded in the task
+        metadata. One record per flag type.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.ExposureF`
+            The target exposure to calculate flagged pixel fractions for.
+        """
+
+        mask = exposure.mask
+        metricsMaskPlanes = list(mask.getMaskPlaneDict().keys())
+        for maskPlane in metricsMaskPlanes:
+            self.metadata[f"{maskPlane.lower()}_mask_fraction"] = (
+                evaluateMaskFraction(mask, maskPlane)
+            )
