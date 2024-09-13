@@ -228,18 +228,6 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.assertNotIn("astrometry_matches", result.getDict())
         self.assertNotIn("photometry_matches", result.getDict())
 
-    def test_handle_snaps(self):
-        calibrate = CalibrateImageTask(config=self.config)
-        self.assertEqual(calibrate._handle_snaps(self.exposure), self.exposure)
-        self.assertEqual(calibrate._handle_snaps((self.exposure, )), self.exposure)
-        self.assertEqual(calibrate._handle_snaps(self.exposure), self.exposure)
-        with self.assertRaisesRegex(RuntimeError, "Can only process 1 or 2 snaps, not 0."):
-            calibrate._handle_snaps([])
-        with self.assertRaisesRegex(RuntimeError, "Can only process 1 or 2 snaps, not 3."):
-            calibrate._handle_snaps(3*[self.exposure])
-        with self.assertRaisesRegex(RuntimeError, "must be either an afw Exposure"):
-            calibrate._handle_snaps("")
-
     def test_compute_psf(self):
         """Test that our brightest sources are found by _compute_psf(),
         that a PSF is assigned to the expopsure.

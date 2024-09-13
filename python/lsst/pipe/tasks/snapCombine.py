@@ -21,6 +21,9 @@
 
 __all__ = ["SnapCombineConfig", "SnapCombineTask"]
 
+import collections.abc
+
+import lsst.afw.image
 import lsst.pex.config as pexConfig
 import lsst.daf.base as dafBase
 import lsst.afw.image as afwImage
@@ -38,7 +41,7 @@ class SnapCombineConfig(pexConfig.Config):
 
 
 class SnapCombineTask(pipeBase.Task):
-    """Combine two snaps into a single visit image.
+    """Combine one or two snaps into a single visit image.
     """
 
     ConfigClass = SnapCombineConfig
@@ -48,15 +51,49 @@ class SnapCombineTask(pipeBase.Task):
         pipeBase.Task.__init__(self, *args, **kwargs)
 
     @timeMethod
-    def run(self, snap0, snap1):
+    def run(self, exposures):
+        """Combine one or two snaps, returning the combined image.
+
+        Parameters
+        ----------
+        exposures : `lsst.afw.image.Exposure` or `list` [`lsst.afw.image.Exposure`]
+            One or two exposures to combine as snaps.
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            Results as a struct with attributes:
+
+            ``exposure``
+                Snap-combined exposure.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if input argument does not contain either 1 or 2 exposures.
+        """
+        if isinstance(exposures, lsst.afw.image.Exposure):
+            return pipeBase.Struct(exposure=exposures)
+
+        if isinstance(exposures, collections.abc.Sequence) and not isinstance(exposures, str):
+            match len(exposures):
+                case 1:
+                    return pipeBase.Struct(exposure=exposures[0])
+                case 2:
+                    return self.combine(exposures[0], exposures[1])
+                case n:
+                    raise RuntimeError(f"Can only process 1 or 2 snaps, not {n}.")
+        else:
+            raise RuntimeError("`exposures` must be either an afw Exposure (single snap visit), or a "
+                               "list/tuple of one or two of them.")
+
+    def combine(self, snap0, snap1):
         """Combine two snaps, returning the combined image.
 
         Parameters
         ----------
-        snap0 : `lsst.afw.image.Exposure`
-            Snapshot exposure 0.
-        snap1 : `lsst.afw.image.Exposure`
-            Snapshot exposure 1.
+        snap0, snap1 : `lsst.afw.image.Exposure`
+            Exposures to combine.
 
         Returns
         -------

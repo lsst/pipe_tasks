@@ -21,8 +21,6 @@
 
 __all__ = ["CalibrateImageTask", "CalibrateImageConfig", "NoPsfStarsToStarsMatchError"]
 
-import collections.abc
-
 import numpy as np
 
 import lsst.afw.table as afwTable
@@ -584,7 +582,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         if id_generator is None:
             id_generator = lsst.meas.base.IdGenerator()
 
-        result.exposure = self._handle_snaps(exposures)
+        result.exposure = self.snap_combine.run(exposures).exposure
 
         result.psf_stars_footprints, result.background, candidates = self._compute_psf(result.exposure,
                                                                                        id_generator)
@@ -614,39 +612,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self._summarize(result.exposure, result.stars_footprints, result.background)
 
         return result
-
-    def _handle_snaps(self, exposures):
-        """Combine two snaps into one exposure, or return a single exposure.
-
-        Parameters
-        ----------
-        exposures : `lsst.afw.image.Exposure` or `list` [`lsst.afw.image.Exposure]`
-            One or two exposures to combine as snaps.
-
-        Returns
-        -------
-        exposure : `lsst.afw.image.Exposure`
-            A single exposure to continue processing.
-
-        Raises
-        ------
-        RuntimeError
-            Raised if input does not contain either 1 or 2 exposures.
-        """
-        if isinstance(exposures, lsst.afw.image.Exposure):
-            return exposures
-
-        if isinstance(exposures, collections.abc.Sequence) and not isinstance(exposures, str):
-            match len(exposures):
-                case 1:
-                    return exposures[0]
-                case 2:
-                    return self.snap_combine.run(exposures[0], exposures[1]).exposure
-                case n:
-                    raise RuntimeError(f"Can only process 1 or 2 snaps, not {n}.")
-        else:
-            raise RuntimeError("`exposures` must be either an afw Exposure (single snap visit), or a "
-                               "list/tuple of one or two of them.")
 
     def _compute_psf(self, exposure, id_generator):
         """Find bright sources detected on an exposure and fit a PSF model to
@@ -763,7 +728,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         Parameters
         ----------
         exposure : `lsst.afw.image.Exposure`
-            Exposure to set the ApCorrMap on.
+            Exposure to detect and measure stars on.
         background : `lsst.afw.math.BackgroundList`
             Background that was fit to the exposure during detection;
             modified in-place during subsequent detection.
