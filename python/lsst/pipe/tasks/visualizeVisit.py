@@ -37,6 +37,7 @@ __all__ = [
 import lsst.afw.cameraGeom.utils as afwUtils
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
+from lsst.ip.isr.isrFunctions import binExposure
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
@@ -119,11 +120,7 @@ class VisualizeBinExpTask(pipeBase.PipelineTask):
             if detectorId is not None:
                 inputExp.setDetector(camera[detectorId])
 
-        binned = inputExp.getMaskedImage()
-        binned = afwMath.binImage(binned, self.config.binning)
-        outputExp = afwImage.makeExposure(binned)
-
-        outputExp.setInfo(inputExp.getInfo())
+        outputExp = binExposure(inputExp, self.config.binning)
 
         return pipeBase.Struct(outputExp=outputExp)
 
