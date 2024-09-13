@@ -32,6 +32,7 @@ import lsst.afw.table as afwTable
 from lsst.meas.astrom import AstrometryTask, displayAstrometry, denormalizeMatches, AstrometryError
 from lsst.meas.algorithms import LoadReferenceObjectsConfig, SkyObjectsTask
 import lsst.daf.base as dafBase
+from lsst.ip.isr.isrFunctions import binExposure
 from lsst.afw.math import BackgroundList
 from lsst.afw.table import SourceTable
 from lsst.meas.algorithms import (SourceDetectionTask,
@@ -162,6 +163,13 @@ class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instru
         dimensions=("instrument", "visit", "detector"),
     )
 
+    outputBinExposure = cT.Output(
+        name="calexpBin",
+        doc="Binned calexp.",
+        storageClass="ExposureF",
+        dimensions=["instrument", "visit", "detector"],
+    )
+
     def __init__(self, *, config=None):
         super().__init__(config=config)
 
@@ -177,6 +185,9 @@ class CalibrateConnections(pipeBase.PipelineTaskConnections, dimensions=("instru
 
         if config.doCreateSummaryMetrics is False:
             self.outputs.remove("outputSummaryMetrics")
+
+        if config.doBinnedExposures is not True:
+            self.outputs.remove("outputBinExposure")
 
 
 class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=CalibrateConnections):
@@ -346,6 +357,17 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         default=True,
         doc="Write the calexp? If fakes have been added then we do not want to write out the calexp as a "
             "normal calexp but as a fakes_calexp."
+    )
+    doBinnedExposures = pexConfig.Field(
+        dtype=bool,
+        doc="Should binned exposures be calculated?",
+        default=False,
+    )
+    binFactor = pexConfig.Field(
+        dtype=int,
+        doc="Binning factor for binned exposure.",
+        default=64,
+        check=lambda x: x > 1,
     )
     idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
@@ -590,6 +612,8 @@ class CalibrateTask(pipeBase.PipelineTask):
                Another reference to ``exposure`` for compatibility.
             ``outputCat``
                Another reference to ``sourceCat`` for compatibility.
+            ``outputBinExposure``
+                Binned output exposure (`lsst.afw.image.ExposureF`)
         """
         # detect, deblend and measure sources
         if idGenerator is None:
@@ -718,6 +742,11 @@ class CalibrateTask(pipeBase.PipelineTask):
             if self.config.doCreateSummaryMetrics:
                 summaryMetrics = self.createSummaryMetrics.run(data=summary.__dict__).metrics
 
+        outputBinExposure = None
+        if self.config.doBinnedExposures:
+            self.log.info("Creating binned exposure.")
+            outputBinExposure = binExposure(exposure, self.config.binFactor)
+
         frame = getDebugFrame(self._display, "calibrate")
         if frame:
             displayAstrometry(
@@ -735,7 +764,8 @@ class CalibrateTask(pipeBase.PipelineTask):
             outputExposure=exposure,
             outputCat=sourceCat,
             outputBackground=background,
-            outputSummaryMetrics=summaryMetrics
+            outputSummaryMetrics=summaryMetrics,
+            outputBinExposure=outputBinExposure,
         )
 
     def setMetadata(self, exposure, photoRes=None):
