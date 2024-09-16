@@ -38,6 +38,7 @@ from lsst.pipe.tasks.propagateSourceFlags import PropagateSourceFlagsTask
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
 from lsst.daf.base import PropertyList
+from lsst.ip.isr.isrFunctions import binExposure
 from lsst.skymap import BaseSkyMap
 
 # NOTE: these imports are a convenience so multiband users only have to import this file.
@@ -97,6 +98,18 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
         storageClass="ExposureF",
         dimensions=("tract", "patch", "band", "skymap")
     )
+    outputBinExposure = cT.Output(
+        name="{outputCoaddName}Coadd_calexpBin",
+        doc="Binned post-detection exposure",
+        storageClass="ExposureF",
+        dimensions=["tract", "patch", "band", "skymap"],
+    )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+
+        if config.doBinnedExposures is not True:
+            self.outputs.remove("outputBinExposure")
 
 
 class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoaddSourcesConnections):
@@ -111,6 +124,17 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
         dtype=bool,
         default=False,
         doc="Should be set to True if fake sources have been inserted into the input data.",
+    )
+    doBinnedExposures = Field(
+        dtype=bool,
+        doc="Should binned exposures be calculated?",
+        default=False,
+    )
+    binFactor = Field(
+        dtype=int,
+        doc="Binning factor for binned exposure.",
+        default=64,
+        check=lambda x: x > 1,
     )
     idGenerator = SkyMapIdGeneratorConfig.make_field()
 
@@ -218,7 +242,16 @@ class DetectCoaddSourcesTask(PipelineTask):
         if hasattr(detections, "background") and detections.background:
             for bg in detections.background:
                 backgrounds.append(bg)
-        return Struct(outputSources=sources, outputBackgrounds=backgrounds, outputExposure=exposure)
+        outputBinExposure = None
+        if self.config.doBinnedExposures:
+            self.log.info("Creating binned exposure.")
+            outputBinExposure = binExposure(exposure, self.config.binFactor)
+        return Struct(
+            outputSources=sources,
+            outputBackgrounds=backgrounds,
+            outputExposure=exposure,
+            outputBinExposure=outputBinExposure,
+        )
 
 
 class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
