@@ -32,6 +32,7 @@ from lsst.skymap import BaseSkyMap
 
 from abc import ABC, abstractmethod
 
+import astropy.table
 import pandas as pd
 from typing import Tuple, Set
 
@@ -50,14 +51,14 @@ class MatchTractCatalogConnections(
     cat_ref = cT.Input(
         doc="Reference object catalog to match from",
         name="{name_input_cat_ref}",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("tract", "skymap"),
         deferLoad=True,
     )
     cat_target = cT.Input(
         doc="Target object catalog to match",
         name="{name_input_cat_target}",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("tract", "skymap"),
         deferLoad=True,
     )
@@ -67,17 +68,16 @@ class MatchTractCatalogConnections(
         storageClass="SkyMap",
         dimensions=("skymap",),
     )
-    # TODO: Change outputs to ArrowAstropy in DM-44159
     cat_output_ref = cT.Output(
         doc="Reference matched catalog with indices of target matches",
         name="match_ref_{name_input_cat_ref}_{name_input_cat_target}",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("tract", "skymap"),
     )
     cat_output_target = cT.Output(
         doc="Target matched catalog with indices of reference matches",
         name="match_target_{name_input_cat_ref}_{name_input_cat_target}",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("tract", "skymap"),
     )
 
@@ -128,17 +128,17 @@ class MatchTractCatalogSubTask(pipeBase.Task, ABC):
     @abstractmethod
     def run(
         self,
-        catalog_ref: pd.DataFrame,
-        catalog_target: pd.DataFrame,
+        catalog_ref: pd.DataFrame | astropy.table.Table,
+        catalog_target: pd.DataFrame | astropy.table.Table,
         wcs: afwGeom.SkyWcs = None,
     ) -> pipeBase.Struct:
         """Match sources in a reference tract catalog with a target catalog.
 
         Parameters
         ----------
-        catalog_ref : `pandas.DataFrame`
+        catalog_ref : `pandas.DataFrame` | `astropy.table.Table`
             A reference catalog to match objects/sources from.
-        catalog_target : `pandas.DataFrame`
+        catalog_target : `pandas.DataFrame` | `astropy.table.Table`
             A target catalog to match reference objects/sources to.
         wcs : `lsst.afw.image.SkyWcs`
             A coordinate system to convert catalog positions to sky coordinates.
@@ -211,17 +211,17 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
 
     def run(
         self,
-        catalog_ref: pd.DataFrame,
-        catalog_target: pd.DataFrame,
+        catalog_ref: pd.DataFrame | astropy.table.Table,
+        catalog_target: pd.DataFrame | astropy.table.Table,
         wcs: afwGeom.SkyWcs = None,
     ) -> pipeBase.Struct:
         """Match sources in a reference tract catalog with a target catalog.
 
         Parameters
         ----------
-        catalog_ref : `pandas.DataFrame`
+        catalog_ref : `pandas.DataFrame` | `astropy.table.Table`
             A reference catalog to match objects/sources from.
-        catalog_target : `pandas.DataFrame`
+        catalog_target : `pandas.DataFrame` | `astropy.table.Table`
             A target catalog to match reference objects/sources to.
         wcs : `lsst.afw.image.SkyWcs`
             A coordinate system to convert catalog positions to sky coordinates,

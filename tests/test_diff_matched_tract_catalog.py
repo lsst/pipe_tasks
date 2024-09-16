@@ -24,15 +24,15 @@ import unittest
 import lsst.utils.tests
 
 import lsst.afw.geom as afwGeom
-import pytest
 from lsst.meas.astrom import ConvertCatalogCoordinatesConfig
 from lsst.pipe.tasks.diff_matched_tract_catalog import (
     DiffMatchedTractCatalogConfig, DiffMatchedTractCatalogTask, MatchedCatalogFluxesConfig,
 )
 
+from astropy.table import Table
 import numpy as np
 import os
-import pandas as pd
+import pytest
 
 
 def _error_format(column):
@@ -94,7 +94,7 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             columns_flux[1]: fluxes[1][idx_ref],
             DiffMatchedTractCatalogConfig.column_ref_extended.default: extended_ref,
         }
-        self.catalog_ref = pd.DataFrame(data=data_ref)
+        self.catalog_ref = Table(data=data_ref)
 
         data_target = {
             column_ra_target: ra + eps_coord,
@@ -109,16 +109,16 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             DiffMatchedTractCatalogConfig.columns_target_select_false.default[0]: ~flags,
             DiffMatchedTractCatalogConfig.column_target_extended.default: extended_target,
         }
-        self.catalog_target = pd.DataFrame(data=data_target)
+        self.catalog_target = Table(data=data_target)
 
         # Make the last two rows unmatched (we set eps_coord very large)
         match_row = np.arange(len(ra))[::-1] - n_unmatched
-        self.catalog_match_ref = pd.DataFrame(data={
+        self.catalog_match_ref = Table(data={
             'match_candidate': flags,
             'match_row': match_row,
         })
 
-        self.catalog_match_target = pd.DataFrame(data={
+        self.catalog_match_target = Table(data={
             'match_candidate': flags,
             'match_row': match_row,
         })
@@ -159,30 +159,50 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
         # These tables will have columns added to them in run
         columns_ref, columns_target = (list(x.columns) for x in (self.catalog_ref, self.catalog_target))
         task = DiffMatchedTractCatalogTask(config=self.config_stats)
+        result = task.run(
+            catalog_ref=self.catalog_ref,
+            catalog_target=self.catalog_target,
+            catalog_match_ref=self.catalog_match_ref,
+            catalog_match_target=self.catalog_match_target,
+            wcs=self.wcs,
+        )
+        # TODO: Remove pandas support in DM-46523
+        with pytest.warns(FutureWarning):
+            result_pd = task.run(
+                catalog_ref=self.catalog_ref.to_pandas(),
+                catalog_target=self.catalog_target.to_pandas(),
+                catalog_match_ref=self.catalog_match_ref.to_pandas(),
+                catalog_match_target=self.catalog_match_target.to_pandas(),
+                wcs=self.wcs,
+            )
+            self.assertListEqual(list(result.cat_matched.columns), list(result_pd.cat_matched.columns))
+            for column in result.cat_matched.columns:
+                self.assertListEqual(list(result.cat_matched[column]), list(result_pd.cat_matched[column]))
+        # TODO: Remove diff_matched support in DM-44988
         with pytest.warns(FutureWarning):
             task.config.compute_stats = True
-            result = task.run(
+            result_stats = task.run(
                 catalog_ref=self.catalog_ref,
                 catalog_target=self.catalog_target,
                 catalog_match_ref=self.catalog_match_ref,
                 catalog_match_target=self.catalog_match_target,
                 wcs=self.wcs,
             )
+            self.assertGreater(len(result_stats.diff_matched), 0)
+            row = np.array([float(x) for x in result_stats.diff_matched[0].values()])
+            # Run to re-save reference data. Will be loaded after this test completes.
+            resave = False
+            if resave:
+                np.savetxt(filename_diff_matched, row)
+
+            self.assertEqual(len(row), len(self.diff_matched))
+            self.assertFloatsAlmostEqual(row, self.diff_matched, atol=1e-8, rtol=1e-8)
+
         columns_result = list(result.cat_matched.columns)
         columns_expect = list(columns_target) + ["match_distance", "match_distanceErr"]
         prefix = DiffMatchedTractCatalogConfig.column_matched_prefix_ref.default
-        columns_expect.append(f'{prefix}index')
         columns_expect.extend((f'{prefix}{col}' for col in columns_ref))
-        self.assertEqual(columns_expect, columns_result)
-
-        row = result.diff_matched.iloc[0].values.astype(float)
-        # Run to re-save reference data. Will be loaded after this test completes.
-        resave = False
-        if resave:
-            np.savetxt(filename_diff_matched, row)
-
-        self.assertEqual(len(row), len(self.diff_matched))
-        self.assertFloatsAlmostEqual(row, self.diff_matched, atol=1e-8, rtol=1e-8)
+        self.assertListEqual(columns_expect, columns_result)
 
     def test_spherical(self):
         task = DiffMatchedTractCatalogTask(config=self.config)

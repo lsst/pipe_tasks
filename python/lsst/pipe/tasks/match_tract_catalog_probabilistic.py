@@ -30,6 +30,7 @@ import lsst.pipe.base as pipeBase
 
 from .match_tract_catalog import MatchTractCatalogSubConfig, MatchTractCatalogSubTask
 
+import astropy.table
 import pandas as pd
 from typing import Set
 
@@ -65,17 +66,17 @@ class MatchTractCatalogProbabilisticTask(MatchProbabilisticTask, MatchTractCatal
 
     def run(
         self,
-        catalog_ref: pd.DataFrame,
-        catalog_target: pd.DataFrame,
+        catalog_ref: pd.DataFrame | astropy.table.Table,
+        catalog_target: pd.DataFrame | astropy.table.Table,
         wcs: afwGeom.SkyWcs = None,
     ) -> pipeBase.Struct:
         """Match sources in a reference tract catalog with a target catalog.
 
         Parameters
         ----------
-        catalog_ref : `pandas.DataFrame`
+        catalog_ref : `pandas.DataFrame` | `astropy.table.Table`
             A reference catalog to match objects/sources from.
-        catalog_target : `pandas.DataFrame`
+        catalog_target : `pandas.DataFrame` | `astropy.table.Table`
             A target catalog to match reference objects/sources to.
         wcs : `lsst.afw.image.SkyWcs`
             A coordinate system to convert catalog positions to sky coordinates.
