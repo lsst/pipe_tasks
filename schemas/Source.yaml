@@ -403,7 +403,6 @@ flags:
    - base_Variance_flag_emptyFootprint
    - base_Variance_value
    - calib_astrometry_used
-   - calib_detected
    - calib_photometry_reserved
    - calib_photometry_used
    - calib_psf_candidate
