@@ -20,8 +20,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = [
-    "CoaddMultibandFitConfig", "CoaddMultibandFitSubConfig", "CoaddMultibandFitSubTask",
-    "CoaddMultibandFitTask",
+    "CoaddMultibandFitConfig", "CoaddMultibandFitConnections", "CoaddMultibandFitSubConfig",
+    "CoaddMultibandFitSubTask", "CoaddMultibandFitTask",
 ]
 
 from .fit_multiband import CatalogExposure, CatalogExposureConfig
@@ -42,6 +42,7 @@ from typing import Iterable
 CoaddMultibandFitBaseTemplates = {
     "name_coadd": "deep",
     "name_method": "multiprofit",
+    "name_table": "objects",
 }
 
 
@@ -165,11 +166,15 @@ class CoaddMultibandFitInputConnections(
         super().adjustQuantum(inputs, outputs, label, data_id)
         return adjusted_inputs, {}
 
+    def __init__(self, *, config=None):
+        if config.drop_psf_connection:
+            del self.models_psf
+
 
 class CoaddMultibandFitConnections(CoaddMultibandFitInputConnections):
     cat_output = cT.Output(
         doc="Output source model fit parameter catalog",
-        name="{name_coadd}Coadd_objects_{name_method}",
+        name="{name_coadd}Coadd_{name_table}_{name_method}",
         storageClass="ArrowTable",
         dimensions=("tract", "patch", "skymap"),
     )
@@ -240,6 +245,10 @@ class CoaddMultibandFitBaseConfig(
 ):
     """Base class for multiband fitting."""
 
+    drop_psf_connection = pexConfig.Field[bool](
+        doc="Whether to drop the PSF model connection, e.g. because PSF parameters are in the input catalog",
+        default=False,
+    )
     fit_coadd_multiband = pexConfig.ConfigurableField(
         target=CoaddMultibandFitSubTask,
         doc="Task to fit sources using multiple bands",
@@ -281,12 +290,18 @@ class CoaddMultibandFitBase:
     def build_catexps(self, butlerQC, inputRefs, inputs) -> list[CatalogExposureInputs]:
         id_tp = self.config.idGenerator.apply(butlerQC.quantum.dataId).catalog_id
         # This is a roundabout way of ensuring all inputs get sorted and matched
-        input_refs_objs = [(getattr(inputRefs, key), inputs[key])
-                           for key in ("cats_meas", "coadds", "models_psf")]
-        cats, exps, models_psf = [
+        keys = ["cats_meas", "coadds"]
+        has_psf_models = "models_psf" in inputs
+        if has_psf_models:
+            keys.append("models_psf")
+        input_refs_objs = ((getattr(inputRefs, key), inputs[key]) for key in keys)
+        inputs_sorted = tuple(
             {dRef.dataId: obj for dRef, obj in zip(refs, objs)}
             for refs, objs in input_refs_objs
-        ]
+        )
+        cats = inputs_sorted[0]
+        exps = inputs_sorted[1]
+        models_psf = inputs_sorted[2] if has_psf_models else None
         dataIds = set(cats).union(set(exps))
         models_scarlet = inputs["models_scarlet"]
         catexps = {}
@@ -302,8 +317,11 @@ class CoaddMultibandFitBase:
                 updateFluxColumns=False,
             )
             catexps[dataId['band']] = CatalogExposureInputs(
-                catalog=catalog, exposure=exposure, table_psf_fits=models_psf[dataId],
-                dataId=dataId, id_tract_patch=id_tp,
+                catalog=catalog,
+                exposure=exposure,
+                table_psf_fits=models_psf[dataId] if has_psf_models else astropy.table.Table(),
+                dataId=dataId,
+                id_tract_patch=id_tp,
             )
         catexps = [catexps[band] for band in self.config.get_band_sets()[0]]
         return catexps
@@ -318,7 +336,7 @@ class CoaddMultibandFitTask(CoaddMultibandFitBase, pipeBase.PipelineTask):
     """
 
     ConfigClass = CoaddMultibandFitConfig
-    _DefaultName = "CoaddMultibandFit"
+    _DefaultName = "coaddMultibandFit"
 
     def __init__(self, initInputs, **kwargs):
         super().__init__(initInputs=initInputs, **kwargs)
