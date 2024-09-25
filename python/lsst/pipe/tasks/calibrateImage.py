@@ -19,7 +19,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["CalibrateImageTask", "CalibrateImageConfig", "NoPsfStarsToStarsMatchError"]
+__all__ = [
+    "CalibrateImageTask",
+    "CalibrateImageConfig",
+    # "NoCalibrateImageTask",
+    # "NoCalibrateImageConfig",
+    "NoPsfStarsToStarsMatchError",
+]
 
 import numpy as np
 
@@ -58,6 +64,208 @@ class NoPsfStarsToStarsMatchError(pipeBase.AlgorithmError):
         return {"n_psf_stars": self.n_psf_stars,
                 "n_stars": self.n_stars
                 }
+
+
+class CalibrateImageConfigBase(pexConfig.Config):
+    """Base class for CalibrateImageConfig and NoCalibrateImageConfig."""
+    # To generate catalog ids consistently across subtasks.
+    id_generator = lsst.meas.base.DetectorVisitIdGeneratorConfig.make_field()
+
+    snap_combine = pexConfig.ConfigurableField(
+        target=snapCombine.SnapCombineTask,
+        doc="Task to combine two snaps to make one exposure.",
+    )
+
+    # subtasks used during psf characterization
+    install_simple_psf = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.installGaussianPsf.InstallGaussianPsfTask,
+        doc="Task to install a simple PSF model into the input exposure to use "
+            "when detecting bright sources for PSF estimation.",
+    )
+    psf_repair = pexConfig.ConfigurableField(
+        target=repair.RepairTask,
+        doc="Task to repair cosmic rays on the exposure before PSF determination.",
+    )
+    psf_subtract_background = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.SubtractBackgroundTask,
+        doc="Task to perform intial background subtraction, before first detection pass.",
+    )
+    psf_detection = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.SourceDetectionTask,
+        doc="Task to detect sources for PSF determination."
+    )
+    psf_source_measurement = pexConfig.ConfigurableField(
+        target=lsst.meas.base.SingleFrameMeasurementTask,
+        doc="Task to measure sources to be used for psf estimation."
+    )
+    psf_measure_psf = pexConfig.ConfigurableField(
+        target=measurePsf.MeasurePsfTask,
+        doc="Task to measure the psf on bright sources."
+    )
+    psf_normalized_calibration_flux = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.NormalizedCalibrationFluxTask,
+        doc="Task to normalize the calibration flux (e.g. compensated tophats) "
+            "for the bright stars used for psf estimation.",
+    )
+
+    # TODO DM-39203: we can remove aperture correction from this task once we are
+    # using the shape-based star/galaxy code.
+    measure_aperture_correction = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.measureApCorr.MeasureApCorrTask,
+        doc="Task to compute the aperture correction from the bright stars."
+    )
+
+    # subtasks used during star measurement
+    star_detection = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.SourceDetectionTask,
+        doc="Task to detect stars to return in the output catalog."
+    )
+    star_sky_sources = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.SkyObjectsTask,
+        doc="Task to generate sky sources ('empty' regions where there are no detections).",
+    )
+    star_deblend = pexConfig.ConfigurableField(
+        target=lsst.meas.deblender.SourceDeblendTask,
+        doc="Split blended sources into their components."
+    )
+    star_measurement = pexConfig.ConfigurableField(
+        target=lsst.meas.base.SingleFrameMeasurementTask,
+        doc="Task to measure stars to return in the output catalog."
+    )
+    star_normalized_calibration_flux = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.NormalizedCalibrationFluxTask,
+        doc="Task to apply the normalization for calibration fluxes (e.g. compensated tophats) "
+            "for the final output star catalog.",
+    )
+    star_apply_aperture_correction = pexConfig.ConfigurableField(
+        target=lsst.meas.base.ApplyApCorrTask,
+        doc="Task to apply aperture corrections to the selected stars."
+    )
+    star_catalog_calculation = pexConfig.ConfigurableField(
+        target=lsst.meas.base.CatalogCalculationTask,
+        doc="Task to compute extendedness values on the star catalog, "
+            "for the star selector to remove extended sources."
+    )
+    star_set_primary_flags = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.setPrimaryFlags.SetPrimaryFlagsTask,
+        doc="Task to add isPrimary to the catalog."
+    )
+    star_selector = lsst.meas.algorithms.sourceSelectorRegistry.makeField(
+        default="science",
+        doc="Task to select reliable stars to use for calibration."
+    )
+
+    compute_summary_stats = pexConfig.ConfigurableField(
+        target=computeExposureSummaryStats.ComputeExposureSummaryStatsTask,
+        doc="Task to to compute summary statistics on the calibrated exposure."
+    )
+
+    def setDefaults(self):
+        super().setDefaults()
+
+        # Use a very broad PSF here, to throughly reject CRs.
+        # TODO investigation: a large initial psf guess may make stars look
+        # like CRs for very good seeing images.
+        self.install_simple_psf.fwhm = 4
+
+        # S/N>=50 sources for PSF determination, but detection to S/N=5.
+        # The thresholdValue sets the minimum flux in a pixel to be included in the
+        # footprint, while peaks are only detected when they are above
+        # thresholdValue * includeThresholdMultiplier. The low thresholdValue
+        # ensures that the footprints are large enough for the noise replacer
+        # to mask out faint undetected neighbors that are not to be measured.
+        self.psf_detection.thresholdValue = 5.0
+        self.psf_detection.includeThresholdMultiplier = 10.0
+        # TODO investigation: Probably want False here, but that may require
+        # tweaking the background spatial scale, to make it small enough to
+        # prevent extra peaks in the wings of bright objects.
+        self.psf_detection.doTempLocalBackground = False
+        # NOTE: we do want reEstimateBackground=True in psf_detection, so that
+        # each measurement step is done with the best background available.
+
+        # Minimal measurement plugins for PSF determination.
+        # TODO DM-39203: We can drop GaussianFlux and PsfFlux, if we use
+        # shapeHSM/moments for star/galaxy separation.
+        # TODO DM-39203: we can remove aperture correction from this task once
+        # we are using the shape-based star/galaxy code.
+        self.psf_source_measurement.plugins = ["base_PixelFlags",
+                                               "base_SdssCentroid",
+                                               "ext_shapeHSM_HsmSourceMoments",
+                                               "base_CircularApertureFlux",
+                                               "base_GaussianFlux",
+                                               "base_PsfFlux",
+                                               "base_CompensatedTophatFlux",
+                                               ]
+        self.psf_source_measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
+        # Only measure apertures we need for PSF measurement.
+        self.psf_source_measurement.plugins["base_CircularApertureFlux"].radii = [12.0]
+        self.psf_source_measurement.plugins["base_CompensatedTophatFlux"].apertures = [12]
+        # TODO DM-40843: Remove this line once this is the psfex default.
+        self.psf_measure_psf.psfDeterminer["psfex"].photometricFluxField = \
+            "base_CircularApertureFlux_12_0_instFlux"
+
+        # No extendeness information available: we need the aperture
+        # corrections to determine that.
+        self.measure_aperture_correction.sourceSelector["science"].doUnresolved = False
+        self.measure_aperture_correction.sourceSelector["science"].flags.good = ["calib_psf_used"]
+        self.measure_aperture_correction.sourceSelector["science"].flags.bad = []
+
+        # Detection for good S/N for astrometry/photometry and other
+        # downstream tasks; detection mask to S/N>=5, but S/N>=10 peaks.
+        self.star_detection.thresholdValue = 5.0
+        self.star_detection.includeThresholdMultiplier = 2.0
+        self.star_measurement.plugins = ["base_PixelFlags",
+                                         "base_SdssCentroid",
+                                         "ext_shapeHSM_HsmSourceMoments",
+                                         'ext_shapeHSM_HsmPsfMoments',
+                                         "base_GaussianFlux",
+                                         "base_PsfFlux",
+                                         "base_CircularApertureFlux",
+                                         "base_ClassificationSizeExtendedness",
+                                         "base_CompensatedTophatFlux",
+                                         ]
+        self.star_measurement.slots.psfShape = "ext_shapeHSM_HsmPsfMoments"
+        self.star_measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
+        # Only measure the apertures we need for star selection.
+        self.star_measurement.plugins["base_CircularApertureFlux"].radii = [12.0]
+        self.star_measurement.plugins["base_CompensatedTophatFlux"].apertures = [12]
+
+        # We measure and apply the normalization aperture correction with the
+        # psf_normalized_calibration_flux task, and we only apply the normalization
+        # aperture correction for the full list of stars.
+        self.star_normalized_calibration_flux.do_measure_ap_corr = False
+
+        # Select stars with reliable measurements and no bad flags.
+        self.star_selector["science"].doFlags = True
+        self.star_selector["science"].doUnresolved = True
+        self.star_selector["science"].doSignalToNoise = True
+        self.star_selector["science"].signalToNoise.minimum = 10.0
+        # Keep sky sources in the output catalog, even though they aren't
+        # wanted for calibration.
+        self.star_selector["science"].doSkySources = True
+
+        # TODO: These should both be changed to calib_psf_used with DM-41640.
+        self.compute_summary_stats.starSelection = "calib_photometry_used"
+        self.compute_summary_stats.starSelector.flags.good = ["calib_photometry_used"]
+
+    def validate(self):
+        super().validate()
+
+        # Ensure that the normalization calibration flux tasks
+        # are configured correctly.
+        if not self.psf_normalized_calibration_flux.do_measure_ap_corr:
+            msg = ("psf_normalized_calibration_flux task must be configured with do_measure_ap_corr=True "
+                   "or else the normalization and calibration flux will not be properly measured.")
+            raise pexConfig.FieldValidationError(
+                CalibrateImageConfig.psf_normalized_calibration_flux, self, msg,
+            )
+        if self.star_normalized_calibration_flux.do_measure_ap_corr:
+            msg = ("star_normalized_calibration_flux task must be configured with do_measure_ap_corr=False "
+                   "to apply the previously measured normalization to the full catalog of calibration "
+                   "fluxes.")
+            raise pexConfig.FieldValidationError(
+                CalibrateImageConfig.star_normalized_calibration_flux, self, msg,
+            )
 
 
 class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
@@ -170,7 +378,11 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
             del self.photometry_matches
 
 
-class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=CalibrateImageConnections):
+class CalibrateImageConfig(
+    CalibrateImageConfigBase,
+    pipeBase.PipelineTaskConfig,
+    pipelineConnections=CalibrateImageConnections
+):
     optional_outputs = pexConfig.ListField(
         doc="Which optional outputs to save (as their connection name)?"
             " If None, do not output any of these datasets.",
@@ -179,93 +391,6 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         # we always have it on for production runs?
         default=["psf_stars", "psf_stars_footprints", "astrometry_matches", "photometry_matches"],
         optional=True
-    )
-
-    # To generate catalog ids consistently across subtasks.
-    id_generator = lsst.meas.base.DetectorVisitIdGeneratorConfig.make_field()
-
-    snap_combine = pexConfig.ConfigurableField(
-        target=snapCombine.SnapCombineTask,
-        doc="Task to combine two snaps to make one exposure.",
-    )
-
-    # subtasks used during psf characterization
-    install_simple_psf = pexConfig.ConfigurableField(
-        target=lsst.meas.algorithms.installGaussianPsf.InstallGaussianPsfTask,
-        doc="Task to install a simple PSF model into the input exposure to use "
-            "when detecting bright sources for PSF estimation.",
-    )
-    psf_repair = pexConfig.ConfigurableField(
-        target=repair.RepairTask,
-        doc="Task to repair cosmic rays on the exposure before PSF determination.",
-    )
-    psf_subtract_background = pexConfig.ConfigurableField(
-        target=lsst.meas.algorithms.SubtractBackgroundTask,
-        doc="Task to perform intial background subtraction, before first detection pass.",
-    )
-    psf_detection = pexConfig.ConfigurableField(
-        target=lsst.meas.algorithms.SourceDetectionTask,
-        doc="Task to detect sources for PSF determination."
-    )
-    psf_source_measurement = pexConfig.ConfigurableField(
-        target=lsst.meas.base.SingleFrameMeasurementTask,
-        doc="Task to measure sources to be used for psf estimation."
-    )
-    psf_measure_psf = pexConfig.ConfigurableField(
-        target=measurePsf.MeasurePsfTask,
-        doc="Task to measure the psf on bright sources."
-    )
-    psf_normalized_calibration_flux = pexConfig.ConfigurableField(
-        target=lsst.meas.algorithms.NormalizedCalibrationFluxTask,
-        doc="Task to normalize the calibration flux (e.g. compensated tophats) "
-            "for the bright stars used for psf estimation.",
-    )
-
-    # TODO DM-39203: we can remove aperture correction from this task once we are
-    # using the shape-based star/galaxy code.
-    measure_aperture_correction = pexConfig.ConfigurableField(
-        target=lsst.meas.algorithms.measureApCorr.MeasureApCorrTask,
-        doc="Task to compute the aperture correction from the bright stars."
-    )
-
-    # subtasks used during star measurement
-    star_detection = pexConfig.ConfigurableField(
-        target=lsst.meas.algorithms.SourceDetectionTask,
-        doc="Task to detect stars to return in the output catalog."
-    )
-    star_sky_sources = pexConfig.ConfigurableField(
-        target=lsst.meas.algorithms.SkyObjectsTask,
-        doc="Task to generate sky sources ('empty' regions where there are no detections).",
-    )
-    star_deblend = pexConfig.ConfigurableField(
-        target=lsst.meas.deblender.SourceDeblendTask,
-        doc="Split blended sources into their components."
-    )
-    star_measurement = pexConfig.ConfigurableField(
-        target=lsst.meas.base.SingleFrameMeasurementTask,
-        doc="Task to measure stars to return in the output catalog."
-    )
-    star_normalized_calibration_flux = pexConfig.ConfigurableField(
-        target=lsst.meas.algorithms.NormalizedCalibrationFluxTask,
-        doc="Task to apply the normalization for calibration fluxes (e.g. compensated tophats) "
-            "for the final output star catalog.",
-    )
-    star_apply_aperture_correction = pexConfig.ConfigurableField(
-        target=lsst.meas.base.ApplyApCorrTask,
-        doc="Task to apply aperture corrections to the selected stars."
-    )
-    star_catalog_calculation = pexConfig.ConfigurableField(
-        target=lsst.meas.base.CatalogCalculationTask,
-        doc="Task to compute extendedness values on the star catalog, "
-            "for the star selector to remove extended sources."
-    )
-    star_set_primary_flags = pexConfig.ConfigurableField(
-        target=lsst.meas.algorithms.setPrimaryFlags.SetPrimaryFlagsTask,
-        doc="Task to add isPrimary to the catalog."
-    )
-    star_selector = lsst.meas.algorithms.sourceSelectorRegistry.makeField(
-        default="science",
-        doc="Task to select reliable stars to use for calibration."
     )
 
     # final calibrations and statistics
@@ -286,94 +411,8 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         doc="Configuration of reference object loader for photometric fit.",
     )
 
-    compute_summary_stats = pexConfig.ConfigurableField(
-        target=computeExposureSummaryStats.ComputeExposureSummaryStatsTask,
-        doc="Task to to compute summary statistics on the calibrated exposure."
-    )
-
     def setDefaults(self):
         super().setDefaults()
-
-        # Use a very broad PSF here, to throughly reject CRs.
-        # TODO investigation: a large initial psf guess may make stars look
-        # like CRs for very good seeing images.
-        self.install_simple_psf.fwhm = 4
-
-        # S/N>=50 sources for PSF determination, but detection to S/N=5.
-        # The thresholdValue sets the minimum flux in a pixel to be included in the
-        # footprint, while peaks are only detected when they are above
-        # thresholdValue * includeThresholdMultiplier. The low thresholdValue
-        # ensures that the footprints are large enough for the noise replacer
-        # to mask out faint undetected neighbors that are not to be measured.
-        self.psf_detection.thresholdValue = 5.0
-        self.psf_detection.includeThresholdMultiplier = 10.0
-        # TODO investigation: Probably want False here, but that may require
-        # tweaking the background spatial scale, to make it small enough to
-        # prevent extra peaks in the wings of bright objects.
-        self.psf_detection.doTempLocalBackground = False
-        # NOTE: we do want reEstimateBackground=True in psf_detection, so that
-        # each measurement step is done with the best background available.
-
-        # Minimal measurement plugins for PSF determination.
-        # TODO DM-39203: We can drop GaussianFlux and PsfFlux, if we use
-        # shapeHSM/moments for star/galaxy separation.
-        # TODO DM-39203: we can remove aperture correction from this task once
-        # we are using the shape-based star/galaxy code.
-        self.psf_source_measurement.plugins = ["base_PixelFlags",
-                                               "base_SdssCentroid",
-                                               "ext_shapeHSM_HsmSourceMoments",
-                                               "base_CircularApertureFlux",
-                                               "base_GaussianFlux",
-                                               "base_PsfFlux",
-                                               "base_CompensatedTophatFlux",
-                                               ]
-        self.psf_source_measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
-        # Only measure apertures we need for PSF measurement.
-        self.psf_source_measurement.plugins["base_CircularApertureFlux"].radii = [12.0]
-        self.psf_source_measurement.plugins["base_CompensatedTophatFlux"].apertures = [12]
-        # TODO DM-40843: Remove this line once this is the psfex default.
-        self.psf_measure_psf.psfDeterminer["psfex"].photometricFluxField = \
-            "base_CircularApertureFlux_12_0_instFlux"
-
-        # No extendeness information available: we need the aperture
-        # corrections to determine that.
-        self.measure_aperture_correction.sourceSelector["science"].doUnresolved = False
-        self.measure_aperture_correction.sourceSelector["science"].flags.good = ["calib_psf_used"]
-        self.measure_aperture_correction.sourceSelector["science"].flags.bad = []
-
-        # Detection for good S/N for astrometry/photometry and other
-        # downstream tasks; detection mask to S/N>=5, but S/N>=10 peaks.
-        self.star_detection.thresholdValue = 5.0
-        self.star_detection.includeThresholdMultiplier = 2.0
-        self.star_measurement.plugins = ["base_PixelFlags",
-                                         "base_SdssCentroid",
-                                         "ext_shapeHSM_HsmSourceMoments",
-                                         'ext_shapeHSM_HsmPsfMoments',
-                                         "base_GaussianFlux",
-                                         "base_PsfFlux",
-                                         "base_CircularApertureFlux",
-                                         "base_ClassificationSizeExtendedness",
-                                         "base_CompensatedTophatFlux",
-                                         ]
-        self.star_measurement.slots.psfShape = "ext_shapeHSM_HsmPsfMoments"
-        self.star_measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
-        # Only measure the apertures we need for star selection.
-        self.star_measurement.plugins["base_CircularApertureFlux"].radii = [12.0]
-        self.star_measurement.plugins["base_CompensatedTophatFlux"].apertures = [12]
-
-        # We measure and apply the normalization aperture correction with the
-        # psf_normalized_calibration_flux task, and we only apply the normalization
-        # aperture correction for the full list of stars.
-        self.star_normalized_calibration_flux.do_measure_ap_corr = False
-
-        # Select stars with reliable measurements and no bad flags.
-        self.star_selector["science"].doFlags = True
-        self.star_selector["science"].doUnresolved = True
-        self.star_selector["science"].doSignalToNoise = True
-        self.star_selector["science"].signalToNoise.minimum = 10.0
-        # Keep sky sources in the output catalog, even though they aren't
-        # wanted for calibration.
-        self.star_selector["science"].doSkySources = True
 
         # Use the affine WCS fitter (assumes we have a good camera geometry).
         self.astrometry.wcsFitter.retarget(lsst.meas.astrom.FitAffineWcsTask)
@@ -389,30 +428,6 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         # selections we want above) selection settings in PhotoCalTask.
         self.photometry.match.sourceSelection.doRequirePrimary = False
         self.photometry.match.sourceSelection.doUnresolved = False
-
-        # All sources should be good for PSF summary statistics.
-        # TODO: These should both be changed to calib_psf_used with DM-41640.
-        self.compute_summary_stats.starSelection = "calib_photometry_used"
-        self.compute_summary_stats.starSelector.flags.good = ["calib_photometry_used"]
-
-    def validate(self):
-        super().validate()
-
-        # Ensure that the normalization calibration flux tasks
-        # are configured correctly.
-        if not self.psf_normalized_calibration_flux.do_measure_ap_corr:
-            msg = ("psf_normalized_calibration_flux task must be configured with do_measure_ap_corr=True "
-                   "or else the normalization and calibration flux will not be properly measured.")
-            raise pexConfig.FieldValidationError(
-                CalibrateImageConfig.psf_normalized_calibration_flux, self, msg,
-            )
-        if self.star_normalized_calibration_flux.do_measure_ap_corr:
-            msg = ("star_normalized_calibration_flux task must be configured with do_measure_ap_corr=False "
-                   "to apply the previously measured normalization to the full catalog of calibration "
-                   "fluxes.")
-            raise pexConfig.FieldValidationError(
-                CalibrateImageConfig.star_normalized_calibration_flux, self, msg,
-            )
 
 
 class CalibrateImageTask(pipeBase.PipelineTask):
