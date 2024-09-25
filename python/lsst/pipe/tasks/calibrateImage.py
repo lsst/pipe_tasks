@@ -22,8 +22,8 @@
 __all__ = [
     "CalibrateImageTask",
     "CalibrateImageConfig",
-    # "NoCalibrateImageTask",
-    # "NoCalibrateImageConfig",
+    "NoCalibrateImageTask",
+    "NoCalibrateImageConfig",
     "NoPsfStarsToStarsMatchError",
 ]
 
@@ -269,7 +269,13 @@ class CalibrateImageConfigBase(pexConfig.Config):
 
 
 class CalibrateImageConnectionsBase(pipeBase.PipelineTaskConnections,
-                                    dimensions=("instrument", "visit", "detector")):
+                                    dimensions=("instrument", "visit", "detector"),
+                                    defaultTemplates={"output_type": "pvi",
+                                                      "initial_stars": "initial_stars",
+                                                      "initial_psf_stars": "initial_psf_stars",
+                                                      },
+                                    ):
+    # Inputs
     exposures = connectionTypes.Input(
         doc="Exposure (or two snaps) to be calibrated, and detected and measured on.",
         name="postISRCCD",
@@ -278,11 +284,18 @@ class CalibrateImageConnectionsBase(pipeBase.PipelineTaskConnections,
         dimensions=["instrument", "exposure", "detector"],
     )
 
-    # outputs
+    # Outputs
     initial_stars_schema = connectionTypes.InitOutput(
         doc="Schema of the output initial stars catalog.",
-        name="initial_stars_schema",
+        name="{initial_stars}_schema",
         storageClass="SourceCatalog",
+    )
+
+    background = connectionTypes.Output(
+        doc="Background models estimated during calibration task; instrumental units.",
+        name="initial_{output_type}_background",
+        storageClass="Background",
+        dimensions=("instrument", "visit", "detector"),
     )
 
     # TODO DM-38732: We want some kind of flag on Exposures/Catalogs to make
@@ -291,20 +304,20 @@ class CalibrateImageConnectionsBase(pipeBase.PipelineTaskConnections,
         doc="Photometrically calibrated, background-subtracted exposure with fitted calibrations and "
             "summary statistics. To recover the original exposure, first add the background "
             "(`initial_pvi_background`), and then uncalibrate (divide by `initial_photoCalib_detector`).",
-        name="initial_pvi",
+        name="initial_{output_type}",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
     )
     stars = connectionTypes.Output(
         doc="Catalog of unresolved sources detected on the calibrated exposure.",
-        name="initial_stars_detector",
+        name="{initial_stars}_detector",
         storageClass="ArrowAstropy",
         dimensions=["instrument", "visit", "detector"],
     )
     stars_footprints = connectionTypes.Output(
         doc="Catalog of unresolved sources detected on the calibrated exposure; "
             "includes source footprints.",
-        name="initial_stars_footprints_detector",
+        name="{initial_stars}_footprints_detector",
         storageClass="SourceCatalog",
         dimensions=["instrument", "visit", "detector"],
     )
@@ -313,13 +326,13 @@ class CalibrateImageConnectionsBase(pipeBase.PipelineTaskConnections,
     psf_stars_footprints = connectionTypes.Output(
         doc="Catalog of bright unresolved sources detected on the exposure used for PSF determination; "
             "includes source footprints.",
-        name="initial_psf_stars_footprints_detector",
+        name="{initial_psf_stars}_footprints_detector",
         storageClass="SourceCatalog",
         dimensions=["instrument", "visit", "detector"],
     )
     psf_stars = connectionTypes.Output(
         doc="Catalog of bright unresolved sources detected on the exposure used for PSF determination.",
-        name="initial_psf_stars_detector",
+        name="{initial_psf_stars}_detector",
         storageClass="ArrowAstropy",
         dimensions=["instrument", "visit", "detector"],
     )
@@ -387,7 +400,7 @@ class CalibrateImageConnections(CalibrateImageConnectionsBase):
 class CalibrateImageConfig(
     CalibrateImageConfigBase,
     pipeBase.PipelineTaskConfig,
-    pipelineConnections=CalibrateImageConnections
+    pipelineConnections=CalibrateImageConnections,
 ):
     optional_outputs = pexConfig.ListField(
         doc="Which optional outputs to save (as their connection name)?"
@@ -933,3 +946,176 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # applied calibration). This needs to be checked.
         summary = self.compute_summary_stats.run(exposure, stars, background)
         exposure.info.setSummaryStats(summary)
+
+
+class NoCalibrateImageConnections(CalibrateImageConnectionsBase,
+                                  defaultTemplates={"output_type": "uncalibrated_pvi",
+                                                    "initial_stars": "initial_uncalibrated_stars",
+                                                    "initial_psf_stars": "initial_uncalibrated_psf_stars"},
+                                  ):
+    pass
+
+
+class NoCalibrateImageConfig(
+    CalibrateImageConfigBase,
+    pipeBase.PipelineTaskConfig,
+    pipelineConnections=NoCalibrateImageConnections,
+):
+    pass
+
+
+class NoCalibrateImageTask(CalibrateImageTask):
+    """Compute the PSF, aperture corrections, and summary statistics.
+
+    Parameters
+    ----------
+    initial_stars_schema : `lsst.afw.table.Schema`
+        Schema of the initial_stars output catalog.
+    """
+    _DefaultName = "noCalibrateImage"
+    ConfigClass = NoCalibrateImageConfig
+
+    def __init__(self, initial_stars_schema=None, **kwargs):
+        pipeBase.PipelineTask.__init__(self, **kwargs)
+
+        self.makeSubtask("snap_combine")
+
+        # PSF determination subtasks
+        self.makeSubtask("install_simple_psf")
+        self.makeSubtask("psf_repair")
+        self.makeSubtask("psf_subtract_background")
+        self.psf_schema = afwTable.SourceTable.makeMinimalSchema()
+        self.makeSubtask("psf_detection", schema=self.psf_schema)
+        self.makeSubtask("psf_source_measurement", schema=self.psf_schema)
+        self.makeSubtask("psf_measure_psf", schema=self.psf_schema)
+        self.makeSubtask("psf_normalized_calibration_flux", schema=self.psf_schema)
+
+        self.makeSubtask("measure_aperture_correction", schema=self.psf_schema)
+
+        # star measurement subtasks
+        if initial_stars_schema is None:
+            initial_stars_schema = afwTable.SourceTable.makeMinimalSchema()
+
+        # These fields let us track which sources were used for psf and
+        # aperture correction calculations.
+        self.psf_fields = ("calib_psf_candidate", "calib_psf_used", "calib_psf_reserved",
+                           # TODO DM-39203: these can be removed once apcorr is gone.
+                           "apcorr_slot_CalibFlux_used", "apcorr_base_GaussianFlux_used",
+                           "apcorr_base_PsfFlux_used")
+        for field in self.psf_fields:
+            item = self.psf_schema.find(field)
+            initial_stars_schema.addField(item.getField())
+
+        afwTable.CoordKey.addErrorFields(initial_stars_schema)
+        self.makeSubtask("star_detection", schema=initial_stars_schema)
+        self.makeSubtask("star_sky_sources", schema=initial_stars_schema)
+        self.makeSubtask("star_deblend", schema=initial_stars_schema)
+        self.makeSubtask("star_measurement", schema=initial_stars_schema)
+        self.makeSubtask("star_normalized_calibration_flux", schema=initial_stars_schema)
+
+        self.makeSubtask("star_apply_aperture_correction", schema=initial_stars_schema)
+        self.makeSubtask("star_catalog_calculation", schema=initial_stars_schema)
+        self.makeSubtask("star_set_primary_flags", schema=initial_stars_schema, isSingleFrame=True)
+        self.makeSubtask("star_selector")
+
+        self.makeSubtask("compute_summary_stats")
+
+        # For the butler to persist it.
+        self.initial_stars_schema = afwTable.SourceCatalog(initial_stars_schema)
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        exposures = inputs.pop("exposures")
+
+        id_generator = self.config.id_generator.apply(butlerQC.quantum.dataId)
+
+        # This should not happen with a properly configured execution context.
+        assert not inputs, "runQuantum got more inputs than expected"
+
+        # Specify the fields that `annotate` needs below, to ensure they
+        # exist, even as None.
+        result = pipeBase.Struct(
+            exposure=None,
+            stars_footprints=None,
+            psf_stars_footprints=None,
+        )
+        try:
+            self.run(exposures=exposures, result=result, id_generator=id_generator)
+        except pipeBase.AlgorithmError as e:
+            error = pipeBase.AnnotatedPartialOutputsError.annotate(
+                e,
+                self,
+                result.exposure,
+                result.psf_stars_footprints,
+                result.stars_footprints,
+                log=self.log
+            )
+            butlerQC.put(result, outputRefs)
+            raise error from e
+
+        butlerQC.put(result, outputRefs)
+
+    @timeMethod
+    def run(self, *, exposures, id_generator=None, result=None):
+        """Find stars and perform psf measurement, then do a deeper detection
+        and measurement.
+
+        Parameters
+        ----------
+        exposures : `lsst.afw.image.Exposure` or `list` [`lsst.afw.image.Exposure`]
+            Post-ISR exposure(s), with an initial WCS, VisitInfo, and Filter.
+            Modified in-place during processing if only one is passed.
+            If two exposures are passed, treat them as snaps and combine
+            before doing further processing.
+        id_generator : `lsst.meas.base.IdGenerator`, optional
+            Object that generates source IDs and provides random seeds.
+        result : `lsst.pipe.base.Struct`, optional
+            Result struct that is modified to allow saving of partial outputs
+            for some failure conditions. If the task completes successfully,
+            this is also returned.
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            Results as a struct with attributes:
+
+            ``exposure``
+                Calibrated exposure, with pixels in nJy units.
+                (`lsst.afw.image.Exposure`)
+            ``stars``
+                Stars that were used to calibrate the exposure, with
+                calibrated fluxes and magnitudes.
+                (`astropy.table.Table`)
+            ``stars_footprints``
+                Footprints of stars that were used to calibrate the exposure.
+                (`lsst.afw.table.SourceCatalog`)
+            ``psf_stars``
+                Stars that were used to determine the image PSF.
+                (`astropy.table.Table`)
+            ``psf_stars_footprints``
+                Footprints of stars that were used to determine the image PSF.
+                (`lsst.afw.table.SourceCatalog`)
+            ``background``
+                Background that was fit to the exposure when detecting
+                ``stars``. (`lsst.afw.math.BackgroundList`)
+        """
+        if result is None:
+            result = pipeBase.Struct()
+        if id_generator is None:
+            id_generator = lsst.meas.base.IdGenerator()
+
+        result.exposure = self.snap_combine.run(exposures).exposure
+
+        result.psf_stars_footprints, result.background, candidates = self._compute_psf(result.exposure,
+                                                                                       id_generator)
+        self._measure_aperture_correction(result.exposure, result.psf_stars_footprints)
+
+        result.psf_stars = result.psf_stars_footprints.asAstropy()
+
+        result.stars_footprints = self._find_stars(result.exposure, result.background, id_generator)
+        self._match_psf_stars(result.psf_stars_footprints, result.stars_footprints)
+        result.stars = result.stars_footprints.asAstropy()
+
+        self._summarize(result.exposure, result.stars_footprints, result.background)
+
+        return result
