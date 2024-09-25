@@ -268,26 +268,8 @@ class CalibrateImageConfigBase(pexConfig.Config):
             )
 
 
-class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
-                                dimensions=("instrument", "visit", "detector")):
-
-    astrometry_ref_cat = connectionTypes.PrerequisiteInput(
-        doc="Reference catalog to use for astrometric calibration.",
-        name="gaia_dr3_20230707",
-        storageClass="SimpleCatalog",
-        dimensions=("skypix",),
-        deferLoad=True,
-        multiple=True,
-    )
-    photometry_ref_cat = connectionTypes.PrerequisiteInput(
-        doc="Reference catalog to use for photometric calibration.",
-        name="ps1_pv3_3pi_20170110",
-        storageClass="SimpleCatalog",
-        dimensions=("skypix",),
-        deferLoad=True,
-        multiple=True
-    )
-
+class CalibrateImageConnectionsBase(pipeBase.PipelineTaskConnections,
+                                    dimensions=("instrument", "visit", "detector")):
     exposures = connectionTypes.Input(
         doc="Exposure (or two snaps) to be calibrated, and detected and measured on.",
         name="postISRCCD",
@@ -326,18 +308,6 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
         storageClass="SourceCatalog",
         dimensions=["instrument", "visit", "detector"],
     )
-    applied_photo_calib = connectionTypes.Output(
-        doc="Photometric calibration that was applied to exposure.",
-        name="initial_photoCalib_detector",
-        storageClass="PhotoCalib",
-        dimensions=("instrument", "visit", "detector"),
-    )
-    background = connectionTypes.Output(
-        doc="Background models estimated during calibration task; calibrated to be in nJy units.",
-        name="initial_pvi_background",
-        storageClass="Background",
-        dimensions=("instrument", "visit", "detector"),
-    )
 
     # Optional outputs
     psf_stars_footprints = connectionTypes.Output(
@@ -353,6 +323,42 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
         storageClass="ArrowAstropy",
         dimensions=["instrument", "visit", "detector"],
     )
+
+
+class CalibrateImageConnections(CalibrateImageConnectionsBase):
+    astrometry_ref_cat = connectionTypes.PrerequisiteInput(
+        doc="Reference catalog to use for astrometric calibration.",
+        name="gaia_dr3_20230707",
+        storageClass="SimpleCatalog",
+        dimensions=("skypix",),
+        deferLoad=True,
+        multiple=True,
+    )
+    photometry_ref_cat = connectionTypes.PrerequisiteInput(
+        doc="Reference catalog to use for photometric calibration.",
+        name="ps1_pv3_3pi_20170110",
+        storageClass="SimpleCatalog",
+        dimensions=("skypix",),
+        deferLoad=True,
+        multiple=True
+    )
+
+    # Outputs
+    applied_photo_calib = connectionTypes.Output(
+        doc="Photometric calibration that was applied to exposure.",
+        name="initial_photoCalib_detector",
+        storageClass="PhotoCalib",
+        dimensions=("instrument", "visit", "detector"),
+    )
+
+    background = connectionTypes.Output(
+        doc="Background models estimated during calibration task; calibrated to be in nJy units.",
+        name="initial_pvi_background",
+        storageClass="Background",
+        dimensions=("instrument", "visit", "detector"),
+    )
+
+    # Optional outputs
     astrometry_matches = connectionTypes.Output(
         doc="Source to reference catalog matches from the astrometry solver.",
         name="initial_astrometry_match_detector",
