@@ -61,11 +61,15 @@ class CoaddBaseConfig(pexConfig.Config):
         doc="Add photometric calibration variance to warp variance plane.",
         default=False
     )
+    # TODO: Remove this field in DM-44792.
     matchingKernelSize = pexConfig.Field(
         dtype=int,
         doc="Size in pixels of matching kernel. Must be odd.",
         default=21,
-        check=lambda x: x % 2 == 1
+        check=lambda x: x % 2 == 1,
+        deprecated=("This field is deprecated without a replacement. Its value has no effect. "
+                    "Will be removed after v29."
+                    ),
     )
 
 
