@@ -36,13 +36,6 @@ class PipeTasksImportTestCase(ImportTestCase):
         "lsst.pipe.tasks.script",
         "lsst.pipe.tasks.dataFrameActions",
     }
-    SKIP_FILES = {
-        "lsst.pipe.tasks": {
-            "assembleCoadd.py",  # TODO: Remove in DM-40826
-            "assembleChi2Coadd.py",  # TODO: Remove in DM-40826
-            "dcrAssembleCoadd.py",  # TODO: Remove in DM-40826
-        }
-    }
 
 
 if __name__ == "__main__":
