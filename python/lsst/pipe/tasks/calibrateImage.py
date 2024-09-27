@@ -371,6 +371,8 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         self.star_selector["science"].doUnresolved = True
         self.star_selector["science"].doSignalToNoise = True
         self.star_selector["science"].signalToNoise.minimum = 10.0
+        self.star_selector["science"].signalToNoise.fluxField = "slot_CalibFlux_instFlux"
+        self.star_selector["science"].signalToNoise.errField = "slot_CalibFlux_instFluxErr"
         # Keep sky sources in the output catalog, even though they aren't
         # wanted for calibration.
         self.star_selector["science"].doSkySources = True
