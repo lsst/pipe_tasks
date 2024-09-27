@@ -37,6 +37,8 @@ from lsst.skymap import BaseSkyMap
 
 from lsst.pipe.tasks.insertFakes import InsertFakesConfig
 
+from deprecated.sphinx import deprecated
+
 
 class MatchFakesConnections(PipelineTaskConnections,
                             defaultTemplates={"coaddName": "deep",
@@ -82,6 +84,11 @@ class MatchFakesConnections(PipelineTaskConnections,
     )
 
 
+@deprecated(
+    reason="This task will be removed in v28.0 as it is replaced by `source_injection` tasks.",
+    version="v28.0",
+    category=FutureWarning,
+)
 class MatchFakesConfig(
         InsertFakesConfig,
         pipelineConnections=MatchFakesConnections):
@@ -109,6 +116,11 @@ class MatchFakesConfig(
     )
 
 
+@deprecated(
+    reason="This task will be removed in v28.0 as it is replaced by `source_injection` tasks.",
+    version="v28.0",
+    category=FutureWarning,
+)
 class MatchFakesTask(PipelineTask):
     """Match a pre-existing catalog of fakes to a catalog of detections on
     a difference image.
@@ -339,6 +351,11 @@ class MatchVariableFakesConnections(MatchFakesConnections):
     )
 
 
+@deprecated(
+    reason="This task will be removed in v28.0 as it is replaced by `source_injection` tasks.",
+    version="v28.0",
+    category=FutureWarning,
+)
 class MatchVariableFakesConfig(MatchFakesConfig,
                                pipelineConnections=MatchVariableFakesConnections):
     """Config for MatchFakesTask.
@@ -346,6 +363,11 @@ class MatchVariableFakesConfig(MatchFakesConfig,
     pass
 
 
+@deprecated(
+    reason="This task will be removed in v28.0 as it is replaced by `source_injection` tasks.",
+    version="v28.0",
+    category=FutureWarning,
+)
 class MatchVariableFakesTask(MatchFakesTask):
     """Match injected fakes to their detected sources in the catalog and
     compute their expected brightness in a difference image assuming perfect

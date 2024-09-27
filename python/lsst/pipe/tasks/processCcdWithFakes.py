@@ -41,6 +41,8 @@ import lsst.afw.table as afwTable
 from lsst.skymap import BaseSkyMap
 from lsst.pipe.tasks.calibrate import CalibrateTask
 
+from deprecated.sphinx import deprecated
+
 
 class ProcessCcdWithFakesConnections(PipelineTaskConnections,
                                      dimensions=("instrument", "visit", "detector"),
@@ -153,6 +155,11 @@ class ProcessCcdWithFakesConnections(PipelineTaskConnections,
             self.inputs.remove("externalSkyWcsTractCatalog")
 
 
+@deprecated(
+    reason="This task will be removed in v28.0 as it is replaced by `source_injection` tasks.",
+    version="v28.0",
+    category=FutureWarning,
+)
 class ProcessCcdWithFakesConfig(PipelineTaskConfig,
                                 pipelineConnections=ProcessCcdWithFakesConnections):
     """Config for inserting fake sources
@@ -260,6 +267,11 @@ class ProcessCcdWithFakesConfig(PipelineTaskConfig,
         self.calibrate.detection.reEstimateBackground = False
 
 
+@deprecated(
+    reason="This task will be removed in v28.0 as it is replaced by `source_injection` tasks.",
+    version="v28.0",
+    category=FutureWarning,
+)
 class ProcessCcdWithFakesTask(PipelineTask):
     """Insert fake objects into calexps.
 
@@ -629,6 +641,11 @@ class ProcessCcdWithVariableFakesConnections(ProcessCcdWithFakesConnections):
     )
 
 
+@deprecated(
+    reason="This task will be removed in v28.0 as it is replaced by `source_injection` tasks.",
+    version="v28.0",
+    category=FutureWarning,
+)
 class ProcessCcdWithVariableFakesConfig(ProcessCcdWithFakesConfig,
                                         pipelineConnections=ProcessCcdWithVariableFakesConnections):
     scatterSize = pexConfig.RangeField(
@@ -641,6 +658,11 @@ class ProcessCcdWithVariableFakesConfig(ProcessCcdWithFakesConfig,
     )
 
 
+@deprecated(
+    reason="This task will be removed in v28.0 as it is replaced by `source_injection` tasks.",
+    version="v28.0",
+    category=FutureWarning,
+)
 class ProcessCcdWithVariableFakesTask(ProcessCcdWithFakesTask):
     """As ProcessCcdWithFakes except add variablity to the fakes catalog
     magnitude in the observed band for this ccdVisit.
