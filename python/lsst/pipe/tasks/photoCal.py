@@ -332,12 +332,8 @@ class PhotoCalTask(pipeBase.Task):
         ----------
         exposure : `lsst.afw.image.Exposure`
             Exposure upon which the sources in the matches were detected.
-        sourceCat : `lsst.afw.image.SourceCatalog`
-            A catalog of sources to use in the calibration
-            (i.e. a `list` of `lsst.afw.table.Match` with
-            first being of type `lsst.afw.table.SimpleRecord` and second type `lsst.afw.table.SourceRecord`
-            the reference object and matched object respectively).
-            Will not be modified except to set the outputField if requested.
+        sourceCat : `lsst.afw.table.SourceCatalog`
+            Good stars selected for use in calibration.
         expId : `int`, optional
             Exposure ID.
 
