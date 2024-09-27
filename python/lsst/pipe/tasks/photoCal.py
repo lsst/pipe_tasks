@@ -103,6 +103,12 @@ class PhotoCalConfig(pexConf.Config):
             raise RuntimeError("applyColorTerms=True requires photoCatName is non-None")
         if self.applyColorTerms and len(self.colorterms.data) == 0:
             raise RuntimeError("applyColorTerms=True requires colorterms be provided")
+        if self.fluxField != self.match.sourceSelection.signalToNoise.fluxField:
+            raise RuntimeError("Configured flux field %s does not match source selector field %s",
+                               self.fluxField, self.match.sourceSelection.signalToNoise.fluxField)
+        if self.fluxField + "Err" != self.match.sourceSelection.signalToNoise.errField:
+            raise RuntimeError("Configured flux field %sErr does not match source selector error field %s",
+                               self.fluxField, self.match.sourceSelection.signalToNoise.errField)
 
     def setDefaults(self):
         pexConf.Config.setDefaults(self)
@@ -114,6 +120,10 @@ class PhotoCalConfig(pexConf.Config):
             "base_PixelFlags_flag_saturated",
         ]
         self.match.sourceSelection.doUnresolved = True
+        self.match.sourceSelection.doSignalToNoise = True
+        self.match.sourceSelection.signalToNoise.minimum = 10.0
+        self.match.sourceSelection.signalToNoise.fluxField = self.fluxField
+        self.match.sourceSelection.signalToNoise.errField = self.fluxField + "Err"
 
 
 class PhotoCalTask(pipeBase.Task):
