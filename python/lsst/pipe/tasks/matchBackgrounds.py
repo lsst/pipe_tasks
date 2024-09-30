@@ -76,6 +76,13 @@ class MatchBackgroundsConnections(
         storageClass="Background",
         multiple=True,
     )
+    matchedImageList = Output(
+        doc="List of background-matched warps.",
+        name="{inputCoaddName}Coadd_{warpType}Warp_bgMatched",
+        storageClass="ExposureF",
+        dimensions=("skymap", "tract", "patch", "visit"),
+        multiple=True,
+    )
 
 
 class MatchBackgroundsConfig(PipelineTaskConfig, pipelineConnections=MatchBackgroundsConnections):
@@ -312,6 +319,7 @@ class MatchBackgroundsTask(PipelineTask):
         )
 
         backgroundInfoList = []
+        matchedImageList = []
         for ind, exp in enumerate(warps):
             # TODO: simplify this maybe, using only visit IDs?
             self.log.info("Matching background of %s to %s", exp.dataId, refWarp.dataId)
@@ -333,10 +341,13 @@ class MatchBackgroundsTask(PipelineTask):
                 backgroundInfoStruct = blank
 
             backgroundInfoList.append(backgroundInfoStruct)
+            matchedImageList.append(toMatchExposure)
 
         # TODO: more elegant solution than inserting blank model at ref ind?
         backgroundInfoList.insert(refInd, blank)
-        return Struct(backgroundInfoList=backgroundInfoList)
+        matchedImageList.insert(refInd, refWarp.get())
+        return Struct(backgroundInfoList=backgroundInfoList,
+                      matchedImageList=matchedImageList)
 
     @timeMethod
     def _defineWarps(self, warps, refWarpVisit=None):
@@ -439,7 +450,7 @@ class MatchBackgroundsTask(PipelineTask):
         Returns
         -------
         warpBgMI: `~lsst.afw.math.BackgroundMI`
-            Background-subtracted masked image.
+            Background model of masked warp.
         bgCtrl: `~lsst.afw.math.BackgroundControl`
             Background control object.
         """
@@ -448,7 +459,11 @@ class MatchBackgroundsTask(PipelineTask):
 
         bgCtrl = BackgroundControl(nx, ny, self.statsCtrl, self.statsFlag)
         bgCtrl.setUndersampleStyle(self.config.undersampleStyle)
-        warpBgMI = makeBackground(warp.getMaskedImage(), bgCtrl)
+        # Difference image not in ExposureF format!  And no reason it should be.
+        try:
+            warpBgMI = makeBackground(warp.getMaskedImage(), bgCtrl)
+        except AttributeError:
+            warpBgMI = makeBackground(warp, bgCtrl)
 
         return warpBgMI, bgCtrl
 
@@ -541,14 +556,18 @@ class MatchBackgroundsTask(PipelineTask):
                 "Exposures are different dimensions. sci:(%i, %i) vs. ref:(%i, %i)" % (wSci, hSci, wRef, hRef)
             )
 
-        bkgd, bctrl, diffMI, statsFlag = self._setupBackground(refExposure)
+        im = refExposure.getMaskedImage()
+        diffMI = im.clone()
+        diffMI -= sciExposure.getMaskedImage()
+
+        bkgd, bctrl = self._makeBackground(diffMI)
 
         # Some config and input checks if config.usePolynomial:
         # 1) Check that order/bin size make sense:
         # 2) Change binsize or order if underconstrained.
         if self.config.usePolynomial:
             order = self.config.order
-            bgX, bgY, bgZ, bgdZ = self._gridImage(diffMI, self.config.binSize, statsFlag)
+            bgX, bgY, bgZ, bgdZ = self._gridImage(diffMI, self.config.binSize, self.statsFlag)
             minNumberGridPoints = min(len(set(bgX)), len(set(bgY)))
             if len(bgZ) == 0:
                 raise ValueError("No overlap with reference. Nothing to match")
@@ -588,11 +607,11 @@ class MatchBackgroundsTask(PipelineTask):
 
         sciMI = sciExposure.getMaskedImage()
         sciMI += bkgdImage
-        del sciMI
+        del sciMI  # sciExposure is now a BG-matched image
 
         # Need RMS from fit: 2895 will replace this:
         rms = 0.0
-        bgX, bgY, bgZ, bgdZ = self._gridImage(diffMI, self.config.binSize, statsFlag)
+        bgX, bgY, bgZ, bgdZ = self._gridImage(diffMI, self.config.binSize, self.statsFlag)
         x0, y0 = diffMI.getXY0()
         modelValueArr = np.empty(len(bgZ))
         for i in range(len(bgX)):
