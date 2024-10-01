@@ -34,7 +34,7 @@ import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
 import lsst.geom as geom
-from lsst.meas.algorithms import ScienceSourceSelectorTask
+from lsst.meas.algorithms import ScienceSourceSelectorTask, ComputeExPsfTask
 from lsst.utils.timer import timeMethod
 import lsst.ip.isr as ipIsr
 
@@ -325,6 +325,13 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.psfTraceRadiusDelta = nan
         summary.psfApFluxDelta = nan
         summary.psfApCorrSigmaScaledDelta = nan
+        summary.psfE1d1d5 = nan
+        summary.psfE2d1d5 = nan
+        summary.psfExd1d5 = nan
+        summary.psfE1d5d20 = nan
+        summary.psfE2d5d20 = nan
+        summary.psfExd5d20 = nan
+
 
         if psf is None:
             return
@@ -410,10 +417,13 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         psfE1 = (psfXX - psfYY)/(psfXX + psfYY)
         psfE2 = 2*psfXY/(psfXX + psfYY)
 
-        psfStarDeltaE1Median = np.median(starE1 - psfE1)
-        psfStarDeltaE1Scatter = sigmaMad(starE1 - psfE1, scale='normal')
-        psfStarDeltaE2Median = np.median(starE2 - psfE2)
-        psfStarDeltaE2Scatter = sigmaMad(starE2 - psfE2, scale='normal')
+        E1Residuals = starE1 - psfE1
+        E2Residuals = starE2 - psfE2
+
+        psfStarDeltaE1Median = np.median(E1Residuals)
+        psfStarDeltaE1Scatter = sigmaMad(E1Residuals, scale='normal')
+        psfStarDeltaE2Median = np.median(E2Residuals)
+        psfStarDeltaE2Scatter = sigmaMad(E2Residuals, scale='normal')
 
         psfStarDeltaSizeMedian = np.median(starSize - psfSize)
         psfStarDeltaSizeScatter = sigmaMad(starSize - psfSize, scale='normal')
@@ -426,6 +436,45 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.psfStarDeltaSizeMedian = float(psfStarDeltaSizeMedian)
         summary.psfStarDeltaSizeScatter = float(psfStarDeltaSizeScatter)
         summary.psfStarScaledDeltaSizeScatter = float(psfStarScaledDeltaSizeScatter)
+
+        # TO DO: --> Filter on reserved psf stars?
+
+        ra = None # TO DO
+        dec = None # TO DO
+
+        # Comp Ex from 1 arcmin to 5 arcmin scale:
+
+        config = ComputeExPsfTask.ConfigClass()
+
+        config.min_sep = 1.0
+        config.max_sep = 5.0
+        config.nbins = 1
+        config.bin_type = "Linear"
+        config.sep_units = "arcmin"
+
+        task = ComputeExPsfTask(config)
+        output1 = task.run(E1Residuals, E2Residuals, ra, dec, units="arcmin") # TO DO: check units of ra and dec
+
+        summary.psfE1d1d5 = output1.E1
+        summary.psfE2d1d5 = output1.E2
+        summary.psfExd1d5 = output1.Ex
+
+        # Comp Ex from 5 arcmin to 20 arcmin scale:
+
+        config = ComputeExPsfTask.ConfigClass()
+
+        config.min_sep = 5.0
+        config.max_sep = 20.0
+        config.nbins = 1
+        config.bin_type = "Linear"
+        config.sep_units = "arcmin"
+
+        task = ComputeExPsfTask(config)
+        output2 = task.run(E1Residuals, E2Residuals, ra, dec, units="arcmin") # TO DO: check units of ra and dec
+
+        summary.psfE1d5d20 = output2.E1
+        summary.psfE2d5d20 = output2.E2
+        summary.psfExd5d20 = output2.Ex
 
         if image_mask is not None:
             maxDistToNearestPsf = maximum_nearest_psf_distance(
