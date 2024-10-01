@@ -1230,7 +1230,10 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
                              "maxDistToNearestPsf",
                              "effTime", "effTimePsfSigmaScale",
                              "effTimeSkyBgScale", "effTimeZeroPointScale",
-                             "magLim"]
+                             "magLim", "psfTE1E1", "psfTE1E2", "psfTE1Ex",
+                             "psfTE2E1", "psfTE2E2", "psfTE2Ex",
+                             "psfTE3E1", "psfTE3E2", "psfTE3Ex",
+                             "psfTE4E1", "psfTE4E2", "psfTE4Ex"]
             ccdEntry = summaryTable[selectColumns].to_pandas().set_index("id")
             # 'visit' is the human readable visit number.
             # 'visitId' is the key to the visitId table. They are the same.
@@ -1364,6 +1367,13 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
             visitEntry["obsStart"] = visitEntry["expMidpt"] - 0.5 * pd.Timedelta(seconds=expTime)
             expTime_days = expTime / (60*60*24)
             visitEntry["obsStartMJD"] = visitEntry["expMidptMJD"] - 0.5 * expTime_days
+            # TEx = [
+            #     "psfTE1E1", "psfTE1E2", "psfTE1Ex",
+            #     "psfTE2E1", "psfTE2E2", "psfTE2Ex",
+            #     "psfTE3E1", "psfTE3E2", "psfTE3Ex",
+            # ]
+            # for tex in TEx:
+            #     visitEntry[tex] = visitRow[tex]
             visitEntries.append(visitEntry)
 
             # TODO: DM-30623, Add programId, exposureType, cameraTemp,
