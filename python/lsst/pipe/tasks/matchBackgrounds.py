@@ -143,7 +143,7 @@ class MatchBackgroundsConfig(PipelineTaskConfig, pipelineConnections=MatchBackgr
     gridStatistic = ChoiceField(
         dtype=str,
         doc="Type of statistic to estimate pixel value for the grid points.",
-        default="MEAN",
+        default="MEANCLIP",
         allowed={"MEAN": "mean", "MEDIAN": "median", "MEANCLIP": "clipped mean"},
     )
     undersampleStyle = ChoiceField(
@@ -180,7 +180,7 @@ class MatchBackgroundsConfig(PipelineTaskConfig, pipelineConnections=MatchBackgr
     )
     numIter = Field[int](
         doc="Number of iterations of outlier rejection. Ignored if ``gridStatistic != 'MEANCLIP'``.",
-        default=2,
+        default=3,
     )
 
     approxWeighting = Field[bool](
@@ -206,13 +206,15 @@ class MatchBackgroundsTask(PipelineTask):
     It matches the backgrounds of a list of science exposures to a reference
     science exposure.
     The reference exposure is chosen from the list of science exposures by
-    minimizing a cost function that penalizes high variance, high background
-    level, and low coverage.
-    The cost function is a weighted sum of these three metrics.
+    minimizing a cost function that penalizes high background complexity
+    (divergence from a plane), high variance, low global coverage, and low
+    coverage along image edges.
+    The cost function is a weighted sum of these four metrics.
     The weights are set by the config parameters:
-    - ``bestRefWeightCoverage``
+    - ``bestRefWeightChi2``
     - ``bestRefWeightVariance``
-    - ``bestRefWeightLevel``
+    - ``bestRefWeightGlobalCoverage``
+    - ``bestRefWeightEdgeCoverage``
 
 
     Attributes
@@ -233,6 +235,7 @@ class MatchBackgroundsTask(PipelineTask):
         self.statsCtrl = StatisticsControl()
         # TODO: Check that setting the mask planes here work - these planes
         # can vary from exposure to exposure, I think?
+        # Aaron: I think only the bit values vary, not the names, which this is referencing.
         self.statsCtrl.setAndMask(Mask.getPlaneBitMask(self.config.badMaskPlanes))
         self.statsCtrl.setNanSafe(True)
         self.statsCtrl.setNumSigmaClip(self.config.numSigmaClip)
@@ -276,10 +279,7 @@ class MatchBackgroundsTask(PipelineTask):
         # Images must be scaled to a common ZP
         # Converting everything to nJy to accomplish this
         refExposure = refWarp.get()
-        refMI = self._fluxScale(refExposure)  # Also modifies refExposure
-
-        # TODO: figure out what this was creating and why
-        # debugIdKeyList = tuple(set(expKeyList) - set(['tract', 'patch']))
+        instFluxToNanojanskyRef = self._fluxScale(refExposure)
 
         self.log.info("Matching %d Exposures", numExp)
 
@@ -290,7 +290,7 @@ class MatchBackgroundsTask(PipelineTask):
 
         # TODO: refactor below to construct blank bg model
         im = refExposure.getMaskedImage()
-        blankIm = im.Factory(im, True)
+        blankIm = im.clone()
         blankIm.image.array *= 0
 
         width = blankIm.getWidth()
@@ -320,17 +320,16 @@ class MatchBackgroundsTask(PipelineTask):
 
         backgroundInfoList = []
         matchedImageList = []
-        for ind, exp in enumerate(warps):
-            # TODO: simplify this maybe, using only visit IDs?
-            self.log.info("Matching background of %s to %s", exp.dataId, refWarp.dataId)
+        for exp in warps:
+            # TODO: simplify what this prints?
+            self.log.info(
+                "Matching background of %s to %s",
+                exp.dataId,
+                refWarp.dataId,
+            )
             toMatchExposure = exp.get()
+            instFluxToNanojansky = self._fluxScale(toMatchExposure)
             try:
-                # TODO: adjust logic to avoid creating spurious MIs like this
-                toMatchMI = self._fluxScale(toMatchExposure)
-
-                # store a string specifying the visit to label debug plot
-                # self.debugDataIdString = ''.join([str(toMatchRef.dataId[vk]) for vk in debugIdKeyList])
-
                 backgroundInfoStruct = self.matchBackgrounds(
                     refExposure=refExposure,
                     sciExposure=toMatchExposure,
@@ -341,13 +340,14 @@ class MatchBackgroundsTask(PipelineTask):
                 backgroundInfoStruct = blank
 
             backgroundInfoList.append(backgroundInfoStruct)
+            toMatchExposure.image /= instFluxToNanojansky  # Back to cts
             matchedImageList.append(toMatchExposure)
 
         # TODO: more elegant solution than inserting blank model at ref ind?
         backgroundInfoList.insert(refInd, blank)
-        matchedImageList.insert(refInd, refWarp.get())
-        return Struct(backgroundInfoList=backgroundInfoList,
-                      matchedImageList=matchedImageList)
+        refExposure.image /= instFluxToNanojanskyRef  # Back to cts
+        matchedImageList.insert(refInd, refExposure)
+        return Struct(backgroundInfoList=backgroundInfoList, matchedImageList=matchedImageList)
 
     @timeMethod
     def _defineWarps(self, warps, refWarpVisit=None):
@@ -355,8 +355,9 @@ class MatchBackgroundsTask(PipelineTask):
 
         If no reference warp ID is supplied, this method calculates an
         appropriate reference exposure from the supplied list of warps by
-        minimizing a cost function that penalizes high variance, high
-        background level, and low coverage.
+        minimizing a cost function that penalizes high background complexity
+        (divergence from a plane), high variance, low global coverage, and low
+        edge coverage.
 
         Parameters
         ----------
@@ -399,7 +400,7 @@ class MatchBackgroundsTask(PipelineTask):
             instFluxToNanojansky = warp.getPhotoCalib().instFluxToNanojansky(1)
             warp.image *= instFluxToNanojansky  # Images in nJy to facilitate difference imaging
             warp.variance *= instFluxToNanojansky
-            warpBg, _ = self._makeBackground(warp)
+            warpBg, _ = self._makeBackground(warp.getMaskedImage())
 
             # Return an approximation to the background
             approxCtrl = ApproximateControl(ApproximateControl.CHEBYSHEV, 1, 1, self.config.approxWeighting)
@@ -407,8 +408,11 @@ class MatchBackgroundsTask(PipelineTask):
             warpBgSub = ImageF(warp.image.array - warpApprox.getImage().array)
 
             warpStats = makeStatistics(warpBgSub, warp.mask, VARIANCE | NPOINT, self.statsCtrl)
-            # TODO: need to modify this to account for the background mask
-            warpChi2 = np.nansum(warpBgSub.array**2 / warp.variance.array)
+
+            bad_mask_bit_mask = warp.mask.getPlaneBitMask(self.config.badMaskPlanes)
+            good = (warp.mask.array.astype(int) & bad_mask_bit_mask) == 0
+            dof = len(good[good]) - 6  # Assuming eq. of plane
+            warpChi2 = np.nansum(warpBgSub.array[good] ** 2 / warp.variance.array[good]) / dof
             warpVar, _ = warpStats.getResult(VARIANCE)
             warpNPointGlobal, _ = warpStats.getResult(NPOINT)
             warpNPointEdge = (
@@ -421,6 +425,15 @@ class MatchBackgroundsTask(PipelineTask):
             warpVars.append(warpVar)
             warpNPointsGlobal.append(int(warpNPointGlobal))
             warpNPointsEdge.append(warpNPointEdge)
+
+            self.log.info(
+                "Sci exp. visit %d; BG fit Chi^2=%.1f, var=%.1f nJy, nPoints global=%d, nPoints edge=%d",
+                warp.getInfo().getVisitInfo().id,
+                warpChi2,
+                warpVar,
+                warpNPointGlobal,
+                warpNPointEdge,
+            )
 
         # Normalize mean/var/npoints to range from  0 to 1
         warpChi2sFrac = np.array(warpChi2s) / np.nanmax(warpChi2s)
@@ -439,17 +452,17 @@ class MatchBackgroundsTask(PipelineTask):
         self.log.info("Using best reference visit %d", refWarp.dataId["visit"])
         return refWarp, ind
 
-    def _makeBackground(self, warp: ExposureF) -> tuple[BackgroundMI, BackgroundControl]:
+    def _makeBackground(self, warp: MaskedImageF) -> tuple[BackgroundMI, BackgroundControl]:
         """Generate a simple binned background masked image for warped data.
 
         Parameters
         ----------
-        warp: `~lsst.afw.image.ExposureF`
+        warp: `~lsst.afw.image.MaskedImageF`
             Warped exposure for which to estimate background.
 
         Returns
         -------
-        warpBgMI: `~lsst.afw.math.BackgroundMI`
+        bkgd: `~lsst.afw.math.BackgroundMI`
             Background model of masked warp.
         bgCtrl: `~lsst.afw.math.BackgroundControl`
             Background control object.
@@ -459,13 +472,9 @@ class MatchBackgroundsTask(PipelineTask):
 
         bgCtrl = BackgroundControl(nx, ny, self.statsCtrl, self.statsFlag)
         bgCtrl.setUndersampleStyle(self.config.undersampleStyle)
-        # Difference image not in ExposureF format!  And no reason it should be.
-        try:
-            warpBgMI = makeBackground(warp.getMaskedImage(), bgCtrl)
-        except AttributeError:
-            warpBgMI = makeBackground(warp, bgCtrl)
+        bkgd = makeBackground(warp, bgCtrl)
 
-        return warpBgMI, bgCtrl
+        return bkgd, bgCtrl
 
     def _fluxScale(self, exposure):
         """Scales image to nJy flux using photometric calibration.
@@ -477,14 +486,12 @@ class MatchBackgroundsTask(PipelineTask):
 
         Returns
         -------
-        maskedImage: `lsst.afw.image._maskedImage.MaskedImageF`
-            Flux-scaled masked exposure.
+        fluxZp: `float`
+            Counts to nanojanskies conversion factor
         """
-        maskedImage = exposure.getMaskedImage()
         fluxZp = exposure.getPhotoCalib().instFluxToNanojansky(1)
-        exposure.image.array *= fluxZp
-
-        return maskedImage
+        exposure.image *= fluxZp
+        return fluxZp
 
     @timeMethod
     def matchBackgrounds(self, refExposure, sciExposure):
@@ -509,26 +516,15 @@ class MatchBackgroundsTask(PipelineTask):
         refExposure : `lsst.afw.image.Exposure`
             Reference exposure.
         sciExposure : `lsst.afw.image.Exposure`
-            Science exposure; modified by changing the background level
-            to match that of the reference exposure.
+            Science exposure; ultimately modified by changing the background
+            level to match that of the reference exposure.
 
         Returns
         -------
-        model : `lsst.pipe.base.Struct`
-            Background model as a struct with attributes:
-
-            ``backgroundModel``
-                An afw.math.Approximate or an afw.math.Background.
-            ``fitRMS``
-                RMS of the fit = sqrt(mean(residuals**2)), (`float`).
-            ``matchedMSE``
-                The MSE of the reference and matched images:
-                mean((refImage - matchedSciImage)**2);
-                Should be comparable to difference image's mean variance
-                (`float`).
-            ``diffImVar``
-                The mean variance of the difference image (`float`).
+        model : `~lsst.afw.math.BackgroundMI`
+            Background model of difference image, reference - science
         """
+        # TODO: this is deprecated
         if lsstDebug.Info(__name__).savefits:
             refExposure.writeFits(lsstDebug.Info(__name__).figpath + "refExposure.fits")
             sciExposure.writeFits(lsstDebug.Info(__name__).figpath + "sciExposure.fits")
@@ -545,6 +541,7 @@ class MatchBackgroundsTask(PipelineTask):
             if shortSideLength % self.config.binSize != 0:
                 npoints += 1
 
+            # If order of polynomial to be fit > number of bins to fit, error
             if self.config.order > npoints - 1:
                 raise ValueError("%d = config.order > npoints - 1 = %d" % (self.config.order, npoints - 1))
 
@@ -572,7 +569,7 @@ class MatchBackgroundsTask(PipelineTask):
             if len(bgZ) == 0:
                 raise ValueError("No overlap with reference. Nothing to match")
             elif minNumberGridPoints <= self.config.order:
-                # must either lower order or raise number of bins or throw exception
+                # must lower order or raise number of bins, or throw exception
                 if self.config.undersampleStyle == "THROW_EXCEPTION":
                     raise ValueError("Image does not cover enough of ref image for order and binsize")
                 elif self.config.undersampleStyle == "REDUCE_INTERP_ORDER":
@@ -585,7 +582,8 @@ class MatchBackgroundsTask(PipelineTask):
                     bkgd = makeBackground(diffMI, bctrl)  # do over
                     self.log.warning("Decreasing binsize to %d", newBinSize)
 
-            # If there is no variance in any image pixels, do not weight bins by inverse variance
+            # If there is no variance in any image pixels,
+            # do not weight bins by inverse variance
             isUniformImageDiff = not np.any(bgdZ > self.config.gridStdevEpsilon)
             weightByInverseVariance = False if isUniformImageDiff else self.config.approxWeighting
 
@@ -602,9 +600,10 @@ class MatchBackgroundsTask(PipelineTask):
                 bkgdImage = bkgd.getImageF(self.config.interpStyle, self.config.undersampleStyle)
         except Exception as e:
             raise RuntimeError(
-                "Background/Approximation failed to interp image %s: %s" % (self.debugDataIdString, e)
+                "Background/Approximation failed to interp image %s: %s" % (sciExposure.dataId, e)
             )
 
+        instFluxToNanojansky = sciExposure.getPhotoCalib().instFluxToNanojansky(1)
         sciMI = sciExposure.getMaskedImage()
         sciMI += bkgdImage
         del sciMI  # sciExposure is now a BG-matched image
@@ -619,6 +618,7 @@ class MatchBackgroundsTask(PipelineTask):
         resids = bgZ - modelValueArr
         rms = np.sqrt(np.mean(resids[~np.isnan(resids)] ** 2))
 
+        # TODO: also deprecated; _gridImage() maybe can go?
         if lsstDebug.Info(__name__).savefits:
             sciExposure.writeFits(lsstDebug.Info(__name__).figpath + "sciMatchedExposure.fits")
 
@@ -637,6 +637,12 @@ class MatchBackgroundsTask(PipelineTask):
         mse = makeStatistics(diffMI, MEANSQUARE, self.statsCtrl).getValue()
 
         outBkgd = approx if self.config.usePolynomial else bkgd
+        # Convert this back into counts
+        # TODO: is there a one-line way to do this?
+        statsIm = outBkgd.getStatsImage()
+        statsIm /= instFluxToNanojansky
+        bkgdIm = outBkgd.getImageF()
+        bkgdIm /= instFluxToNanojansky
 
         self.log.info(
             "Visit %d; difference BG fit RMS=%.1f cts, matched MSE=%.1f cts, mean variance=%.1f cts",
@@ -659,7 +665,9 @@ class MatchBackgroundsTask(PipelineTask):
         )
 
     def _debugPlot(self, X, Y, Z, dZ, modelImage, bbox, model, resids):
-        """Generate a plot showing the background fit and residuals.
+        """
+        Consider deleting this entirely
+        Generate a plot showing the background fit and residuals.
 
         It is called when lsstDebug.Info(__name__).savefig = True.
         Saves the fig to lsstDebug.Info(__name__).figpath.
@@ -771,76 +779,3 @@ class MatchBackgroundsTask(PipelineTask):
                     bgZ.append(est)
 
         return np.array(bgX), np.array(bgY), np.array(bgZ), np.array(bgdZ)
-
-
-class DataRefMatcher:
-    """Match data references for a specified dataset type.
-
-    Note that this is not exact, but should suffice for this task
-    until there is better support for this kind of thing in the butler.
-
-    Parameters
-    ----------
-    butler : `lsst.daf.butler.Butler`
-        Butler to search for maches in.
-    datasetType : `str`
-        Dataset type to match.
-    """
-
-    def __init__(self, butler, datasetType):
-        self._datasetType = datasetType  # for diagnostics
-        self._keyNames = butler.getKeys(datasetType)
-
-    def _makeKey(self, ref):
-        """Return a tuple of values for the specified keyNames.
-
-        Parameters
-        ----------
-        ref : `Unknown`
-            Data reference.
-
-        Raises
-        ------
-        KeyError
-            Raised if ref.dataId is missing a key in keyNames.
-        """
-        return tuple(ref.dataId[key] for key in self._keyNames)
-
-    def isMatch(self, ref0, ref1):
-        """Return True if ref0 == ref1.
-
-        Parameters
-        ----------
-        ref0 : `Unknown`
-            Data for ref 0.
-        ref1 : `Unknown`
-            Data for ref 1.
-
-        Raises
-        ------
-        KeyError
-            Raised if either ID is missing a key in keyNames.
-        """
-        return self._makeKey(ref0) == self._makeKey(ref1)
-
-    def matchList(self, ref0, refList):
-        """Return a list of indices of matches.
-
-        Parameters
-        ----------
-        ref0 : `Unknown`
-            Data for ref 0.
-        `refList` : `list`
-
-        Returns
-        -------
-        matches : `tuple`
-            Tuple of indices of matches.
-
-        Raises
-        ------
-        KeyError
-            Raised if any ID is missing a key in keyNames.
-        """
-        key0 = self._makeKey(ref0)
-        return tuple(ind for ind, ref in enumerate(refList) if self._makeKey(ref) == key0)
