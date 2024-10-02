@@ -36,6 +36,7 @@ import lsst.afw.image as afwImage
 import lsst.geom as geom
 from lsst.meas.algorithms import ScienceSourceSelectorTask, ComputeExPsfTask
 from lsst.utils.timer import timeMethod
+import time
 
 
 class ComputeExposureSummaryStatsConfig(pexConfig.Config):
@@ -408,13 +409,13 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         psfE1 = (psfXX - psfYY)/(psfXX + psfYY)
         psfE2 = 2*psfXY/(psfXX + psfYY)
 
-        E1Residuals = starE1 - psfE1
-        E2Residuals = starE2 - psfE2
+        e1Residuals = starE1 - psfE1
+        e2Residuals = starE2 - psfE2
 
-        psfStarDeltaE1Median = np.median(E1Residuals)
-        psfStarDeltaE1Scatter = sigmaMad(E1Residuals, scale='normal')
-        psfStarDeltaE2Median = np.median(E2Residuals)
-        psfStarDeltaE2Scatter = sigmaMad(E2Residuals, scale='normal')
+        psfStarDeltaE1Median = np.median(e1Residuals)
+        psfStarDeltaE1Scatter = sigmaMad(e1Residuals, scale='normal')
+        psfStarDeltaE2Median = np.median(e2Residuals)
+        psfStarDeltaE2Scatter = sigmaMad(e2Residuals, scale='normal')
 
         psfStarDeltaSizeMedian = np.median(starSize - psfSize)
         psfStarDeltaSizeScatter = sigmaMad(starSize - psfSize, scale='normal')
@@ -428,23 +429,32 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.psfStarDeltaSizeScatter = float(psfStarDeltaSizeScatter)
         summary.psfStarScaledDeltaSizeScatter = float(psfStarScaledDeltaSizeScatter)
 
-        # TO DO: --> Filter on reserved psf stars?
+        # import pickle
+        # dic = {"psf_cat": psf_cat}
+        # fpkl = open('/sdf/home/l/leget/rubin-user/lsst_dev/pipe_tasks/test_pf.pkl','wb')
+        # pickle.dump(dic, fpkl)
+        # fpkl.close()
 
-        ra = None # TO DO
-        dec = None # TO DO
+        # TO DO: --> Filter on reserved psf stars?
+        # TO DO: remove timer.
+        startEx = time.time()
+
+        ra = psf_cat["coord_ra"] # TO DO --> How to check units?
+        dec = psf_cat["coord_dec"] # TO DO --> How to check units?
 
         # Comp Ex from 1 arcmin to 5 arcmin scale:
 
         config = ComputeExPsfTask.ConfigClass()
 
-        config.min_sep = 1.0
-        config.max_sep = 5.0
+        # TreeCorr config
+        config.min_sep = 1.0 / 60.
+        config.max_sep = 5.0 / 60.
         config.nbins = 1
         config.bin_type = "Linear"
-        config.sep_units = "arcmin"
+        config.sep_units = "degree"
 
         task = ComputeExPsfTask(config)
-        output1 = task.run(E1Residuals, E2Residuals, ra, dec, units="arcmin") # TO DO: check units of ra and dec
+        output1 = task.run(e1Residuals, e2Residuals, ra, dec, units="degree") # TO DO: check units of ra and dec
 
         summary.psfE1d1d5 = output1.E1
         summary.psfE2d1d5 = output1.E2
@@ -454,18 +464,23 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
         config = ComputeExPsfTask.ConfigClass()
 
-        config.min_sep = 5.0
-        config.max_sep = 20.0
+        # TreeCorr config
+        config.min_sep = 5.0 / 60.
+        config.max_sep = 20.0 / 60.
         config.nbins = 1
         config.bin_type = "Linear"
-        config.sep_units = "arcmin"
+        config.sep_units = "degree"
 
         task = ComputeExPsfTask(config)
-        output2 = task.run(E1Residuals, E2Residuals, ra, dec, units="arcmin") # TO DO: check units of ra and dec
+        output2 = task.run(e1Residuals, e2Residuals, ra, dec, units="degree") # TO DO: check units of ra and dec
 
         summary.psfE1d5d20 = output2.E1
         summary.psfE2d5d20 = output2.E2
         summary.psfExd5d20 = output2.Ex
+
+        endEx = time.time()
+
+        self.log.info(f"PF: time to compute Ex --> {endEx - startEx}")
 
         if image_mask is not None:
             maxDistToNearestPsf = maximum_nearest_psf_distance(
