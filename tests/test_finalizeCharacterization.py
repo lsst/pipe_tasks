@@ -56,6 +56,7 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
     """
     def setUp(self):
         config = FinalizeCharacterizationConfig()
+        config.remove_initial_photo_calib = False
 
         self.finalizeCharacterizationTask = TestFinalizeCharacterizationTask(
             config=config,
@@ -232,7 +233,8 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
                 detector,
                 exposure,
                 src,
-                isolated_source_table
+                isolated_source_table,
+                initial_photo_calib=None,
             )
         self.assertIn(
             "No good sources remain after cuts for visit {}, detector {}".format(visit, detector),
