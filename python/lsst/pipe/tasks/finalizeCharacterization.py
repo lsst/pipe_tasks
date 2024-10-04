@@ -26,6 +26,8 @@ __all__ = ['FinalizeCharacterizationConnections',
            'FinalizeCharacterizationConfig',
            'FinalizeCharacterizationTask']
 
+import logging
+
 import numpy as np
 import esutil
 import pandas as pd
@@ -41,6 +43,9 @@ from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask
 from lsst.meas.algorithms.sourceSelector import sourceSelectorRegistry
 
 from .reserveIsolatedStars import ReserveIsolatedStarsTask
+
+
+_LOG = logging.getLogger(__name__)
 
 
 class FinalizeCharacterizationConnections(pipeBase.PipelineTaskConnections,
@@ -85,6 +90,17 @@ class FinalizeCharacterizationConnections(pipeBase.PipelineTaskConnections,
         deferLoad=True,
         multiple=True,
     )
+    initial_photo_calibs = pipeBase.connectionTypes.Input(
+        doc=("Initial photometric calibration that was already applied to "
+             "calexps, to be removed prior to measurement in order to recover "
+             "instrumental fluxes."),
+        name="initial_photoCalib_detector",
+        storageClass="PhotoCalib",
+        dimensions=("instrument", "visit", "detector"),
+        multiple=True,
+        deferLoad=True,
+        minimum=0,
+    )
     finalized_psf_ap_corr_cat = pipeBase.connectionTypes.Output(
         doc=('Per-visit finalized psf models and aperture corrections.  This '
              'catalog uses detector id for the id and are sorted for fast '
@@ -100,6 +116,28 @@ class FinalizeCharacterizationConnections(pipeBase.PipelineTaskConnections,
         dimensions=('instrument', 'visit'),
     )
 
+    def adjustQuantum(self, inputs, outputs, label, data_id):
+        if self.config.remove_initial_photo_calib and not inputs["initial_photo_calibs"]:
+            _LOG.warning(
+                "Dropping %s quantum %s because initial photo calibs are needed and none were present "
+                "this may be an upstream partial-outputs error covering an entire visit (which is why this "
+                "is not an error), but it may mean that 'config.remove_initial_photo_calib' should be "
+                "False.",
+                label,
+                data_id,
+            )
+            raise pipeBase.NoWorkFound("No initial photo calibs.")
+        elif not self.config.remove_initial_photo_calib and inputs["initial_photo_calibs"]:
+            _LOG.warning(
+                "For %s quantum %s, input collections have initial photo calib datasets but "
+                "'config.remove_initial_photo_calib=False'.  This is either a very unusual collection "
+                "search path or (more likely) a bad configuration.  Not that this config option should "
+                "be true when using images produced by CalibrateImageTask.",
+                label,
+                data_id,
+            )
+        return super().adjustQuantum(inputs, outputs, label, data_id)
+
 
 class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
                                      pipelineConnections=FinalizeCharacterizationConnections):
@@ -112,6 +150,12 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
         doc='Name of column in isolated_star_sources with source id.',
         dtype=str,
         default='sourceId',
+    )
+    remove_initial_photo_calib = pexConfig.Field(
+        doc=("Expect an initial photo calib input to be present, and use it ",
+             "to restore the image to instrumental units."),
+        dtype=bool,
+        default=False,
     )
     reserve_selection = pexConfig.ConfigurableField(
         target=ReserveIsolatedStarsTask,
@@ -269,6 +313,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
                          for handle in input_handle_dict['srcs']}
         calexp_dict_temp = {handle.dataId['detector']: handle
                             for handle in input_handle_dict['calexps']}
+        initial_photo_calib_dict_temp = {handle.dataId['detector']: handle
+                                         for handle in input_handle_dict['initial_photo_calibs']}
         isolated_star_cat_dict_temp = {handle.dataId['tract']: handle
                                        for handle in input_handle_dict['isolated_star_cats']}
         isolated_star_source_dict_temp = {handle.dataId['tract']: handle
@@ -279,6 +325,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
                     detector in sorted(src_dict_temp.keys())}
         calexp_dict = {detector: calexp_dict_temp[detector] for
                        detector in sorted(calexp_dict_temp.keys())}
+        initial_photo_calib_dict = {detector: initial_photo_calib_dict_temp[detector]
+                                    for detector in sorted(initial_photo_calib_dict_temp.keys())}
         isolated_star_cat_dict = {tract: isolated_star_cat_dict_temp[tract] for
                                   tract in sorted(isolated_star_cat_dict_temp.keys())}
         isolated_star_source_dict = {tract: isolated_star_source_dict_temp[tract] for
@@ -289,14 +337,24 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
                           isolated_star_cat_dict,
                           isolated_star_source_dict,
                           src_dict,
-                          calexp_dict)
+                          calexp_dict,
+                          initial_photo_calib_dict)
 
         butlerQC.put(struct.psf_ap_corr_cat,
                      outputRefs.finalized_psf_ap_corr_cat)
         butlerQC.put(pd.DataFrame(struct.output_table),
                      outputRefs.finalized_src_table)
 
-    def run(self, visit, band, isolated_star_cat_dict, isolated_star_source_dict, src_dict, calexp_dict):
+    def run(
+        self,
+        visit,
+        band,
+        isolated_star_cat_dict,
+        isolated_star_source_dict,
+        src_dict,
+        calexp_dict,
+        initial_photo_calib_dict,
+    ):
         """
         Run the FinalizeCharacterizationTask.
 
@@ -314,6 +372,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             Per-detector dict of src catalog handles.
         calexp_dict : `dict`
             Per-detector dict of calibrated exposure handles.
+        initial_photo_calib_dict : `dict`
+            Per-detector dict of initial photometric calibration handles
 
         Returns
         -------
@@ -349,13 +409,18 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         for detector in src_dict:
             src = src_dict[detector].get()
             exposure = calexp_dict[detector].get()
+            if detector in initial_photo_calib_dict:
+                initial_photo_calib = initial_photo_calib_dict[detector].get()
+            else:
+                initial_photo_calib = None
 
             psf, ap_corr_map, measured_src = self.compute_psf_and_ap_corr_map(
                 visit,
                 detector,
                 exposure,
                 src,
-                isolated_source_table
+                isolated_source_table,
+                initial_photo_calib
             )
 
             # And now we package it together...
@@ -591,7 +656,15 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
 
         return isolated_table, isolated_source_table
 
-    def compute_psf_and_ap_corr_map(self, visit, detector, exposure, src, isolated_source_table):
+    def compute_psf_and_ap_corr_map(
+        self,
+        visit,
+        detector,
+        exposure,
+        src,
+        isolated_source_table,
+        initial_photo_calib,
+    ):
         """Compute psf model and aperture correction map for a single exposure.
 
         Parameters
@@ -603,6 +676,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         exposure : `lsst.afw.image.ExposureF`
         src : `lsst.afw.table.SourceCatalog`
         isolated_source_table : `np.ndarray`
+        initial_photo_calib : `lsst.afw.image.PhotoCalib` or `None`
+            Initial photometric calibration to remove from the image.
 
         Returns
         -------
@@ -613,6 +688,17 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         measured_src : `lsst.afw.table.SourceCatalog`
             Updated source catalog with measurements, flags and aperture corrections.
         """
+        if self.config.remove_initial_photo_calib:
+            if initial_photo_calib is None:
+                self.log.warning("No initial photo calib found for visit %d, detector %d", visit, detector)
+                return None, None, None
+            if not initial_photo_calib._isConstant:
+                # TODO DM-46720: remove this limitation and usage of private (why?!) property.
+                raise NotImplementedError(
+                    "removeInitialPhotoCalib=True can only work when the initialPhotoCalib is constant."
+                )
+            exposure.maskedImage /= initial_photo_calib.getCalibrationMean()
+
         # Extract footprints from the input src catalog for noise replacement.
         footprints = SingleFrameMeasurementTask.getFootprintsFromCatalog(src)
 
