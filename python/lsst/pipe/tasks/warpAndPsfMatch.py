@@ -26,13 +26,10 @@ import lsst.afw.math as afwMath
 import lsst.geom as geom
 import lsst.afw.geom as afwGeom
 import lsst.pipe.base as pipeBase
-from deprecated.sphinx import deprecated
 from lsst.ip.diffim import ModelPsfMatchTask
 from lsst.meas.algorithms import WarpedPsf
 
 
-@deprecated(reason="The Task corresponding to this Config is no longer in use. Will be removed after v28.",
-            version="v28.0", category=FutureWarning)
 class WarpAndPsfMatchConfig(pexConfig.Config):
     """Config for WarpAndPsfMatchTask
     """
@@ -46,9 +43,6 @@ class WarpAndPsfMatchConfig(pexConfig.Config):
     )
 
 
-@deprecated(reason="The WarpAndPsfMatchTask is no longer in use. Will be removed after v28. "
-            "Use MakeDirectWarp and MakePsfMatchedWarp instead.",
-            version="v28.0", category=FutureWarning)
 class WarpAndPsfMatchTask(pipeBase.Task):
     """A task to warp and PSF-match an exposure
     """
