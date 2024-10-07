@@ -447,7 +447,7 @@ class MakeDirectWarpTask(PipelineTask):
             # Generate noise images in-situ.
             noise_calexps = self.make_noise_exposures(calexp, rng)
 
-            # Warp the PSF before processing nad overwriting exposure.
+            # Warp the PSF before processing and overwriting exposure.
             xyTransform = makeWcsPairTransform(calexp.getWcs(), target_wcs)
             psfWarped = WarpedPsf(calexp.getPsf(), xyTransform)
 
@@ -706,7 +706,7 @@ class MakeDirectWarpTask(PipelineTask):
         if old_background:
             exp.maskedImage += old_background.getImage()
 
-        if self.config.useVisitSummaryPsf:
+        if visit_summary is not None:
             detector = exp.info.getDetector().getId()
             row = visit_summary.find(detector)
 
@@ -726,18 +726,22 @@ class MakeDirectWarpTask(PipelineTask):
             else:
                 logger.warning("No WCS found in visit summary for detector = %s.", detector)
 
-            if psf := row.getPsf():
-                exp.setPsf(psf)
-            else:
-                logger.warning("No PSF found in visit summary for detector = %s.", detector)
+            if self.config.useVisitSummaryPsf:
+                if psf := row.getPsf():
+                    exp.setPsf(psf)
+                else:
+                    logger.warning("No PSF found in visit summary for detector = %s.", detector)
 
-            if apcorr_map := row.getApCorrMap():
-                exp.setApCorrMap(apcorr_map)
-            else:
-                logger.warning(
-                    "No aperture correction map found in visit summary for detector = %s.",
-                    detector,
-                )
+                if apcorr_map := row.getApCorrMap():
+                    exp.setApCorrMap(apcorr_map)
+                else:
+                    logger.warning(
+                        "No aperture correction map found in visit summary for detector = %s.",
+                        detector,
+                    )
+        elif self.config.useVisitSummaryPsf:
+            # We can only get here by calling `run`, not `runQuantum`.
+            raise RuntimeError("useVisitSummaryPsf=True but no visit summary provided.")
 
         if new_background:
             exp.maskedImage -= new_background.getImage()
