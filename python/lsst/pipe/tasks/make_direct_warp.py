@@ -483,10 +483,6 @@ class MakeDirectWarpTask(PipelineTask):
             # Generate noise images in-situ.
             noise_calexps = self.make_noise_exposures(calexp, rng)
 
-            # Warp the PSF before processing and overwriting exposure.
-            xyTransform = makeWcsPairTransform(calexp.getWcs(), target_wcs)
-            psfWarped = WarpedPsf(calexp.getPsf(), xyTransform)
-
             warpedExposure = self.process(
                 calexp,
                 target_wcs,
@@ -496,7 +492,6 @@ class MakeDirectWarpTask(PipelineTask):
                 visit_summary,
                 destBBox=target_bbox,
             )
-            warpedExposure.setPsf(psfWarped)
 
             if final_warp.photoCalib is not None:
                 ratio = (
