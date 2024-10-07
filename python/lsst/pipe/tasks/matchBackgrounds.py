@@ -104,7 +104,7 @@ class MatchBackgroundsConfig(PipelineTaskConfig, pipelineConnections=MatchBackgr
         dtype=float,
         doc="Image variance weight when calculating the best reference exposure. "
         "Higher weights prefers exposures with low image variances. Ignored when ref visit supplied",
-        default=0.4,
+        default=0.2,
         min=0.0,
         max=1.0,
     )
@@ -120,7 +120,7 @@ class MatchBackgroundsConfig(PipelineTaskConfig, pipelineConnections=MatchBackgr
         dtype=float,
         doc="Edge coverage weight (number of valid edge pixels) when calculating the best reference "
         "exposure. Higher weights prefer exposures with high coverage. Ignored when a ref visit supplied.",
-        default=0.2,
+        default=0.4,
         min=0.0,
         max=1.0,
     )
@@ -159,6 +159,10 @@ class MatchBackgroundsConfig(PipelineTaskConfig, pipelineConnections=MatchBackgr
     )
     binSize = Field[int](
         doc="Bin size for gridding the difference image and fitting a spatial model.",
+        default=256,
+    )
+    chi2BinSize = Field[int](
+        doc="Bin size for gridding images when choosing best reference exposure.",
         default=1024,
     )
     interpStyle = ChoiceField(
@@ -400,7 +404,7 @@ class MatchBackgroundsTask(PipelineTask):
             instFluxToNanojansky = warp.getPhotoCalib().instFluxToNanojansky(1)
             warp.image *= instFluxToNanojansky  # Images in nJy to facilitate difference imaging
             warp.variance *= instFluxToNanojansky
-            warpBg, _ = self._makeBackground(warp.getMaskedImage())
+            warpBg, _ = self._makeBackground(warp.getMaskedImage(), binSize=self.config.chi2BinSize)
 
             # Return an approximation to the background
             approxCtrl = ApproximateControl(ApproximateControl.CHEBYSHEV, 1, 1, self.config.approxWeighting)
@@ -452,7 +456,7 @@ class MatchBackgroundsTask(PipelineTask):
         self.log.info("Using best reference visit %d", refWarp.dataId["visit"])
         return refWarp, ind
 
-    def _makeBackground(self, warp: MaskedImageF) -> tuple[BackgroundMI, BackgroundControl]:
+    def _makeBackground(self, warp: MaskedImageF, binSize) -> tuple[BackgroundMI, BackgroundControl]:
         """Generate a simple binned background masked image for warped data.
 
         Parameters
@@ -467,8 +471,8 @@ class MatchBackgroundsTask(PipelineTask):
         bgCtrl: `~lsst.afw.math.BackgroundControl`
             Background control object.
         """
-        nx = warp.getWidth() // self.config.binSize
-        ny = warp.getHeight() // self.config.binSize
+        nx = warp.getWidth() // binSize
+        ny = warp.getHeight() // binSize
 
         bgCtrl = BackgroundControl(nx, ny, self.statsCtrl, self.statsFlag)
         bgCtrl.setUndersampleStyle(self.config.undersampleStyle)
@@ -557,7 +561,7 @@ class MatchBackgroundsTask(PipelineTask):
         diffMI = im.clone()
         diffMI -= sciExposure.getMaskedImage()
 
-        bkgd, bctrl = self._makeBackground(diffMI)
+        bkgd, bctrl = self._makeBackground(diffMI, binSize=self.config.binSize)
 
         # Some config and input checks if config.usePolynomial:
         # 1) Check that order/bin size make sense:
