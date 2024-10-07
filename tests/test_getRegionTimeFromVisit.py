@@ -96,13 +96,13 @@ class GetRegionTimeFromVisitTests(lsst.utils.tests.TestCase):
         butlerTests.addDatasetType(self.repo, "goodSeeingDiff_diaSrcTable",
                                    {"instrument", "visit", "detector"}, "DataFrame")
         # pipeTests.makeQuantum needs outputs registered even if graph generation does not.
-        butlerTests.addDatasetType(self.repo, "getRegionTimeFromVisit_dummy",
-                                   {"instrument", "exposure"}, "int")
+        butlerTests.addDatasetType(self.repo, "getRegionTimeFromVisit_dummy2",
+                                   {"instrument", "exposure", "detector"}, "int")
 
         self.group_id = self.repo.registry.expandDataId(
             {"instrument": instrument, "group": group, "detector": detector})
         self.exposure_id = self.repo.registry.expandDataId(
-            {"instrument": instrument, "exposure": exposure})
+            {"instrument": instrument, "exposure": exposure, "detector": detector})
         self.visit_id = self.repo.registry.expandDataId(
             {"instrument": instrument, "visit": exposure, "detector": detector})
 
