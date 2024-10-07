@@ -44,9 +44,9 @@ class GetRegionTimeFromVisitConnections(pipeBase.PipelineTaskConnections,
     dummy_exposure = pipeBase.connectionTypes.Output(
         doc="Placeholder connection to guarantee visit-exposure-group mapping. "
             "This output is never produced and need not be registered.",
-        name="getRegionTimeFromVisit_dummy",  # Unique in case it gets registered anyway.
+        name="getRegionTimeFromVisit_dummy2",  # Unique because it gets registered anyway.
         storageClass="int",
-        dimensions={"instrument", "exposure"},
+        dimensions={"instrument", "exposure", "detector"},
         multiple=True,
     )
     output = pipeBase.connectionTypes.Output(
