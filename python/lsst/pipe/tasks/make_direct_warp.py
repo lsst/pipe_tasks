@@ -106,6 +106,17 @@ class MakeDirectWarpConnections(
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
     )
+    initial_photo_calib_list = Input(
+        doc="Initial photometric calibration that was already applied to "
+            "calexp_list images, to be removed prior to applying the final "
+            "photometric calibration in visit_summary.",
+        name="initial_photoCalib_detector",
+        storageClass="PhotoCalib",
+        dimensions=("instrument", "visit", "detector"),
+        multiple=True,
+        deferLoad=True,
+        minimum=0,
+    )
     sky_map = Input(
         doc="Input definition of geometry/bbox and projection/wcs for warps.",
         name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
@@ -137,6 +148,11 @@ class MakeDirectWarpConnections(
         if not config.doApplyNewBackground:
             del self.background_apply_list
 
+        # initial photo calib connection is not conditional on configs; instead
+        # we look for them regardless, and check that this is consistent with
+        # configs in adjustQuantum, so we have a better chance of warning when
+        # the data repo looks inconsistent with the configuration.
+
         if not config.doWarpMaskedFraction:
             del self.masked_fraction_warp
 
@@ -151,6 +167,25 @@ class MakeDirectWarpConnections(
                 dimensions=("tract", "patch", "skymap", "instrument", "visit"),
             )
             setattr(self, f"noise_warp{n}", noise_warp)
+
+    def adjustQuantum(self, inputs, outputs, label, data_id):
+        # Delegate to super first so it can raise NoWorkFound when appropriate.
+        results = super().adjustQuantum(inputs, outputs, label, data_id)
+        if self.config.removeInitialPhotoCalib and not inputs["initial_photo_calib_list"]:
+            _LOG.warning(
+                "Dropping %s quantum %s because initial photo calibs are needed and none were present; "
+                "this may be an upstream partial-outputs error on much of a entire visit (which is why this "
+                "is not an error), but it may mean that 'config.removeInitialPhotoCalib' should be False."
+            )
+            raise NoWorkFound("No initial photo calibs.")
+        elif not self.config.removeInitialPhotoCalib and inputs["initial_photo_calib_list"]:
+            _LOG.warning(
+                "Input collections have initial photo calib datasets but "
+                "'config.removeInitialPhotoCalib=False'.  This is either a very unusual collection "
+                "search path or (more likely) a bad configuration.  Not that this config option should "
+                "be true when using images produced by CalibrateImageTask."
+            )
+        return results
 
 
 class MakeDirectWarpConfig(
@@ -373,9 +408,13 @@ class MakeDirectWarpTask(PipelineTask):
             Dictionary of input datasets. It must have a list of input calexps
             under the key "calexp_list" and a single ExposureCatalog under the
             key "visit_summary".   Other supported keys are
-            "background_revert_list" and "background_apply_list", corresponding
-            to the old and the new backgrounds to be reverted and applied to
-            the calexps. They must be in the same order as the calexps.
+            "background_revert_list", "background_apply_list", and
+            `initial_photo_calib_list`, corresponding the old and the new
+            backgrounds to be reverted and applied to the calexps, and an
+            initial photometric calibration that has already been applied to
+            the images and must be removed (after adjusting the background,
+            as background models are assumed to have the same units as the
+            images. These must all be in the same order as the calexps.
         sky_info : `~lsst.pipe.base.Struct`
             A Struct object containing wcs, bounding box, and other information
             about the patches within the tract.
@@ -739,6 +778,9 @@ class MakeDirectWarpTask(PipelineTask):
         elif self.config.useVisitSummaryPsf:
             # We can only get here by calling `run`, not `runQuantum`.
             raise RuntimeError("useVisitSummaryPsf=True but no visit summary provided.")
+
+        if self.config.removeInitialPhotoCalib:
+            raise NotImplementedError("TODO")
 
         if new_background:
             exp.maskedImage -= new_background.getImage()
