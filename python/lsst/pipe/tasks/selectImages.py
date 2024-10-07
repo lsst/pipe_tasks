@@ -302,7 +302,7 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
     ConfigClass = PsfWcsSelectImagesConfig
     _DefaultName = "PsfWcsSelectImages"
 
-    def run(self, wcsList, bboxList, coordList, visitSummary, dataIds=None, **kwargs):
+    def run(self, wcsList, bboxList, coordList, visitSummary, dataIds, **kwargs):
         """Return indices of provided lists that meet the selection criteria.
 
         Parameters
@@ -316,7 +316,7 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         visitSummary : `list` [`lsst.afw.table.ExposureCatalog`]
             containing the PSF shape information for the input ccds to be
             selected.
-        dataIds : iterable [`lsst.daf.butler.dataId`] or `None`, optional
+        dataIds : iterable [`lsst.daf.butler.dataId`]
             An iterable object of dataIds which point to reference catalogs.
         **kwargs
             Additional keyword arguments.
