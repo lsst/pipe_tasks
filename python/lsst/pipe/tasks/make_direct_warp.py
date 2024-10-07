@@ -434,7 +434,7 @@ class MakeDirectWarpTask(PipelineTask):
         sky_info.bbox.grow(self.config.border)
         target_bbox, target_wcs = sky_info.bbox, sky_info.wcs
 
-        visit_summary = inputs["visit_summary"] if self.config.useVisitSummaryPsf else None
+        visit_summary = inputs["visit_summary"]
 
         # Initialize the objects that will hold the warp.
         final_warp = ExposureF(target_bbox, target_wcs)
