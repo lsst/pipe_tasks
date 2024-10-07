@@ -371,17 +371,14 @@ class MakeDirectWarpTask(PipelineTask):
         ----------
         inputs : `Mapping`
             Dictionary of input datasets. It must have a list of input calexps
-            under the key "calexp_list". Other supported keys are
+            under the key "calexp_list" and a single ExposureCatalog under the
+            key "visit_summary".   Other supported keys are
             "background_revert_list" and "background_apply_list", corresponding
             to the old and the new backgrounds to be reverted and applied to
             the calexps. They must be in the same order as the calexps.
         sky_info : `~lsst.pipe.base.Struct`
             A Struct object containing wcs, bounding box, and other information
             about the patches within the tract.
-        visit_summary : `~lsst.afw.table.ExposureCatalog` | None
-            Table of visit summary information.  If provided, the visit summary
-            information will be used to update the calibration of the input
-            exposures.  If None, the input exposures will be used as-is.
 
         Returns
         -------
