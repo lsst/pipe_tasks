@@ -31,7 +31,6 @@ import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as connectionTypes
 import lsst.utils as utils
 import lsst.geom
-from deprecated.sphinx import deprecated
 from lsst.daf.butler import DeferredDatasetHandle
 from lsst.meas.base import DetectorVisitIdGeneratorConfig
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig, GaussianPsfFactory
@@ -109,8 +108,6 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
             del self.psfMatched
 
 
-@deprecated(reason="The Task corresponding to this Config is no longer in use. Will be removed after v28.",
-            version="v28.0", category=FutureWarning)
 class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
                      pipelineConnections=MakeWarpConnections):
     """Config for MakeWarpTask."""
@@ -197,9 +194,6 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
         self.warpAndPsfMatch.psfMatch.kernel.active.kernelSize = self.matchingKernelSize
 
 
-@deprecated(reason="The MakeWarpTask is replaced by MakeDirectWarpTask and MakePsfMatchedWarpTask. "
-                   "This Task will be removed after v28.",
-            version="v28.0", category=FutureWarning)
 class MakeWarpTask(CoaddBaseTask):
     """Warp and optionally PSF-Match calexps onto an a common projection.
 
