@@ -863,6 +863,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             identically 1.
         stars : `lsst.afw.table.SourceCatalog`
             Good stars selected for use in calibration.
+        background : `lsst.afw.math.BackgroundList`
+            Background that was fit to the exposure during detection of the
+            above stars.
 
         Returns
         -------

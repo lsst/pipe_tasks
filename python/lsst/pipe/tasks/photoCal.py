@@ -103,6 +103,12 @@ class PhotoCalConfig(pexConf.Config):
             raise RuntimeError("applyColorTerms=True requires photoCatName is non-None")
         if self.applyColorTerms and len(self.colorterms.data) == 0:
             raise RuntimeError("applyColorTerms=True requires colorterms be provided")
+        if self.fluxField != self.match.sourceSelection.signalToNoise.fluxField:
+            raise RuntimeError("Configured flux field %s does not match source selector field %s",
+                               self.fluxField, self.match.sourceSelection.signalToNoise.fluxField)
+        if self.fluxField + "Err" != self.match.sourceSelection.signalToNoise.errField:
+            raise RuntimeError("Configured flux field %sErr does not match source selector error field %s",
+                               self.fluxField, self.match.sourceSelection.signalToNoise.errField)
 
     def setDefaults(self):
         pexConf.Config.setDefaults(self)
@@ -114,6 +120,10 @@ class PhotoCalConfig(pexConf.Config):
             "base_PixelFlags_flag_saturated",
         ]
         self.match.sourceSelection.doUnresolved = True
+        self.match.sourceSelection.doSignalToNoise = True
+        self.match.sourceSelection.signalToNoise.minimum = 10.0
+        self.match.sourceSelection.signalToNoise.fluxField = self.fluxField
+        self.match.sourceSelection.signalToNoise.errField = self.fluxField + "Err"
 
 
 class PhotoCalTask(pipeBase.Task):
@@ -322,12 +332,8 @@ class PhotoCalTask(pipeBase.Task):
         ----------
         exposure : `lsst.afw.image.Exposure`
             Exposure upon which the sources in the matches were detected.
-        sourceCat : `lsst.afw.image.SourceCatalog`
-            A catalog of sources to use in the calibration
-            (i.e. a `list` of `lsst.afw.table.Match` with
-            first being of type `lsst.afw.table.SimpleRecord` and second type `lsst.afw.table.SourceRecord`
-            the reference object and matched object respectively).
-            Will not be modified except to set the outputField if requested.
+        sourceCat : `lsst.afw.table.SourceCatalog`
+            Good stars selected for use in calibration.
         expId : `int`, optional
             Exposure ID.
 
