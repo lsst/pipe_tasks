@@ -96,6 +96,15 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit",),
     )
+    initialPhotoCalibList = pipeBase.connectionTypes.Input(
+        doc=("Initial photometric calibration that was already applied to calExpList, "
+             "to be removed prior to applying the final photometric calibration."),
+        name="initial_photoCalib_detector",
+        storageClass="PhotoCalib",
+        dimensions=("instrument", "visit", "detector"),
+        multiple=True,
+        minimum=0,
+    )
 
     def __init__(self, *, config=None):
         if config.bgSubtracted:
@@ -106,6 +115,33 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
             del self.direct
         if not config.makePsfMatched:
             del self.psfMatched
+
+    def adjustQuantum(self, inputs, outputs, label, data_id):
+        # Instead of disabling the initial photo calibs connection when
+        # config.removeInitialPhotoCalib is False, check here (in QG
+        # generation) that the configuration is consistent with what's
+        # available.  This gives us a chance at least warn if somebody
+        # runs CalibrateImageTask but doesn't configure MakeWarpTask to
+        # use it properly.
+        if self.config.removeInitialPhotoCalib and not inputs["initialPhotoCalibList"]:
+            log.warning(
+                "Dropping %s quantum %s because initial photo calibs are needed and none were present "
+                "this may be an upstream partial-outputs error covering an entire visit (which is why this "
+                "is not an error), but it may mean that 'config.removeInitialPhotoCalib' should be False.",
+                label,
+                data_id,
+            )
+            raise pipeBase.NoWorkFound("No initial photo calibs.")
+        elif not self.config.removeInitialPhotoCalib and inputs["initialPhotoCalibList"]:
+            log.warning(
+                "For %s quantum %s, input collections have initial photo calib datasets but "
+                "'config.removeInitialPhotoCalib=False'.  This is either a very unusual collection "
+                "search path or (more likely) a bad configuration.  Not that this config option should "
+                "be true when using images produced by CalibrateImageTask.",
+                label,
+                data_id,
+            )
+        return super().adjustQuantum(inputs, outputs, label, data_id)
 
 
 class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
@@ -163,6 +199,12 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
         dtype=bool,
         default=False,
         doc="Apply sky correction?",
+    )
+    removeInitialPhotoCalib = pexConfig.Field(
+        doc=("Expect an initial photo calib input to be present, and use it to restore the image ",
+             "to instrumental units before applying the final photometric calibration."),
+        dtype=bool,
+        default=True,
     )
     idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
@@ -425,7 +467,8 @@ class MakeWarpTask(CoaddBaseTask):
         return inputs
 
     def _prepareCalibratedExposures(self, *, visitSummary, calExpList=[], wcsList=None,
-                                    backgroundList=None, skyCorrList=None, **kwargs):
+                                    backgroundList=None, skyCorrList=None, initialPhotoCalibList=None,
+                                    **kwargs):
         """Calibrate and add backgrounds to input calExpList in place.
 
         Parameters
@@ -447,6 +490,10 @@ class MakeWarpTask(CoaddBaseTask):
         skyCorrList : `list` [`lsst.afw.math.BackgroundList`], optional
             Sequence of background corrections to be subtracted if
             doApplySkyCorr=True.
+        initialPhotoCalibList : `list [`lsst.afw.image.PhotoCalib`], optional
+            Initial photometric calibrations that were already applied to the
+            images in `calExpList` and must be removed before applying the
+            final photometric calibration.
         **kwargs
             Additional keyword arguments.
 
@@ -459,13 +506,16 @@ class MakeWarpTask(CoaddBaseTask):
         wcsList = len(calExpList)*[None] if wcsList is None else wcsList
         backgroundList = len(calExpList)*[None] if backgroundList is None else backgroundList
         skyCorrList = len(calExpList)*[None] if skyCorrList is None else skyCorrList
+        initialPhotoCalibList = (
+            len(calExpList)*[None] if initialPhotoCalibList is None else initialPhotoCalibList
+        )
 
         includeCalibVar = self.config.includeCalibVar
 
         indices = []
-        for index, (calexp, background, skyCorr) in enumerate(zip(calExpList,
-                                                                  backgroundList,
-                                                                  skyCorrList)):
+        for index, (calexp, background, skyCorr, initialPhotoCalib) in enumerate(
+            zip(calExpList, backgroundList, skyCorrList, initialPhotoCalibList)
+        ):
             if isinstance(calexp, DeferredDatasetHandle):
                 calexp = calexp.get()
 
@@ -528,9 +578,25 @@ class MakeWarpTask(CoaddBaseTask):
                     )
                     continue
 
-            # Apply skycorr
+            # Apply skycorr.  We assume it has the same units as the calExpList
+            # image.
             if self.config.doApplySkyCorr:
                 calexp.maskedImage -= skyCorr.getImage()
+
+            # Remove initial photometric calibration, if we expect one.
+            if self.config.removeInitialPhotoCalib:
+                if initialPhotoCalib is None:
+                    self.log.warning(
+                        "Detector id %d for visit %d has no initialPhotoCalib and will "
+                        "not be used in the warp", detectorId, row["visit"],
+                    )
+                    continue
+                if not initialPhotoCalib._isConstant:
+                    # TODO DM-46720: remove this limitation and usage of private (why?!) property.
+                    raise NotImplementedError(
+                        "removeInitialPhotoCalib=True can only work when the initialPhotoCalib is constant."
+                    )
+                calexp.maskedImage /= initialPhotoCalib.getCalibrationMean()
 
             # Calibrate the image.
             calexp.maskedImage = photoCalib.calibrateImage(calexp.maskedImage,
