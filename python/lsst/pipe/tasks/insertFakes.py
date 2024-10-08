@@ -40,6 +40,8 @@ import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.exceptions import LogicError, InvalidParameterError
 from lsst.geom import SpherePoint, radians, Box2D, Point2D
 
+from deprecated.sphinx import deprecated
+
 
 def _add_fake_sources(exposure, objects, calibFluxRadius=12.0, logger=None):
     """Add fake sources to the given exposure
@@ -202,6 +204,11 @@ class InsertFakesConnections(PipelineTaskConnections,
     )
 
 
+@deprecated(
+    reason="This task will be removed in v28.0 as it is replaced by `source_injection` tasks.",
+    version="v28.0",
+    category=FutureWarning,
+)
 class InsertFakesConfig(PipelineTaskConfig,
                         pipelineConnections=InsertFakesConnections):
     """Config for inserting fake sources
@@ -528,6 +535,11 @@ class InsertFakesConfig(PipelineTaskConfig,
     )
 
 
+@deprecated(
+    reason="This task will be removed in v28.0 as it is replaced by `source_injection` tasks.",
+    version="v28.0",
+    category=FutureWarning,
+)
 class InsertFakesTask(PipelineTask):
     """Insert fake objects into images.
 
