@@ -528,6 +528,10 @@ class MakeWarpTask(CoaddBaseTask):
                     )
                     continue
 
+            # Apply skycorr
+            if self.config.doApplySkyCorr:
+                calexp.maskedImage -= skyCorr.getImage()
+
             # Calibrate the image.
             calexp.maskedImage = photoCalib.calibrateImage(calexp.maskedImage,
                                                            includeScaleUncertainty=includeCalibVar)
@@ -535,10 +539,6 @@ class MakeWarpTask(CoaddBaseTask):
             # TODO: The images will have a calibration of 1.0 everywhere once
             # RFC-545 is implemented.
             # exposure.setCalib(afwImage.Calib(1.0))
-
-            # Apply skycorr
-            if self.config.doApplySkyCorr:
-                calexp.maskedImage -= skyCorr.getImage()
 
             indices.append(index)
             calExpList[index] = calexp
