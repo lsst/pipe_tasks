@@ -28,14 +28,13 @@ import lsst.afw.math as afwMath
 import lsst.pipe.base.connectionTypes as cT
 import numpy as np
 from lsst.pex.config import Config, ConfigField, ConfigurableField, Field
-from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
-from lsst.pipe.tasks.background import (
-    FocalPlaneBackground,
-    FocalPlaneBackgroundConfig,
-    MaskObjectsTask,
-    SkyMeasurementTask,
-)
-from lsst.pipe.tasks.visualizeVisit import VisualizeMosaicExpConfig, VisualizeMosaicExpTask
+from lsst.pipe.base import (PipelineTask, PipelineTaskConfig,
+                            PipelineTaskConnections, Struct)
+from lsst.pipe.tasks.background import (FocalPlaneBackground,
+                                        FocalPlaneBackgroundConfig,
+                                        MaskObjectsTask, SkyMeasurementTask)
+from lsst.pipe.tasks.visualizeVisit import (VisualizeMosaicExpConfig,
+                                            VisualizeMosaicExpTask)
 
 
 def _skyFrameLookup(datasetType, registry, quantumDataId, collections):
@@ -178,6 +177,11 @@ class SkyCorrectionConfig(PipelineTaskConfig, pipelineConnections=SkyCorrectionC
         dtype=FocalPlaneBackgroundConfig,
         doc="Initial background model, prior to sky frame subtraction",
     )
+    doBgModel1 = Field(
+        dtype=bool,
+        default=True,
+        doc="If False, adds back initial background model after sky",
+    )
     sky = ConfigurableField(
         target=SkyMeasurementTask,
         doc="Sky measurement",
@@ -209,6 +213,11 @@ class SkyCorrectionConfig(PipelineTaskConfig, pipelineConnections=SkyCorrectionC
         self.bgModel2.xSize = 256
         self.bgModel2.ySize = 256
         self.bgModel2.smoothScale = 1.0
+
+    def validate(self):
+        super().validate()
+        if not self.doBgModel1 and not self.doSky and not self.doBgModel2:
+            raise ValueError("Task requires at least one of doBgModel1, doSky or doBgModel2 to be True.")
 
 
 class SkyCorrectionTask(PipelineTask):
@@ -310,6 +319,10 @@ class SkyCorrectionTask(PipelineTask):
         if self.config.doSky:
             self._subtractSkyFrame(calExps, skyFrames, calBkgs)
 
+        # Adds full-fp bg back onto exposures, removes it from list
+        if not self.config.doBgModel1:
+            _ = self._restoreVisitBackground(calExps, calBkgs)
+
         # Bin exposures, generate full-fp bg, map to CCDs and subtract in-place
         if self.config.doBgModel2:
             _ = self._subtractVisitBackground(calExps, calBkgs, camera, self.config.bgModel2)
@@ -386,6 +399,37 @@ class SkyCorrectionTask(PipelineTask):
             )
             skyCorrBases.append(skyCorrBase)
         return calExps, skyCorrBases
+
+    def _restoreVisitBackground(self, calExps, calBkgs):
+        """Restores the full focal-plane background to a visit.
+        Runs after _subtractSkyFrame() if doBgModel1=False.
+
+        Parameters
+        ----------
+        calExps : `list` [`lsst.afw.image.exposure.ExposureF`]
+            Calibrated exposures to be background subtracted.
+        calBkgs : `list` [`lsst.afw.math._backgroundList.BackgroundList`]
+            Background lists associated with the input calibrated exposures.
+
+        Returns
+        -------
+        calExps : `list` [`lsst.afw.image.maskedImage.MaskedImageF`]
+            Background subtracted exposures for creating a focal plane image.
+        calBkgs : `list` [`lsst.afw.math._backgroundList.BackgroundList`]
+            Updated background lists with a visit-level model removed.
+        """
+        for calExp, calBkg in zip(calExps, calBkgs):
+            image = calExp.getMaskedImage()
+
+            # Restore full focal-plane background in calexp; remove from BGList
+            skyCorrBase = calBkg[-2][0].getImageF()
+            image += skyCorrBase
+            calBkg._backgrounds.pop(-2)
+
+            self.log.info(
+                "Detector %d: FFP background restored",
+                calExp.getDetector().getId(),
+            )
 
     def _subtractVisitBackground(self, calExps, calBkgs, camera, config):
         """Perform a full focal-plane background subtraction for a visit.
