@@ -77,14 +77,14 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         dimensions=("skymap",),
     )
     direct = connectionTypes.Output(
-        doc=("Output direct warped exposure (previously called CoaddTempExp), produced by resampling ",
+        doc=("Output direct warped exposure (previously called CoaddTempExp), produced by resampling "
              "calexps onto the skyMap patch geometry."),
         name="{coaddName}Coadd_directWarp",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "visit", "instrument"),
     )
     psfMatched = connectionTypes.Output(
-        doc=("Output PSF-Matched warped exposure (previously called CoaddTempExp), produced by resampling ",
+        doc=("Output PSF-Matched warped exposure (previously called CoaddTempExp), produced by resampling "
              "calexps onto the skyMap patch geometry and PSF-matching to a model PSF."),
         name="{coaddName}Coadd_psfMatchedWarp",
         storageClass="ExposureF",
