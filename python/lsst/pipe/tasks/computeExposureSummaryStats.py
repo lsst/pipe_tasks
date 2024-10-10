@@ -36,6 +36,7 @@ import lsst.afw.image as afwImage
 import lsst.geom as geom
 from lsst.meas.algorithms import ScienceSourceSelectorTask
 from lsst.utils.timer import timeMethod
+import lsst.ip.isr as ipIsr
 
 
 class ComputeExposureSummaryStatsConfig(pexConfig.Config):
@@ -131,6 +132,11 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         doc="Maximum value allowed for effective transparency scale factor (often inf or 1.0).",
         default=float('inf')
     )
+    magLimSnr = pexConfig.Field(
+        dtype=float,
+        doc="Signal-to-noise ratio for computing the magnitude limit depth.",
+        default=5.0
+    )
 
     def setDefaults(self):
         super().setDefaults()
@@ -204,6 +210,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     - effTimePsfSigmaScale
     - effTimeSkyBgScale
     - effTimeZeroPointScale
+    - magLim
     """
     ConfigClass = ComputeExposureSummaryStatsConfig
     _DefaultName = "computeExposureSummaryStats"
@@ -253,6 +260,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         self.update_background_stats(summary, background)
 
         self.update_masked_image_stats(summary, exposure.getMaskedImage())
+
+        self.update_magnitude_limit_stats(summary, exposure)
 
         self.update_effective_time_stats(summary, exposure)
 
@@ -572,11 +581,12 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         same signal-to-noise for a point source as what is achieved by
         the observation of interest. This metric combines measurements
         of the point-spread function, the sky brightness, and the
-        transparency.
+        transparency. It assumes that the observation is
+        sky-background dominated.
 
         .. _teff_definitions:
 
-        The effective exposure time and its subcomponents are defined in [1]_
+        The effective exposure time and its subcomponents are defined in [1]_.
 
         References
         ----------
@@ -584,7 +594,6 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         .. [1] Neilsen, E.H., Bernstein, G., Gruendl, R., and Kent, S. (2016).
                Limiting Magnitude, \tau, teff, and Image Quality in DES Year 1
                https://www.osti.gov/biblio/1250877/
-
 
         Parameters
         ----------
@@ -594,8 +603,6 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             Exposure to grab band and exposure time metadata
 
         """
-        self.log.info("Updating effective exposure time")
-
         nan = float("nan")
         summary.effTime = nan
         summary.effTimePsfSigmaScale = nan
@@ -624,7 +631,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             fiducialPsfSigma = self.config.fiducialPsfSigma[band]
             f_eff = (summary.psfSigma / fiducialPsfSigma)**-2
 
-        # Transparency component (note that exposure time may be removed from zeropoint)
+        # Transparency component
+        # Note: Assumes that the zeropoint includes the exposure time
         if np.isnan(summary.zeroPoint):
             self.log.debug("Zero point is NaN")
             c_eff = nan
@@ -658,6 +666,65 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.effTimePsfSigmaScale = float(f_eff)
         summary.effTimeSkyBgScale = float(b_eff)
         summary.effTimeZeroPointScale = float(c_eff)
+
+    def update_magnitude_limit_stats(self, summary, exposure):
+        """Compute a summary statistic for the point-source magnitude limit at
+        a given signal-to-noise ratio using exposure-level metadata.
+
+        The magnitude limit is calculated at a given SNR from the PSF,
+        sky, zeropoint, and readnoise in accordance with SMTN-002 [1]_,
+        LSE-40 [2]_, and DMTN-296 [3]_.
+
+        References
+        ----------
+
+        .. [1] "Calculating LSST limiting magnitudes and SNR" (SMTN-002)
+        .. [2] "Photon Rates and SNR Calculations" (LSE-40)
+        .. [3] "Calculations of Image and Catalog Depth" (DMTN-296)
+
+
+        Parameters
+        ----------
+        summary : `lsst.afw.image.ExposureSummaryStats`
+            Summary object to update in-place.
+        exposure : `lsst.afw.image.ExposureF`
+            Exposure to grab band and exposure time metadata
+        """
+        if exposure.getDetector() is None:
+            summary.magLim = float("nan")
+            return
+
+        # Calculate the average readnoise [e-]
+        readNoiseList = list(ipIsr.getExposureReadNoises(exposure).values())
+        readNoise = np.nanmean(readNoiseList)
+        if np.isnan(readNoise):
+            readNoise = 0.0
+            self.log.warn("Read noise set to NaN! Setting readNoise to 0.0 to proceed.")
+
+        # Calculate the average gain [e-/ADU]
+        gainList = list(ipIsr.getExposureGains(exposure).values())
+        gain = np.nanmean(gainList)
+        if np.isnan(gain):
+            self.log.warn("Gain set to NaN! Setting magLim to NaN.")
+            summary.magLim = float("nan")
+            return
+
+        # Get the image units (default to 'adu' if metadata key absent)
+        md = exposure.getMetadata()
+        if md.get("LSST ISR UNIT", "adu") == "electron":
+            gain = 1.0
+
+        # Convert readNoise to image units
+        readNoise /= gain
+
+        # Calculate the limiting magnitude.
+        # Note 1: Assumes that the image and readnoise have the same units
+        # Note 2: Assumes that the zeropoint includes the exposure time
+        magLim = compute_magnitude_limit(summary.psfArea, summary.skyBg,
+                                         summary.zeroPoint, readNoise,
+                                         gain, self.config.magLimSnr)
+
+        summary.magLim = float(magLim)
 
 
 def maximum_nearest_psf_distance(
@@ -830,3 +897,65 @@ def compute_ap_corr_sigma_scaled_delta(
         ap_corr_sigma_scaled_delta = (np.max(ap_corr_good) - np.min(ap_corr_good))/psfSigma
 
     return ap_corr_sigma_scaled_delta
+
+
+def compute_magnitude_limit(
+        psfArea,
+        skyBg,
+        zeroPoint,
+        readNoise,
+        gain,
+        snr
+):
+    """Compute the expected point-source magnitude limit at a given
+    signal-to-noise ratio given the exposure-level metadata. Based on
+    the signal-to-noise formula provided in SMTN-002 (see LSE-40 for
+    more details on the calculation).
+
+      SNR = C / sqrt( C/g + (B/g + sigma_inst**2) * neff )
+
+    where C is the counts from the source, B is counts from the (sky)
+    background, sigma_inst is the instrumental (read) noise, neff is
+    the effective size of the PSF, and g is the gain in e-/ADU.  Note
+    that input values of ``skyBg``, ``zeroPoint``, and ``readNoise``
+    should all consistently be in electrons or ADU.
+
+    Parameters
+    ----------
+    psfArea : `float`
+        The effective area of the PSF [pix].
+    skyBg : `float`
+        The sky background counts for the exposure [ADU or e-].
+    zeroPoint : `float`
+        The zeropoint (includes exposure time) [ADU or e-].
+    readNoise : `float`
+        The instrumental read noise for the exposure [ADU or e-].
+    gain : `float`
+        The instrumental gain for the exposure [e-/ADU]. The gain should
+         be 1.0 if the skyBg, zeroPoint, and readNoise are in e-.
+    snr : `float`
+        Signal-to-noise ratio at which magnitude limit is calculated.
+
+    Returns
+    -------
+    magnitude_limit : `float`
+        The expected magnitude limit at the given signal to noise.
+
+    """
+    # Effective number of pixels within the PSF calculated directly
+    # from the PSF model.
+    neff = psfArea
+
+    # Instrumental noise (read noise only)
+    sigma_inst = readNoise
+
+    # Total background counts derived from Eq. 45 of LSE-40
+    background = (skyBg/gain + sigma_inst**2) * neff
+    # Source counts to achieve the desired SNR (from quadratic formula)
+    source = (snr**2)/(2*gain) + np.sqrt((snr**4)/(4*gain) + snr**2 * background)
+
+    # Convert to a magnitude using the zeropoint.
+    # Note: Zeropoint currently includes exposure time
+    magnitude_limit = -2.5*np.log10(source) + zeroPoint
+
+    return magnitude_limit
