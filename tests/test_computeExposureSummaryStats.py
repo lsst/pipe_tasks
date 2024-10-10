@@ -29,10 +29,12 @@ import lsst.utils.tests
 from lsst.afw.detection import GaussianPsf
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
-from lsst.daf.base import DateTime
+from lsst.daf.base import DateTime, PropertyList
 from lsst.afw.coord import Observatory
 from lsst.afw.geom import makeCdMatrix, makeSkyWcs
+from lsst.afw.cameraGeom.testUtils import DetectorWrapper
 from lsst.pipe.tasks.computeExposureSummaryStats import ComputeExposureSummaryStatsTask
+from lsst.pipe.tasks.computeExposureSummaryStats import compute_magnitude_limit
 
 
 class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
@@ -43,10 +45,21 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         np.random.seed(12345)
 
         # Make an exposure with a noise image
+        exposure = afwImage.ExposureF(100, 100)
+
         band = "i"
         physical_filter = "test-i"
-        exposure = afwImage.ExposureF(100, 100)
         exposure.setFilter(afwImage.FilterLabel(band=band, physical=physical_filter))
+
+        readNoise = 5.0
+        detector = DetectorWrapper(numAmps=1).detector
+        metadata = PropertyList()
+        metadata.add("LSST ISR UNIT", "electron")
+        for amp in detector.getAmplifiers():
+            metadata.add(f"LSST ISR READNOISE {amp.getName()}", readNoise)
+            metadata.add(f"LSST ISR GAIN {amp.getName()}", 1.0)
+        exposure.setDetector(detector)
+        exposure.setMetadata(metadata)
 
         skyMean = 100.0
         skySigma = 10.0
@@ -102,10 +115,10 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
 
         # Configure and run the task
         expSummaryTask = ComputeExposureSummaryStatsTask()
-        # Configure nominal values for effective time calculation
-        expSummaryTask.config.fiducialZeroPoint = {band: float(zp)}
+        # Configure nominal values for effective time calculation (normalized to 1s exposure)
+        expSummaryTask.config.fiducialZeroPoint = {band: float(zp - 2.5*np.log10(expTime))}
         expSummaryTask.config.fiducialPsfSigma = {band: float(psfSize)}
-        expSummaryTask.config.fiducialSkyBackground = {band: float(skyMean)}
+        expSummaryTask.config.fiducialSkyBackground = {band: float(skyMean/expTime)}
         # Run the task
         summary = expSummaryTask.run(exposure, None, background)
 
@@ -145,8 +158,47 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
 
         self.assertFloatsAlmostEqual(summary.zenithDistance, 30.57112, atol=1e-5)
 
-        # Effective exposure time
-        self.assertFloatsAlmostEqual(summary.effTime, 1.0, rtol=1e-3)
+        # Effective exposure time and depth
+        self.assertFloatsAlmostEqual(summary.effTime, expTime, rtol=1e-3)
+        self.assertFloatsAlmostEqual(summary.magLim, 26.584, rtol=1e-3)
+
+    def testComputeMagnitudeLimit(self):
+        """Test the magnitude limit calculation using fiducials from SMTN-002
+        and syseng_throughputs."""
+
+        # Values from syseng_throughputs notebook assuming 30s exposure
+        # consisting of 2x15s snaps each with readnoise of 9e-
+        fwhm_eff_fid = {'g': 0.87, 'r': 0.83, 'i': 0.80}
+        skycounts_fid = {'g': 463.634122, 'r': 988.626863, 'i': 1588.280513}
+        zeropoint_fid = {'g': 28.508375, 'r': 28.360838, 'i': 28.171396}
+        readnoise_fid = {'g': 12.73, 'r': 12.73, 'i': 12.73}
+        # Assumed values from SMTN-002
+        snr = 5
+        gain = 1.0
+        # Output magnitude limit from syseng_throughputs notebook
+        m5_fid = {'g': 24.90, 'r': 24.48, 'i': 24.10}
+
+        for band in ['g', 'r', 'i']:
+            # Translate into DM quantities
+            psfArea = 2.266 * (fwhm_eff_fid[band] / 0.2)**2
+            skyBg = skycounts_fid[band]
+            zeroPoint = zeropoint_fid[band] + 2.5*np.log10(30)
+            readNoise = readnoise_fid[band]
+
+            # Calculate the M5 values
+            m5 = compute_magnitude_limit(psfArea, skyBg, zeroPoint, readNoise, gain, snr)
+            self.assertFloatsAlmostEqual(m5, m5_fid[band], atol=1e-2)
+
+        # Check that input NaN lead to output NaN
+        nan = float('nan')
+        m5 = compute_magnitude_limit(nan, skyBg, zeroPoint, readNoise, gain, snr)
+        self.assertFloatsAlmostEqual(m5, nan, ignoreNaNs=True)
+        m5 = compute_magnitude_limit(psfArea, nan, zeroPoint, readNoise, gain, snr)
+        self.assertFloatsAlmostEqual(m5, nan, ignoreNaNs=True)
+        m5 = compute_magnitude_limit(psfArea, skyBg, nan, readNoise, gain, snr)
+        self.assertFloatsAlmostEqual(m5, nan, ignoreNaNs=True)
+        m5 = compute_magnitude_limit(psfArea, skyBg, zeroPoint, nan, gain, snr)
+        self.assertFloatsAlmostEqual(m5, nan, ignoreNaNs=True)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
