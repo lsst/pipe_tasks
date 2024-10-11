@@ -28,13 +28,14 @@ import lsst.afw.math as afwMath
 import lsst.pipe.base.connectionTypes as cT
 import numpy as np
 from lsst.pex.config import Config, ConfigField, ConfigurableField, Field
-from lsst.pipe.base import (PipelineTask, PipelineTaskConfig,
-                            PipelineTaskConnections, Struct)
-from lsst.pipe.tasks.background import (FocalPlaneBackground,
-                                        FocalPlaneBackgroundConfig,
-                                        MaskObjectsTask, SkyMeasurementTask)
-from lsst.pipe.tasks.visualizeVisit import (VisualizeMosaicExpConfig,
-                                            VisualizeMosaicExpTask)
+from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
+from lsst.pipe.tasks.background import (
+    FocalPlaneBackground,
+    FocalPlaneBackgroundConfig,
+    MaskObjectsTask,
+    SkyMeasurementTask,
+)
+from lsst.pipe.tasks.visualizeVisit import VisualizeMosaicExpConfig, VisualizeMosaicExpTask
 
 
 def _skyFrameLookup(datasetType, registry, quantumDataId, collections):
@@ -177,10 +178,10 @@ class SkyCorrectionConfig(PipelineTaskConfig, pipelineConnections=SkyCorrectionC
         dtype=FocalPlaneBackgroundConfig,
         doc="Initial background model, prior to sky frame subtraction",
     )
-    doBgModel1 = Field(
+    undoBgModel1 = Field(
         dtype=bool,
-        default=True,
-        doc="If False, adds back initial background model after sky",
+        default=False,
+        doc="If True, adds back initial background model after sky and removes bgModel1 from the list",
     )
     sky = ConfigurableField(
         target=SkyMeasurementTask,
@@ -216,8 +217,8 @@ class SkyCorrectionConfig(PipelineTaskConfig, pipelineConnections=SkyCorrectionC
 
     def validate(self):
         super().validate()
-        if not self.doBgModel1 and not self.doSky and not self.doBgModel2:
-            raise ValueError("Task requires at least one of doBgModel1, doSky or doBgModel2 to be True.")
+        if self.undoBgModel1 and not self.doSky and not self.doBgModel2:
+            raise ValueError("If undoBgModel1 is True, task requires at least one of doSky or doBgModel2.")
 
 
 class SkyCorrectionTask(PipelineTask):
@@ -287,11 +288,11 @@ class SkyCorrectionTask(PipelineTask):
 
         Parameters
         ----------
-        calExps : `list` [`lsst.afw.image.exposure.ExposureF`]
+        calExps : `list` [`lsst.afw.image.ExposureF`]
             Detector calibrated exposure images for the visit.
         calBkgs : `list` [`lsst.afw.math.BackgroundList`]
             Detector background lists matching the calibrated exposures.
-        skyFrames : `list` [`lsst.afw.image.exposure.ExposureF`]
+        skyFrames : `list` [`lsst.afw.image.ExposureF`]
             Sky frame calibration data for the input detectors.
         camera : `lsst.afw.cameraGeom.Camera`
             Camera matching the input data to process.
@@ -301,16 +302,16 @@ class SkyCorrectionTask(PipelineTask):
         results : `Struct` containing:
             skyCorr : `list` [`lsst.afw.math.BackgroundList`]
                 Detector-level sky correction background lists.
-            calExpMosaic : `lsst.afw.image.exposure.ExposureF`
+            calExpMosaic : `lsst.afw.image.ExposureF`
                 Visit-level mosaic of the sky corrected data, binned.
                 Analogous to `calexp - skyCorr`.
-            calBkgMosaic : `lsst.afw.image.exposure.ExposureF`
+            calBkgMosaic : `lsst.afw.image.ExposureF`
                 Visit-level mosaic of the sky correction background, binned.
                 Analogous to `calexpBackground + skyCorr`.
         """
         # Restore original backgrounds in-place; optionally refine mask maps
         numOrigBkgElements = [len(calBkg) for calBkg in calBkgs]
-        _ = self._restoreBackgroundRefineMask(calExps, calBkgs)
+        _ = self._restoreOriginalBackgroundRefineMask(calExps, calBkgs)
 
         # Bin exposures, generate full-fp bg, map to CCDs and subtract in-place
         _ = self._subtractVisitBackground(calExps, calBkgs, camera, self.config.bgModel1)
@@ -320,8 +321,8 @@ class SkyCorrectionTask(PipelineTask):
             self._subtractSkyFrame(calExps, skyFrames, calBkgs)
 
         # Adds full-fp bg back onto exposures, removes it from list
-        if not self.config.doBgModel1:
-            _ = self._restoreVisitBackground(calExps, calBkgs)
+        if self.config.undoBgModel1:
+            _ = self._undoInitialBackground(calExps, calBkgs)
 
         # Bin exposures, generate full-fp bg, map to CCDs and subtract in-place
         if self.config.doBgModel2:
@@ -341,7 +342,7 @@ class SkyCorrectionTask(PipelineTask):
 
         return Struct(skyCorr=calBkgs, calExpMosaic=calExpMosaic, calBkgMosaic=calBkgMosaic)
 
-    def _restoreBackgroundRefineMask(self, calExps, calBkgs):
+    def _restoreOriginalBackgroundRefineMask(self, calExps, calBkgs):
         """Restore original background to each calexp and invert the related
         background model; optionally refine the mask plane.
 
@@ -363,17 +364,17 @@ class SkyCorrectionTask(PipelineTask):
 
         Parameters
         ----------
-        calExps : `lsst.afw.image.exposure.ExposureF`
+        calExps : `lsst.afw.image.ExposureF`
             Detector level calexp images to process.
-        calBkgs : `lsst.afw.math._backgroundList.BackgroundList`
+        calBkgs : `lsst.afw.math.BackgroundList`
             Detector level background lists associated with the calexps.
 
         Returns
         -------
-        calExps : `lsst.afw.image.exposure.ExposureF`
-            The calexps with the initially subtracted background restored.
-        skyCorrBases : `lsst.afw.math._backgroundList.BackgroundList`
-            The inverted initial background models; the genesis for skyCorrs.
+        calExps : `lsst.afw.image.ExposureF`
+            The calexps with the originally subtracted background restored.
+        skyCorrBases : `lsst.afw.math.BackgroundList`
+            The inverted original background models; the genesis for skyCorrs.
         """
         skyCorrBases = []
         for calExp, calBkg in zip(calExps, calBkgs):
@@ -392,7 +393,7 @@ class SkyCorrectionTask(PipelineTask):
 
             stats = np.nanpercentile(skyCorrBase.array, [50, 75, 25])
             self.log.info(
-                "Detector %d: Initial background restored; BG median = %.1f counts, BG IQR = %.1f counts",
+                "Detector %d: Original background restored; BG median = %.1f counts, BG IQR = %.1f counts",
                 calExp.getDetector().getId(),
                 -stats[0],
                 np.subtract(*stats[1:]),
@@ -400,23 +401,20 @@ class SkyCorrectionTask(PipelineTask):
             skyCorrBases.append(skyCorrBase)
         return calExps, skyCorrBases
 
-    def _restoreVisitBackground(self, calExps, calBkgs):
+    def _undoInitialBackground(self, calExps, calBkgs):
         """Restores the full focal-plane background to a visit.
         Runs after _subtractSkyFrame() if doBgModel1=False.
 
         Parameters
         ----------
-        calExps : `list` [`lsst.afw.image.exposure.ExposureF`]
+        calExps : `list` [`lsst.afw.image.ExposureF`]
             Calibrated exposures to be background subtracted.
-        calBkgs : `list` [`lsst.afw.math._backgroundList.BackgroundList`]
+        calBkgs : `list` [`lsst.afw.math.BackgroundList`]
             Background lists associated with the input calibrated exposures.
 
-        Returns
-        -------
-        calExps : `list` [`lsst.afw.image.maskedImage.MaskedImageF`]
-            Background subtracted exposures for creating a focal plane image.
-        calBkgs : `list` [`lsst.afw.math._backgroundList.BackgroundList`]
-            Updated background lists with a visit-level model removed.
+        Notes
+        -----
+        Inputs are modified in-place.
         """
         for calExp, calBkg in zip(calExps, calBkgs):
             image = calExp.getMaskedImage()
@@ -427,7 +425,8 @@ class SkyCorrectionTask(PipelineTask):
             calBkg._backgrounds.pop(-2)
 
             self.log.info(
-                "Detector %d: FFP background restored",
+                "Detector %d: The initial background model prior to sky frame subtraction (bgModel1) has "
+                "been removed from the background list",
                 calExp.getDetector().getId(),
             )
 
@@ -444,9 +443,9 @@ class SkyCorrectionTask(PipelineTask):
 
         Parameters
         ----------
-        calExps : `list` [`lsst.afw.image.exposure.ExposureF`]
+        calExps : `list` [`lsst.afw.image.ExposureF`]
             Calibrated exposures to be background subtracted.
-        calBkgs : `list` [`lsst.afw.math._backgroundList.BackgroundList`]
+        calBkgs : `list` [`lsst.afw.math.BackgroundList`]
             Background lists associated with the input calibrated exposures.
         camera : `lsst.afw.cameraGeom.Camera`
             Camera description.
@@ -457,7 +456,7 @@ class SkyCorrectionTask(PipelineTask):
         -------
         calExps : `list` [`lsst.afw.image.maskedImage.MaskedImageF`]
             Background subtracted exposures for creating a focal plane image.
-        calBkgs : `list` [`lsst.afw.math._backgroundList.BackgroundList`]
+        calBkgs : `list` [`lsst.afw.math.BackgroundList`]
             Updated background lists with a visit-level model appended.
         """
         # Set up empty full focal plane background model object
@@ -522,16 +521,16 @@ class SkyCorrectionTask(PipelineTask):
 
         Parameters
         ----------
-        calExp : `lsst.afw.image.exposure.ExposureF`
+        calExp : `lsst.afw.image.ExposureF`
             Exposure to subtract the background model from.
         bgModel : `lsst.pipe.tasks.background.FocalPlaneBackground`
             Full focal plane camera-level background model.
 
         Returns
         -------
-        calExp : `lsst.afw.image.exposure.ExposureF`
+        calExp : `lsst.afw.image.ExposureF`
             Background subtracted input exposure.
-        calBkgElement : `lsst.afw.math._backgroundList.BackgroundList`
+        calBkgElement : `lsst.afw.math.BackgroundList`
             Detector level realization of the full focal plane bg model.
         """
         image = calExp.getMaskedImage()
@@ -554,11 +553,11 @@ class SkyCorrectionTask(PipelineTask):
 
         Parameters
         ----------
-        calExps : `list` [`lsst.afw.image.exposure.ExposureF`]
+        calExps : `list` [`lsst.afw.image.ExposureF`]
             Calibrated exposures to be background subtracted.
-        skyFrames : `list` [`lsst.afw.image.exposure.ExposureF`]
+        skyFrames : `list` [`lsst.afw.image.ExposureF`]
             Sky frame calibration data for the input detectors.
-        calBkgs : `list` [`lsst.afw.math._backgroundList.BackgroundList`]
+        calBkgs : `list` [`lsst.afw.math.BackgroundList`]
             Background lists associated with the input calibrated exposures.
         """
         skyFrameBgModels = []
@@ -593,11 +592,11 @@ class SkyCorrectionTask(PipelineTask):
             Binning size to be applied to input images.
         ids : `list` [`int`], optional
             List of detector ids to iterate over.
-        refExps : `list` [`lsst.afw.image.exposure.ExposureF`], optional
+        refExps : `list` [`lsst.afw.image.ExposureF`], optional
             If supplied, mask planes from these reference images will be used.
         Returns
         -------
-        mosaicImage : `lsst.afw.image.exposure.ExposureF`
+        mosaicImage : `lsst.afw.image.ExposureF`
             Mosaicked full focal plane image.
         """
         refExps = np.resize(refExps, len(exposures))  # type: ignore
