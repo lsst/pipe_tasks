@@ -87,6 +87,9 @@ class WarpDetectorInputs:
     background_apply: BackgroundList | TrivialBackgroundList | None = None
     """Background model to apply to (i.e. subtract from) the image."""
 
+    initial_photo_calib: PhotoCalib | None = None
+    """Initial photometric calibration that was already applied to the image."""
+
     @property
     def exposure(self) -> ExposureF:
         if isinstance(self.exposure_or_handle, DeferredDatasetHandle):
