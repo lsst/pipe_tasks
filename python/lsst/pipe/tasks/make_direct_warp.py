@@ -840,7 +840,8 @@ class MakeDirectWarpTask(PipelineTask):
 
         elif detector_inputs.background_apply is not None:
             raise RuntimeError(
-                    f"doRevertOldBackground is False, but {detector_inputs.data_id} has a background_apply."
+                f"doRevertOldBackground is False, but {detector_inputs.data_id} has a background_apply."
+            )
 
         if self.config.removeInitialPhotoCalib:
             if (initial_photo_calib := detector_inputs.initial_photo_calib) is None:
