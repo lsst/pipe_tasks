@@ -35,8 +35,10 @@ import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
 import lsst.geom as geom
 from lsst.meas.algorithms import ScienceSourceSelectorTask
+from lsst.meas.algorithms.computeExPsf import ComputeExPsfTask, ComputeExPsfConfig
 from lsst.utils.timer import timeMethod
 import lsst.ip.isr as ipIsr
+import time
 
 
 class ComputeExposureSummaryStatsConfig(pexConfig.Config):
@@ -137,6 +139,22 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         doc="Signal-to-noise ratio for computing the magnitude limit depth.",
         default=5.0
     )
+    psfTE1Range = pexConfig.ConfigField(
+        dtype=ComputeExPsfConfig,
+        doc="Treecorr config for computing scalar value of TE1.",
+    )
+    psfTE2Range = pexConfig.ConfigField(
+        dtype=ComputeExPsfConfig,
+        doc="Treecorr config for computing scalar value of TE1.",
+    )
+    psfTE3Range = pexConfig.ConfigField(
+        dtype=ComputeExPsfConfig,
+        doc="Treecorr config for computing scalar value of TE1.",
+    )
+    psfTE4Range = pexConfig.ConfigField(
+        dtype=ComputeExPsfConfig,
+        doc="Treecorr config for computing scalar value of TE1.",
+    )
 
     def setDefaults(self):
         super().setDefaults()
@@ -158,6 +176,22 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
 
         self.starSelector.signalToNoise.fluxField = "slot_PsfFlux_instFlux"
         self.starSelector.signalToNoise.errField = "slot_PsfFlux_instFluxErr"
+
+        min_theta = [1e-6, 5.0, 1e-6, 5.0]
+        max_theta = [1.0, 100.0, 5.0, 20.0]
+        TExConfig = [
+            self.psfTE1Range,
+            self.psfTE2Range,
+            self.psfTE3Range,
+            self.psfTE4Range,
+        ]
+
+        for texc, mint, maxt in zip(TExConfig, min_theta, max_theta):
+            texc.treecorr.min_sep = mint / 60.0
+            texc.treecorr.max_sep = maxt / 60.0
+            texc.treecorr.nbins = 1
+            texc.treecorr.bin_type = "Linear"
+            texc.treecorr.sep_units = "degree"
 
 
 class ComputeExposureSummaryStatsTask(pipeBase.Task):
@@ -325,6 +359,18 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.psfTraceRadiusDelta = nan
         summary.psfApFluxDelta = nan
         summary.psfApCorrSigmaScaledDelta = nan
+        summary.TE1E1 = nan
+        summary.TE1E2 = nan
+        summary.TE1Ex = nan
+        summary.TE2E1 = nan
+        summary.TE2E2 = nan
+        summary.TE2Ex = nan
+        summary.TE3E1 = nan
+        summary.TE3E2 = nan
+        summary.TE3Ex = nan
+        summary.TE4E1 = nan
+        summary.TE4E2 = nan
+        summary.TE4Ex = nan
 
         if psf is None:
             return
@@ -410,10 +456,13 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         psfE1 = (psfXX - psfYY)/(psfXX + psfYY)
         psfE2 = 2*psfXY/(psfXX + psfYY)
 
-        psfStarDeltaE1Median = np.median(starE1 - psfE1)
-        psfStarDeltaE1Scatter = sigmaMad(starE1 - psfE1, scale='normal')
-        psfStarDeltaE2Median = np.median(starE2 - psfE2)
-        psfStarDeltaE2Scatter = sigmaMad(starE2 - psfE2, scale='normal')
+        e1Residuals = starE1 - psfE1
+        e2Residuals = starE2 - psfE2
+
+        psfStarDeltaE1Median = np.median(e1Residuals)
+        psfStarDeltaE1Scatter = sigmaMad(e1Residuals, scale='normal')
+        psfStarDeltaE2Median = np.median(e2Residuals)
+        psfStarDeltaE2Scatter = sigmaMad(e2Residuals, scale='normal')
 
         psfStarDeltaSizeMedian = np.median(starSize - psfSize)
         psfStarDeltaSizeScatter = sigmaMad(starSize - psfSize, scale='normal')
@@ -426,6 +475,51 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.psfStarDeltaSizeMedian = float(psfStarDeltaSizeMedian)
         summary.psfStarDeltaSizeScatter = float(psfStarDeltaSizeScatter)
         summary.psfStarScaledDeltaSizeScatter = float(psfStarScaledDeltaSizeScatter)
+
+        # import pickle
+        # dic = {"psf_cat": psf_cat}
+        # fpkl = open('/sdf/home/l/leget/rubin-user/lsst_dev/pipe_tasks/test_pf.pkl','wb')
+        # pickle.dump(dic, fpkl)
+        # fpkl.close()
+
+        # TO DO: --> Filter on reserved psf stars?
+        # TO DO: remove timer.
+        startEx = time.time()
+
+        # TO DO: Check the doc to see what are the offcial units.
+        ra = psf_cat["coord_ra"]  # TO DO --> How to check units?
+        dec = psf_cat["coord_dec"]  # TO DO --> How to check units?
+
+        # Comp TEx
+
+        TExConfig = [
+            self.config.psfTE1Range,
+            self.config.psfTE2Range,
+            self.config.psfTE3Range,
+            self.config.psfTE4Range,
+        ]
+
+        TExOutput = [
+            [summary.TE1E1, summary.TE1E2, summary.TE1Ex],
+            [summary.TE2E1, summary.TE2E2, summary.TE2Ex],
+            [summary.TE3E1, summary.TE3E2, summary.TE3Ex],
+            [summary.TE4E1, summary.TE4E2, summary.TE4Ex],
+        ]
+
+        for config, texoutput in zip(TExConfig, TExOutput):
+
+            task = ComputeExPsfTask(config)
+            output = task.run(
+                e1Residuals, e2Residuals, ra, dec, units="degree"
+            )  # TO DO: check units of ra and dec
+
+            texoutput[0] = output.metric_E1
+            texoutput[1] = output.metric_E2
+            texoutput[2] = output.metric_Ex
+
+        endEx = time.time()
+
+        self.log.info(f"PF: time to compute Ex --> {endEx - startEx}")
 
         if image_mask is not None:
             maxDistToNearestPsf = maximum_nearest_psf_distance(
