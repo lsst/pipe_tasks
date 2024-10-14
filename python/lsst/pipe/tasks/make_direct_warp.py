@@ -286,6 +286,11 @@ class MakeDirectWarpConfig(
             "PSF model and aperture corrections from the 'calexp' connection.",
         default=True,
     )
+    removeInitialPhotoCalib = Field[bool](
+        doc=("Expect an initial photo calib input to be present, and use it to restore the image ",
+             "to instrumental units before applying the final photometric calibration."),
+        default=True,
+    )
     doSelectPreWarp = Field[bool](
         doc="Select ccds before warping?",
         default=True,
