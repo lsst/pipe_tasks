@@ -544,6 +544,10 @@ class MakeDirectWarpTask(PipelineTask):
                 destBBox=target_bbox,
             )
 
+            if warpedExposure is None:
+                self.log.debug("Skipping exposure %s because it could not be warped.", detector_inputs.data_id)
+                continue
+
             if final_warp.photoCalib is not None:
                 ratio = (
                     final_warp.photoCalib.getInstFluxAtZeroMagnitude()
@@ -656,7 +660,7 @@ class MakeDirectWarpTask(PipelineTask):
         visit_summary=None,
         maxBBox=None,
         destBBox=None,
-    ):
+    ) -> ExposureF | None:
         """Process an exposure.
 
         There are three processing steps that are applied to the input:
@@ -687,18 +691,23 @@ class MakeDirectWarpTask(PipelineTask):
 
         Returns
         -------
-        warped_exposure : `~lsst.afw.image.Exposure`
-            The processed and warped exposure.
+        warped_exposure : `~lsst.afw.image.Exposure` | None
+            The processed and warped exposure, if all the calibrations could be
+            applied successfully. Otherwise, None.
         """
 
         if self.config.doPreWarpInterpolation:
             self.preWarpInterpolation.run(detector_inputs.exposure.maskedImage)
 
-        self._apply_all_calibrations(
+        success = self._apply_all_calibrations(
             detector_inputs,
             visit_summary=visit_summary,
             includeScaleUncertainty=self.config.includeCalibVar,
         )
+
+        if not success:
+            return None
+
         with self.timer("warp"):
             warped_exposure = warper.warpExposure(
                 target_wcs,
@@ -714,9 +723,10 @@ class MakeDirectWarpTask(PipelineTask):
     def _apply_all_calibrations(
         self,
         detector_inputs: WarpDetectorInputs,
+        *,
         visit_summary: ExposureCatalog | None = None,
         includeScaleUncertainty: bool = False,
-    ) -> None:
+    ) -> bool:
         """Apply all of the calibrations from visit_summary to the exposure.
 
         Specifically, this method updates the following (if available) to the
@@ -742,6 +752,11 @@ class MakeDirectWarpTask(PipelineTask):
             Whether to include the uncertainty on the calibration in the
             resulting variance? Passed onto the `calibrateImage` method of the
             PhotoCalib object attached to ``exp``.
+
+        Returns
+        -------
+        success : `bool`
+            True if all calibrations were successfully applied, False otherwise.
 
         Raises
         ------
@@ -770,34 +785,48 @@ class MakeDirectWarpTask(PipelineTask):
             row = visit_summary.find(detector)
 
             if row is None:
-                raise RuntimeError(f"Unexpectedly incomplete visit_summary: {detector=} is missing.")
+                self.log.info(
+                    "Unexpectedly incomplete visit_summary: detector = %s is missing. Skipping it.",
+                    detector,
+                )
+                return False
 
             if photo_calib := row.getPhotoCalib():
                 detector_inputs.exposure.setPhotoCalib(photo_calib)
             else:
-                self.log.warning(
-                    "No photometric calibration found in visit summary for detector = %s.",
+                self.log.info(
+                    "No photometric calibration found in visit summary for detector = %s. Skipping it.",
                     detector,
                 )
+                return False
 
             if wcs := row.getWcs():
                 detector_inputs.exposure.setWcs(wcs)
             else:
-                self.log.warning("No WCS found in visit summary for detector = %s.", detector)
+                self.log.info(
+                    "No WCS found in visit summary for detector = %s. Skipping it.",
+                    detector,
+                )
+                return False
 
             if self.config.useVisitSummaryPsf:
                 if psf := row.getPsf():
                     detector_inputs.exposure.setPsf(psf)
                 else:
-                    self.log.warning("No PSF found in visit summary for detector = %s.", detector)
+                    self.log.info(
+                        "No PSF found in visit summary for detector = %s. Skipping it.",
+                        detector,
+                    )
+                    return False
 
                 if apcorr_map := row.getApCorrMap():
                     detector_inputs.exposure.setApCorrMap(apcorr_map)
                 else:
-                    self.log.warning(
-                        "No aperture correction map found in visit summary for detector = %s.",
-                        detector,
+                    self.log.info(
+                        "No aperture correction map found in visit summary for detector = %s. Skipping it.",
                     )
+                    return False
+
         elif self.config.useVisitSummaryPsf:
             # We can only get here by calling `run`, not `runQuantum`.
             raise RuntimeError("useVisitSummaryPsf=True but no visit summary provided.")
@@ -836,6 +865,8 @@ class MakeDirectWarpTask(PipelineTask):
             detector_inputs.exposure.maskedImage, includeScaleUncertainty=includeScaleUncertainty
         )
         detector_inputs.exposure.maskedImage /= photo_calib.getCalibrationMean()
+
+        return True
 
     # This method is copied from makeWarp.py
     @classmethod
