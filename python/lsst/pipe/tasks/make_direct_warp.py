@@ -346,7 +346,7 @@ class MakeDirectWarpConfig(
 
     @bgSubtracted.setter
     def bgSubtracted(self, value: bool) -> None:
-        self.doRevertOldBackground = ~value
+        self.doRevertOldBackground = not value
 
     @property
     def doApplySkyCorr(self) -> bool:
