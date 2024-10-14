@@ -412,6 +412,8 @@ class MakeDirectWarpTask(PipelineTask):
             inputs[ref.dataId["detector"]].background_revert = butlerQC.get(ref)
         for ref in getattr(inputRefs, "background_apply_list", []):
             inputs[ref.dataId["detector"]].background_apply = butlerQC.get(ref)
+        for ref in getattr(inputRefs, "initial_photo_calib_list", []):
+            inputs[ref.dataId["detector"]].initial_photo_calib = butlerQC.get(ref)
 
         visit_summary = butlerQC.get(inputRefs.visit_summary)
 
@@ -743,6 +745,9 @@ class MakeDirectWarpTask(PipelineTask):
 
         Raises
         ------
+        NotImplementedError
+            Raised if ``initial_photo_calib_list`` is provided and if any of
+            the elements in it is not constant (see DM-46720).
         RuntimeError
             Raised if ``visit_summary`` is provided but does not contain a
             record corresponding to ``detector_inputs``, or if one of the
@@ -797,19 +802,32 @@ class MakeDirectWarpTask(PipelineTask):
             # We can only get here by calling `run`, not `runQuantum`.
             raise RuntimeError("useVisitSummaryPsf=True but no visit summary provided.")
 
-        if self.config.removeInitialPhotoCalib:
-            raise NotImplementedError("TODO")
-
         if self.config.doApplyNewBackground:
             if detector_inputs.background_apply is None:
                 raise RuntimeError(
                     f"doRevertOldBackground is True, but no background_apply for {detector_inputs.data_id}."
                 )
             detector_inputs.exposure.maskedImage -= detector_inputs.background_apply.getImage()
+
         elif detector_inputs.background_apply is not None:
             raise RuntimeError(
                     f"doRevertOldBackground is False, but {detector_inputs.data_id} has a background_apply."
+
+        if self.config.removeInitialPhotoCalib:
+            if (initial_photo_calib := detector_inputs.initial_photo_calib) is None:
+                self.log.warning(
+                    "Detector id %d for visit %d has no initialPhotoCalib and will "
+                    "not be used in the warp", detector, row["visit"],
                 )
+                return False
+
+            if not initial_photo_calib._isConstant:
+                # TODO DM-46720: remove this limitation and usage of private (why?!) property.
+                raise NotImplementedError(
+                    "removeInitialPhotoCalib=True can only work when the initialPhotoCalib is constant."
+                )
+
+            detector_inputs.exposure.maskedImage /= initial_photo_calib.getCalibrationMean()
 
         # Calibrate the (masked) image.
         # This should happen even if visit_summary is None.
