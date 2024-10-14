@@ -209,14 +209,15 @@ class MakeDirectWarpConnections(
         # Delegate to super first so it can raise NoWorkFound when appropriate.
         results = super().adjustQuantum(inputs, outputs, label, data_id)
         if self.config.removeInitialPhotoCalib and not inputs["initial_photo_calib_list"]:
-            _LOG.warning(
+            self.log.warning(
                 "Dropping %s quantum %s because initial photo calibs are needed and none were present; "
                 "this may be an upstream partial-outputs error on much of a entire visit (which is why this "
-                "is not an error), but it may mean that 'config.removeInitialPhotoCalib' should be False."
+                "is not an error), but it may mean that 'config.removeInitialPhotoCalib' should be False.",
+                label, data_id,
             )
             raise NoWorkFound("No initial photo calibs.")
         elif not self.config.removeInitialPhotoCalib and inputs["initial_photo_calib_list"]:
-            _LOG.warning(
+            self.log.warning(
                 "Input collections have initial photo calib datasets but "
                 "'config.removeInitialPhotoCalib=False'.  This is either a very unusual collection "
                 "search path or (more likely) a bad configuration.  Not that this config option should "
@@ -391,7 +392,7 @@ class MakeDirectWarpTask(PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         # Docstring inherited.
 
-        inputs = {}  # Detector ID -> WarpDetectorInputs
+        inputs: Mapping[int, WarpDetectorInputs] = {}  # Detector ID -> WarpDetectorInputs
         for handle in butlerQC.get(inputRefs.calexp_list):
             inputs[handle.dataId["detector"]] = WarpDetectorInputs(handle, data_id=handle.dataId)
         if not inputs:
@@ -748,8 +749,8 @@ class MakeDirectWarpTask(PipelineTask):
             detector_inputs.exposure.maskedImage += detector_inputs.background_revert.getImage()
         elif detector_inputs.background_revert is not None:
             raise RuntimeError(
-                    f"doRevertOldBackground is False, but {detector_inputs.data_id} has a background_revert."
-                )
+                f"doRevertOldBackground is False, but {detector_inputs.data_id} has a background_revert."
+            )
 
         if visit_summary is not None:
             detector = detector_inputs.exposure.info.getDetector().getId()
