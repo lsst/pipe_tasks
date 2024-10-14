@@ -402,8 +402,8 @@ class SkyCorrectionTask(PipelineTask):
         return calExps, skyCorrBases
 
     def _undoInitialBackground(self, calExps, calBkgs):
-        """Restores the full focal-plane background to a visit.
-        Runs after _subtractSkyFrame() if doBgModel1=False.
+        """Undo the initial background subtraction (bgModel1) after sky frame
+        subtraction.
 
         Parameters
         ----------
@@ -419,7 +419,7 @@ class SkyCorrectionTask(PipelineTask):
         for calExp, calBkg in zip(calExps, calBkgs):
             image = calExp.getMaskedImage()
 
-            # Restore full focal-plane background in calexp; remove from BGList
+            # Remove bgModel1 from the background list; restore in the image
             skyCorrBase = calBkg[-2][0].getImageF()
             image += skyCorrBase
             calBkg._backgrounds.pop(-2)
