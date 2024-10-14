@@ -183,6 +183,13 @@ class CoaddMultibandFitConnections(CoaddMultibandFitInputConnections):
 class CoaddMultibandFitSubConfig(pexConfig.Config):
     """Configuration for implementing fitter subtasks.
     """
+
+    bands_fit = pexConfig.ListField[str](
+        default=[],
+        doc="list of bandpass filters to fit",
+        listCheck=lambda x: (len(x) > 0) and (len(set(x)) == len(x)),
+    )
+
     @abstractmethod
     def bands_read_only(self) -> set:
         """Return the set of bands that the Task needs to read (e.g. for
