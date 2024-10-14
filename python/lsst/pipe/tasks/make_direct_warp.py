@@ -599,6 +599,7 @@ class MakeDirectWarpTask(PipelineTask):
                     exposure_or_handle=noise_calexp,
                     background_revert=TrivialBackgroundList(),
                     background_apply=TrivialBackgroundList(),
+                    initial_photo_calib=PhotoCalib(calibrationMean=1.0),  # TODO: is this correct?
                 )
                 warpedNoise = self.process(
                     noise_pseudo_inputs,
