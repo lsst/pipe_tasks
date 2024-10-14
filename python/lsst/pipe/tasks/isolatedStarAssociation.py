@@ -42,7 +42,7 @@ class IsolatedStarAssociationConnections(pipeBase.PipelineTaskConnections,
                                          defaultTemplates={}):
     source_table_visit = pipeBase.connectionTypes.Input(
         doc='Source table in parquet format, per visit',
-        name='sourceTable_visit',
+        name='preSourceTable_visit',
         storageClass='DataFrame',
         dimensions=('instrument', 'visit'),
         deferLoad=True,
@@ -56,13 +56,13 @@ class IsolatedStarAssociationConnections(pipeBase.PipelineTaskConnections,
     )
     isolated_star_sources = pipeBase.connectionTypes.Output(
         doc='Catalog of individual sources for the isolated stars',
-        name='isolated_star_sources',
+        name='isolated_star_presources',
         storageClass='DataFrame',
         dimensions=('instrument', 'tract', 'skymap'),
     )
     isolated_star_cat = pipeBase.connectionTypes.Output(
         doc='Catalog of isolated star positions',
-        name='isolated_star_cat',
+        name='isolated_star_presource_associations',
         storageClass='DataFrame',
         dimensions=('instrument', 'tract', 'skymap'),
     )
