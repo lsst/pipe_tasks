@@ -34,7 +34,8 @@ import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
 import lsst.geom as geom
-from lsst.meas.algorithms import ScienceSourceSelectorTask, ComputeExPsfTask
+from lsst.meas.algorithms import ScienceSourceSelectorTask
+from lsst.meas.algorithms.computeExPsf import ComputeExPsfTask, ComputeExPsfConfig
 from lsst.utils.timer import timeMethod
 import lsst.ip.isr as ipIsr
 import time
@@ -138,6 +139,22 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         doc="Signal-to-noise ratio for computing the magnitude limit depth.",
         default=5.0
     )
+    psfTE1Range = pexConfig.ConfigField(
+        dtype=ComputeExPsfConfig,
+        doc="Treecorr config for computing scalar value of TE1.",
+    )
+    psfTE2Range = pexConfig.ConfigField(
+        dtype=ComputeExPsfConfig,
+        doc="Treecorr config for computing scalar value of TE1.",
+    )
+    psfTE3Range = pexConfig.ConfigField(
+        dtype=ComputeExPsfConfig,
+        doc="Treecorr config for computing scalar value of TE1.",
+    )
+    psfTE4Range = pexConfig.ConfigField(
+        dtype=ComputeExPsfConfig,
+        doc="Treecorr config for computing scalar value of TE1.",
+    )
 
     def setDefaults(self):
         super().setDefaults()
@@ -159,6 +176,22 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
 
         self.starSelector.signalToNoise.fluxField = "slot_PsfFlux_instFlux"
         self.starSelector.signalToNoise.errField = "slot_PsfFlux_instFluxErr"
+
+        min_theta = [1e-6, 5.0, 1e-6, 5.0]
+        max_theta = [1.0, 100.0, 5.0, 20.0]
+        TExConfig = [
+            self.psfTE1Range,
+            self.psfTE2Range,
+            self.psfTE3Range,
+            self.psfTE4Range,
+        ]
+
+        for texc, mint, maxt in zip(TExConfig, min_theta, max_theta):
+            texc.treecorr.min_sep = mint / 60.0
+            texc.treecorr.max_sep = maxt / 60.0
+            texc.treecorr.nbins = 1
+            texc.treecorr.bin_type = "Linear"
+            texc.treecorr.sep_units = "degree"
 
 
 class ComputeExposureSummaryStatsTask(pipeBase.Task):
@@ -326,13 +359,18 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.psfTraceRadiusDelta = nan
         summary.psfApFluxDelta = nan
         summary.psfApCorrSigmaScaledDelta = nan
-        summary.psfE1d1d5 = nan
-        summary.psfE2d1d5 = nan
-        summary.psfExd1d5 = nan
-        summary.psfE1d5d20 = nan
-        summary.psfE2d5d20 = nan
-        summary.psfExd5d20 = nan
-
+        summary.TE1E1 = nan
+        summary.TE1E2 = nan
+        summary.TE1Ex = nan
+        summary.TE2E1 = nan
+        summary.TE2E2 = nan
+        summary.TE2Ex = nan
+        summary.TE3E1 = nan
+        summary.TE3E2 = nan
+        summary.TE3Ex = nan
+        summary.TE4E1 = nan
+        summary.TE4E2 = nan
+        summary.TE4Ex = nan
 
         if psf is None:
             return
@@ -448,44 +486,36 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         # TO DO: remove timer.
         startEx = time.time()
 
-        ra = psf_cat["coord_ra"] # TO DO --> How to check units?
-        dec = psf_cat["coord_dec"] # TO DO --> How to check units?
+        # TO DO: Check the doc to see what are the offcial units.
+        ra = psf_cat["coord_ra"]  # TO DO --> How to check units?
+        dec = psf_cat["coord_dec"]  # TO DO --> How to check units?
 
-        # Comp Ex from 1 arcmin to 5 arcmin scale:
+        # Comp TEx
 
-        config = ComputeExPsfTask.ConfigClass()
+        TExConfig = [
+            self.config.psfTE1Range,
+            self.config.psfTE2Range,
+            self.config.psfTE3Range,
+            self.config.psfTE4Range,
+        ]
 
-        # TreeCorr config
-        config.min_sep = 1.0 / 60.
-        config.max_sep = 5.0 / 60.
-        config.nbins = 1
-        config.bin_type = "Linear"
-        config.sep_units = "degree"
+        TExOutput = [
+            [summary.TE1E1, summary.TE1E2, summary.TE1Ex],
+            [summary.TE2E1, summary.TE2E2, summary.TE2Ex],
+            [summary.TE3E1, summary.TE3E2, summary.TE3Ex],
+            [summary.TE4E1, summary.TE4E2, summary.TE4Ex],
+        ]
 
-        task = ComputeExPsfTask(config)
-        output1 = task.run(e1Residuals, e2Residuals, ra, dec, units="degree") # TO DO: check units of ra and dec
+        for config, texoutput in zip(TExConfig, TExOutput):
 
-        summary.psfE1d1d5 = output1.E1
-        summary.psfE2d1d5 = output1.E2
-        summary.psfExd1d5 = output1.Ex
+            task = ComputeExPsfTask(config)
+            output = task.run(
+                e1Residuals, e2Residuals, ra, dec, units="degree"
+            )  # TO DO: check units of ra and dec
 
-        # Comp Ex from 5 arcmin to 20 arcmin scale:
-
-        config = ComputeExPsfTask.ConfigClass()
-
-        # TreeCorr config
-        config.min_sep = 5.0 / 60.
-        config.max_sep = 20.0 / 60.
-        config.nbins = 1
-        config.bin_type = "Linear"
-        config.sep_units = "degree"
-
-        task = ComputeExPsfTask(config)
-        output2 = task.run(e1Residuals, e2Residuals, ra, dec, units="degree") # TO DO: check units of ra and dec
-
-        summary.psfE1d5d20 = output2.E1
-        summary.psfE2d5d20 = output2.E2
-        summary.psfExd5d20 = output2.Ex
+            texoutput[0] = output.metric_E1
+            texoutput[1] = output.metric_E2
+            texoutput[2] = output.metric_Ex
 
         endEx = time.time()
 
