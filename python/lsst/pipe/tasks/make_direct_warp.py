@@ -81,10 +81,10 @@ class WarpDetectorInputs:
     data_id: DataCoordinate
     """Butler data ID for this detector."""
 
-    background_revert: BackgroundList | None = None
+    background_revert: BackgroundList | TrivialBackgroundList | None = None
     """Background model to restore in (i.e. add to) the image."""
 
-    background_apply: BackgroundList | None = None
+    background_apply: BackgroundList | TrivialBackgroundList | None = None
     """Background model to apply to (i.e. subtract from) the image."""
 
     @property
@@ -92,6 +92,14 @@ class WarpDetectorInputs:
         if isinstance(self.exposure_or_handle, DeferredDatasetHandle):
             self.exposure_or_handle = self.exposure_or_handle.get()
         return self.exposure_or_handle
+
+
+class TrivialBackgroundList:
+    """Trivial class that quacks like BackgroundList and gives 0 as image."""
+
+    @classmethod
+    def getImage(cls) -> float:
+        return 0.0
 
 
 class MakeDirectWarpConnections(
@@ -571,7 +579,12 @@ class MakeDirectWarpTask(PipelineTask):
             # Process and accumulate noise images.
             for n_noise in range(self.config.numberOfNoiseRealizations):
                 noise_calexp = noise_calexps[n_noise]
-                noise_pseudo_inputs = dataclasses.replace(detector_inputs, exposure_or_handle=noise_calexp)
+                noise_pseudo_inputs = dataclasses.replace(
+                    detector_inputs,
+                    exposure_or_handle=noise_calexp,
+                    background_revert=TrivialBackgroundList(),
+                    background_apply=TrivialBackgroundList(),
+                )
                 warpedNoise = self.process(
                     noise_pseudo_inputs,
                     target_wcs,
