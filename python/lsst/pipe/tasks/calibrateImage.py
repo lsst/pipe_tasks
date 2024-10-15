@@ -25,6 +25,7 @@ import numpy as np
 
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
+from lsst.ip.diffim.utils import evaluateMaskFraction
 import lsst.meas.algorithms
 import lsst.meas.algorithms.installGaussianPsf
 import lsst.meas.algorithms.measureApCorr
@@ -348,7 +349,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         self.star_measurement.plugins = ["base_PixelFlags",
                                          "base_SdssCentroid",
                                          "ext_shapeHSM_HsmSourceMoments",
-                                         'ext_shapeHSM_HsmPsfMoments',
+                                         "ext_shapeHSM_HsmPsfMoments",
                                          "base_GaussianFlux",
                                          "base_PsfFlux",
                                          "base_CircularApertureFlux",
@@ -583,6 +584,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             id_generator = lsst.meas.base.IdGenerator()
 
         result.exposure = self.snap_combine.run(exposures).exposure
+        self._recordFlaggedPixelFractions(result.exposure)
 
         result.psf_stars_footprints, result.background, candidates = self._compute_psf(result.exposure,
                                                                                        id_generator)
@@ -593,8 +595,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         result.stars_footprints = self._find_stars(result.exposure, result.background, id_generator)
         self._match_psf_stars(result.psf_stars_footprints, result.stars_footprints)
         result.stars = result.stars_footprints.asAstropy()
+        self.metadata["star_count"] = np.sum(~result.stars["sky_source"])
 
         astrometry_matches, astrometry_meta = self._fit_astrometry(result.exposure, result.stars_footprints)
+        self.metadata["astrometry_matches_count"] = len(astrometry_matches)
         if self.config.optional_outputs is not None and "astrometry_matches" in self.config.optional_outputs:
             result.astrometry_matches = lsst.meas.astrom.denormalizeMatches(astrometry_matches,
                                                                             astrometry_meta)
@@ -603,6 +607,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             photometry_meta, result.applied_photo_calib = self._fit_photometry(result.exposure,
                                                                                result.stars_footprints,
                                                                                result.background)
+        self.metadata["photometry_matches_count"] = len(photometry_matches)
         # fit_photometry returns a new catalog, so we need a new astropy table view.
         result.stars = result.stars_footprints.asAstropy()
         if self.config.optional_outputs is not None and "photometry_matches" in self.config.optional_outputs:
@@ -636,9 +641,18 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         cell_set : `lsst.afw.math.SpatialCellSet`
             PSF candidates returned by the psf determiner.
         """
-        def log_psf(msg):
+        def log_psf(msg, addToMetadata=False):
             """Log the parameters of the psf and background, with a prepended
-            message.
+            message. There is also the option to add the PSF sigma to the task
+            metadata.
+
+            Parameters
+            ----------
+                msg : `str`
+                    Message to prepend the log info with.
+                addToMetadata : `bool`, optional
+                    Whether to add the final psf sigma value to the task metadata
+                    (the default is False).
             """
             position = exposure.psf.getAveragePosition()
             sigma = exposure.psf.computeShape(position).getDeterminantRadius()
@@ -646,6 +660,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             median_background = np.median(background.getImage().array)
             self.log.info("%s sigma=%0.4f, dimensions=%s; median background=%0.2f",
                           msg, sigma, dimensions, median_background)
+            if addToMetadata:
+                self.metadata["final_psf_sigma"] = sigma
 
         self.log.info("First pass detection with Guassian PSF FWHM=%s pixels",
                       self.config.install_simple_psf.fwhm)
@@ -659,6 +675,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # Re-estimate the background during this detection step, so that
         # measurement uses the most accurate background-subtraction.
         detections = self.psf_detection.run(table=table, exposure=exposure, background=background)
+        self.metadata["initial_psf_positive_footprint_count"] = detections.numPos
+        self.metadata["initial_psf_negative_footprint_count"] = detections.numNeg
+        self.metadata["initial_psf_positive_peak_count"] = detections.numPosPeaks
+        self.metadata["initial_psf_negative_peak_count"] = detections.numNegPeaks
         self.psf_source_measurement.run(detections.sources, exposure)
         psf_result = self.psf_measure_psf.run(exposure=exposure, sources=detections.sources)
         # Replace the initial PSF with something simpler for the second
@@ -677,10 +697,14 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # Re-estimate the background during this detection step, so that
         # measurement uses the most accurate background-subtraction.
         detections = self.psf_detection.run(table=table, exposure=exposure, background=background)
+        self.metadata["simple_psf_positive_footprint_count"] = detections.numPos
+        self.metadata["simple_psf_negative_footprint_count"] = detections.numNeg
+        self.metadata["simple_psf_positive_peak_count"] = detections.numPosPeaks
+        self.metadata["simple_psf_negative_peak_count"] = detections.numNegPeaks
         self.psf_source_measurement.run(detections.sources, exposure)
         psf_result = self.psf_measure_psf.run(exposure=exposure, sources=detections.sources)
 
-        log_psf("Final PSF:")
+        log_psf("Final PSF:", addToMetadata=True)
 
         # Final repair with final PSF, removing cosmic rays this time.
         self.psf_repair.run(exposure=exposure)
@@ -758,6 +782,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         # Measure everything, and use those results to select only stars.
         self.star_measurement.run(sources, exposure)
+        self.metadata["post_deblend_source_count"] = np.sum(~sources["sky_source"])
+        self.metadata["saturated_source_count"] = np.sum(sources["base_PixelFlags_flag_saturated"])
+        self.metadata["bad_source_count"] = np.sum(sources["base_PixelFlags_flag_bad"])
+
         # Run the normalization calibration flux task to apply the
         # normalization correction to create normalized
         # calibration fluxes.
@@ -814,6 +842,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             raise NoPsfStarsToStarsMatchError(n_psf_stars=len(psf_stars), n_stars=len(stars))
 
         self.log.info("%d psf stars out of %d matched %d calib stars", n_matches, len(psf_stars), len(stars))
+        self.metadata["matched_psf_star_count"] = n_matches
 
         # Check that no stars sources are listed twice; we already know
         # that each match has a unique psf_stars id, due to using as the key
@@ -912,3 +941,21 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # applied calibration). This needs to be checked.
         summary = self.compute_summary_stats.run(exposure, stars, background)
         exposure.info.setSummaryStats(summary)
+
+    def _recordFlaggedPixelFractions(self, exposure):
+        """Record the fraction of all the pixels in an exposure
+        that are flagged. Each fraction is recorded in the task
+        metadata. One record per flag type.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.ExposureF`
+            The target exposure to calculate flagged pixel fractions for.
+        """
+
+        mask = exposure.mask
+        maskPlanes = list(mask.getMaskPlaneDict().keys())
+        for maskPlane in maskPlanes:
+            self.metadata[f"{maskPlane.lower()}_mask_fraction"] = (
+                evaluateMaskFraction(mask, maskPlane)
+            )
