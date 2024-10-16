@@ -154,7 +154,7 @@ class MakeDirectWarpConnections(
         storageClass="PhotoCalib",
         dimensions=("instrument", "visit", "detector"),
         multiple=True,
-        deferLoad=True,
+        deferLoad=False,
         minimum=0,
     )
     sky_map = Input(
