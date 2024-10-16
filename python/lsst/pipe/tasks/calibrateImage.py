@@ -584,7 +584,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             id_generator = lsst.meas.base.IdGenerator()
 
         result.exposure = self.snap_combine.run(exposures).exposure
-        self._recordFlaggedPixelFractions(result.exposure)
+        self._recordMaskedPixelFractions(result.exposure)
 
         result.psf_stars_footprints, result.background, candidates = self._compute_psf(result.exposure,
                                                                                        id_generator)
@@ -942,15 +942,15 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         summary = self.compute_summary_stats.run(exposure, stars, background)
         exposure.info.setSummaryStats(summary)
 
-    def _recordFlaggedPixelFractions(self, exposure):
+    def _recordMaskedPixelFractions(self, exposure):
         """Record the fraction of all the pixels in an exposure
-        that are flagged. Each fraction is recorded in the task
-        metadata. One record per flag type.
+        that are masked with a given flag. Each fraction is
+        recorded in the task metadata. One record per flag type.
 
         Parameters
         ----------
         exposure : `lsst.afw.image.ExposureF`
-            The target exposure to calculate flagged pixel fractions for.
+            The target exposure to calculate masked pixel fractions for.
         """
 
         mask = exposure.mask
