@@ -500,7 +500,9 @@ class MakeDirectWarpTask(PipelineTask):
 
         # Initialize the objects that will hold the warp.
         final_warp = ExposureF(target_bbox, target_wcs)
-        visit_id = list(inputs.keys())[0].dataId["visit"]
+        for _, warp_detector_input in inputs.items():
+            visit_id = warp_detector_input.data_id["visit"]
+            break
 
         # The warpExposure routine is expensive, and we do not want to call
         # it twice (i.e., a second time for PSF-matched warps). We do not
