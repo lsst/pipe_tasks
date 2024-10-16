@@ -640,8 +640,11 @@ class MakeDirectWarpTask(PipelineTask):
         )
 
         final_warp.setPsf(coaddPsf)
-        final_warp.setFilter(inputs[0].exposure.getFilter())
-        final_warp.getInfo().setVisitInfo(inputs[0].exposure.getInfo().getVisitInfo())
+
+        for _, warp_detector_input in inputs.items():
+            final_warp.setFilter(warp_detector_input.exposure.getFilter())
+            final_warp.getInfo().setVisitInfo(warp_detector_input.exposure.getInfo().getVisitInfo())
+            break
 
         results = Struct(
             warp=final_warp,
