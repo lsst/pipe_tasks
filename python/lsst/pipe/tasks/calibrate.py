@@ -604,7 +604,7 @@ class CalibrateTask(pipeBase.PipelineTask):
         detRes = self.detection.run(table=table, exposure=exposure,
                                     doSmooth=True)
 
-        self.recordFlaggedPixelFractions(exposure)
+        self.recordMaskedPixelFractions(exposure)
         self.metadata['positive_footprint_count'] = detRes.numPos
         self.metadata['negative_footprint_count'] = detRes.numNeg
 
@@ -869,15 +869,15 @@ class CalibrateTask(pipeBase.PipelineTask):
             finally:
                 icSrc.setFootprint(icSrcFootprint)
 
-    def recordFlaggedPixelFractions(self, exposure):
+    def recordMaskedPixelFractions(self, exposure):
         """Record the fraction of all the pixels in an exposure
-        that are flagged. Each fraction is recorded in the task
-        metadata. One record per flag type.
+        that are masked with a given flag. Each fraction is
+        recorded in the task metadata. One record per flag type.
 
         Parameters
         ----------
         exposure : `lsst.afw.image.ExposureF`
-            The target exposure to calculate flagged pixel fractions for.
+            The target exposure to calculate masked pixel fractions for.
         """
 
         mask = exposure.mask

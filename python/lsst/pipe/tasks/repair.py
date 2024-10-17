@@ -227,3 +227,4 @@ class RepairTask(pipeBase.Task):
 
         text = "kept" if keepCRs else "interpolated over"
         self.log.info("Identified and %s %s cosmic rays.", text, num)
+        self.metadata["cosmic_ray_count"] = num
