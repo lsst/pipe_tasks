@@ -4,7 +4,8 @@
 # See the DPDD for more information about the output: https://lse-163.lsst.io
 funcs:
     sourceId:
-        functor: Index
+        functor: Column
+        args: id
     coord_ra:
         # reference position required by db. Not in DPDD
         functor: CoordColumn
@@ -380,8 +381,9 @@ flags:
    - base_PixelFlags_flag_saturatedCenter
    - base_PixelFlags_flag_suspect
    - base_PixelFlags_flag_suspectCenter
-   - base_PixelFlags_flag_streak
-   - base_PixelFlags_flag_streakCenter
+   # Streak flags not yet propagated from difference imaging.
+   # - base_PixelFlags_flag_streak
+   # - base_PixelFlags_flag_streakCenter
    - base_PsfFlux_apCorr
    - base_PsfFlux_apCorrErr
    - base_PsfFlux_area
@@ -401,7 +403,6 @@ flags:
    - base_Variance_flag_emptyFootprint
    - base_Variance_value
    - calib_astrometry_used
-   - calib_detected
    - calib_photometry_reserved
    - calib_photometry_used
    - calib_psf_candidate
