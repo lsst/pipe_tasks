@@ -119,7 +119,10 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
         dimensions=["instrument", "visit", "detector"],
     )
     applied_photo_calib = connectionTypes.Output(
-        doc="Photometric calibration that was applied to exposure.",
+        doc=(
+            "Photometric calibration that was applied to exposure's pixels. "
+            "This connection is disabled when do_calibrate_pixels=False."
+        ),
         name="initial_photoCalib_detector",
         storageClass="PhotoCalib",
         dimensions=("instrument", "visit", "detector"),
@@ -168,6 +171,8 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
             del self.astrometry_matches
         if config.optional_outputs is None or "photometry_matches" not in config.optional_outputs:
             del self.photometry_matches
+        if not config.do_calibrate_pixels:
+            del self.applied_photo_calib
 
 
 class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=CalibrateImageConnections):
@@ -290,6 +295,17 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         target=computeExposureSummaryStats.ComputeExposureSummaryStatsTask,
         doc="Task to to compute summary statistics on the calibrated exposure."
     )
+
+    do_calibrate_pixels = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc=(
+            "If True, apply the photometric calibration to the image pixels "
+            "and background model, and attach an identify PhotoCalib to "
+            "the output image to reflect this."
+        )
+    )
+
 
     def setDefaults(self):
         super().setDefaults()
@@ -609,8 +625,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                                                             photometry_meta)
 
         self._summarize(result.exposure, result.stars_footprints, result.background)
-        self._apply_photometry(result.exposure, result.background)
-
+        if self.config.do_calibrate_pixels:
+            self._apply_photometry(result.exposure, result.background)
         return result
 
     def _compute_psf(self, exposure, id_generator):
