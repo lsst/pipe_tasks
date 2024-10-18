@@ -198,6 +198,7 @@ class InterpImageTask(pipeBase.Task):
         self.interpolateImage(maskedImage, psf, defectList, fallbackValue)
 
         self.log.info("Interpolated over %d %s pixels.", len(defectList), planeName)
+        self.metadata["interpolated_pixel_count"] = len(defectList)
 
     @contextmanager
     def transposeContext(self, maskedImage, defects):
