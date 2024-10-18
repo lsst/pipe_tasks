@@ -449,11 +449,13 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
                                            'base_LocalPhotoCalib',
                                            'base_LocalWcs']
 
-        # TODO: Remove STREAK in DM-44658, streak masking to happen only in ip_diffim
+        # TODO: Remove STREAK in DM-44658, streak masking to happen only in
+        # ip_diffim; if we can propagate the streak mask from diffim, we can
+        # still set flags with it here.
         self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['CLIPPED', 'SENSOR_EDGE',
-                                                                       'INEXACT_PSF', 'STREAK']
+                                                                       'INEXACT_PSF']
         self.measurement.plugins['base_PixelFlags'].masksFpCenter = ['CLIPPED', 'SENSOR_EDGE',
-                                                                     'INEXACT_PSF', 'STREAK']
+                                                                     'INEXACT_PSF']
 
     def validate(self):
         super().validate()
