@@ -605,9 +605,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         result.stars_footprints, photometry_matches, \
             photometry_meta, result.applied_photo_calib = self._fit_photometry(result.exposure,
-                                                                               result.stars_footprints,
-                                                                               result.background)
+                                                                               result.stars_footprints)
         self.metadata["photometry_matches_count"] = len(photometry_matches)
+        self._apply_photometry(result.exposure, result.background)
         # fit_photometry returns a new catalog, so we need a new astropy table view.
         result.stars = result.stars_footprints.asAstropy()
         if self.config.optional_outputs is not None and "photometry_matches" in self.config.optional_outputs:
@@ -880,7 +880,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         result = self.astrometry.run(stars, exposure)
         return result.matches, result.matchMeta
 
-    def _fit_photometry(self, exposure, stars, background):
+    def _fit_photometry(self, exposure, stars):
         """Fit a photometric model to the data and return the reference
         matches used in the fit, and the fitted PhotoCalib.
 
@@ -888,8 +888,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         ----------
         exposure : `lsst.afw.image.Exposure`
             Exposure that is being fit, to get PSF and other metadata from.
-            Modified to be in nanojanksy units, with an assigned photoCalib
-            identically 1.
+            Has the fit `lsst.afw.image.PhotoCalib` attached, with pixel values
+            unchanged.
         stars : `lsst.afw.table.SourceCatalog`
             Good stars selected for use in calibration.
         background : `lsst.afw.math.BackgroundList`
@@ -899,28 +899,43 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         -------
         calibrated_stars : `lsst.afw.table.SourceCatalog`
             Star catalog with flux/magnitude columns computed from the fitted
-            photoCalib.
+            photoCalib (instFlux columns are retained as well).
         matches : `list` [`lsst.afw.table.ReferenceMatch`]
             Reference/stars matches used in the fit.
-        photoCalib : `lsst.afw.image.PhotoCalib`
+        photo_calib : `lsst.afw.image.PhotoCalib`
             Photometric calibration that was fit to the star catalog.
         """
         result = self.photometry.run(exposure, stars)
         calibrated_stars = result.photoCalib.calibrateCatalog(stars)
-        exposure.maskedImage = result.photoCalib.calibrateImage(exposure.maskedImage)
+        exposure.setPhotoCalib(result.photoCalib)
+        return calibrated_stars, result.matches, result.matchMeta, result.photoCalib
+
+    def _apply_photometry(self, exposure, background):
+        """Apply the photometric model attached to the exposure to the
+        exposure's pixels and an associated background model.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
+            Exposure with the target `lsst.afw.image.PhotoCalib` attached.
+            On return, pixel values will be calibrated and an identify
+            photometric transform will be attached.
+        background : `lsst.afw.math.BackgroundList`
+            Background model to convert to nanojansky units in place.
+        """
+        photo_calib = exposure.getPhotoCalib()
+        exposure.maskedImage = photo_calib.calibrateImage(exposure.maskedImage)
         identity = afwImage.PhotoCalib(1.0,
-                                       result.photoCalib.getCalibrationErr(),
+                                       photo_calib.getCalibrationErr(),
                                        bbox=exposure.getBBox())
         exposure.setPhotoCalib(identity)
 
-        assert result.photoCalib._isConstant, \
+        assert photo_calib._isConstant, \
             "Background calibration assumes a constant PhotoCalib; PhotoCalTask should always return that."
         for bg in background:
             # The statsImage is a view, but we can't assign to a function call in python.
             binned_image = bg[0].getStatsImage()
-            binned_image *= result.photoCalib.getCalibrationMean()
-
-        return calibrated_stars, result.matches, result.matchMeta, result.photoCalib
+            binned_image *= photo_calib.getCalibrationMean()
 
     def _summarize(self, exposure, stars, background):
         """Compute summary statistics on the exposure and update in-place the

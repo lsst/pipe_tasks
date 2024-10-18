@@ -338,7 +338,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         stars = calibrate._find_stars(self.exposure, background, self.id_generator)
         calibrate._fit_astrometry(self.exposure, stars)
 
-        stars, matches, meta, photoCalib = calibrate._fit_photometry(self.exposure, stars, background)
+        stars, matches, meta, photoCalib = calibrate._fit_photometry(self.exposure, stars)
+        calibrate._apply_photometry(self.exposure, background)
 
         # NOTE: With this test data, PhotoCalTask returns calibrationErr==0,
         # so we can't check that the photoCal error has been set.
