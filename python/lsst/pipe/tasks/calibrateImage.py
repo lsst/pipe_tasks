@@ -607,7 +607,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             photometry_meta, result.applied_photo_calib = self._fit_photometry(result.exposure,
                                                                                result.stars_footprints)
         self.metadata["photometry_matches_count"] = len(photometry_matches)
-        self._apply_photometry(result.exposure, result.background)
         # fit_photometry returns a new catalog, so we need a new astropy table view.
         result.stars = result.stars_footprints.asAstropy()
         if self.config.optional_outputs is not None and "photometry_matches" in self.config.optional_outputs:
@@ -615,6 +614,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                                                             photometry_meta)
 
         self._summarize(result.exposure, result.stars_footprints, result.background)
+        self._apply_photometry(result.exposure, result.background)
 
         return result
 
@@ -945,17 +945,15 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         ----------
         exposure : `lsst.afw.image.Exposure`
             Exposure that was calibrated, to get PSF and other metadata from.
+            Should be in instrumental units with the photometric calibration
+            attached.
             Modified to contain the computed summary statistics.
         stars : `SourceCatalog`
             Good stars selected used in calibration.
         background : `lsst.afw.math.BackgroundList`
             Background that was fit to the exposure during detection of the
-            above stars.
+            above stars.  Should be in instrumental units.
         """
-        # TODO investigation: because this takes the photoCalib from the
-        # exposure, photometric summary values may be "incorrect" (i.e. they
-        # will reflect the ==1 nJy calibration on the exposure, not the
-        # applied calibration). This needs to be checked.
         summary = self.compute_summary_stats.run(exposure, stars, background)
         exposure.info.setSummaryStats(summary)
 
