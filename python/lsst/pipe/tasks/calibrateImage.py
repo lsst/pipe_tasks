@@ -892,6 +892,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             identically 1.
         stars : `lsst.afw.table.SourceCatalog`
             Good stars selected for use in calibration.
+        background : `lsst.afw.math.BackgroundList`
+            Background model to convert to nanojansky units in place.
 
         Returns
         -------
