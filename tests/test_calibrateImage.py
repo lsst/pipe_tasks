@@ -141,7 +141,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # Something about this test dataset prefers a larger threshold here.
         self.config.star_selector["science"].unresolved.maximum = 0.2
 
-    def _check_run(self, calibrate, result):
+    def _check_run(self, calibrate, result, expect_calibrated_pixels: bool = True):
         """Test the result of CalibrateImage.run().
 
         Parameters
@@ -150,6 +150,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
             Configured task that had `run` called on it.
         result : `lsst.pipe.base.Struct`
             Result of calling calibrate.run().
+        expect_calibrated_pixels : `bool`, optional
+            Whether to expect image and background pixels to be calibrated.
         """
         # Background should have 4 elements: 3 from compute_psf and one from
         # re-estimation during source detection.
@@ -169,11 +171,17 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.assertTrue(np.isfinite(result.stars_footprints["coord_ra"]).all())
         self.assertTrue(np.isfinite(result.stars["coord_ra"]).all())
 
-        # Returned photoCalib should be the applied value, not the ==1 one on the exposure.
-        # Note that this is very approximate because we are basing this comparison
-        # on just 2-3 stars.
-        self.assertFloatsAlmostEqual(result.applied_photo_calib.getCalibrationMean(),
-                                     self.photo_calib, rtol=1e-2)
+        if expect_calibrated_pixels:
+            # Fit photoCalib should be the applied value if we calibrated
+            # pixels, not the ==1 one on the exposure.
+            photo_calib = result.applied_photo_calib
+            self.assertEqual(result.exposure.getPhotoCalib().getCalibrationMean(), 1.0)
+        else:
+            self.assertIsNone(result.applied_photo_calib)
+            photo_calib = result.exposure.getPhotoCalib()
+        # PhotoCalib comparison is very approximate because we are basing this
+        # comparison on just 2-3 stars.
+        self.assertFloatsAlmostEqual(photo_calib.getCalibrationMean(), self.photo_calib, rtol=1e-2)
         # Should have calibrated flux/magnitudes in the afw and astropy catalogs
         self.assertIn("slot_PsfFlux_flux", result.stars_footprints.schema)
         self.assertIn("slot_PsfFlux_mag", result.stars_footprints.schema)
@@ -227,6 +235,18 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # the others are included in the output struct regardless.
         self.assertNotIn("astrometry_matches", result.getDict())
         self.assertNotIn("photometry_matches", result.getDict())
+
+    def test_run_no_calibrate_pixels(self):
+        """Test that run() returns reasonable values to be butler put when
+        do_calibrate_pixels=False.
+        """
+        self.config.do_calibrate_pixels = False
+        calibrate = CalibrateImageTask(config=self.config)
+        calibrate.astrometry.setRefObjLoader(self.ref_loader)
+        calibrate.photometry.match.setRefObjLoader(self.ref_loader)
+        result = calibrate.run(exposures=self.exposure)
+
+        self._check_run(calibrate, result, expect_calibrated_pixels=False)
 
     def test_compute_psf(self):
         """Test that our brightest sources are found by _compute_psf(),
@@ -595,6 +615,36 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
             self.assertNotIn(optional, quantum.outputs)
             # Restore the one we removed for the next test.
             connections[optional] = temp
+
+    def test_runQuantum_no_calibrate_pixels(self):
+        config = CalibrateImageTask.ConfigClass()
+        config.do_calibrate_pixels = False
+        task = CalibrateImageTask(config=config)
+        lsst.pipe.base.testUtils.assertValidInitOutput(task)
+
+        quantum = lsst.pipe.base.testUtils.makeQuantum(
+            task, self.butler, self.visit_id,
+            {"exposures": [self.exposure0_id],
+             "astrometry_ref_cat": [self.htm_id],
+             "photometry_ref_cat": [self.htm_id],
+             # outputs
+             "exposure": self.visit_id,
+             "stars": self.visit_id,
+             "stars_footprints": self.visit_id,
+             "background": self.visit_id,
+             "psf_stars": self.visit_id,
+             "psf_stars_footprints": self.visit_id,
+             "initial_pvi_background": self.visit_id,
+             "astrometry_matches": self.visit_id,
+             "photometry_matches": self.visit_id,
+             })
+        mock_run = lsst.pipe.base.testUtils.runTestQuantum(task, self.butler, quantum)
+
+        # Ensure the reference loaders have been configured.
+        self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr3_20230707")
+        self.assertEqual(task.photometry.match.refObjLoader.name, "ps1_pv3_3pi_20170110")
+        # Check that the proper kwargs are passed to run().
+        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures", "result", "id_generator"})
 
     def test_lintConnections(self):
         """Check that the connections are self-consistent.
