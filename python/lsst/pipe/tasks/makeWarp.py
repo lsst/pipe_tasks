@@ -77,14 +77,14 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
         dimensions=("skymap",),
     )
     direct = connectionTypes.Output(
-        doc=("Output direct warped exposure (previously called CoaddTempExp), produced by resampling ",
+        doc=("Output direct warped exposure (previously called CoaddTempExp), produced by resampling "
              "calexps onto the skyMap patch geometry."),
         name="{coaddName}Coadd_directWarp",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "visit", "instrument"),
     )
     psfMatched = connectionTypes.Output(
-        doc=("Output PSF-Matched warped exposure (previously called CoaddTempExp), produced by resampling ",
+        doc=("Output PSF-Matched warped exposure (previously called CoaddTempExp), produced by resampling "
              "calexps onto the skyMap patch geometry and PSF-matching to a model PSF."),
         name="{coaddName}Coadd_psfMatchedWarp",
         storageClass="ExposureF",
@@ -225,7 +225,7 @@ class MakeWarpTask(CoaddBaseTask):
         detector order (to ensure reproducibility).  Then ensure all input
         lists are in the same sorted detector order.
         """
-        detectorOrder = [ref.datasetRef.dataId['detector'] for ref in inputRefs.calExpList]
+        detectorOrder = [handle.datasetRef.dataId['detector'] for handle in inputRefs.calExpList]
         detectorOrder.sort()
         inputRefs = reorderRefs(inputRefs, detectorOrder, dataIdKey='detector')
 
@@ -299,9 +299,9 @@ class MakeWarpTask(CoaddBaseTask):
         (violates LSST algorithms group policy), but will be fixed up by
         interpolating after the coaddition.
 
-        calexpRefList : `list`
-            List of data references for calexps that (may)
-            overlap the patch of interest.
+        calExpList : `list` [ `lsst.afw.image.Exposure` ]
+            List of single-detector input images that (may) overlap the patch
+            of interest.
         skyInfo : `lsst.pipe.base.Struct`
             Struct from `~lsst.pipe.base.coaddBase.makeSkyInfo()` with
             geometric information about the patch.
@@ -435,14 +435,16 @@ class MakeWarpTask(CoaddBaseTask):
             to `None` are ignored.
         calExpList : `list` [`lsst.afw.image.Exposure` or
                      `lsst.daf.butler.DeferredDatasetHandle`]
-            Sequence of calexps to be modified in place.
+            Sequence of single-epoch images (or deferred load handles for
+            images) to be modified in place.  On return this always has images,
+            not handles.
         wcsList : `list` [`lsst.afw.geom.SkyWcs`]
             The WCSs of the calexps in ``calExpList``. These will be used to
             determine if the calexp should be used in the warp. The list is
             dynamically updated with the WCSs from the visitSummary.
-        backgroundList : `list` [`lsst.afw.math.backgroundList`], optional
+        backgroundList : `list` [`lsst.afw.math.BackgroundList`], optional
             Sequence of backgrounds to be added back in if bgSubtracted=False.
-        skyCorrList : `list` [`lsst.afw.math.backgroundList`], optional
+        skyCorrList : `list` [`lsst.afw.math.BackgroundList`], optional
             Sequence of background corrections to be subtracted if
             doApplySkyCorr=True.
         **kwargs
@@ -526,6 +528,10 @@ class MakeWarpTask(CoaddBaseTask):
                     )
                     continue
 
+            # Apply skycorr
+            if self.config.doApplySkyCorr:
+                calexp.maskedImage -= skyCorr.getImage()
+
             # Calibrate the image.
             calexp.maskedImage = photoCalib.calibrateImage(calexp.maskedImage,
                                                            includeScaleUncertainty=includeCalibVar)
@@ -533,10 +539,6 @@ class MakeWarpTask(CoaddBaseTask):
             # TODO: The images will have a calibration of 1.0 everywhere once
             # RFC-545 is implemented.
             # exposure.setCalib(afwImage.Calib(1.0))
-
-            # Apply skycorr
-            if self.config.doApplySkyCorr:
-                calexp.maskedImage -= skyCorr.getImage()
 
             indices.append(index)
             calExpList[index] = calexp
@@ -606,7 +608,7 @@ def reorderRefs(inputRefs, outputSortKeyOrder, dataIdKey):
             if hasattr(refs[0], "dataId"):
                 inputSortKeyOrder = [ref.dataId[dataIdKey] for ref in refs]
             else:
-                inputSortKeyOrder = [ref.datasetRef.dataId[dataIdKey] for ref in refs]
+                inputSortKeyOrder = [handle.datasetRef.dataId[dataIdKey] for handle in refs]
             if inputSortKeyOrder != outputSortKeyOrder:
                 setattr(inputRefs, connectionName,
                         reorderAndPadList(refs, inputSortKeyOrder, outputSortKeyOrder))
