@@ -804,7 +804,7 @@ class PeekExposureTask(pipeBase.Task):
             case "LATISS":
                 focusZ *= 41  # magnification factor
                 fratio = 18.0
-            case "LSSTCam" | "ComCam" | "LSSTComCamSim":
+            case "LSSTCam" | "LSSTComCam" | "LSSTComCamSim":
                 fratio = 1.234
             case _:
                 raise ValueError(f"Unknown instrument label: {instrumentLabel}")
