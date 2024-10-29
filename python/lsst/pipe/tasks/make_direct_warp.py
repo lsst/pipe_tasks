@@ -125,16 +125,16 @@ class MakeDirectWarpConnections(
         deferLoad=True,
     )
     background_revert_list = Input(
-        doc="Background to be reverted (i.e., added back to the calexp). "
-        "This connection is used only if doRevertOldBackground=False.",
+        doc="Background to be reverted (i.e., added back to the single-epoch "
+        "image). This connection is used only if doRevertOldBackground=False.",
         name="initial_pvi_background",
         storageClass="Background",
         dimensions=("instrument", "visit", "detector"),
         multiple=True,
     )
     background_apply_list = Input(
-        doc="Background to be applied (subtracted from the calexp). "
-        "This is used only if doApplyNewBackground=True.",
+        doc="Background to be applied (subtracted from the single-epoch "
+        "image). This is used only if doApplyNewBackground=True.",
         name="skyCorr",
         storageClass="Background",
         dimensions=("instrument", "visit", "detector"),
@@ -547,7 +547,10 @@ class MakeDirectWarpTask(PipelineTask):
             )
 
             if warpedExposure is None:
-                self.log.debug("Skipping exposure %s because it could not be warped.", detector_inputs.data_id)
+                self.log.debug(
+                    "Skipping exposure %s because it could not be warped.",
+                    detector_inputs.data_id,
+                )
                 continue
 
             if final_warp.photoCalib is not None:
