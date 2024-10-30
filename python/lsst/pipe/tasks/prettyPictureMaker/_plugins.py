@@ -26,11 +26,6 @@ __all__ = ("PluginsRegistry", "plugins")
 from enum import Enum, auto
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Generator
-import numpy as np
-from sklearn.cluster import KMeans
-import cv2
-
-from lsst.afw.image import Mask
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -40,12 +35,52 @@ if TYPE_CHECKING:
 
 
 class PluginType(Enum):
+    """Enumeration to mark the type of data a plugin expects to work on"""
+
     CHANNEL = auto()
+    """A plugin of this type expects to work on an individual channel
+    from a partial region of a mosaic, such as a `patch`.
+    """
     PARTIAL = auto()
+    """A pluging that expects to work on a 3 channel image that is
+    a partial region of a mosaic, such as a `patch`.
+    """
     FULL = auto()
+    """FULL plugins operate on a 3 channel image corresponding to
+    a complete mosaic.
+    """
 
 
 class PluginsRegistry:
+    """A class to serve as a registry for all pretty picture manipulation
+    plugins.
+
+    This class should not be instantiated directly other than the one
+    instantiation in this module.
+
+    example
+    -------
+    Using this registry to create a plugin would look somehting like the
+    following.
+
+    @plugins.register(1, PluginType.PARTIAL)
+    def fixNoData(
+        image: NDArray,
+        mask: NDArray,
+        maskDict: Mapping[str, int]
+        ) -> NDArray:
+        m = (mask & 2 ** maskDict["NO_DATA"]).astype(bool)
+        for i in range(3):
+            image[:, :, i] = cv2.inpaint(
+                image[:, :, i].astype(np.float32),
+                m.astype(np.uint8),
+                3,
+                cv2.INPAINT_TELEA
+            ).astype(image.dtype)
+        return image
+
+    """
+
     def __init__(self) -> None:
         self._full_values: list[tuple[float, PLUGIN_TYPE]] = []
         self._partial_values: list[tuple[float, PLUGIN_TYPE]] = []
@@ -61,8 +96,24 @@ class PluginsRegistry:
         yield from (func for _, func in self._full_values)
 
     def register(self, order: float, kind: PluginType) -> Callable:
+        """Register a plugin which is to be run when producing a
+        pretty picture.
+
+        parameters
+        ----------
+        order : `float`
+            This determines in what order plugins will be run. For
+            example, if plugin A specifies order 2, and plugin B
+            specifies order 1, and both are the same ``kind`` of
+            plugin type, plugin B will be run before plugin A.
+        kind : `PluginType`
+            This specifies what data the registered plugin expects
+            to run on, a channel, a partial image, or a full mosaic.
+
+        """
+
         def wrapper(
-            func: Callable[[NDArray, NDArray, Mapping[str, int]], NDArray]
+            func: Callable[[NDArray, NDArray, Mapping[str, int]], NDArray],
         ) -> Callable[[NDArray, NDArray, Mapping[str, int]], NDArray]:
             match kind:
                 case PluginType.PARTIAL:
@@ -77,49 +128,9 @@ class PluginsRegistry:
 
 
 plugins = PluginsRegistry()
-
-
-# @plugins.register(100, PluginType.FULL)
-def externalProcessing(image: NDArray, mask: NDArray) -> NDArray:
-    return np.array((0, 0))
-
-
-# @plugins.register(1, PluginType.CHANNEL)
-def fixBackgrounds(image: NDArray, fullMask: NDArray, maskDict: Mapping[str, int]) -> NDArray:
-    yind, xind = np.indices(image.shape)
-    mask = ~(((fullMask & 2 ** Mask.getMaskPlane("DETECTED")) > 0).astype(bool))  # type: ignore
-    number = np.sum(mask)
-    container = np.empty((number, 3))  # type: ignore
-    container[:, 0] = yind[mask]
-    container[:, 1] = xind[mask]
-
-    for _ in range(2):
-        container[:, 2] = image[mask]
-
-        kmeans = KMeans(init="random", n_clusters=100)
-        kmeans.fit(container)
-
-        what = np.zeros((image.shape), dtype=float)
-        what[yind[mask], xind[mask]] = kmeans.cluster_centers_[:, 2][kmeans.labels_] * 0.9
-
-        image = np.abs(image - what)
-    return image
-
-
-# @plugins.register(2, PluginType.PARTIAL)
-def fixChromaticStars(image: NDArray, mask: NDArray, maskDict: Mapping[str, int]) -> NDArray:
-    return np.array((0, 0))
-
-
-# @plugins.register(1, PluginType.PARTIAL)
-def fixNoData(image: NDArray, mask: NDArray, maskDict: Mapping[str, int]) -> NDArray:
-    print("running mask fixup")
-    m = (mask & 2 ** maskDict["NO_DATA"]).astype(bool)
-    print("done making mask")
-    # loop over arrays and apply, this supports more than 8 bit arrays
-    for i in range(3):
-        image[:, :, i] = cv2.inpaint(
-            image[:, :, i].astype(np.float32), m.astype(np.uint8), 3, cv2.INPAINT_TELEA
-        ).astype(image.dtype)
-    print("done mask fixup")
-    return image
+"""
+This is the only instance of the plugin registry there should be. Users
+should import from here and use the register method as a decorator to
+register any plugins. Or, preferably, add them to this file to avoid
+needing any other import time logic elsewhere.
+"""

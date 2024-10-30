@@ -52,7 +52,6 @@ from lsst.geom import Box2I, Point2I, Extent2I
 from lsst.afw.image import Exposure, Mask
 
 from ._plugins import plugins
-from ._gp_standin.interpolate_over import InterpolateOverDefectGaussianProcess
 from ._colorMapper import lsstRGB
 
 import tempfile
@@ -82,14 +81,14 @@ class PrettyPictureConnections(
 
     outputRGB = Output(
         doc="A RGB image created from the input data stored as a 3d array",
-        name="rgbPicture_array",
+        name="rgb_picture_array",
         storageClass="NumpyArray",
         dimensions=("tract", "patch", "skymap"),
     )
 
     outputRGBMask = Output(
         doc="A Mask corresponding to the fused masks of the input channels",
-        name="rgbPicture_mask",
+        name="rgb_picture_mask",
         storageClass="Mask",
         dimensions=("tract", "patch", "skymap"),
     )
@@ -117,15 +116,15 @@ class ChannelRGBConfig(Config):
 class LumConfig(Config):
     """Configurations to control how luminance is mapped in the rgb code"""
 
-    stretch = Field[float](doc="The stretch of the luminance in asinh", default=50)
+    stretch = Field[float](doc="The stretch of the luminance in asinh", default=400)
     max = Field[float](doc="The maximum allowed luminance on a 0 to 100 scale", default=85)
-    A = Field[float](doc="A scaling factor to apply post asinh stretching", default=0.9)
-    b0 = Field[float](doc="A linear offset to apply post asinh stretching", default=0.05)
+    A = Field[float](doc="A scaling factor to apply post asinh stretching", default=1)
+    b0 = Field[float](doc="A linear offset to apply post asinh stretching", default=0.00)
     minimum = Field[float](
         doc="The minimum intensity value after stretch, values lower will be set to zero", default=0
     )
     floor = Field[float](doc="A scaling factor to apply to the luminance before asinh scaling", default=0.0)
-    Q = Field[float](doc="softening parameter", default=8)
+    Q = Field[float](doc="softening parameter", default=0.7)
 
 
 class LocalContrastConfig(Config):
@@ -135,20 +134,21 @@ class LocalContrastConfig(Config):
     doLocalContrast = Field[bool](
         doc="Apply local contrast enhancements to the luminance channel", default=True
     )
-    highlights = Field[float](doc="Adjustment factor for the highlights", default=-1.5)
-    shadows = Field[float](doc="Adjustment factor for the shadows", default=0.4)
-    clarity = Field[float](doc="Amount of clarity to apply to contrast modification", default=0.2)
+    highlights = Field[float](doc="Adjustment factor for the highlights", default=-0.9)
+    shadows = Field[float](doc="Adjustment factor for the shadows", default=0.5)
+    clarity = Field[float](doc="Amount of clarity to apply to contrast modification", default=0.1)
     sigma = Field[float](
-        doc="The scale size of what is considered local in the contrast enhancement", default=20
+        doc="The scale size of what is considered local in the contrast enhancement", default=30
     )
     maxLevel = Field[int](
         doc="The maximum number of scales the contrast should be enhanced over, if None then all",
+        default=4,
         optional=True,
     )
 
 
 class ScaleColorConfig(Config):
-    """Controls how colors are scaled in the rgb generation process."""
+    """Controls color scaling in the rgb generation process."""
 
     saturation = Field[float](
         doc=(
@@ -171,7 +171,7 @@ class RemapBoundsConfig(Config):
 
     Often input images are not mapped to any defined range of values
     (for instance if they are in count units). This controls how the units of
-    and image will be mapped to a zero to one range by determining an upper
+    and image are mapped to a zero to one range by determining an upper
     bound.
     """
 
@@ -184,6 +184,16 @@ class RemapBoundsConfig(Config):
     )
     absMax = Field[float](
         doc="Instead of determining the maximum value from the image, use this fixed value instead",
+        default=220,
+        optional=True,
+    )
+    scaleBoundFactor = Field[float](
+        doc=(
+            "Factor used to compare absMax and the emperically determined"
+            "maximim. if emperical_max is less than scaleBoundFactor*absMax"
+            "then the emperical_max is used instead of absMax, even if it"
+            "is set. Do not set this field to skip this comparison."
+        ),
         optional=True,
     )
 
@@ -220,6 +230,10 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
             "float": "Use 32 bit float arrays, 1 max",
         },
     )
+    doPSFDeconcovlve = Field[bool](
+        doc="Use the PSF in a richardson lucy deconvolution on the luminance channel.",
+        default=True
+    )
 
     def setDefaults(self):
         self.channelConfig["i"] = ChannelRGBConfig(r=1, g=0, b=0)
@@ -240,22 +254,7 @@ class PrettyPictureTask(PipelineTask):
         jointMask: None | NDArray = None
         maskDict: Mapping[str, int] = {}
         for channel, imageExposure in images.items():
-            # This is a hack until gp is in the stack natively, or until a
-            # plugin is made with a GP interpolation based on numpy arrays.
-            GP = InterpolateOverDefectGaussianProcess(
-                imageExposure.maskedImage,
-                defects=["SAT", "NO_DATA"],
-                fwhm=15,
-                block_size=40,
-                solver="treegp",
-                method="spanset",
-                bin_spacing=15,
-                use_binning=True,
-            )
-            # This modifies the MaskedImage in place
-            GP.interpolate_over_defects()
-            maskedImage = GP.maskedImage
-            imageArray = maskedImage.image.array
+            imageArray = imageExposure.image.array
             # run all the plugins designed for array based interaction
             for plug in plugins.channel():
                 imageArray = plug(
@@ -277,19 +276,20 @@ class PrettyPictureTask(PipelineTask):
 
         for band, image in channels.items():
             mix = self.config.channelConfig[band]
-            # channelSum = mix.r + mix.g + mix.b
-            channelSum = 1
             if mix.r:
-                imageRArray += mix.r / channelSum * image
+                imageRArray += mix.r * image
             if mix.g:
-                imageGArray += mix.g / channelSum * image
+                imageGArray += mix.g * image
             if mix.b:
-                imageBArray += mix.b / channelSum * image
+                imageBArray += mix.b * image
 
         exposure = next(iter(images.values()))
         box: Box2I = exposure.getBBox()
         boxCenter = box.getCenter()
-        psf = exposure.psf.computeImage(boxCenter).array
+        try:
+            psf = exposure.psf.computeImage(boxCenter).array
+        except Exception:
+            psf = None
         # Ignore type because Exposures do in fact have a bbox, but it is c++
         # and not typed.
         colorImage = lsstRGB(
@@ -301,7 +301,7 @@ class PrettyPictureTask(PipelineTask):
             scaleColorKWargs=self.config.colorConfig.toDict(),
             **(self.config.localContrastConfig.toDict()),
             cieWhitePoint=tuple(self.config.cieWhitePoint),  # type: ignore
-            psf=psf,
+            psf=psf if self.config.doPSFDeconcovlve else None,
         )
 
         # Find the dataset type and thus the maximum values as well
@@ -332,9 +332,7 @@ class PrettyPictureTask(PipelineTask):
             colorImage = plug(colorImage, jointMask, maskDict)
 
         # pack the joint mask back into a mask object
-        lsstMask = Mask(
-            width=jointMask.shape[1], height=jointMask.shape[0], planeDefs=maskDict
-        )  # type: ignore
+        lsstMask = Mask(width=jointMask.shape[1], height=jointMask.shape[0], planeDefs=maskDict)
         lsstMask.array = jointMask  # type: ignore
         return Struct(outputRGB=colorImage.astype(dtype), outputRGBMask=lsstMask)  # type: ignore
 
@@ -363,9 +361,7 @@ class PrettyPictureTask(PipelineTask):
         # ignore type because there are not proper stubs for afw
         temp = {}
         for key, array in kwargs.items():
-            temp[key] = Exposure(
-                Box2I(Point2I(0, 0), Extent2I(*array.shape)), dtype=array.dtype
-            )  # type: ignore
+            temp[key] = Exposure(Box2I(Point2I(0, 0), Extent2I(*array.shape)), dtype=array.dtype)
             temp[key].image.array[:] = array
 
         return self.makeInputsFromExposures(**temp)
@@ -380,7 +376,7 @@ class PrettyPictureTask(PipelineTask):
 class PrettyMosaicConnections(PipelineTaskConnections, dimensions=("tract", "skymap")):
     inputRGB = Input(
         doc="Individual RGB images that are to go into the mosaic",
-        name="rgbPicture_array",
+        name="rgb_picture_array",
         storageClass="NumpyArray",
         dimensions=("tract", "patch", "skymap"),
         multiple=True,
@@ -396,7 +392,7 @@ class PrettyMosaicConnections(PipelineTaskConnections, dimensions=("tract", "sky
 
     inputRGBMask = Input(
         doc="Individual RGB images that are to go into the mosaic",
-        name="rgbPicture_mask",
+        name="rgb_picture_mask",
         storageClass="Mask",
         dimensions=("tract", "patch", "skymap"),
         multiple=True,
@@ -405,7 +401,7 @@ class PrettyMosaicConnections(PipelineTaskConnections, dimensions=("tract", "sky
 
     outputRGBMosaic = Output(
         doc="A RGB mosaic created from the input data stored as a 3d array",
-        name="rgbMosaic_array",
+        name="rgb_mosaic_array",
         storageClass="NumpyArray",
         dimensions=("tract", "skymap"),
     )
@@ -431,6 +427,7 @@ class PrettyMosaicTask(PipelineTask):
         newBox = Box2I()
         # store the bounds as they are retrieved from the skymap
         boxes = []
+        tractMaps = []
         for handle in inputRGB:
             dataId = handle.dataId
             tractInfo: TractInfo = skyMap[dataId["tract"]]
@@ -438,6 +435,7 @@ class PrettyMosaicTask(PipelineTask):
             bbox = patchInfo.getOuterBBox()
             boxes.append(bbox)
             newBox.include(bbox)
+            tractMaps.append(tractInfo)
 
         # fixup the boxes to be smaller if needed, and put the origin at zero,
         # this must be done after constructing the complete outer box
@@ -473,7 +471,8 @@ class PrettyMosaicTask(PipelineTask):
 
         # Actually assemble the mosaic
         maskDict = {}
-        for box, handle, handleMask in zip(boxes, inputRGB, inputRGBMask):
+        tmpImg = None
+        for box, handle, handleMask, tractInfo in zip(boxes, inputRGB, inputRGBMask, tractMaps):
             rgb = handle.get()
             rgbMask = handleMask.get()
             maskDict = rgbMask.getMaskPlaneDict()
@@ -498,21 +497,50 @@ class PrettyMosaicTask(PipelineTask):
                 shape = tuple(box.getDimensions())[::-1]
                 rgb = cv2.resize(
                     rgb,
-                    dst=consolidatedImage[*box.slices],
+                    dst=None,
                     dsize=shape,
                     fx=shape[0] / self.config.binFactor,
                     fy=shape[1] / self.config.binFactor,
                 )
                 rgbMask = cv2.resize(
                     rgbMask.array.astype(np.float32),
-                    dst=consolidatedMask[*box.slices],
+                    dst=None,
                     dsize=shape,
                     fx=shape[0] / self.config.binFactor,
                     fy=shape[1] / self.config.binFactor,
                 )
-            else:
-                consolidatedImage[*box.slices] = rgb
-                consolidatedMask[*box.slices] = rgbMask.array
+            existing = ~np.all(consolidatedImage[*box.slices] == 0, axis=2)
+            if tmpImg is None or tmpImg.shape != rgb.shape:
+                ramp = np.linspace(0, 1, tractInfo.patch_border * 2)
+                tmpImg = np.zeros(rgb.shape[:2])
+                tmpImg[: tractInfo.patch_border * 2, :] = np.repeat(
+                    np.expand_dims(ramp, 1), tmpImg.shape[1], axis=1
+                )
+
+                tmpImg[-1 * tractInfo.patch_border * 2:, :] = np.repeat(
+                    np.expand_dims(1 - ramp, 1), tmpImg.shape[1], axis=1
+                )
+                tmpImg[:, : tractInfo.patch_border * 2] = np.repeat(
+                    np.expand_dims(ramp, 0), tmpImg.shape[0], axis=0
+                )
+
+                tmpImg[:, -1 * tractInfo.patch_border * 2:] = np.repeat(
+                    np.expand_dims(1 - ramp, 0), tmpImg.shape[0], axis=0
+                )
+                tmpImg = np.repeat(np.expand_dims(tmpImg, 2), 3, axis=2)
+
+            consolidatedImage[*box.slices][~existing, :] = rgb[~existing, :]
+            consolidatedImage[*box.slices][existing, :] = (
+                tmpImg[existing] * rgb[existing]
+                + (1 - tmpImg[existing]) * consolidatedImage[*box.slices][existing, :]
+            )
+
+            tmpMask = np.zeros_like(rgbMask.array)
+            tmpMask[existing] = np.bitwise_or(
+                rgbMask.array[existing], consolidatedMask[*box.slices][existing]
+            )
+            tmpMask[~existing] = rgbMask.array[~existing]
+            consolidatedMask[*box.slices] = tmpMask
 
         for plugin in plugins.full():
             if consolidatedImage is not None and consolidatedMask is not None:
@@ -546,109 +574,3 @@ class PrettyMosaicTask(PipelineTask):
             structuredInputs.append(InMemoryDatasetHandle(inMemoryDataset=array, **dataId))
 
         return structuredInputs
-
-
-#  ## old needs translated to two tasks
-old = '''
-    doMemeMap = Field[bool](doc="Use a memory map when constructing a mosaic", default=True)
-
-    def run(self, inputImages: dict[int, _InputImageContainer]) -> Struct:
-        # get outer bounding region
-        newBox = Box2I()
-        for container in inputImages.values():
-            newBox.include(container.getBbox())
-
-        # create the outer container
-        self.imageHandle = tempfile.NamedTemporaryFile()
-        self.maskHandle = tempfile.NamedTemporaryFile()
-        consolidatedImage = np.memmap(self.imageHandle.name, mode='w+', shape=(newBox.getHeight(), newBox.getWidth(), 3), dtype=np.uint8)
-        consolidatedMask = np.memmap(self.maskHandle.name, mode='w+', shape=(newBox.getHeight(), newBox.getWidth()), dtype=np.float32)
-            #consolidatedImage = np.zeros((newBox.getHeight(), newBox.getWidth(), 3), dtype=np.uint8)
-            #consolidatedMask = np.zeros((newBox.getHeight(), newBox.getWidth()))
-
-        # assemble sub regions
-        for region, container in inputImages.items():
-            box, rgbImage, mask = container.realizeRGBImage(
-                minimum=self.config.minimum,
-                stretch=self.config.stretch,
-                impact=self.config.impact,
-                maxLum=self.config.lumMax
-            )
-            box = box.shiftedBy(-1*ExtentI(newBox.getBegin()))
-            consolidatedImage[*box.slices, :] = rgbImage.astype(np.uint8)
-            consolidatedMask[*box.slices] = mask
-
-            for plugin in plugins.full():
-                consolidatedImage = plugin(consolidatedImage, consolidatedMask)
-        return Struct(image=consolidatedImage)
-
-    def _makeIdentifierNumber(self, ref: DatasetRef) -> int:
-        """This function is responsible for making unique identifiers to track
-        sub regions in an image.
-
-        For coadds this is simply patch, single frame likely would use packed
-        visitIds.
-        """
-        return cast(int, ref.dataId["patch"])
-
-    def runQuantum(
-        self,
-        butlerQC: QuantumContext,
-        inputRefs: InputQuantizedConnection,
-        outputRefs: OutputQuantizedConnection,
-    ) -> None:
-        # TODO: this needs to be made generic for image type
-        imageRefs: list[DatasetRef] = inputRefs.inputCoadds
-        sortedImages = self.makeInputsFromRefs(imageRefs, butlerQC)
-        self.run(sortedImages)
-
-    def makeInputsFromRefs(
-        self, refs: Iterable[DatasetRef], butler: Butler | QuantumContext
-    ) -> dict[int, _InputImageContainer]:
-        sortedImages: dict[int, _InputImageContainer] = {}
-        for ref in refs:
-            key: int = self._makeIdentifierNumber(ref)
-            container = sortedImages.setdefault(
-                key, _InputImageContainer(key, list(), self.config.channelConfig)
-            )
-            proxyImage = (
-                butler.get(ref)
-                if isinstance(butler, QuantumContext)
-                else DeferredDatasetHandle(butler, ref, None)
-            )
-            container.images.append((ref.dataId, proxyImage))
-        return sortedImages
-
-    def makeInputsFromArrays(
-        self, *args, channelRGBs=((1, 0, 0), (0, 1, 0), (0, 0, 1))
-    ) -> dict[int, _InputImageContainer]:
-        if len(args) != len(channelRGBs):
-            raise ValueError("There must be the same number of input arrays as channels")
-        if args[0] is
-        # ignore type because there are not proper stubs for afw
-        rExp = Exposure(Box2I(PointI(0, 0), ExtentI(*rArray.shape)), dtype=rArray.dtype)  # type: ignore
-        rExp.image.array[:] = rArray
-        gExp = Exposure(Box2I(PointI(0, 0), ExtentI(*gArray.shape)), dtype=gArray.dtype)  # type: ignore
-        gExp.image.array[:] = gArray
-        bExp = Exposure(Box2I(PointI(0, 0), ExtentI(*bArray.shape)), dtype=bArray.dtype)  # type: ignore
-        bExp.image.array[:] = bArray
-        return self.makeInputsFromExposures([rExp], [gExp], [bExp])
-
-    def makeInputsFromExposures(
-        self, rExposures: list[Exposure], gExposures: list[Exposure], bExposures: list[Exposure]
-    ) -> dict[int, _InputImageContainer]:
-        if len(rExposures) != len(gExposures) or len(gExposures) != len(bExposures):
-            raise AttributeError("Lengths of all inputs must be equal")
-        sortedImages: dict[int, _InputImageContainer] = {}
-        for key in range(len(rExposures)):
-            container = sortedImages.setdefault(key, _InputImageContainer(key))
-            rHandle = InMemoryDatasetHandle(rExposures[key])
-            container.r = (cast(DataCoordinate, rHandle.dataId), rHandle)
-
-            gHandle = InMemoryDatasetHandle(gExposures[key])
-            container.g = (cast(DataCoordinate, gHandle.dataId), gHandle)
-
-            bHandle = InMemoryDatasetHandle(bExposures[key])
-            container.b = (cast(DataCoordinate, bHandle.dataId), bHandle)
-        return sortedImages
-'''
