@@ -716,6 +716,13 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             self.log.warning('Failed to determine psf for visit %d, detector %d: %s',
                              visit, detector, e)
             return None, None, measured_src
+        # Verify that the PSF is usable by downstream tasks
+        sigma = psf.computeShape(psf.getAveragePosition()).getDeterminantRadius()
+        if np.isnan(sigma):
+            self.log.warning('Failed to determine psf for visit %d, detector %d: '
+                             'Computed final PSF size is NAN.',
+                             visit, detector)
+            return None, None, measured_src
 
         # Set the psf in the exposure for measurement/aperture corrections.
         exposure.setPsf(psf)
