@@ -24,12 +24,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Iterable
 
 import numpy as np
-from lsst.afw.geom import makeWcsPairTransform
 from lsst.afw.image import ExposureF, Mask
 from lsst.afw.math import Warper
 from lsst.coadd.utils import copyGoodPixels
 from lsst.geom import Box2D
-from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig, WarpedPsf
+from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
 from lsst.meas.algorithms.cloughTocher2DInterpolator import (
     CloughTocher2DInterpolateTask,
 )
@@ -446,10 +445,6 @@ class MakeDirectWarpTask(PipelineTask):
             # Generate noise images in-situ.
             noise_calexps = self.make_noise_exposures(calexp, rng)
 
-            # Warp the PSF before processing nad overwriting exposure.
-            xyTransform = makeWcsPairTransform(calexp.getWcs(), target_wcs)
-            psfWarped = WarpedPsf(calexp.getPsf(), xyTransform)
-
             warpedExposure = self.process(
                 calexp,
                 target_wcs,
@@ -459,7 +454,6 @@ class MakeDirectWarpTask(PipelineTask):
                 visit_summary,
                 destBBox=target_bbox,
             )
-            warpedExposure.setPsf(psfWarped)
 
             if final_warp.photoCalib is not None:
                 ratio = (
