@@ -504,6 +504,12 @@ class MakeDirectWarpTask(PipelineTask):
                 destBBox=target_bbox,
             )
 
+            if warpedExposure is None:
+                self.log.debug(
+                    "Skipping exposure %s because it could not be warped.", detector_inputs.data_id
+                )
+                continue
+
             if final_warp.photoCalib is not None:
                 ratio = (
                     final_warp.photoCalib.getInstFluxAtZeroMagnitude()
@@ -618,7 +624,7 @@ class MakeDirectWarpTask(PipelineTask):
         visit_summary=None,
         maxBBox=None,
         destBBox=None,
-    ):
+    ) -> ExposureF | None:
         """Process an exposure.
 
         There are three processing steps that are applied to the input:
@@ -649,18 +655,22 @@ class MakeDirectWarpTask(PipelineTask):
 
         Returns
         -------
-        warped_exposure : `~lsst.afw.image.Exposure`
-            The processed and warped exposure.
+        warped_exposure : `~lsst.afw.image.Exposure` | None
+            The processed and warped exposure, if all the calibrations could
+            be applied successfully. Otherwise, None.
         """
 
         if self.config.doPreWarpInterpolation:
             self.preWarpInterpolation.run(detector_inputs.exposure.maskedImage)
 
-        self._apply_all_calibrations(
+        success = self._apply_all_calibrations(
             detector_inputs,
             visit_summary=visit_summary,
             includeScaleUncertainty=self.config.includeCalibVar,
         )
+
+        if not success:
+            return None
 
         with self.timer("warp"):
             warped_exposure = warper.warpExposure(
