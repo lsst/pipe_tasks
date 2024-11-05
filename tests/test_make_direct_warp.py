@@ -32,7 +32,7 @@ import lsst.utils.tests
 import lsst.afw.image
 from lsst.daf.butler import DataCoordinate, DimensionUniverse
 from lsst.pipe.base import InMemoryDatasetHandle
-from lsst.pipe.tasks.make_direct_warp import (MakeDirectWarpConfig, MakeDirectWarpTask,)
+from lsst.pipe.tasks.make_direct_warp import (MakeDirectWarpConfig, MakeDirectWarpTask, WarpDetectorInputs)
 from lsst.pipe.tasks.coaddBase import makeSkyInfo
 import lsst.skymap as skyMap
 from lsst.afw.detection import GaussianPsf
@@ -193,9 +193,14 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
     def test_makeWarp(self):
         """Test basic MakeDirectWarpTask."""
         makeWarp = MakeDirectWarpTask(config=self.config)
-        inputs = {"calexp_list": [self.dataRef]}
+        warp_detector_inputs = {
+            self.dataRef.dataId.detector.id: WarpDetectorInputs(
+                exposure_or_handle=self.dataRef,
+                data_id=self.dataRef.dataId,
+            )
+        }
         result = makeWarp.run(
-            inputs,
+            warp_detector_inputs,
             sky_info=self.skyInfo,
             visit_summary=None
         )
@@ -231,9 +236,13 @@ class MakeWarpNoGoodPixelsTestCase(MakeWarpTestCase):
         It should return an empty exposure, with no PSF.
         """
         makeWarp = MakeDirectWarpTask(config=self.config)
-        inputs = {"calexp_list": [self.dataRef]}
+        warp_detector_inputs = {
+            self.dataRef.dataId.detector.id: WarpDetectorInputs(
+                exposure_or_handle=self.dataRef, data_id=self.dataRef.dataId
+            )
+        }
         result = makeWarp.run(
-            inputs,
+            warp_detector_inputs,
             sky_info=self.skyInfo,
             visit_summary=None
         )
