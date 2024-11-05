@@ -303,7 +303,9 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         doc=(
             "If True, apply the photometric calibration to the image pixels "
             "and background model, and attach an identity PhotoCalib to "
-            "the output image to reflect this."
+            "the output image to reflect this.  If False`, leave the image "
+            "and background uncalibrated and attach the PhotoCalib that maps "
+            "them to physical units."
         )
     )
 
@@ -586,7 +588,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             ``applied_photo_calib``
                 Photometric calibration that was fit to the star catalog and
                 applied to the exposure. (`lsst.afw.image.PhotoCalib`)
-
                 This is `None` if ``config.do_calibrate_pixels`` is `False`.
             ``astrometry_matches``
                 Reference catalog stars matches used in the astrometric fit.
@@ -911,8 +912,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             unchanged.
         stars : `lsst.afw.table.SourceCatalog`
             Good stars selected for use in calibration.
-        background : `lsst.afw.math.BackgroundList`
-            Background model to convert to nanojansky units in place.
 
         Returns
         -------
@@ -921,6 +920,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             photoCalib (instFlux columns are retained as well).
         matches : `list` [`lsst.afw.table.ReferenceMatch`]
             Reference/stars matches used in the fit.
+        matchMeta : `lsst.daf.base.PropertyList`
+            Metadata needed to unpersist matches, as returned by the matcher.
         photo_calib : `lsst.afw.image.PhotoCalib`
             Photometric calibration that was fit to the star catalog.
         """

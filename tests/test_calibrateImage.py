@@ -175,10 +175,10 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
             # Fit photoCalib should be the applied value if we calibrated
             # pixels, not the ==1 one on the exposure.
             photo_calib = result.applied_photo_calib
-            self.assertEqual(result.exposure.getPhotoCalib().getCalibrationMean(), 1.0)
+            self.assertEqual(result.exposure.photoCalib.getCalibrationMean(), 1.0)
         else:
             self.assertIsNone(result.applied_photo_calib)
-            photo_calib = result.exposure.getPhotoCalib()
+            photo_calib = result.exposure.photoCalib
         # PhotoCalib comparison is very approximate because we are basing this
         # comparison on just 2-3 stars.
         self.assertFloatsAlmostEqual(photo_calib.getCalibrationMean(), self.photo_calib, rtol=1e-2)
@@ -237,7 +237,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.assertNotIn("photometry_matches", result.getDict())
 
     def test_run_no_calibrate_pixels(self):
-        """Test that run() returns reasonable values to be butler put when
+        """Test that run() returns reasonable values when
         do_calibrate_pixels=False.
         """
         self.config.do_calibrate_pixels = False
@@ -617,6 +617,10 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
             connections[optional] = temp
 
     def test_runQuantum_no_calibrate_pixels(self):
+        """Test that the the task runs when calibrating pixels is disabled,
+        and that this results in the ``applied_photo_calib`` output being
+        removed.
+        """
         config = CalibrateImageTask.ConfigClass()
         config.do_calibrate_pixels = False
         task = CalibrateImageTask(config=config)
