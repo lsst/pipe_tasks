@@ -123,19 +123,23 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
         name="{outputCoaddName}Coadd_deblendedFlux_schema",
         storageClass="SourceCatalog"
     )
+    # TODO[DM-47405]: remove this deprecated connection.
     fluxCatalogs = cT.Output(
         doc="Flux weighted catalogs produced by multiband deblending",
         name="{outputCoaddName}Coadd_deblendedFlux",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "band", "skymap"),
-        multiple=True
+        multiple=True,
+        deprecated="Deprecated and unused; will be removed after v29."
     )
+    # TODO[DM-47405]: remove this deprecated connection.
     templateCatalogs = cT.Output(
         doc="Template catalogs produced by multiband deblending",
         name="{outputCoaddName}Coadd_deblendedModel",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "band", "skymap"),
-        multiple=True
+        multiple=True,
+        deprecated="Deprecated and unused; will be removed after v29."
     )
     deblendedCatalog = cT.Output(
         doc="Catalogs produced by multiband deblending",
@@ -152,9 +156,8 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
-        # Remove unused connections.
-        # TODO: deprecate once RFC-860 passes.
-        self.outputs -= set(("fluxCatalogs", "templateCatalogs"))
+        del self.fluxCatalogs
+        del self.templateCatalogs
 
 
 class DeblendCoaddSourcesMultiConfig(PipelineTaskConfig,
