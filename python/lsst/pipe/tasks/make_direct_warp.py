@@ -21,12 +21,14 @@
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING, Iterable
 
 import numpy as np
 from lsst.afw.image import ExposureF, Mask
-from lsst.afw.math import Warper
+from lsst.afw.math import BackgroundList, Warper
 from lsst.coadd.utils import copyGoodPixels
+from lsst.daf.butler import DataCoordinate, DeferredDatasetHandle
 from lsst.geom import Box2D
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
 from lsst.meas.algorithms.cloughTocher2DInterpolator import (
@@ -56,12 +58,41 @@ from .coaddInputRecorder import CoaddInputRecorderTask
 if TYPE_CHECKING:
     from lsst.afw.image import MaskedImage
     from lsst.afw.table import Exposure, ExposureCatalog
+    from lsst.pipe.base import InMemoryDatasetHandle
 
 
 __all__ = (
     "MakeDirectWarpConfig",
     "MakeDirectWarpTask",
 )
+
+
+@dataclasses.dataclass
+class WarpDetectorInputs:
+    """Inputs passed to `MakeDirectWarpTask.run` for a single detector.
+    """
+
+    exposure_or_handle: ExposureF | DeferredDatasetHandle | InMemoryDatasetHandle
+    """Detector image with initial calibration objects, or a deferred-load
+    handle for one.
+    """
+
+    data_id: DataCoordinate
+    """Butler data ID for this detector."""
+
+    background_revert: BackgroundList | None = None
+    """Background model to restore in (i.e. add to) the image."""
+
+    background_apply: BackgroundList | None = None
+    """Background model to apply to (i.e. subtract from) the image."""
+
+    @property
+    def exposure(self) -> ExposureF:
+        """Get the exposure object, loading it if necessary."""
+        if not isinstance(self.exposure_or_handle, ExposureF):
+            self.exposure_or_handle = self.exposure_or_handle.get()
+
+        return self.exposure_or_handle
 
 
 class MakeDirectWarpConnections(
