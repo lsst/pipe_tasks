@@ -949,6 +949,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                        photo_calib.getCalibrationErr(),
                                        bbox=exposure.getBBox())
         exposure.setPhotoCalib(identity)
+        exposure.metadata["BUNIT"] = "nJy"
 
         assert photo_calib._isConstant, \
             "Background calibration assumes a constant PhotoCalib; PhotoCalTask should always return that."
