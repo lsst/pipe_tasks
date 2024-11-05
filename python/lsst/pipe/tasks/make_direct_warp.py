@@ -680,7 +680,7 @@ class MakeDirectWarpTask(PipelineTask):
         *,
         visit_summary: ExposureCatalog | None = None,
         includeScaleUncertainty: bool = False,
-    ) -> None:
+    ) -> bool:
         """Apply all of the calibrations from visit_summary to the exposure.
 
         Specifically, this method updates the following (if available) to the
@@ -706,6 +706,11 @@ class MakeDirectWarpTask(PipelineTask):
             Whether to include the uncertainty on the calibration in the
             resulting variance? Passed onto the `calibrateImage` method of the
             PhotoCalib object attached to ``exp``.
+
+        Returns
+        -------
+        success : `bool`
+            True if all calibrations were successfully applied, False otherwise.
 
         Raises
         ------
@@ -733,7 +738,11 @@ class MakeDirectWarpTask(PipelineTask):
             row = visit_summary.find(detector)
 
             if row is None:
-                raise RuntimeError(f"Unexpectedly incomplete visit_summary: {detector=} is missing.")
+                self.log.info(
+                    "Unexpectedly incomplete visit_summary: detector = %s is missing. Skipping it.",
+                    detector,
+                )
+                return False
 
             if photo_calib := row.getPhotoCalib():
                 detector_inputs.exposure.setPhotoCalib(photo_calib)
@@ -742,17 +751,20 @@ class MakeDirectWarpTask(PipelineTask):
                     "No photometric calibration found in visit summary for detector = %s. Skipping it.",
                     detector,
                 )
+                return False
 
             if wcs := row.getWcs():
                 detector_inputs.exposure.setWcs(wcs)
             else:
                 self.log.info("No WCS found in visit summary for detector = %s. Skipping it.", detector)
+                return False
 
             if self.config.useVisitSummaryPsf:
                 if psf := row.getPsf():
                     detector_inputs.exposure.setPsf(psf)
                 else:
                     self.log.info("No PSF found in visit summary for detector = %s. Skipping it.", detector)
+                    return False
 
                 if apcorr_map := row.getApCorrMap():
                     detector_inputs.exposure.setApCorrMap(apcorr_map)
@@ -761,6 +773,8 @@ class MakeDirectWarpTask(PipelineTask):
                         "No aperture correction map found in visit summary for detector = %s. Skipping it",
                         detector,
                     )
+                    return False
+
             elif visit_summary is not None:
                 # We can only get here by calling `run`, not `runQuantum`.
                 raise RuntimeError(
@@ -788,6 +802,8 @@ class MakeDirectWarpTask(PipelineTask):
             includeScaleUncertainty=includeScaleUncertainty,
         )
         detector_inputs.exposure.maskedImage /= photo_calib.getCalibrationMean()
+
+        return True
 
     # This method is copied from makeWarp.py
     @classmethod
