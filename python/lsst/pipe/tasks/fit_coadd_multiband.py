@@ -349,13 +349,27 @@ class CoaddMultibandFitTask(CoaddMultibandFitBase, pipeBase.PipelineTask):
         super().__init__(initInputs=initInputs, **kwargs)
         self.makeSubtask("fit_coadd_multiband")
 
+    def make_kwargs(self, butlerQC, inputRefs, inputs):
+        """Make any kwargs needed to be passed to run.
+
+        This method should be overloaded by subclasses that are configured to
+        use a specific subtask that needs additional arguments derived from
+        the inputs but do not otherwise need to overload runQuantum."""
+        return {}
+
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         catexps = self.build_catexps(butlerQC, inputRefs, inputs)
-        outputs = self.run(catexps=catexps, cat_ref=inputs['cat_ref'])
+        kwargs = self.make_kwargs(butlerQC, inputRefs, inputs)
+        outputs = self.run(catexps=catexps, cat_ref=inputs['cat_ref'], **kwargs)
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, catexps: list[CatalogExposure], cat_ref: afwTable.SourceCatalog) -> pipeBase.Struct:
+    def run(
+        self,
+        catexps: list[CatalogExposure],
+        cat_ref: afwTable.SourceCatalog,
+        **kwargs
+    ) -> pipeBase.Struct:
         """Fit sources from a reference catalog using data from multiple
         exposures in the same region (patch).
 
@@ -376,6 +390,6 @@ class CoaddMultibandFitTask(CoaddMultibandFitBase, pipeBase.PipelineTask):
         -----
         Subtasks may have further requirements; see `CoaddMultibandFitSubTask.run`.
         """
-        cat_output = self.fit_coadd_multiband.run(catalog_multi=cat_ref, catexps=catexps).output
+        cat_output = self.fit_coadd_multiband.run(catalog_multi=cat_ref, catexps=catexps, **kwargs).output
         retStruct = pipeBase.Struct(cat_output=cat_output)
         return retStruct
