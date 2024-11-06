@@ -256,14 +256,14 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
         storageClass="SkyMap",
         dimensions=("skymap",),
     )
+    # TODO[DM-47424]: remove this deprecated connection.
     visitCatalogs = cT.Input(
-        doc="Source catalogs for visits which overlap input tract, patch, band. Will be "
-            "further filtered in the task for the purpose of propagating flags from image calibration "
-            "and characterization to coadd objects. Only used in legacy PropagateVisitFlagsTask.",
+        doc="Deprecated and unused.",
         name="src",
         dimensions=("instrument", "visit", "detector"),
         storageClass="SourceCatalog",
-        multiple=True
+        multiple=True,
+        deprecated="Deprecated and unused.  Will be removed after v29.",
     )
     sourceTableHandles = cT.Input(
         doc=("Source tables that are derived from the ``CalibrateTask`` sources. "
@@ -329,38 +329,30 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
-        if config.doPropagateFlags is False:
-            self.inputs -= set(("visitCatalogs",))
-            self.inputs -= set(("sourceTableHandles",))
-            self.inputs -= set(("finalizedSourceTableHandles",))
-        elif config.propagateFlags.target == PropagateSourceFlagsTask:
-            # New PropagateSourceFlagsTask does not use visitCatalogs.
-            self.inputs -= set(("visitCatalogs",))
+        del self.visitCatalogs
+        if not config.doPropagateFlags:
+            del self.sourceTableHandles
+            del self.finalizedSourceTableHandles
+        else:
             # Check for types of flags required.
             if not config.propagateFlags.source_flags:
-                self.inputs -= set(("sourceTableHandles",))
+                del self.sourceTableHandles
             if not config.propagateFlags.finalized_source_flags:
-                self.inputs -= set(("finalizedSourceTableHandles",))
-        else:
-            # Deprecated PropagateVisitFlagsTask uses visitCatalogs.
-            self.inputs -= set(("sourceTableHandles",))
-            self.inputs -= set(("finalizedSourceTableHandles",))
-
+                del self.finalizedSourceTableHandles
         if config.inputCatalog == "deblendedCatalog":
-            self.inputs -= set(("inputCatalog",))
-
+            del self.inputCatalog
             if not config.doAddFootprints:
-                self.inputs -= set(("scarletModels",))
+                del self.scarletModels
         else:
-            self.inputs -= set(("deblendedCatalog"))
-            self.inputs -= set(("scarletModels",))
+            del self.deblendedCatalog
+            del self.scarletModels
 
-        if config.doMatchSources is False:
-            self.prerequisiteInputs -= set(("refCat",))
-            self.outputs -= set(("matchResult",))
+        if not config.doMatchSources:
+            del self.refCat
+            del self.matchResult
 
-        if config.doWriteMatchesDenormalized is False:
-            self.outputs -= set(("denormMatches",))
+        if not config.doWriteMatchesDenormalized:
+            del self.denormMatches
 
 
 class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
@@ -601,52 +593,25 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         inputs['skyInfo'] = skyInfo
 
         if self.config.doPropagateFlags:
-            if self.config.propagateFlags.target == PropagateSourceFlagsTask:
-                # New version
-                ccdInputs = inputs["exposure"].getInfo().getCoaddInputs().ccds
-                inputs["ccdInputs"] = ccdInputs
+            ccdInputs = inputs["exposure"].getInfo().getCoaddInputs().ccds
+            inputs["ccdInputs"] = ccdInputs
 
-                if "sourceTableHandles" in inputs:
-                    sourceTableHandles = inputs.pop("sourceTableHandles")
-                    sourceTableHandleDict = {handle.dataId["visit"]: handle
-                                             for handle in sourceTableHandles}
-                    inputs["sourceTableHandleDict"] = sourceTableHandleDict
-                if "finalizedSourceTableHandles" in inputs:
-                    finalizedSourceTableHandles = inputs.pop("finalizedSourceTableHandles")
-                    finalizedSourceTableHandleDict = {handle.dataId["visit"]: handle
-                                                      for handle in finalizedSourceTableHandles}
-                    inputs["finalizedSourceTableHandleDict"] = finalizedSourceTableHandleDict
-            else:
-                # Deprecated legacy version
-                # Filter out any visit catalog that is not coadd inputs
-                ccdInputs = inputs['exposure'].getInfo().getCoaddInputs().ccds
-                visitKey = ccdInputs.schema.find("visit").key
-                ccdKey = ccdInputs.schema.find("ccd").key
-                inputVisitIds = set()
-                ccdRecordsWcs = {}
-                for ccdRecord in ccdInputs:
-                    visit = ccdRecord.get(visitKey)
-                    ccd = ccdRecord.get(ccdKey)
-                    inputVisitIds.add((visit, ccd))
-                    ccdRecordsWcs[(visit, ccd)] = ccdRecord.getWcs()
-
-                inputCatalogsToKeep = []
-                inputCatalogWcsUpdate = []
-                for i, dataRef in enumerate(inputRefs.visitCatalogs):
-                    key = (dataRef.dataId['visit'], dataRef.dataId['detector'])
-                    if key in inputVisitIds:
-                        inputCatalogsToKeep.append(inputs['visitCatalogs'][i])
-                        inputCatalogWcsUpdate.append(ccdRecordsWcs[key])
-                inputs['visitCatalogs'] = inputCatalogsToKeep
-                inputs['wcsUpdates'] = inputCatalogWcsUpdate
-                inputs['ccdInputs'] = ccdInputs
+            if "sourceTableHandles" in inputs:
+                sourceTableHandles = inputs.pop("sourceTableHandles")
+                sourceTableHandleDict = {handle.dataId["visit"]: handle for handle in sourceTableHandles}
+                inputs["sourceTableHandleDict"] = sourceTableHandleDict
+            if "finalizedSourceTableHandles" in inputs:
+                finalizedSourceTableHandles = inputs.pop("finalizedSourceTableHandles")
+                finalizedSourceTableHandleDict = {handle.dataId["visit"]: handle
+                                                  for handle in finalizedSourceTableHandles}
+                inputs["finalizedSourceTableHandleDict"] = finalizedSourceTableHandleDict
 
         outputs = self.run(**inputs)
         # Strip HeavyFootprints to save space on disk
         sources = outputs.outputSources
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, exposure, sources, skyInfo, exposureId, ccdInputs=None, visitCatalogs=None, wcsUpdates=None,
+    def run(self, exposure, sources, skyInfo, exposureId, ccdInputs=None,
             sourceTableHandleDict=None, finalizedSourceTableHandleDict=None):
         """Run measurement algorithms on the input exposure, and optionally populate the
         resulting catalog with extra information.
@@ -666,16 +631,6 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         ccdInputs : `lsst.afw.table.ExposureCatalog`, optional
             Catalog containing information on the individual visits which went into making
             the coadd.
-        visitCatalogs : `list` of `lsst.afw.table.SourceCatalogs`, optional
-            A list of source catalogs corresponding to measurements made on the individual
-            visits which went into the input exposure. If None and butler is `None` then
-            the task cannot propagate visit flags to the output catalog.
-            Deprecated, to be removed with PropagateVisitFlagsTask.
-        wcsUpdates : `list` of `lsst.afw.geom.SkyWcs`, optional
-            If visitCatalogs is not `None` this should be a list of wcs objects which correspond
-            to the input visits. Used to put all coordinates to common system. If `None` and
-            butler is `None` then the task cannot propagate visit flags to the output catalog.
-            Deprecated, to be removed with PropagateVisitFlagsTask.
         sourceTableHandleDict : `dict` [`int`, `lsst.daf.butler.DeferredDatasetHandle`], optional
             Dict for sourceTable_visit handles (key is visit) for propagating flags.
             These tables are derived from the ``CalibrateTask`` sources, and contain
@@ -714,23 +669,12 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         self.setPrimaryFlags.run(sources, skyMap=skyInfo.skyMap, tractInfo=skyInfo.tractInfo,
                                  patchInfo=skyInfo.patchInfo)
         if self.config.doPropagateFlags:
-            if self.config.propagateFlags.target == PropagateSourceFlagsTask:
-                # New version
-                self.propagateFlags.run(
-                    sources,
-                    ccdInputs,
-                    sourceTableHandleDict,
-                    finalizedSourceTableHandleDict
-                )
-            else:
-                # Legacy deprecated version
-                self.propagateFlags.run(
-                    sources,
-                    ccdInputs,
-                    exposure.getWcs(),
-                    visitCatalogs,
-                    wcsUpdates
-                )
+            self.propagateFlags.run(
+                sources,
+                ccdInputs,
+                sourceTableHandleDict,
+                finalizedSourceTableHandleDict
+            )
 
         results = Struct()
 
