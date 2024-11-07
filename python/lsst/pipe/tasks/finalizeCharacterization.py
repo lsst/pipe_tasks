@@ -348,6 +348,9 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             isolated_star_source_dict
         )
 
+        if isolated_source_table is None:
+            raise pipeBase.NoWorkFound(f'No good isolated sources found for any detectors in visit {visit}')
+
         exposure_cat_schema = afwTable.ExposureTable.makeMinimalSchema()
         exposure_cat_schema.addField('visit', type='L', doc='Visit number')
 
@@ -524,8 +527,10 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         -------
         isolated_table : `np.ndarray` (N,)
             Table of isolated stars, with indexes to isolated sources.
+            Returns None if there are no usable isolated catalogs.
         isolated_source_table : `np.ndarray` (M,)
             Table of isolated sources, with indexes to isolated stars.
+            Returns None if there are no usable isolated catalogs.
         """
         isolated_tables = []
         isolated_sources = []
@@ -603,8 +608,12 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             merge_cat_counter += len(table_cat)
             merge_source_counter += len(table_source)
 
-        isolated_table = np.concatenate(isolated_tables)
-        isolated_source_table = np.concatenate(isolated_sources)
+        if len(isolated_tables) > 0:
+            isolated_table = np.concatenate(isolated_tables)
+            isolated_source_table = np.concatenate(isolated_sources)
+        else:
+            isolated_table = None
+            isolated_source_table = None
 
         return isolated_table, isolated_source_table
 
