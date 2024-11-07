@@ -23,15 +23,14 @@ import unittest
 import tempfile
 
 import astropy.time
-import pandas as pd
 
-import lsst.utils.tests
-from lsst.sphgeom import ConvexPolygon, UnitVector3d
+from lsst.afw.table import SourceCatalog
 import lsst.daf.butler
 import lsst.daf.butler.tests as butlerTests
 import lsst.pipe.base.testUtils as pipeTests
-
 from lsst.pipe.tasks.getRegionTimeFromVisit import GetRegionTimeFromVisitTask
+from lsst.sphgeom import ConvexPolygon, UnitVector3d
+import lsst.utils.tests
 
 
 class GetRegionTimeFromVisitTests(lsst.utils.tests.TestCase):
@@ -93,8 +92,8 @@ class GetRegionTimeFromVisitTests(lsst.utils.tests.TestCase):
 
         butlerTests.addDatasetType(self.repo, "regionTimeInfo", {"instrument", "group", "detector"},
                                    "RegionTimeInfo")
-        butlerTests.addDatasetType(self.repo, "goodSeeingDiff_diaSrcTable",
-                                   {"instrument", "visit", "detector"}, "DataFrame")
+        butlerTests.addDatasetType(self.repo, "initial_stars_footprints_detector",
+                                   {"instrument", "visit", "detector"}, "SourceCatalog")
         # pipeTests.makeQuantum needs outputs registered even if graph generation does not.
         butlerTests.addDatasetType(self.repo, "getRegionTimeFromVisit_dummy2",
                                    {"instrument", "exposure", "detector"}, "int")
@@ -108,7 +107,8 @@ class GetRegionTimeFromVisitTests(lsst.utils.tests.TestCase):
 
     def test_runQuantum(self):
         butler = butlerTests.makeTestCollection(self.repo, uniqueId=self.id())
-        butler.put(pd.DataFrame(), "goodSeeingDiff_diaSrcTable", self.visit_id)
+        minimal_source_catalog = SourceCatalog()
+        butler.put(minimal_source_catalog, "initial_stars_footprints_detector", self.visit_id)
 
         task = GetRegionTimeFromVisitTask()
         quantum = pipeTests.makeQuantum(

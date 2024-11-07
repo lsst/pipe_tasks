@@ -34,12 +34,10 @@ class GetRegionTimeFromVisitConnections(pipeBase.PipelineTaskConnections,
 
     dummy_visit = pipeBase.connectionTypes.Input(
         doc="Placeholder connection to provide visit-detector records and "
-            "constrain data IDs to images we're processing. Use of a catalog "
-            "dataset lets us also control how late in the pipeline the task "
-            "is run.",
-        name="{fakesType}{coaddName}Diff_diaSrcTable",
-        storageClass="DataFrame",
-        dimensions={"instrument", "visit", "detector"},
+            "constrain data IDs to images we're processing.",
+        name="initial_stars_footprints_detector",
+        storageClass="SourceCatalog",
+        dimensions=["instrument", "visit", "detector"],
     )
     dummy_exposure = pipeBase.connectionTypes.Output(
         doc="Placeholder connection to guarantee visit-exposure-group mapping. "
