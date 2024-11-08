@@ -325,6 +325,21 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         NoWorkFound
             Raised if the selector returns no good sources.
         """
+        # Check if we have the same inputs for each of the
+        # src_dict and calexp_dict.
+        src_detectors = set(src_dict.keys())
+        calexp_detectors = set(calexp_dict.keys())
+
+        if src_detectors != calexp_detectors:
+            detector_keys = sorted(src_detectors.intersection(calexp_detectors))
+            self.log.warning(
+                "Input src and calexp have mismatched detectors; "
+                "running intersection of %d detectors.",
+                len(detector_keys),
+            )
+        else:
+            detector_keys = sorted(src_detectors)
+
         # We do not need the isolated star table in this task.
         # However, it is used in tests to confirm consistency of indexes.
         _, isolated_source_table = self.concat_isolated_star_cats(
@@ -332,6 +347,9 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             isolated_star_cat_dict,
             isolated_star_source_dict
         )
+
+        if isolated_source_table is None:
+            raise pipeBase.NoWorkFound(f'No good isolated sources found for any detectors in visit {visit}')
 
         exposure_cat_schema = afwTable.ExposureTable.makeMinimalSchema()
         exposure_cat_schema.addField('visit', type='L', doc='Visit number')
@@ -346,7 +364,9 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         measured_src_tables = []
         measured_src_table = None
 
-        for detector in src_dict:
+        self.log.info("Running finalizeCharacterization on %d detectors.", len(detector_keys))
+        for detector in detector_keys:
+            self.log.info("Starting finalizeCharacterization on detector ID %d.", detector)
             src = src_dict[detector].get()
             exposure = calexp_dict[detector].get()
 
@@ -507,8 +527,10 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         -------
         isolated_table : `np.ndarray` (N,)
             Table of isolated stars, with indexes to isolated sources.
+            Returns None if there are no usable isolated catalogs.
         isolated_source_table : `np.ndarray` (M,)
             Table of isolated sources, with indexes to isolated stars.
+            Returns None if there are no usable isolated catalogs.
         """
         isolated_tables = []
         isolated_sources = []
@@ -586,8 +608,12 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             merge_cat_counter += len(table_cat)
             merge_source_counter += len(table_source)
 
-        isolated_table = np.concatenate(isolated_tables)
-        isolated_source_table = np.concatenate(isolated_sources)
+        if len(isolated_tables) > 0:
+            isolated_table = np.concatenate(isolated_tables)
+            isolated_source_table = np.concatenate(isolated_sources)
+        else:
+            isolated_table = None
+            isolated_source_table = None
 
         return isolated_table, isolated_source_table
 
