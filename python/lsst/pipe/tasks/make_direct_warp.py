@@ -519,12 +519,13 @@ class MakeDirectWarpTask(PipelineTask):
                 detector_inputs.data_id,
             )
 
+            input_exposure = detector_inputs.exposure
             # Generate noise image(s) in-situ.
             seed = self.get_seed_from_data_id(detector_inputs.data_id)
             rng = np.random.RandomState(seed + self.config.seedOffset)
 
             # Generate noise images in-situ.
-            noise_calexps = self.make_noise_exposures(detector_inputs.exposure, rng)
+            noise_calexps = self.make_noise_exposures(input_exposure, rng)
 
             warpedExposure = self.process(
                 detector_inputs,
@@ -562,7 +563,7 @@ class MakeDirectWarpTask(PipelineTask):
                 final_warp.setPhotoCalib(warpedExposure.photoCalib)
 
             ccdId = self.config.idGenerator.apply(detector_inputs.data_id).catalog_id
-            inputRecorder.addCalExp(detector_inputs.exposure, ccdId, nGood)
+            inputRecorder.addCalExp(input_exposure, ccdId, nGood)
             totalGoodPixels += nGood
 
             if self.config.doWarpMaskedFraction:
@@ -571,7 +572,7 @@ class MakeDirectWarpTask(PipelineTask):
                     badMaskPlanes = self.preWarpInterpolation.config.badMaskPlanes
                 else:
                     badMaskPlanes = []
-                masked_fraction_exp = self._get_bad_mask(detector_inputs.exposure, badMaskPlanes)
+                masked_fraction_exp = self._get_bad_mask(input_exposure, badMaskPlanes)
 
                 masked_fraction_warp = self.maskedFractionWarper.warpExposure(
                     target_wcs, masked_fraction_exp, destBBox=target_bbox
@@ -690,8 +691,9 @@ class MakeDirectWarpTask(PipelineTask):
             be applied successfully. Otherwise, None.
         """
 
+        input_exposure = detector_inputs.exposure
         if self.config.doPreWarpInterpolation:
-            self.preWarpInterpolation.run(detector_inputs.exposure.maskedImage)
+            self.preWarpInterpolation.run(input_exposure.maskedImage)
 
         success = self._apply_all_calibrations(
             detector_inputs,
@@ -705,7 +707,7 @@ class MakeDirectWarpTask(PipelineTask):
         with self.timer("warp"):
             warped_exposure = warper.warpExposure(
                 target_wcs,
-                detector_inputs.exposure,
+                input_exposure,
                 maxBBox=maxBBox,
                 destBBox=destBBox,
             )
@@ -769,8 +771,9 @@ class MakeDirectWarpTask(PipelineTask):
                 f"doRevertOldBackground is False, but {detector_inputs.data_id} has a background_revert."
             )
 
+        input_exposure = detector_inputs.exposure
         if visit_summary is not None:
-            detector = detector_inputs.exposure.info.getDetector().getId()
+            detector = input_exposure.info.getDetector().getId()
             row = visit_summary.find(detector)
 
             if row is None:
@@ -781,7 +784,7 @@ class MakeDirectWarpTask(PipelineTask):
                 return False
 
             if photo_calib := row.getPhotoCalib():
-                detector_inputs.exposure.setPhotoCalib(photo_calib)
+                input_exposure.setPhotoCalib(photo_calib)
             else:
                 self.log.info(
                     "No photometric calibration found in visit summary for detector = %s. Skipping it.",
@@ -790,20 +793,20 @@ class MakeDirectWarpTask(PipelineTask):
                 return False
 
             if wcs := row.getWcs():
-                detector_inputs.exposure.setWcs(wcs)
+                input_exposure.setWcs(wcs)
             else:
                 self.log.info("No WCS found in visit summary for detector = %s. Skipping it.", detector)
                 return False
 
             if self.config.useVisitSummaryPsf:
                 if psf := row.getPsf():
-                    detector_inputs.exposure.setPsf(psf)
+                    input_exposure.setPsf(psf)
                 else:
                     self.log.info("No PSF found in visit summary for detector = %s. Skipping it.", detector)
                     return False
 
                 if apcorr_map := row.getApCorrMap():
-                    detector_inputs.exposure.setApCorrMap(apcorr_map)
+                    input_exposure.setApCorrMap(apcorr_map)
                 else:
                     self.log.info(
                         "No aperture correction map found in visit summary for detector = %s. Skipping it",
@@ -828,12 +831,12 @@ class MakeDirectWarpTask(PipelineTask):
 
         # Calibrate the (masked) image.
         # This should likely happen even if visit_summary is None.
-        photo_calib = detector_inputs.exposure.photoCalib
-        detector_inputs.exposure.maskedImage = photo_calib.calibrateImage(
-            detector_inputs.exposure.maskedImage,
+        photo_calib = input_exposure.photoCalib
+        input_exposure.maskedImage = photo_calib.calibrateImage(
+            input_exposure.maskedImage,
             includeScaleUncertainty=includeScaleUncertainty,
         )
-        detector_inputs.exposure.maskedImage /= photo_calib.getCalibrationMean()
+        input_exposure.maskedImage /= photo_calib.getCalibrationMean()
 
         return True
 
