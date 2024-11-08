@@ -95,6 +95,36 @@ class WarpDetectorInputs:
 
         return self.exposure_or_handle
 
+    def apply_background(self) -> None:
+        """Apply (subtract) the `background_apply` to the exposure in-place.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if `background_apply` is None.
+        """
+        if self.background_apply is None:
+            raise RuntimeError("No background to apply")
+
+        if self.background_apply:
+            # Subtract only if `background_apply` is not a trivial background.
+            self.exposure.maskedImage -= self.background_apply.getImage()
+
+    def revert_background(self) -> None:
+        """Revert (add) the `background_revert` from the exposure in-place.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if `background_revert` is None.
+        """
+        if self.background_revert is None:
+            raise RuntimeError("No background to revert")
+
+        if self.background_revert:
+            # Add only if `background_revert` is not a trivial background.
+            self.exposure.maskedImage += self.background_revert.getImage()
+
 
 class MakeDirectWarpConnections(
     PipelineTaskConnections,
@@ -731,12 +761,8 @@ class MakeDirectWarpTask(PipelineTask):
             task configuration.
         """
         if self.config.doRevertOldBackground:
-            if detector_inputs.background_revert is None:
-                raise RuntimeError(
-                    f"doRevertOldBackground is True, but no background_revert for {detector_inputs.data_id}."
-                )
-            detector_inputs.exposure.maskedImage += detector_inputs.background_revert.getImage()
-        elif detector_inputs.background_revert is not None:
+            detector_inputs.revert_background()
+        elif detector_inputs.background_revert:
             # This could get trigged only if runQuantum is skipped and run is
             # called directly.
             raise RuntimeError(
@@ -792,12 +818,8 @@ class MakeDirectWarpTask(PipelineTask):
                 )
 
         if self.config.doApplyNewBackground:
-            if detector_inputs.background_apply is None:
-                raise RuntimeError(
-                    f"doApplyNewBackground is True, but no background_apply for {detector_inputs.data_id}."
-                )
-            detector_inputs.exposure.maskedImage -= detector_inputs.background_apply.getImage()
-        elif detector_inputs.background_apply is not None:
+            detector_inputs.apply_background()
+        elif detector_inputs.background_apply:
             # This could get trigged only if runQuantum is skipped and run is
             # called directly.
             raise RuntimeError(
