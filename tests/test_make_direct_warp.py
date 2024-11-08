@@ -215,6 +215,9 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
         self.assertIsInstance(mfrac, lsst.afw.image.ImageF)
         # Ensure that the noise image is a MaskedImageF object.
         self.assertIsInstance(noise, lsst.afw.image.MaskedImageF)
+        # Check that the noise image is not accidentally the same as the image.
+        with self.assertRaises(AssertionError):
+            self.assertImagesAlmostEqual(noise.image, warp.image)
         # Ensure the warp has valid pixels
         self.assertGreater(np.isfinite(warp.image.array.ravel()).sum(), 0)
         # Ensure the warp has the correct WCS
