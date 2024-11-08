@@ -30,6 +30,7 @@ import numpy as np
 import lsst.utils.tests
 
 import lsst.afw.image
+import lsst.afw.math as afwMath
 from lsst.daf.butler import DataCoordinate, DimensionUniverse
 from lsst.pipe.base import InMemoryDatasetHandle
 from lsst.pipe.tasks.make_direct_warp import (MakeDirectWarpConfig, MakeDirectWarpTask, WarpDetectorInputs)
@@ -225,6 +226,127 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
         # Ensure that mfrac has pixels between 0 and 1
         self.assertTrue(np.nanmax(mfrac.array) <= 1)
         self.assertTrue(np.nanmin(mfrac.array) >= 0)
+
+    def make_backgroundList(self):
+        """Obtain a BackgroundList for the image."""
+        bgCtrl = afwMath.BackgroundControl(10, 10)
+        interpStyle = afwMath.Interpolate.AKIMA_SPLINE
+        undersampleStyle = afwMath.REDUCE_INTERP_ORDER
+        approxStyle = afwMath.ApproximateControl.UNKNOWN
+        approxOrderX = 0
+        approxOrderY = 0
+        approxWeighting = False
+
+        backgroundList = afwMath.BackgroundList()
+
+        bkgd = afwMath.makeBackground(self.exposure.image, bgCtrl)
+
+        backgroundList.append(
+            (bkgd, interpStyle, undersampleStyle, approxStyle, approxOrderX, approxOrderY, approxWeighting)
+        )
+
+        return backgroundList
+
+    @lsst.utils.tests.methodParametersProduct(
+        doApplyNewBackground=[True, False], doRevertOldBackground=[True, False]
+    )
+    def test_backgrounds(self, doApplyNewBackground, doRevertOldBackground):
+        """Test that applying and reverting backgrounds runs without errors,
+        especially on noise images.
+        """
+        backgroundList = self.make_backgroundList()
+
+        warp_detector_inputs = {
+            self.dataRef.dataId.detector.id: WarpDetectorInputs(
+                exposure_or_handle=self.dataRef,
+                data_id=self.dataRef.dataId,
+                background_apply=backgroundList if doApplyNewBackground else None,
+                background_revert=backgroundList if doRevertOldBackground else None,
+
+            )
+        }
+
+        self.config.numberOfNoiseRealizations = 1
+        self.config.doApplyNewBackground = doApplyNewBackground
+        self.config.doRevertOldBackground = doRevertOldBackground
+
+        makeWarp = MakeDirectWarpTask(config=self.config)
+        makeWarp.run(
+            warp_detector_inputs,
+            sky_info=self.skyInfo,
+            visit_summary=None
+        )
+
+    def test_background_errors(self):
+        """Test that MakeDirectWarpTask raises errors when backgrounds are not
+        set correctly.
+        """
+        backgroundList = self.make_backgroundList()
+        self.config.numberOfNoiseRealizations = 1
+
+        warp_detector_inputs = {
+            self.dataRef.dataId.detector.id: WarpDetectorInputs(
+                exposure_or_handle=self.dataRef,
+                data_id=self.dataRef.dataId,
+                background_apply=backgroundList,
+            )
+        }
+        makeWarp = MakeDirectWarpTask(config=self.config)
+        with self.assertRaises(RuntimeError, msg="doApplyNewBackground is False, but"):
+            makeWarp.run(
+                warp_detector_inputs,
+                sky_info=self.skyInfo,
+                visit_summary=None
+            )
+
+        warp_detector_inputs = {
+            self.dataRef.dataId.detector.id: WarpDetectorInputs(
+                exposure_or_handle=self.dataRef,
+                data_id=self.dataRef.dataId,
+                background_apply=None,
+            )
+        }
+        self.config.doApplyNewBackground = True
+        makeWarp = MakeDirectWarpTask(config=self.config)
+        with self.assertRaises(RuntimeError, msg="No background to apply"):
+            makeWarp.run(
+                warp_detector_inputs,
+                sky_info=self.skyInfo,
+                visit_summary=None
+            )
+
+        warp_detector_inputs = {
+            self.dataRef.dataId.detector.id: WarpDetectorInputs(
+                exposure_or_handle=self.dataRef,
+                data_id=self.dataRef.dataId,
+                background_apply=backgroundList,
+                background_revert=backgroundList,
+            )
+        }
+        makeWarp = MakeDirectWarpTask(config=self.config)
+        with self.assertRaises(RuntimeError, msg="doRevertOldBackground is False, but"):
+            makeWarp.run(
+                warp_detector_inputs,
+                sky_info=self.skyInfo,
+                visit_summary=None
+            )
+
+        warp_detector_inputs = {
+            self.dataRef.dataId.detector.id: WarpDetectorInputs(
+                exposure_or_handle=self.dataRef,
+                data_id=self.dataRef.dataId,
+                background_apply=backgroundList,
+                background_revert=None,
+            )
+        }
+        self.config.doRevertOldBackground = True
+        makeWarp = MakeDirectWarpTask(config=self.config)
+        with self.assertRaises(RuntimeError, msg="No background to revert"):
+            makeWarp.run(
+                warp_detector_inputs,
+                sky_info=self.skyInfo,
+                visit_summary=None
+            )
 
 
 class MakeWarpNoGoodPixelsTestCase(MakeWarpTestCase):
