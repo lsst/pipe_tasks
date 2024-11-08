@@ -70,7 +70,6 @@ class MakeDirectWarpConnections(
     dimensions=("tract", "patch", "skymap", "instrument", "visit"),
     defaultTemplates={
         "coaddName": "deep",
-        "calexpType": "",
     },
 ):
     """Connections for MakeWarpTask"""
@@ -78,7 +77,7 @@ class MakeDirectWarpConnections(
     calexp_list = Input(
         doc="Input exposures to be interpolated and resampled onto a SkyMap "
             "projection/patch.",
-        name="{calexpType}calexp",
+        name="calexp",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
         multiple=True,
