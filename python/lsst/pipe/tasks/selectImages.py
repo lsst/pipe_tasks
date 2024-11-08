@@ -647,8 +647,14 @@ class BestSeeingQuantileSelectVisitsConfig(pipeBase.PipelineTaskConfig,
         max=1,
     )
     nVisitsMin = pexConfig.Field(
-        doc="At least this number of visits selected and supercedes quantile. For example, if 10 visits "
-            "cover this patch, qMin=0.33, and nVisitsMin=5, the best 5 visits will be selected.",
+        doc="The minimum number of visits to select, if qMin and qMax alone would have "
+            "selected fewer. In regimes with many visits, at least this number of visits will be "
+            "selected, superceding quantile when necessary. "
+            "For example, if 10 visits cover this patch, qMin=0, qMax=0.33, and nVisitsMin=5, "
+            "the best 5 visits will be selected, even though 5 > 0.33*10. "
+            "In regimes with few visits, all available visits will be selected. "
+            "For example, if 2 visits cover this patch and nVisitsMin=12, "
+            "both visits will be selected regardless of qMin and qMax.",
         dtype=int,
         default=6,
     )
