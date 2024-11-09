@@ -216,9 +216,6 @@ Python API reference
 .. automodapi:: lsst.pipe.tasks.propagateSourceFlags
    :no-inheritance-diagram:
 
-.. automodapi:: lsst.pipe.tasks.propagateVisitFlags
-   :no-inheritance-diagram:
-
 .. automodapi:: lsst.pipe.tasks.quickFrameMeasurement
    :no-inheritance-diagram:
 
