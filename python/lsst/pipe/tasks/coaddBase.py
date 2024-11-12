@@ -26,6 +26,7 @@ import lsst.afw.image as afwImage
 import lsst.pipe.base as pipeBase
 import lsst.geom as geom
 
+from lsst.afw.geom import Polygon
 from lsst.meas.algorithms import ScaleVarianceTask
 from .selectImages import PsfWcsSelectImagesTask
 from .coaddInputRecorder import CoaddInputRecorderTask
@@ -251,3 +252,37 @@ def subBBoxIter(bbox, subregionSize):
                                    "colShift=%s, rowShift=%s" %
                                    (bbox, subregionSize, colShift, rowShift))
             yield subBBox
+
+
+# Note that this is implemented as a free-floating function to enable reuse in
+# lsst.pipe.tasks.makeWarp and in lsst.drp.tasks.make_psf_matched_warp
+# without creating any relationships between the two classes.
+# This may be converted to a method after makeWarp.py is removed altogether in
+# DM-47916.
+def growValidPolygons(coaddInputs, growBy: int) -> None:
+    """Grow coaddInputs' ccds' ValidPolygons in place.
+
+    Either modify each ccd's validPolygon in place, or if CoaddInputs
+    does not have a validPolygon, create one from its bbox.
+
+    Parameters
+    ----------
+    coaddInputs : `lsst.afw.image.coaddInputs`
+        CoaddInputs object containing the ccds to grow the valid polygons of.
+    growBy : `int`
+        The value to grow the valid polygons by.
+
+    Notes
+    -----
+    Negative values for ``growBy`` can shrink the polygons.
+    """
+    for ccd in coaddInputs.ccds:
+        polyOrig = ccd.getValidPolygon()
+        validPolyBBox = polyOrig.getBBox() if polyOrig else ccd.getBBox()
+        validPolyBBox.grow(growBy)
+        if polyOrig:
+            validPolygon = polyOrig.intersectionSingle(validPolyBBox)
+        else:
+            validPolygon = Polygon(geom.Box2D(validPolyBBox))
+
+        ccd.validPolygon = validPolygon
