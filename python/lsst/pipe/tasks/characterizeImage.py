@@ -445,8 +445,6 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         # TODO: Remove in DM-44658, streak masking to happen only in ip_diffim
         if self.config.doMaskStreaks:
             _ = self.maskStreaks.run(dmeRes.exposure)
-        else:
-            dmeRes.exposure.mask.addMaskPlane('STREAK')
 
         # perform final measurement with final PSF, including measuring and applying aperture correction,
         # if wanted
