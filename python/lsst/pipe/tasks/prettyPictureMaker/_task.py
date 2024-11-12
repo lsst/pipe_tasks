@@ -231,8 +231,15 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         },
     )
     doPSFDeconcovlve = Field[bool](
-        doc="Use the PSF in a richardson lucy deconvolution on the luminance channel.",
-        default=True
+        doc="Use the PSF in a richardson lucy deconvolution on the luminance channel.", default=True
+    )
+    exposureBrackets = ListField[float](
+        doc=(
+            "Exposure scaling factors used in creating multiple exposures with different scalings which will "
+            "then be fused into a final image"
+        ),
+        optional=True,
+        default=[1.25, 1, 0.75],
     )
 
     def setDefaults(self):
@@ -302,6 +309,7 @@ class PrettyPictureTask(PipelineTask):
             **(self.config.localContrastConfig.toDict()),
             cieWhitePoint=tuple(self.config.cieWhitePoint),  # type: ignore
             psf=psf if self.config.doPSFDeconcovlve else None,
+            brackets=list(self.config.exposureBrackets) if self.config.exposureBrackets else None,
         )
 
         # Find the dataset type and thus the maximum values as well
