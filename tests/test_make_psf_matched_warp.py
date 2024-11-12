@@ -29,7 +29,7 @@ import lsst.utils.tests
 
 import lsst.afw.image
 
-from lsst.pipe.tasks.make_direct_warp import MakeDirectWarpTask
+from lsst.pipe.tasks.make_direct_warp import MakeDirectWarpTask, WarpDetectorInputs
 from lsst.pipe.tasks.make_psf_matched_warp import MakePsfMatchedWarpTask
 import lsst.afw.cameraGeom.testUtils
 
@@ -45,9 +45,13 @@ class MakePsfMatchedWarpTestCase(MakeWarpTestCase):
         """
 
         makeWarp = MakeDirectWarpTask(config=self.config)
-        inputs = {"calexp_list": [self.dataRef]}
+        warp_detector_inputs = {
+            self.dataRef.dataId.detector.id: WarpDetectorInputs(
+                exposure_or_handle=self.dataRef, data_id=self.dataRef.dataId
+            )
+        }
         result = makeWarp.run(
-            inputs,
+            warp_detector_inputs,
             sky_info=self.skyInfo,
             visit_summary=None
         )

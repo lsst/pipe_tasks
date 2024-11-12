@@ -21,15 +21,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+import dataclasses
 from typing import TYPE_CHECKING, Iterable
 
 import numpy as np
-from lsst.afw.geom import makeWcsPairTransform
 from lsst.afw.image import ExposureF, Mask
-from lsst.afw.math import Warper
+from lsst.afw.math import BackgroundList, Warper
 from lsst.coadd.utils import copyGoodPixels
+from lsst.daf.butler import DataCoordinate, DeferredDatasetHandle
 from lsst.geom import Box2D
-from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig, WarpedPsf
+from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig
 from lsst.meas.algorithms.cloughTocher2DInterpolator import (
     CloughTocher2DInterpolateTask,
 )
@@ -56,7 +58,8 @@ from .coaddInputRecorder import CoaddInputRecorderTask
 
 if TYPE_CHECKING:
     from lsst.afw.image import MaskedImage
-    from lsst.afw.table import Exposure, ExposureCatalog
+    from lsst.afw.table import ExposureCatalog
+    from lsst.pipe.base import InMemoryDatasetHandle
 
 
 __all__ = (
@@ -65,12 +68,69 @@ __all__ = (
 )
 
 
+@dataclasses.dataclass
+class WarpDetectorInputs:
+    """Inputs passed to `MakeDirectWarpTask.run` for a single detector.
+    """
+
+    exposure_or_handle: ExposureF | DeferredDatasetHandle | InMemoryDatasetHandle
+    """Detector image with initial calibration objects, or a deferred-load
+    handle for one.
+    """
+
+    data_id: DataCoordinate
+    """Butler data ID for this detector."""
+
+    background_revert: BackgroundList | None = None
+    """Background model to restore in (i.e. add to) the image."""
+
+    background_apply: BackgroundList | None = None
+    """Background model to apply to (i.e. subtract from) the image."""
+
+    @property
+    def exposure(self) -> ExposureF:
+        """Get the exposure object, loading it if necessary."""
+        if not isinstance(self.exposure_or_handle, ExposureF):
+            self.exposure_or_handle = self.exposure_or_handle.get()
+
+        return self.exposure_or_handle
+
+    def apply_background(self) -> None:
+        """Apply (subtract) the `background_apply` to the exposure in-place.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if `background_apply` is None.
+        """
+        if self.background_apply is None:
+            raise RuntimeError("No background to apply")
+
+        if self.background_apply:
+            # Subtract only if `background_apply` is not a trivial background.
+            self.exposure.maskedImage -= self.background_apply.getImage()
+
+    def revert_background(self) -> None:
+        """Revert (add) the `background_revert` from the exposure in-place.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if `background_revert` is None.
+        """
+        if self.background_revert is None:
+            raise RuntimeError("No background to revert")
+
+        if self.background_revert:
+            # Add only if `background_revert` is not a trivial background.
+            self.exposure.maskedImage += self.background_revert.getImage()
+
+
 class MakeDirectWarpConnections(
     PipelineTaskConnections,
     dimensions=("tract", "patch", "skymap", "instrument", "visit"),
     defaultTemplates={
         "coaddName": "deep",
-        "calexpType": "",
     },
 ):
     """Connections for MakeWarpTask"""
@@ -78,7 +138,7 @@ class MakeDirectWarpConnections(
     calexp_list = Input(
         doc="Input exposures to be interpolated and resampled onto a SkyMap "
             "projection/patch.",
-        name="{calexpType}calexp",
+        name="calexp",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
         multiple=True,
@@ -265,7 +325,7 @@ class MakeDirectWarpConfig(
 
     @bgSubtracted.setter
     def bgSubtracted(self, value: bool) -> None:
-        self.doRevertOldBackground = ~value
+        self.doRevertOldBackground = not value
 
     @property
     def doApplySkyCorr(self) -> bool:
@@ -319,13 +379,26 @@ class MakeDirectWarpTask(PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         # Docstring inherited.
 
-        # Read in all inputs.
-        inputs = butlerQC.get(inputRefs)
+        inputs: Mapping[int, WarpDetectorInputs] = {}  # Detector ID -> WarpDetectorInputs
+        for handle in butlerQC.get(inputRefs.calexp_list):
+            inputs[handle.dataId["detector"]] = WarpDetectorInputs(
+                exposure_or_handle=handle,
+                data_id=handle.dataId,
+            )
 
-        if not inputs["calexp_list"]:
+        if not inputs:
             raise NoWorkFound("No input warps provided for co-addition")
 
-        sky_map = inputs.pop("sky_map")
+        # Add backgrounds to the inputs struct, being careful not to assume
+        # they're present for the same detectors we got image handles for, in
+        # case of upstream errors.
+        for ref in getattr(inputRefs, "background_revert_list", []):
+            inputs[ref.dataId["detector"]].background_revert = butlerQC.get(ref)
+        for ref in getattr(inputRefs, "background_apply_list", []):
+            inputs[ref.dataId["detector"]].background_apply = butlerQC.get(ref)
+
+        visit_summary = butlerQC.get(inputRefs.visit_summary)
+        sky_map = butlerQC.get(inputRefs.sky_map)
 
         quantumDataId = butlerQC.quantum.dataId
         sky_info = makeSkyInfo(
@@ -334,47 +407,61 @@ class MakeDirectWarpTask(PipelineTask):
             patchId=quantumDataId["patch"],
         )
 
-        results = self.run(inputs, sky_info)
+        results = self.run(inputs, sky_info, visit_summary=visit_summary)
         butlerQC.put(results, outputRefs)
 
-    def _preselect_inputs(self, inputs, sky_info):
-        dataIdList = [ref.dataId for ref in inputs["calexp_list"]]
-        visit_summary = inputs["visit_summary"]
+    def _preselect_inputs(
+        self,
+        inputs: Mapping[int, WarpDetectorInputs],
+        sky_info: Struct,
+        visit_summary: ExposureCatalog,
+    ) -> dict[int, WarpDetectorInputs]:
+        """Filter the list of inputs via a 'select' subtask.
 
-        bboxList, wcsList = [], []
-        for dataId in dataIdList:
-            row = visit_summary.find(dataId["detector"])
+        Parameters
+        ----------
+        inputs : ``~collections.abc.Mapping` [ `int`, `WarpDetectorInputs` ]
+            Per-detector input structs.
+        sky_info : `lsst.pipe.base.Struct`
+            Structure with information about the tract and patch.
+        visit_summary : `~lsst.afw.table.ExposureCatalog`
+            Record with updated calibration information for the full visit.
+
+        Returns
+        -------
+        filtered_inputs : `dict` [ `int`, `WarpDetectorInputs` ]
+            Like ``inputs``, with rejected detectors dropped.
+        """
+        data_id_list, bbox_list, wcs_list = [], [], []
+        for detector_id, detector_inputs in inputs.items():
+            row = visit_summary.find(detector_id)
             if row is None:
-                raise RuntimeError(f"Unexpectedly incomplete visit_summary: {dataId=} is missing.")
-            bboxList.append(row.getBBox())
-            wcsList.append(row.getWcs())
+                raise RuntimeError(f"Unexpectedly incomplete visit_summary: {detector_id=} is missing.")
+            data_id_list.append(detector_inputs.data_id)
+            bbox_list.append(row.getBBox())
+            wcs_list.append(row.getWcs())
 
         cornerPosList = Box2D(sky_info.bbox).getCorners()
         coordList = [sky_info.wcs.pixelToSky(pos) for pos in cornerPosList]
 
-        goodIndices = self.select.run(
-            **inputs,
-            bboxList=bboxList,
-            wcsList=wcsList,
+        good_indices = self.select.run(
+            bboxList=bbox_list,
+            wcsList=wcs_list,
             visitSummary=visit_summary,
             coordList=coordList,
-            dataIds=dataIdList,
+            dataIds=data_id_list,
         )
-        inputs = self._filterInputs(indices=goodIndices, inputs=inputs)
+        detector_ids = list(inputs.keys())
+        good_detector_ids = [detector_ids[i] for i in good_indices]
+        return {detector_id: inputs[detector_id] for detector_id in good_detector_ids}
 
-        return inputs
-
-    def run(self, inputs, sky_info, **kwargs):
+    def run(self, inputs: Mapping[int, WarpDetectorInputs], sky_info, visit_summary) -> Struct:
         """Create a Warp dataset from inputs.
 
         Parameters
         ----------
-        inputs : `Mapping`
-            Dictionary of input datasets. It must have a list of input calexps
-            under the key "calexp_list". Other supported keys are
-            "background_revert_list" and "background_apply_list", corresponding
-            to the old and the new backgrounds to be reverted and applied to
-            the calexps. They must be in the same order as the calexps.
+        inputs : `Mapping` [ `int`, `WarpDetectorInputs` ]
+            Dictionary of input datasets, with the detector id being the key.
         sky_info : `~lsst.pipe.base.Struct`
             A Struct object containing wcs, bounding box, and other information
             about the patches within the tract.
@@ -391,23 +478,19 @@ class MakeDirectWarpTask(PipelineTask):
         """
 
         if self.config.doSelectPreWarp:
-            inputs = self._preselect_inputs(inputs, sky_info)
-            if not inputs["calexp_list"]:
+            inputs = self._preselect_inputs(inputs, sky_info, visit_summary=visit_summary)
+            if not inputs:
                 raise NoWorkFound("No input warps remain after selection for co-addition")
 
         sky_info.bbox.grow(self.config.border)
         target_bbox, target_wcs = sky_info.bbox, sky_info.wcs
 
-        visit_summary = inputs["visit_summary"] if self.config.useVisitSummaryPsf else None
-
         # Initialize the objects that will hold the warp.
         final_warp = ExposureF(target_bbox, target_wcs)
 
-        exposures = inputs["calexp_list"]
-        background_revert_list = inputs.get("background_revert_list", [None] * len(exposures))
-        background_apply_list = inputs.get("background_apply_list", [None] * len(exposures))
-
-        visit_id = exposures[0].dataId["visit"]
+        for _, warp_detector_input in inputs.items():
+            visit_id = warp_detector_input.data_id["visit"]
+            break  # Just need the visit id from any one of the inputs.
 
         # The warpExposure routine is expensive, and we do not want to call
         # it twice (i.e., a second time for PSF-matched warps). We do not
@@ -425,42 +508,38 @@ class MakeDirectWarpTask(PipelineTask):
         totalGoodPixels = 0
         inputRecorder = self.inputRecorder.makeCoaddTempExpRecorder(
             visit_id,
-            len(exposures),
+            len(inputs),
         )
 
-        for index, (calexp_ref, old_background, new_background) in enumerate(
-            zip(exposures, background_revert_list, background_apply_list, strict=True)
-        ):
-            dataId = calexp_ref.dataId
+        for index, detector_inputs in enumerate(inputs.values()):
             self.log.debug(
                 "Warping exposure %d/%d for id=%s",
                 index + 1,
-                len(exposures),
-                dataId,
+                len(inputs),
+                detector_inputs.data_id,
             )
-            calexp = calexp_ref.get()
 
+            input_exposure = detector_inputs.exposure
             # Generate noise image(s) in-situ.
-            seed = self.get_seed_from_data_id(dataId)
+            seed = self.get_seed_from_data_id(detector_inputs.data_id)
             rng = np.random.RandomState(seed + self.config.seedOffset)
 
             # Generate noise images in-situ.
-            noise_calexps = self.make_noise_exposures(calexp, rng)
-
-            # Warp the PSF before processing nad overwriting exposure.
-            xyTransform = makeWcsPairTransform(calexp.getWcs(), target_wcs)
-            psfWarped = WarpedPsf(calexp.getPsf(), xyTransform)
+            noise_calexps = self.make_noise_exposures(input_exposure, rng)
 
             warpedExposure = self.process(
-                calexp,
+                detector_inputs,
                 target_wcs,
                 self.warper,
-                old_background,
-                new_background,
                 visit_summary,
                 destBBox=target_bbox,
             )
-            warpedExposure.setPsf(psfWarped)
+
+            if warpedExposure is None:
+                self.log.debug(
+                    "Skipping exposure %s because it could not be warped.", detector_inputs.data_id
+                )
+                continue
 
             if final_warp.photoCalib is not None:
                 ratio = (
@@ -470,7 +549,7 @@ class MakeDirectWarpTask(PipelineTask):
             else:
                 ratio = 1
 
-            self.log.debug("Scaling exposure %s by %f", dataId, ratio)
+            self.log.debug("Scaling exposure %s by %f", detector_inputs.data_id, ratio)
             warpedExposure.maskedImage *= ratio
 
             # Accumulate the partial warps in an online fashion.
@@ -483,8 +562,8 @@ class MakeDirectWarpTask(PipelineTask):
             if final_warp.photoCalib is None and nGood > 0:
                 final_warp.setPhotoCalib(warpedExposure.photoCalib)
 
-            ccdId = self.config.idGenerator.apply(dataId).catalog_id
-            inputRecorder.addCalExp(calexp, ccdId, nGood)
+            ccdId = self.config.idGenerator.apply(detector_inputs.data_id).catalog_id
+            inputRecorder.addCalExp(input_exposure, ccdId, nGood)
             totalGoodPixels += nGood
 
             if self.config.doWarpMaskedFraction:
@@ -493,7 +572,7 @@ class MakeDirectWarpTask(PipelineTask):
                     badMaskPlanes = self.preWarpInterpolation.config.badMaskPlanes
                 else:
                     badMaskPlanes = []
-                masked_fraction_exp = self._get_bad_mask(calexp, badMaskPlanes)
+                masked_fraction_exp = self._get_bad_mask(input_exposure, badMaskPlanes)
 
                 masked_fraction_warp = self.maskedFractionWarper.warpExposure(
                     target_wcs, masked_fraction_exp, destBBox=target_bbox
@@ -508,12 +587,16 @@ class MakeDirectWarpTask(PipelineTask):
             # Process and accumulate noise images.
             for n_noise in range(self.config.numberOfNoiseRealizations):
                 noise_calexp = noise_calexps[n_noise]
+                noise_pseudo_inputs = dataclasses.replace(
+                    detector_inputs,
+                    exposure_or_handle=noise_calexp,
+                    background_revert=BackgroundList(),
+                    background_apply=BackgroundList(),
+                )
                 warpedNoise = self.process(
-                    noise_calexp,
+                    noise_pseudo_inputs,
                     target_wcs,
                     self.warper,
-                    old_background,
-                    new_background,
                     visit_summary,
                     destBBox=target_bbox,
                 )
@@ -547,8 +630,10 @@ class MakeDirectWarpTask(PipelineTask):
         )
 
         final_warp.setPsf(coaddPsf)
-        final_warp.setFilter(calexp.getFilter())
-        final_warp.getInfo().setVisitInfo(calexp.getInfo().getVisitInfo())
+        for _, warp_detector_input in inputs.items():
+            final_warp.setFilter(warp_detector_input.exposure.getFilter())
+            final_warp.getInfo().setVisitInfo(warp_detector_input.exposure.getInfo().getVisitInfo())
+            break  # Just need the filter and visit info from any one of the inputs.
 
         results = Struct(
             warp=final_warp,
@@ -564,15 +649,13 @@ class MakeDirectWarpTask(PipelineTask):
 
     def process(
         self,
-        exposure,
+        detector_inputs: WarpDetectorInputs,
         target_wcs,
         warper,
-        old_background=None,
-        new_background=None,
         visit_summary=None,
         maxBBox=None,
         destBBox=None,
-    ):
+    ) -> ExposureF | None:
         """Process an exposure.
 
         There are three processing steps that are applied to the input:
@@ -583,16 +666,13 @@ class MakeDirectWarpTask(PipelineTask):
 
         Parameters
         ----------
-        exposure : `~lsst.afw.image.Exposure`
-            The input exposure to be processed.
+        detector_inputs : `WarpDetectorInputs`
+            The input exposure to be processed, along with any other
+            per-detector modifications.
         target_wcs : `~lsst.afw.geom.SkyWcs`
             The WCS of the target patch.
         warper : `~lsst.afw.math.Warper`
             The warper to use for warping the input exposure.
-        old_background : `~lsst.afw.image.Background` | None
-            The old background to be added back into the calexp.
-        new_background : `~lsst.afw.image.Background` | None
-            The new background to be subtracted from the calexp.
         visit_summary : `~lsst.afw.table.ExposureCatalog` | None
             Table of visit summary information.  If not None, the visit_summary
             information will be used to update the calibration of the input
@@ -606,25 +686,28 @@ class MakeDirectWarpTask(PipelineTask):
 
         Returns
         -------
-        warped_exposure : `~lsst.afw.image.Exposure`
-            The processed and warped exposure.
+        warped_exposure : `~lsst.afw.image.Exposure` | None
+            The processed and warped exposure, if all the calibrations could
+            be applied successfully. Otherwise, None.
         """
 
+        input_exposure = detector_inputs.exposure
         if self.config.doPreWarpInterpolation:
-            self.preWarpInterpolation.run(exposure.maskedImage)
+            self.preWarpInterpolation.run(input_exposure.maskedImage)
 
-        self._apply_all_calibrations(
-            exposure,
-            old_background,
-            new_background,
-            logger=self.log,
+        success = self._apply_all_calibrations(
+            detector_inputs,
             visit_summary=visit_summary,
             includeScaleUncertainty=self.config.includeCalibVar,
         )
+
+        if not success:
+            return None
+
         with self.timer("warp"):
             warped_exposure = warper.warpExposure(
                 target_wcs,
-                exposure,
+                input_exposure,
                 maxBBox=maxBBox,
                 destBBox=destBBox,
             )
@@ -633,61 +716,30 @@ class MakeDirectWarpTask(PipelineTask):
 
         return warped_exposure
 
-    @staticmethod
-    def _filterInputs(indices, inputs):
-        """Filter inputs by their indices.
-
-        This method down-selects the list entries in ``inputs`` dictionary by
-        keeping only those items in the lists that correspond to ``indices``.
-        This is intended to select input visits that go into the warps.
-
-        Parameters
-        ----------
-        indices : `list` [`int`]
-        inputs : `dict`
-            A dictionary of input connections to be passed to run.
-
-        Returns
-        -------
-        inputs : `dict`
-            Task inputs with their lists filtered by indices.
-        """
-        for key in inputs.keys():
-            # Only down-select on list inputs
-            if isinstance(inputs[key], list):
-                inputs[key] = [inputs[key][ind] for ind in indices]
-
-        return inputs
-
     def _apply_all_calibrations(
         self,
-        exp: Exposure,
-        old_background,
-        new_background,
-        logger,
+        detector_inputs: WarpDetectorInputs,
+        *,
         visit_summary: ExposureCatalog | None = None,
         includeScaleUncertainty: bool = False,
-    ) -> None:
+    ) -> bool:
         """Apply all of the calibrations from visit_summary to the exposure.
 
         Specifically, this method updates the following (if available) to the
-        input exposure ``exp`` in place from ``visit_summary``:
+        input exposure in place from ``visit_summary``:
 
         - Aperture correction map
         - Photometric calibration
         - PSF
         - WCS
 
+        It also reverts and applies backgrounds in ``detector_inputs``.
+
         Parameters
         ----------
-        exp : `~lsst.afw.image.Exposure`
-            Exposure to be updated.
-        old_background : `~lsst.afw.image.Exposure`
-            Exposure corresponding to the old background, to be added back.
-        new_background : `~lsst.afw.image.Exposure`
-            Exposure corresponding to the new background, to be subtracted.
-        logger : `logging.Logger`
-            Logger object from the caller Task to write the logs onto.
+        detector_inputs : `WarpDetectorInputs`
+            The input exposure to be processed, along with any other
+            per-detector modifications.
         visit_summary : `~lsst.afw.table.ExposureCatalog` | None
             Table of visit summary information.  If not None, the visit summary
             information will be used to update the calibration of the input
@@ -697,58 +749,96 @@ class MakeDirectWarpTask(PipelineTask):
             resulting variance? Passed onto the `calibrateImage` method of the
             PhotoCalib object attached to ``exp``.
 
+        Returns
+        -------
+        success : `bool`
+            True if all calibrations were successfully applied, False otherwise.
+
         Raises
         ------
         RuntimeError
             Raised if ``visit_summary`` is provided but does not contain a
-            record corresponding to ``exp``.
+            record corresponding to ``detector_inputs``, or if one of the
+            background fields in ``detector_inputs`` is inconsistent with the
+            task configuration.
         """
-        if old_background:
-            exp.maskedImage += old_background.getImage()
+        if self.config.doRevertOldBackground:
+            detector_inputs.revert_background()
+        elif detector_inputs.background_revert:
+            # This could get trigged only if runQuantum is skipped and run is
+            # called directly.
+            raise RuntimeError(
+                f"doRevertOldBackground is False, but {detector_inputs.data_id} has a background_revert."
+            )
 
-        if self.config.useVisitSummaryPsf:
-            detector = exp.info.getDetector().getId()
+        input_exposure = detector_inputs.exposure
+        if visit_summary is not None:
+            detector = input_exposure.info.getDetector().getId()
             row = visit_summary.find(detector)
 
             if row is None:
-                raise RuntimeError(f"Unexpectedly incomplete visit_summary: {detector=} is missing.")
+                self.log.info(
+                    "Unexpectedly incomplete visit_summary: detector = %s is missing. Skipping it.",
+                    detector,
+                )
+                return False
 
             if photo_calib := row.getPhotoCalib():
-                exp.setPhotoCalib(photo_calib)
+                input_exposure.setPhotoCalib(photo_calib)
             else:
-                logger.warning(
-                    "No photometric calibration found in visit summary for detector = %s.",
+                self.log.info(
+                    "No photometric calibration found in visit summary for detector = %s. Skipping it.",
                     detector,
                 )
+                return False
 
             if wcs := row.getWcs():
-                exp.setWcs(wcs)
+                input_exposure.setWcs(wcs)
             else:
-                logger.warning("No WCS found in visit summary for detector = %s.", detector)
+                self.log.info("No WCS found in visit summary for detector = %s. Skipping it.", detector)
+                return False
 
-            if psf := row.getPsf():
-                exp.setPsf(psf)
-            else:
-                logger.warning("No PSF found in visit summary for detector = %s.", detector)
+            if self.config.useVisitSummaryPsf:
+                if psf := row.getPsf():
+                    input_exposure.setPsf(psf)
+                else:
+                    self.log.info("No PSF found in visit summary for detector = %s. Skipping it.", detector)
+                    return False
 
-            if apcorr_map := row.getApCorrMap():
-                exp.setApCorrMap(apcorr_map)
-            else:
-                logger.warning(
-                    "No aperture correction map found in visit summary for detector = %s.",
-                    detector,
+                if apcorr_map := row.getApCorrMap():
+                    input_exposure.setApCorrMap(apcorr_map)
+                else:
+                    self.log.info(
+                        "No aperture correction map found in visit summary for detector = %s. Skipping it",
+                        detector,
+                    )
+                    return False
+
+            elif visit_summary is not None:
+                # We can only get here by calling `run`, not `runQuantum`.
+                raise RuntimeError(
+                    "useVisitSummaryPsf=True, but visit_summary is provided. "
                 )
 
-        if new_background:
-            exp.maskedImage -= new_background.getImage()
+        if self.config.doApplyNewBackground:
+            detector_inputs.apply_background()
+        elif detector_inputs.background_apply:
+            # This could get trigged only if runQuantum is skipped and run is
+            # called directly.
+            raise RuntimeError(
+                f"doApplyNewBackground is False, but {detector_inputs.data_id} has a background_apply."
+            )
 
         # Calibrate the (masked) image.
         # This should likely happen even if visit_summary is None.
-        photo_calib = exp.photoCalib
-        exp.maskedImage = photo_calib.calibrateImage(
-            exp.maskedImage, includeScaleUncertainty=includeScaleUncertainty
+        photo_calib = input_exposure.photoCalib
+        input_exposure.maskedImage = photo_calib.calibrateImage(
+            input_exposure.maskedImage,
+            includeScaleUncertainty=includeScaleUncertainty,
         )
-        exp.maskedImage /= photo_calib.getCalibrationMean()
+        input_exposure.maskedImage /= photo_calib.getCalibrationMean()
+
+        return True
 
     # This method is copied from makeWarp.py
     @classmethod

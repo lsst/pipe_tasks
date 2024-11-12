@@ -30,7 +30,7 @@ import lsst.utils.tests
 import lsst.afw.image
 from lsst.daf.butler import DataCoordinate, DimensionUniverse
 from lsst.pipe.base import InMemoryDatasetHandle
-from lsst.pipe.tasks.make_direct_warp import MakeDirectWarpTask
+from lsst.pipe.tasks.make_direct_warp import MakeDirectWarpTask, WarpDetectorInputs
 from lsst.pipe.tasks.makeWarp import (MakeWarpTask, MakeWarpConfig)
 from lsst.pipe.tasks.coaddBase import makeSkyInfo
 import lsst.skymap as skyMap
@@ -246,7 +246,6 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
             InMemoryDatasetHandle(self.exposure, dataId=self.generate_data_id(**dataId))
             for dataId in dataIdList
         ]
-        inputs = {"calexp_list": dataRefs}
 
         for dataId in dataIdList:
             dataId["detector"] = dataId.pop("detector_id")
@@ -267,8 +266,15 @@ class MakeWarpTestCase(lsst.utils.tests.TestCase):
         config.doSelectPreWarp = False
         config.useVisitSummaryPsf = False
         task = MakeDirectWarpTask(config=config)
+        warp_detector_inputs = {
+            dataRef.dataId.detector.id: WarpDetectorInputs(
+                exposure_or_handle=self.exposure,
+                data_id=dataRef.dataId,
+            )
+            for dataRef in dataRefs
+        }
         result1 = task.run(
-            inputs,
+            warp_detector_inputs,
             sky_info=self.skyInfo,
             visit_summary=None
         )
