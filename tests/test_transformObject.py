@@ -65,7 +65,7 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
                  'IntColumn': Column('base_InputCount_value', dataset='meas'),
                  'GoodFlagColumn': Column('slot_GaussianFlux_flag', dataset='meas'),
                  'BadFlagColumn': Column('slot_Centroid_flag', dataset='meas')}
-        df = task.run(self.handle, funcs=funcs, dataId=self.dataId)
+        df = task.run(self.handle, funcs=funcs, dataId=self.dataId).outputCatalog
         self.assertIsInstance(df, pd.DataFrame)
 
         for filt in config.outputBands:
@@ -100,7 +100,7 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         config.camelCase = False
         task = TransformObjectCatalogTask(config=config)
         funcs = {'Fwhm': HsmFwhm(dataset='meas')}
-        df = task.run(self.handle, funcs=funcs, dataId=self.dataId)
+        df = task.run(self.handle, funcs=funcs, dataId=self.dataId).outputCatalog
         self.assertIsInstance(df, pd.DataFrame)
         for filt in config.outputBands:
             self.assertIn(filt + '_Fwhm', df.columns)
@@ -112,7 +112,7 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         config.multilevelOutput = True
         task = TransformObjectCatalogTask(config=config)
         funcs = {'Fwhm': HsmFwhm(dataset='meas')}
-        df = task.run(self.handle, funcs=funcs, dataId=self.dataId)
+        df = task.run(self.handle, funcs=funcs, dataId=self.dataId).outputCatalog
         self.assertIsInstance(df, pd.DataFrame)
         self.assertNotIn('g', df)
         for filt in config.outputBands:
@@ -126,7 +126,7 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         config.multilevelOutput = True
         task = TransformObjectCatalogTask(config=config)
         funcs = {'Fwhm': HsmFwhm(dataset='meas')}
-        df = task.run(self.handle, funcs=funcs, dataId=self.dataId)
+        df = task.run(self.handle, funcs=funcs, dataId=self.dataId).outputCatalog
         self.assertIsInstance(df, pd.DataFrame)
         self.assertNotIn('HSC-G', df)
         for filt in ['g', 'r', 'i']:

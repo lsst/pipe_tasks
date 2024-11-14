@@ -687,8 +687,7 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
                              "Must be a valid path to yaml in order to run Task as a PipelineTask.")
         result = self.run(handle=inputs["inputCatalog"], funcs=self.funcs,
                           dataId=dict(outputRefs.outputCatalog.dataId.mapping))
-        outputs = pipeBase.Struct(outputCatalog=result)
-        butlerQC.put(outputs, outputRefs)
+        butlerQC.put(result, outputRefs)
 
     def run(self, handle, funcs=None, dataId=None, band=None):
         """Do postprocessing calculations
@@ -712,13 +711,16 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
 
         Returns
         -------
-        df : `pandas.DataFrame`
+        result : `lsst.pipe.base.Struct`
+            Result struct, with a single ``outputCatalog`` attribute holding
+            the transformed catalog.
         """
         self.log.info("Transforming/standardizing the source table dataId: %s", dataId)
 
         df = self.transform(band, handle, funcs, dataId).df
         self.log.info("Made a table of %d columns and %d rows", len(df.columns), len(df))
-        return df
+        result = pipeBase.Struct(outputCatalog=df)
+        return result
 
     def getFunctors(self):
         return self.funcs
@@ -908,7 +910,7 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
 
         self.log.info("Made a table of %d columns and %d rows", len(df.columns), len(df))
 
-        return df
+        return pipeBase.Struct(outputCatalog=df)
 
 
 class ConsolidateObjectTableConnections(pipeBase.PipelineTaskConnections,
