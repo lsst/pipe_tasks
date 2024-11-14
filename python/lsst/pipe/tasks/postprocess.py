@@ -35,6 +35,7 @@ __all__ = ["WriteObjectTableConfig", "WriteObjectTableTask",
            "TransformForcedSourceTableConfig", "TransformForcedSourceTableTask",
            "ConsolidateTractConfig", "ConsolidateTractTask"]
 
+import dataclasses
 import functools
 import logging
 import numbers
@@ -48,6 +49,7 @@ import lsst.geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
+from lsst.daf.butler.formatters.parquet import pandas_to_astropy
 from lsst.pipe.base import connectionTypes
 import lsst.afw.table as afwTable
 from lsst.afw.image import ExposureSummaryStats, ExposureF
@@ -560,7 +562,7 @@ class TransformCatalogBaseConnections(pipeBase.PipelineTaskConnections,
     )
     outputCatalog = connectionTypes.Output(
         name="",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
     )
 
 
@@ -719,7 +721,7 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
 
         df = self.transform(band, handle, funcs, dataId).df
         self.log.info("Made a table of %d columns and %d rows", len(df.columns), len(df))
-        result = pipeBase.Struct(outputCatalog=df)
+        result = pipeBase.Struct(outputCatalog=pandas_to_astropy(df))
         return result
 
     def getFunctors(self):
@@ -771,9 +773,14 @@ class TransformObjectCatalogConnections(pipeBase.PipelineTaskConnections,
         doc="Per-Patch Object Table of columns transformed from the deepCoadd_obj table per the standard "
             "data model.",
         dimensions=("tract", "patch", "skymap"),
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         name="objectTable"
     )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        if config.multilevelOutput:
+            self.outputCatalog = dataclasses.replace(self.outputCatalog, storageClass="DataFrame")
 
 
 class TransformObjectCatalogConfig(TransformCatalogBaseConfig,
@@ -801,7 +808,9 @@ class TransformObjectCatalogConfig(TransformCatalogBaseConfig,
         dtype=bool,
         default=False,
         doc=("Whether results dataframe should have a multilevel column index (True) or be flat "
-             "and name-munged (False).")
+             "and name-munged (False).  If True, the output storage class will be "
+             "set to DataFrame, since astropy tables do not support multi-level indexing."),
+        deprecated="Support for multi-level outputs is deprecated and will be removed after v29.",
     )
     goodFlags = pexConfig.ListField(
         dtype=str,
@@ -907,10 +916,13 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
                 noDupCols += self.config.columnsFromDataId
             df = flattenFilters(df, noDupCols=noDupCols, camelCase=self.config.camelCase,
                                 inputBands=inputBands)
+            tbl = pandas_to_astropy(df)
+        else:
+            tbl = df
 
-        self.log.info("Made a table of %d columns and %d rows", len(df.columns), len(df))
+        self.log.info("Made a table of %d columns and %d rows", len(tbl.columns), len(tbl))
 
-        return pipeBase.Struct(outputCatalog=df)
+        return pipeBase.Struct(outputCatalog=tbl)
 
 
 class ConsolidateObjectTableConnections(pipeBase.PipelineTaskConnections,
@@ -973,7 +985,7 @@ class TransformSourceTableConnections(pipeBase.PipelineTaskConnections,
         doc="Narrower, per-detector Source Table transformed and converted per a "
             "specified set of functors",
         name="{catalogType}sourceTable",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument", "visit", "detector")
     )
 
