@@ -36,11 +36,13 @@ __all__ = ["WriteObjectTableConfig", "WriteObjectTableTask",
            "ConsolidateTractConfig", "ConsolidateTractTask"]
 
 import functools
-import pandas as pd
 import logging
-import numpy as np
 import numbers
 import os
+
+import numpy as np
+import pandas as pd
+import astropy.table
 
 import lsst.geom
 import lsst.pex.config as pexConfig
@@ -914,14 +916,14 @@ class ConsolidateObjectTableConnections(pipeBase.PipelineTaskConnections,
     inputCatalogs = connectionTypes.Input(
         doc="Per-Patch objectTables conforming to the standard data model.",
         name="objectTable",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("tract", "patch", "skymap"),
         multiple=True,
     )
     outputCatalog = connectionTypes.Output(
         doc="Pre-tract horizontal concatenation of the input objectTables",
         name="objectTable_tract",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("tract", "skymap"),
     )
 
@@ -950,8 +952,8 @@ class ConsolidateObjectTableTask(pipeBase.PipelineTask):
         inputs = butlerQC.get(inputRefs)
         self.log.info("Concatenating %s per-patch Object Tables",
                       len(inputs["inputCatalogs"]))
-        df = pd.concat(inputs["inputCatalogs"])
-        butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
+        table = astropy.table.vstack(inputs["inputCatalogs"], join_type="exact")
+        butlerQC.put(pipeBase.Struct(outputCatalog=table), outputRefs)
 
 
 class TransformSourceTableConnections(pipeBase.PipelineTaskConnections,
@@ -1130,14 +1132,14 @@ class ConsolidateSourceTableConnections(pipeBase.PipelineTaskConnections,
     inputCatalogs = connectionTypes.Input(
         doc="Input per-detector Source Tables",
         name="{catalogType}sourceTable",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument", "visit", "detector"),
         multiple=True
     )
     outputCatalog = connectionTypes.Output(
         doc="Per-visit concatenation of Source Table",
         name="{catalogType}sourceTable_visit",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument", "visit")
     )
 
@@ -1165,8 +1167,8 @@ class ConsolidateSourceTableTask(pipeBase.PipelineTask):
         inputs = butlerQC.get(inputRefs)
         self.log.info("Concatenating %s per-detector Source Tables",
                       len(inputs["inputCatalogs"]))
-        df = pd.concat(inputs["inputCatalogs"])
-        butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
+        table = astropy.table.vstack(inputs["inputCatalogs"], join_type="exact")
+        butlerQC.put(pipeBase.Struct(outputCatalog=table), outputRefs)
 
 
 class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
