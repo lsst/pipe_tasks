@@ -22,8 +22,9 @@
 """Test IsolatedStarAssociationTask.
 """
 import unittest
+
+import astropy.table
 import numpy as np
-import pandas as pd
 
 import lsst.utils.tests
 import lsst.pipe.base
@@ -185,9 +186,8 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                     # Make one star have low s/n
                     table['normCompTophatFlux_instFlux'][0] = 1.0
 
-                df = pd.DataFrame(table)
-                df.set_index('sourceId', inplace=True)
-                handles.append(lsst.pipe.base.InMemoryDatasetHandle(df, storageClass="DataFrame"))
+                tbl = astropy.table.Table(table)
+                handles.append(lsst.pipe.base.InMemoryDatasetHandle(tbl, storageClass="DataFrame"))
 
                 id_counter += nstar
                 visit_counter += 1
@@ -234,8 +234,8 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         # Stack all the sources; we do not want any cutting here.
         tables = []
         for handle in self.handles:
-            df = handle.get()
-            tables.append(df.to_records())
+            tbl = handle.get()
+            tables.append(tbl.as_array().view(np.recarray))
         source_cat = np.concatenate(tables)
 
         primary_star_cat = self.isolatedStarAssociationTask._match_primary_stars(['i', 'r'],
@@ -271,8 +271,8 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         # Stack all the sources; we do not want any cutting here.
         tables = []
         for handle in self.handles:
-            df = handle.get()
-            tables.append(df.to_records())
+            tbl = handle.get()
+            tables.append(tbl.as_array().view(np.recarray))
         source_cat = np.concatenate(tables)
 
         source_cat = np.lib.recfunctions.append_fields(source_cat,
