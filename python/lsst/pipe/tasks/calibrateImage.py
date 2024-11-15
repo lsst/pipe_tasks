@@ -309,6 +309,21 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         )
     )
 
+    run_sattle = pexConfig.ConfigurableField(
+        target=computeExposureSummaryStats.ComputeExposureSummaryStatsTask,
+        doc="Task to to compute summary statistics on the calibrated exposure."
+    )
+
+    sattle_host = pexConfig.Field(
+        dtype=str,
+        default='http://127.0.0.1',
+        doc="The host name for the sattle API.")
+
+    sattle_port = pexConfig.Field(
+        dtype=int,
+        default=9999,
+        doc="Port for the sattle API.")
+
     def setDefaults(self):
         super().setDefaults()
 
@@ -636,6 +651,41 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             result.applied_photo_calib = photo_calib
         else:
             result.applied_photo_calib = None
+        import pydevd_pycharm
+        pydevd_pycharm.settrace('localhost', port=8888, stdoutToServer=True,
+                                stderrToServer=True)
+        if self.config.run_sattle:
+            print('sending data to the visit cache')
+
+            visit_id = result.exposure.getInfo().getVisitInfo().id
+
+            visit_date = Time(
+                result.exposure.getInfo().getVisitInfo().getDate().toPython()).jd
+
+            exposure_time_jd = result.exposure.getInfo().getVisitInfo().getExposureTime() / 86400.0
+
+            exposure_end_jd = visit_date + exposure_time_jd / 2.0
+
+            exposure_start_jd = visit_date - exposure_time_jd / 2.0
+
+            boresight_ra = result.exposure.getInfo().getVisitInfo().boresightRaDec[
+                0].asDegrees()
+            boresight_dec = result.exposure.getInfo().getVisitInfo().boresightRaDec[
+                1].asDegrees()
+
+            r = requests.put(f'{self.config.sattle_host}:{self.config.sattle_port}/visit_cache', json=
+            {"visit_id": visit_id, "exposure_start_mjd": exposure_start_jd,
+             "exposure_end_mjd": exposure_end_jd,
+             "boresight_ra": boresight_ra, "boresight_dec": boresight_dec})
+
+            print(f'status code: {r.status_code}')
+            print(r.text)
+
+            print('confirming contents of the cache')
+            r = requests.get(f'{self.config.sattle_host}:{self.config.sattle_port}/visit_cache', json={})
+            print(f'status code: {r.status_code}')
+            print(r.text)
+
         return result
 
     def _compute_psf(self, exposure, id_generator):
