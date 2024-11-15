@@ -206,19 +206,19 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
         self.source_selector.log.setLevel(self.source_selector.log.WARN)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        input_ref_dict = butlerQC.get(inputRefs)
+        input_handle_dict = butlerQC.get(inputRefs)
 
         tract = butlerQC.quantum.dataId['tract']
 
-        source_table_refs = input_ref_dict['source_table_visit']
+        source_table_handles = input_handle_dict['source_table_visit']
 
-        self.log.info('Running with %d source_table_visit dataRefs',
-                      len(source_table_refs))
+        self.log.info('Running with %d source_table_visit datasets',
+                      len(source_table_handles))
 
-        source_table_ref_dict_temp = {source_table_ref.dataId['visit']: source_table_ref for
-                                      source_table_ref in source_table_refs}
+        source_table_handle_dict_temp = {source_table_handle.dataId['visit']: source_table_handle for
+                                         source_table_handle in source_table_handles}
 
-        bands = {source_table_ref.dataId['band'] for source_table_ref in source_table_refs}
+        bands = {source_table_handle.dataId['band'] for source_table_handle in source_table_handles}
         for band in bands:
             if band not in self.config.band_order:
                 self.log.warning('Input data has data from band %s but that band is not '
@@ -226,17 +226,17 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
 
         # TODO: Sort by visit until DM-31701 is done and we have deterministic
         # dataset ordering.
-        source_table_ref_dict = {visit: source_table_ref_dict_temp[visit] for
-                                 visit in sorted(source_table_ref_dict_temp.keys())}
+        source_table_handle_dict = {visit: source_table_handle_dict_temp[visit] for
+                                    visit in sorted(source_table_handle_dict_temp.keys())}
 
-        struct = self.run(input_ref_dict['skymap'], tract, source_table_ref_dict)
+        struct = self.run(input_handle_dict['skymap'], tract, source_table_handle_dict)
 
         butlerQC.put(pd.DataFrame(struct.star_source_cat),
                      outputRefs.isolated_star_sources)
         butlerQC.put(pd.DataFrame(struct.star_cat),
                      outputRefs.isolated_star_cat)
 
-    def run(self, skymap, tract, source_table_ref_dict):
+    def run(self, skymap, tract, source_table_handle_dict):
         """Run the isolated star association task.
 
         Parameters
@@ -245,15 +245,16 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
             Skymap object.
         tract : `int`
             Tract number.
-        source_table_ref_dict : `dict`
-            Dictionary of source_table refs.  Key is visit, value is dataref.
+        source_table_handle_dict : `dict`
+            Dictionary of source_table handles.  Key is visit, value is
+            a `lsst.daf.butler.DeferredDatasetHandle`.
 
         Returns
         -------
         struct : `lsst.pipe.base.struct`
             Struct with outputs for persistence.
         """
-        star_source_cat = self._make_all_star_sources(skymap[tract], source_table_ref_dict)
+        star_source_cat = self._make_all_star_sources(skymap[tract], source_table_handle_dict)
 
         primary_bands = self.config.band_order
 
@@ -297,15 +298,16 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
         return pipeBase.Struct(star_source_cat=star_source_cat,
                                star_cat=primary_star_cat)
 
-    def _make_all_star_sources(self, tract_info, source_table_ref_dict):
+    def _make_all_star_sources(self, tract_info, source_table_handle_dict):
         """Make a catalog of all the star sources.
 
         Parameters
         ----------
         tract_info : `lsst.skymap.TractInfo`
             Information about the tract.
-        source_table_ref_dict : `dict`
-            Dictionary of source_table refs.  Key is visit, value is dataref.
+        source_table_handle_dict : `dict`
+            Dictionary of source_table handles.  Key is visit, value is
+            a `lsst.daf.butler.DeferredDatasetHandle`.
 
         Returns
         -------
@@ -319,9 +321,9 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
         poly = tract_info.outer_sky_polygon
 
         tables = []
-        for visit in source_table_ref_dict:
-            source_table_ref = source_table_ref_dict[visit]
-            df = source_table_ref.get(parameters={'columns': all_columns})
+        for visit in source_table_handle_dict:
+            source_table_handle = source_table_handle_dict[visit]
+            df = source_table_handle.get(parameters={'columns': all_columns})
             df.reset_index(inplace=True)
 
             goodSrc = self.source_selector.selectSources(df)
