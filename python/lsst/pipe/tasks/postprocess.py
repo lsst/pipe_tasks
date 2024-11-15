@@ -203,10 +203,9 @@ class WriteSourceTableConnections(pipeBase.PipelineTaskConnections,
         dimensions=("instrument", "visit", "detector")
     )
     outputCatalog = connectionTypes.Output(
-        doc="Catalog of sources, `src` in DataFrame/Parquet format. The 'id' column is "
-            "replaced with an index; all other columns are unchanged.",
+        doc="Catalog of sources, `src` in Astropy/Parquet format.  Columns are unchanged.",
         name="{catalogType}source",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument", "visit", "detector")
     )
 
@@ -231,7 +230,7 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     def run(self, catalog, visit, detector, **kwargs):
-        """Convert `src` catalog to DataFrame
+        """Convert `src` catalog to an Astropy table.
 
         Parameters
         ----------
@@ -248,15 +247,16 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
         -------
         result : `~lsst.pipe.base.Struct`
             ``table``
-                `DataFrame` version of the input catalog
+                `astropy.table.Table` version of the input catalog
         """
         self.log.info("Generating DataFrame from src catalog visit,detector=%i,%i", visit, detector)
-        df = catalog.asAstropy().to_pandas().set_index("id", drop=True)
-        df["visit"] = visit
+        tbl = catalog.asAstropy()
+        tbl.add_index("id")
+        tbl["visit"] = visit
         # int16 instead of uint8 because databases don't like unsigned bytes.
-        df["detector"] = np.int16(detector)
+        tbl["detector"] = np.int16(detector)
 
-        return pipeBase.Struct(table=df)
+        return pipeBase.Struct(table=tbl)
 
 
 class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
