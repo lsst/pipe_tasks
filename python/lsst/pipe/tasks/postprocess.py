@@ -1199,7 +1199,7 @@ class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
     outputCatalog = connectionTypes.Output(
         doc="CCD and Visit metadata table",
         name="ccdVisitTable",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument",)
     )
 
@@ -1254,16 +1254,16 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
                              "effTime", "effTimePsfSigmaScale",
                              "effTimeSkyBgScale", "effTimeZeroPointScale",
                              "magLim"]
-            ccdEntry = summaryTable[selectColumns].to_pandas().set_index("id")
+            ccdEntry = summaryTable[selectColumns]
             # 'visit' is the human readable visit number.
             # 'visitId' is the key to the visitId table. They are the same.
             # Technically you should join to get the visit from the visit
             # table.
-            ccdEntry = ccdEntry.rename(columns={"visit": "visitId"})
+            ccdEntry.rename_column("visit", "visitId")
 
             # RFC-924: Temporarily keep a duplicate "decl" entry for backwards
             # compatibility. To be removed after September 2023.
-            ccdEntry["decl"] = ccdEntry.loc[:, "dec"]
+            ccdEntry["decl"] = ccdEntry["dec"]
 
             ccdEntry["ccdVisitId"] = [
                 self.config.idGenerator.apply(
@@ -1282,12 +1282,13 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
                 visitSummary["psfSigma"] * visitSummary["pixelScale"] * np.sqrt(8 * np.log(2))
             )
             ccdEntry["skyRotation"] = visitInfo.getBoresightRotAngle().asDegrees()
-            ccdEntry["expMidpt"] = visitInfo.getDate().toPython()
+            ccdEntry["expMidpt"] = np.datetime64(visitInfo.getDate().toPython(), "ns")
             ccdEntry["expMidptMJD"] = visitInfo.getDate().get(dafBase.DateTime.MJD)
+            expTime = visitInfo.getExposureTime()
             ccdEntry["obsStart"] = (
-                ccdEntry["expMidpt"] - 0.5 * pd.Timedelta(seconds=ccdEntry["expTime"].values[0])
+                ccdEntry["expMidpt"] - 0.5 * np.timedelta64(int(expTime * 1E9), "ns")
             )
-            expTime_days = ccdEntry["expTime"] / (60*60*24)
+            expTime_days = expTime / (60*60*24)
             ccdEntry["obsStartMJD"] = ccdEntry["expMidptMJD"] - 0.5 * expTime_days
             ccdEntry["darkTime"] = visitInfo.getDarkTime()
             ccdEntry["xSize"] = summaryTable["bbox_max_x"] - summaryTable["bbox_min_x"]
@@ -1305,8 +1306,8 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
             # values are actually wanted.
             ccdEntries.append(ccdEntry)
 
-        outputCatalog = pd.concat(ccdEntries)
-        outputCatalog.set_index("ccdVisitId", inplace=True, verify_integrity=True)
+        outputCatalog = astropy.table.vstack(ccdEntries, join_type="exact")
+        outputCatalog.add_index("ccdVisitId")
         return pipeBase.Struct(outputCatalog=outputCatalog)
 
 
@@ -1324,7 +1325,7 @@ class MakeVisitTableConnections(pipeBase.PipelineTaskConnections,
     outputCatalog = connectionTypes.Output(
         doc="Visit metadata table",
         name="visitTable",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument",)
     )
 
@@ -1384,9 +1385,9 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
             visitEntry["airmass"] = visitInfo.getBoresightAirmass()
             expTime = visitInfo.getExposureTime()
             visitEntry["expTime"] = expTime
-            visitEntry["expMidpt"] = visitInfo.getDate().toPython()
+            visitEntry["expMidpt"] = np.datetime64(visitInfo.getDate().toPython(), "ns")
             visitEntry["expMidptMJD"] = visitInfo.getDate().get(dafBase.DateTime.MJD)
-            visitEntry["obsStart"] = visitEntry["expMidpt"] - 0.5 * pd.Timedelta(seconds=expTime)
+            visitEntry["obsStart"] = visitEntry["expMidpt"] - 0.5 * np.timedelta64(int(expTime * 1E9), "ns")
             expTime_days = expTime / (60*60*24)
             visitEntry["obsStartMJD"] = visitEntry["expMidptMJD"] - 0.5 * expTime_days
             visitEntries.append(visitEntry)
@@ -1395,8 +1396,8 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
             # mirror1Temp, mirror2Temp, mirror3Temp, domeTemp, externalTemp,
             # dimmSeeing, pwvGPS, pwvMW, flags, nExposures.
 
-        outputCatalog = pd.DataFrame(data=visitEntries)
-        outputCatalog.set_index("visitId", inplace=True, verify_integrity=True)
+        outputCatalog = astropy.table.Table(rows=visitEntries)
+        outputCatalog.add_index("visitId")
         return pipeBase.Struct(outputCatalog=outputCatalog)
 
 
