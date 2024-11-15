@@ -13,12 +13,12 @@ funcs:
         # Reference position required by db. Not in DPDD
         functor: CoordColumn
         args: coord_dec
-   # objectId: not avaliable
-    # ssObjectId: not avaliable
+    # objectId: not available
+    # ssObjectId: not available
     parentSourceId:
         functor: Column
         args: parent
-    # htmId20: not avaliable
+    # htmId20: not available
     x:
         functor: Column
         args: slot_Centroid_x
