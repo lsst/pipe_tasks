@@ -23,10 +23,10 @@ __all__ = ['IsolatedStarAssociationConnections',
            'IsolatedStarAssociationConfig',
            'IsolatedStarAssociationTask']
 
+import astropy.table
 import esutil
 import hpgeom as hpg
 import numpy as np
-import pandas as pd
 from smatch.matcher import Matcher
 
 import lsst.pex.config as pexConfig
@@ -43,7 +43,7 @@ class IsolatedStarAssociationConnections(pipeBase.PipelineTaskConnections,
     source_table_visit = pipeBase.connectionTypes.Input(
         doc='Source table in parquet format, per visit',
         name='preSourceTable_visit',
-        storageClass='DataFrame',
+        storageClass='ArrowAstropy',
         dimensions=('instrument', 'visit'),
         deferLoad=True,
         multiple=True,
@@ -57,13 +57,13 @@ class IsolatedStarAssociationConnections(pipeBase.PipelineTaskConnections,
     isolated_star_sources = pipeBase.connectionTypes.Output(
         doc='Catalog of individual sources for the isolated stars',
         name='isolated_star_presources',
-        storageClass='DataFrame',
+        storageClass='ArrowAstropy',
         dimensions=('instrument', 'tract', 'skymap'),
     )
     isolated_star_cat = pipeBase.connectionTypes.Output(
         doc='Catalog of isolated star positions',
         name='isolated_star_presource_associations',
-        storageClass='DataFrame',
+        storageClass='ArrowAstropy',
         dimensions=('instrument', 'tract', 'skymap'),
     )
 
@@ -231,9 +231,9 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
 
         struct = self.run(input_handle_dict['skymap'], tract, source_table_handle_dict)
 
-        butlerQC.put(pd.DataFrame(struct.star_source_cat),
+        butlerQC.put(astropy.table.Table(struct.star_source_cat),
                      outputRefs.isolated_star_sources)
-        butlerQC.put(pd.DataFrame(struct.star_cat),
+        butlerQC.put(astropy.table.Table(struct.star_cat),
                      outputRefs.isolated_star_cat)
 
     def run(self, skymap, tract, source_table_handle_dict):
@@ -322,13 +322,12 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
 
         tables = []
         for visit in source_table_handle_dict:
-            source_table_handle = source_table_handle_dict[visit]
-            df = source_table_handle.get(parameters={'columns': all_columns})
-            df.reset_index(inplace=True)
+            source_table_ref = source_table_handle_dict[visit]
+            tbl = source_table_ref.get(parameters={'columns': all_columns})
 
-            goodSrc = self.source_selector.selectSources(df)
+            goodSrc = self.source_selector.selectSources(tbl)
 
-            table = df[persist_columns][goodSrc.selected].to_records()
+            table = tbl[persist_columns][goodSrc.selected].as_array().view(np.recarray)
 
             # Append columns that include the row in the source table
             # and the matched object index (to be filled later).
