@@ -4,7 +4,8 @@
 # See the DPDD for more information about the output: https://lse-163.lsst.io
 funcs:
     sourceId:
-        functor: Index
+        functor: Column
+        args: id
     coord_ra:
         # reference position required by db. Not in DPDD
         functor: CoordColumn
