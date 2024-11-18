@@ -23,6 +23,19 @@
 
 import warnings
 
+from deprecated.sphinx import deprecated
+from .coaddBase import growValidPolygons as growValidPolygonsNew
+
+
+@deprecated(version="v29",
+            reason="Please use growValidPolygons from lsst.pipe.tasks.coaddBase instead.",
+            category=FutureWarning,
+            )
+def growValidPolygons(*args, **kwargs):
+    """Deprecated alias to lsst.pipe.tasks.coaddBase.growValidPolygons."""
+    return growValidPolygonsNew(*args, **kwargs)
+
+
 try:
     from lsst.drp.tasks.make_psf_matched_warp import (   # noqa: F401
         MakePsfMatchedWarpConfig,
