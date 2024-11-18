@@ -50,7 +50,8 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
                                             "calexpType": ""}):
     calExpList = connectionTypes.Input(
         doc="Input exposures to be resampled and optionally PSF-matched onto a SkyMap projection/patch",
-        name="{calexpType}calexp",
+        # name="{calexpType}calexp",
+        name="initial_pvi",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
         multiple=True,
@@ -58,7 +59,8 @@ class MakeWarpConnections(pipeBase.PipelineTaskConnections,
     )
     backgroundList = connectionTypes.Input(
         doc="Input backgrounds to be added back into the calexp if bgSubtracted=False",
-        name="calexpBackground",
+        # name="calexpBackground",
+        name="initial_pvi_background",
         storageClass="Background",
         dimensions=("instrument", "visit", "detector"),
         multiple=True,
