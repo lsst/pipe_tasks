@@ -22,6 +22,8 @@
 __all__ = ["CalibrateImageTask", "CalibrateImageConfig", "NoPsfStarsToStarsMatchError"]
 
 import numpy as np
+from astropy.time import Time
+import requests
 
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
@@ -651,16 +653,13 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             result.applied_photo_calib = photo_calib
         else:
             result.applied_photo_calib = None
-        import pydevd_pycharm
-        pydevd_pycharm.settrace('localhost', port=8888, stdoutToServer=True,
-                                stderrToServer=True)
+
         if self.config.run_sattle:
             print('sending data to the visit cache')
 
             visit_id = result.exposure.getInfo().getVisitInfo().id
 
-            visit_date = Time(
-                result.exposure.getInfo().getVisitInfo().getDate().toPython()).jd
+            visit_date = Time(result.exposure.getInfo().getVisitInfo().getDate().toPython()).jd
 
             exposure_time_jd = result.exposure.getInfo().getVisitInfo().getExposureTime() / 86400.0
 
