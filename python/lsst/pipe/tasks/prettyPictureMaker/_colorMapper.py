@@ -4,10 +4,11 @@ import logging
 import numpy as np
 import skimage
 import colour
+import cv2
 from scipy.special import erf
 from scipy.interpolate import pchip_interpolate
 
-from ._localContrast import localContrast
+from ._localContrast import localContrast, makeGaussianPyramid, makeLapPyramid, levelPadder
 from lsst.cpputils import fixGamutOK
 
 from numpy.typing import NDArray
@@ -78,6 +79,7 @@ def latLum(
     intensities = A * np.arcsinh((abs(values) * soften + floor) * slope) + b0
 
     intensities /= intensities.max() / maxRatio
+    np.clip(intensities, 0, 1, out=intensities)
     intensities *= 100
 
     # Apply a specific tone cure to the luminocity defined by the below interpolant.
@@ -87,28 +89,8 @@ def latLum(
     # filtered = medfilt2d(intensities, 3)
 
     control_points = (
-        [0,
-         0.5,
-         2,
-         5,
-         13.725490196078432,
-         25,
-         30,
-         55.294117647058826,
-         73.72549019607844,
-         98,
-         100],
-        [0,
-         10,
-         15,
-         20,
-         25.686274509803921,
-         40,
-         50,
-         80.35294117647058,
-         94.11764705882352,
-         98,
-         100]
+        [0, 0.5, 2, 5, 13.725490196078432, 25, 30, 55.294117647058826, 73.72549019607844, 98, 100],
+        [0, 10, 15, 20, 25.686274509803921, 40, 50, 80.35294117647058, 94.11764705882352, 98, 100],
     )
     scaled = pchip_interpolate(*control_points, intensities)
     scaled[scaled == 0] = 1e-7
@@ -315,6 +297,122 @@ def fixOutOfGamutColors(
     return
 
 
+def _fuseExposure(images, sigma=0.2, maxLevel=3):
+    weights = np.zeros((len(images), *images[0].shape[:2]))
+    for i, image in enumerate(images):
+        exposure = np.exp(-((image[:, :, 0] - 0.5) ** 2) / (2 * sigma))
+
+        weights[i, :, :] = exposure
+    norm = np.sum(weights, axis=0)
+    np.divide(weights, norm, out=weights)
+
+    # loop over each image again to build pyramids
+    g_pyr = []
+    l_pyr = []
+    maxImageLevel = int(np.min(np.log2(images[0].shape[:2])))
+    if maxLevel is None:
+        maxLevel = maxImageLevel
+    if maxImageLevel < maxLevel:
+        raise ValueError(
+            f"The supplied max level {maxLevel} is is greater than the max of the image: {maxImageLevel}"
+        )
+    support = 1 << (maxLevel - 1)
+    padY_amounts = levelPadder(image.shape[0] + support, maxLevel)
+    padX_amounts = levelPadder(image.shape[1] + support, maxLevel)
+    for image, weight in zip(images, weights):
+        imagePadded = cv2.copyMakeBorder(
+            image, *(0, support), *(0, support), cv2.BORDER_REPLICATE, None, None
+        ).astype(image.dtype)
+        weightPadded = cv2.copyMakeBorder(
+            weight, *(0, support), *(0, support), cv2.BORDER_REPLICATE, None, None
+        ).astype(image.dtype)
+
+        g_pyr.append(list(makeGaussianPyramid(weightPadded, padY_amounts, padX_amounts, None)))
+        l_pyr.append(list(makeLapPyramid(imagePadded, padY_amounts, padX_amounts, None, None)))
+
+    # time to blend
+    blended = []
+    for level in range(len(padY_amounts)):
+        accumulate = np.zeros_like(l_pyr[0][level])
+        for img in range(len(g_pyr)):
+            for i in range(3):
+                accumulate[:, :, i] += l_pyr[img][level][:, :, i] * g_pyr[img][level]
+        blended.append(accumulate)
+
+    # time to reconstruct
+    output = blended[-1]
+    for i in range(-2, -1 * len(blended) - 1, -1):
+        upsampled = cv2.pyrUp(output)
+        upsampled = upsampled[
+            : upsampled.shape[0] - 2 * padY_amounts[i + 1], : upsampled.shape[1] - 2 * padX_amounts[i + 1]
+        ]
+        output = blended[i] + upsampled
+    return output[:-support, :-support]
+
+
+def _handelLuminance(
+    img: NDArray,
+    scaleLum: Callable[..., NDArray] | None = latLum,
+    scaleLumKWargs: Mapping | None = None,
+    remapBounds: Callable | None = mapUpperBounds,
+    remapBoundsKwargs: Mapping | None = None,
+    doLocalContrast: bool = True,
+    sigma: float = 30,
+    highlights: float = -0.9,
+    shadows: float = 0.5,
+    clarity: float = 0.1,
+    maxLevel: int | None = None,
+    cieWhitePoint: tuple[float, float] = (0.28, 0.28),
+    bracket: float = 1,
+    psf: NDArray | None = None,
+):
+    # remap the bounds of the image if there is a function to do so.
+    if remapBounds is not None:
+        img = remapBounds(img, **(remapBoundsKwargs or {}))
+
+    # scale to the supplied bracket
+    img /= bracket
+
+    # Convert the starting image into the OK L*a*b* color space.
+    # https://en.wikipedia.org/wiki/Oklab_color_space
+
+    Lab = colour.XYZ_to_Oklab(
+        colour.RGB_to_XYZ(
+            img,
+            colourspace="CIE RGB",
+            illuminant=np.array(cieWhitePoint),
+            chromatic_adaptation_transform="bradford",
+        )
+    )
+    lum = Lab[:, :, 0]
+
+    # This works because lum must be between zero and one, so the max it the ratio of the max
+    maxRatio = lum.max()
+
+    # Enhance the contrast of the input image before mapping.
+    if doLocalContrast:
+        newLum = localContrast(lum, sigma, highlights, shadows, clarity=clarity, maxLevel=maxLevel)
+        # Sometimes at the faint end the shadows can be driven a bit negative.
+        # Take the abs to avoid black clipping issues.
+        newLum = abs(newLum)
+        # because contrast enhancement can change the maximum value, linearly
+        # rescale the image such that the maximum is at the same ratio as the
+        # original maximum.
+        newLum /= newLum.max() / maxRatio
+    else:
+        newLum = lum
+
+    # Scale the luminance channel if possible.
+    if scaleLum is not None:
+        lRemapped = scaleLum(newLum, **(scaleLumKWargs or {}))
+    else:
+        lRemapped = newLum
+
+    if psf is not None:
+        lRemapped = skimage.restoration.richardson_lucy(lRemapped, psf=psf, clip=False, num_iter=2)
+    return lRemapped, Lab
+
+
 def lsstRGB(
     rArray: NDArray,
     gArray: NDArray,
@@ -333,6 +431,7 @@ def lsstRGB(
     clarity: float = 0.1,
     maxLevel: int | None = None,
     psf: NDArray | None = None,
+    brackets: list[float] | None = None,
 ) -> NDArray:
     """Enhance the lightness and color preserving hue using perceptual methods.
 
@@ -388,6 +487,14 @@ def lsstRGB(
     psf : `NDArray` or `None`
         If this parameter is an image of a PSF kernel the luminance channel is
         deconvolved with it. Set to None to skip deconvolution.
+    brackets : `list` of `float` or `None`
+        If a list brackets is supplied, an image will  be generated at each of
+        the brackets and the results will be used in exposure fusioning to
+        increase the apparent dynamic range of the image. The image post bounds
+        remapping will be divided by each of the values specified in this list,
+        which can be used to create for instance an under, over, and ballanced
+        expoisure. Theese will then be fusioned into a final single exposure
+        selecting the proper elements from each of the images.
 
     Returns
     -------
@@ -422,61 +529,38 @@ def lsstRGB(
     # set them to zero or throw.
     img[np.isnan(img)] = 0
 
-    # remap the bounds of the image if there is a function to do so.
-    if remapBounds is not None:
-        img = remapBounds(img, **(remapBoundsKwargs or {}))
+    if not brackets:
+        brackets = [1]
 
-    # Convert the starting image into the OK L*a*b* color space.
-    # https://en.wikipedia.org/wiki/Oklab_color_space
-
-    Lab = colour.XYZ_to_Oklab(
-        colour.RGB_to_XYZ(
+    exposures = []
+    for im_num, bracket in enumerate(brackets):
+        tmp_lum, Lab = _handelLuminance(
             img,
-            colourspace="CIE RGB",
-            illuminant=np.array(cieWhitePoint),
-            chromatic_adaptation_transform="bradford",
+            scaleLum,
+            scaleLumKWargs=scaleLumKWargs,
+            remapBounds=remapBounds,
+            remapBoundsKwargs=remapBoundsKwargs,
+            doLocalContrast=doLocalContrast,
+            sigma=sigma,
+            highlights=highlights,
+            clarity=clarity,
+            maxLevel=maxLevel,
+            cieWhitePoint=cieWhitePoint,
+            bracket=bracket,
+            psf=psf,
         )
-    )
-
-    # make an alias for the luminance channel.
-    lum = Lab[:, :, 0]
-    # Determine the ratio of the maximum of this image to the possible maximum
-    # which is 1 in the OKLab colorspace model.
-    maxRatio = lum.max()
-
-    # Enhance the contrast of the input image before mapping.
-    if doLocalContrast:
-        newLum = localContrast(lum, sigma, highlights, shadows, clarity=clarity, maxLevel=maxLevel)
-        # Sometimes at the faint end the shadows can be driven a bit negative.
-        # Take the abs to avoid black clipping issues.
-        newLum = abs(newLum)
-        # because contrast enhancement can change the maximum value, linearly
-        # rescale the image such that the maximum is at the same ratio as the
-        # original maximum.
-        newLum /= newLum.max() / maxRatio
-    else:
-        newLum = lum
-
-    # Scale the luminance channel if possible.
-    if scaleLum is not None:
-        lRemapped = scaleLum(newLum, **(scaleLumKWargs or {}))
-    else:
-        lRemapped = newLum
-
-    if psf is not None:
-        # This algorithm requires values between 0 and 1, but luminance is
-        # between 0 and 100, so scale the input to and output of the
-        # deconvolution algorithm.
-        lRemapped = skimage.restoration.richardson_lucy(lRemapped, psf=psf, clip=False, num_iter=2)
-
-    if scaleColor is not None:
-        new_a, new_b = scaleColor(lum, lRemapped, Lab[:, :, 1], Lab[:, :, 2], **(scaleColorKWargs or {}))
-        # Replace the color information with the new scaled color information.
-        Lab[:, :, 1] = new_a
-        Lab[:, :, 2] = new_b
-
-    # Replace the luminance information with the new scaled luminance information
-    Lab[:, :, 0] = lRemapped
+        if scaleColor is not None:
+            new_a, new_b = scaleColor(
+                Lab[:, :, 0], tmp_lum, Lab[:, :, 1], Lab[:, :, 2], **(scaleColorKWargs or {})
+            )
+            # Replace the color information with the new scaled color information.
+            Lab[:, :, 1] = new_a
+            Lab[:, :, 2] = new_b
+        # Replace the luminance information with the new scaled luminance information
+        Lab[:, :, 0] = tmp_lum
+        exposures.append(Lab)
+    if len(brackets) > 1:
+        Lab = _fuseExposure(exposures)
 
     # Fix any colors that fall outside of the RGB colour gamut.
     fixOutOfGamutColors(Lab)
