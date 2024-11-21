@@ -162,6 +162,22 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         self.assertFloatsAlmostEqual(summary.effTime, expTime, rtol=1e-3)
         self.assertFloatsAlmostEqual(summary.magLim, 26.584, rtol=1e-3)
 
+        # Check TExEx does exist, would need a more complex unit
+        # test with ~O(100) stars to check.
+        nan = float('nan')
+        self.assertFloatsAlmostEqual(summary.psfTE1E1, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.psfTE1E2, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.psfTE1Ex, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.psfTE2E1, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.psfTE2E2, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.psfTE2Ex, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.psfTE3E1, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.psfTE3E2, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.psfTE3Ex, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.psfTE4E1, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.psfTE4E2, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.psfTE4Ex, nan, ignoreNaNs=True)
+
     def testComputeMagnitudeLimit(self):
         """Test the magnitude limit calculation using fiducials from SMTN-002
         and syseng_throughputs."""
