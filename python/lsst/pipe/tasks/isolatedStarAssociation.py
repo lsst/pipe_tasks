@@ -327,7 +327,7 @@ class IsolatedStarAssociationTask(pipeBase.PipelineTask):
 
             goodSrc = self.source_selector.selectSources(tbl)
 
-            table = tbl[persist_columns][goodSrc.selected].as_array().view(np.recarray)
+            table = np.asarray(tbl[persist_columns][goodSrc.selected])
 
             # Append columns that include the row in the source table
             # and the matched object index (to be filled later).
