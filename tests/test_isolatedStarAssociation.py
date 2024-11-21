@@ -187,7 +187,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                     table['normCompTophatFlux_instFlux'][0] = 1.0
 
                 tbl = astropy.table.Table(table)
-                handles.append(lsst.pipe.base.InMemoryDatasetHandle(tbl, storageClass="DataFrame"))
+                handles.append(lsst.pipe.base.InMemoryDatasetHandle(tbl, storageClass="ArrowAstropy"))
 
                 id_counter += nstar
                 visit_counter += 1
