@@ -235,7 +235,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         tables = []
         for handle in self.handles:
             tbl = handle.get()
-            tables.append(tbl.as_array().view(np.recarray))
+            tables.append(np.asarray(tbl))
         source_cat = np.concatenate(tables)
 
         primary_star_cat = self.isolatedStarAssociationTask._match_primary_stars(['i', 'r'],
@@ -272,7 +272,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         tables = []
         for handle in self.handles:
             tbl = handle.get()
-            tables.append(tbl.as_array().view(np.recarray))
+            tables.append(np.asarray(tbl))
         source_cat = np.concatenate(tables)
 
         source_cat = np.lib.recfunctions.append_fields(source_cat,
