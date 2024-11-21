@@ -39,6 +39,8 @@ import logging
 
 from lsst.analysis.tools.interfaces import MetricMeasurementBundle
 
+from astropy.table import Table, vstack
+
 def _timestampValidator(value: str) -> bool:
     if value in ("reference_package_timestamp", "run_timestamp", "current_timestamp", "dataset_timestamp"):
         return True
@@ -166,6 +168,7 @@ class TableColumnSummaryTask(pipeBase.PipelineTask):
                                'display.width', None):
             print(df_summary)
 
+        # change variable from index_list, column_list to something less confusing:
         index_list = df_summary.index.tolist()
         column_list = df_summary.columns.tolist()
 
@@ -177,8 +180,7 @@ class TableColumnSummaryTask(pipeBase.PipelineTask):
         metricsList = []
         for index_name in index_list:
             for column_name in column_list:
-                # Change from +'.' to f"" format:
-                metric_name = index_name+'.'+column_name
+                metric_name = f"{index_name}.{column_name}"
                 metric_value = df_summary.loc[index_name, column_name]
                 # Add dimensions!  Probably need to switch from pandas to Astropy...
                 metric = Measurement(metric_name, metric_value*u.dimensionless_unscaled)
@@ -191,10 +193,6 @@ class TableColumnSummaryTask(pipeBase.PipelineTask):
         )        
         
         bundle['sourceTable'] = metricsList
-
-        print('###############')
-        print(bundle['sourceTable'])      
-        print('###############')
 
         return bundle
 
@@ -213,6 +211,8 @@ class TableColumnSummaryTask(pipeBase.PipelineTask):
             Catalog of stuff.
         """
         
+        # Following thanks to Claude-3.5-Sonnet via Poe.com...
+
         # Retrieve sourceTable for this visit & detector...
 
         # Combine source_table refs into a concatenated pandas DataFrame.
@@ -224,16 +224,10 @@ class TableColumnSummaryTask(pipeBase.PipelineTask):
             dfs.append(df)
         df = pd.concat(dfs, ignore_index=True)
         df.reset_index(inplace=True)
-
-        print('####################################')
-        help(source_table_ref)
-        print('####################################')
-
-        # Following thanks to Claude-3.5-Sonnet via Poe.com...
         
         # Get list of numeric columns
         numeric_cols = df.select_dtypes(include=np.number).columns
-
+        
         # Create summary statistics
         summary_stats = {
             '01_percent': df[numeric_cols].quantile(0.01),
@@ -243,13 +237,17 @@ class TableColumnSummaryTask(pipeBase.PipelineTask):
             'nan_count': df[numeric_cols].isna().sum(),
             'nan_fraction': df[numeric_cols].isna().sum() / (df[numeric_cols].count() + df[numeric_cols].isna().sum())
         }
-
+        
         # Create summary DataFrame
         df_summary = pd.DataFrame(summary_stats).round(3)
 
-        ## Optionally transpose for better readability
-        #df_summary = df_summary.transpose()   
-
+        print('####################################')
+        with pd.option_context('display.max_rows', None, 
+                               'display.max_columns', None, 
+                               'display.width', None):
+            print(df_summary)
+        print('####################################')
+        
         # Return summary DataFrame
         return df_summary
 
