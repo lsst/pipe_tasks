@@ -251,7 +251,6 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
         """
         self.log.info("Generating DataFrame from src catalog visit,detector=%i,%i", visit, detector)
         tbl = catalog.asAstropy()
-        tbl.add_index("id")
         tbl["visit"] = visit
         # int16 instead of uint8 because databases don't like unsigned bytes.
         tbl["detector"] = np.int16(detector)
@@ -1300,7 +1299,6 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
             ccdEntries.append(ccdEntry)
 
         outputCatalog = astropy.table.vstack(ccdEntries, join_type="exact")
-        outputCatalog.add_index("ccdVisitId")
         return pipeBase.Struct(outputCatalog=outputCatalog)
 
 
@@ -1388,7 +1386,6 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
             # dimmSeeing, pwvGPS, pwvMW, flags, nExposures.
 
         outputCatalog = astropy.table.Table(rows=visitEntries)
-        outputCatalog.add_index("visitId")
         return pipeBase.Struct(outputCatalog=outputCatalog)
 
 
