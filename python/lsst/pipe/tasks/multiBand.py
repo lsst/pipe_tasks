@@ -244,13 +244,15 @@ class MeasureMergedCoaddSourcesConnections(
         name="{inputCoaddName}Coadd_meas_schema",
         storageClass="SourceCatalog"
     )
+    # TODO[DM-47797]: remove this deprecated connection.
     refCat = cT.PrerequisiteInput(
         doc="Reference catalog used to match measured sources against known sources",
         name="ref_cat",
         storageClass="SimpleCatalog",
         dimensions=("skypix",),
         deferLoad=True,
-        multiple=True
+        multiple=True,
+        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
     )
     exposure = cT.Input(
         doc="Input coadd image",
@@ -323,18 +325,22 @@ class MeasureMergedCoaddSourcesConnections(
         dimensions=("tract", "patch", "band", "skymap"),
         storageClass="SourceCatalog",
     )
+    # TODO[DM-47797]: remove this deprecated connection.
     matchResult = cT.Output(
         doc="Match catalog produced by configured matcher, optional on doMatchSources",
         name="{outputCoaddName}Coadd_measMatch",
         dimensions=("tract", "patch", "band", "skymap"),
         storageClass="Catalog",
+        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
     )
+    # TODO[DM-47797]: remove this deprecated connection.
     denormMatches = cT.Output(
         doc="Denormalized Match catalog produced by configured matcher, optional on "
             "doWriteMatchesDenormalized",
         name="{outputCoaddName}Coadd_measMatchFull",
         dimensions=("tract", "patch", "band", "skymap"),
         storageClass="Catalog",
+        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
     )
 
     def __init__(self, *, config=None):
@@ -358,6 +364,7 @@ class MeasureMergedCoaddSourcesConnections(
             del self.deblendedCatalog
             del self.scarletModels
 
+        # TODO[DM-47797]: delete the conditionals below.
         if not config.doMatchSources:
             del self.refCat
             del self.matchResult
@@ -402,13 +409,23 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
         doc="Whether to match sources to CCD catalogs to propagate flags (to e.g. identify PSF stars)"
     )
     propagateFlags = ConfigurableField(target=PropagateSourceFlagsTask, doc="Propagate source flags to coadd")
-    doMatchSources = Field(dtype=bool, default=True, doc="Match sources to reference catalog?")
-    match = ConfigurableField(target=DirectMatchTask, doc="Matching to reference catalog")
+    doMatchSources = Field(
+        dtype=bool,
+        default=False,
+        doc="Match sources to reference catalog?",
+        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
+    )
+    match = ConfigurableField(
+        target=DirectMatchTask,
+        doc="Matching to reference catalog",
+        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
+    )
     doWriteMatchesDenormalized = Field(
         dtype=bool,
         default=False,
         doc=("Write reference matches in denormalized format? "
              "This format uses more disk space, but is more convenient to read."),
+        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
     )
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
     psfCache = Field(dtype=int, default=100, doc="Size of psfCache")
@@ -529,6 +546,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         self.algMetadata = PropertyList()
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("setPrimaryFlags", schema=self.schema)
+        # TODO[DM-47797]: remove match subtask
         if self.config.doMatchSources:
             self.makeSubtask("match", refObjLoader=refObjLoader)
         if self.config.doPropagateFlags:
@@ -544,6 +562,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
 
+        # TODO[DM-47797]: remove this block
         if self.config.doMatchSources:
             refObjLoader = ReferenceObjectLoader([ref.datasetRef.dataId for ref in inputRefs.refCat],
                                                  inputs.pop('refCat'),
@@ -691,6 +710,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
 
         results = Struct()
 
+        # TODO[DM-47797]: remove this block
         if self.config.doMatchSources:
             matchResult = self.match.run(sources, exposure.getInfo().getFilter().bandLabel)
             matches = afwTable.packMatches(matchResult.matches)
