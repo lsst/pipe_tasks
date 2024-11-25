@@ -24,6 +24,8 @@ __all__ = ["DeblendCoaddSourcesSingleConfig", "DeblendCoaddSourcesSingleTask",
 
 import numpy as np
 
+from deprecated.sphinx import deprecated
+
 from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
 import lsst.pipe.base.connectionTypes as cT
 
@@ -169,6 +171,13 @@ class DeblendCoaddSourcesMultiConfig(PipelineTaskConfig,
     idGenerator = SkyMapIdGeneratorConfig.make_field()
 
 
+# TODO[DM-47797] Remove this task.
+@deprecated(
+    "Support for the old single-band deblender on coadds will be removed "
+    "after v29.",
+    version="v29",
+    category=FutureWarning
+)
 class DeblendCoaddSourcesBaseTask(PipelineTask):
     def __init__(self, initInputs, **kwargs):
         super().__init__(initInputs=initInputs, **kwargs)
@@ -196,6 +205,13 @@ class DeblendCoaddSourcesBaseTask(PipelineTask):
         return sources
 
 
+# TODO[DM-47797] Remove this task, its connections, and its config.
+@deprecated(
+    "Support for the old single-band deblender on coadds will be removed "
+    "after v29.",
+    version="v29",
+    category=FutureWarning
+)
 class DeblendCoaddSourcesSingleTask(DeblendCoaddSourcesBaseTask):
     ConfigClass = DeblendCoaddSourcesSingleConfig
     _DefaultName = "deblendCoaddSourcesSingle"
@@ -213,12 +229,17 @@ class DeblendCoaddSourcesSingleTask(DeblendCoaddSourcesBaseTask):
         return Struct(measureCatalog=sources)
 
 
-class DeblendCoaddSourcesMultiTask(DeblendCoaddSourcesBaseTask):
+class DeblendCoaddSourcesMultiTask(PipelineTask):
     ConfigClass = DeblendCoaddSourcesMultiConfig
     _DefaultName = "deblendCoaddSourcesMulti"
 
     def __init__(self, initInputs, **kwargs):
         super().__init__(initInputs=initInputs, **kwargs)
+        schema = initInputs["inputSchema"].schema
+        self.peakSchema = initInputs["peakSchema"].schema
+        self.schemaMapper = afwTable.SchemaMapper(schema)
+        self.schemaMapper.addMinimalSchema(schema)
+        self.schema = self.schemaMapper.getOutputSchema()
         self.makeSubtask("multibandDeblend", schema=self.schema, peakSchema=self.peakSchema)
         self.outputSchema = afwTable.SourceCatalog(self.schema)
 
@@ -240,3 +261,14 @@ class DeblendCoaddSourcesMultiTask(DeblendCoaddSourcesBaseTask):
         catalog, modelData = self.multibandDeblend.run(multiExposure, sources)
         retStruct = Struct(deblendedCatalog=catalog, scarletModelData=modelData)
         return retStruct
+
+    def _makeSourceCatalog(self, mergedDetections, idFactory):
+        # There may be gaps in the mergeDet catalog, which will cause the
+        # source ids to be inconsistent. So we update the id factory
+        # with the largest id already in the catalog.
+        maxId = np.max(mergedDetections["id"])
+        idFactory.notify(maxId)
+        table = afwTable.SourceTable.make(self.schema, idFactory)
+        sources = afwTable.SourceCatalog(table)
+        sources.extend(mergedDetections, self.schemaMapper)
+        return sources
