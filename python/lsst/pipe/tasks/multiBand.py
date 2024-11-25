@@ -221,11 +221,19 @@ class DetectCoaddSourcesTask(PipelineTask):
         return Struct(outputSources=sources, outputBackgrounds=backgrounds, outputExposure=exposure)
 
 
-class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
-                                           dimensions=("tract", "patch", "band", "skymap"),
-                                           defaultTemplates={"inputCoaddName": "deep",
-                                                             "outputCoaddName": "deep",
-                                                             "deblendedCatalog": "deblendedFlux"}):
+class MeasureMergedCoaddSourcesConnections(
+    PipelineTaskConnections,
+    dimensions=("tract", "patch", "band", "skymap"),
+    defaultTemplates={
+        "inputCoaddName": "deep",
+        "outputCoaddName": "deep",
+        "deblendedCatalog": "deblendedFlux",
+    },
+    deprecatedTemplates={
+        # TODO[DM-47797]: remove this deprecated connection template.
+        "deblendedCatalog": "Support for old deblender outputs will be removed after v29."
+    },
+):
     inputSchema = cT.InitInput(
         doc="Input schema for measure merged task produced by a deblender or detection task",
         name="{inputCoaddName}Coadd_deblendedFlux_schema",
@@ -284,6 +292,7 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
         multiple=True,
         deferLoad=True,
     )
+    # TODO[DM-47797]: remove this deprecated connection.
     inputCatalog = cT.Input(
         doc=("Name of the input catalog to use."
              "If the single band deblender was used this should be 'deblendedFlux."
@@ -293,6 +302,7 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
              "be 'mergeDet'"),
         name="{inputCoaddName}Coadd_{deblendedCatalog}",
         storageClass="SourceCatalog",
+        deprecated="Support for old deblender outputs will be removed after v29.",
         dimensions=("tract", "patch", "band", "skymap"),
     )
     scarletCatalog = cT.Input(
@@ -339,6 +349,7 @@ class MeasureMergedCoaddSourcesConnections(PipelineTaskConnections,
                 del self.sourceTableHandles
             if not config.propagateFlags.finalized_source_flags:
                 del self.finalizedSourceTableHandles
+        # TODO[DM-47797]: only the 'if' block contents here should survive.
         if config.inputCatalog == "deblendedCatalog":
             del self.inputCatalog
             if not config.doAddFootprints:
@@ -368,6 +379,8 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
             "mergeDet": "The merged detections before deblending."
         },
         doc="The name of the input catalog.",
+        # TODO[DM-47797]: remove this config option and anything using it.
+        deprecated="Support for old deblender outputs will be removed after v29.",
     )
     doAddFootprints = Field(dtype=bool,
                             default=True,
