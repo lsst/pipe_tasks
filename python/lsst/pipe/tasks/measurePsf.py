@@ -21,6 +21,8 @@
 
 __all__ = ["MeasurePsfConfig", "MeasurePsfTask"]
 
+import numpy as np
+
 import lsst.afw.display as afwDisplay
 import lsst.afw.math as afwMath
 import lsst.meas.algorithms as measAlg
@@ -29,6 +31,27 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.meas.extensions.psfex.psfexPsfDeterminer  # noqa: F401
 from lsst.utils.timer import timeMethod
+
+
+class NonfinitePsfShapeError(pipeBase.AlgorithmError):
+    """Raised if the radius of the fitted psf model is non-finite.
+
+    Parameters
+    ----------
+    psf_size : `float`
+        Fitted size of the failing PSF model.
+    """
+    def __init__(self, psf_size) -> None:
+        self._psf_size = psf_size
+        super().__init__(
+            f"Failed to determine PSF: fitter returned model with non-finite PSF size ({psf_size} pixels)."
+        )
+
+    @property
+    def metadata(self) -> dict:
+        return {
+            "psf_size": self._psf_size,
+        }
 
 
 class MeasurePsfConfig(pexConfig.Config):
@@ -199,6 +222,11 @@ class MeasurePsfTask(pipeBase.Task):
             ``cellSet``
                 An `lsst.afw.math.SpatialCellSet` containing the PSF candidates
                 as returned by the psf determiner.
+
+        Raises
+        ------
+        NonfinitePsfShapeError
+            If the new PSF has NaN or Inf width.
         """
         self.log.info("Measuring PSF")
 
@@ -242,6 +270,10 @@ class MeasurePsfTask(pipeBase.Task):
                                                        flagKey=self.usedKey)
         self.log.info("PSF determination using %d/%d stars.",
                       self.metadata.getScalar("numGoodStars"), self.metadata.getScalar("numAvailStars"))
+        if not np.isfinite((psfSize := psf.computeShape(psf.getAveragePosition()).getDeterminantRadius())):
+            raise NonfinitePsfShapeError(psf_size=psfSize)
+        else:
+            self.log.info("Fitted PSF size: %f pixels", psfSize)
 
         exposure.setPsf(psf)
 
