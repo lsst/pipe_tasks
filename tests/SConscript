@@ -6,8 +6,5 @@ from lsst.sconsUtils import env, scripts
 
 scripts.BasicSConscript.tests(pyList=[])
 
-if "DAF_BUTLER_PLUGINS" in os.environ:
-    env["ENV"]["DAF_BUTLER_PLUGINS"] = os.environ["DAF_BUTLER_PLUGINS"]
-
 if "DUSTMAPS_CONFIG_FNAME" in os.environ:
     env["ENV"]["DUSTMAPS_CONFIG_FNAME"] = os.environ["DUSTMAPS_CONFIG_FNAME"]
