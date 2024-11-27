@@ -251,6 +251,15 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         doc="Configuration of reference object loader for photometric fit.",
     )
 
+    bright_star_selection = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.ReferenceSourceSelectorTask,
+        doc="Task to select bright stars to be masked from a reference catalog.",
+    )
+    mask_bright_stars = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.MaskBrightStarsTask,
+        doc="Task to mask known bright stars on the exposure.",
+    )
+
     compute_summary_stats = pexConfig.ConfigurableField(
         target=computeExposureSummaryStats.ComputeExposureSummaryStatsTask,
         doc="Task to to compute summary statistics on the calibrated exposure."
@@ -343,6 +352,10 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         self.photometry.match.sourceSelection.doFlags = True
         self.photometry.match.sourceSelection.flags.bad = ["sky_source"]
 
+        self.bright_star_selection.doMagLimit = True
+        self.bright_star_selection.magLimit.fluxField = "lsst_i_smeared_flux"
+        self.bright_star_selection.magLimit.maximum = 16
+
         # All sources should be good for PSF summary statistics.
         # TODO: These should both be changed to calib_psf_used with DM-41640.
         self.compute_summary_stats.starSelection = "calib_photometry_used"
@@ -404,6 +417,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         self.makeSubtask("astrometry", schema=initial_stars_schema)
         self.makeSubtask("photometry", schema=initial_stars_schema)
+        self.makeSubtask("bright_star_selection")
+        self.makeSubtask("mask_bright_stars")
 
         self.makeSubtask("compute_summary_stats")
 
@@ -538,6 +553,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         if self.config.optional_outputs:
             result.photometry_matches = lsst.meas.astrom.denormalizeMatches(photometry_matches,
                                                                             photometry_meta)
+
+        self._mask_bright_stars(result.exposure)
 
         self._summarize(result.exposure, result.stars_footprints, result.background)
 
@@ -827,6 +844,32 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         exposure.setPhotoCalib(identity)
 
         return calibrated_stars, result.matches, result.matchMeta, result.photoCalib
+
+    def _mask_bright_stars(self, exposure):
+        bbox = exposure.getBBox()
+        bbox.grow(200)  # TODO: parameterize this.
+        stars = self.photometry.match.refObjLoader.loadPixelBox(bbox,
+                                                                exposure.wcs,
+                                                                exposure.filter.bandLabel)
+        selected = self.bright_star_selection.run(stars.refCat)
+
+        import lsst.afw.display
+        display = lsst.afw.display.Display()
+        display.frame = 1
+        # display.centroids(catalog, size=10, ctype="red", symbol="x")
+        # import ipdb; ipdb.set_trace();
+
+        self.mask_bright_stars.run(exposure, selected.sourceCat, stars.fluxField)
+
+        display.image(exposure)
+        for x in selected.sourceCat:
+            display.dot("x", x["centroid_x"], x["centroid_y"], size=20, ctype="cyan")
+        display.frame += 1
+        display.image(exposure.mask)
+        for x in selected.sourceCat:
+            display.dot("x", x["centroid_x"], x["centroid_y"], size=20, ctype="cyan")
+
+        import os; print(os.getpid()); import ipdb; ipdb.set_trace();
 
     def _summarize(self, exposure, stars, background):
         """Compute summary statistics on the exposure and update in-place the
