@@ -225,11 +225,6 @@ class MeasureMergedCoaddSourcesConnections(
     defaultTemplates={
         "inputCoaddName": "deep",
         "outputCoaddName": "deep",
-        "deblendedCatalog": "deblendedFlux",
-    },
-    deprecatedTemplates={
-        # TODO[DM-47797]: remove this deprecated connection template.
-        "deblendedCatalog": "Support for old deblender outputs will be removed after v29."
     },
 ):
     inputSchema = cT.InitInput(
@@ -292,19 +287,6 @@ class MeasureMergedCoaddSourcesConnections(
         multiple=True,
         deferLoad=True,
     )
-    # TODO[DM-47797]: remove this deprecated connection.
-    inputCatalog = cT.Input(
-        doc=("Name of the input catalog to use."
-             "If the single band deblender was used this should be 'deblendedFlux."
-             "If the multi-band deblender was used this should be 'deblendedModel, "
-             "or deblendedFlux if the multiband deblender was configured to output "
-             "deblended flux catalogs. If no deblending was performed this should "
-             "be 'mergeDet'"),
-        name="{inputCoaddName}Coadd_{deblendedCatalog}",
-        storageClass="SourceCatalog",
-        deprecated="Support for old deblender outputs will be removed after v29.",
-        dimensions=("tract", "patch", "band", "skymap"),
-    )
     scarletCatalog = cT.Input(
         doc="Catalogs produced by multiband deblending",
         name="{inputCoaddName}Coadd_deblendedCatalog",
@@ -353,13 +335,7 @@ class MeasureMergedCoaddSourcesConnections(
                 del self.sourceTableHandles
             if not config.propagateFlags.finalized_source_flags:
                 del self.finalizedSourceTableHandles
-        # TODO[DM-47797]: only the 'if' block contents here should survive.
-        if config.inputCatalog == "deblendedCatalog":
-            del self.inputCatalog
-            if not config.doAddFootprints:
-                del self.scarletModels
-        else:
-            del self.deblendedCatalog
+        if not config.doAddFootprints:
             del self.scarletModels
 
         # TODO[DM-47797]: delete the conditionals below.
@@ -531,8 +507,6 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
     def __init__(self, schema=None, peakSchema=None, refObjLoader=None, initInputs=None,
                  **kwargs):
         super().__init__(**kwargs)
-        self.deblended = self.config.inputCatalog.startswith("deblended")
-        self.inputCatalog = "Coadd_" + self.config.inputCatalog
         if initInputs is not None:
             schema = initInputs['inputSchema'].schema
         if schema is None:
@@ -582,12 +556,8 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         table = afwTable.SourceTable.make(self.schema, idGenerator.make_table_id_factory())
         sources = afwTable.SourceCatalog(table)
         # Load the correct input catalog
-        if "scarletCatalog" in inputs:
-            inputCatalog = inputs.pop("scarletCatalog")
-            catalogRef = inputRefs.scarletCatalog
-        else:
-            inputCatalog = inputs.pop("inputCatalog")
-            catalogRef = inputRefs.inputCatalog
+        inputCatalog = inputs.pop("scarletCatalog")
+        catalogRef = inputRefs.scarletCatalog
         sources.extend(inputCatalog, self.schemaMapper)
         del inputCatalog
         # Add the HeavyFootprints to the deblended sources
