@@ -40,7 +40,6 @@ from lsst.meas.algorithms import (
     ExceedsMaxVarianceScaleError,
     InsufficientSourcesError,
     PsfGenerationError,
-    ReferenceObjectLoader,
     ScaleVarianceTask,
     SetPrimaryFlagsTask,
     TooManyMaskedPixelsError,
@@ -53,7 +52,6 @@ from lsst.meas.base import (
     SkyMapIdGeneratorConfig,
 )
 from lsst.meas.extensions.scarlet.io import updateCatalogFootprints
-from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
 from lsst.pipe.tasks.propagateSourceFlags import PropagateSourceFlagsTask
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
@@ -446,16 +444,6 @@ class MeasureMergedCoaddSourcesConnections(
         name="{inputCoaddName}Coadd_meas_schema",
         storageClass="SourceCatalog"
     )
-    # TODO[DM-47797]: remove this deprecated connection.
-    refCat = cT.PrerequisiteInput(
-        doc="Reference catalog used to match measured sources against known sources",
-        name="ref_cat",
-        storageClass="SimpleCatalog",
-        dimensions=("skypix",),
-        deferLoad=True,
-        multiple=True,
-        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
-    )
     exposure = cT.Input(
         doc="Input non-cell-based coadd image",
         name="{inputCoaddName}Coadd_calexp",
@@ -534,23 +522,6 @@ class MeasureMergedCoaddSourcesConnections(
         dimensions=("tract", "patch", "band", "skymap"),
         storageClass="SourceCatalog",
     )
-    # TODO[DM-47797]: remove this deprecated connection.
-    matchResult = cT.Output(
-        doc="Match catalog produced by configured matcher, optional on doMatchSources",
-        name="{outputCoaddName}Coadd_measMatch",
-        dimensions=("tract", "patch", "band", "skymap"),
-        storageClass="Catalog",
-        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
-    )
-    # TODO[DM-47797]: remove this deprecated connection.
-    denormMatches = cT.Output(
-        doc="Denormalized Match catalog produced by configured matcher, optional on "
-            "doWriteMatchesDenormalized",
-        name="{outputCoaddName}Coadd_measMatchFull",
-        dimensions=("tract", "patch", "band", "skymap"),
-        storageClass="Catalog",
-        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
-    )
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
@@ -567,14 +538,6 @@ class MeasureMergedCoaddSourcesConnections(
                 del self.finalizedSourceTableHandles
         if not config.doAddFootprints:
             del self.scarletModels
-
-        # TODO[DM-47797]: delete the conditionals below.
-        if not config.doMatchSources:
-            del self.refCat
-            del self.matchResult
-
-        if not config.doWriteMatchesDenormalized:
-            del self.denormMatches
 
         if config.useCellCoadds:
             del self.exposure
@@ -608,24 +571,6 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
         doc="Whether to match sources to CCD catalogs to propagate flags (to e.g. identify PSF stars)"
     )
     propagateFlags = ConfigurableField(target=PropagateSourceFlagsTask, doc="Propagate source flags to coadd")
-    doMatchSources = Field(
-        dtype=bool,
-        default=False,
-        doc="Match sources to reference catalog?",
-        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
-    )
-    match = ConfigurableField(
-        target=DirectMatchTask,
-        doc="Matching to reference catalog",
-        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
-    )
-    doWriteMatchesDenormalized = Field(
-        dtype=bool,
-        default=False,
-        doc=("Write reference matches in denormalized format? "
-             "This format uses more disk space, but is more convenient to read."),
-        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
-    )
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
     psfCache = Field(dtype=int, default=100, doc="Size of psfCache")
     checkUnitsParseStrict = Field(
@@ -659,10 +604,6 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
     )
     idGenerator = SkyMapIdGeneratorConfig.make_field()
 
-    @property
-    def refObjLoader(self):
-        return self.match.refObjLoader
-
     def setDefaults(self):
         super().setDefaults()
         self.measurement.plugins.names |= ['base_InputCount',
@@ -677,12 +618,6 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
                                                                        'INEXACT_PSF']
         self.measurement.plugins['base_PixelFlags'].masksFpCenter = ['CLIPPED', 'SENSOR_EDGE',
                                                                      'INEXACT_PSF']
-
-    def validate(self):
-        super().validate()
-
-        if not self.doMatchSources and self.doWriteMatchesDenormalized:
-            raise ValueError("Cannot set doWriteMatchesDenormalized if doMatchSources is False.")
 
 
 class MeasureMergedCoaddSourcesTask(PipelineTask):
@@ -701,9 +636,6 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
     flag (indicating sources with no children) is set. Visit flags are
     propagated to the coadd sources.
 
-    Optionally, we can match the coadd sources to an external reference
-    catalog.
-
     After MeasureMergedCoaddSourcesTask has been run on multiple coadds, we
     have a set of per-band catalogs. The next stage in the multi-band
     processing procedure will merge these measurements into a suitable catalog
@@ -715,10 +647,6 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         The schema of the merged detection catalog used as input to this one.
     peakSchema : ``lsst.afw.table.Schema`, optional
         The schema of the PeakRecords in the Footprints in the merged detection catalog.
-    refObjLoader : `lsst.meas.algorithms.ReferenceObjectLoader`, optional
-        An instance of ReferenceObjectLoader that supplies an external reference
-        catalog. May be None if the loader can be constructed from the butler argument or all steps
-        requiring a reference catalog are disabled.
     initInputs : `dict`, optional
         Dictionary that can contain a key ``inputSchema`` containing the
         input schema. If present will override the value of ``schema``.
@@ -729,8 +657,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
     _DefaultName = "measureCoaddSources"
     ConfigClass = MeasureMergedCoaddSourcesConfig
 
-    def __init__(self, schema=None, peakSchema=None, refObjLoader=None, initInputs=None,
-                 **kwargs):
+    def __init__(self, schema=None, peakSchema=None, initInputs=None, **kwargs):
         super().__init__(**kwargs)
         if initInputs is not None:
             schema = initInputs['inputSchema'].schema
@@ -742,9 +669,6 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         self.algMetadata = PropertyList()
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("setPrimaryFlags", schema=self.schema)
-        # TODO[DM-47797]: remove match subtask
-        if self.config.doMatchSources:
-            self.makeSubtask("match", refObjLoader=refObjLoader)
         if self.config.doPropagateFlags:
             self.makeSubtask("propagateFlags", schema=self.schema)
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
@@ -757,15 +681,6 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-
-        # TODO[DM-47797]: remove this block
-        if self.config.doMatchSources:
-            refObjLoader = ReferenceObjectLoader([ref.datasetRef.dataId for ref in inputRefs.refCat],
-                                                 inputs.pop('refCat'),
-                                                 name=self.config.connections.refCat,
-                                                 config=self.config.refObjLoader,
-                                                 log=self.log)
-            self.match.setRefObjLoader(refObjLoader)
 
         if self.config.useCellCoadds:
             multiple_cell_coadd = inputs.pop("exposure_cells")
@@ -904,9 +819,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         -------
         results : `lsst.pipe.base.Struct`
             Results of running measurement task. Will contain the catalog in the
-            sources attribute. Optionally will have results of matching to a
-            reference catalog in the matchResults attribute, and denormalized
-            matches in the denormMatches attribute.
+            sources attribute.
         """
         if self.config.doPropagateFlags:
             # These mask planes may not be defined on the coadds always.
@@ -948,24 +861,5 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             )
 
         results = Struct()
-
-        # TODO[DM-47797]: remove this block
-        if self.config.doMatchSources:
-            matchResult = self.match.run(sources, exposure.getInfo().getFilter().bandLabel)
-            matches = afwTable.packMatches(matchResult.matches)
-            matches.table.setMetadata(matchResult.matchMeta)
-            results.matchResult = matches
-            if self.config.doWriteMatchesDenormalized:
-                if matchResult.matches:
-                    denormMatches = denormalizeMatches(matchResult.matches, matchResult.matchMeta)
-                else:
-                    self.log.warning("No matches, so generating dummy denormalized matches file")
-                    denormMatches = afwTable.BaseCatalog(afwTable.Schema())
-                    denormMatches.setMetadata(PropertyList())
-                    denormMatches.getMetadata().add("COMMENT",
-                                                    "This catalog is empty because no matches were found.")
-                    results.denormMatches = denormMatches
-                results.denormMatches = denormMatches
-
         results.outputSources = sources
         return results
