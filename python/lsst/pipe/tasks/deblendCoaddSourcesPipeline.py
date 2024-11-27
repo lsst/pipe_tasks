@@ -19,19 +19,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["DeblendCoaddSourcesSingleConfig", "DeblendCoaddSourcesSingleTask",
-           "DeblendCoaddSourcesMultiConfig", "DeblendCoaddSourcesMultiTask"]
+__all__ = ["DeblendCoaddSourcesMultiConfig", "DeblendCoaddSourcesMultiTask"]
 
 import numpy as np
-
-from deprecated.sphinx import deprecated
 
 from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
 import lsst.pipe.base.connectionTypes as cT
 
 from lsst.pex.config import ConfigurableField
 from lsst.meas.base import SkyMapIdGeneratorConfig
-from lsst.meas.deblender import SourceDeblendTask
 from lsst.meas.extensions.scarlet import ScarletDeblendTask
 
 import lsst.afw.image as afwImage
@@ -40,63 +36,11 @@ import lsst.afw.table as afwTable
 from .makeWarp import reorderRefs
 
 
-deblendBaseTemplates = {"inputCoaddName": "deep", "outputCoaddName": "deep"}
-
-
-class DeblendCoaddSourceSingleConnections(PipelineTaskConnections,
-                                          dimensions=("tract", "patch", "band", "skymap"),
-                                          defaultTemplates=deblendBaseTemplates):
-    inputSchema = cT.InitInput(
-        doc="Input schema to use in the deblend catalog",
-        name="{inputCoaddName}Coadd_mergeDet_schema",
-        storageClass="SourceCatalog"
-    )
-    peakSchema = cT.InitInput(
-        doc="Schema of the footprint peak catalogs",
-        name="{inputCoaddName}Coadd_peak_schema",
-        storageClass="PeakCatalog"
-    )
-    mergedDetections = cT.Input(
-        doc="Detection catalog merged across bands",
-        name="{inputCoaddName}Coadd_mergeDet",
-        storageClass="SourceCatalog",
-        dimensions=("tract", "patch", "skymap")
-    )
-    coadd = cT.Input(
-        doc="Exposure on which to run deblending",
-        name="{inputCoaddName}Coadd_calexp",
-        storageClass="ExposureF",
-        dimensions=("tract", "patch", "band", "skymap")
-    )
-    measureCatalog = cT.Output(
-        doc="The output measurement catalog of deblended sources",
-        name="{outputCoaddName}Coadd_deblendedFlux",
-        storageClass="SourceCatalog",
-        dimensions=("tract", "patch", "band", "skymap")
-    )
-    outputSchema = cT.InitOutput(
-        doc="Output of the schema used in deblending task",
-        name="{outputCoaddName}Coadd_deblendedFlux_schema",
-        storageClass="SourceCatalog"
-    )
-
-
-class DeblendCoaddSourcesSingleConfig(PipelineTaskConfig,
-                                      pipelineConnections=DeblendCoaddSourceSingleConnections):
-    singleBandDeblend = ConfigurableField(
-        target=SourceDeblendTask,
-        doc="Task to deblend an image in one band"
-    )
-    idGenerator = SkyMapIdGeneratorConfig.make_field()
-
-    def setDefaults(self):
-        super().setDefaults()
-        self.singleBandDeblend.propagateAllPeaks = True
-
-
-class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
-                                          dimensions=("tract", "patch", "skymap"),
-                                          defaultTemplates=deblendBaseTemplates):
+class DeblendCoaddSourcesMultiConnections(
+    PipelineTaskConnections,
+    dimensions=("tract", "patch", "skymap"),
+    defaultTemplates={"inputCoaddName": "deep", "outputCoaddName": "deep"},
+):
     inputSchema = cT.InitInput(
         doc="Input schema to use in the deblend catalog",
         name="{inputCoaddName}Coadd_mergeDet_schema",
@@ -169,64 +113,6 @@ class DeblendCoaddSourcesMultiConfig(PipelineTaskConfig,
         doc="Task to deblend an images in multiple bands"
     )
     idGenerator = SkyMapIdGeneratorConfig.make_field()
-
-
-# TODO[DM-47797] Remove this task.
-@deprecated(
-    "Support for the old single-band deblender on coadds will be removed "
-    "after v29.",
-    version="v29",
-    category=FutureWarning
-)
-class DeblendCoaddSourcesBaseTask(PipelineTask):
-    def __init__(self, initInputs, **kwargs):
-        super().__init__(initInputs=initInputs, **kwargs)
-        schema = initInputs["inputSchema"].schema
-        self.peakSchema = initInputs["peakSchema"].schema
-        self.schemaMapper = afwTable.SchemaMapper(schema)
-        self.schemaMapper.addMinimalSchema(schema)
-        self.schema = self.schemaMapper.getOutputSchema()
-
-    def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        inputs = butlerQC.get(inputRefs)
-        inputs["idFactory"] = self.config.idGenerator.apply(butlerQC.quantum.dataId).make_table_id_factory()
-        outputs = self.run(**inputs)
-        butlerQC.put(outputs, outputRefs)
-
-    def _makeSourceCatalog(self, mergedDetections, idFactory):
-        # There may be gaps in the mergeDet catalog, which will cause the
-        # source ids to be inconsistent. So we update the id factory
-        # with the largest id already in the catalog.
-        maxId = np.max(mergedDetections["id"])
-        idFactory.notify(maxId)
-        table = afwTable.SourceTable.make(self.schema, idFactory)
-        sources = afwTable.SourceCatalog(table)
-        sources.extend(mergedDetections, self.schemaMapper)
-        return sources
-
-
-# TODO[DM-47797] Remove this task, its connections, and its config.
-@deprecated(
-    "Support for the old single-band deblender on coadds will be removed "
-    "after v29.",
-    version="v29",
-    category=FutureWarning
-)
-class DeblendCoaddSourcesSingleTask(DeblendCoaddSourcesBaseTask):
-    ConfigClass = DeblendCoaddSourcesSingleConfig
-    _DefaultName = "deblendCoaddSourcesSingle"
-
-    def __init__(self, initInputs, **kwargs):
-        super().__init__(initInputs=initInputs, **kwargs)
-        self.makeSubtask("singleBandDeblend", schema=self.schema, peakSchema=self.peakSchema)
-        self.outputSchema = afwTable.SourceCatalog(self.schema)
-
-    def run(self, coadd, mergedDetections, idFactory):
-        sources = self._makeSourceCatalog(mergedDetections, idFactory)
-        self.singleBandDeblend.run(coadd, sources)
-        if not sources.isContiguous():
-            sources = sources.copy(deep=True)
-        return Struct(measureCatalog=sources)
 
 
 class DeblendCoaddSourcesMultiTask(PipelineTask):
