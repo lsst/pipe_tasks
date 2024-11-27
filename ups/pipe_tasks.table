@@ -29,4 +29,3 @@ setupRequired(verify)
 
 envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
 envPrepend(PATH, ${PRODUCT_DIR}/bin)
-envPrepend(DAF_BUTLER_PLUGINS, ${PRODUCT_DIR}/python/lsst/pipe/tasks/cli/resources.yaml)
