@@ -24,8 +24,7 @@ __all__ = ["DetectCoaddSourcesConfig", "DetectCoaddSourcesTask"]
 from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.config import Field, ConfigurableField, ChoiceField
-from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader, ScaleVarianceTask, \
-    SetPrimaryFlagsTask
+from lsst.meas.algorithms import DynamicDetectionTask, ScaleVarianceTask, SetPrimaryFlagsTask
 from lsst.meas.base import (
     SingleFrameMeasurementTask,
     ApplyApCorrTask,
@@ -33,7 +32,6 @@ from lsst.meas.base import (
     SkyMapIdGeneratorConfig,
 )
 from lsst.meas.extensions.scarlet.io import updateCatalogFootprints
-from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
 from lsst.pipe.tasks.propagateSourceFlags import PropagateSourceFlagsTask
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
@@ -237,16 +235,6 @@ class MeasureMergedCoaddSourcesConnections(
         name="{inputCoaddName}Coadd_meas_schema",
         storageClass="SourceCatalog"
     )
-    # TODO[DM-47797]: remove this deprecated connection.
-    refCat = cT.PrerequisiteInput(
-        doc="Reference catalog used to match measured sources against known sources",
-        name="ref_cat",
-        storageClass="SimpleCatalog",
-        dimensions=("skypix",),
-        deferLoad=True,
-        multiple=True,
-        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
-    )
     exposure = cT.Input(
         doc="Input coadd image",
         name="{inputCoaddName}Coadd_calexp",
@@ -305,23 +293,6 @@ class MeasureMergedCoaddSourcesConnections(
         dimensions=("tract", "patch", "band", "skymap"),
         storageClass="SourceCatalog",
     )
-    # TODO[DM-47797]: remove this deprecated connection.
-    matchResult = cT.Output(
-        doc="Match catalog produced by configured matcher, optional on doMatchSources",
-        name="{outputCoaddName}Coadd_measMatch",
-        dimensions=("tract", "patch", "band", "skymap"),
-        storageClass="Catalog",
-        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
-    )
-    # TODO[DM-47797]: remove this deprecated connection.
-    denormMatches = cT.Output(
-        doc="Denormalized Match catalog produced by configured matcher, optional on "
-            "doWriteMatchesDenormalized",
-        name="{outputCoaddName}Coadd_measMatchFull",
-        dimensions=("tract", "patch", "band", "skymap"),
-        storageClass="Catalog",
-        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
-    )
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
@@ -337,14 +308,6 @@ class MeasureMergedCoaddSourcesConnections(
                 del self.finalizedSourceTableHandles
         if not config.doAddFootprints:
             del self.scarletModels
-
-        # TODO[DM-47797]: delete the conditionals below.
-        if not config.doMatchSources:
-            del self.refCat
-            del self.matchResult
-
-        if not config.doWriteMatchesDenormalized:
-            del self.denormMatches
 
 
 class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
@@ -383,24 +346,6 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
         doc="Whether to match sources to CCD catalogs to propagate flags (to e.g. identify PSF stars)"
     )
     propagateFlags = ConfigurableField(target=PropagateSourceFlagsTask, doc="Propagate source flags to coadd")
-    doMatchSources = Field(
-        dtype=bool,
-        default=False,
-        doc="Match sources to reference catalog?",
-        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
-    )
-    match = ConfigurableField(
-        target=DirectMatchTask,
-        doc="Matching to reference catalog",
-        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
-    )
-    doWriteMatchesDenormalized = Field(
-        dtype=bool,
-        default=False,
-        doc=("Write reference matches in denormalized format? "
-             "This format uses more disk space, but is more convenient to read."),
-        deprecated="Reference matching in measureCoaddSources will be removed after v29.",
-    )
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
     psfCache = Field(dtype=int, default=100, doc="Size of psfCache")
     checkUnitsParseStrict = Field(
@@ -452,12 +397,6 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
                                                                        'INEXACT_PSF']
         self.measurement.plugins['base_PixelFlags'].masksFpCenter = ['CLIPPED', 'SENSOR_EDGE',
                                                                      'INEXACT_PSF']
-
-    def validate(self):
-        super().validate()
-
-        if not self.doMatchSources and self.doWriteMatchesDenormalized:
-            raise ValueError("Cannot set doWriteMatchesDenormalized if doMatchSources is False.")
 
 
 class MeasureMergedCoaddSourcesTask(PipelineTask):
@@ -518,9 +457,6 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         self.algMetadata = PropertyList()
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("setPrimaryFlags", schema=self.schema)
-        # TODO[DM-47797]: remove match subtask
-        if self.config.doMatchSources:
-            self.makeSubtask("match", refObjLoader=refObjLoader)
         if self.config.doPropagateFlags:
             self.makeSubtask("propagateFlags", schema=self.schema)
         self.schema.checkUnits(parse_strict=self.config.checkUnitsParseStrict)
@@ -533,15 +469,6 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-
-        # TODO[DM-47797]: remove this block
-        if self.config.doMatchSources:
-            refObjLoader = ReferenceObjectLoader([ref.datasetRef.dataId for ref in inputRefs.refCat],
-                                                 inputs.pop('refCat'),
-                                                 name=self.config.connections.refCat,
-                                                 config=self.config.refObjLoader,
-                                                 log=self.log)
-            self.match.setRefObjLoader(refObjLoader)
 
         # Set psfcache
         # move this to run after gen2 deprecation
@@ -677,24 +604,5 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             )
 
         results = Struct()
-
-        # TODO[DM-47797]: remove this block
-        if self.config.doMatchSources:
-            matchResult = self.match.run(sources, exposure.getInfo().getFilter().bandLabel)
-            matches = afwTable.packMatches(matchResult.matches)
-            matches.table.setMetadata(matchResult.matchMeta)
-            results.matchResult = matches
-            if self.config.doWriteMatchesDenormalized:
-                if matchResult.matches:
-                    denormMatches = denormalizeMatches(matchResult.matches, matchResult.matchMeta)
-                else:
-                    self.log.warning("No matches, so generating dummy denormalized matches file")
-                    denormMatches = afwTable.BaseCatalog(afwTable.Schema())
-                    denormMatches.setMetadata(PropertyList())
-                    denormMatches.getMetadata().add("COMMENT",
-                                                    "This catalog is empty because no matches were found.")
-                    results.denormMatches = denormMatches
-                results.denormMatches = denormMatches
-
         results.outputSources = sources
         return results
