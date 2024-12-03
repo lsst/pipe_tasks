@@ -280,7 +280,7 @@ class MeasureMergedCoaddSourcesConnections(
              "These tables contain astrometry and photometry flags, and optionally "
              "PSF flags."),
         name="sourceTable_visit",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument", "visit"),
         multiple=True,
         deferLoad=True,
@@ -289,7 +289,7 @@ class MeasureMergedCoaddSourcesConnections(
         doc=("Finalized source tables from ``FinalizeCalibrationTask``. These "
              "tables contain PSF flags from the finalized PSF estimation."),
         name="finalized_src_table",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument", "visit"),
         multiple=True,
         deferLoad=True,
