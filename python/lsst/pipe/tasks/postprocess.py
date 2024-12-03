@@ -1259,6 +1259,7 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
             # Technically you should join to get the visit from the visit
             # table.
             ccdEntry.rename_column("visit", "visitId")
+            ccdEntry.rename_column("id", "detectorId")
 
             # RFC-924: Temporarily keep a duplicate "decl" entry for backwards
             # compatibility. To be removed after September 2023.
