@@ -36,8 +36,7 @@ from lsst.meas.base import DetectorVisitIdGeneratorConfig
 from lsst.meas.algorithms import CoaddPsf, CoaddPsfConfig, GaussianPsfFactory
 from lsst.skymap import BaseSkyMap
 from lsst.utils.timer import timeMethod
-from .coaddBase import CoaddBaseTask, makeSkyInfo, reorderAndPadList
-from .make_psf_matched_warp import growValidPolygons
+from .coaddBase import CoaddBaseTask, growValidPolygons, makeSkyInfo, reorderAndPadList
 from .warpAndPsfMatch import WarpAndPsfMatchTask
 from collections.abc import Iterable
 
