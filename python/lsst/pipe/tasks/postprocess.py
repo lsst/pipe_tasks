@@ -1054,27 +1054,26 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
         self.visitSummarySchema = afwTable.ExposureCatalog(self.schema)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        dataRefs = butlerQC.get(inputRefs.calexp)
-        visit = dataRefs[0].dataId["visit"]
+        handles = butlerQC.get(inputRefs.calexp)
+        visit = handles[0].dataId["visit"]
 
-        self.log.debug("Concatenating metadata from %d per-detector calexps (visit %d)",
-                       len(dataRefs), visit)
+        self.log.debug("Concatenating metadata from %d per-detector calexps (visit %d)", len(handles), visit)
 
-        expCatalog = self._combineExposureMetadata(visit, dataRefs)
+        expCatalog = self._combineExposureMetadata(visit, handles)
 
         butlerQC.put(expCatalog, outputRefs.visitSummary)
 
-    def _combineExposureMetadata(self, visit, dataRefs):
-        """Make a combined exposure catalog from a list of dataRefs.
-        These dataRefs must point to exposures with wcs, summaryStats,
+    def _combineExposureMetadata(self, visit, handles):
+        """Make a combined exposure catalog from a list of handles.
+        These handles must point to exposures with wcs, summaryStats,
         and other visit metadata.
 
         Parameters
         ----------
         visit : `int`
             Visit identification number.
-        dataRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
-            List of dataRefs in visit.
+        handles : `list` of `lsst.daf.butler.DeferredDatasetHandle`
+            List of dataset handles for a single visit.
 
         Returns
         -------
@@ -1082,28 +1081,32 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
             Exposure catalog with per-detector summary information.
         """
         cat = afwTable.ExposureCatalog(self.schema)
-        cat.resize(len(dataRefs))
 
-        cat["visit"] = visit
-
-        for i, dataRef in enumerate(dataRefs):
-            visitInfo = dataRef.get(component="visitInfo")
-            filterLabel = dataRef.get(component="filter")
-            summaryStats = dataRef.get(component="summaryStats")
-            detector = dataRef.get(component="detector")
-            wcs = dataRef.get(component="wcs")
-            photoCalib = dataRef.get(component="photoCalib")
-            detector = dataRef.get(component="detector")
-            bbox = dataRef.get(component="bbox")
-            validPolygon = dataRef.get(component="validPolygon")
-
-            rec = cat[i]
+        for handle in handles:
+            summaryStats = handle.get(component="summaryStats")
+            visitInfo = handle.get(component="visitInfo")
+            filterLabel = handle.get(component="filter")
+            detector = handle.get(component="detector")
+            wcs = handle.get(component="wcs")
+            photoCalib = handle.get(component="photoCalib")
+            detector = handle.get(component="detector")
+            bbox = handle.get(component="bbox")
+            validPolygon = handle.get(component="validPolygon")
+            if summaryStats is None:
+                # It might be desirable to add rows even when we don't have
+                # summary statistics, at least if we have downstream tasks that
+                # could make use of those).  But to do that, we need to add a
+                # flag to indicate when they're present AND modify all of the
+                # downstream tasks that consume the summary stats to look for
+                # it.
+                continue
+            rec = cat.addNew()
             rec.setBBox(bbox)
             rec.setVisitInfo(visitInfo)
             rec.setWcs(wcs)
             rec.setPhotoCalib(photoCalib)
             rec.setValidPolygon(validPolygon)
-
+            rec["visit"] = visit
             rec["physical_filter"] = filterLabel.physicalLabel if filterLabel.hasPhysicalLabel() else ""
             rec["band"] = filterLabel.bandLabel if filterLabel.hasBandLabel() else ""
             rec.setId(detector.getId())
@@ -1111,7 +1114,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
 
         metadata = dafBase.PropertyList()
         metadata.add("COMMENT", "Catalog id is detector id, sorted.")
-        # We are looping over existing datarefs, so the following is true
+        # We are looping over existing handles, so the following is true
         metadata.add("COMMENT", "Only detectors with data have entries.")
         cat.setMetadata(metadata)
 
