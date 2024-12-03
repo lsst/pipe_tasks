@@ -23,8 +23,9 @@
 """
 import logging
 import unittest
+
+import astropy.table.table
 import numpy as np
-import pandas as pd
 
 import lsst.utils.tests
 import lsst.afw.table as afwTable
@@ -150,10 +151,10 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
 
             source_cat = np.concatenate(source_cats)
 
-            isolated_star_cat_dict[tract] = pipeBase.InMemoryDatasetHandle(pd.DataFrame(cat),
-                                                                           storageClass="DataFrame")
-            isolated_star_source_dict[tract] = pipeBase.InMemoryDatasetHandle(pd.DataFrame(source_cat),
-                                                                              storageClass="DataFrame")
+            isolated_star_cat_dict[tract] = pipeBase.InMemoryDatasetHandle(astropy.table.Table(cat),
+                                                                           storageClass="ArrowAstropy")
+            isolated_star_source_dict[tract] = pipeBase.InMemoryDatasetHandle(astropy.table.Table(source_cat),
+                                                                              storageClass="ArrowAstropy")
 
         return isolated_star_cat_dict, isolated_star_source_dict
 
