@@ -177,20 +177,10 @@ class MakeWarpConfig(pipeBase.PipelineTaskConfig, CoaddBaseTask.ConfigClass,
             # present to check that.
             raise ValueError("Image warping cache size and CoaddPSf warping cache size do not agree.")
 
-        if self.matchingKernelSize:
-            if self.matchingKernelSize != self.warpAndPsfMatch.psfMatch.kernel.active.kernelSize:
-                raise pexConfig.FieldValidationError(
-                    self.__class__.matchingKernelSize, self,
-                    f"matchingKernelSize ({self.matchingKernelSize}) must match "
-                    "warpAndPsfMatch.psfMatch.kernel.active.kernelSize "
-                    f"({self.warpAndPsfMatch.psfMatch.kernel.active.kernelSize})"
-                )
-
     def setDefaults(self):
         CoaddBaseTask.ConfigClass.setDefaults(self)
         self.warpAndPsfMatch.warp.cacheSize = 0
         self.coaddPsf.cacheSize = 0
-        self.warpAndPsfMatch.psfMatch.kernel.active.kernelSize = self.matchingKernelSize
 
 
 class MakeWarpTask(CoaddBaseTask):
