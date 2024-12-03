@@ -65,7 +65,8 @@ class CoaddBaseConfig(pexConfig.Config):
     matchingKernelSize = pexConfig.Field(
         dtype=int,
         doc="Size in pixels of matching kernel. Must be odd.",
-        default=21,
+        default=None,
+        optional=True,
         check=lambda x: x % 2 == 1,
         deprecated=("This field is deprecated without a replacement. Its value has no effect. "
                     "Will be removed after v29."
