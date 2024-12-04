@@ -329,7 +329,7 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         if visitSummary is not None:
             row = visitSummary.find(detectorId)
             if row is None:
-                raise RuntimeError(f"Visit summary for detector {detectorId} is unexpectedly missing.")
+                raise pipeBase.NoWorkFound(f"Visit summary for detector {detectorId} is missing.")
             if (photoCalib := row.getPhotoCalib()) is None:
                 self.log.warning("Detector id %s has None for photoCalib in visit summary; "
                                  "skipping reevaluation of photoCalib.", detectorId)
