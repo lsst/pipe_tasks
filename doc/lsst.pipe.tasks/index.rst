@@ -237,9 +237,6 @@ Python API reference
 .. automodapi:: lsst.pipe.tasks.selectImages
    :no-inheritance-diagram:
 
-.. automodapi:: lsst.pipe.tasks.setPrimaryFlags
-   :no-inheritance-diagram:
-
 .. automodapi:: lsst.pipe.tasks.simpleAssociation
    :no-inheritance-diagram:
 
