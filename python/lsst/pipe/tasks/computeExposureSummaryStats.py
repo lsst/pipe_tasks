@@ -41,6 +41,55 @@ import lsst.ip.isr as ipIsr
 
 class ComputeExposureSummaryStatsConfig(pexConfig.Config):
     """Config for ComputeExposureSummaryTask"""
+    doUpdatePsfModelStats = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Update the grid-based PSF model maximum - minimum range metrics (psfTraceRadiusDelta & "
+        "psfApFluxDelta)? Set to False if speed is of the essence.",
+    )
+    doUpdateApCorrModelStats = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Update the grid-based apCorr model maximum - minimum range metric (psfApCorrSigmaScaledDelta)? "
+        "Set to False if speed is of the essence.",
+    )
+    doUpdateMaxDistToNearestPsfStats = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Update the grid-based maximum distance to the nearest PSF star PSF model metric "
+        "(maxDistToNearestPsf)? Set to False if speed is of the essence.",
+    )
+    doUpdateWcsStats = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Update the wcs statistics? Set to False if speed is of the essence.",
+    )
+    doUpdatePhotoCalibStats = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Update the photoCalib statistics? Set to False if speed is of the essence.",
+    )
+    doUpdateBackgroundStats = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Update the background statistics? Set to False if speed is of the essence.",
+    )
+    doUpdateMaskedImageStats = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Update the masked image (i.e. skyNoise & meanVar) statistics? Set to False "
+        "if speed is of the essence.",
+    )
+    doUpdateMagnitudeLimitStats = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Update the magnitude limit depth statistics? Set to False if speed is of the essence.",
+    )
+    doUpdateEffectiveTimeStats = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Update the effective time statistics? Set to False if speed is of the essence.",
+    )
     sigmaClip = pexConfig.Field(
         dtype=float,
         doc="Sigma for outlier rejection for sky noise.",
@@ -164,13 +213,26 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     """Task to compute exposure summary statistics.
 
     This task computes various quantities suitable for DPDD and other
-    downstream processing at the detector centers, including:
+    downstream processing at the detector centers. The non-optionally
+    computed quantities are:
     - expTime
     - psfSigma
     - psfArea
     - psfIxx
     - psfIyy
     - psfIxy
+
+    And these quantities which are computed from the stars in the detector:
+    - psfStarDeltaE1Median
+    - psfStarDeltaE2Median
+    - psfStarDeltaE1Scatter
+    - psfStarDeltaE2Scatter
+    - psfStarDeltaSizeMedian
+    - psfStarDeltaSizeScatter
+    - psfStarScaledDeltaSizeScatter
+
+    The subsequently listed quatities are optionally computed via the
+    "doUpdateX" config parameters (which all default to True):
     - ra
     - dec
     - pixelScale (arcsec/pixel)
@@ -183,15 +245,6 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     - decCorners
     - astromOffsetMean
     - astromOffsetStd
-
-    These additional quantities are computed from the stars in the detector:
-    - psfStarDeltaE1Median
-    - psfStarDeltaE2Median
-    - psfStarDeltaE1Scatter
-    - psfStarDeltaE2Scatter
-    - psfStarDeltaSizeMedian
-    - psfStarDeltaSizeScatter
-    - psfStarScaledDeltaSizeScatter
 
     These quantities are computed based on the PSF model and image mask
     to assess the robustness of the PSF model across a given detector
@@ -250,20 +303,26 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             summary, psf, bbox, sources, image_mask=exposure.mask, image_ap_corr_map=exposure.apCorrMap
         )
 
-        wcs = exposure.getWcs()
-        visitInfo = exposure.getInfo().getVisitInfo()
-        self.update_wcs_stats(summary, wcs, bbox, visitInfo)
+        if self.config.doUpdateWcsStats:
+            wcs = exposure.getWcs()
+            visitInfo = exposure.getInfo().getVisitInfo()
+            self.update_wcs_stats(summary, wcs, bbox, visitInfo)
 
-        photoCalib = exposure.getPhotoCalib()
-        self.update_photo_calib_stats(summary, photoCalib)
+        if self.config.doUpdatePhotoCalibStats:
+            photoCalib = exposure.getPhotoCalib()
+            self.update_photo_calib_stats(summary, photoCalib)
 
-        self.update_background_stats(summary, background)
+        if self.config.doUpdateBackgroundStats:
+            self.update_background_stats(summary, background)
 
-        self.update_masked_image_stats(summary, exposure.getMaskedImage())
+        if self.config.doUpdateMaskedImageStats:
+            self.update_masked_image_stats(summary, exposure.getMaskedImage())
 
-        self.update_magnitude_limit_stats(summary, exposure)
+        if self.config.doUpdateMagnitudeLimitStats:
+            self.update_magnitude_limit_stats(summary, exposure)
 
-        self.update_effective_time_stats(summary, exposure)
+        if self.config.doUpdateEffectiveTimeStats:
+            self.update_effective_time_stats(summary, exposure)
 
         md = exposure.getMetadata()
         if 'SFM_ASTROM_OFFSET_MEAN' in md:
@@ -340,33 +399,49 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         # 750bffe6620e565bda731add1509507f5c40c8bb/src/PsfFlux.cc#L112
         summary.psfArea = float(np.sum(im.array)/np.sum(im.array**2.))
 
-        if image_mask is not None:
-            psfApRadius = max(self.config.minPsfApRadiusPix, 3.0*summary.psfSigma)
-            self.log.debug("Using radius of %.3f (pixels) for psfApFluxDelta metric", psfApRadius)
-            psfTraceRadiusDelta, psfApFluxDelta = compute_psf_image_deltas(
-                image_mask,
-                psf,
-                sampling=self.config.psfGridSampling,
-                ap_radius_pix=psfApRadius,
-                bad_mask_bits=self.config.psfBadMaskPlanes
-            )
-            summary.psfTraceRadiusDelta = float(psfTraceRadiusDelta)
-            summary.psfApFluxDelta = float(psfApFluxDelta)
-            if image_ap_corr_map is not None:
-                if self.config.psfApCorrFieldName not in image_ap_corr_map.keys():
-                    self.log.warn(f"{self.config.psfApCorrFieldName} not found in "
-                                  "image_ap_corr_map.  Setting psfApCorrSigmaScaledDelta to NaN.")
-                    psfApCorrSigmaScaledDelta = nan
-                else:
-                    image_ap_corr_field = image_ap_corr_map[self.config.psfApCorrFieldName]
-                    psfApCorrSigmaScaledDelta = compute_ap_corr_sigma_scaled_delta(
-                        image_mask,
-                        image_ap_corr_field,
-                        summary.psfSigma,
-                        sampling=self.config.psfGridSampling,
-                        bad_mask_bits=self.config.psfBadMaskPlanes,
-                    )
-                summary.psfApCorrSigmaScaledDelta = float(psfApCorrSigmaScaledDelta)
+        if not self.config.doUpdatePsfModelStats:
+            self.log.info("Note: not computing grid-based PSF model maximum - minimum range metrics "
+                          "psfTraceRadiusDelta & psfApFluxDelta.")
+        else:
+            if image_mask is None:
+                self.log.info("Note: computation of grid-based PSF model maximum - minimum range metrics "
+                              "was requested, but required image_mask parameter was not provided.")
+            else:
+                psfApRadius = max(self.config.minPsfApRadiusPix, 3.0*summary.psfSigma)
+                self.log.debug("Using radius of %.3f (pixels) for psfApFluxDelta metric.", psfApRadius)
+
+                psfTraceRadiusDelta, psfApFluxDelta = compute_psf_image_deltas(
+                    image_mask,
+                    psf,
+                    sampling=self.config.psfGridSampling,
+                    ap_radius_pix=psfApRadius,
+                    bad_mask_bits=self.config.psfBadMaskPlanes
+                )
+                summary.psfTraceRadiusDelta = float(psfTraceRadiusDelta)
+                summary.psfApFluxDelta = float(psfApFluxDelta)
+        if not self.config.doUpdateApCorrModelStats:
+            self.log.info("Note: not computing grid-based apCorr model maximum - minimum range metric "
+                          "psfApCorrSigmaScaledDelta.")
+        else:
+            if image_mask is None:
+                self.log.info("Note: computation of grid-based apCorr model maximum - minimum metric "
+                              "was requested, but required image_mask parameter was not provided.")
+            else:
+                if image_ap_corr_map is not None:
+                    if self.config.psfApCorrFieldName not in image_ap_corr_map.keys():
+                        self.log.warn(f"{self.config.psfApCorrFieldName} not found in "
+                                      "image_ap_corr_map. Setting psfApCorrSigmaScaledDelta to NaN.")
+                        psfApCorrSigmaScaledDelta = nan
+                    else:
+                        image_ap_corr_field = image_ap_corr_map[self.config.psfApCorrFieldName]
+                        psfApCorrSigmaScaledDelta = compute_ap_corr_sigma_scaled_delta(
+                            image_mask,
+                            image_ap_corr_field,
+                            summary.psfSigma,
+                            sampling=self.config.psfGridSampling,
+                            bad_mask_bits=self.config.psfBadMaskPlanes,
+                        )
+                    summary.psfApCorrSigmaScaledDelta = float(psfApCorrSigmaScaledDelta)
 
         if sources is None:
             # No sources are available (as in some tests and rare cases where
@@ -427,14 +502,20 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.psfStarDeltaSizeScatter = float(psfStarDeltaSizeScatter)
         summary.psfStarScaledDeltaSizeScatter = float(psfStarScaledDeltaSizeScatter)
 
-        if image_mask is not None:
-            maxDistToNearestPsf = maximum_nearest_psf_distance(
-                image_mask,
-                psf_cat,
-                sampling=self.config.psfSampling,
-                bad_mask_bits=self.config.psfBadMaskPlanes
-            )
-            summary.maxDistToNearestPsf = float(maxDistToNearestPsf)
+        if not self.config.doUpdateMaxDistToNearestPsfStats:
+            self.log.info("Note: not computing grid-based maxDistToNearestPsf PSF model metric.")
+        else:
+            if image_mask is None:
+                self.log.info("Note: computation of maxDistToNearestPsf PSF model metric was "
+                              "requested, but required image_mask parameter was not provided.")
+            else:
+                maxDistToNearestPsf = maximum_nearest_psf_distance(
+                    image_mask,
+                    psf_cat,
+                    sampling=self.config.psfSampling,
+                    bad_mask_bits=self.config.psfBadMaskPlanes
+                )
+                summary.maxDistToNearestPsf = float(maxDistToNearestPsf)
 
     def update_wcs_stats(self, summary, wcs, bbox, visitInfo):
         """Compute all summary-statistic fields that depend on the WCS model.
