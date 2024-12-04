@@ -1,8 +1,8 @@
-# This file is part of pipe_tasks.
+# This file is part of pipe_base.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
-# (https://www.lsst.org).
+# (http://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
 # for details of code ownership.
 #
@@ -19,10 +19,19 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-__all__ = ["make_discrete_skymap", "register_dcr_subfilters", "register_skymap"]
+__all__ = ["get_cli_subcommands"]
 
-from .commands import (
-    make_discrete_skymap,
-    register_dcr_subfilters,
-    register_skymap,
-)
+import click
+
+from . import cmd
+
+
+def get_cli_subcommands() -> list[click.Command]:
+    """Return the location of the CLI command plugin definitions.
+
+    Returns
+    -------
+    commands : `list` [ `click.Command` ]
+        The command-line subcommands provided by this package.
+    """
+    return [getattr(cmd, c) for c in cmd.__all__]

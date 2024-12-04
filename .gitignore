@@ -25,3 +25,5 @@ testCoaddInputs-data
 _build.*
 bin
 .vscode/
+python/*.dist-info/
+.coverage*
