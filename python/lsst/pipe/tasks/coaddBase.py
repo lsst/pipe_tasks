@@ -27,7 +27,6 @@ import lsst.pipe.base as pipeBase
 import lsst.geom as geom
 
 from lsst.afw.geom import Polygon
-from lsst.meas.algorithms import ScaleVarianceTask
 from .selectImages import PsfWcsSelectImagesTask
 from .coaddInputRecorder import CoaddInputRecorderTask
 
@@ -154,40 +153,6 @@ def makeSkyInfo(skyMap, tractId, patchId):
         wcs=tractInfo.getWcs(),
         bbox=patchInfo.getOuterBBox(),
     )
-
-
-def scaleVariance(maskedImage, maskPlanes, log=None):
-    """Scale the variance in a maskedImage
-
-    This is deprecated. Use the ScaleVarianceTask instead.
-
-    Parameters
-    ----------
-    maskedImage : `lsst.afw.image.MaskedImage`
-        MaskedImage to operate on; variance will be scaled.
-    maskPlanes : `list`
-        List of mask planes for pixels to reject.
-    log : `Unknown`
-        Log for reporting the renormalization factor; or None.
-
-    Returns
-    -------
-    task.run : `Unknown`
-        Renormalization factor.
-
-    Notes
-    -----
-    The variance plane in a convolved or warped image (or a coadd derived
-    from warped images) does not accurately reflect the noise properties of
-    the image because variance has been lost to covariance. This function
-    attempts to correct for this by scaling the variance plane to match
-    the observed variance in the image. This is not perfect (because we're
-    not tracking the covariance) but it's simple and is often good enough.
-    """
-    config = ScaleVarianceTask.ConfigClass()
-    config.maskPlanes = maskPlanes
-    task = ScaleVarianceTask(config=config, name="scaleVariance", log=log)
-    return task.run(maskedImage)
 
 
 def reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):
