@@ -360,6 +360,8 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         self.astromRefObjLoader.anyFilterMapsToThis = "phot_g_mean"
         # The photoRefCat connection is the name to use for the colorterms.
         self.photoCal.photoCatName = self.connections.photoRefCat
+        # self.photoCal.match.sourceSelection.signalToNoise.fluxField = "slot_CalibFlux_instFlux"
+        # self.photoCal.match.sourceSelection.signalToNoise.errField = "slot_CalibFlux_instFluxErr"
 
         self.normalizedCalibrationFlux.do_measure_ap_corr = False
         self.measurement.algorithms["base_CompensatedTophatFlux"].apertures = [12]
