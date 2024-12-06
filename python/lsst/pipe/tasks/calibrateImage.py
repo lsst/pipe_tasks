@@ -391,6 +391,9 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         # Keep sky sources in the output catalog, even though they aren't
         # wanted for calibration.
         self.star_selector["science"].doSkySources = True
+        # Set the flux and error fields
+        self.star_selector["science"].signalToNoise.fluxField = "slot_CalibFlux_instFlux"
+        self.star_selector["science"].signalToNoise.errField = "slot_CalibFlux_instFluxErr"
 
         # Use the affine WCS fitter (assumes we have a good camera geometry).
         self.astrometry.wcsFitter.retarget(lsst.meas.astrom.FitAffineWcsTask)
