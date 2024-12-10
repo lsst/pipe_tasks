@@ -242,11 +242,11 @@ class MakeWarpTask(CoaddBaseTask):
         for dataId in dataIdList:
             row = visitSummary.find(dataId["detector"])
             if row is None:
-                raise RuntimeError(
-                    f"Unexpectedly incomplete visitSummary provided to makeWarp: {dataId} is missing."
-                )
-            bboxList.append(row.getBBox())
-            wcsList.append(row.getWcs())
+                bboxList.append(None)
+                wcsList.append(None)
+            else:
+                bboxList.append(row.getBBox())
+                wcsList.append(row.getWcs())
         inputs["bboxList"] = bboxList
         inputs["wcsList"] = wcsList
 
@@ -427,7 +427,7 @@ class MakeWarpTask(CoaddBaseTask):
             Sequence of single-epoch images (or deferred load handles for
             images) to be modified in place.  On return this always has images,
             not handles.
-        wcsList : `list` [`lsst.afw.geom.SkyWcs`]
+        wcsList : `list` [`lsst.afw.geom.SkyWcs` or `None` ]
             The WCSs of the calexps in ``calExpList``. These will be used to
             determine if the calexp should be used in the warp. The list is
             dynamically updated with the WCSs from the visitSummary.
@@ -466,9 +466,11 @@ class MakeWarpTask(CoaddBaseTask):
             # Load all calibrations from visitSummary.
             row = visitSummary.find(detectorId)
             if row is None:
-                raise RuntimeError(
-                    f"Unexpectedly incomplete visitSummary: detector={detectorId} is missing."
+                self.log.warning(
+                    "Detector id %d has no row in the visitSummary and will "
+                    "not be used in the warp", detectorId,
                 )
+                continue
             if (photoCalib := row.getPhotoCalib()) is not None:
                 calexp.setPhotoCalib(photoCalib)
             else:
