@@ -26,9 +26,10 @@ __all__ = ['FinalizeCharacterizationConnections',
            'FinalizeCharacterizationConfig',
            'FinalizeCharacterizationTask']
 
+import astropy.table
 import numpy as np
 import esutil
-import pandas as pd
+
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -71,7 +72,7 @@ class FinalizeCharacterizationConnections(pipeBase.PipelineTaskConnections,
         doc=('Catalog of isolated stars with average positions, number of associated '
              'sources, and indexes to the isolated_star_sources catalogs.'),
         name='isolated_star_presource_associations',
-        storageClass='DataFrame',
+        storageClass='ArrowAstropy',
         dimensions=('instrument', 'tract', 'skymap'),
         deferLoad=True,
         multiple=True,
@@ -80,7 +81,7 @@ class FinalizeCharacterizationConnections(pipeBase.PipelineTaskConnections,
         doc=('Catalog of isolated star sources with sourceIds, and indexes to the '
              'isolated_star_cats catalogs.'),
         name='isolated_star_presources',
-        storageClass='DataFrame',
+        storageClass='ArrowAstropy',
         dimensions=('instrument', 'tract', 'skymap'),
         deferLoad=True,
         multiple=True,
@@ -96,7 +97,7 @@ class FinalizeCharacterizationConnections(pipeBase.PipelineTaskConnections,
     finalized_src_table = pipeBase.connectionTypes.Output(
         doc=('Per-visit catalog of measurements for psf/flag/etc.'),
         name='finalized_src_table',
-        storageClass='DataFrame',
+        storageClass='ArrowAstropy',
         dimensions=('instrument', 'visit'),
     )
 
@@ -293,7 +294,7 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
 
         butlerQC.put(struct.psf_ap_corr_cat,
                      outputRefs.finalized_psf_ap_corr_cat)
-        butlerQC.put(pd.DataFrame(struct.output_table),
+        butlerQC.put(astropy.table.Table(struct.output_table),
                      outputRefs.finalized_src_table)
 
     def run(self, visit, band, isolated_star_cat_dict, isolated_star_source_dict, src_dict, calexp_dict):
@@ -538,14 +539,13 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         merge_source_counter = 0
 
         for tract in isolated_star_cat_dict:
-            df_cat = isolated_star_cat_dict[tract].get()
-            table_cat = df_cat.to_records()
+            astropy_cat = isolated_star_cat_dict[tract].get()
+            table_cat = np.asarray(astropy_cat)
 
-            df_source = isolated_star_source_dict[tract].get(
-                parameters={'columns': [self.config.id_column,
-                                        'obj_index']}
+            astropy_source = isolated_star_source_dict[tract].get(
+                parameters={'columns': [self.config.id_column, 'obj_index']}
             )
-            table_source = df_source.to_records()
+            table_source = np.asarray(astropy_source)
 
             # Cut isolated star table to those observed in this band, and adjust indexes
             (use_band,) = (table_cat[f'nsource_{band}'] > 0).nonzero()
