@@ -246,11 +246,6 @@ funcs:
         functor: Column
         args: base_ClassificationSizeExtendedness_value
 flags:
-   - base_LocalWcs_flag
-   - base_LocalWcs_CDMatrix_2_1
-   - base_LocalWcs_CDMatrix_1_1
-   - base_LocalWcs_CDMatrix_1_2
-   - base_LocalWcs_CDMatrix_2_2
    - base_Blendedness_abs
    - base_Blendedness_flag
    - base_Blendedness_flag_noCentroid
