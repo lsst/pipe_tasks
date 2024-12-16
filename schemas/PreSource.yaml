@@ -51,171 +51,111 @@ funcs:
         functor: RADecCovColumn
     # One calibrated Calib flux is important:
     calibFlux:
-        functor: LocalNanojansky
+        functor: Column
         args:
-            - slot_CalibFlux_instFlux
-            - slot_CalibFlux_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - slot_CalibFlux_flux
     calibFluxErr:
-        functor: LocalNanojanskyErr
+        functor: Column
         args:
-            - slot_CalibFlux_instFlux
-            - slot_CalibFlux_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - slot_CalibFlux_fluxErr
    # Not in DPDD. Used for QA
     ap03Flux:
-        functor: LocalNanojansky
+        functor: Column
         args:
-            - base_CircularApertureFlux_3_0_instFlux
-            - base_CircularApertureFlux_3_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_3_0_flux
     ap03FluxErr:
-        functor: LocalNanojanskyErr
+        functor: Column
         args:
-            - base_CircularApertureFlux_3_0_instFlux
-            - base_CircularApertureFlux_3_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_3_0_fluxErr
     ap03Flux_flag:
         functor: Column
         args: base_CircularApertureFlux_3_0_flag
     # if we need to add decimal apertures call them e.g. ap04p5Flux
     ap06Flux:
-        functor: LocalNanojansky
+        functor: Column
         args:
-            - base_CircularApertureFlux_6_0_instFlux
-            - base_CircularApertureFlux_6_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_6_0_flux
     ap06FluxErr:
-        functor: LocalNanojanskyErr
+        functor: Column
         args:
-            - base_CircularApertureFlux_6_0_instFlux
-            - base_CircularApertureFlux_6_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_6_0_fluxErr
     ap06Flux_flag:
         functor: Column
         args: base_CircularApertureFlux_6_0_flag
     ap09Flux:
-        functor: LocalNanojansky
+        functor: Column
         args:
-            - base_CircularApertureFlux_9_0_instFlux
-            - base_CircularApertureFlux_9_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_9_0_flux
     ap09FluxErr:
-        functor: LocalNanojanskyErr
+        functor: Column
         args:
-            - base_CircularApertureFlux_9_0_instFlux
-            - base_CircularApertureFlux_9_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_9_0_fluxErr
     ap09Flux_flag:
         functor: Column
         args: base_CircularApertureFlux_9_0_flag
     ap12Flux:
-        functor: LocalNanojansky
+        functor: Column
         args:
-            - base_CircularApertureFlux_12_0_instFlux
-            - base_CircularApertureFlux_12_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_12_0_flux
     ap12FluxErr:
-        functor: LocalNanojanskyErr
+        functor: Column
         args:
-            - base_CircularApertureFlux_12_0_instFlux
-            - base_CircularApertureFlux_12_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_12_0_fluxErr
     ap12Flux_flag:
         functor: Column
         args: base_CircularApertureFlux_12_0_flag
     ap17Flux:
-        functor: LocalNanojansky
+        functor: Column
         args:
-            - base_CircularApertureFlux_17_0_instFlux
-            - base_CircularApertureFlux_17_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_17_0_flux
     ap17FluxErr:
-        functor: LocalNanojanskyErr
+        functor: Column
         args:
-            - base_CircularApertureFlux_17_0_instFlux
-            - base_CircularApertureFlux_17_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_17_0_fluxErr
     ap17Flux_flag:
         functor: Column
         args: base_CircularApertureFlux_17_0_flag
     ap25Flux:
-        functor: LocalNanojansky
+        functor: Column
         args:
-            - base_CircularApertureFlux_25_0_instFlux
-            - base_CircularApertureFlux_25_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_25_0_flux
     ap25FluxErr:
-        functor: LocalNanojanskyErr
+        functor: Column
         args:
-            - base_CircularApertureFlux_25_0_instFlux
-            - base_CircularApertureFlux_25_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_25_0_fluxErr
     ap25Flux_flag:
         functor: Column
         args: base_CircularApertureFlux_25_0_flag
     ap35Flux:
-        functor: LocalNanojansky
+        functor: Column
         args:
-            - base_CircularApertureFlux_35_0_instFlux
-            - base_CircularApertureFlux_35_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_35_0_flux
     ap35FluxErr:
-        functor: LocalNanojanskyErr
+        functor: Column
         args:
-            - base_CircularApertureFlux_35_0_instFlux
-            - base_CircularApertureFlux_35_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_35_0_fluxErr
     ap35Flux_flag:
         functor: Column
         args: base_CircularApertureFlux_35_0_flag
     ap50Flux:
-        functor: LocalNanojansky
+        functor: Column
         args:
-            - base_CircularApertureFlux_50_0_instFlux
-            - base_CircularApertureFlux_50_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_50_0_flux
     ap50FluxErr:
-        functor: LocalNanojanskyErr
+        functor: Column
         args:
-            - base_CircularApertureFlux_50_0_instFlux
-            - base_CircularApertureFlux_50_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_50_0_fluxErr
     ap50Flux_flag:
         functor: Column
         args: base_CircularApertureFlux_50_0_flag
     ap70Flux:
-        functor: LocalNanojansky
+        functor: Column
         args:
-            - base_CircularApertureFlux_70_0_instFlux
-            - base_CircularApertureFlux_70_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_70_0_flux
     ap70FluxErr:
-        functor: LocalNanojanskyErr
+        functor: Column
         args:
-            - base_CircularApertureFlux_70_0_instFlux
-            - base_CircularApertureFlux_70_0_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_CircularApertureFlux_70_0_fluxErr
     ap70Flux_flag:
         functor: Column
         args: base_CircularApertureFlux_70_0_flag
@@ -223,33 +163,21 @@ funcs:
     # changed to use the local value of the background
     # model, rather than the residual of the background
     sky:
-        functor: LocalNanojansky
+        functor: Column
         args:
-            - base_LocalBackground_instFlux
-            - base_LocalBackground_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_LocalBackground_flux
     skyErr:
-        functor: LocalNanojanskyErr
+        functor: Column
         args:
-            - base_LocalBackground_instFlux
-            - base_LocalBackground_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_LocalBackground_fluxErr
     psfFlux:
-        functor: LocalNanojansky
+        functor: Column
         args:
-            - slot_PsfFlux_instFlux
-            - slot_PsfFlux_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - slot_PsfFlux_flux
     psfFluxErr:
-        functor: LocalNanojanskyErr
+        functor: Column
         args:
-            - slot_PsfFlux_instFlux
-            - slot_PsfFlux_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - slot_PsfFlux_fluxErr
 
     # These PS columns do not make sense anymore as named
     # psX
@@ -304,19 +232,13 @@ funcs:
     # DPDD does not include gaussianFluxes, however they are used for
     # the single frame extendedness column which is used for QA.
     gaussianFlux:
-        functor: LocalNanojansky
+        functor: Column
         args:
-            - base_GaussianFlux_instFlux
-            - base_GaussianFlux_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_GaussianFlux_flux
     gaussianFluxErr:
-        functor: LocalNanojanskyErr
+        functor: Column
         args:
-            - base_GaussianFlux_instFlux
-            - base_GaussianFlux_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+            - base_GaussianFlux_fluxErr
     extendedness:
         functor: Column
         args: base_ClassificationExtendedness_value
@@ -324,9 +246,6 @@ funcs:
         functor: Column
         args: base_ClassificationSizeExtendedness_value
 flags:
-   - base_LocalPhotoCalib
-   - base_LocalPhotoCalib_flag
-   - base_LocalPhotoCalibErr
    - base_LocalWcs_flag
    - base_LocalWcs_CDMatrix_2_1
    - base_LocalWcs_CDMatrix_1_1
