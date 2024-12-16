@@ -432,6 +432,36 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
                 CalibrateImageConfig.star_normalized_calibration_flux, self, msg,
             )
 
+        # Ensure base_LocalPhotoCalib and base_LocalWcs plugins are not run,
+        # because they'd be running too early to pick up the fitted PhotoCalib
+        # and WCS.
+        if "base_LocalWcs" in self.psf_source_measurement.plugins.names:
+            raise pexConfig.FieldValidationError(
+                CalibrateImageConfig.psf_source_measurement,
+                self,
+                "base_LocalWcs cannot run CalibrateImageTask, as it would be run before the astrometry fit."
+            )
+        if "base_LocalWcs" in self.star_measurement.plugins.names:
+            raise pexConfig.FieldValidationError(
+                CalibrateImageConfig.star_measurement,
+                self,
+                "base_LocalWcs cannot run CalibrateImageTask, as it would be run before the astrometry fit."
+            )
+        if "base_LocalPhotoCalib" in self.psf_source_measurement.plugins.names:
+            raise pexConfig.FieldValidationError(
+                CalibrateImageConfig.psf_source_measurement,
+                self,
+                "base_LocalPhotoCalib cannot run CalibrateImageTask, "
+                "as it would be run before the photometry fit."
+            )
+        if "base_LocalPhotoCalib" in self.star_measurement.plugins.names:
+            raise pexConfig.FieldValidationError(
+                CalibrateImageConfig.star_measurement,
+                self,
+                "base_LocalPhotoCalib cannot run CalibrateImageTask, "
+                "as it would be run before the photometry fit."
+            )
+
 
 class CalibrateImageTask(pipeBase.PipelineTask):
     """Compute the PSF, aperture corrections, astrometric and photometric
