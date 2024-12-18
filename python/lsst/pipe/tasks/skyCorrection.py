@@ -300,6 +300,8 @@ class SkyCorrectionTask(PipelineTask):
         Returns
         -------
         results : `Struct` containing:
+            skyFrameScale : `float`
+                Scale factor applied to the sky frame.
             skyCorr : `list` [`lsst.afw.math.BackgroundList`]
                 Detector-level sky correction background lists.
             calExpMosaic : `lsst.afw.image.ExposureF`
@@ -318,8 +320,9 @@ class SkyCorrectionTask(PipelineTask):
         initialBackgroundIndex = len(calBkgs[0]._backgrounds) - 1
 
         # Subtract a scaled sky frame from all input exposures
+        skyFrameScale = None
         if self.config.doSky:
-            self._subtractSkyFrame(calExps, skyFrames, calBkgs)
+            skyFrameScale = self._subtractSkyFrame(calExps, skyFrames, calBkgs)
 
         # Adds full-fp bg back onto exposures, removes it from list
         if self.config.undoBgModel1:
@@ -341,7 +344,9 @@ class SkyCorrectionTask(PipelineTask):
             skyCorrExtras, camera, self.config.binning, ids=calExpIds, refExps=calExps
         )
 
-        return Struct(skyCorr=calBkgs, calExpMosaic=calExpMosaic, calBkgMosaic=calBkgMosaic)
+        return Struct(
+            skyFrameScale=skyFrameScale, skyCorr=calBkgs, calExpMosaic=calExpMosaic, calBkgMosaic=calBkgMosaic
+        )
 
     def _restoreOriginalBackgroundRefineMask(self, calExps, calBkgs):
         """Restore original background to each calexp and invert the related
@@ -562,6 +567,11 @@ class SkyCorrectionTask(PipelineTask):
             Sky frame calibration data for the input detectors.
         calBkgs : `list` [`lsst.afw.math.BackgroundList`]
             Background lists associated with the input calibrated exposures.
+
+        Returns
+        -------
+        scale : `float`
+            Scale factor applied to the sky frame.
         """
         skyFrameBgModels = []
         scales = []
@@ -577,6 +587,7 @@ class SkyCorrectionTask(PipelineTask):
             # also updating the calBkg list in-place
             self.sky.subtractSkyFrame(calExp.getMaskedImage(), skyFrameBgModel, scale, calBkg)
         self.log.info("Sky frame subtracted with a scale factor of %.5f", scale)
+        return scale
 
     def _binAndMosaic(self, exposures, camera, binning, ids=None, refExps=None):
         """Bin input exposures and mosaic across the entire focal plane.
