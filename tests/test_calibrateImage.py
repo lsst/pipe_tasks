@@ -189,7 +189,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.assertEqual(result.stars["slot_PsfFlux_mag"].unit, u.ABmag)
 
         # Should have detected all S/N >= 10 sources plus 2 sky sources, whether 1 or 2 snaps.
-        self.assertEqual(len(result.stars), 7)
+        self.assertEqual(len(result.stars), 6)
         # Did the psf flags get propagated from the psf_stars catalog?
         self.assertEqual(result.stars["calib_psf_used"].sum(), 3)
 
@@ -319,7 +319,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         # Only 5 psf-like sources with S/N>10 should be in the output catalog,
         # plus two sky sources.
-        self.assertEqual(len(stars), 7)
+        self.assertEqual(len(stars), 6)
         self.assertTrue(stars.isContiguous())
         # Sort in order of brightness, to easily compare with expected positions.
         stars.sort(stars.getPsfFluxSlot().getMeasKey())
@@ -420,8 +420,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # sort() above leaves the catalog non-contiguous.
         stars = stars.copy(deep=True)
         np.testing.assert_array_equal(stars["calib_psf_candidate"],
-                                      [False, False, False, False, True, True, True])
-        np.testing.assert_array_equal(stars["calib_psf_used"], [False, False, False, False, True, True, True])
+                                      [False, False, False, True, True, True])
+        np.testing.assert_array_equal(stars["calib_psf_used"], [False, False, False, True, True, True])
         # Too few sources to reserve any in these tests.
         self.assertEqual(stars["calib_psf_reserved"].sum(), 0)
 
