@@ -1087,6 +1087,7 @@ refFlags:
     - detect_isDeblendedModelSource
     - merge_peak_sky
     - deblend_nChild
+    - deblend_depth
     - deblend_nPeaks
     - deblend_failed
     - deblend_skipped
