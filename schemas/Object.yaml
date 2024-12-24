@@ -1098,7 +1098,9 @@ refFlags:
     - deblend_iterations
     - deblend_peak_center_x
     - deblend_peak_center_y
-    - deblend_logL
+    - deblend_chi2
+    - deblend_blendId
+    - deblend_blendNChild
     - slot_Shape_flag
 flags:
     # flags are columns taken and exploded per-band from the meas tables

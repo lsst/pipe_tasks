@@ -134,6 +134,13 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
         multiple=True,
         dimensions=("tract", "patch", "band", "skymap")
     )
+    deconvolvedCoadds = cT.Input(
+        doc="Deconvolved coadds",
+        name="deconvolved_{inputCoaddName}_coadd",
+        storageClass="ExposureF",
+        multiple=True,
+        dimensions=("tract", "patch", "band", "skymap")
+    )
     outputSchema = cT.InitOutput(
         doc="Output of the schema used in deblending task",
         name="{outputCoaddName}Coadd_deblendedFlux_schema",
@@ -286,20 +293,36 @@ class DeblendCoaddSourcesMultiTask(PipelineTask):
             coadds = exposures
         else:
             coadds = inputs.pop("coadds")
+
+        # Ensure that the coadd bands and deconvolved coadd bands match
+        deconvBands = [dRef.dataId["band"] for dRef in inputRefs.deconvolvedCoadds]
+        if len(bands) != len(deconvBands):
+            raise RuntimeError("Number of coadd bands and deconvolved coadd bands do not match")
+
+        for band, deconvBand in zip(bands, deconvBands):
+            if band != deconvBand:
+                raise RuntimeError(f"Bands {band} and {deconvBand} do not match")
+
+        deconvolvedCoadds = inputs.pop("deconvolvedCoadds")
+
+        # Check that all inputs have been extracted correctly.
         assert not inputs, "runQuantum got extra inputs"
+
         outputs = self.run(
             coadds=coadds,
             bands=bands,
             mergedDetections=mergedDetections,
             idFactory=self.config.idGenerator.apply(butlerQC.quantum.dataId).make_table_id_factory(),
+            deconvolvedCoadds=deconvolvedCoadds,
         )
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, coadds, bands, mergedDetections, idFactory):
+    def run(self, coadds, bands, mergedDetections, deconvolvedCoadds, idFactory):
         sources = self._makeSourceCatalog(mergedDetections, idFactory)
         multiExposure = afwImage.MultibandExposure.fromExposures(bands, coadds)
-        catalog, modelData = self.multibandDeblend.run(multiExposure, sources)
-        retStruct = Struct(deblendedCatalog=catalog, scarletModelData=modelData)
+        mDeconvolved = afwImage.MultibandExposure.fromExposures(bands, deconvolvedCoadds)
+        result = self.multibandDeblend.run(multiExposure, mDeconvolved, sources)
+        retStruct = Struct(deblendedCatalog=result.catalog, scarletModelData=result.modelData)
         return retStruct
 
     def _makeSourceCatalog(self, mergedDetections, idFactory):
