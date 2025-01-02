@@ -524,8 +524,17 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         self.makeSubtask("compute_summary_stats")
 
-        # For the butler to persist it.
-        self.initial_stars_schema = afwTable.SourceCatalog(initial_stars_schema)
+        # The final catalog will have calibrated flux columns, which we add to
+        # the init-output schema by calibrating our zero-length catalog with an
+        # arbitrary dummy PhotoCalib.  We also use this schema to initialze
+        # the stars catalog in order to ensure it's the same even when we hit
+        # an error (and write partial outputs) before calibrating the catalog
+        # - note that calibrateCatalog will happily reuse existing output
+        # columns.
+        dummy_photo_calib = afwImage.PhotoCalib(1.0, 0, bbox=lsst.geom.Box2I())
+        self.initial_stars_schema = dummy_photo_calib.calibrateCatalog(
+            afwTable.SourceCatalog(initial_stars_schema)
+        )
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
