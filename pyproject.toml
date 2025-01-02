@@ -1,0 +1,7 @@
+[project]
+name = "lsst-pipe-tasks"
+
+[project.entry-points.'butler.cli']
+pipe_tasks = "lsst.pipe.tasks.cli:get_cli_subcommands"
+
+[tool.pytest.ini_options]
