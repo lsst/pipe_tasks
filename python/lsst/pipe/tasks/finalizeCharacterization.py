@@ -671,6 +671,13 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             selected_src['id'],
             isolated_source_table[self.config.id_column]
         )
+        if len(matched_src) == 0:
+            self.log.warning(
+                "No candidates from matched isolate stars for visit=%s, detector=%s "
+                "(this is probably the result of an earlier astrometry failure).",
+                visit, detector,
+            )
+            return None, None, None
 
         matched_arr = np.zeros(len(selected_src), dtype=bool)
         matched_arr[matched_src] = True
