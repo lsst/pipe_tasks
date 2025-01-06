@@ -695,8 +695,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         try:
             psf_selection_result = self.make_psf_candidates.run(selected_src, exposure=exposure)
         except Exception as e:
-            self.log.warning('Failed to make psf candidates for visit %d, detector %d: %s',
-                             visit, detector, e)
+            self.log.exception('Failed to make PSF candidates for visit %d, detector %d: %s',
+                               visit, detector, e)
             return None, None, measured_src
 
         psf_cand_cat = psf_selection_result.goodStarCat
@@ -713,8 +713,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
                                                              self.metadata,
                                                              flagKey=flag_key)
         except Exception as e:
-            self.log.warning('Failed to determine psf for visit %d, detector %d: %s',
-                             visit, detector, e)
+            self.log.exception('Failed to determine PSF for visit %d, detector %d: %s',
+                               visit, detector, e)
             return None, None, measured_src
         # Verify that the PSF is usable by downstream tasks
         sigma = psf.computeShape(psf.getAveragePosition()).getDeterminantRadius()
