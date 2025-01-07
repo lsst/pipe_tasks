@@ -44,6 +44,7 @@ class PsfFlagTestCase(lsst.utils.tests.TestCase):
         # Test that all of the flags are defined and there is no reservation by default
         # also test that used sources are a subset of candidate sources
         config = CharacterizeImageConfig()
+        config.maxUnNormPsfEllipticity = 2.6
         config.measurePsf.psfDeterminer = 'piff'
         config.measurePsf.psfDeterminer['piff'].spatialOrder = 0
         config.measureApCorr.sourceSelector["science"].doSignalToNoise = False

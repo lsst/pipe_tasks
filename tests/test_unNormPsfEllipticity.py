@@ -24,14 +24,14 @@ import unittest
 
 import lsst.afw.image as afwImage
 import lsst.meas.extensions.piff.piffPsfDeterminer
+import lsst.pipe.base as pipeBase
 import lsst.utils.tests
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
-from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 
 TESTDIR = os.path.abspath(os.path.dirname(__file__))
 
 
-class SkySourcesTestCase(lsst.utils.tests.TestCase):
+class UnNormPsfEllipticityTestCase(lsst.utils.tests.TestCase):
 
     def setUp(self):
         # Load sample input from disk
@@ -41,38 +41,34 @@ class SkySourcesTestCase(lsst.utils.tests.TestCase):
     def tearDown(self):
         del self.exposure
 
-    def testDoSkySources(self):
-        """Tests sky_source column gets added when run.
+    def testUnNormPsfEllipticity(self):
+        """Tests that UnprocessableDataError is raised when the unnormalized
+           PSF model ellipticity excedes config.maxUnNormPsfEllipticity.
         """
-        self._checkSkySourceColumnExistence(doSkySources=True)
-        self._checkSkySourceColumnExistence(doSkySources=False)
+        self._checkUnNormPsfEllipticity(allowPass=True)
+        self._checkUnNormPsfEllipticity(allowPass=False)
 
-    def _checkSkySourceColumnExistence(self, doSkySources):
-        """Implements sky_source column checking.
+    def _checkUnNormPsfEllipticity(self, allowPass):
+        """Check unnormalized model PSF ellipticity threshold functionality.
 
         Parameters
         ----------
-        doSkySource : `bool`
-            Value of the config flag determining whether to insert sky sources.
+        allowPass : `bool`
+            Whether to update from the default config to allow this exporsure
+            to pass the threshold check.
         """
         charImConfig = CharacterizeImageConfig()
-        charImConfig.maxUnNormPsfEllipticity = 2.6
+        if allowPass:
+            charImConfig.maxUnNormPsfEllipticity = 2.6
         charImConfig.measurePsf.psfDeterminer = 'piff'
         charImConfig.measurePsf.psfDeterminer['piff'].spatialOrder = 0
         charImConfig.measureApCorr.sourceSelector["science"].doSignalToNoise = False
         charImTask = CharacterizeImageTask(config=charImConfig)
-        charImResults = charImTask.run(self.exposure)
-        calibConfig = CalibrateConfig()
-        calibConfig.doAstrometry = False
-        calibConfig.doPhotoCal = False
-        calibConfig.doSkySources = doSkySources
-        calibConfig.doComputeSummaryStats = False
-        calibTask = CalibrateTask(config=calibConfig)
-        calibResults = calibTask.run(charImResults.exposure)
-        if doSkySources:
-            self.assertTrue('sky_source' in calibResults.outputCat.schema.getNames())
+        if allowPass:
+            charImTask.run(self.exposure)
         else:
-            self.assertFalse('sky_source' in calibResults.outputCat.schema.getNames())
+            with self.assertRaises(pipeBase.UnprocessableDataError):
+                charImTask.run(self.exposure)
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):

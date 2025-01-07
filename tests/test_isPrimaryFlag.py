@@ -162,6 +162,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         # Characterize the image (create PSF, etc.)
         charImConfig = CharacterizeImageConfig()
         charImConfig.measureApCorr.sourceSelector["science"].doSignalToNoise = False
+        charImConfig.maxUnNormPsfEllipticity = 2.6
         charImTask = CharacterizeImageTask(config=charImConfig)
         self.charImResults = charImTask.run(self.exposure)
 

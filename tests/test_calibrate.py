@@ -204,6 +204,7 @@ class CalibrateTaskTestCaseNoButler(lsst.utils.tests.TestCase):
         exposure = lsst.afw.image.ExposureF(expPath)
 
         charImConfig = CharacterizeImageConfig()
+        charImConfig.maxUnNormPsfEllipticity = 2.6
         charImConfig.measurePsf.psfDeterminer = 'piff'
         charImConfig.measurePsf.psfDeterminer['piff'].spatialOrder = 0
         charImConfig.measureApCorr.sourceSelector["science"].doSignalToNoise = False
