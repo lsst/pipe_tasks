@@ -202,8 +202,10 @@ class CalibrateTaskTestCaseNoButler(lsst.utils.tests.TestCase):
     def testNoAperCorrMap(self):
         expPath = os.path.join(TESTDIR, "data", "v695833-e0-c000-a00.sci.fits")
         exposure = lsst.afw.image.ExposureF(expPath)
+        band = exposure.filter.bandLabel
 
         charImConfig = CharacterizeImageConfig()
+        charImConfig.maxUnNormPsfEllipticityPerBand[band] = 3.0
         charImConfig.measurePsf.psfDeterminer = 'piff'
         charImConfig.measurePsf.psfDeterminer['piff'].spatialOrder = 0
         charImConfig.measureApCorr.sourceSelector["science"].doSignalToNoise = False

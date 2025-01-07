@@ -36,6 +36,7 @@ class PsfFlagTestCase(lsst.utils.tests.TestCase):
         # Load sample input from disk
         expPath = os.path.join(TESTDIR, "data", "v695833-e0-c000-a00.sci.fits")
         self.exposure = afwImage.ExposureF(expPath)
+        self.band = self.exposure.filter.bandLabel
 
     def tearDown(self):
         del self.exposure
@@ -44,6 +45,7 @@ class PsfFlagTestCase(lsst.utils.tests.TestCase):
         # Test that all of the flags are defined and there is no reservation by default
         # also test that used sources are a subset of candidate sources
         config = CharacterizeImageConfig()
+        config.maxUnNormPsfEllipticityPerBand[self.band] = 3.0
         config.measurePsf.psfDeterminer = 'piff'
         config.measurePsf.psfDeterminer['piff'].spatialOrder = 0
         config.measureApCorr.sourceSelector["science"].doSignalToNoise = False
