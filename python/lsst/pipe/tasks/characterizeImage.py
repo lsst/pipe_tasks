@@ -24,12 +24,12 @@ __all__ = ["CharacterizeImageConfig", "CharacterizeImageTask"]
 import numpy as np
 
 from lsstDebug import getDebugFrame
+import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.pipe.base.connectionTypes as cT
-from lsst.afw.math import BackgroundList
 from lsst.afw.table import SourceTable
 from lsst.meas.algorithms import (
     SubtractBackgroundTask,
@@ -130,6 +130,13 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
         doc="Number of iterations of detect sources, measure sources, "
             "estimate PSF. If useSimplePsf is True then 2 should be plenty; "
             "otherwise more may be wanted.",
+    )
+    maxUnNormPsfEllipticity = pexConfig.Field(
+        dtype=float,
+        default=1.6,
+        doc="Maximum unnormalized ellipticity (defined as hypot(Ixx - Iyy, 2Ixy)) of the PSF model "
+            "deemed good enough for further consideration.  Values above this threshold raise "
+            "UnprocessableDataError.",
     )
     background = pexConfig.ConfigurableField(
         target=SubtractBackgroundTask,
@@ -423,17 +430,31 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
                 idGenerator=idGenerator,
                 background=background,
             )
-
             psf = dmeRes.exposure.getPsf()
             # Just need a rough estimate; average positions are fine
             psfAvgPos = psf.getAveragePosition()
-            psfSigma = psf.computeShape(psfAvgPos).getDeterminantRadius()
+            psfShape = psf.computeShape(psfAvgPos)
+            psfSigma = psfShape.getDeterminantRadius()
+            psfE1 = (psfShape.getIxx() - psfShape.getIyy())/(psfShape.getIxx() + psfShape.getIyy())
+            psfE2 = 2*psfShape.getIxy()/(psfShape.getIxx() + psfShape.getIyy())
+            psfE = np.sqrt(psfE1**2.0 + psfE2**2.0)
+            unNormPsfE = np.hypot(psfShape.getIxx() - psfShape.getIyy(), 2*psfShape.getIxy())
+
             psfDimensions = psf.computeImage(psfAvgPos).getDimensions()
             medBackground = np.median(dmeRes.background.getImage().getArray())
-            self.log.info("iter %s; PSF sigma=%0.4f, dimensions=%s; median background=%0.2f",
-                          i + 1, psfSigma, psfDimensions, medBackground)
+            self.log.info(
+                "iter %s; PSF sigma=%0.4f, psfE=%.3f, unNormPsfE=%.2f dimensions=%s; "
+                "median background=%0.2f",
+                i + 1, psfSigma, psfE, unNormPsfE, psfDimensions, medBackground)
             if np.isnan(psfSigma):
                 raise RuntimeError("PSF sigma is NaN, cannot continue PSF determination.")
+
+        if unNormPsfE > self.config.maxUnNormPsfEllipticity:
+            raise pipeBase.UnprocessableDataError(
+                "The unnormalized model PSF ellipticity, defined as hypot(Ixx - Iyy, 2Ixy), is "
+                f"{unNormPsfE:.2f} which is greater than the "
+                f"maximum deemed acceptable: {self.config.maxUnNormPsfEllipticity}"
+            )
 
         self.display("psf", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 
@@ -539,6 +560,9 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         ------
         LengthError
             Raised if there are too many CR pixels.
+        UnprocessableDataError
+            Raised if the unnormalized model PSF ellipticity is greater than
+            config.maxUnNormPsfEllipticity.
         """
         # install a simple PSF model, if needed or wanted
         if not exposure.hasPsf() or (self.config.doMeasurePsf and self.config.useSimplePsf):
@@ -558,7 +582,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         self.display("repair_iter", exposure=exposure)
 
         if background is None:
-            background = BackgroundList()
+            background = afwMath.BackgroundList()
 
         sourceIdFactory = idGenerator.make_table_id_factory()
         table = SourceTable.make(self.schema, sourceIdFactory)
