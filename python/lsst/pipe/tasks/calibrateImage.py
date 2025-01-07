@@ -225,6 +225,51 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         doc="Task to normalize the calibration flux (e.g. compensated tophats) "
             "for the bright stars used for psf estimation.",
     )
+    max_unnorm_psf_ellipticity_per_band = pexConfig.DictField(
+        keytype=str,
+        itemtype=float,
+        default={
+            "u": 3.8,
+            "g": 3.8,
+            "r": 3.8,
+            "i": 3.8,
+            "z": 3.8,
+            "y": 3.8,
+        },
+        doc="Maximum unnormalized ellipticity (defined as hypot(Ixx - Iyy, 2Ixy)) of the PSF model "
+            "deemed good enough for further consideration.  Values above this threshold raise "
+            "UnprocessableDataError.",
+    )
+    max_unnorm_psf_ellipticity_fallback = pexConfig.Field(
+        dtype=float,
+        default=3.8,
+        doc="Fallback maximum unnormalized ellipticity (defined as hypot(Ixx - Iyy, 2Ixy)) of the "
+            "PSF model deemed good enough for further consideration if the current band is not in "
+            "the config.max_unnorm-psf_ellipticity_per_band dict.  Values above this threshold "
+            "raise UnprocessableDataError.",
+    )
+    max_psf_ellipticity_per_band = pexConfig.DictField(
+        keytype=str,
+        itemtype=float,
+        default={
+            "u": 0.33,
+            "g": 0.32,
+            "r": 0.35,
+            "i": 0.35,
+            "z": 0.37,
+            "y": 0.32,
+        },
+        doc="Value of the PSF model ellipticity deemed good enough for further consideration, "
+            "regardless of the value of the unnormalized PSF model ellipticity. Values above "
+            "this threshold raise UnprocessableDataError.",
+    )
+    max_psf_ellipticity_fallback = pexConfig.Field(
+        dtype=float,
+        default=0.35,
+        doc="Fallback maximum ellipticity of the PSF model deemed good enough for further "
+            "consideration if the current band is not in the config.max_psf_ellipticity_per_band "
+            "dict.  Values above this threshold raise UnprocessableDataError.",
+    )
 
     # TODO DM-39203: we can remove aperture correction from this task once we are
     # using the shape-based star/galaxy code.
@@ -630,6 +675,13 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             ``photometry_matches``
                 Reference catalog stars matches used in the photometric fit.
                 (`list` [`lsst.afw.table.ReferenceMatch`] or `lsst.afw.table.BaseCatalog`)
+
+        Raises
+        ------
+        UnprocessableDataError
+            Raised if the unnormalized model PSF ellipticity is greater than
+            max_unnorm_psf_ellipticity or the model PSF ellipticity is greater
+            than max_psf_ellipticity.
         """
         if result is None:
             result = pipeBase.Struct()
@@ -732,34 +784,84 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         cell_set : `lsst.afw.math.SpatialCellSet`
             PSF candidates returned by the psf determiner.
         """
-        def log_psf(msg, addToMetadata=False):
+        def log_and_validate_psf(msg, addToMetadata=False, doValidation=False):
             """Log the parameters of the psf and background, with a prepended
             message. There is also the option to add the PSF sigma to the task
             metadata.
 
+            Also validate the PSF model based on its ellipticity paramerters
+            and the thresholds set in the config (see docs for descriptions).
+            If any model value exceeds its associated threshold, an
+            UnprocessableDataError is raised as this exposure is now deemed
+            too low quality for further consideration.
+
             Parameters
             ----------
-                msg : `str`
-                    Message to prepend the log info with.
-                addToMetadata : `bool`, optional
-                    Whether to add the final psf sigma value to the task metadata
-                    (the default is False).
+            msg : `str`
+                Message to prepend the log info with.
+            addToMetadata : `bool`, optional
+                Whether to add the final psf sigma value to the task metadata
+                (the default is False).
+            doValidation : `bool`
+                Whether to perform the PSF model ellipticity based validation.
+
+            Raises
+            ------
+            UnprocessableDataError
+                Raised if the unnormalized model PSF ellipticity is greater than
+                max_unnorm_psf_ellipticity or the model PSF ellipticity is greater
+                than max_psf_ellipticity.
             """
-            position = exposure.psf.getAveragePosition()
-            sigma = exposure.psf.computeShape(position).getDeterminantRadius()
-            dimensions = exposure.psf.computeImage(position).getDimensions()
+            psf = exposure.psf
+            average_position = psf.getAveragePosition()
+            psf_shape = psf.computeShape(average_position)
+            psf_sigma = psf_shape.getDeterminantRadius()
+            psf_e1 = (psf_shape.getIxx() - psf_shape.getIyy())/(psf_shape.getIxx() + psf_shape.getIyy())
+            psf_e2 = 2.0*psf_shape.getIxy()/(psf_shape.getIxx() + psf_shape.getIyy())
+            psf_e = np.sqrt(psf_e1**2.0 + psf_e2**2.0)
+            psf_unnorm_e = np.hypot(psf_shape.getIxx() - psf_shape.getIyy(), 2.0*psf_shape.getIxy())
+            dimensions = psf.computeImage(average_position).getDimensions()
             median_background = np.median(background.getImage().array)
-            self.log.info("%s sigma=%0.4f, dimensions=%s; median background=%0.2f",
-                          msg, sigma, dimensions, median_background)
+            self.log.info("%s sigma=%0.4f, psfE=%.3f, unNormPsfE=%.2f, dimensions=%s, median "
+                          "background=%0.2f",
+                          msg, psf_sigma, psf_e, psf_unnorm_e, dimensions, median_background)
+
+            if doValidation:
+                # Validate the PSF model based on its ellipticity properties
+                band = exposure.filter.bandLabel
+                if band in self.config.max_unnorm_psf_ellipticity_per_band:
+                    max_unnorm_psf_ellipticity = self.config.max_unnorm_psf_ellipticity_per_band[band]
+                else:
+                    max_unnorm_psf_ellipticity = self.config.max_unnorm_psf_ellipticity_fallback
+                    self.log.warning(
+                        f"Band {band} was not included in config.max_unnorm_psf_ellipticity_per_band. "
+                        f"Setting max_unnorm_psf_ellipticity to fallback value of "
+                        f"{max_unnorm_psf_ellipticity}."
+                    )
+                if band in self.config.max_psf_ellipticity_per_band:
+                    max_psf_ellipticity = self.config.max_psf_ellipticity_per_band[band]
+                else:
+                    max_psf_ellipticity = self.config.max_psf_ellipticity_fallback
+                    self.log.warning(
+                        f"Band {band} was not included in self.config.max_psf_ellipticity_per_band. "
+                        f"Setting max_unnorm_psf_ellipticity to fallback value of {max_psf_ellipticity:.2f}."
+                    )
+                if psf_unnorm_e > max_unnorm_psf_ellipticity or psf_e > max_psf_ellipticity:
+                    raise pipeBase.UnprocessableDataError(
+                        "Either the unnormalized model PSF ellipticity is greater than the maximum allowed "
+                        f"for band {band} ({max_unnorm_psf_ellipticity:.2f}) or the model PSF ellipticity "
+                        f"is greater than the maximum allowed({max_psf_ellipticity:.2f} )"
+                        f"(unNormPsfE={psf_unnorm_e:.2f}, psfE={psf_e:.2f})"
+                    )
             if addToMetadata:
-                self.metadata["final_psf_sigma"] = sigma
+                self.metadata["final_psf_sigma"] = psf_sigma
 
         self.log.info("First pass detection with Guassian PSF FWHM=%s pixels",
                       self.config.install_simple_psf.fwhm)
         self.install_simple_psf.run(exposure=exposure)
 
         background = self.psf_subtract_background.run(exposure=exposure).background
-        log_psf("Initial PSF:")
+        log_and_validate_psf("Initial PSF:")
         self.psf_repair.run(exposure=exposure, keepCRs=True)
 
         table = afwTable.SourceTable.make(self.psf_schema, id_generator.make_table_id_factory())
@@ -776,7 +878,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # repair/detect/measure/measure_psf step: this can help it converge.
         self.install_simple_psf.run(exposure=exposure)
 
-        log_psf("Rerunning with simple PSF:")
+        log_and_validate_psf("Rerunning with simple PSF:")
         # TODO investigation: Should we only re-run repair here, to use the
         # new PSF? Maybe we *do* need to re-run measurement with PsfFlux, to
         # use the fitted PSF?
@@ -795,7 +897,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.psf_source_measurement.run(detections.sources, exposure)
         psf_result = self.psf_measure_psf.run(exposure=exposure, sources=detections.sources)
 
-        log_psf("Final PSF:", addToMetadata=True)
+        log_and_validate_psf("Final PSF:", addToMetadata=True, doValidation=True)
 
         # Final repair with final PSF, removing cosmic rays this time.
         self.psf_repair.run(exposure=exposure)
