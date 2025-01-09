@@ -33,6 +33,7 @@ from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 from lsst.meas.algorithms import SourceDetectionTask, SkyObjectsTask, SetPrimaryFlagsTask
 import lsst.meas.extensions.scarlet as mes
 from lsst.meas.extensions.scarlet.scarletDeblendTask import ScarletDeblendTask
+from lsst.meas.extensions.scarlet.deconvolveExposureTask import DeconvolveExposureTask
 from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.afw.table import SourceCatalog
 
@@ -214,6 +215,10 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         skySourcesTask = SkyObjectsTask(name="skySources", config=skyConfig)
         schema.addField("merge_peak_sky", type="Flag")
 
+        # Initialize the deconvolution task
+        deconvolveConfig = DeconvolveExposureTask.ConfigClass()
+        deconvolveTask = DeconvolveExposureTask(config=deconvolveConfig)
+
         # Initialize the deblender task
         scarletConfig = ScarletDeblendTask.ConfigClass()
         scarletConfig.maxIter = 20
@@ -243,8 +248,11 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
             src = catalog.addNew()
             src.setFootprint(foot)
             src.set("merge_peak_sky", True)
+        # deconvolve the images
+        deconvolved = deconvolveTask.run(coadds["test"], catalog).deconvolved
+        mDeconvolved = afwImage.MultibandExposure.fromExposures(["test"], [deconvolved])
         # deblend
-        catalog, modelData = deblendTask.run(coadds, catalog)
+        catalog, modelData = deblendTask.run(coadds, mDeconvolved, catalog)
         # Attach footprints to the catalog
         mes.io.updateCatalogFootprints(
             modelData=modelData,
