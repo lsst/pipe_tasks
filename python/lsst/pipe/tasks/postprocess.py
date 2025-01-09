@@ -329,7 +329,7 @@ class WriteRecalibratedSourceTableTask(WriteSourceTableTask):
         if visitSummary is not None:
             row = visitSummary.find(detectorId)
             if row is None:
-                raise RuntimeError(f"Visit summary for detector {detectorId} is unexpectedly missing.")
+                raise pipeBase.NoWorkFound(f"Visit summary for detector {detectorId} is missing.")
             if (photoCalib := row.getPhotoCalib()) is None:
                 self.log.warning("Detector id %s has None for photoCalib in visit summary; "
                                  "skipping reevaluation of photoCalib.", detectorId)
@@ -1109,6 +1109,11 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
             rec.setId(detector.getId())
             summaryStats.update_record(rec)
 
+        if not cat:
+            raise pipeBase.NoWorkFound(
+                "No detectors had sufficient information to make a visit summary row."
+            )
+
         metadata = dafBase.PropertyList()
         metadata.add("COMMENT", "Catalog id is detector id, sorted.")
         # We are looping over existing datarefs, so the following is true
@@ -1214,6 +1219,8 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
         ccdEntries = []
         for visitSummaryRef in visitSummaryRefs:
             visitSummary = visitSummaryRef.get()
+            if not visitSummary:
+                continue
             visitInfo = visitSummary[0].getVisitInfo()
 
             ccdEntry = {}
@@ -1335,6 +1342,8 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
         visitEntries = []
         for visitSummary in visitSummaries:
             visitSummary = visitSummary.get()
+            if not visitSummary:
+                continue
             visitRow = visitSummary[0]
             visitInfo = visitRow.getVisitInfo()
 

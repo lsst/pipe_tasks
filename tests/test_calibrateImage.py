@@ -224,7 +224,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         """Test that disabling optional outputs removes them from the output
         struct, as appropriate.
         """
-        self.config.optional_outputs = None
+        self.config.optional_outputs = []
         calibrate = CalibrateImageTask(config=self.config)
         calibrate.astrometry.setRefObjLoader(self.ref_loader)
         calibrate.photometry.match.setRefObjLoader(self.ref_loader)

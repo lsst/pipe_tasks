@@ -164,13 +164,13 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
-        if config.optional_outputs is None or "psf_stars" not in config.optional_outputs:
+        if "psf_stars" not in config.optional_outputs:
             del self.psf_stars
-        if config.optional_outputs is None or "psf_stars_footprints" not in config.optional_outputs:
+        if "psf_stars_footprints" not in config.optional_outputs:
             del self.psf_stars_footprints
-        if config.optional_outputs is None or "astrometry_matches" not in config.optional_outputs:
+        if "astrometry_matches" not in config.optional_outputs:
             del self.astrometry_matches
-        if config.optional_outputs is None or "photometry_matches" not in config.optional_outputs:
+        if "photometry_matches" not in config.optional_outputs:
             del self.photometry_matches
         if not config.do_calibrate_pixels:
             del self.applied_photo_calib
@@ -178,13 +178,12 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
 
 class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=CalibrateImageConnections):
     optional_outputs = pexConfig.ListField(
-        doc="Which optional outputs to save (as their connection name)?"
-            " If None, do not output any of these datasets.",
+        doc="Which optional outputs to save (as their connection name)?",
         dtype=str,
         # TODO: note somewhere to disable this for benchmarking, but should
         # we always have it on for production runs?
         default=["psf_stars", "psf_stars_footprints", "astrometry_matches", "photometry_matches"],
-        optional=True
+        optional=False
     )
 
     # To generate catalog ids consistently across subtasks.
@@ -478,7 +477,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
     def __init__(self, initial_stars_schema=None, **kwargs):
         super().__init__(**kwargs)
-
         self.makeSubtask("snap_combine")
 
         # PSF determination subtasks
@@ -524,8 +522,17 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         self.makeSubtask("compute_summary_stats")
 
-        # For the butler to persist it.
-        self.initial_stars_schema = afwTable.SourceCatalog(initial_stars_schema)
+        # The final catalog will have calibrated flux columns, which we add to
+        # the init-output schema by calibrating our zero-length catalog with an
+        # arbitrary dummy PhotoCalib.  We also use this schema to initialze
+        # the stars catalog in order to ensure it's the same even when we hit
+        # an error (and write partial outputs) before calibrating the catalog
+        # - note that calibrateCatalog will happily reuse existing output
+        # columns.
+        dummy_photo_calib = afwImage.PhotoCalib(1.0, 0, bbox=lsst.geom.Box2I())
+        self.initial_stars_schema = dummy_photo_calib.calibrateCatalog(
+            afwTable.SourceCatalog(initial_stars_schema)
+        )
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -633,34 +640,71 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         result.exposure = self.snap_combine.run(exposures).exposure
         self._recordMaskedPixelFractions(result.exposure)
+        self.log.info("Initial PhotoCalib: %s", result.exposure.getPhotoCalib())
 
-        result.psf_stars_footprints, result.background, candidates = self._compute_psf(result.exposure,
-                                                                                       id_generator)
-        self._measure_aperture_correction(result.exposure, result.psf_stars_footprints)
+        result.background = None
+        summary_stat_catalog = None
+        # Some exposure components are set to initial placeholder objects
+        # while we try to bootstrap them.  If we fail before we fit for them,
+        # we want to reset those components to None so the placeholders don't
+        # masquerade as the real thing.
+        have_fit_psf = False
+        have_fit_astrometry = False
+        have_fit_photometry = False
+        try:
+            result.psf_stars_footprints, result.background, _ = self._compute_psf(result.exposure,
+                                                                                  id_generator)
+            have_fit_psf = True
+            summary_stat_catalog = result.psf_stars_footprints
+            self._measure_aperture_correction(result.exposure, result.psf_stars_footprints)
+            result.psf_stars = result.psf_stars_footprints.asAstropy()
 
-        result.psf_stars = result.psf_stars_footprints.asAstropy()
+            result.stars_footprints = self._find_stars(result.exposure, result.background, id_generator)
+            self._match_psf_stars(result.psf_stars_footprints, result.stars_footprints)
+            summary_stat_catalog = result.stars_footprints
+            result.stars = result.stars_footprints.asAstropy()
+            self.metadata["star_count"] = np.sum(~result.stars["sky_source"])
 
-        result.stars_footprints = self._find_stars(result.exposure, result.background, id_generator)
-        self._match_psf_stars(result.psf_stars_footprints, result.stars_footprints)
-        result.stars = result.stars_footprints.asAstropy()
-        self.metadata["star_count"] = np.sum(~result.stars["sky_source"])
+            astrometry_matches, astrometry_meta = self._fit_astrometry(
+                result.exposure, result.stars_footprints
+            )
+            have_fit_astrometry = True
+            self.metadata["astrometry_matches_count"] = len(astrometry_matches)
+            if "astrometry_matches" in self.config.optional_outputs:
+                result.astrometry_matches = lsst.meas.astrom.denormalizeMatches(astrometry_matches,
+                                                                                astrometry_meta)
 
-        astrometry_matches, astrometry_meta = self._fit_astrometry(result.exposure, result.stars_footprints)
-        self.metadata["astrometry_matches_count"] = len(astrometry_matches)
-        if self.config.optional_outputs is not None and "astrometry_matches" in self.config.optional_outputs:
-            result.astrometry_matches = lsst.meas.astrom.denormalizeMatches(astrometry_matches,
-                                                                            astrometry_meta)
+            result.stars_footprints, photometry_matches, \
+                photometry_meta, photo_calib = self._fit_photometry(result.exposure, result.stars_footprints)
+            have_fit_photometry = True
+            self.metadata["photometry_matches_count"] = len(photometry_matches)
+            # fit_photometry returns a new catalog, so we need a new astropy table view.
+            result.stars = result.stars_footprints.asAstropy()
+            # summary stats don't make use of the calibrated fluxes, but we
+            # might as well use the best catalog we've got in case that
+            # changes, and help the old one get garbage-collected.
+            summary_stat_catalog = result.stars_footprints
+            if "photometry_matches" in self.config.optional_outputs:
+                result.photometry_matches = lsst.meas.astrom.denormalizeMatches(photometry_matches,
+                                                                                photometry_meta)
+        except pipeBase.AlgorithmError:
+            if not have_fit_psf:
+                result.exposure.setPsf(None)
+            if not have_fit_astrometry:
+                result.exposure.setWcs(None)
+            if not have_fit_photometry:
+                result.exposure.setPhotoCalib(None)
+            # Summary stat calculations can handle missing components gracefully,
+            # but we want to run them as late as possible (but still before we
+            # calibrate pixels, if we do that at all).
+            # So we run them after we succeed or if we get an AlgorithmError.  We
+            # intentionally don't use 'finally' here because we don't want to run
+            # them if we get some other kind of error.
+            self._summarize(result.exposure, summary_stat_catalog, result.background)
+            raise
+        else:
+            self._summarize(result.exposure, summary_stat_catalog, result.background)
 
-        result.stars_footprints, photometry_matches, \
-            photometry_meta, photo_calib = self._fit_photometry(result.exposure, result.stars_footprints)
-        self.metadata["photometry_matches_count"] = len(photometry_matches)
-        # fit_photometry returns a new catalog, so we need a new astropy table view.
-        result.stars = result.stars_footprints.asAstropy()
-        if self.config.optional_outputs is not None and "photometry_matches" in self.config.optional_outputs:
-            result.photometry_matches = lsst.meas.astrom.denormalizeMatches(photometry_matches,
-                                                                            photometry_meta)
-
-        self._summarize(result.exposure, result.stars_footprints, result.background)
         if self.config.do_calibrate_pixels:
             self._apply_photometry(result.exposure, result.background)
             result.applied_photo_calib = photo_calib

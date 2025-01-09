@@ -671,6 +671,13 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
             selected_src['id'],
             isolated_source_table[self.config.id_column]
         )
+        if len(matched_src) == 0:
+            self.log.warning(
+                "No candidates from matched isolate stars for visit=%s, detector=%s "
+                "(this is probably the result of an earlier astrometry failure).",
+                visit, detector,
+            )
+            return None, None, None
 
         matched_arr = np.zeros(len(selected_src), dtype=bool)
         matched_arr[matched_src] = True
@@ -695,8 +702,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
         try:
             psf_selection_result = self.make_psf_candidates.run(selected_src, exposure=exposure)
         except Exception as e:
-            self.log.warning('Failed to make psf candidates for visit %d, detector %d: %s',
-                             visit, detector, e)
+            self.log.exception('Failed to make PSF candidates for visit %d, detector %d: %s',
+                               visit, detector, e)
             return None, None, measured_src
 
         psf_cand_cat = psf_selection_result.goodStarCat
@@ -713,8 +720,8 @@ class FinalizeCharacterizationTask(pipeBase.PipelineTask):
                                                              self.metadata,
                                                              flagKey=flag_key)
         except Exception as e:
-            self.log.warning('Failed to determine psf for visit %d, detector %d: %s',
-                             visit, detector, e)
+            self.log.exception('Failed to determine PSF for visit %d, detector %d: %s',
+                               visit, detector, e)
             return None, None, measured_src
         # Verify that the PSF is usable by downstream tasks
         sigma = psf.computeShape(psf.getAveragePosition()).getDeterminantRadius()
