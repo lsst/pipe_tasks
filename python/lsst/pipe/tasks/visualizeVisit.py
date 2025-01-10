@@ -46,8 +46,9 @@ import numpy as np
 # VisualizeBinExp (here) & VisualizeMosaicExp (below):
 #  Inputs to bin task have dimensions: {instrument, exposure, detector}
 #  Output of the mosaic task have:     {instrument, exposure}
-class VisualizeBinExpConnections(pipeBase.PipelineTaskConnections,
-                                 dimensions=("instrument", "exposure", "detector")):
+class VisualizeBinExpConnections(
+    pipeBase.PipelineTaskConnections, dimensions=("instrument", "exposure", "detector")
+):
     inputExp = cT.Input(
         name="calexp",
         doc="Input exposure data to mosaic.",
@@ -131,8 +132,7 @@ class VisualizeBinExpTask(pipeBase.PipelineTask):
 # VisualizeBinExp (above) & VisualizeMosaicExp (here):
 #  Inputs to bin task have dimensions: {instrument, exposure, detector}
 #  Output of the mosaic task have:     {instrument, exposure}
-class VisualizeMosaicExpConnections(pipeBase.PipelineTaskConnections,
-                                    dimensions=("instrument", "exposure")):
+class VisualizeMosaicExpConnections(pipeBase.PipelineTaskConnections, dimensions=("instrument", "exposure")):
     inputExps = cT.Input(
         name="calexpBin",
         doc="Input binned images mosaic.",
@@ -144,7 +144,7 @@ class VisualizeMosaicExpConnections(pipeBase.PipelineTaskConnections,
         name="camera",
         doc="Input camera to use for mosaic geometry.",
         storageClass="Camera",
-        dimensions=("instrument", ),
+        dimensions=("instrument",),
         isCalibration=True,
     )
 
@@ -379,8 +379,9 @@ class VisualizeMosaicCalibTask(VisualizeMosaicExpTask):
 # VisualizeBinCalibFilter (here) & VisualizeMosaicCalibFilter (below):
 #  Inputs to bin task have dimensions: {instrument, detector, physical_filter}
 #  Output of the mosaic task have:     {instrument, physical_filter}
-class VisualizeBinCalibFilterConnections(pipeBase.PipelineTaskConnections,
-                                         dimensions=("instrument", "detector", "physical_filter")):
+class VisualizeBinCalibFilterConnections(
+    pipeBase.PipelineTaskConnections, dimensions=("instrument", "detector", "physical_filter")
+):
     inputExp = cT.Input(
         name="flat",
         doc="Input exposure data to mosaic.",
@@ -404,8 +405,9 @@ class VisualizeBinCalibFilterConnections(pipeBase.PipelineTaskConnections,
     )
 
 
-class VisualizeBinCalibFilterConfig(VisualizeBinExpConfig,
-                                    pipelineConnections=VisualizeBinCalibFilterConnections):
+class VisualizeBinCalibFilterConfig(
+    VisualizeBinExpConfig, pipelineConnections=VisualizeBinCalibFilterConnections
+):
     pass
 
 
@@ -426,8 +428,10 @@ class VisualizeBinCalibFilterTask(VisualizeBinExpTask):
 # VisualizeBinCalibFilter (above) & VisualizeMosaicCalibFilter (here):
 #  Inputs to bin task have dimensions: {instrument, detector, physical_filter}
 #  Output of the mosaic task have:     {instrument, physical_filter}
-class VisualizeMosaicCalibFilterConnections(pipeBase.PipelineTaskConnections,
-                                            dimensions=("instrument", "physical_filter",)):
+class VisualizeMosaicCalibFilterConnections(
+    pipeBase.PipelineTaskConnections,
+    dimensions=("instrument", "physical_filter"),
+):
     inputExps = cT.Input(
         name="flatBin",
         doc="Input binned images mosaic.",
