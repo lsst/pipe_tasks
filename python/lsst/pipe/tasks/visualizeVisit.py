@@ -34,6 +34,8 @@ __all__ = [
     "VisualizeMosaicCalibFilterTask",
 ]
 
+import dataclasses
+
 import lsst.afw.cameraGeom.utils as afwUtils
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
@@ -44,16 +46,9 @@ import numpy as np
 
 
 # VisualizeBinExp (here) & VisualizeMosaicExp (below):
-#  Inputs to bin task have dimensions: {instrument, exposure, detector}
-#  Output of the mosaic task have:     {instrument, exposure}
-class VisualizeBinExpConnections(pipeBase.PipelineTaskConnections,
-                                 dimensions=("instrument", "exposure", "detector")):
-    inputExp = cT.Input(
-        name="calexp",
-        doc="Input exposure data to mosaic.",
-        storageClass="ExposureF",
-        dimensions=("instrument", "exposure", "detector"),
-    )
+class VisualizeBinExpConnections(
+    pipeBase.PipelineTaskConnections, dimensions=("instrument", "visit", "detector")
+):
     camera = cT.PrerequisiteInput(
         name="camera",
         doc="Input camera to use for mosaic geometry.",
@@ -61,18 +56,66 @@ class VisualizeBinExpConnections(pipeBase.PipelineTaskConnections,
         dimensions=("instrument",),
         isCalibration=True,
     )
-
+    inputExp = cT.Input(
+        name="calexp",
+        doc="Input exposure data to mosaic.",
+        storageClass="ExposureF",
+        dimensions=("instrument", "visit", "detector"),
+    )
     outputExp = cT.Output(
         name="calexpBin",
         doc="Output binned image.",
         storageClass="ExposureF",
-        dimensions=("instrument", "exposure", "detector"),
+        dimensions=("instrument", "visit", "detector"),
     )
+
+    def __init__(self, *, config=None):
+        """Customize connections for a specific instance.
+
+        This customization enables for dynamic setup at runtime,
+        allowing VisualizeBinExpTask to work with different types of
+        Exposures such as postISRCCDs and calexps.
+
+        Parameters
+        ----------
+        config : `VisualizeBinExpConfig`
+            A config for `VisualizeBinExpTask`.
+        """
+        super().__init__(config=config)
+        if config:
+            # Update the dimensions of the task
+            self.dimensions.clear()
+            self.dimensions.update(config.dimensions)
+            # Update the storage classes and dimensions for inputs/outputs
+            self.inputExp = dataclasses.replace(
+                self.inputExp,
+                storageClass=config.storageClass,
+                dimensions=config.dimensions,
+            )
+            self.outputExp = dataclasses.replace(
+                self.outputExp,
+                storageClass=config.storageClass,
+                dimensions=config.dimensions,
+            )
 
 
 class VisualizeBinExpConfig(pipeBase.PipelineTaskConfig, pipelineConnections=VisualizeBinExpConnections):
     """Configuration for focal plane visualization."""
 
+    storageClass = pexConfig.Field(
+        default=VisualizeBinExpConnections.inputExp.storageClass,
+        dtype=str,
+        doc=(
+            "The storageClasses of the input and output exposures. "
+            "Must be of type lsst.afw.Image.Exposure, or one of its subtypes."
+        ),
+    )
+    dimensions = pexConfig.ListField(
+        # Sort to ensure default order is consistent between runs
+        default=sorted(VisualizeBinExpConnections.dimensions),
+        dtype=str,
+        doc="The task dimensions, also applied to the input/output exposures. ",
+    )
     binning = pexConfig.Field(
         dtype=int,
         default=8,
@@ -129,31 +172,56 @@ class VisualizeBinExpTask(pipeBase.PipelineTask):
 
 
 # VisualizeBinExp (above) & VisualizeMosaicExp (here):
-#  Inputs to bin task have dimensions: {instrument, exposure, detector}
-#  Output of the mosaic task have:     {instrument, exposure}
-class VisualizeMosaicExpConnections(pipeBase.PipelineTaskConnections,
-                                    dimensions=("instrument", "exposure")):
-    inputExps = cT.Input(
-        name="calexpBin",
-        doc="Input binned images mosaic.",
-        storageClass="ExposureF",
-        dimensions=("instrument", "detector", "exposure"),
-        multiple=True,
-    )
+class VisualizeMosaicExpConnections(pipeBase.PipelineTaskConnections, dimensions=("instrument", "visit")):
     camera = cT.PrerequisiteInput(
         name="camera",
         doc="Input camera to use for mosaic geometry.",
         storageClass="Camera",
-        dimensions=("instrument", ),
+        dimensions=("instrument",),
         isCalibration=True,
     )
-
+    inputExps = cT.Input(
+        name="calexpBin",
+        doc="Input binned images to mosaic.",
+        storageClass="ExposureF",
+        dimensions=("instrument", "visit", "detector"),
+        multiple=True,
+    )
     outputData = cT.Output(
         name="calexpFocalPlane",
         doc="Output binned mosaicked frame.",
         storageClass="ImageF",
-        dimensions=("instrument", "exposure"),
+        dimensions=("instrument", "visit"),
     )
+
+    def __init__(self, *, config=None):
+        """Customize connections for a specific instance.
+
+        This customization enables for dynamic setup at runtime,
+        allowing VisualizeMosaicExpTask to work with different types of
+        Exposures such as postISRCCDs and calexps.
+
+        Parameters
+        ----------
+        config : `VisualizeMosaicExpTask`
+            A config for `VisualizeMosaicExpTask`.
+        """
+        super().__init__(config=config)
+        if config:
+            # Update the dimensions of the task
+            self.dimensions.clear()
+            self.dimensions.update(config.dimensions)
+            # Update the storage classes and dimensions for inputs/outputs
+            inputExpsDimensions = list(config.dimensions) + ["detector"]
+            self.inputExps = dataclasses.replace(
+                self.inputExps,
+                storageClass=config.storageClass,
+                dimensions=inputExpsDimensions,
+            )
+            self.outputData = dataclasses.replace(
+                self.outputData,
+                dimensions=config.dimensions,
+            )
 
 
 class VisualizeMosaicExpConfig(
@@ -161,6 +229,21 @@ class VisualizeMosaicExpConfig(
 ):
     """Configuration for focal plane visualization."""
 
+    storageClass = pexConfig.Field(
+        default=VisualizeMosaicExpConnections.inputExps.storageClass,
+        dtype=str,
+        doc=(
+            "The storageClass of the input exposures. "
+            "Must be of type lsst.afw.Image.Exposure, or one of its subtypes."
+        ),
+    )
+    dimensions = pexConfig.ListField(
+        # Sort to ensure default order is consistent between runs
+        default=sorted(VisualizeMosaicExpConnections.dimensions),
+        dtype=str,
+        doc="The task dimensions, also applied to the input/output exposures. "
+        "Note: the input exposure will have 'detector' appended by default.",
+    )
     binning = pexConfig.Field(
         dtype=int,
         default=8,
@@ -379,8 +462,9 @@ class VisualizeMosaicCalibTask(VisualizeMosaicExpTask):
 # VisualizeBinCalibFilter (here) & VisualizeMosaicCalibFilter (below):
 #  Inputs to bin task have dimensions: {instrument, detector, physical_filter}
 #  Output of the mosaic task have:     {instrument, physical_filter}
-class VisualizeBinCalibFilterConnections(pipeBase.PipelineTaskConnections,
-                                         dimensions=("instrument", "detector", "physical_filter")):
+class VisualizeBinCalibFilterConnections(
+    pipeBase.PipelineTaskConnections, dimensions=("instrument", "detector", "physical_filter")
+):
     inputExp = cT.Input(
         name="flat",
         doc="Input exposure data to mosaic.",
@@ -404,8 +488,9 @@ class VisualizeBinCalibFilterConnections(pipeBase.PipelineTaskConnections,
     )
 
 
-class VisualizeBinCalibFilterConfig(VisualizeBinExpConfig,
-                                    pipelineConnections=VisualizeBinCalibFilterConnections):
+class VisualizeBinCalibFilterConfig(
+    VisualizeBinExpConfig, pipelineConnections=VisualizeBinCalibFilterConnections
+):
     pass
 
 
@@ -426,8 +511,10 @@ class VisualizeBinCalibFilterTask(VisualizeBinExpTask):
 # VisualizeBinCalibFilter (above) & VisualizeMosaicCalibFilter (here):
 #  Inputs to bin task have dimensions: {instrument, detector, physical_filter}
 #  Output of the mosaic task have:     {instrument, physical_filter}
-class VisualizeMosaicCalibFilterConnections(pipeBase.PipelineTaskConnections,
-                                            dimensions=("instrument", "physical_filter",)):
+class VisualizeMosaicCalibFilterConnections(
+    pipeBase.PipelineTaskConnections,
+    dimensions=("instrument", "physical_filter"),
+):
     inputExps = cT.Input(
         name="flatBin",
         doc="Input binned images mosaic.",
