@@ -100,6 +100,8 @@ class PhotoCalTest(unittest.TestCase):
         # The test and associated data have been prepared on the basis that we
         # use the PsfFlux to perform photometry.
         self.config.fluxField = "base_PsfFlux_instFlux"
+        self.config.match.sourceSelection.signalToNoise.fluxField = "base_PsfFlux_instFlux"
+        self.config.match.sourceSelection.signalToNoise.errField = "base_PsfFlux_instFluxErr"
 
     def tearDown(self):
         del self.srcCat
