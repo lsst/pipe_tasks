@@ -63,6 +63,14 @@ class TrivialLoader(ReferenceObjectLoader):
     def loadPixelBox(self, bbox, wcs, referenceFilter, **kwargs):
         return self.loadSkyCircle(None, None, referenceFilter)
 
+    def loadSchema(self, filterName):
+        refCat = self.make_synthetic_refcat(_synthCenter, _synthFlux)
+        fluxField = getRefFluxField(schema=refCat.schema, filterName=filterName)
+        return pipeBase.Struct(
+            schema=refCat.schema,
+            fluxField=fluxField
+        )
+
 
 class LoadReferenceCatalogTestCase(lsst.utils.tests.TestCase):
     @classmethod
