@@ -38,8 +38,6 @@ from lsst.pipe.tasks.colorterms import ColortermLibrary
 from lsst.afw.image import abMagErrFromFluxErr
 from lsst.meas.algorithms import ReferenceObjectLoader, LoadReferenceObjectsConfig
 
-import lsst.geom
-
 
 class LoadReferenceCatalogConfig(pexConfig.Config):
     """Config for LoadReferenceCatalogTask"""
@@ -340,9 +338,7 @@ class LoadReferenceCatalogTask(pipeBase.Task):
             if refFilterName is None:
                 continue
             try:
-                results = self.refObjLoader.loadSkyCircle(center,
-                                                          0.05*lsst.geom.degrees,
-                                                          refFilterName)
+                results = self.refObjLoader.loadSchema(refFilterName)
                 foundReferenceFilter = True
                 self._referenceFilter = refFilterName
                 break
@@ -377,7 +373,7 @@ class LoadReferenceCatalogTask(pipeBase.Task):
 
             if refFilterName is not None:
                 try:
-                    fluxField = getRefFluxField(results.refCat.schema, filterName=refFilterName)
+                    fluxField = getRefFluxField(results.schema, filterName=refFilterName)
                 except RuntimeError:
                     # This flux field isn't available.  Set to None
                     fluxField = None
