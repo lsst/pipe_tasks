@@ -653,7 +653,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             result.psf_stars_footprints, result.background, _ = self._compute_psf(result.exposure,
                                                                                   id_generator)
             have_fit_psf = True
-            summary_stat_catalog = result.psf_stars_footprints
             self._measure_aperture_correction(result.exposure, result.psf_stars_footprints)
             result.psf_stars = result.psf_stars_footprints.asAstropy()
 
