@@ -114,12 +114,56 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         background.append(backobj)
 
         # Configure and run the task
+        expSummaryTaskNoUpdates = ComputeExposureSummaryStatsTask()
         expSummaryTask = ComputeExposureSummaryStatsTask()
         # Configure nominal values for effective time calculation (normalized to 1s exposure)
         expSummaryTask.config.fiducialZeroPoint = {band: float(zp - 2.5*np.log10(expTime))}
         expSummaryTask.config.fiducialPsfSigma = {band: float(psfSize)}
         expSummaryTask.config.fiducialSkyBackground = {band: float(skyMean/expTime)}
-        # Run the task
+        # Run the task with optianal updates turned off
+        expSummaryTaskNoUpdates.config.doUpdatePsfModelStats = False
+        expSummaryTaskNoUpdates.config.doUpdateApCorrModelStats = False
+        expSummaryTaskNoUpdates.config.doUpdateMaxDistToNearestPsfStats = False
+        expSummaryTaskNoUpdates.config.doUpdateWcsStats = False
+        expSummaryTaskNoUpdates.config.doUpdatePhotoCalibStats = False
+        expSummaryTaskNoUpdates.config.doUpdateBackgroundStats = False
+        expSummaryTaskNoUpdates.config.doUpdateMaskedImageStats = False
+        expSummaryTaskNoUpdates.config.doUpdateMagnitudeLimitStats = False
+        expSummaryTaskNoUpdates.config.doUpdateEffectiveTimeStats = False
+
+        summary = expSummaryTaskNoUpdates.run(exposure, None, background)
+        # Test the outputs
+        self.assertTrue(np.isnan(summary.ra))
+        self.assertTrue(np.isnan(summary.dec))
+
+        # The following PSF metrics are always updated
+        self.assertFloatsAlmostEqual(summary.expTime, expTime)
+        self.assertFloatsAlmostEqual(summary.psfSigma, psfSize)
+        self.assertFloatsAlmostEqual(summary.psfIxx, psfSize**2.)
+        self.assertFloatsAlmostEqual(summary.psfIyy, psfSize**2.)
+        self.assertFloatsAlmostEqual(summary.psfIxy, 0.0)
+        self.assertFloatsAlmostEqual(summary.psfArea, 23.088975164455444)
+
+        # The following should not have been updated (i.e. set to nan)
+        self.assertTrue(np.isnan(summary.psfTraceRadiusDelta))
+        self.assertTrue(np.isnan(summary.psfApFluxDelta))
+        self.assertTrue(np.isnan(summary.psfApCorrSigmaScaledDelta))
+        self.assertTrue(np.isnan(summary.maxDistToNearestPsf))
+        self.assertTrue(np.isnan(summary.pixelScale))
+
+        self.assertTrue(np.isnan(summary.zenithDistance))
+        self.assertTrue(np.isnan(summary.skyBg))
+        self.assertTrue(np.isnan(summary.skyNoise))
+        self.assertTrue(np.isnan(summary.meanVar))
+        self.assertTrue(np.isnan(summary.zeroPoint))
+
+        self.assertTrue(np.isnan(summary.effTime))
+        self.assertTrue(np.isnan(summary.effTimePsfSigmaScale))
+        self.assertTrue(np.isnan(summary.effTimeSkyBgScale))
+        self.assertTrue(np.isnan(summary.effTimeZeroPointScale))
+        self.assertTrue(np.isnan(summary.magLim))
+
+        # Run the task with updates
         summary = expSummaryTask.run(exposure, None, background)
 
         # Test the outputs
