@@ -86,6 +86,9 @@ class LoadReferenceCatalogTask(pipeBase.Task):
     name : `str`
         The name of the refcat that this object will load. This name is used
         for applying colorterms, for example.
+    instrument : `lsst.obs.base.Instrument`, optional
+        If provided, an instrument to be used to obtain filter mappings from.
+        If not provided, configured filter mappings will be used instead.
 
     Raises
     ------
@@ -94,14 +97,15 @@ class LoadReferenceCatalogTask(pipeBase.Task):
     ConfigClass = LoadReferenceCatalogConfig
     _DefaultName = "loadReferenceCatalog"
 
-    def __init__(self, *, dataIds, refCats, name, **kwargs):
+    def __init__(self, *, dataIds, refCats, name, instrument=None, **kwargs):
         pipeBase.Task.__init__(self, **kwargs)
         refConfig = self.config.refObjLoader
         self.refObjLoader = ReferenceObjectLoader(dataIds=dataIds,
                                                   refCats=refCats,
                                                   name=name,
                                                   config=refConfig,
-                                                  log=self.log)
+                                                  log=self.log,
+                                                  instrument=instrument)
 
         if self.config.doReferenceSelection:
             self.makeSubtask('referenceSelector')
