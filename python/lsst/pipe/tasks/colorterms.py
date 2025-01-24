@@ -22,7 +22,6 @@
 __all__ = ["ColortermNotFoundError", "Colorterm", "ColortermDict", "ColortermLibrary"]
 
 import fnmatch
-import warnings
 
 import numpy as np
 import astropy.units as u
@@ -61,16 +60,13 @@ class Colorterm(Config):
     c1 = Field(dtype=float, default=0.0, doc="First-order parameter")
     c2 = Field(dtype=float, default=0.0, doc="Second-order parameter")
 
-    def getCorrectedMagnitudes(self, refCat, filterName="deprecatedArgument"):
+    def getCorrectedMagnitudes(self, refCat):
         """Return the colorterm corrected magnitudes for a given filter.
 
         Parameters
         ----------
         refCat : `lsst.afw.table.SimpleCatalog`
             The reference catalog to apply color corrections to.
-        filterName : `str`, deprecated
-            The camera filter to correct the reference catalog into.
-            The ``filterName`` argument is unused and will be removed in v23.
 
         Returns
         -------
@@ -90,10 +86,6 @@ class Colorterm(Config):
         WARNING: I do not know that we can trust the propagation of magnitude
         errors returned by this method. They need more thorough tests.
         """
-        if filterName != "deprecatedArgument":
-            msg = "Colorterm.getCorrectedMagnitudes() `filterName` arg is unused and will be removed in v23."
-            warnings.warn(msg, category=FutureWarning, stacklevel=2)
-
         def getFluxes(fluxField):
             """Get the flux and fluxErr of this field from refCat.
 
