@@ -21,13 +21,12 @@
 
 __all__ = ["ColortermNotFoundError", "Colorterm", "ColortermDict", "ColortermLibrary"]
 
-import fnmatch
-
 import numpy as np
 import astropy.units as u
 
 from lsst.afw.image import abMagErrFromFluxErr
 from lsst.pex.config import Config, Field, ConfigDictField
+from lsst.obs.base.instrument_ref_cat_data import _find_ref_cat_in_library
 
 
 class ColortermNotFoundError(LookupError):
@@ -275,31 +274,18 @@ class ColortermLibrary(Config):
             other exceptions may be raised for unexpected errors, regardless of the value of doRaise.
         """
         try:
-            trueRefCatName = None
-            ctDictConfig = self.data.get(photoCatName)
-            if ctDictConfig is None:
-                # try glob expression
-                matchList = [libRefNameGlob for libRefNameGlob in self.data
-                             if fnmatch.fnmatch(photoCatName, libRefNameGlob)]
-                if len(matchList) == 1:
-                    trueRefCatName = matchList[0]
-                    ctDictConfig = self.data[trueRefCatName]
-                elif len(matchList) > 1:
-                    raise ColortermNotFoundError(
-                        "Multiple library globs match photoCatName %r: %s" % (photoCatName, matchList))
-                else:
-                    raise ColortermNotFoundError(
-                        "No colorterm dict found with photoCatName %r" % photoCatName)
+            ctDictConfig = _find_ref_cat_in_library(photoCatName, self.data)
             ctDict = ctDictConfig.data
             if physicalFilter not in ctDict:
-                errMsg = "No colorterm found for filter %r with photoCatName %r" % (
-                    physicalFilter, photoCatName)
-                if trueRefCatName is not None:
-                    errMsg += " = catalog %r" % (trueRefCatName,)
-                raise ColortermNotFoundError(errMsg)
+                raise ColortermNotFoundError(
+                    f"No colorterm found for filter {physicalFilter!r} with photoCatName {photoCatName!r}"
+                )
             return ctDict[physicalFilter]
         except ColortermNotFoundError:
             if doRaise:
                 raise
-            else:
-                return Colorterm(physicalFilter, physicalFilter)
+        except LookupError as err:
+            if doRaise:
+                raise ColortermNotFoundError(str(err)) from None
+        assert not doRaise, "Should not get here otherwise"
+        return Colorterm(physicalFilter, physicalFilter)
