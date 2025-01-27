@@ -22,8 +22,9 @@
 """Test IsolatedStarAssociationTask.
 """
 import unittest
+
+import astropy.table
 import numpy as np
-import pandas as pd
 
 import lsst.utils.tests
 import lsst.pipe.base
@@ -43,11 +44,10 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
     def setUp(self):
         self.skymap = self._make_skymap()
         self.tract = 9813
-        self.data_refs = self._make_simdata(self.tract)
-        self.visits = np.arange(len(self.data_refs)) + 1
+        self.handles = self._make_simdata(self.tract)
+        self.visits = np.arange(len(self.handles)) + 1
 
-        self.data_ref_dict = {visit: data_ref for visit, data_ref in zip(self.visits,
-                                                                         self.data_refs)}
+        self.handle_dict = {visit: handle for visit, handle in zip(self.visits, self.handles)}
 
         config = IsolatedStarAssociationConfig()
         config.band_order = ['i', 'r']
@@ -87,7 +87,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
 
         Returns
         -------
-        data_refs : `list` [`InMemoryDatasetHandle`]
+        handles : `list` [`InMemoryDatasetHandle`]
             List of mock references.
         """
         np.random.seed(12345)
@@ -131,7 +131,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         id_counter = 0
         visit_counter = 1
 
-        data_refs = []
+        handles = []
         for band in ['r', 'i']:
             if band == 'r':
                 filtername = 'R FILTER'
@@ -186,9 +186,8 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
                     # Make one star have low s/n
                     table['normCompTophatFlux_instFlux'][0] = 1.0
 
-                df = pd.DataFrame(table)
-                df.set_index('sourceId', inplace=True)
-                data_refs.append(lsst.pipe.base.InMemoryDatasetHandle(df, storageClass="DataFrame"))
+                tbl = astropy.table.Table(table)
+                handles.append(lsst.pipe.base.InMemoryDatasetHandle(tbl, storageClass="ArrowAstropy"))
 
                 id_counter += nstar
                 visit_counter += 1
@@ -203,7 +202,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
             self.star_ras = np.concatenate((ra_both, ra_just_r, ra_just_i, ra_neighbor))
             self.star_decs = np.concatenate((dec_both, dec_just_r, dec_just_i, dec_neighbor))
 
-        return data_refs
+        return handles
 
     def test_compute_unique_ids(self):
         """Test computation of unique ids."""
@@ -234,9 +233,9 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         """Test matching primary stars."""
         # Stack all the sources; we do not want any cutting here.
         tables = []
-        for data_ref in self.data_refs:
-            df = data_ref.get()
-            tables.append(df.to_records())
+        for handle in self.handles:
+            tbl = handle.get()
+            tables.append(np.asarray(tbl))
         source_cat = np.concatenate(tables)
 
         primary_star_cat = self.isolatedStarAssociationTask._match_primary_stars(['i', 'r'],
@@ -271,9 +270,9 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         """Test _match_sources source to primary matching."""
         # Stack all the sources; we do not want any cutting here.
         tables = []
-        for data_ref in self.data_refs:
-            df = data_ref.get()
-            tables.append(df.to_records())
+        for handle in self.handles:
+            tbl = handle.get()
+            tables.append(np.asarray(tbl))
         source_cat = np.concatenate(tables)
 
         source_cat = np.lib.recfunctions.append_fields(source_cat,
@@ -300,7 +299,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
     def test_make_all_star_sources(self):
         """Test appending all the star sources."""
         source_cat = self.isolatedStarAssociationTask._make_all_star_sources(self.skymap[self.tract],
-                                                                             self.data_ref_dict)
+                                                                             self.handle_dict)
 
         # Make sure we don't have any low s/n sources.
         sn_min = np.min(source_cat['normCompTophatFlux_instFlux']
@@ -316,7 +315,7 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
         """Test running the full task."""
         struct = self.isolatedStarAssociationTask.run(self.skymap,
                                                       self.tract,
-                                                      self.data_ref_dict)
+                                                      self.handle_dict)
 
         star_source_cat = struct.star_source_cat
         star_cat = struct.star_cat
@@ -363,13 +362,12 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
 
     def test_run_task_all_neighbors(self):
         """Test running the task when all the stars are rejected as neighbors."""
-        data_refs = self._make_simdata(self.tract, only_neighbors=True)
-        data_ref_dict = {visit: data_ref for visit, data_ref in zip(self.visits,
-                                                                    data_refs)}
+        handles = self._make_simdata(self.tract, only_neighbors=True)
+        handle_dict = {visit: handle for visit, handle in zip(self.visits, handles)}
 
         struct = self.isolatedStarAssociationTask.run(self.skymap,
                                                       self.tract,
-                                                      data_ref_dict)
+                                                      handle_dict)
 
         # These should ber zero length.
         self.assertEqual(len(struct.star_source_cat), 0)
@@ -380,13 +378,12 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
 
     def test_run_task_all_out_of_tract(self):
         """Test running the task when all the sources are out of the tract."""
-        data_refs = self._make_simdata(self.tract, only_out_of_tract=True)
-        data_ref_dict = {visit: data_ref for visit, data_ref in zip(self.visits,
-                                                                    data_refs)}
+        handles = self._make_simdata(self.tract, only_out_of_tract=True)
+        handle_dict = {visit: handle for visit, handle in zip(self.visits, handles)}
 
         struct = self.isolatedStarAssociationTask.run(self.skymap,
                                                       self.tract,
-                                                      data_ref_dict)
+                                                      handle_dict)
 
         # These should ber zero length.
         self.assertEqual(len(struct.star_source_cat), 0)
@@ -397,13 +394,12 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
 
     def test_run_task_all_out_of_inner_tract(self):
         """Test running the task when all the sources are out of the inner tract."""
-        data_refs = self._make_simdata(self.tract, only_out_of_inner_tract=True)
-        data_ref_dict = {visit: data_ref for visit, data_ref in zip(self.visits,
-                                                                    data_refs)}
+        handles = self._make_simdata(self.tract, only_out_of_inner_tract=True)
+        handle_dict = {visit: handle for visit, handle in zip(self.visits, handles)}
 
         struct = self.isolatedStarAssociationTask.run(self.skymap,
                                                       self.tract,
-                                                      data_ref_dict)
+                                                      handle_dict)
 
         # These should ber zero length.
         self.assertEqual(len(struct.star_source_cat), 0)
@@ -417,13 +413,12 @@ class IsolatedStarAssociationTestCase(lsst.utils.tests.TestCase):
 
         This tests DM-34834.
         """
-        data_refs = self._make_simdata(self.tract, no_secondary_overlap=True)
-        data_ref_dict = {visit: data_ref for visit, data_ref in zip(self.visits,
-                                                                    data_refs)}
+        handles = self._make_simdata(self.tract, no_secondary_overlap=True)
+        handle_dict = {visit: handle for visit, handle in zip(self.visits, handles)}
 
         struct = self.isolatedStarAssociationTask.run(self.skymap,
                                                       self.tract,
-                                                      data_ref_dict)
+                                                      handle_dict)
 
         # Add a sanity check that we got a catalog out.
         self.assertGreater(len(struct.star_source_cat), 0)

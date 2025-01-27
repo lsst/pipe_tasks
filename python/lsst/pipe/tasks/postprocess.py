@@ -35,17 +35,22 @@ __all__ = ["WriteObjectTableConfig", "WriteObjectTableTask",
            "TransformForcedSourceTableConfig", "TransformForcedSourceTableTask",
            "ConsolidateTractConfig", "ConsolidateTractTask"]
 
+import dataclasses
 import functools
-import pandas as pd
 import logging
-import numpy as np
 import numbers
 import os
+
+import numpy as np
+import pandas as pd
+import astropy.table
+import astropy.utils.metadata
 
 import lsst.geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
+from lsst.daf.butler.formatters.parquet import pandas_to_astropy
 from lsst.pipe.base import connectionTypes
 import lsst.afw.table as afwTable
 from lsst.afw.image import ExposureSummaryStats, ExposureF
@@ -76,6 +81,105 @@ def flattenFilters(df, noDupCols=["coord_ra", "coord_dec"], camelCase=False, inp
     noDupDf = df[presentBands[0]][noDupCols]
     newDf = pd.concat([noDupDf, newDf], axis=1)
     return newDf
+
+
+class TableVStack:
+    """A helper class for stacking astropy tables without having them all in
+    memory at once.
+
+    Parameters
+    ----------
+    capacity : `int`
+        Full size of the final table.
+
+    Notes
+    -----
+    Unlike `astropy.table.vstack`, this class requires all tables to have the
+    exact same columns (it's slightly more strict than even the
+    ``join_type="exact"`` argument to `astropy.table.vstack`).
+    """
+
+    def __init__(self, capacity):
+        self.index = 0
+        self.capacity = capacity
+        self.result = None
+
+    @classmethod
+    def from_handles(cls, handles):
+        """Construct from an iterable of
+        `lsst.daf.butler.DeferredDatasetHandle`.
+
+        Parameters
+        ----------
+        handles : `~collections.abc.Iterable` [ \
+                `lsst.daf.butler.DeferredDatasetHandle` ]
+            Iterable of handles.   Must have a storage class that supports the
+            "rowcount" component, which is all that will be fetched.
+
+        Returns
+        -------
+        vstack : `TableVStack`
+            An instance of this class, initialized with capacity equal to the
+            sum of the rowcounts of all the given table handles.
+        """
+        capacity = sum(handle.get(component="rowcount") for handle in handles)
+        return cls(capacity=capacity)
+
+    def extend(self, table):
+        """Add a single table to the stack.
+
+        Parameters
+        ----------
+        table : `astropy.table.Table`
+            An astropy table instance.
+        """
+        if self.result is None:
+            self.result = astropy.table.Table()
+            for name in table.colnames:
+                column = table[name]
+                column_cls = type(column)
+                self.result[name] = column_cls.info.new_like([column], self.capacity, name=name)
+                self.result[name][:len(table)] = column
+            self.index = len(table)
+            self.result.meta = table.meta.copy()
+        else:
+            next_index = self.index + len(table)
+            if set(self.result.colnames) != set(table.colnames):
+                raise TypeError(
+                    "Inconsistent columns in concatentation: "
+                    f"{set(self.result.colnames).symmetric_difference(table.colnames)}"
+                )
+            for name in table.colnames:
+                out_col = self.result[name]
+                in_col = table[name]
+                if out_col.dtype != in_col.dtype:
+                    raise TypeError(f"Type mismatch on column {name!r}: {out_col.dtype} != {in_col.dtype}.")
+                self.result[name][self.index:next_index] = table[name]
+            self.index = next_index
+            self.result.meta = astropy.utils.metadata.merge(self.result.meta, table.meta)
+
+    @classmethod
+    def vstack_handles(cls, handles):
+        """Vertically stack tables represented by deferred dataset handles.
+
+        Parameters
+        ----------
+        handles : `~collections.abc.Iterable` [ \
+                `lsst.daf.butler.DeferredDatasetHandle` ]
+            Iterable of handles.   Must have the "ArrowAstropy" storage class
+            and identical columns.
+
+        Returns
+        -------
+        table : `astropy.table.Table`
+            Concatenated table with the same columns as each input table and
+            the rows of all of them.
+        """
+        handles = tuple(handles)  # guard against single-pass iterators
+        vstack = cls.from_handles(handles)
+        for handle in handles:
+            vstack.extend(handle.get())
+        return vstack.result
 
 
 class WriteObjectTableConnections(pipeBase.PipelineTaskConnections,
@@ -199,10 +303,9 @@ class WriteSourceTableConnections(pipeBase.PipelineTaskConnections,
         dimensions=("instrument", "visit", "detector")
     )
     outputCatalog = connectionTypes.Output(
-        doc="Catalog of sources, `src` in DataFrame/Parquet format. The 'id' column is "
-            "replaced with an index; all other columns are unchanged.",
+        doc="Catalog of sources, `src` in Astropy/Parquet format.  Columns are unchanged.",
         name="{catalogType}source",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument", "visit", "detector")
     )
 
@@ -227,7 +330,7 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     def run(self, catalog, visit, detector, **kwargs):
-        """Convert `src` catalog to DataFrame
+        """Convert `src` catalog to an Astropy table.
 
         Parameters
         ----------
@@ -244,15 +347,15 @@ class WriteSourceTableTask(pipeBase.PipelineTask):
         -------
         result : `~lsst.pipe.base.Struct`
             ``table``
-                `DataFrame` version of the input catalog
+                `astropy.table.Table` version of the input catalog
         """
         self.log.info("Generating DataFrame from src catalog visit,detector=%i,%i", visit, detector)
-        df = catalog.asAstropy().to_pandas().set_index("id", drop=True)
-        df["visit"] = visit
+        tbl = catalog.asAstropy()
+        tbl["visit"] = visit
         # int16 instead of uint8 because databases don't like unsigned bytes.
-        df["detector"] = np.int16(detector)
+        tbl["detector"] = np.int16(detector)
 
-        return pipeBase.Struct(table=df)
+        return pipeBase.Struct(table=tbl)
 
 
 class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
@@ -558,7 +661,7 @@ class TransformCatalogBaseConnections(pipeBase.PipelineTaskConnections,
     )
     outputCatalog = connectionTypes.Output(
         name="",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
     )
 
 
@@ -685,8 +788,7 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
                              "Must be a valid path to yaml in order to run Task as a PipelineTask.")
         result = self.run(handle=inputs["inputCatalog"], funcs=self.funcs,
                           dataId=dict(outputRefs.outputCatalog.dataId.mapping))
-        outputs = pipeBase.Struct(outputCatalog=result)
-        butlerQC.put(outputs, outputRefs)
+        butlerQC.put(result, outputRefs)
 
     def run(self, handle, funcs=None, dataId=None, band=None):
         """Do postprocessing calculations
@@ -710,13 +812,16 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
 
         Returns
         -------
-        df : `pandas.DataFrame`
+        result : `lsst.pipe.base.Struct`
+            Result struct, with a single ``outputCatalog`` attribute holding
+            the transformed catalog.
         """
         self.log.info("Transforming/standardizing the source table dataId: %s", dataId)
 
         df = self.transform(band, handle, funcs, dataId).df
         self.log.info("Made a table of %d columns and %d rows", len(df.columns), len(df))
-        return df
+        result = pipeBase.Struct(outputCatalog=pandas_to_astropy(df))
+        return result
 
     def getFunctors(self):
         return self.funcs
@@ -767,9 +872,14 @@ class TransformObjectCatalogConnections(pipeBase.PipelineTaskConnections,
         doc="Per-Patch Object Table of columns transformed from the deepCoadd_obj table per the standard "
             "data model.",
         dimensions=("tract", "patch", "skymap"),
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         name="objectTable"
     )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        if config.multilevelOutput:
+            self.outputCatalog = dataclasses.replace(self.outputCatalog, storageClass="DataFrame")
 
 
 class TransformObjectCatalogConfig(TransformCatalogBaseConfig,
@@ -797,7 +907,9 @@ class TransformObjectCatalogConfig(TransformCatalogBaseConfig,
         dtype=bool,
         default=False,
         doc=("Whether results dataframe should have a multilevel column index (True) or be flat "
-             "and name-munged (False).")
+             "and name-munged (False).  If True, the output storage class will be "
+             "set to DataFrame, since astropy tables do not support multi-level indexing."),
+        deprecated="Support for multi-level outputs is deprecated and will be removed after v29.",
     )
     goodFlags = pexConfig.ListField(
         dtype=str,
@@ -903,10 +1015,13 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
                 noDupCols += self.config.columnsFromDataId
             df = flattenFilters(df, noDupCols=noDupCols, camelCase=self.config.camelCase,
                                 inputBands=inputBands)
+            tbl = pandas_to_astropy(df)
+        else:
+            tbl = df
 
-        self.log.info("Made a table of %d columns and %d rows", len(df.columns), len(df))
+        self.log.info("Made a table of %d columns and %d rows", len(tbl.columns), len(tbl))
 
-        return df
+        return pipeBase.Struct(outputCatalog=tbl)
 
 
 class ConsolidateObjectTableConnections(pipeBase.PipelineTaskConnections,
@@ -914,14 +1029,15 @@ class ConsolidateObjectTableConnections(pipeBase.PipelineTaskConnections,
     inputCatalogs = connectionTypes.Input(
         doc="Per-Patch objectTables conforming to the standard data model.",
         name="objectTable",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("tract", "patch", "skymap"),
         multiple=True,
+        deferLoad=True,
     )
     outputCatalog = connectionTypes.Output(
         doc="Pre-tract horizontal concatenation of the input objectTables",
         name="objectTable_tract",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("tract", "skymap"),
     )
 
@@ -950,8 +1066,8 @@ class ConsolidateObjectTableTask(pipeBase.PipelineTask):
         inputs = butlerQC.get(inputRefs)
         self.log.info("Concatenating %s per-patch Object Tables",
                       len(inputs["inputCatalogs"]))
-        df = pd.concat(inputs["inputCatalogs"])
-        butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
+        table = TableVStack.vstack_handles(inputs["inputCatalogs"])
+        butlerQC.put(pipeBase.Struct(outputCatalog=table), outputRefs)
 
 
 class TransformSourceTableConnections(pipeBase.PipelineTaskConnections,
@@ -969,7 +1085,7 @@ class TransformSourceTableConnections(pipeBase.PipelineTaskConnections,
         doc="Narrower, per-detector Source Table transformed and converted per a "
             "specified set of functors",
         name="{catalogType}sourceTable",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument", "visit", "detector")
     )
 
@@ -1130,14 +1246,15 @@ class ConsolidateSourceTableConnections(pipeBase.PipelineTaskConnections,
     inputCatalogs = connectionTypes.Input(
         doc="Input per-detector Source Tables",
         name="{catalogType}sourceTable",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument", "visit", "detector"),
-        multiple=True
+        multiple=True,
+        deferLoad=True,
     )
     outputCatalog = connectionTypes.Output(
         doc="Per-visit concatenation of Source Table",
         name="{catalogType}sourceTable_visit",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument", "visit")
     )
 
@@ -1165,8 +1282,8 @@ class ConsolidateSourceTableTask(pipeBase.PipelineTask):
         inputs = butlerQC.get(inputRefs)
         self.log.info("Concatenating %s per-detector Source Tables",
                       len(inputs["inputCatalogs"]))
-        df = pd.concat(inputs["inputCatalogs"])
-        butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
+        table = TableVStack.vstack_handles(inputs["inputCatalogs"])
+        butlerQC.put(pipeBase.Struct(outputCatalog=table), outputRefs)
 
 
 class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
@@ -1183,7 +1300,7 @@ class MakeCcdVisitTableConnections(pipeBase.PipelineTaskConnections,
     outputCatalog = connectionTypes.Output(
         doc="CCD and Visit metadata table",
         name="ccdVisitTable",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument",)
     )
 
@@ -1238,16 +1355,17 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
                              "effTime", "effTimePsfSigmaScale",
                              "effTimeSkyBgScale", "effTimeZeroPointScale",
                              "magLim"]
-            ccdEntry = summaryTable[selectColumns].to_pandas().set_index("id")
+            ccdEntry = summaryTable[selectColumns]
             # 'visit' is the human readable visit number.
             # 'visitId' is the key to the visitId table. They are the same.
             # Technically you should join to get the visit from the visit
             # table.
-            ccdEntry = ccdEntry.rename(columns={"visit": "visitId"})
+            ccdEntry.rename_column("visit", "visitId")
+            ccdEntry.rename_column("id", "detectorId")
 
             # RFC-924: Temporarily keep a duplicate "decl" entry for backwards
             # compatibility. To be removed after September 2023.
-            ccdEntry["decl"] = ccdEntry.loc[:, "dec"]
+            ccdEntry["decl"] = ccdEntry["dec"]
 
             ccdEntry["ccdVisitId"] = [
                 self.config.idGenerator.apply(
@@ -1266,12 +1384,13 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
                 visitSummary["psfSigma"] * visitSummary["pixelScale"] * np.sqrt(8 * np.log(2))
             )
             ccdEntry["skyRotation"] = visitInfo.getBoresightRotAngle().asDegrees()
-            ccdEntry["expMidpt"] = visitInfo.getDate().toPython()
+            ccdEntry["expMidpt"] = np.datetime64(visitInfo.getDate().toPython(), "ns")
             ccdEntry["expMidptMJD"] = visitInfo.getDate().get(dafBase.DateTime.MJD)
+            expTime = visitInfo.getExposureTime()
             ccdEntry["obsStart"] = (
-                ccdEntry["expMidpt"] - 0.5 * pd.Timedelta(seconds=ccdEntry["expTime"].values[0])
+                ccdEntry["expMidpt"] - 0.5 * np.timedelta64(int(expTime * 1E9), "ns")
             )
-            expTime_days = ccdEntry["expTime"] / (60*60*24)
+            expTime_days = expTime / (60*60*24)
             ccdEntry["obsStartMJD"] = ccdEntry["expMidptMJD"] - 0.5 * expTime_days
             ccdEntry["darkTime"] = visitInfo.getDarkTime()
             ccdEntry["xSize"] = summaryTable["bbox_max_x"] - summaryTable["bbox_min_x"]
@@ -1289,8 +1408,7 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
             # values are actually wanted.
             ccdEntries.append(ccdEntry)
 
-        outputCatalog = pd.concat(ccdEntries)
-        outputCatalog.set_index("ccdVisitId", inplace=True, verify_integrity=True)
+        outputCatalog = astropy.table.vstack(ccdEntries, join_type="exact")
         return pipeBase.Struct(outputCatalog=outputCatalog)
 
 
@@ -1308,7 +1426,7 @@ class MakeVisitTableConnections(pipeBase.PipelineTaskConnections,
     outputCatalog = connectionTypes.Output(
         doc="Visit metadata table",
         name="visitTable",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument",)
     )
 
@@ -1368,9 +1486,9 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
             visitEntry["airmass"] = visitInfo.getBoresightAirmass()
             expTime = visitInfo.getExposureTime()
             visitEntry["expTime"] = expTime
-            visitEntry["expMidpt"] = visitInfo.getDate().toPython()
+            visitEntry["expMidpt"] = np.datetime64(visitInfo.getDate().toPython(), "ns")
             visitEntry["expMidptMJD"] = visitInfo.getDate().get(dafBase.DateTime.MJD)
-            visitEntry["obsStart"] = visitEntry["expMidpt"] - 0.5 * pd.Timedelta(seconds=expTime)
+            visitEntry["obsStart"] = visitEntry["expMidpt"] - 0.5 * np.timedelta64(int(expTime * 1E9), "ns")
             expTime_days = expTime / (60*60*24)
             visitEntry["obsStartMJD"] = visitEntry["expMidptMJD"] - 0.5 * expTime_days
             visitEntries.append(visitEntry)
@@ -1379,8 +1497,7 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
             # mirror1Temp, mirror2Temp, mirror3Temp, domeTemp, externalTemp,
             # dimmSeeing, pwvGPS, pwvMW, flags, nExposures.
 
-        outputCatalog = pd.DataFrame(data=visitEntries)
-        outputCatalog.set_index("visitId", inplace=True, verify_integrity=True)
+        outputCatalog = astropy.table.Table(rows=visitEntries)
         return pipeBase.Struct(outputCatalog=outputCatalog)
 
 

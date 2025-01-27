@@ -184,7 +184,7 @@ class PropagateSourceFlagsTask(pipeBase.Task):
                         self.log.info("Visit %d not in input handle dict for %s", visit, name)
                         continue
                     handle = handle_dict[visit]
-                    df = handle.get(parameters={"columns": columns})
+                    tbl = handle.get(parameters={"columns": columns})
 
                     # Loop over all ccd_inputs rows for this visit.
                     for row in ccd_inputs[ccd_inputs["visit"] == visit]:
@@ -195,13 +195,13 @@ class PropagateSourceFlagsTask(pipeBase.Task):
                                           "propagate flags.  Skipping...", visit, detector)
                             continue
 
-                        df_det = df[df["detector"] == detector]
+                        tbl_det = tbl[tbl["detector"] == detector]
 
-                        if len(df_det) == 0:
+                        if len(tbl_det) == 0:
                             continue
 
-                        ra, dec = wcs.pixelToSkyArray(df_det[x_col].values,
-                                                      df_det[y_col].values,
+                        ra, dec = wcs.pixelToSkyArray(np.asarray(tbl_det[x_col]),
+                                                      np.asarray(tbl_det[y_col]),
                                                       degrees=True)
 
                         try:
@@ -225,7 +225,7 @@ class PropagateSourceFlagsTask(pipeBase.Task):
                             continue
 
                         for flag in flag_counts:
-                            flag_values = df_det[flag].values
+                            flag_values = np.asarray(tbl_det[flag])
                             flag_counts[flag][i1] += flag_values[i2].astype(np.int32)
 
         for flag in source_flag_counts:

@@ -21,6 +21,7 @@
 
 import os
 import unittest
+import astropy.table
 import pandas as pd
 import numpy as np
 
@@ -65,33 +66,33 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
                  'IntColumn': Column('base_InputCount_value', dataset='meas'),
                  'GoodFlagColumn': Column('slot_GaussianFlux_flag', dataset='meas'),
                  'BadFlagColumn': Column('slot_Centroid_flag', dataset='meas')}
-        df = task.run(self.handle, funcs=funcs, dataId=self.dataId)
-        self.assertIsInstance(df, pd.DataFrame)
+        tbl = task.run(self.handle, funcs=funcs, dataId=self.dataId).outputCatalog
+        self.assertIsInstance(tbl, astropy.table.Table)
 
         for filt in config.outputBands:
-            self.assertIn(filt + 'FloatColumn', df.columns)
-            self.assertIn(filt + 'IntColumn', df.columns)
-            self.assertIn(filt + 'BadFlagColumn', df.columns)
-            self.assertIn(filt + 'GoodFlagColumn', df.columns)
+            self.assertIn(filt + 'FloatColumn', tbl.columns)
+            self.assertIn(filt + 'IntColumn', tbl.columns)
+            self.assertIn(filt + 'BadFlagColumn', tbl.columns)
+            self.assertIn(filt + 'GoodFlagColumn', tbl.columns)
 
         # Check that the default filling has worked.
-        self.assertNotIn('gFloatColumn', df.columns)
-        self.assertTrue(df['yFloatColumn'].isnull().all())
-        self.assertTrue(df['iFloatColumn'].notnull().all())
-        self.assertTrue(np.all(df['iIntColumn'].values >= 0))
-        self.assertTrue(np.all(df['yIntColumn'].values < 0))
-        self.assertTrue(np.all(~df['yGoodFlagColumn'].values))
-        self.assertTrue(np.all(df['yBadFlagColumn'].values))
+        self.assertNotIn('gFloatColumn', tbl.columns)
+        self.assertTrue(np.all(np.ma.is_masked(tbl['yFloatColumn'])))
+        self.assertFalse(np.any(np.ma.is_masked(tbl['iFloatColumn'])))
+        self.assertTrue(np.all(tbl['iIntColumn'] >= 0))
+        self.assertTrue(np.all(tbl['yIntColumn'] < 0))
+        self.assertTrue(np.all(~tbl['yGoodFlagColumn']))
+        self.assertTrue(np.all(tbl['yBadFlagColumn']))
 
         # Check that the datatypes are preserved.
-        self.assertEqual(df['iFloatColumn'].dtype, np.dtype(np.float64))
-        self.assertEqual(df['yFloatColumn'].dtype, np.dtype(np.float64))
-        self.assertEqual(df['iIntColumn'].dtype, np.dtype(np.int64))
-        self.assertEqual(df['yIntColumn'].dtype, np.dtype(np.int64))
-        self.assertEqual(df['iGoodFlagColumn'].dtype, np.dtype(np.bool_))
-        self.assertEqual(df['yGoodFlagColumn'].dtype, np.dtype(np.bool_))
-        self.assertEqual(df['iBadFlagColumn'].dtype, np.dtype(np.bool_))
-        self.assertEqual(df['yBadFlagColumn'].dtype, np.dtype(np.bool_))
+        self.assertEqual(tbl['iFloatColumn'].dtype, np.dtype(np.float64))
+        self.assertEqual(tbl['yFloatColumn'].dtype, np.dtype(np.float64))
+        self.assertEqual(tbl['iIntColumn'].dtype, np.dtype(np.int64))
+        self.assertEqual(tbl['yIntColumn'].dtype, np.dtype(np.int64))
+        self.assertEqual(tbl['iGoodFlagColumn'].dtype, np.dtype(np.bool_))
+        self.assertEqual(tbl['yGoodFlagColumn'].dtype, np.dtype(np.bool_))
+        self.assertEqual(tbl['iBadFlagColumn'].dtype, np.dtype(np.bool_))
+        self.assertEqual(tbl['yBadFlagColumn'].dtype, np.dtype(np.bool_))
 
     def testUnderscoreColumnFormat(self):
         """Test the per-filter column format with an underscore"""
@@ -100,10 +101,10 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         config.camelCase = False
         task = TransformObjectCatalogTask(config=config)
         funcs = {'Fwhm': HsmFwhm(dataset='meas')}
-        df = task.run(self.handle, funcs=funcs, dataId=self.dataId)
-        self.assertIsInstance(df, pd.DataFrame)
+        tbl = task.run(self.handle, funcs=funcs, dataId=self.dataId).outputCatalog
+        self.assertIsInstance(tbl, astropy.table.Table)
         for filt in config.outputBands:
-            self.assertIn(filt + '_Fwhm', df.columns)
+            self.assertIn(filt + '_Fwhm', tbl.columns)
 
     def testMultilevelOutput(self):
         """Test the non-flattened result dataframe with a multilevel column index"""
@@ -112,7 +113,7 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         config.multilevelOutput = True
         task = TransformObjectCatalogTask(config=config)
         funcs = {'Fwhm': HsmFwhm(dataset='meas')}
-        df = task.run(self.handle, funcs=funcs, dataId=self.dataId)
+        df = task.run(self.handle, funcs=funcs, dataId=self.dataId).outputCatalog
         self.assertIsInstance(df, pd.DataFrame)
         self.assertNotIn('g', df)
         for filt in config.outputBands:
@@ -123,15 +124,13 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         """All the input bands should go into the output, and nothing else.
         """
         config = TransformObjectCatalogConfig()
-        config.multilevelOutput = True
         task = TransformObjectCatalogTask(config=config)
         funcs = {'Fwhm': HsmFwhm(dataset='meas')}
-        df = task.run(self.handle, funcs=funcs, dataId=self.dataId)
-        self.assertIsInstance(df, pd.DataFrame)
-        self.assertNotIn('HSC-G', df)
+        tbl = task.run(self.handle, funcs=funcs, dataId=self.dataId).outputCatalog
+        self.assertIsInstance(tbl, astropy.table.Table)
+        self.assertNotIn('HSC-G_Fwhm', tbl.columns)
         for filt in ['g', 'r', 'i']:
-            self.assertIsInstance(df[filt], pd.DataFrame)
-            self.assertIn('Fwhm', df[filt].columns)
+            self.assertIn(f'{filt}_Fwhm', tbl.columns)
 
 
 if __name__ == "__main__":
