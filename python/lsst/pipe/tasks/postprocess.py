@@ -144,7 +144,16 @@ class TableVStack:
             self.result.meta = table.meta.copy()
         else:
             next_index = self.index + len(table)
+            if set(self.result.colnames) != set(table.colnames):
+                raise TypeError(
+                    "Inconsistent columns in concatentation: "
+                    f"{set(self.result.colnames).symmetric_difference(table.colnames)}"
+                )
             for name in table.colnames:
+                out_col = self.result[name]
+                in_col = table[name]
+                if out_col.dtype != in_col.dtype:
+                    raise TypeError(f"Type mismatch on column {name!r}: {out_col.dtype} != {in_col.dtype}.")
                 self.result[name][self.index:next_index] = table[name]
             self.index = next_index
             self.result.meta = astropy.utils.metadata.merge(self.result.meta, table.meta)
