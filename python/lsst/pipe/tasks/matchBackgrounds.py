@@ -39,15 +39,20 @@ from lsst.afw.math import (
     stringToStatisticsProperty,
     stringToUndersampleStyle,
 )
-from lsst.pex.config import ChoiceField, Field, ListField, RangeField
+from lsst.pex.config import ChoiceField, ConfigField, Field, ListField, RangeField
 from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct, TaskError
 from lsst.pipe.base.connectionTypes import Input, Output
+from lsst.pipe.tasks.background import TractBackground, TractBackgroundConfig
 from lsst.utils.timer import timeMethod
 
 
 class MatchBackgroundsConnections(
     PipelineTaskConnections,
-    dimensions=("skymap", "tract", "patch", "band"),
+    # How to get it to do visit, warp?
+    # Need to kill all collections w/new dataset types to try other combos here...
+    # https://pipelines.lsst.io/v/weekly/modules/lsst.pipe.base/creating-a-pipelinetask.html#pipelinetask-processing-multiple-datasets
+    # dimensions=("skymap", "tract", "patch", "band"),
+    dimensions=("skymap", "tract", "band"),  # Don't want to mix bands...
     defaultTemplates={
         "inputCoaddName": "deep",
         "outputCoaddName": "deep",
@@ -67,7 +72,8 @@ class MatchBackgroundsConnections(
     backgroundInfoList = Output(
         doc="List of differential backgrounds, with goodness of fit params.",
         name="psfMatchedWarpBackground_diff",  # This needs to change
-        dimensions=("skymap", "tract", "patch", "visit"),
+        # dimensions=("skymap", "tract", "patch", "visit"),
+        dimensions=("skymap", "tract", "visit", "patch"),
         storageClass="Background",
         multiple=True,
     )
@@ -75,7 +81,8 @@ class MatchBackgroundsConnections(
         doc="List of background-matched warps.",
         name="{inputCoaddName}Coadd_{warpType}Warp_bgMatched",
         storageClass="ExposureF",
-        dimensions=("skymap", "tract", "patch", "visit"),
+        # dimensions=("skymap", "tract", "patch", "visit"),
+        dimensions=("skymap", "tract", "visit", "patch"),
         multiple=True,
     )
 
@@ -121,6 +128,10 @@ class MatchBackgroundsConfig(PipelineTaskConfig, pipelineConnections=MatchBackgr
     )
 
     # Background matching
+    tractBgModel = ConfigField(
+        dtype=TractBackgroundConfig,
+        doc="Background model for the entire tract",
+    )
     usePolynomial = Field[bool](
         doc="Fit background difference with a Chebychev polynomial interpolation? "
         "If False, fit with spline interpolation instead.",
@@ -140,7 +151,6 @@ class MatchBackgroundsConfig(PipelineTaskConfig, pipelineConnections=MatchBackgr
             "BAD",
             "INTRP",
             "CR",
-            "NOT_DEBLENDED",
         ],
         itemCheck=lambda x: x in Mask().getMaskPlaneDict(),
     )
@@ -277,9 +287,13 @@ class MatchBackgroundsTask(PipelineTask):
         """
         if (numExp := len(warps)) < 1:
             raise TaskError("No exposures to match")
+        # TODO: store ref visit ID between runs, to skip selection process?
+
+        # First, build FFP BG models of each visit
+        visitTractBgs = self._makeTractBackgrounds(warps)
 
         # Define a reference warp; 'warps' is modified in-place to exclude it
-        refWarp, refInd, bkgd = self._defineWarps(warps=warps, refWarpVisit=self.config.refWarpVisit)
+        refBg, refVis, bkgd = self._defineWarps(visitTractBgs, refVisitId=self.config.refWarpVisit)
 
         # Images must be scaled to a common ZP
         # Converting everything to nJy to accomplish this
@@ -335,109 +349,187 @@ class MatchBackgroundsTask(PipelineTask):
         return Struct(backgroundInfoList=backgroundInfoList, matchedImageList=matchedImageList)
 
     @timeMethod
-    def _defineWarps(self, warps, refWarpVisit=None):
-        """Define the reference warp and list of comparison warps.
-
-        If no reference warp ID is supplied, this method calculates an
-        appropriate reference exposure from the supplied list of warps by
-        minimizing a cost function that penalizes high background complexity
-        (divergence from a plane), high variance, low global coverage, and low
-        edge coverage.
+    def _makeTractBackgrounds(self, warps, refWarpDDF=None):
+        """Create full tract model of the backgrounds of all visits.
 
         Parameters
         ----------
         warps : `list`[`~lsst.daf.butler.DeferredDatasetHandle`]
             List of warped exposures (of type `~lsst.afw.image.ExposureF`).
-        refWarpVisit : `int`, optional
-            Visit ID of the reference warp.
-            If None, the best warp is chosen from the list of warps.
+            This is ordered by patch ID, then by visit ID
+
+        refWarpDDF : ``~lsst.daf.butler.DeferredDatasetHandle` optional
+            Chosen reference warp to match to, if supplied
 
         Returns
         -------
-        refWarp : `~lsst.afw.image.ExposureF`
-            Reference warped exposure.
-        refWarpIndex : `int`
-            Index of the reference removed from the list of warps.
-        warpBg : `~lsst.afw.math.BackgroundMI`
+        visitTractBackrounds : `dict`{`TractBackground`}
+            Models of full tract backgrounds for all visits, accessed by visit
+            IDs
+        """
+        # First, separate warps by visit
+        visits = np.unique([i.dataId["visit"] for i in warps])
+
+        # Then build background models for each visit, and store
+        visitTractBackgrounds = {}
+        for i in range(len(visits)):
+            # Find all the warps for the visit
+            visitWarps = [j for j in warps if j.dataId["visit"] == visits[i]]
+            # Set up empty full tract background model object
+            bgModelBase = TractBackground(self.config.tractBgModel)
+
+            bgModels = []
+            for warp in visitWarps:
+                msg = "Constructing FFP background model for visit %d using %d patches"
+                self.log.debug(
+                    msg,
+                    visits[i],
+                    len(warps),
+                )
+                if refWarpDDF is not None:
+                    msg = "Doing difference imaging: reference warp visit ID: %d"
+                    self.log.debug(msg, refWarpDDF.dataId["visit"])
+                visitWarp = warp.get()
+                # If a reference image is supplied, make a BG of the difference
+                if refWarpDDF is not None:
+                    refWarp = refWarpDDF.get()
+                    visitWarp = refWarp - visitWarp
+                bgModel = bgModelBase.clone()
+                bgModel.addWarp(visitWarp)
+                bgModels.append(bgModel)
+
+            # Merge warp models to make a single full tract background model
+            for bgModel, warp in zip(bgModels, visitWarps):
+                msg = (
+                    "Patch %d: Merging %d unmasked pixels (%.1f%s of detector area) into tract plane BG "
+                    "model"
+                )
+                self.log.debug(
+                    msg,
+                    warp.dataId["patch"],
+                    bgModel._numbers.getArray().sum(),
+                    100 * bgModel._numbers.getArray().sum() / visitWarp.getBBox().getArea(),
+                    "%",
+                )
+                bgModelBase.merge(bgModel)
+            visitTractBackgrounds[visits[i]] = bgModelBase
+        return visitTractBackgrounds
+
+    @timeMethod
+    def _defineWarps(self, visitTractBackgrounds, refVisitId=None):
+        """Define the reference visit and list of comparison visits.
+
+        If no reference visit ID is supplied, this method calculates an
+        appropriate reference exposure from the supplied list of visit
+        backgrounds by minimizing a cost function that penalizes high
+        background complexity (divergence from a plane), high variance, and low
+        global coverage.
+
+        Parameters
+        ----------
+        visitTractBackgrounds : `dict`{`TractBackground`}
+            Models of full tract backgrounds for all visits, accessed by visit
+            IDs
+        refVisitId : `int`, optional
+            ID of the reference visit.
+            If None, the best visit is chosen using the dictionary of existing
+            backgrounds.
+
+        Returns
+        -------
+        refBg : `~lsst.afw.math.BackgroundMI`
+            Reference background to match to.
+        refVis : `int`
+            Index of the reference visit removed from the dictionary.
+        fitBg : `~lsst.afw.math.BackgroundMI`
             Temporary background model, used to make a blank BG for the ref
 
         Notes
         -----
         This method modifies the input list of warps in place by removing the
         reference warp from it.
+
         """
         # User-defined reference visit, if one has been supplied
-        if refWarpVisit:
-            warpVisits = [warpDDH.dataId["visit"] for warpDDH in warps]
+        if refVisitId:
+            visits = [visId for visId in visitTractBackgrounds.keys()]
             try:
-                refWarpIndex = warpVisits.index(refWarpVisit)
-                refWarpDDH = warps.pop(refWarpIndex)
-                self.log.info("Using user-supplied reference visit %d", refWarpVisit)
-                return refWarpDDH.get(), refWarpIndex
+                refTractBackground = visitTractBackgrounds.pop(refVisitId)
+                self.log.info("Using user-supplied reference visit %d", refVisitId)
+                # TODO: need to return a background object here!
+                return refTractBackground, refVisitId
             except ValueError:
-                raise TaskError(f"Reference visit {refWarpVisit} is not found in the list of warps.")
+                raise TaskError(f"Reference visit {refVisitId} is not found in the list of warps.")
 
         # Extract mean/var/npoints for each warp
-        warpChi2s = []  # Background goodness of fit
-        warpVars = []  # Variance
-        warpNPointsGlobal = []  # Global coverage
-        warpNPointsEdge = []  # Edge coverage
-        for warpDDH in warps:
-            warp = warpDDH.get()
-            instFluxToNanojansky = warp.getPhotoCalib().instFluxToNanojansky(1)
-            warp.image *= instFluxToNanojansky  # Images in nJy to facilitate difference imaging
-            warp.variance *= instFluxToNanojansky
-            warpBg, _ = self._makeBackground(warp.getMaskedImage(), binSize=self.config.chi2BinSize)
+        fitChi2s = []  # Background goodness of fit
+        # warpVars = []  # Variance
+        fitNPointsGlobal = []  # Global coverage
+        # warpNPointsEdge = []  # Edge coverage
+        visits = []  # To ensure dictionary key order is correct
+        for vis in visitTractBackgrounds:
+            visits.append(vis)
+            # Fit a model to the FFP
+            # TODO: need a variance plane in the tractBg as well
+            tractBg = visitTractBackgrounds[vis].getStatsImage()
+            fitBg, _ = self._makeBackground(tractBg, binSize=1)
+            fitBg.getStatsImage().variance = ImageF(np.sqrt(fitBg.getStatsImage().image.array))
 
             # Return an approximation to the background
             approxCtrl = ApproximateControl(ApproximateControl.CHEBYSHEV, 1, 1, self.config.approxWeighting)
-            warpApprox = warpBg.getApproximate(approxCtrl, self.undersampleStyle)
-            warpBgSub = ImageF(warp.image.array - warpApprox.getImage().array)
+            fitApprox = fitBg.getApproximate(approxCtrl, self.undersampleStyle)
 
-            warpStats = makeStatistics(warpBgSub, warp.mask, VARIANCE | NPOINT, self.statsCtrl)
+            fitBgSub = MaskedImageF(ImageF(tractBg.array - fitApprox.getImage().array))
+            bad_mask_bit_mask = fitBgSub.mask.getPlaneBitMask("BAD")
+            fitBgSub.mask.array[np.isnan(fitBgSub.image.array)] = bad_mask_bit_mask
 
-            bad_mask_bit_mask = warp.mask.getPlaneBitMask(self.config.badMaskPlanes)
-            good = (warp.mask.array.astype(int) & bad_mask_bit_mask) == 0
+            fitStats = makeStatistics(fitBgSub.image, fitBgSub.mask, VARIANCE | NPOINT, self.statsCtrl)
+
+            good = (fitBgSub.mask.array.astype(int) & bad_mask_bit_mask) == 0
             dof = len(good[good]) - 6  # Assuming eq. of plane
-            warpChi2 = np.nansum(warpBgSub.array[good] ** 2 / warp.variance.array[good]) / dof
-            warpVar, _ = warpStats.getResult(VARIANCE)
-            warpNPointGlobal, _ = warpStats.getResult(NPOINT)
-            warpNPointEdge = (
-                np.sum(~np.isnan(warp.image.array[:, 0]))  # Left edge
-                + np.sum(~np.isnan(warp.image.array[:, -1]))  # Right edge
-                + np.sum(~np.isnan(warp.image.array[0, :]))  # Bottom edge
-                + np.sum(~np.isnan(warp.image.array[-1, :]))  # Top edge
+            fitChi2 = (
+                np.nansum(fitBgSub.image.array[good] ** 2 / fitBg.getStatsImage().variance.array[good]) / dof
             )
-            warpChi2s.append(warpChi2)
-            warpVars.append(warpVar)
-            warpNPointsGlobal.append(int(warpNPointGlobal))
-            warpNPointsEdge.append(warpNPointEdge)
+            # fitVar, _ = fitStats.getResult(VARIANCE)  # Will add this back later
+            fitNPointGlobal, _ = fitStats.getResult(NPOINT)
+            # This becomes pointless: it's a circle within a square.  Coverage is what's needed for that.
+            # warpNPointEdge = (
+            #     np.sum(~np.isnan(warp.image.array[:, 0]))  # Left edge
+            #     + np.sum(~np.isnan(warp.image.array[:, -1]))  # Right edge
+            #     + np.sum(~np.isnan(warp.image.array[0, :]))  # Bottom edge
+            #     + np.sum(~np.isnan(warp.image.array[-1, :]))  # Top edge
+            # )
+            fitChi2s.append(fitChi2)
+            # warpVars.append(warpVar)
+            fitNPointsGlobal.append(int(fitNPointGlobal))
+            # warpNPointsEdge.append(warpNPointEdge)
 
             self.log.info(
-                "Sci exp. visit %d; BG fit Chi^2=%.1f, var=%.1f nJy, nPoints global=%d, nPoints edge=%d",
-                warp.getInfo().getVisitInfo().id,
-                warpChi2,
-                warpVar,
-                warpNPointGlobal,
-                warpNPointEdge,
+                # "Sci exp. visit %d; BG fit Chi^2=%.1f, var=%.1f nJy, nPoints global=%d, nPoints edge=%d",
+                "Sci exp. visit %d; BG fit Chi^2=%.1f, nPoints global=%d",
+                vis,
+                fitChi2,
+                # warpVar,
+                fitNPointGlobal,
+                # warpNPointEdge,
             )
-
         # Normalize mean/var/npoints to range from  0 to 1
-        warpChi2sFrac = np.array(warpChi2s) / np.nanmax(warpChi2s)
-        warpVarsFrac = np.array(warpVars) / np.nanmax(warpVars)
-        warpNPointsGlobalFrac = np.nanmin(warpNPointsGlobal) / np.array(warpNPointsGlobal)
-        warpNPointsEdgeFrac = np.nanmin(warpNPointsEdge) / np.array(warpNPointsEdge)
+        fitChi2sFrac = np.array(fitChi2s) / np.nanmax(fitChi2s)
+        # warpVarsFrac = np.array(warpVars) / np.nanmax(warpVars)
+        fitNPointsGlobalFrac = np.nanmin(fitNPointsGlobal) / np.array(fitNPointsGlobal)
+        # warpNPointsEdgeFrac = np.nanmin(warpNPointsEdge) / np.array(warpNPointsEdge)
 
         # Calculate cost function values
-        costFunctionVals = self.config.bestRefWeightChi2 * warpChi2sFrac
-        costFunctionVals += self.config.bestRefWeightVariance * warpVarsFrac
-        costFunctionVals += self.config.bestRefWeightGlobalCoverage * warpNPointsGlobalFrac
-        costFunctionVals += self.config.bestRefWeightEdgeCoverage * warpNPointsEdgeFrac
+        costFunctionVals = self.config.bestRefWeightChi2 * fitChi2sFrac
+        # costFunctionVals += self.config.bestRefWeightVariance * warpVarsFrac
+        costFunctionVals += self.config.bestRefWeightGlobalCoverage * fitNPointsGlobalFrac
+        # costFunctionVals += self.config.bestRefWeightEdgeCoverage * warpNPointsEdgeFrac
 
         ind = np.nanargmin(costFunctionVals)
-        refWarp = warps.pop(ind)
-        self.log.info("Using best reference visit %d", refWarp.dataId["visit"])
-        return refWarp, ind, warpBg
+        refVis = visits[ind]
+        refBg = visitTractBackgrounds.pop(refVis)
+        self.log.info("Using best reference visit %d", refVis)
+        return refBg, refVis, fitBg
 
     def _makeBackground(self, warp: MaskedImageF, binSize) -> tuple[BackgroundMI, BackgroundControl]:
         """Generate a simple binned background masked image for warped data.
