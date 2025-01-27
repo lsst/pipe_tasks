@@ -30,22 +30,21 @@ __all__ = [
     "SkyStatsConfig",
 ]
 
-import sys
-import numpy
 import importlib
 import itertools
-from scipy.ndimage import gaussian_filter
+import sys
 
-import lsst.afw.math as afwMath
-import lsst.afw.image as afwImage
-import lsst.afw.geom as afwGeom
 import lsst.afw.cameraGeom as afwCameraGeom
+import lsst.afw.geom as afwGeom
+import lsst.afw.image as afwImage
+import lsst.afw.math as afwMath
+import lsst.afw.table as afwTable
 import lsst.geom as geom
 import lsst.meas.algorithms as measAlg
-import lsst.afw.table as afwTable
-
-from lsst.pex.config import Config, Field, ListField, ChoiceField, ConfigField, RangeField, ConfigurableField
+import numpy
+from lsst.pex.config import ChoiceField, Config, ConfigField, ConfigurableField, Field, ListField, RangeField
 from lsst.pipe.base import Task
+from scipy.ndimage import gaussian_filter
 
 
 def robustMean(array, rej=3.0):
@@ -64,47 +63,62 @@ def robustMean(array, rej=3.0):
         Robust mean of `array`.
     """
     q1, median, q3 = numpy.percentile(array, [25.0, 50.0, 100.0])
-    good = numpy.abs(array - median) < rej*0.74*(q3 - q1)
+    good = numpy.abs(array - median) < rej * 0.74 * (q3 - q1)
     return array[good].mean()
 
 
 class BackgroundConfig(Config):
     """Configuration for background measurement"""
-    statistic = ChoiceField(dtype=str, default="MEANCLIP", doc="type of statistic to use for grid points",
-                            allowed={"MEANCLIP": "clipped mean",
-                                     "MEAN": "unclipped mean",
-                                     "MEDIAN": "median"})
+
+    statistic = ChoiceField(
+        dtype=str,
+        default="MEANCLIP",
+        doc="type of statistic to use for grid points",
+        allowed={"MEANCLIP": "clipped mean", "MEAN": "unclipped mean", "MEDIAN": "median"},
+    )
     xBinSize = RangeField(dtype=int, default=32, min=1, doc="Superpixel size in x")
     yBinSize = RangeField(dtype=int, default=32, min=1, doc="Superpixel size in y")
-    algorithm = ChoiceField(dtype=str, default="NATURAL_SPLINE", optional=True,
-                            doc="How to interpolate the background values. "
-                                "This maps to an enum; see afw::math::Background",
-                            allowed={
-                                "CONSTANT": "Use a single constant value",
-                                "LINEAR": "Use linear interpolation",
-                                "NATURAL_SPLINE": "cubic spline with zero second derivative at endpoints",
-                                "AKIMA_SPLINE": "higher-level nonlinear spline that is more robust"
-                                                " to outliers",
-                                "NONE": "No background estimation is to be attempted",
-                            })
-    mask = ListField(dtype=str, default=["SAT", "BAD", "EDGE", "DETECTED", "DETECTED_NEGATIVE", "NO_DATA"],
-                     doc="Names of mask planes to ignore while estimating the background")
+    algorithm = ChoiceField(
+        dtype=str,
+        default="NATURAL_SPLINE",
+        optional=True,
+        doc="How to interpolate the background values. " "This maps to an enum; see afw::math::Background",
+        allowed={
+            "CONSTANT": "Use a single constant value",
+            "LINEAR": "Use linear interpolation",
+            "NATURAL_SPLINE": "cubic spline with zero second derivative at endpoints",
+            "AKIMA_SPLINE": "higher-level nonlinear spline that is more robust" " to outliers",
+            "NONE": "No background estimation is to be attempted",
+        },
+    )
+    mask = ListField(
+        dtype=str,
+        default=["SAT", "BAD", "EDGE", "DETECTED", "DETECTED_NEGATIVE", "NO_DATA"],
+        doc="Names of mask planes to ignore while estimating the background",
+    )
 
 
 class SkyStatsConfig(Config):
     """Parameters controlling the measurement of sky statistics"""
-    statistic = ChoiceField(dtype=str, default="MEANCLIP", doc="type of statistic to use for grid points",
-                            allowed={"MEANCLIP": "clipped mean",
-                                     "MEAN": "unclipped mean",
-                                     "MEDIAN": "median"})
+
+    statistic = ChoiceField(
+        dtype=str,
+        default="MEANCLIP",
+        doc="type of statistic to use for grid points",
+        allowed={"MEANCLIP": "clipped mean", "MEAN": "unclipped mean", "MEDIAN": "median"},
+    )
     clip = Field(doc="Clipping threshold for background", dtype=float, default=3.0)
     nIter = Field(doc="Clipping iterations for background", dtype=int, default=3)
-    mask = ListField(doc="Mask planes to reject", dtype=str,
-                     default=["SAT", "DETECTED", "DETECTED_NEGATIVE", "BAD", "NO_DATA"])
+    mask = ListField(
+        doc="Mask planes to reject",
+        dtype=str,
+        default=["SAT", "DETECTED", "DETECTED_NEGATIVE", "BAD", "NO_DATA"],
+    )
 
 
 class SkyMeasurementConfig(Config):
     """Configuration for SkyMeasurementTask"""
+
     skyIter = Field(dtype=int, default=3, doc="k-sigma rejection iterations for sky scale")
     skyRej = Field(dtype=float, default=3.0, doc="k-sigma rejection threshold for sky scale")
     background = ConfigField(dtype=BackgroundConfig, doc="Background measurement")
@@ -122,6 +136,7 @@ class SkyMeasurementTask(Task):
     background model (a `lsst.afw.math.BackgroundMI`).  The sky frame represents
     the dominant response of the camera to the sky background.
     """
+
     ConfigClass = SkyMeasurementConfig
 
     @staticmethod
@@ -149,11 +164,16 @@ class SkyMeasurementTask(Task):
         algorithm = header.getScalar("ALGORITHM")
         bbox = geom.Box2I(geom.Point2I(xMin, yMin), geom.Point2I(xMax, yMax))
         return afwMath.BackgroundList(
-            (afwMath.BackgroundMI(bbox, bgExp.getMaskedImage()),
-             afwMath.stringToInterpStyle(algorithm),
-             afwMath.stringToUndersampleStyle("REDUCE_INTERP_ORDER"),
-             afwMath.ApproximateControl.UNKNOWN,
-             0, 0, False))
+            (
+                afwMath.BackgroundMI(bbox, bgExp.getMaskedImage()),
+                afwMath.stringToInterpStyle(algorithm),
+                afwMath.stringToUndersampleStyle("REDUCE_INTERP_ORDER"),
+                afwMath.ApproximateControl.UNKNOWN,
+                0,
+                0,
+                False,
+            )
+        )
 
     def backgroundToExposure(self, statsImage, bbox):
         """Convert a background model to an exposure
@@ -207,22 +227,26 @@ class SkyMeasurementTask(Task):
         stats.setNanSafe(True)
         ctrl = afwMath.BackgroundControl(
             self.config.background.algorithm,
-            max(int(image.getWidth()/self.config.background.xBinSize + 0.5), 1),
-            max(int(image.getHeight()/self.config.background.yBinSize + 0.5), 1),
+            max(int(image.getWidth() / self.config.background.xBinSize + 0.5), 1),
+            max(int(image.getHeight() / self.config.background.yBinSize + 0.5), 1),
             "REDUCE_INTERP_ORDER",
             stats,
-            self.config.background.statistic
+            self.config.background.statistic,
         )
 
         bg = afwMath.makeBackground(image, ctrl)
 
-        return afwMath.BackgroundList((
-            bg,
-            afwMath.stringToInterpStyle(self.config.background.algorithm),
-            afwMath.stringToUndersampleStyle("REDUCE_INTERP_ORDER"),
-            afwMath.ApproximateControl.UNKNOWN,
-            0, 0, False
-        ))
+        return afwMath.BackgroundList(
+            (
+                bg,
+                afwMath.stringToInterpStyle(self.config.background.algorithm),
+                afwMath.stringToUndersampleStyle("REDUCE_INTERP_ORDER"),
+                afwMath.ApproximateControl.UNKNOWN,
+                0,
+                0,
+                False,
+            )
+        )
 
     def averageBackgrounds(self, bgList):
         """Average multiple background models
@@ -243,8 +267,9 @@ class SkyMeasurementTask(Task):
         assert all(len(bg) == 1 for bg in bgList), "Mixed bgList: %s" % ([len(bg) for bg in bgList],)
         images = [bg[0][0].getStatsImage() for bg in bgList]
         boxes = [bg[0][0].getImageBBox() for bg in bgList]
-        assert len(set((box.getMinX(), box.getMinY(), box.getMaxX(), box.getMaxY()) for box in boxes)) == 1, \
-            "Bounding boxes not all equal"
+        assert (
+            len(set((box.getMinX(), box.getMinY(), box.getMaxX(), box.getMaxY()) for box in boxes)) == 1
+        ), "Bounding boxes not all equal"
         bbox = boxes.pop(0)
 
         # Ensure bad pixels are masked
@@ -343,19 +368,25 @@ class SkyMeasurementTask(Task):
         skySamples = numpy.array(skySamples)
 
         def solve(mask):
+<<<<<<< HEAD
             # Make sure we return a float, not an array.
             return afwMath.LeastSquares.fromDesignMatrix(skySamples[mask].reshape(mask.sum(), 1),
                                                          imageSamples[mask],
                                                          afwMath.LeastSquares.DIRECT_SVD).getSolution()[0]
+=======
+            return afwMath.LeastSquares.fromDesignMatrix(
+                skySamples[mask].reshape(mask.sum(), 1), imageSamples[mask], afwMath.LeastSquares.DIRECT_SVD
+            ).getSolution()
+>>>>>>> 8cf1e691 (Add full tract background functionality.)
 
         mask = numpy.isfinite(imageSamples) & numpy.isfinite(skySamples)
         for ii in range(self.config.skyIter):
             solution = solve(mask)
-            residuals = imageSamples - solution*skySamples
+            residuals = imageSamples - solution * skySamples
             lq, uq = numpy.percentile(residuals[mask], [25, 75])
-            stdev = 0.741*(uq - lq)  # Robust stdev from IQR
+            stdev = 0.741 * (uq - lq)  # Robust stdev from IQR
             with numpy.errstate(invalid="ignore"):  # suppress NAN warnings
-                bad = numpy.abs(residuals) > self.config.skyRej*stdev
+                bad = numpy.abs(residuals) > self.config.skyRej * stdev
             mask[bad] = False
 
         return solve(mask)
@@ -415,14 +446,15 @@ def interpolate1D(method, xSample, ySample, xInterp):
 
     """
     if len(xSample) == 0:
-        return numpy.ones_like(xInterp)*numpy.nan
+        return numpy.ones_like(xInterp) * numpy.nan
     try:
-        return afwMath.makeInterpolate(xSample.astype(float), ySample.astype(float),
-                                       method).interpolate(xInterp.astype(float))
+        return afwMath.makeInterpolate(xSample.astype(float), ySample.astype(float), method).interpolate(
+            xInterp.astype(float)
+        )
     except Exception:
         if method == afwMath.Interpolate.CONSTANT:
             # We've already tried the most basic interpolation and it failed
-            return numpy.ones_like(xInterp)*numpy.nan
+            return numpy.ones_like(xInterp) * numpy.nan
         newMethod = afwMath.lookupMaxInterpStyle(len(xSample))
         if newMethod == method:
             newMethod = afwMath.Interpolate.CONSTANT
@@ -454,15 +486,17 @@ def interpolateBadPixels(array, isBad, interpolationStyle):
     isGood = ~isBad
     for y in range(height):
         if numpy.any(isBad[y, :]) and numpy.any(isGood[y, :]):
-            array[y][isBad[y]] = interpolate1D(method, xIndices[isGood[y]], array[y][isGood[y]],
-                                               xIndices[isBad[y]])
+            array[y][isBad[y]] = interpolate1D(
+                method, xIndices[isGood[y]], array[y][isGood[y]], xIndices[isBad[y]]
+            )
 
     isBad = numpy.isnan(array)
     isGood = ~isBad
     for x in range(width):
         if numpy.any(isBad[:, x]) and numpy.any(isGood[:, x]):
-            array[:, x][isBad[:, x]] = interpolate1D(method, yIndices[isGood[:, x]],
-                                                     array[:, x][isGood[:, x]], yIndices[isBad[:, x]])
+            array[:, x][isBad[:, x]] = interpolate1D(
+                method, yIndices[isGood[:, x]], array[:, x][isGood[:, x]], yIndices[isBad[:, x]]
+            )
 
 
 class FocalPlaneBackgroundConfig(Config):
@@ -474,15 +508,21 @@ class FocalPlaneBackgroundConfig(Config):
     need to be revised according to each particular camera. For
     this reason, no defaults are set for those.
     """
+
     xSize = Field(dtype=float, doc="Bin size in x")
     ySize = Field(dtype=float, doc="Bin size in y")
     pixelSize = Field(dtype=float, default=1.0, doc="Pixel size in same units as xSize/ySize")
     minFrac = Field(dtype=float, default=0.1, doc="Minimum fraction of bin size for good measurement")
-    mask = ListField(dtype=str, doc="Mask planes to treat as bad",
-                     default=["BAD", "SAT", "INTRP", "DETECTED", "DETECTED_NEGATIVE", "EDGE", "NO_DATA"])
+    mask = ListField(
+        dtype=str,
+        doc="Mask planes to treat as bad",
+        default=["BAD", "SAT", "INTRP", "DETECTED", "DETECTED_NEGATIVE", "EDGE", "NO_DATA"],
+    )
     interpolation = ChoiceField(
         doc="how to interpolate the background values. This maps to an enum; see afw::math::Background",
-        dtype=str, default="AKIMA_SPLINE", optional=True,
+        dtype=str,
+        default="AKIMA_SPLINE",
+        optional=True,
         allowed={
             "CONSTANT": "Use a single constant value",
             "LINEAR": "Use linear interpolation",
@@ -521,6 +561,7 @@ class FocalPlaneBackground:
     Once you've built the background model, you can apply it to individual
     CCDs with the `toCcdBackground` method.
     """
+
     @classmethod
     def fromCamera(cls, config, camera):
         """Construct from a camera object
@@ -539,14 +580,17 @@ class FocalPlaneBackground:
 
         width, height = cameraBox.getDimensions()
         # Offset so that we run from zero
-        offset = geom.Extent2D(cameraBox.getMin())*-1
+        offset = geom.Extent2D(cameraBox.getMin()) * -1
         # Add an extra pixel buffer on either side
-        dims = geom.Extent2I(int(numpy.ceil(width/config.xSize)) + 2,
-                             int(numpy.ceil(height/config.ySize)) + 2)
+        dims = geom.Extent2I(
+            int(numpy.ceil(width / config.xSize)) + 2, int(numpy.ceil(height / config.ySize)) + 2
+        )
         # Transform takes us from focal plane coordinates --> sample coordinates
-        transform = (geom.AffineTransform.makeTranslation(geom.Extent2D(1, 1))
-                     * geom.AffineTransform.makeScaling(1.0/config.xSize, 1.0/config.ySize)
-                     * geom.AffineTransform.makeTranslation(offset))
+        transform = (
+            geom.AffineTransform.makeTranslation(geom.Extent2D(1, 1))
+            * geom.AffineTransform.makeScaling(1.0 / config.xSize, 1.0 / config.ySize)
+            * geom.AffineTransform.makeTranslation(offset)
+        )
 
         return cls(config, dims, afwGeom.makeTransform(transform))
 
@@ -627,8 +671,9 @@ class FocalPlaneBackground:
             CCD exposure to measure
         """
         detector = exposure.getDetector()
-        transform = detector.getTransformMap().getTransform(detector.makeCameraSys(afwCameraGeom.PIXELS),
-                                                            detector.makeCameraSys(afwCameraGeom.FOCAL_PLANE))
+        transform = detector.getTransformMap().getTransform(
+            detector.makeCameraSys(afwCameraGeom.PIXELS), detector.makeCameraSys(afwCameraGeom.FOCAL_PLANE)
+        )
         image = exposure.getMaskedImage()
         maskVal = image.getMask().getPlaneBitMask(self.config.mask)
 
@@ -657,7 +702,7 @@ class FocalPlaneBackground:
             num = result.getValue(afwMath.NPOINT)
             if not numpy.isfinite(mean) or not numpy.isfinite(num):
                 continue
-            warped[xx, yy, afwImage.LOCAL] = mean*num
+            warped[xx, yy, afwImage.LOCAL] = mean * num
             warpedCounts[xx, yy, afwImage.LOCAL] = num
 
         self._values += warped
@@ -681,10 +726,12 @@ class FocalPlaneBackground:
         bg : `lsst.afw.math.BackgroundList`
             Background model for CCD.
         """
-        transform = detector.getTransformMap().getTransform(detector.makeCameraSys(afwCameraGeom.PIXELS),
-                                                            detector.makeCameraSys(afwCameraGeom.FOCAL_PLANE))
-        binTransform = (geom.AffineTransform.makeScaling(self.config.binning)
-                        * geom.AffineTransform.makeTranslation(geom.Extent2D(0.5, 0.5)))
+        transform = detector.getTransformMap().getTransform(
+            detector.makeCameraSys(afwCameraGeom.PIXELS), detector.makeCameraSys(afwCameraGeom.FOCAL_PLANE)
+        )
+        binTransform = geom.AffineTransform.makeScaling(
+            self.config.binning
+        ) * geom.AffineTransform.makeTranslation(geom.Extent2D(0.5, 0.5))
 
         # Binned image on CCD --> unbinned image on CCD --> focal plane --> binned focal plane
         toSample = afwGeom.makeTransform(binTransform).then(transform).then(self.transform)
@@ -693,7 +740,7 @@ class FocalPlaneBackground:
         fpNorm = afwImage.ImageF(focalPlane.getBBox())
         fpNorm.set(1.0)
 
-        image = afwImage.ImageF(bbox.getDimensions()//self.config.binning)
+        image = afwImage.ImageF(bbox.getDimensions() // self.config.binning)
         norm = afwImage.ImageF(image.getBBox())
         ctrl = afwMath.WarpingControl("bilinear")
         afwMath.warpImage(image, focalPlane, toSample.inverted(), ctrl)
@@ -706,11 +753,15 @@ class FocalPlaneBackground:
         image.getArray()[isBad] = image.getArray()[~isBad].mean()
 
         return afwMath.BackgroundList(
-            (afwMath.BackgroundMI(bbox, afwImage.makeMaskedImage(image, mask)),
-             afwMath.stringToInterpStyle(self.config.interpolation),
-             afwMath.stringToUndersampleStyle("REDUCE_INTERP_ORDER"),
-             afwMath.ApproximateControl.UNKNOWN,
-             0, 0, False)
+            (
+                afwMath.BackgroundMI(bbox, afwImage.makeMaskedImage(image, mask)),
+                afwMath.stringToInterpStyle(self.config.interpolation),
+                afwMath.stringToUndersampleStyle("REDUCE_INTERP_ORDER"),
+                afwMath.ApproximateControl.UNKNOWN,
+                0,
+                0,
+                False,
+            )
         )
 
     def merge(self, other):
@@ -731,8 +782,10 @@ class FocalPlaneBackground:
             The merged background model.
         """
         if (self.config.xSize, self.config.ySize) != (other.config.xSize, other.config.ySize):
-            raise RuntimeError("Size mismatch: %s vs %s" % ((self.config.xSize, self.config.ySize),
-                                                            (other.config.xSize, other.config.ySize)))
+            raise RuntimeError(
+                "Size mismatch: %s vs %s"
+                % ((self.config.xSize, self.config.ySize), (other.config.xSize, other.config.ySize))
+            )
         if self.dims != other.dims:
             raise RuntimeError("Dimensions mismatch: %s vs %s" % (self.dims, other.dims))
         self._values += other._values
@@ -761,8 +814,11 @@ class FocalPlaneBackground:
         """
         values = self._values.clone()
         values /= self._numbers
-        thresh = (self.config.minFrac
-                  * (self.config.xSize/self.config.pixelSize)*(self.config.ySize/self.config.pixelSize))
+        thresh = (
+            self.config.minFrac
+            * (self.config.xSize / self.config.pixelSize)
+            * (self.config.ySize / self.config.pixelSize)
+        )
         isBad = self._numbers.getArray() < thresh
         if self.config.doSmooth:
             array = values.getArray()
@@ -773,11 +829,293 @@ class FocalPlaneBackground:
         return values
 
 
+class TractBackgroundConfig(Config):
+    """Configuration for TractBackground
+
+    Note that `xBin` and `yBin` are in pixels, as unlike FocalPlaneBackground,
+    translation from warps to tract and back only requires geometric
+    transformations in the warped pixel plane.
+    """
+
+    xBin = Field(dtype=float, default=500, doc="Bin size in x")
+    yBin = Field(dtype=float, default=500, doc="Bin size in y")
+    minFrac = Field(dtype=float, default=0.1, doc="Minimum fraction of bin size for good measurement")
+    mask = ListField(
+        dtype=str,
+        doc="Mask planes to treat as bad",
+        default=["BAD", "SAT", "INTRP", "DETECTED", "DETECTED_NEGATIVE", "EDGE", "NO_DATA"],
+    )
+    interpolation = ChoiceField(
+        doc="how to interpolate the background values. This maps to an enum; see afw::math::Background",
+        dtype=str,
+        default="AKIMA_SPLINE",
+        optional=True,
+        allowed={
+            "CONSTANT": "Use a single constant value",
+            "LINEAR": "Use linear interpolation",
+            "NATURAL_SPLINE": "cubic spline with zero second derivative at endpoints",
+            "AKIMA_SPLINE": "higher-level nonlinear spline that is more robust to outliers",
+            "NONE": "No background estimation is to be attempted",
+        },
+    )
+    doSmooth = Field(dtype=bool, default=False, doc="Do smoothing?")
+    smoothScale = Field(dtype=float, default=2.0, doc="Smoothing scale, as a multiple of the bin size")
+    binning = Field(dtype=int, default=64, doc="Binning to use for warp background model (pixels)")
+
+
+class TractBackground:
+    """
+    As FocalPlaneBackground, but works in warped tract coordinates
+    """
+
+    @classmethod
+    def fromSimilar(cls, other):
+        """Construct from an object that has the same interface.
+
+        Parameters
+        ----------
+        other : `TractBackground`-like
+            An object that matches the interface of `TractBackground`
+            but which may be different.
+
+        Returns
+        -------
+        background : `TractBackground`
+            Something guaranteed to be a `TractBackground`.
+        """
+        return cls(other.config, other.dims, other.transform, other._values, other._numbers)
+
+    def __init__(self, config, values=None, numbers=None):
+        """Constructor
+
+        Developers should note that changes to the signature of this method
+        require coordinated changes to the `__reduce__` and `clone` methods.
+
+        Parameters
+        ----------
+        config : `TractBackgroundConfig`
+            Configuration for measuring tract backgrounds.
+        transform : `lsst.afw.geom.TransformPoint2ToPoint2`
+            Transformation from tract coordinates to warp coordinates.
+        values : `lsst.afw.image.ImageF`
+            Measured background values.
+        numbers : `lsst.afw.image.ImageF`
+            Number of pixels in each background measurement.
+        """
+        self.config = config
+        # TODO: dynamic tract dimensions?
+        self.dims = geom.Extent2I(36000 / self.config.xBin, 36000 / self.config.yBin)
+
+        if values is None:
+            values = afwImage.ImageF(self.dims)
+            values.set(0.0)
+        else:
+            values = values.clone()
+        assert values.getDimensions() == self.dims
+        self._values = values
+        if numbers is None:
+            numbers = afwImage.ImageF(self.dims)  # float for dynamic range and convenience
+            numbers.set(0.0)
+        else:
+            numbers = numbers.clone()
+        assert numbers.getDimensions() == self.dims
+        self._numbers = numbers
+
+    def __reduce__(self):
+        return self.__class__, (self.config, self._values, self._numbers)
+
+    def clone(self):
+        return self.__class__(self.config, self._values, self._numbers)
+
+    def addWarp(self, warp):
+        """
+        Equivalent to FocalPlaneBackground.addCcd(), but on warps instead.
+        Bins masked images of warps and adds these values into a blank image
+        with the binned tract dimensions at the location of the warp in the
+        tract.
+
+        Parameters
+        ----------
+        warp : `lsst.afw.image.ExposureF`
+            Warped image corresponding to a single patch in a single visit
+        """
+        image = warp.getMaskedImage()
+        maskVal = image.getMask().getPlaneBitMask(self.config.mask)
+        # Photometric scaling necessary for contiguous background across tract
+        image.image.array *= warp.getPhotoCalib().instFluxToNanojansky(1)
+
+        warped = afwImage.ImageF(self._values.getBBox())
+        warpedCounts = afwImage.ImageF(self._numbers.getBBox())
+
+        stats = afwMath.StatisticsControl()
+        stats.setAndMask(maskVal)
+        stats.setNanSafe(True)
+
+        # Pixel locations in binned tract-scale image
+        pixels = itertools.product(
+            numpy.arange(warped.getBBox().getMinX(), warped.getBBox().getMaxX() + 1),
+            numpy.arange(warped.getBBox().getMinY(), warped.getBBox().getMaxY() + 1),
+        )
+        for xx, yy in pixels:
+            llc = geom.Point2D((xx - 0.5) * self.config.xBin, (yy - 0.5) * self.config.yBin)
+            urc = geom.Point2D(
+                (xx + 0.5) * self.config.xBin + self.config.xBin - 1,
+                (yy + 0.5) * self.config.yBin + self.config.yBin - 1,
+            )
+            bbox = geom.Box2I(geom.Point2I(llc), geom.Point2I(urc))
+            bbox.clip(image.getBBox())  # Works in tract coordinates
+            if bbox.isEmpty():
+                continue
+            subImage = image.Factory(image, bbox)
+            result = afwMath.makeStatistics(subImage, afwMath.MEANCLIP | afwMath.NPOINT, stats)
+            mean = result.getValue(afwMath.MEANCLIP)
+            num = result.getValue(afwMath.NPOINT)
+            if not numpy.isfinite(mean) or not numpy.isfinite(num):
+                continue
+            warped[xx, yy, afwImage.LOCAL] = mean * num
+            warpedCounts[xx, yy, afwImage.LOCAL] = num
+
+        self._values += warped
+        self._numbers += warpedCounts
+
+    def merge(self, other):
+        """Merge with another TractBackground
+
+        This allows multiple background models to be constructed from
+        different warps, and then merged to form a single consistent
+        background model for the entire tract.
+
+        Parameters
+        ----------
+        other : `TractBackground`
+            Another background model to merge.
+
+        Returns
+        -------
+        self : `TractBackground`
+            The merged background model.
+        """
+        if (self.config.xBin, self.config.yBin) != (other.config.xBin, other.config.yBin):
+            raise RuntimeError(
+                "Size mismatch: %s vs %s"
+                % ((self.config.xBin, self.config.yBin), (other.config.xBin, other.config.yBin))
+            )
+        if self.dims != other.dims:
+            raise RuntimeError("Dimensions mismatch: %s vs %s" % (self.dims, other.dims))
+        self._values += other._values
+        self._numbers += other._numbers
+        return self
+
+    def __iadd__(self, other):
+        """Merge with another TractBackground
+
+        Parameters
+        ----------
+        other : `TractBackground`
+            Another background model to merge.
+
+        Returns
+        -------
+        self : `TractBackground`
+            The merged background model.
+        """
+        return self.merge(other)
+
+    def toWarpBackground(self, warp):
+        """
+        Equivalent of FocalPlaneBackground.toCcdBackground(), but creates a
+        background model for a warp using a full tract model.
+
+        Parameters
+        ----------
+        warp : `lsst.afw.image.ExposureF`
+            Warped image corresponding to a single patch in a single visit
+
+        Returns
+        -------
+        bg : `lsst.afw.math.BackgroundList`
+            Background model for warp
+        """
+        # Transform to binned warp plane
+        binTransform = geom.AffineTransform.makeScaling(self.config.binning)
+
+        # Transform from binned tract plane to tract plane
+        # Start at the patch corner, not the warp corner overlap region
+        corner = warp.getBBox().getMin()
+        if corner[0] % 4000 != 0:  # TODO: hard-coded patch dimensions are bad
+            corner[0] += 100
+            corner[1] += 100
+        offset = geom.Extent2D(corner[0], corner[1])
+        tractTransform = (
+            geom.AffineTransform.makeTranslation(geom.Extent2D(-0.5, -0.5))
+            * geom.AffineTransform.makeScaling(1.0 / self.config.xBin, 1.0 / self.config.yBin)
+            * geom.AffineTransform.makeTranslation(offset)
+        )
+        transform = afwGeom.makeTransform(tractTransform)
+
+        # Full transform
+        toSample = afwGeom.makeTransform(binTransform).then(transform)
+
+        # Full tract sky model and normalization array
+        tractPlane = self.getStatsImage()
+        tpNorm = afwImage.ImageF(tractPlane.getBBox())
+        tpNorm.set(1.0)
+
+        # Binned warp image and normalization array
+        bbox = warp.getBBox()
+        image = afwImage.ImageF(bbox.getDimensions() // self.config.binning)
+        norm = afwImage.ImageF(image.getBBox())
+
+        ctrl = afwMath.WarpingControl("bilinear")
+        afwMath.warpImage(image, tractPlane, toSample.inverted(), ctrl)
+        afwMath.warpImage(norm, tpNorm, toSample.inverted(), ctrl)
+        image /= norm
+        # Convert back to counts so the model can be subtracted w/o conversion
+        image /= warp.getPhotoCalib().instFluxToNanojansky(1)
+
+        mask = afwImage.Mask(image.getBBox())
+        isBad = numpy.isnan(image.getArray())
+        mask.getArray()[isBad] = mask.getPlaneBitMask("BAD")
+        image.getArray()[isBad] = image.getArray()[~isBad].mean()
+
+        return afwMath.BackgroundList(
+            (
+                afwMath.BackgroundMI(warp.getBBox(), afwImage.makeMaskedImage(image, mask)),
+                afwMath.stringToInterpStyle(self.config.interpolation),
+                afwMath.stringToUndersampleStyle("REDUCE_INTERP_ORDER"),
+                afwMath.ApproximateControl.UNKNOWN,
+                0,
+                0,
+                False,
+            )
+        )
+
+    def getStatsImage(self):
+        """Return the background model data
+
+        This is the measurement of the background for each of the superpixels.
+        """
+        values = self._values.clone()
+        values /= self._numbers
+        # This old logic doesn't work because everything outside the FP is bad
+        # thresh = self.config.minFrac * (self.config.xBin) * (self.config.yBin)
+        # isBad = self._numbers.getArray() < thresh
+        # if self.config.doSmooth:
+        #     array = values.getArray()
+        #     array[:] = smoothArray(array, isBad, self.config.smoothScale)
+        #     isBad = numpy.isnan(values.array)
+        # if numpy.any(isBad):
+        #     interpolateBadPixels(values.getArray(), isBad, self.config.interpolation)
+        return values
+
+
 class MaskObjectsConfig(Config):
     """Configuration for MaskObjectsTask"""
+
     nIter = Field(dtype=int, default=3, doc="Number of iterations")
-    subtractBackground = ConfigurableField(target=measAlg.SubtractBackgroundTask,
-                                           doc="Background subtraction")
+    subtractBackground = ConfigurableField(
+        target=measAlg.SubtractBackgroundTask, doc="Background subtraction"
+    )
     detection = ConfigurableField(target=measAlg.SourceDetectionTask, doc="Source detection")
     detectSigma = Field(dtype=float, default=5.0, doc="Detection threshold (standard deviations)")
     doInterpolate = Field(dtype=bool, default=True, doc="Interpolate when removing objects?")
@@ -794,11 +1132,15 @@ class MaskObjectsConfig(Config):
         self.interpolate.useApprox = False
 
     def validate(self):
-        if (self.detection.reEstimateBackground
-                or self.detection.doTempLocalBackground
-                or self.detection.doTempWideBackground):
-            raise RuntimeError("Incorrect settings for object masking: reEstimateBackground, "
-                               "doTempLocalBackground and doTempWideBackground must be False")
+        if (
+            self.detection.reEstimateBackground
+            or self.detection.doTempLocalBackground
+            or self.detection.doTempWideBackground
+        ):
+            raise RuntimeError(
+                "Incorrect settings for object masking: reEstimateBackground, "
+                "doTempLocalBackground and doTempWideBackground must be False"
+            )
 
 
 class MaskObjectsTask(Task):
@@ -812,6 +1154,7 @@ class MaskObjectsTask(Task):
     We deliberately use the specified ``detectSigma`` instead of the PSF,
     in order to better pick up the faint wings of objects.
     """
+
     ConfigClass = MaskObjectsConfig
 
     def __init__(self, *args, **kwargs):
@@ -903,7 +1246,7 @@ def smoothArray(array, bad, sigma):
     """
     convolved = gaussian_filter(numpy.where(bad, 0.0, array), sigma, mode="constant", cval=0.0)
     denominator = gaussian_filter(numpy.where(bad, 0.0, 1.0), sigma, mode="constant", cval=0.0)
-    return convolved/denominator
+    return convolved / denominator
 
 
 def _create_module_child(name):
