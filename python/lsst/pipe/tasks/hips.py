@@ -37,7 +37,10 @@ from datetime import datetime
 import hpgeom as hpg
 import healsparse as hsp
 from astropy.io import fits
-from astropy.visualization.lupton_rgb import AsinhMapping
+try:
+    from astropy.visualization.lupton_rgb import AsinhMapping
+except ImportError:
+    from ._fallback_asinhmapping import AsinhMapping
 from PIL import Image
 
 from lsst.sphgeom import RangeSet, HealpixPixelization
