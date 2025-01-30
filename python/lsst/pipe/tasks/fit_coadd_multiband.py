@@ -356,7 +356,7 @@ class CoaddMultibandFitBase:
                 catalog=catalog,
                 band=dataId['band'],
                 imageForRedistribution=exposure,
-                removeScarletData=True,
+                removeScarletData=False,
                 updateFluxColumns=False,
             )
             catexp_dict[dataId['band']] = CatalogExposureInputs(

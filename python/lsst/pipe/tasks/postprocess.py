@@ -35,6 +35,7 @@ __all__ = ["WriteObjectTableConfig", "WriteObjectTableTask",
            "TransformForcedSourceTableConfig", "TransformForcedSourceTableTask",
            "ConsolidateTractConfig", "ConsolidateTractTask"]
 
+from collections import defaultdict
 import dataclasses
 import functools
 import logging
@@ -204,12 +205,12 @@ class WriteObjectTableConnections(pipeBase.PipelineTaskConnections,
         name="{coaddName}Coadd_forced_src",
         multiple=True
     )
-    inputCatalogRef = connectionTypes.Input(
-        doc="Catalog marking the primary detection (which band provides a good shape and position)"
-            "for each detection in deepCoadd_mergeDet.",
-        dimensions=("tract", "patch", "skymap"),
-        storageClass="SourceCatalog",
-        name="{coaddName}Coadd_ref"
+    inputCatalogPsfsMultiprofit = connectionTypes.Input(
+        doc="Catalog of Gaussian mixture model fit parameters for the PSF model at each object centroid.",
+        dimensions=("tract", "patch", "band", "skymap"),
+        storageClass="ArrowAstropy",
+        name="{coaddName}Coadd_psfs_multiprofit",
+        multiple=True,
     )
     outputCatalog = connectionTypes.Output(
         doc="A vertical concatenation of the deepCoadd_{ref|meas|forced_src} catalogs, "
@@ -230,13 +231,10 @@ class WriteObjectTableConfig(pipeBase.PipelineTaskConfig,
 
 
 class WriteObjectTableTask(pipeBase.PipelineTask):
-    """Write filter-merged source tables as a DataFrame in parquet format.
+    """Write filter-merged object tables as a DataFrame in parquet format.
     """
     _DefaultName = "writeObjectTable"
     ConfigClass = WriteObjectTableConfig
-
-    # Names of table datasets to be merged
-    inputDatasets = ("forced_src", "meas", "ref")
 
     # Tag of output dataset written by `MergeSourcesTask.write`
     outputDataset = "obj"
@@ -244,16 +242,15 @@ class WriteObjectTableTask(pipeBase.PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
 
-        measDict = {ref.dataId["band"]: {"meas": cat} for ref, cat in
-                    zip(inputRefs.inputCatalogMeas, inputs["inputCatalogMeas"])}
-        forcedSourceDict = {ref.dataId["band"]: {"forced_src": cat} for ref, cat in
-                            zip(inputRefs.inputCatalogForcedSrc, inputs["inputCatalogForcedSrc"])}
+        catalogs = defaultdict(dict)
+        for dataset, connection in (
+            ("meas", "inputCatalogMeas"),
+            ("forced_src", "inputCatalogForcedSrc"),
+            ("psfs_multiprofit", "inputCatalogPsfsMultiprofit"),
+        ):
+            for ref, cat in zip(getattr(inputRefs, connection), inputs[connection]):
+                catalogs[ref.dataId["band"]][dataset] = cat
 
-        catalogs = {}
-        for band in measDict.keys():
-            catalogs[band] = {"meas": measDict[band]["meas"],
-                              "forced_src": forcedSourceDict[band]["forced_src"],
-                              "ref": inputs["inputCatalogRef"]}
         dataId = butlerQC.quantum.dataId
         df = self.run(catalogs=catalogs, tract=dataId["tract"], patch=dataId["patch"])
         outputs = pipeBase.Struct(outputCatalog=df)
@@ -275,12 +272,25 @@ class WriteObjectTableTask(pipeBase.PipelineTask):
         -------
         catalog : `pandas.DataFrame`
             Merged dataframe.
+
+        Raises
+        ------
+        ValueError
+            Raised if any of the catalogs is of an unsupported type.
         """
         dfs = []
         for filt, tableDict in catalogs.items():
             for dataset, table in tableDict.items():
-                # Convert afwTable to pandas DataFrame
-                df = table.asAstropy().to_pandas().set_index("id", drop=True)
+                # Convert afwTable to pandas DataFrame if needed
+                if isinstance(table, pd.DataFrame):
+                    df = table
+                elif isinstance(table, afwTable.SourceCatalog):
+                    df = table.asAstropy().to_pandas()
+                elif isinstance(table, astropy.table.Table):
+                    df = table.to_pandas()
+                else:
+                    raise ValueError(f"{dataset=} has unsupported {type(table)=}")
+                df.set_index("id", drop=True, inplace=True)
 
                 # Sort columns by name, to ensure matching schema among patches
                 df = df.reindex(sorted(df.columns), axis=1)
@@ -640,7 +650,7 @@ class PostprocessAnalysis(object):
 
     @property
     def noDupCols(self):
-        return [name for name, func in self.func.funcDict.items() if func.noDup or func.dataset == "ref"]
+        return [name for name, func in self.func.funcDict.items() if func.noDup]
 
     @property
     def df(self):
@@ -876,11 +886,26 @@ class TransformObjectCatalogConnections(pipeBase.PipelineTaskConnections,
                                         defaultTemplates={"coaddName": "deep"},
                                         dimensions=("tract", "patch", "skymap")):
     inputCatalog = connectionTypes.Input(
-        doc="The vertical concatenation of the deepCoadd_{ref|meas|forced_src} catalogs, "
+        doc="The vertical concatenation of the {coaddName}_{meas|forced_src|psfs_multiprofit} catalogs, "
             "stored as a DataFrame with a multi-level column index per-patch.",
         dimensions=("tract", "patch", "skymap"),
         storageClass="DataFrame",
         name="{coaddName}Coadd_obj",
+        deferLoad=True,
+    )
+    inputCatalogRef = connectionTypes.Input(
+        doc="Catalog marking the primary detection (which band provides a good shape and position)"
+            "for each detection in deepCoadd_mergeDet.",
+        dimensions=("tract", "patch", "skymap"),
+        storageClass="SourceCatalog",
+        name="{coaddName}Coadd_ref",
+        deferLoad=True,
+    )
+    inputCatalogSersicMultiprofit = connectionTypes.Input(
+        doc="Catalog of source measurements on the deepCoadd.",
+        dimensions=("tract", "patch", "skymap"),
+        storageClass="ArrowAstropy",
+        name="{coaddName}Coadd_Sersic_multiprofit",
         deferLoad=True,
     )
     outputCatalog = connectionTypes.Output(
@@ -970,7 +995,21 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
     _DefaultName = "transformObjectCatalog"
     ConfigClass = TransformObjectCatalogConfig
 
-    def run(self, handle, funcs=None, dataId=None, band=None):
+    datasets_multiband = ("ref", "Sersic_multiprofit")
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        if self.funcs is None:
+            raise ValueError("config.functorFile is None. "
+                             "Must be a valid path to yaml in order to run Task as a PipelineTask.")
+        result = self.run(handle=inputs["inputCatalog"], funcs=self.funcs,
+                          dataId=dict(outputRefs.outputCatalog.dataId.mapping),
+                          handle_ref=inputs["inputCatalogRef"],
+                          handle_Sersic_multiprofit=inputs["inputCatalogSersicMultiprofit"],
+                          )
+        butlerQC.put(result, outputRefs)
+
+    def run(self, handle, funcs=None, dataId=None, band=None, **kwargs):
         # NOTE: band kwarg is ignored here.
         dfDict = {}
         analysisDict = {}
@@ -981,13 +1020,27 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
 
         outputBands = self.config.outputBands if self.config.outputBands else inputBands
 
+        # Split up funcs for per-band and multiband tables
+        funcDict_band = {}
+        funcDicts_multiband = {dataset: {} for dataset in self.datasets_multiband}
+
+        for name, func in funcs.funcDict.items():
+            if func.dataset in funcDicts_multiband:
+                if band := getattr(func, "band_to_check", None):
+                    if band not in outputBands:
+                        continue
+            funcDict = funcDicts_multiband.get(func.dataset, funcDict_band)
+            funcDict[name] = func
+
+        funcs_band = CompositeFunctor(funcDict_band)
+
         # Perform transform for data of filters that exist in the handle dataframe.
         for inputBand in inputBands:
             if inputBand not in outputBands:
                 self.log.info("Ignoring %s band data in the input", inputBand)
                 continue
             self.log.info("Transforming the catalog of band %s", inputBand)
-            result = self.transform(inputBand, handle, funcs, dataId)
+            result = self.transform(inputBand, handle, funcs_band, dataId)
             dfDict[inputBand] = result.df
             analysisDict[inputBand] = result.analysis
             if templateDf.empty:
@@ -1021,7 +1074,9 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
 
         # This makes a multilevel column index, with band as first level
         df = pd.concat(dfDict, axis=1, names=["band", "column"])
+        name_index = df.index.name
 
+        # TODO: Remove in DM-48895
         if not self.config.multilevelOutput:
             noDupCols = list(set.union(*[set(v.noDupCols) for v in analysisDict.values()]))
             if self.config.primaryKey in noDupCols:
@@ -1030,6 +1085,36 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
                 noDupCols += self.config.columnsFromDataId
             df = flattenFilters(df, noDupCols=noDupCols, camelCase=self.config.camelCase,
                                 inputBands=inputBands)
+
+        # Apply per-dataset functors to each multiband dataset in turn
+        for dataset, funcDict in funcDicts_multiband.items():
+            handle_multiband = kwargs[f"handle_{dataset}"]
+            df_dataset = handle_multiband.get()
+            if isinstance(df_dataset, astropy.table.Table):
+                df_dataset = df_dataset.to_pandas().set_index(name_index, drop=False)
+            elif isinstance(df_dataset, afwTable.SourceCatalog):
+                df_dataset = df_dataset.asAstropy().to_pandas().set_index(name_index, drop=False)
+            # TODO: should funcDict have noDup funcs removed?
+            # noDup was intended for per-band tables.
+            result = self.transform(
+                None,
+                pipeBase.InMemoryDatasetHandle(df_dataset, storageClass="DataFrame"),
+                CompositeFunctor(funcDict),
+                dataId,
+            )
+            result.df.index.name = name_index
+            # Drop columns from dataId if present (patch, tract)
+            if self.config.columnsFromDataId:
+                columns_drop = [column for column in self.config.columnsFromDataId if column in result.df]
+                if columns_drop:
+                    result.df.drop(columns_drop, axis=1, inplace=True)
+            df = pd.concat([df, result.df], axis=1)
+            analysisDict[dataset] = result.analysis
+            del result
+
+        df.index.name = self.config.primaryKey
+
+        if not self.config.multilevelOutput:
             tbl = pandas_to_astropy(df)
         else:
             tbl = df
