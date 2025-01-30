@@ -249,7 +249,7 @@ class SubtractBrightStarsTask(PipelineTask):
         inputs = butlerQC.get(inputRefs)
         if inputs["inputExtendedPsf"].default_extended_psf is None:
             if not self._detectorInRegions(inputs["inputExposure"], inputs["inputExtendedPsf"]):
-                self.log.warn(
+                self.log.warning(
                     "Extended PSF model is not available for detector %i. Skipping withouth processing this "
                     "exposure.",
                     inputs["inputExposure"].detector.getId(),

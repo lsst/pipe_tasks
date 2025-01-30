@@ -1016,9 +1016,9 @@ class PeekExposureTask(pipeBase.Task):
                 result = self.spec.run(exposure, binSize=binSize)
                 binSizeOut = result.binSize
                 if len(result.binnedSourceCat) == 0:
-                    self.log.warn("No sources found in spec mode.")
+                    self.log.warning("No sources found in spec mode.")
                     if self.config.doPhotoFallback:
-                        self.log.warn("Falling back to photo mode.")
+                        self.log.warning("Falling back to photo mode.")
                         # Note that spec.run already rebinned the image,
                         # so we don't need to do it again.
                         result = self.photo.run(exposure, binSize=1)
