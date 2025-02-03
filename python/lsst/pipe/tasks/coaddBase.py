@@ -19,16 +19,28 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+
+from __future__ import annotations
+
 __all__ = ["CoaddBaseTask", "makeSkyInfo"]
 
-import lsst.pex.config as pexConfig
-import lsst.afw.image as afwImage
-import lsst.pipe.base as pipeBase
-import lsst.geom as geom
+from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
+import lsst.afw.image as afwImage
+import lsst.geom as geom
+import lsst.pex.config as pexConfig
+import lsst.pipe.base as pipeBase
 from lsst.afw.geom import Polygon
-from .selectImages import PsfWcsSelectImagesTask
+from lsst.pex.exceptions import InvalidParameterError
+
 from .coaddInputRecorder import CoaddInputRecorderTask
+from .selectImages import PsfWcsSelectImagesTask
+
+if TYPE_CHECKING:
+    from logging import Logger
+
+    from lsst.afw.math import StatisticsControl
 
 
 class CoaddBaseConfig(pexConfig.Config):
@@ -53,12 +65,12 @@ class CoaddBaseConfig(pexConfig.Config):
     )
     inputRecorder = pexConfig.ConfigurableField(
         doc="Subtask that helps fill CoaddInputs catalogs added to the final Exposure",
-        target=CoaddInputRecorderTask
+        target=CoaddInputRecorderTask,
     )
     includeCalibVar = pexConfig.Field(
         dtype=bool,
         doc="Add photometric calibration variance to warp variance plane.",
-        default=False
+        default=False,
     )
     # TODO: Remove this field in DM-44792.
     matchingKernelSize = pexConfig.Field(
@@ -256,3 +268,59 @@ def growValidPolygons(coaddInputs, growBy: int) -> None:
             validPolygon = Polygon(geom.Box2D(validPolyBBox))
 
         ccd.validPolygon = validPolygon
+
+
+def removeMaskPlanes(
+    mask: afwImage.Mask, mask_planes: Iterable, logger: Logger | None = None
+):
+    """Unset the mask of an image for mask planes specified in the config.
+
+    Parameters
+    ----------
+    mask : `lsst.afw.image.Mask`
+        The mask to be modified.
+    mask_planes : `list`
+        The list of mask planes to be removed.
+    logger : `logging.Logger`, optional
+        Logger to log messages.
+    """
+    for maskPlane in mask_planes:
+        try:
+            mask &= ~mask.getPlaneBitMask(maskPlane)
+        except InvalidParameterError:
+            if logger:
+                logger.warn(
+                    "Unable to remove mask plane %s: no mask plane with that name was found.",
+                    maskPlane,
+                )
+
+
+def setRejectedMaskMapping(statsCtrl: StatisticsControl) -> list[tuple[int, int]]:
+    """Map certain mask planes of the warps to new planes for the coadd.
+
+    If a pixel is rejected due to a mask value other than EDGE, NO_DATA,
+    or CLIPPED, set it to REJECTED on the coadd.
+    If a pixel is rejected due to EDGE, set the coadd pixel to SENSOR_EDGE.
+    If a pixel is rejected due to CLIPPED, set the coadd pixel to CLIPPED.
+
+    Parameters
+    ----------
+    statsCtrl : `lsst.afw.math.StatisticsControl`
+        Statistics control object for coadd.
+
+    Returns
+    -------
+    maskMap : `list` of `tuple` of `int`
+        A list of mappings of mask planes of the warped exposures to
+        mask planes of the coadd.
+    """
+    edge = afwImage.Mask.getPlaneBitMask("EDGE")
+    noData = afwImage.Mask.getPlaneBitMask("NO_DATA")
+    clipped = afwImage.Mask.getPlaneBitMask("CLIPPED")
+    toReject = statsCtrl.getAndMask() & (~noData) & (~edge) & (~clipped)
+    maskMap = [
+        (toReject, afwImage.Mask.getPlaneBitMask("REJECTED")),
+        (edge, afwImage.Mask.getPlaneBitMask("SENSOR_EDGE")),
+        (clipped, clipped),
+    ]
+    return maskMap
