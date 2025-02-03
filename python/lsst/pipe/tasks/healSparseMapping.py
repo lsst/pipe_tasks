@@ -27,6 +27,7 @@ __all__ = ["HealSparseInputMapTask", "HealSparseInputMapConfig",
            "ConsolidateHealSparsePropertyMapTask"]
 
 from collections import defaultdict
+import esutil
 import warnings
 import numbers
 import numpy as np
@@ -207,8 +208,6 @@ class HealSparseInputMapTask(pipeBase.Task):
         self.ccd_input_map.metadata = metadata
 
         # Create a temporary map to hold the count of bad pixels in each healpix pixel
-        self._ccd_input_pixels = self.ccd_input_map.valid_pixels
-
         dtype = [(f"v{visit}", np.int64) for visit in self._bits_per_visit.keys()]
 
         with warnings.catch_warnings():
@@ -223,8 +222,13 @@ class HealSparseInputMapTask(pipeBase.Task):
                 dtype=dtype,
                 primary=dtype[0][0])
 
+        self._ccd_input_pixels = self.ccd_input_map.valid_pixels
+
         # Don't set input bad map if there are no ccds which overlap the bbox.
         if len(self._ccd_input_pixels) > 0:
+            # Ensure these are sorted.
+            self._ccd_input_pixels = np.sort(self._ccd_input_pixels)
+
             self._ccd_input_bad_count_map[self._ccd_input_pixels] = np.zeros(1, dtype=dtype)
 
     def mask_warp_bbox(self, bbox, visit, mask, bit_mask_value):
@@ -250,6 +254,10 @@ class HealSparseInputMapTask(pipeBase.Task):
         if self.ccd_input_map is None:
             raise RuntimeError("Must run build_ccd_input_map before mask_warp_bbox")
 
+        if len(self._ccd_input_pixels) == 0:
+            # This tract has no coverage, so there is nothing to do.
+            return
+
         # Find the bad pixels and convert to healpix
         bad_pixels = np.where(mask.array & bit_mask_value)
         if len(bad_pixels[0]) == 0:
@@ -262,23 +270,20 @@ class HealSparseInputMapTask(pipeBase.Task):
                                                     degrees=True)
         bad_hpix = hpg.angle_to_pixel(self.config.nside, bad_ra, bad_dec)
 
-        # Count the number of bad image pixels in each healpix pixel
-        min_bad_hpix = bad_hpix.min()
-        bad_hpix_count = np.zeros(bad_hpix.max() - min_bad_hpix + 1, dtype=np.int32)
-        np.add.at(bad_hpix_count, bad_hpix - min_bad_hpix, 1)
+        # Check if any of these "bad" pixels are in the valid footprint.
+        match_input, match_bad = esutil.numpy_util.match(self._ccd_input_pixels, bad_hpix, presorted=True)
+        if len(match_bad) == 0:
+            return
 
-        # Add these to the accumulator map.
-        # We need to make sure that the "primary" array has valid values for
-        # this pixel to be registered in the accumulator map.
-        pix_to_add, = np.where(bad_hpix_count > 0)
-        count_map_arr = self._ccd_input_bad_count_map[min_bad_hpix + pix_to_add]
-        primary = self._ccd_input_bad_count_map.primary
-        count_map_arr[primary] = np.clip(count_map_arr[primary], 0, None)
+        bad_hpix = bad_hpix[match_bad]
 
-        count_map_arr[f"v{visit}"] = np.clip(count_map_arr[f"v{visit}"], 0, None)
-        count_map_arr[f"v{visit}"] += bad_hpix_count[pix_to_add]
-
-        self._ccd_input_bad_count_map[min_bad_hpix + pix_to_add] = count_map_arr
+        # Create a view of the column we need to add to.
+        count_map_visit = self._ccd_input_bad_count_map[f"v{visit}"]
+        # Add the bad pixels to the accumulator. Note that the view
+        # cannot append pixels, but the match above ensures we are
+        # only adding to pixels that are already in the coverage
+        # map and initialized.
+        count_map_visit.update_values_pix(bad_hpix, 1, operation="add")
 
     def finalize_ccd_input_map_mask(self):
         """Use accumulated mask information to finalize the masking of
