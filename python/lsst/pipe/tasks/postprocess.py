@@ -44,7 +44,7 @@ import os
 import numpy as np
 import pandas as pd
 import astropy.table
-import astropy.utils.metadata
+from astro_metadata_translator.headers import merge_headers
 
 import lsst.geom
 import lsst.pex.config as pexConfig
@@ -55,6 +55,7 @@ from lsst.pipe.base import connectionTypes
 import lsst.afw.table as afwTable
 from lsst.afw.image import ExposureSummaryStats, ExposureF
 from lsst.meas.base import SingleFrameMeasurementTask, DetectorVisitIdGeneratorConfig
+from lsst.obs.base.utils import strip_provenance_from_fits_header
 
 from .functors import CompositeFunctor, Column
 
@@ -156,7 +157,11 @@ class TableVStack:
                     raise TypeError(f"Type mismatch on column {name!r}: {out_col.dtype} != {in_col.dtype}.")
                 self.result[name][self.index:next_index] = table[name]
             self.index = next_index
-            self.result.meta = astropy.utils.metadata.merge(self.result.meta, table.meta)
+            # Butler provenance should be stripped on merge. It will be
+            # added by butler on write. No attempt is made here to combine
+            # provenance from multiple input tables.
+            self.result.meta = merge_headers([self.result.meta, table.meta], mode="drop")
+            strip_provenance_from_fits_header(self.result.meta)
 
     @classmethod
     def vstack_handles(cls, handles):
