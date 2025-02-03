@@ -1345,6 +1345,9 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
                 continue
             visitInfo = visitSummary[0].getVisitInfo()
 
+            # Strip provenance to prevent merge confusion.
+            strip_provenance_from_fits_header(visitSummary.metadata)
+
             ccdEntry = {}
             summaryTable = visitSummary.asAstropy()
             selectColumns = ["id", "visit", "physical_filter", "band", "ra", "dec",
