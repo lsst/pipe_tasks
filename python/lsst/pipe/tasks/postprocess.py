@@ -1661,7 +1661,16 @@ class TransformForcedSourceTableTask(TransformCatalogBaseTask):
 
     def run(self, inputCatalogs, referenceCatalog, funcs=None, dataId=None, band=None):
         dfs = []
-        ref = referenceCatalog.get(parameters={"columns": self.config.referenceColumns})
+        refColumns = list(self.config.referenceColumns)
+        refColumns.append(self.config.keyRef)
+        ref = referenceCatalog.get(parameters={"columns": refColumns})
+        if ref.index.name != self.config.keyRef:
+            # If the DataFrame we loaded was originally written as some other
+            # Parquet type, it probably doesn't have the index set.  If it was
+            # written as a DataFrame, the index should already be set and
+            # trying to set it again would be an error, since it doens't exist
+            # as a regular column anymore.
+            ref.set_index(self.config.keyRef, inplace=True)
         self.log.info("Aggregating %s input catalogs" % (len(inputCatalogs)))
         for handle in inputCatalogs:
             result = self.transform(None, handle, funcs, dataId)
