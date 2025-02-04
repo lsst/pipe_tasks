@@ -235,7 +235,7 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
         """
         output = self.match_tract_catalog.run(catalog_ref, catalog_target, wcs=wcs)
         if output.exceptions:
-            self.log.warn('Exceptions: %s', output.exceptions)
+            self.log.warning('Exceptions: %s', output.exceptions)
         retStruct = pipeBase.Struct(cat_output_ref=output.cat_output_ref,
                                     cat_output_target=output.cat_output_target)
         return retStruct

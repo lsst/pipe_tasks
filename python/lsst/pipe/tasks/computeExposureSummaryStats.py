@@ -354,8 +354,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             summary.psfApFluxDelta = float(psfApFluxDelta)
             if image_ap_corr_map is not None:
                 if self.config.psfApCorrFieldName not in image_ap_corr_map.keys():
-                    self.log.warn(f"{self.config.psfApCorrFieldName} not found in "
-                                  "image_ap_corr_map.  Setting psfApCorrSigmaScaledDelta to NaN.")
+                    self.log.warning(f"{self.config.psfApCorrFieldName} not found in "
+                                     "image_ap_corr_map.  Setting psfApCorrSigmaScaledDelta to NaN.")
                     psfApCorrSigmaScaledDelta = nan
                 else:
                     image_ap_corr_field = image_ap_corr_map[self.config.psfApCorrFieldName]
@@ -617,7 +617,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             band = filterLabel.bandLabel
 
         if band is None:
-            self.log.warn("No band associated with exposure; effTime not calculated.")
+            self.log.warning("No band associated with exposure; effTime not calculated.")
             return
 
         # PSF component
@@ -699,13 +699,13 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         readNoise = np.nanmean(readNoiseList)
         if np.isnan(readNoise):
             readNoise = 0.0
-            self.log.warn("Read noise set to NaN! Setting readNoise to 0.0 to proceed.")
+            self.log.warning("Read noise set to NaN! Setting readNoise to 0.0 to proceed.")
 
         # Calculate the average gain [e-/ADU]
         gainList = list(ipIsr.getExposureGains(exposure).values())
         gain = np.nanmean(gainList)
         if np.isnan(gain):
-            self.log.warn("Gain set to NaN! Setting magLim to NaN.")
+            self.log.warning("Gain set to NaN! Setting magLim to NaN.")
             summary.magLim = float("nan")
             return
 
