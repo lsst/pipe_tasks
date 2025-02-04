@@ -314,13 +314,13 @@ def setRejectedMaskMapping(statsCtrl: StatisticsControl) -> list[tuple[int, int]
         A list of mappings of mask planes of the warped exposures to
         mask planes of the coadd.
     """
-    edge = afwImage.Mask.getPlaneBitMask("EDGE")
-    noData = afwImage.Mask.getPlaneBitMask("NO_DATA")
-    clipped = afwImage.Mask.getPlaneBitMask("CLIPPED")
+    edge = 2 ** afwImage.Mask.addMaskPlane("EDGE")
+    noData = 2 ** afwImage.Mask.addMaskPlane("NO_DATA")
+    clipped = 2 ** afwImage.Mask.addMaskPlane("CLIPPED")
     toReject = statsCtrl.getAndMask() & (~noData) & (~edge) & (~clipped)
     maskMap = [
-        (toReject, afwImage.Mask.getPlaneBitMask("REJECTED")),
-        (edge, afwImage.Mask.getPlaneBitMask("SENSOR_EDGE")),
+        (toReject, 2 ** afwImage.Mask.addMaskPlane("REJECTED")),
+        (edge, 2 ** afwImage.Mask.addMaskPlane("SENSOR_EDGE")),
         (clipped, clipped),
     ]
     return maskMap
