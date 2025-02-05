@@ -46,6 +46,7 @@ from PIL import Image
 from lsst.sphgeom import RangeSet, HealpixPixelization
 from lsst.utils.timer import timeMethod
 from lsst.daf.butler import Butler
+from lsst.daf.butler.queries.expression_factory import ExpressionFactory
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilder
@@ -452,7 +453,7 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
                 "-w",
                 "--where",
                 type=str,
-                default=None,
+                default="",
                 help="Data ID expression used when querying for input coadd datasets.",
             )
 
@@ -569,7 +570,6 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
         constraint_hpx_pixelization = (
             self.butler.dimensions.skypix_dimensions[f"healpix{self.constraint_order}"].pixelization
         )
-        common_skypix_name = self.butler.dimensions.commonSkyPix.name
         common_skypix_pixelization = self.butler.dimensions.commonSkyPix.pixelization
 
         # We will need all the pixels at the quantum resolution as well.
@@ -600,21 +600,18 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
 
         # Use that RangeSet to assemble a WHERE constraint expression.  This
         # could definitely get too big if the "constraint healpix" order is too
-        # fine.
+        # fine.  It's important to use `x IN (a..b)` rather than
+        # `(x >= a AND x <= b)` to avoid some pessimizations that are present
+        # in the butler expression handling (at least as of ~w_2025_05).
+        xf = ExpressionFactory(self.butler.dimensions)
+        common_skypix_proxy = getattr(xf, self.butler.dimensions.commonSkyPix.name)
         where_terms = []
-        bind = {}
-        for n, (begin, end) in enumerate(common_skypix_ranges):
-            stop = end - 1  # registry range syntax is inclusive
-            if begin == stop:
-                where_terms.append(f"{common_skypix_name} = cpx{n}")
-                bind[f"cpx{n}"] = begin
+        for begin, end in common_skypix_ranges:
+            if begin == end - 1:
+                where_terms.append(common_skypix_proxy == begin)
             else:
-                where_terms.append(f"({common_skypix_name} >= cpx{n}a AND {common_skypix_name} <= cpx{n}b)")
-                bind[f"cpx{n}a"] = begin
-                bind[f"cpx{n}b"] = stop
-        where = " OR ".join(where_terms)
-        if self.where:
-            where = f"({self.where}) AND ({where})"
+                where_terms.append(common_skypix_proxy.in_range(begin, end))
+        where = xf.any(*where_terms)
         # Query for input datasets with this constraint, and ask for expanded
         # data IDs because we want regions.  Immediately group this by patch so
         # we don't do later geometric stuff n_bands more times than we need to.
@@ -624,7 +621,7 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
                 collections=self.input_collections
             ).where(
                 where,
-                bind=bind,
+                self.where,
             ).with_dimension_records()
             inputs_by_patch = defaultdict(set)
             patch_dimensions = self.butler.dimensions.conform(["patch"])
