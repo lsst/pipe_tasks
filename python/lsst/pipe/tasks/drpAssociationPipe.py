@@ -162,6 +162,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
 
         # Get the patch bounding box.
         innerPatchBox = geom.Box2D(skyInfo.patchInfo.getInnerBBox())
+        innerTractSkyRegion = skyInfo.tractInfo.getInnerSkyRegion()
 
         diaSourceHistory = []
         for catRef in diaSourceTables:
@@ -169,6 +170,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
 
             isInTractPatch = self._trimToPatch(cat,
                                                innerPatchBox,
+                                               innerTractSkyRegion,
                                                skyInfo.wcs)
 
             nDiaSrc = isInTractPatch.sum()
@@ -218,7 +220,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                       how='inner').set_index('diaSourceId')
         return df
 
-    def _trimToPatch(self, cat, innerPatchBox, wcs):
+    def _trimToPatch(self, cat, innerPatchBox, innerTractSkyRegion, wcs):
         """Create generator testing if a set of DiaSources are in the
         patch/tract.
 
@@ -237,9 +239,14 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             Booleans representing if the DiaSources are contained within the
             current patch and tract.
         """
-        isInPatch = np.array([
-            innerPatchBox.contains(
-                wcs.skyToPixel(
-                    geom.SpherePoint(row["ra"], row["dec"], geom.degrees)))
-            for idx, row in cat.iterrows()])
+        isInPatch = np.zeros(len(cat), dtype=bool)
+
+        for idx, row in cat.iterrows():
+            spPoint = geom.SpherePoint(row["ra"], row["dec"], geom.degrees)
+            pxCoord = wcs.skyToPixel(spPoint)
+            ra_rad = np.deg2rad(row["ra"])
+            dec_rad = np.deg2rad(row["dec"])
+
+            isInPatch[idx] = innerPatchBox.contains(pxCoord) and innerTractSkyRegion.contains(ra_rad, dec_rad)
+
         return isInPatch
