@@ -46,10 +46,11 @@ from PIL import Image
 from lsst.sphgeom import RangeSet, HealpixPixelization
 from lsst.utils.timer import timeMethod
 from lsst.daf.butler import Butler
+from lsst.daf.butler.queries.expression_factory import ExpressionFactory
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilder
-from lsst.pipe.base.quantum_graph_skeleton import QuantumGraphSkeleton, DatasetKey
+from lsst.pipe.base.quantum_graph_skeleton import QuantumGraphSkeleton
 import lsst.afw.geom as afwGeom
 import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
@@ -350,7 +351,8 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
             # Do the segmentation
             hpix_pixelization = HealpixPixelization(level=args.hpix_build_order)
             dataset = task_node.inputs["coadd_exposure_handles"].dataset_type_name
-            data_ids = set(butler.registry.queryDataIds("tract", datasets=dataset).expanded())
+            with butler.query() as q:
+                data_ids = list(q.join_dataset_search(dataset).data_ids("tract").with_dimension_records())
             region_pixels = []
             for data_id in data_ids:
                 region = data_id.region
@@ -451,7 +453,7 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
                 "-w",
                 "--where",
                 type=str,
-                default=None,
+                default="",
                 help="Data ID expression used when querying for input coadd datasets.",
             )
 
@@ -527,7 +529,7 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
         ``constraint_order``) to constrain generated quanta.
     where : `str`, optional
         A boolean `str` expression of the form accepted by
-        `Registry.queryDatasets` to constrain input datasets.  This may
+        `lsst.daf.butler.Butler` to constrain input datasets.  This may
         contain a constraint on tracts, patches, or bands, but not HEALPix
         indices.  Constraints on tracts and patches should usually be
         unnecessary, however - existing coadds that overlap the given
@@ -568,12 +570,11 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
         constraint_hpx_pixelization = (
             self.butler.dimensions.skypix_dimensions[f"healpix{self.constraint_order}"].pixelization
         )
-        common_skypix_name = self.butler.dimensions.commonSkyPix.name
         common_skypix_pixelization = self.butler.dimensions.commonSkyPix.pixelization
 
         # We will need all the pixels at the quantum resolution as well.
         # '4' appears here frequently because it's the number of pixels at
-        # level N in a single pixel at level N.
+        # level N in a single pixel at level (N-1).
         (hpx_dimension,) = (
             self.butler.dimensions.skypix_dimensions[d] for d in task_node.dimensions.names if d != "band"
         )
@@ -599,40 +600,39 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
 
         # Use that RangeSet to assemble a WHERE constraint expression.  This
         # could definitely get too big if the "constraint healpix" order is too
-        # fine.
+        # fine.  It's important to use `x IN (a..b)` rather than
+        # `(x >= a AND x <= b)` to avoid some pessimizations that are present
+        # in the butler expression handling (at least as of ~w_2025_05).
+        xf = ExpressionFactory(self.butler.dimensions)
+        common_skypix_proxy = getattr(xf, self.butler.dimensions.commonSkyPix.name)
         where_terms = []
-        bind = {}
-        for n, (begin, end) in enumerate(common_skypix_ranges):
-            stop = end - 1  # registry range syntax is inclusive
-            if begin == stop:
-                where_terms.append(f"{common_skypix_name} = cpx{n}")
-                bind[f"cpx{n}"] = begin
+        for begin, end in common_skypix_ranges:
+            if begin == end - 1:
+                where_terms.append(common_skypix_proxy == begin)
             else:
-                where_terms.append(f"({common_skypix_name} >= cpx{n}a AND {common_skypix_name} <= cpx{n}b)")
-                bind[f"cpx{n}a"] = begin
-                bind[f"cpx{n}b"] = stop
-        where = " OR ".join(where_terms)
-        if self.where:
-            where = f"({self.where}) AND ({where})"
+                where_terms.append(common_skypix_proxy.in_range(begin, end))
+        where = xf.any(*where_terms)
         # Query for input datasets with this constraint, and ask for expanded
         # data IDs because we want regions.  Immediately group this by patch so
         # we don't do later geometric stuff n_bands more times than we need to.
-        input_refs = self.butler.registry.queryDatasets(
-            input_dataset_type_node.dataset_type,
-            where=where,
-            findFirst=True,
-            collections=self.input_collections,
-            bind=bind
-        ).expanded()
-        inputs_by_patch = defaultdict(set)
-        patch_dimensions = self.butler.dimensions.conform(["patch"])
-        for input_ref in input_refs:
-            dataset_key = DatasetKey(input_ref.datasetType.name, input_ref.dataId.required_values)
-            self.existing_datasets.inputs[dataset_key] = input_ref
-            inputs_by_patch[input_ref.dataId.subset(patch_dimensions)].add(dataset_key)
-        if not inputs_by_patch:
-            message_body = "\n".join(input_refs.explain_no_results())
-            raise RuntimeError(f"No inputs found:\n{message_body}")
+        with self.butler.query() as query:
+            input_refs = query.datasets(
+                input_dataset_type_node.dataset_type,
+                collections=self.input_collections
+            ).where(
+                where,
+                self.where,
+            ).with_dimension_records()
+            inputs_by_patch = defaultdict(set)
+            patch_dimensions = self.butler.dimensions.conform(["patch"])
+            skeleton = QuantumGraphSkeleton([task_node.label])
+            for input_ref in input_refs:
+                dataset_key = skeleton.add_dataset_node(input_ref.datasetType.name, input_ref.dataId)
+                skeleton.set_dataset_ref(input_ref, dataset_key)
+                inputs_by_patch[input_ref.dataId.subset(patch_dimensions)].add(dataset_key)
+            if not inputs_by_patch:
+                message_body = "\n".join(input_refs.explain_no_results())
+                raise RuntimeError(f"No inputs found:\n{message_body}")
 
         # Iterate over patches and compute the set of output healpix pixels
         # that overlap each one.  Use that to associate inputs with output
@@ -645,12 +645,12 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
                     inputs_by_hpx[hpx_index].update(input_keys_for_patch)
 
         # Iterate over the dict we just created and create preliminary quanta.
-        skeleton = QuantumGraphSkeleton([task_node.label])
         for hpx_index, input_keys_for_hpx_index in inputs_by_hpx.items():
             # Group inputs by band.
             input_keys_by_band = defaultdict(list)
             for input_key in input_keys_for_hpx_index:
-                input_ref = self.existing_datasets.inputs[input_key]
+                input_ref = skeleton.get_dataset_ref(input_key)
+                assert input_ref is not None, "Code above adds the same nodes to the graph with refs."
                 input_keys_by_band[input_ref.dataId["band"]].append(input_key)
             # Iterate over bands to make quanta.
             for band, input_keys_for_band in input_keys_by_band.items():
