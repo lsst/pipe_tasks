@@ -26,7 +26,7 @@ import astropy.units as u
 
 from lsst.afw.image import abMagErrFromFluxErr
 from lsst.pex.config import Config, Field, ConfigDictField
-from lsst.obs.base.instrument_ref_cat_data import _find_ref_cat_in_library
+from lsst.obs.base.instrument_ref_cat_data import _find_ref_cat_in_library, ColortermModel
 
 
 class ColortermNotFoundError(LookupError):
@@ -163,6 +163,19 @@ class Colorterm(Config):
 
     def propagateFluxErrors(self, primaryFluxErr, secondaryFluxErr):
         return np.hypot((1 + self.c1)*primaryFluxErr, self.c1*secondaryFluxErr)
+
+    @classmethod
+    def _from_model(cls, model):
+        """Construct from the new, Pydantic-model version of Colorterm.
+
+        This is a transitional interface that will disappear in the future.
+
+        Parameters
+        ----------
+        model : `lsst.obs.base.instrument_ref_cat_data.ColortermModel`
+            Model version of the Colorterm.
+        """
+        return cls(**model.model_dump())
 
 
 class ColortermDict(Config):

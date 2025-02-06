@@ -34,7 +34,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.meas.algorithms import ReferenceSourceSelectorTask
 from lsst.meas.algorithms import getRefFluxField
-from lsst.pipe.tasks.colorterms import ColortermLibrary
+from lsst.pipe.tasks.colorterms import ColortermLibrary, Colorterm
 from lsst.afw.image import abMagErrFromFluxErr
 from lsst.meas.algorithms import ReferenceObjectLoader, LoadReferenceObjectsConfig
 
@@ -267,8 +267,6 @@ class LoadReferenceCatalogTask(pipeBase.Task):
         npRefCat['refMagErr'][:, :] = 99.0
 
         if self.config.doApplyColorTerms:
-            refCatName = self.refObjLoader.name
-
             for i, (filterName, fluxField) in enumerate(zip(self._fluxFilters, self._fluxFields)):
                 if fluxField is None:
                     # There is no matching reference band.
@@ -276,7 +274,7 @@ class LoadReferenceCatalogTask(pipeBase.Task):
                     continue
                 self.log.debug("Applying color terms for filterName='%s'", filterName)
 
-                colorterm = self.config.colorterms.getColorterm(filterName, refCatName, doRaise=True)
+                colorterm = self._lookupColorterm(filterName)
 
                 refMag, refMagErr = colorterm.getCorrectedMagnitudes(refCat)
 
@@ -304,6 +302,11 @@ class LoadReferenceCatalogTask(pipeBase.Task):
                 npRefCat['refMagErr'][good, i] = refMagErr
 
         return npRefCat
+
+    def _lookupColorterm(self, filterName):
+        if model := self.refObjLoader.getColorterm(filterName):
+            return Colorterm._from_model(model)
+        return self.config.colorterms.getColorterm(filterName, self.refObjLoader.name, doRaise=True)
 
     def _determineFluxFields(self, center, filterList):
         """Determine the flux field names for a reference catalog.

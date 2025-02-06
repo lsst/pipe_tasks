@@ -35,7 +35,7 @@ from lsst.meas.astrom import DirectMatchTask, DirectMatchConfigWithoutLoader
 import lsst.afw.display as afwDisplay
 from lsst.meas.algorithms import getRefFluxField, ReserveSourcesTask
 from lsst.utils.timer import timeMethod
-from .colorterms import ColortermLibrary
+from .colorterms import ColortermLibrary, Colorterm
 
 
 class PhotoCalConfig(pexConf.Config):
@@ -265,9 +265,12 @@ class PhotoCalTask(pipeBase.Task):
         if self.config.applyColorTerms:
             self.log.info("Applying color terms for filter=%r, config.photoCatName=%s",
                           filterLabel.physicalLabel, self.config.photoCatName)
-            colorterm = self.config.colorterms.getColorterm(filterLabel.physicalLabel,
-                                                            self.config.photoCatName,
-                                                            doRaise=True)
+            if colorterm_model := self.match.refObjLoader.getColorterm(filterLabel.physicalLabel):
+                colorterm = Colorterm._from_model(colorterm_model)
+            else:
+                colorterm = self.config.colorterms.getColorterm(filterLabel.physicalLabel,
+                                                                self.config.photoCatName,
+                                                                doRaise=True)
             refCat = afwTable.SimpleCatalog(matches[0].first.schema)
 
             # extract the matched refCat as a Catalog for the colorterm code
