@@ -542,14 +542,16 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             dataIds=[ref.datasetRef.dataId for ref in inputRefs.astrometry_ref_cat],
             refCats=inputs.pop("astrometry_ref_cat"),
             name=self.config.connections.astrometry_ref_cat,
-            config=self.config.astrometry_ref_loader, log=self.log)
+            config=self.config.astrometry_ref_loader, log=self.log,
+            instrument=pipeBase.Instrument.from_data_id(butlerQC.quantum.dataId))
         self.astrometry.setRefObjLoader(astrometry_loader)
 
         photometry_loader = lsst.meas.algorithms.ReferenceObjectLoader(
             dataIds=[ref.datasetRef.dataId for ref in inputRefs.photometry_ref_cat],
             refCats=inputs.pop("photometry_ref_cat"),
             name=self.config.connections.photometry_ref_cat,
-            config=self.config.photometry_ref_loader, log=self.log)
+            config=self.config.photometry_ref_loader, log=self.log,
+            instrument=pipeBase.Instrument.from_data_id(butlerQC.quantum.dataId))
         self.photometry.match.setRefObjLoader(photometry_loader)
 
         # This should not happen with a properly configured execution context.

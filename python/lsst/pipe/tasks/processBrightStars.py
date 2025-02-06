@@ -41,7 +41,7 @@ from lsst.geom import AffineTransform, Box2I, Extent2I, Point2D, Point2I, Sphere
 from lsst.meas.algorithms import LoadReferenceObjectsConfig, ReferenceObjectLoader
 from lsst.meas.algorithms.brightStarStamps import BrightStarStamp, BrightStarStamps
 from lsst.pex.config import ChoiceField, ConfigField, Field, ListField
-from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
+from lsst.pipe.base import Instrument, PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
 from lsst.pipe.base.connectionTypes import Input, Output, PrerequisiteInput
 from lsst.utils.timer import timeMethod
 
@@ -196,6 +196,7 @@ class ProcessBrightStarsTask(PipelineTask):
             refCats=inputs.pop("refCat"),
             name=self.config.connections.refCat,
             config=self.config.refObjLoader,
+            instrument=Instrument.from_data_id(butlerQC.quantum.dataId),
         )
         output = self.run(**inputs, refObjLoader=refObjLoader)
         # Only ingest stamp if it exists; prevent ingesting an empty FITS file.

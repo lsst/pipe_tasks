@@ -42,7 +42,7 @@ from lsst.geom import Box2I, Point2D, Point2I
 from lsst.meas.algorithms import LoadReferenceObjectsConfig, ReferenceObjectLoader
 from lsst.meas.algorithms.brightStarStamps import BrightStarStamp, BrightStarStamps
 from lsst.pex.config import ChoiceField, ConfigField, Field, ListField
-from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
+from lsst.pipe.base import Instrument, PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
 from lsst.pipe.base.connectionTypes import Input, Output, PrerequisiteInput
 from lsst.pipe.tasks.processBrightStars import ProcessBrightStarsTask
 
@@ -261,6 +261,7 @@ class SubtractBrightStarsTask(PipelineTask):
             refCats=inputs.pop("refCat"),
             name=self.config.connections.refCat,
             config=self.config.refObjLoader,
+            instrument=Instrument.from_data_id(butlerQC.quantum.dataId),
         )
         subtractor, _, badStamps = self.run(**inputs, dataId=dataId, refObjLoader=refObjLoader)
         if self.config.doWriteSubtractedExposure:
