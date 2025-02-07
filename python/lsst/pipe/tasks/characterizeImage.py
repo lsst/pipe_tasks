@@ -131,6 +131,11 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
             "estimate PSF. If useSimplePsf is True then 2 should be plenty; "
             "otherwise more may be wanted.",
     )
+    doSubtractBkgForMeasure = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Subtract off the background when measuring sources?",
+    )
     background = pexConfig.ConfigurableField(
         target=SubtractBackgroundTask,
         doc="Configuration for initial background estimation",
@@ -406,6 +411,10 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         """
         self._frame = self._initialFrame  # reset debug display frame
 
+        originalExp = None
+        if not self.config.doSubtractBkgForMeasure:
+            originalExp = exposure.clone()
+
         if not self.config.doMeasurePsf and not exposure.hasPsf():
             self.log.info("CharacterizeImageTask initialized with 'simple' PSF.")
             self.installSimplePsf.run(exposure=exposure)
@@ -448,12 +457,16 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
 
         # perform final measurement with final PSF, including measuring and applying aperture correction,
         # if wanted
-        self.measurement.run(measCat=dmeRes.sourceCat, exposure=dmeRes.exposure,
+        expToUse = dmeRes.exposure.clone()
+        if not self.config.doSubtractBkgForMeasure:
+            expToUse.image.array = originalExp.image.array
+
+        self.measurement.run(measCat=dmeRes.sourceCat, exposure=expToUse,
                              exposureId=idGenerator.catalog_id)
 
         if self.config.doNormalizedCalibration:
             normApCorrMap = self.normalizedCalibrationFlux.run(
-                exposure=dmeRes.exposure,
+                exposure=expToUse,
                 catalog=dmeRes.sourceCat,
             ).ap_corr_map
             dmeRes.exposure.info.setApCorrMap(normApCorrMap)
@@ -466,7 +479,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
             # has been run.
             try:
                 apCorrMap = self.measureApCorr.run(
-                    exposure=dmeRes.exposure,
+                    exposure=expToUse,
                     catalog=dmeRes.sourceCat,
                 ).apCorrMap
             except MeasureApCorrError:
@@ -484,10 +497,10 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
 
         self.catalogCalculation.run(dmeRes.sourceCat)
 
-        self.display("measure", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
+        self.display("measure", exposure=expToUse, sourceCat=dmeRes.sourceCat)
 
         return pipeBase.Struct(
-            exposure=dmeRes.exposure,
+            exposure=expToUse,
             sourceCat=dmeRes.sourceCat,
             background=dmeRes.background,
             psfCellSet=dmeRes.psfCellSet,
