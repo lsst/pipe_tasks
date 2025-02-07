@@ -343,9 +343,10 @@ class SkyMeasurementTask(Task):
         skySamples = numpy.array(skySamples)
 
         def solve(mask):
+            # Make sure we return a float, not an array.
             return afwMath.LeastSquares.fromDesignMatrix(skySamples[mask].reshape(mask.sum(), 1),
                                                          imageSamples[mask],
-                                                         afwMath.LeastSquares.DIRECT_SVD).getSolution()
+                                                         afwMath.LeastSquares.DIRECT_SVD).getSolution()[0]
 
         mask = numpy.isfinite(imageSamples) & numpy.isfinite(skySamples)
         for ii in range(self.config.skyIter):
