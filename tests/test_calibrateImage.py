@@ -452,6 +452,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         exposure1 = 102
         visit = 100101
         detector = 42
+        physical_filter = "r"
 
         # Create a and populate a test butler for runQuantum tests.
         self.repo_path = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
@@ -469,12 +470,19 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         butlerTests.addDataIdValue(self.repo, "exposure", exposure0)
         butlerTests.addDataIdValue(self.repo, "exposure", exposure1)
         butlerTests.addDataIdValue(self.repo, "visit", visit)
+        butlerTests.addDataIdValue(self.repo, "physical_filter", physical_filter)
 
         # inputs
         butlerTests.addDatasetType(self.repo, "postISRCCD", {"instrument", "exposure", "detector"},
                                    "ExposureF")
         butlerTests.addDatasetType(self.repo, "gaia_dr3_20230707", {"htm7"}, "SimpleCatalog")
         butlerTests.addDatasetType(self.repo, "ps1_pv3_3pi_20170110", {"htm7"}, "SimpleCatalog")
+        butlerTests.addDatasetType(self.repo, "flat", {"instrument", "detector", "physical_filter"},
+                                   "Exposure")
+        butlerTests.addDatasetType(self.repo,
+                                   "illuminationCorrection",
+                                   {"instrument", "detector", "physical_filter"},
+                                   "Exposure")
 
         # outputs
         butlerTests.addDatasetType(self.repo, "initial_pvi", {"instrument", "visit", "detector"},
@@ -488,6 +496,9 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         butlerTests.addDatasetType(self.repo, "initial_photoCalib_detector",
                                    {"instrument", "visit", "detector"},
                                    "PhotoCalib")
+        butlerTests.addDatasetType(self.repo, "background_to_photometric_ratio",
+                                   {"instrument", "visit", "detector"},
+                                   "Image")
         # optional outputs
         butlerTests.addDatasetType(self.repo, "initial_pvi_background", {"instrument", "visit", "detector"},
                                    "Background")
@@ -514,6 +525,8 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.visit_id = self.repo.registry.expandDataId(
             {"instrument": instrument, "visit": visit, "detector": detector})
         self.htm_id = self.repo.registry.expandDataId({"htm7": 42})
+        self.flat_id = self.repo.registry.expandDataId(
+            {"instrument": instrument, "detector": detector, "physical_filter": physical_filter})
 
         # put empty data
         self.butler = butlerTests.makeTestCollection(self.repo)
@@ -521,6 +534,8 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.butler.put(afwImage.ExposureF(), "postISRCCD", self.exposure1_id)
         self.butler.put(afwTable.SimpleCatalog(), "gaia_dr3_20230707", self.htm_id)
         self.butler.put(afwTable.SimpleCatalog(), "ps1_pv3_3pi_20170110", self.htm_id)
+        self.butler.put(afwImage.ExposureF(), "flat", self.flat_id)
+        self.butler.put(afwImage.ExposureF(), "illuminationCorrection", self.flat_id)
 
     def tearDown(self):
         self.repo_path.cleanup()
@@ -534,6 +549,8 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
             {"exposures": [self.exposure0_id],
              "astrometry_ref_cat": [self.htm_id],
              "photometry_ref_cat": [self.htm_id],
+             "background_flat": self.flat_id,
+             "illumination_correction": self.flat_id,
              # outputs
              "exposure": self.visit_id,
              "stars": self.visit_id,
@@ -552,7 +569,50 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr3_20230707")
         self.assertEqual(task.photometry.match.refObjLoader.name, "ps1_pv3_3pi_20170110")
         # Check that the proper kwargs are passed to run().
-        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures", "result", "id_generator"})
+        self.assertEqual(
+            mock_run.call_args.kwargs.keys(),
+            {"exposures", "result", "id_generator", "background_flat", "illumination_correction"},
+        )
+
+    def test_runQuantum_illumination_correction(self):
+        config = CalibrateImageTask.ConfigClass()
+        config.do_illumination_correction = True
+        config.psf_subtract_background.doApplyFlatBackgroundRatio = True
+        config.psf_detection.doApplyFlatBackgroundRatio = True
+        config.star_detection.doApplyFlatBackgroundRatio = True
+        task = CalibrateImageTask(config=config)
+        lsst.pipe.base.testUtils.assertValidInitOutput(task)
+
+        quantum = lsst.pipe.base.testUtils.makeQuantum(
+            task, self.butler, self.visit_id,
+            {"exposures": [self.exposure0_id],
+             "astrometry_ref_cat": [self.htm_id],
+             "photometry_ref_cat": [self.htm_id],
+             "background_flat": self.flat_id,
+             "illumination_correction": self.flat_id,
+             # outputs
+             "exposure": self.visit_id,
+             "stars": self.visit_id,
+             "stars_footprints": self.visit_id,
+             "background": self.visit_id,
+             "background_to_photometric_ratio": self.visit_id,
+             "psf_stars": self.visit_id,
+             "psf_stars_footprints": self.visit_id,
+             "applied_photo_calib": self.visit_id,
+             "initial_pvi_background": self.visit_id,
+             "astrometry_matches": self.visit_id,
+             "photometry_matches": self.visit_id,
+             })
+        mock_run = lsst.pipe.base.testUtils.runTestQuantum(task, self.butler, quantum)
+
+        # Ensure the reference loaders have been configured.
+        self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr3_20230707")
+        self.assertEqual(task.photometry.match.refObjLoader.name, "ps1_pv3_3pi_20170110")
+        # Check that the proper kwargs are passed to run().
+        self.assertEqual(
+            mock_run.call_args.kwargs.keys(),
+            {"exposures", "result", "id_generator", "background_flat", "illumination_correction"},
+        )
 
     def test_runQuantum_2_snaps(self):
         task = CalibrateImageTask()
@@ -563,6 +623,8 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
             {"exposures": [self.exposure0_id, self.exposure1_id],
              "astrometry_ref_cat": [self.htm_id],
              "photometry_ref_cat": [self.htm_id],
+             "background_flat": self.flat_id,
+             "illumination_correction": self.flat_id,
              # outputs
              "exposure": self.visit_id,
              "stars": self.visit_id,
@@ -581,7 +643,10 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr3_20230707")
         self.assertEqual(task.photometry.match.refObjLoader.name, "ps1_pv3_3pi_20170110")
         # Check that the proper kwargs are passed to run().
-        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures", "result", "id_generator"})
+        self.assertEqual(
+            mock_run.call_args.kwargs.keys(),
+            {"exposures", "result", "id_generator", "background_flat", "illumination_correction"},
+        )
 
     def test_runQuantum_no_optional_outputs(self):
         # All the possible connections: we modify this to test each one by
@@ -589,6 +654,8 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         connections = {"exposures": [self.exposure0_id, self.exposure1_id],
                        "astrometry_ref_cat": [self.htm_id],
                        "photometry_ref_cat": [self.htm_id],
+                       "background_flat": self.flat_id,
+                       "illumination_correction": self.flat_id,
                        # outputs
                        "exposure": self.visit_id,
                        "stars": self.visit_id,
@@ -633,6 +700,8 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
             {"exposures": [self.exposure0_id],
              "astrometry_ref_cat": [self.htm_id],
              "photometry_ref_cat": [self.htm_id],
+             "background_flat": self.flat_id,
+             "illumination_correction": self.flat_id,
              # outputs
              "exposure": self.visit_id,
              "stars": self.visit_id,
@@ -650,7 +719,10 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.assertEqual(task.astrometry.refObjLoader.name, "gaia_dr3_20230707")
         self.assertEqual(task.photometry.match.refObjLoader.name, "ps1_pv3_3pi_20170110")
         # Check that the proper kwargs are passed to run().
-        self.assertEqual(mock_run.call_args.kwargs.keys(), {"exposures", "result", "id_generator"})
+        self.assertEqual(
+            mock_run.call_args.kwargs.keys(),
+            {"exposures", "result", "id_generator", "background_flat", "illumination_correction"},
+        )
 
     def test_lintConnections(self):
         """Check that the connections are self-consistent.
@@ -669,6 +741,8 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
             {"exposures": [self.exposure0_id],
              "astrometry_ref_cat": [self.htm_id],
              "photometry_ref_cat": [self.htm_id],
+             "background_flat": self.flat_id,
+             "illuminationCorrection": self.flat_id,
              # outputs
              "exposure": self.visit_id,
              "stars": self.visit_id,
@@ -690,10 +764,16 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         ):
             lsst.pipe.base.testUtils.runTestQuantum(task, self.butler, quantum, mockRun=False)
 
-        # A AlgorimthError should write annotated partial outputs.
+        # An AlgorithmError should write annotated partial outputs.
         error = lsst.meas.algorithms.MeasureApCorrError(name="test", nSources=100, ndof=101)
 
-        def mock_run(exposures, result=None, id_generator=None):
+        def mock_run(
+            exposures,
+            result=None,
+            id_generator=None,
+            background_flat=None,
+            illumination_correction=None,
+        ):
             """Mock success through compute_psf, but failure after.
             """
             result.exposure = afwImage.ExposureF(10, 10)
