@@ -59,6 +59,8 @@ class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
         storageClass="SkyMap",
         dimensions=("skymap", ),
     )
+    # preloaded_SsObjects = pipeBase.connectionTypes.Input(
+    #     doc="Expected location of ssObjects for association"
     assocDiaSourceTable = pipeBase.connectionTypes.Output(
         doc="Catalog of DiaSources covering the patch and associated with a "
             "DiaObject.",
