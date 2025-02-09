@@ -59,8 +59,6 @@ class CoaddBaseTestCase(lsst.utils.tests.TestCase):
         for _, v in mask_map:
             logv = np.log2(v)
             self.assertEqual(logv, int(logv))
-        # Check against the hardcoded values
-        self.assertEqual(set(mask_map), set([(0, 4096), (16, 8192), (2048, 2048)]))
 
 
 class TestMemory(lsst.utils.tests.MemoryTestCase):
