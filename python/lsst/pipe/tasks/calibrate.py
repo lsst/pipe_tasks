@@ -223,6 +223,11 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         target=AstrometryTask,
         doc="Perform astrometric calibration to refine the WCS",
     )
+    astrometryDetection = pexConfig.ConfigurableField(
+        target=SourceDetectionTask,
+        doc="Task to detect sources to used in the astrometric fit."
+    )
+
     requireAstrometry = pexConfig.Field(
         dtype=bool,
         default=True,
@@ -248,9 +253,17 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
         dtype=str,
         default=("calib_psf_candidate", "calib_psf_used", "calib_psf_reserved"),
         doc=("Fields to copy from the icSource catalog to the output catalog "
-             "for matching sources Any missing fields will trigger a "
+             "for matching sources. Any missing fields will trigger a "
              "RuntimeError exception. Ignored if icSourceCat is not provided.")
     )
+    astromFieldsToCopy = pexConfig.ListField(
+        dtype=str,
+        default=("calib_astrometry_used", ),
+        doc=("Fields to copy from the astromCat catalog to the output catalog "
+             "for matching sources. Any missing fields will trigger a "
+             "RuntimeError exception. Ignored if astromCat does not exists.")
+    )
+
     matchRadiusPix = pexConfig.Field(
         dtype=float,
         default=3,
@@ -352,6 +365,9 @@ class CalibrateConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Calibrate
 
     def setDefaults(self):
         super().setDefaults()
+        # Higher S/N detection pass for astrometry source selection
+        self.astrometryDetection.thresholdValue = 50.0
+        self.astrometryDetection.reEstimateBackground = False
         self.measurement.plugins.names |= ["base_CompensatedTophatFlux"]
         self.postCalibrationMeasurement.plugins.names = ["base_LocalPhotoCalib", "base_LocalWcs"]
         self.postCalibrationMeasurement.doReplaceWithNoise = False
@@ -495,6 +511,7 @@ class CalibrateTask(pipeBase.PipelineTask):
         self.makeSubtask('catalogCalculation', schema=self.schema)
 
         if self.config.doAstrometry:
+            self.makeSubtask("astrometryDetection", schema=self.schema)
             self.makeSubtask("astrometry", refObjLoader=astromRefObjLoader,
                              schema=self.schema)
         if self.config.doPhotoCal:
@@ -601,6 +618,71 @@ class CalibrateTask(pipeBase.PipelineTask):
         table = SourceTable.make(self.schema, idGenerator.make_table_id_factory())
         table.setMetadata(self.algMetadata)
 
+        # perform astrometry calibration:
+        # fit an improved WCS and update the exposure's WCS in place
+        astromCat = None
+        astromMatches = None
+        matchMeta = None
+        if self.config.doAstrometry:
+            try:
+                # Run a detection specific for deteting astrometry sources
+                astromDetections = self.astrometryDetection.run(
+                    table=table, exposure=exposure, background=background
+                )
+                astromCat = astromDetections.sources
+                if not astromCat.isContiguous():
+                    astromCat = astromCat.copy(deep=True)
+                self.measurement.run(
+                    measCat=astromCat,
+                    exposure=exposure,
+                    exposureId=idGenerator.catalog_id,
+                )
+                if self.config.doNormalizedCalibration:
+                    self.normalizedCalibrationFlux.run(
+                        exposure=exposure,
+                        catalog=astromCat,
+                    )
+                if self.config.doApCorr:
+                    apCorrMap = exposure.getInfo().getApCorrMap()
+                if apCorrMap is None:
+                    self.log.warning("Image does not have valid aperture correction map for %r; "
+                                     "skipping aperture correction", idGenerator.catalog_id)
+                else:
+                    self.applyApCorr.run(
+                        catalog=astromCat,
+                        apCorrMap=apCorrMap,
+                    )
+                self.catalogCalculation.run(astromCat)
+
+                self.setPrimaryFlags.run(astromCat)
+
+                if icSourceCat is not None and \
+                   len(self.config.icSourceFieldsToCopy) > 0:
+                    self.copyCalibSourceFields(
+                        calibType="icSource", schemaMapper=self.schemaMapper, calibCat=icSourceCat,
+                        sourceCat=astromCat, fieldsToCopy=self.config.icSourceFieldsToCopy
+                    )
+
+                if not astromCat.isContiguous():
+                    astromCat = astromCat.copy(deep=True)
+
+                astromRes = self.astrometry.run(exposure=exposure, sourceCat=astromCat)
+                astromMatches = astromRes.matches
+                matchMeta = astromRes.matchMeta
+                self.astrometry.check(exposure, astromCat, len(astromMatches))
+
+            except AstrometryError as e:
+                # Maintain old behavior of not stopping for astrometry errors.
+                self.log.warning(e)
+            if exposure.getWcs() is None:
+                if self.config.requireAstrometry:
+                    raise RuntimeError(f"WCS fit failed for {idGenerator} and requireAstrometry "
+                                       "is True.")
+                else:
+                    self.log.warning("Unable to perform astrometric calibration for %r but "
+                                     "requireAstrometry is False: attempting to proceed...",
+                                     idGenerator)
+
         detRes = self.detection.run(table=table, exposure=exposure,
                                     doSmooth=True)
 
@@ -609,6 +691,10 @@ class CalibrateTask(pipeBase.PipelineTask):
         self.metadata['negative_footprint_count'] = detRes.numNeg
 
         sourceCat = detRes.sources
+        # Update the source cooordinates with the current wcs.
+        if exposure.wcs is not None:
+            afwTable.updateSourceCoords(exposure.wcs, sourceList=sourceCat)
+
         if detRes.background:
             for bg in detRes.background:
                 background.append(bg)
@@ -657,8 +743,16 @@ class CalibrateTask(pipeBase.PipelineTask):
 
         if icSourceCat is not None and \
            len(self.config.icSourceFieldsToCopy) > 0:
-            self.copyIcSourceFields(icSourceCat=icSourceCat,
-                                    sourceCat=sourceCat)
+            self.copyCalibSourceFields(calibType="icSource", schemaMapper=self.schemaMapper,
+                                       calibCat=icSourceCat, sourceCat=sourceCat,
+                                       fieldsToCopy=self.config.icSourceFieldsToCopy)
+
+        if astromCat is not None and \
+           len(self.config.astromFieldsToCopy) > 0:
+            self.copyCalibSourceFields(calibType="astrometry",
+                                       schemaMapper=afwTable.SchemaMapper(sourceCat.schema),
+                                       calibCat=astromCat, sourceCat=sourceCat,
+                                       fieldsToCopy=self.config.astromFieldsToCopy)
 
         # TODO DM-11568: this contiguous check-and-copy could go away if we
         # reserve enough space during SourceDetection and/or SourceDeblend.
@@ -666,28 +760,6 @@ class CalibrateTask(pipeBase.PipelineTask):
         # contiguity now, so views are preserved from here on.
         if not sourceCat.isContiguous():
             sourceCat = sourceCat.copy(deep=True)
-
-        # perform astrometry calibration:
-        # fit an improved WCS and update the exposure's WCS in place
-        astromMatches = None
-        matchMeta = None
-        if self.config.doAstrometry:
-            try:
-                astromRes = self.astrometry.run(exposure=exposure, sourceCat=sourceCat)
-                astromMatches = astromRes.matches
-                matchMeta = astromRes.matchMeta
-            except AstrometryError as e:
-                # Maintain old behavior of not stopping for astrometry errors.
-                self.log.warning(e)
-            if exposure.getWcs() is None:
-                if self.config.requireAstrometry:
-                    raise RuntimeError(f"WCS fit failed for {idGenerator} and requireAstrometry "
-                                       "is True.")
-                else:
-                    self.log.warning("Unable to perform astrometric calibration for %r but "
-                                     "requireAstrometry is False: attempting to proceed...",
-                                     idGenerator)
-
         # compute photometric calibration
         if self.config.doPhotoCal:
             if np.all(np.isnan(sourceCat["coord_ra"])) or np.all(np.isnan(sourceCat["coord_dec"])):
@@ -788,15 +860,18 @@ class CalibrateTask(pipeBase.PipelineTask):
         except Exception as e:
             self.log.warning("Could not set exposure metadata: %s", e)
 
-    def copyIcSourceFields(self, icSourceCat, sourceCat):
-        """Match sources in an icSourceCat and a sourceCat and copy fields.
+    def copyCalibSourceFields(self, calibType, schemaMapper, calibCat, sourceCat, fieldsToCopy):
+        """Match sources in a calibrationCat and a sourceCat and copy fields.
 
         The fields copied are those specified by
-        ``config.icSourceFieldsToCopy``.
+        ``config.icSourceFieldsToCopy`` if ``calibType`` is icSource or
+        ``config.astromFieldsToCopy`` if ``calibType`` is astrometry.
 
         Parameters
         ----------
-        icSourceCat : `lsst.afw.table.SourceCatalog`
+        calibType : `str`
+            The type of calibration: either icSource or astrometry.
+        calibCat : `lsst.afw.table.SourceCatalog`
             Catalog from which to copy fields.
         sourceCat : `lsst.afw.table.SourceCatalog`
             Catalog to which to copy fields.
@@ -805,25 +880,24 @@ class CalibrateTask(pipeBase.PipelineTask):
         ------
         RuntimeError
             Raised if any of the following occur:
-            - icSourceSchema and icSourceKeys are not specified.
-            - icSourceCat and sourceCat are not specified.
-            - icSourceFieldsToCopy is empty.
+            - calibSchema and calibSourceKeys are not specified.
+            - calibCat and sourceCat are not specified.
+            - calibFieldsToCopy is empty.
         """
-        if self.schemaMapper is None:
-            raise RuntimeError("To copy icSource fields you must specify "
-                               "icSourceSchema and icSourceKeys when "
-                               "constructing this task")
-        if icSourceCat is None or sourceCat is None:
-            raise RuntimeError("icSourceCat and sourceCat must both be "
+        if schemaMapper is None:
+            raise RuntimeError("To copy %s fields you must specify its "
+                               "schema and keys when constructing this task", calibType)
+        if calibCat is None or sourceCat is None:
+            raise RuntimeError("the calibCat and sourceCat must both be "
                                "specified")
-        if len(self.config.icSourceFieldsToCopy) == 0:
-            self.log.warning("copyIcSourceFields doing nothing because "
-                             "icSourceFieldsToCopy is empty")
+        if len(fieldsToCopy) == 0:
+            self.log.warning("copyCalibSourceFields doing nothing for %s because "
+                             "its FieldsToCopy is empty", calibType)
             return
 
         mc = afwTable.MatchControl()
         mc.findOnlyClosest = False  # return all matched objects
-        matches = afwTable.matchXy(icSourceCat, sourceCat,
+        matches = afwTable.matchXy(calibCat, sourceCat,
                                    self.config.matchRadiusPix, mc)
         if self.config.doDeblend:
             deblendKey = sourceCat.schema["deblend_nChild"].asKey()
@@ -832,8 +906,8 @@ class CalibrateTask(pipeBase.PipelineTask):
 
         # Because we had to allow multiple matches to handle parents, we now
         # need to prune to the best matches
-        # closest matches as a dict of icSourceCat source ID:
-        # (icSourceCat source, sourceCat source, distance in pixels)
+        # closest matches as a dict of calibCat source ID:
+        # (calibCat source, sourceCat source, distance in pixels)
         bestMatches = {}
         for m0, m1, d in matches:
             id0 = m0.getId()
@@ -843,31 +917,36 @@ class CalibrateTask(pipeBase.PipelineTask):
         matches = list(bestMatches.values())
 
         # Check that no sourceCat sources are listed twice (we already know
-        # that each match has a unique icSourceCat source ID, due to using
+        # that each match has a unique calibCat source ID, due to using
         # that ID as the key in bestMatches)
         numMatches = len(matches)
         numUniqueSources = len(set(m[1].getId() for m in matches))
         if numUniqueSources != numMatches:
-            self.log.warning("%d icSourceCat sources matched only %d sourceCat "
-                             "sources", numMatches, numUniqueSources)
+            self.log.warning("%d %s cat sources matched only %d sourceCat "
+                             "sources", numMatches, calibType, numUniqueSources)
 
-        self.log.info("Copying flags from icSourceCat to sourceCat for "
-                      "%d sources", numMatches)
+        self.log.info("Copying %s flags from calibCat to sourceCat for "
+                      "%d sources", calibType, numMatches)
 
         # For each match: set the calibSourceKey flag and copy the desired
         # fields
-        for icSrc, src, d in matches:
-            src.setFlag(self.calibSourceKey, True)
-            # src.assign copies the footprint from icSrc, which we don't want
+        for calibSrc, src, d in matches:
+            if calibType == "icSource":
+                src.setFlag(self.calibSourceKey, True)
+            else:
+                for field in fieldsToCopy:
+                    calibKey = sourceCat.schema[field].asKey()
+                    src.setFlag(calibKey, True)
+            # src.assign copies the footprint from calibSrc, which we don't want
             # (DM-407)
-            # so set icSrc's footprint to src's footprint before src.assign,
+            # so set calibSrc's footprint to src's footprint before src.assign,
             # then restore it
-            icSrcFootprint = icSrc.getFootprint()
+            calibSrcFootprint = calibSrc.getFootprint()
             try:
-                icSrc.setFootprint(src.getFootprint())
-                src.assign(icSrc, self.schemaMapper)
+                calibSrc.setFootprint(src.getFootprint())
+                src.assign(calibSrc, schemaMapper)
             finally:
-                icSrc.setFootprint(icSrcFootprint)
+                calibSrc.setFootprint(calibSrcFootprint)
 
     def recordMaskedPixelFractions(self, exposure):
         """Record the fraction of all the pixels in an exposure
