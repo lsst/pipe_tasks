@@ -55,6 +55,7 @@ class CoaddBaseTestCase(lsst.utils.tests.TestCase):
 
     def test_setRejectedMaskMapping(self):
         mask_map = setRejectedMaskMapping(self.statsCtrl)
+        self.assertEqual(len(mask_map), 3)
         # Check that all values are powers of 2
         for _, v in mask_map:
             logv = np.log2(v)
