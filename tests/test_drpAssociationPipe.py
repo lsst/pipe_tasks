@@ -45,6 +45,7 @@ class TestDrpAssociationPipe(lsst.utils.tests.TestCase):
 
         self.skyInfo = makeSkyInfo(self.simpleMap, self.tractId, self.patchId)
         self.innerPatchBox = geom.Box2D(self.skyInfo.patchInfo.getInnerBBox())
+        self.innerTractSkyRegion = self.skyInfo.tractInfo.getInnerSkyRegion()
 
         self.nSources = 100
         xs = np.linspace(self.innerPatchBox.getMinX() + 1,
@@ -81,12 +82,14 @@ class TestDrpAssociationPipe(lsst.utils.tests.TestCase):
         self.assertEqual(
             np.sum(dpaTask._trimToPatch(self.diaSrcCatIn,
                                         self.innerPatchBox,
+                                        self.innerTractSkyRegion,
                                         self.skyInfo.wcs)),
             self.nSources)
 
         self.assertEqual(
             np.sum(dpaTask._trimToPatch(self.diaSrcCatOut,
                                         self.innerPatchBox,
+                                        self.innerTractSkyRegion,
                                         self.skyInfo.wcs)),
             0)
 
