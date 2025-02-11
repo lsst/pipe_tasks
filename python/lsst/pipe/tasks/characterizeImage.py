@@ -131,6 +131,52 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
             "estimate PSF. If useSimplePsf is True then 2 should be plenty; "
             "otherwise more may be wanted.",
     )
+    maxUnNormPsfEllipticityPerBand = pexConfig.DictField(
+        keytype=str,
+        itemtype=float,
+        default={
+            "u": 3.8,
+            "g": 3.8,
+            "r": 3.8,
+            "i": 3.8,
+            "z": 3.8,
+            "y": 3.8,
+        },
+        doc="Maximum unnormalized ellipticity (defined as hypot(Ixx - Iyy, 2Ixy)) of the PSF model "
+            "deemed good enough for further consideration.  Values above this threshold raise "
+            "UnprocessableDataError.",
+    )
+    maxUnNormPsfEllipticityFallback = pexConfig.Field(
+        dtype=float,
+        default=3.8,
+        doc="Fallback maximum unnormalized ellipticity (defined as hypot(Ixx - Iyy, 2Ixy)) of the "
+            "PSF model deemed good enough for further consideration if the current band is not in "
+            "the config.maxUnNormPsfEllipticityPerBand dict.  Values above this threshold "
+            "raise UnprocessableDataError.",
+    )
+    maxPsfEllipticityPerBand = pexConfig.DictField(
+        keytype=str,
+        itemtype=float,
+        default={
+            "u": 0.33,
+            "g": 0.32,
+            "r": 0.35,
+            "i": 0.35,
+            "z": 0.37,
+            "y": 0.32,
+        },
+        doc="Value of the PSF model ellipticity deemed good enough for further consideration, "
+            "regardless of the value of the unnormalized PSF model ellipticity. Values above "
+            "this threshold raise UnprocessableDataError.",
+    )
+    maxPsfEllipticityFallback = pexConfig.Field(
+        dtype=float,
+        default=0.35,
+        doc="Fallback maximum ellipticity of the PSF model deemed good enough for further "
+            "consideration if the current band is not in the config.maxPsfEllipticityPerBand "
+            "dict.  Values above this threshold raise UnprocessableDataError.",
+    )
+
     background = pexConfig.ConfigurableField(
         target=SubtractBackgroundTask,
         doc="Configuration for initial background estimation",
@@ -174,8 +220,9 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
         target=ApplyApCorrTask,
         doc="Subtask to apply aperture corrections"
     )
-    # If doApCorr is False, and the exposure does not have apcorrections already applied, the
-    # active plugins in catalogCalculation almost certainly should not contain the characterization plugin
+    # If doApCorr is False, and the exposure does not have apcorrections
+    # already applied, the active plugins in catalogCalculation almost
+    # certainly should not contain the characterization plugin.
     catalogCalculation = pexConfig.ConfigurableField(
         target=CatalogCalculationTask,
         doc="Subtask to run catalogCalculation plugins on catalog"
@@ -241,8 +288,8 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
     def setDefaults(self):
         super().setDefaults()
         # Just detect bright stars.
-        # The thresholdValue sets the minimum flux in a pixel to be included in the
-        # footprint, while peaks are only detected when they are above
+        # The thresholdValue sets the minimum flux in a pixel to be included
+        # in the footprint, while peaks are only detected when they are above
         # thresholdValue * includeThresholdMultiplier. The low thresholdValue
         # ensures that the footprints are large enough for the noise replacer
         # to mask out faint undetected neighbors that are not to be measured.
@@ -250,18 +297,19 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
         self.detection.includeThresholdMultiplier = 10.0
         # do not deblend, as it makes a mess
         self.doDeblend = False
-        # measure and apply aperture correction; note: measuring and applying aperture
-        # correction are disabled until the final measurement, after PSF is measured
+        # Measure and apply aperture correction; note: measuring and applying
+        # aperture correction are disabled until the final measurement, after
+        # PSF is measured.
         self.doApCorr = True
-        # During characterization, we don't have full source measurement information,
-        # so must do the aperture correction with only psf stars, combined with the
-        # default signal-to-noise cuts in MeasureApCorrTask.
+        # During characterization, we don't have full source measurement
+        # information, so must do the aperture correction with only psf stars,
+        # combined with the default signal-to-noise cuts in MeasureApCorrTask.
         selector = self.measureApCorr.sourceSelector["science"]
         selector.doUnresolved = False
         selector.flags.good = ["calib_psf_used"]
         selector.flags.bad = []
 
-        # minimal set of measurements needed to determine PSF
+        # Minimal set of measurements needed to determine PSF.
         self.measurement.plugins.names = [
             "base_PixelFlags",
             "base_SdssCentroid",
@@ -278,7 +326,7 @@ class CharacterizeImageConfig(pipeBase.PipelineTaskConfig,
         if self.doApCorr and not self.measurePsf:
             raise RuntimeError("Must measure PSF to measure aperture correction, "
                                "because flags determined by PSF measurement are used to identify "
-                               "sources used to measure aperture correction")
+                               "sources used to measure aperture correction.")
 
 
 class CharacterizeImageTask(pipeBase.PipelineTask):
@@ -305,21 +353,25 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
     CharacterizeImageTask has a debug dictionary with the following keys:
 
     frame
-        int: if specified, the frame of first debug image displayed (defaults to 1)
+        int: if specified, the frame of first debug image displayed (defaults
+        to 1).
     repair_iter
-        bool; if True display image after each repair in the measure PSF loop
+        bool; if True display image after each repair in the measure PSF loop.
     background_iter
-        bool; if True display image after each background subtraction in the measure PSF loop
+        bool; if True display image after each background subtraction in the
+        measure PSF loop.
     measure_iter
-        bool; if True display image and sources at the end of each iteration of the measure PSF loop
-        See `~lsst.meas.astrom.displayAstrometry` for the meaning of the various symbols.
+        bool; if True display image and sources at the end of each iteration
+        of the measure PSF loop. See `~lsst.meas.astrom.displayAstrometry` for
+        the meaning of the various symbols.
     psf
         bool; if True display image and sources after PSF is measured;
-        this will be identical to the final image displayed by measure_iter if measure_iter is true
+        this will be identical to the final image displayed by measure_iter if
+        measure_iter is true.
     repair
-        bool; if True display image and sources after final repair
+        bool; if True display image and sources after final repair.
     measure
-        bool; if True display image and sources after final measurement
+        bool; if True display image and sources after final measurement.
     """
 
     ConfigClass = CharacterizeImageConfig
@@ -367,8 +419,10 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         """Characterize a science image.
 
         Peforms the following operations:
-        - Iterate the following config.psfIterations times, or once if config.doMeasurePsf false:
-            - detect and measure sources and estimate PSF (see detectMeasureAndEstimatePsf for details)
+        - Iterate the following config.psfIterations times, or once if
+          config.doMeasurePsf false:
+            - detect and measure sources and estimate PSF (see
+              detectMeasureAndEstimatePsf for details)
         - interpolate over cosmic rays
         - perform final measurement
 
@@ -393,7 +447,8 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
             ``background``
                Model of subtracted background (`lsst.afw.math.BackgroundList`).
             ``psfCellSet``
-               Spatial cells of PSF candidates (`lsst.afw.math.SpatialCellSet`).
+               Spatial cells of PSF candidates
+               (`lsst.afw.math.SpatialCellSet`).
             ``characterized``
                Another reference to ``exposure`` for compatibility.
             ``backgroundModel``
@@ -403,6 +458,10 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         ------
         RuntimeError
             Raised if PSF sigma is NaN.
+        UnprocessableDataError
+            Raised if the unnormalized model PSF ellipticity is greater than
+            maxUnNormPsfEllipticity or the model PSF ellipticity is greater
+            than maxPsfEllipticity.
         """
         self._frame = self._initialFrame  # reset debug display frame
 
@@ -423,31 +482,63 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
                 idGenerator=idGenerator,
                 background=background,
             )
-
             psf = dmeRes.exposure.getPsf()
             # Just need a rough estimate; average positions are fine
             psfAvgPos = psf.getAveragePosition()
-            psfSigma = psf.computeShape(psfAvgPos).getDeterminantRadius()
+            psfShape = psf.computeShape(psfAvgPos)
+            psfSigma = psfShape.getDeterminantRadius()
+            psfE1 = (psfShape.getIxx() - psfShape.getIyy())/(psfShape.getIxx() + psfShape.getIyy())
+            psfE2 = 2.0*psfShape.getIxy()/(psfShape.getIxx() + psfShape.getIyy())
+            psfE = np.sqrt(psfE1**2.0 + psfE2**2.0)
+            unNormPsfE = np.hypot(psfShape.getIxx() - psfShape.getIyy(), 2.0*psfShape.getIxy())
+
             psfDimensions = psf.computeImage(psfAvgPos).getDimensions()
             medBackground = np.median(dmeRes.background.getImage().getArray())
-            self.log.info("iter %s; PSF sigma=%0.4f, dimensions=%s; median background=%0.2f",
-                          i + 1, psfSigma, psfDimensions, medBackground)
+            self.log.info(
+                "iter %s: PSF sigma=%0.4f, psfE=%.3f, unNormPsfE=%.2f, dimensions=%s, "
+                "median background=%0.2f",
+                i + 1, psfSigma, psfE, unNormPsfE, psfDimensions, medBackground)
             if np.isnan(psfSigma):
                 raise RuntimeError("PSF sigma is NaN, cannot continue PSF determination.")
+        band = exposure.filter.bandLabel
+        if band in self.config.maxUnNormPsfEllipticityPerBand:
+            maxUnNormPsfEllipticity = self.config.maxUnNormPsfEllipticityPerBand[band]
+        else:
+            maxUnNormPsfEllipticity = self.config.maxUnNormPsfEllipticityFallback
+            self.log.warning(
+                f"Band {band} was not included in self.config.maxUnNormPsfEllipticityPerBand. "
+                f"Setting maxUnNormPsfEllipticity to fallback value of {maxUnNormPsfEllipticity}."
+            )
+        if band in self.config.maxPsfEllipticityPerBand:
+            maxPsfEllipticity = self.config.maxPsfEllipticityPerBand[band]
+        else:
+            maxPsfEllipticity = self.config.maxPsfEllipticityFallback
+            self.log.warning(
+                f"Band {band} was not included in self.config.maxPsfEllipticityPerBand. "
+                f"Setting maxUnNormPsfEllipticity to fallback value of {maxPsfEllipticity:.2f}."
+            )
+
+        if unNormPsfE > maxUnNormPsfEllipticity or psfE > maxPsfEllipticity:
+            raise pipeBase.UnprocessableDataError(
+                "Either the unnormalized model PSF ellipticity is greater than the maximum allowed "
+                f"for band {band} ({maxUnNormPsfEllipticity:.2f}) or the model PSF ellipticity "
+                f"is greater than the maximum allowed ({maxPsfEllipticity:.2f}) "
+                f"(unNormPsfE={unNormPsfE:.2f}, psfE={psfE:.2f})"
+            )
 
         self.display("psf", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 
-        # perform final repair with final PSF
+        # Perform final repair with final PSF.
         self.repair.run(exposure=dmeRes.exposure)
         self.display("repair", exposure=dmeRes.exposure, sourceCat=dmeRes.sourceCat)
 
-        # mask streaks
+        # Mask streaks.
         # TODO: Remove in DM-44658, streak masking to happen only in ip_diffim
         if self.config.doMaskStreaks:
             _ = self.maskStreaks.run(dmeRes.exposure)
 
-        # perform final measurement with final PSF, including measuring and applying aperture correction,
-        # if wanted
+        # Perform final measurement with final PSF, including measuring and
+        # applying aperture correction, if wanted.
         self.measurement.run(measCat=dmeRes.sourceCat, exposure=dmeRes.exposure,
                              exposureId=idGenerator.catalog_id)
 
@@ -475,7 +566,8 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
                 # downstream.
                 dmeRes.exposure.info.setApCorrMap(None)
             else:
-                # Need to merge the aperture correction map from the normalization.
+                # Need to merge the aperture correction map from the
+                # normalization.
                 if normApCorrMap:
                     for key in normApCorrMap:
                         apCorrMap[key] = normApCorrMap[key]
@@ -503,12 +595,13 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
         Performs the following operations:
 
         - if config.doMeasurePsf or not exposure.hasPsf():
-
-            - install a simple PSF model (replacing the existing one, if need be)
+            - install a simple PSF model (replacing the existing one, if
+               need be)
 
         - interpolate over cosmic rays with keepCRs=True
         - estimate background and subtract it from the exposure
-        - detect, deblend and measure sources, and subtract a refined background model;
+        - detect, deblend and measure sources, and subtract a refined
+           background model;
         - if config.doMeasurePsf:
             - measure PSF
 
@@ -533,19 +626,21 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
             ``background``
                Model of subtracted background (`lsst.afw.math.BackgroundList`).
             ``psfCellSet``
-               Spatial cells of PSF candidates (`lsst.afw.math.SpatialCellSet`).
+               Spatial cells of PSF candidates
+               (`lsst.afw.math.SpatialCellSet`).
 
         Raises
         ------
         LengthError
             Raised if there are too many CR pixels.
         """
-        # install a simple PSF model, if needed or wanted
+        # Install a simple PSF model, if needed or wanted.
         if not exposure.hasPsf() or (self.config.doMeasurePsf and self.config.useSimplePsf):
             self.log.info("PSF estimation initialized with 'simple' PSF")
             self.installSimplePsf.run(exposure=exposure)
 
-        # run repair, but do not interpolate over cosmic rays (do that elsewhere, with the final PSF model)
+        # Run repair, but do not interpolate over cosmic rays (do that
+        # elsewhere, with the final PSF model).
         if self.config.requireCrForPsf:
             self.repair.run(exposure=exposure, keepCRs=True)
         else:
@@ -572,7 +667,7 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
 
         if self.config.doDeblend:
             self.deblend.run(exposure=exposure, sources=sourceCat)
-            # We need the output catalog to be contiguous for further processing.
+            # The output catalog needs to be contiguous for further processing.
             if not sourceCat.isContiguous():
                 sourceCat = sourceCat.copy(deep=True)
 
