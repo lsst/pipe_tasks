@@ -25,6 +25,7 @@ import tempfile
 
 import astropy.units as u
 from astropy.coordinates import SkyCoord
+import copy
 import numpy as np
 
 import lsst.afw.image as afwImage
@@ -82,7 +83,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.truth_exposure, self.truth_cat = dataset.realize(noise=noise, schema=schema)
         # Add in a significant background, so we can test that the output
         # background is self-consistent with the calibrated exposure.
-        self.truth_exposure.image += 500
+        self.background_level = 500.0
+        self.truth_exposure.image += self.background_level
         # To make it look like a version=1 (nJy fluxes) refcat
         self.truth_cat = self.truth_exposure.photoCalib.calibrateCatalog(self.truth_cat)
         self.ref_loader = testUtils.MockReferenceObjectLoaderFromMemory([self.truth_cat])
@@ -440,6 +442,56 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
             calibrate._match_psf_stars(psf_stars, stars)
         self.assertEqual(cm.exception.metadata["n_psf_stars"], 2)
         self.assertEqual(cm.exception.metadata["n_stars"], 5)
+
+    def test_calibrate_image_illumcorr(self):
+        """Test running through with an illumination correction."""
+        config = copy.copy(self.config)
+        config.do_illumination_correction = True
+        config.psf_subtract_background.doApplyFlatBackgroundRatio = True
+        config.psf_detection.doApplyFlatBackgroundRatio = True
+        config.star_detection.doApplyFlatBackgroundRatio = True
+
+        calibrate = CalibrateImageTask(config=config)
+        calibrate.astrometry.setRefObjLoader(self.ref_loader)
+        calibrate.photometry.match.setRefObjLoader(self.ref_loader)
+
+        # Assume that the exposure has been flattened by a flat-flat.
+        background_flat = self.exposure.clone()
+        background_flat.image.array[:, :] = 1.0
+        background_flat.mask.array[:, :] = 0
+        background_flat.variance.array[:, :] = 0.0
+
+        # And create an illumination correction of 1.1.
+        illum_corr_value = 1.1
+        illumination_correction = self.exposure.clone()
+        illumination_correction.image.array[:, :] = illum_corr_value
+        illumination_correction.mask.array[:, :] = 0
+        illumination_correction.variance.array[:, :] = 0.0
+
+        result = calibrate.run(
+            exposures=self.exposure,
+            id_generator=self.id_generator,
+            background_flat=background_flat,
+            illumination_correction=illumination_correction,
+        )
+
+        # We divide the image by the illumination correction, but the reference
+        # sources stay the same, so the applied photocalib will increase by
+        # the illum_corr_value.
+        # Tolerance is the same as the direct test with no illumination
+        # correction.
+        self.assertFloatsAlmostEqual(
+            result.applied_photo_calib.getCalibrationMean(),
+            self.photo_calib * illum_corr_value,
+            rtol=1e-2,
+        )
+
+        self.assertEqual(len(result.background), 4)
+        self.assertFloatsAlmostEqual(
+            np.median(result.background.getImage().array),
+            result.applied_photo_calib.getCalibrationMean() * self.background_level,
+            rtol=1e-3,
+        )
 
 
 class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
