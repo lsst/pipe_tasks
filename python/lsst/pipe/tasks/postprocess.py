@@ -373,6 +373,16 @@ class WriteRecalibratedSourceTableConnections(WriteSourceTableConnections,
         dimensions=("instrument", "visit",),
     )
 
+    def __init__(self, config):
+        # We don't want the input catalog here to be an initial existence
+        # constraint in QG generation, because that can unfortunately limit the
+        # set of data IDs of inputs to other tasks, even those that run earlier
+        # (e.g. updateVisitSummary), when the input 'src' catalog is not
+        # produced.  It's safer to just use 'visitSummary' existence as an
+        # initial constraint, and then let the graph prune out the detectors
+        # that don't have a 'src' for this task only.
+        self.catalog = dataclasses.replace(self.catalog, deferGraphConstraint=True)
+
 
 class WriteRecalibratedSourceTableConfig(WriteSourceTableConfig,
                                          pipelineConnections=WriteRecalibratedSourceTableConnections):
