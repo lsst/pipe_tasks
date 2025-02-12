@@ -745,6 +745,17 @@ class RADecCovColumn(Column):
         return output
 
 
+class MultibandColumn(Column):
+    """A column with a band in a multiband table."""
+    def __init__(self, col, band_to_check, **kwargs):
+        self._band_to_check = band_to_check
+        super().__init__(col=col, **kwargs)
+
+    @property
+    def band_to_check(self):
+        return self._band_to_check
+
+
 class HtmIndex20(Functor):
     """Compute the level 20 HtmIndex for the catalog.
 
