@@ -25,44 +25,46 @@ system object caching/retrieval code.
 Will compute the location for of known SSObjects within a visit-detector combination.
 """
 
-__all__ = ["MPSkyEphemerisQueryConfig", "MPSkyEphemerisQueryTask"]
+__all__ = ["MPSkyEphemerisQueryDRPConfig", "MPSkyEphemerisQueryDRPTask"]
 
 
 import os
 import pandas as pd
+import numpy as np
 import pyarrow as pa
 import requests
 
-from lsst.ap.association.utils import getMidpointFromTimespan, objID_to_ssObjectID
-from lsst.geom import SpherePoint
+from lsst.geom import SpherePoint, degrees
 import lsst.pex.config as pexConfig
+from lsst.pipe.tasks.associationUtils import obj_id_to_ss_object_id
+from lsst.sphgeom import ConvexPolygon
 from lsst.utils.timer import timeMethod
 
 from lsst.pipe.base import connectionTypes, NoWorkFound, PipelineTask, \
     PipelineTaskConfig, PipelineTaskConnections, Struct
 
 
-class MPSkyEphemerisQueryConnections(PipelineTaskConnections,
-                                     dimensions=("instrument",
-                                                 "visit", "detector")):
+class MPSkyEphemerisQueryDRPConnections(PipelineTaskConnections,
+                                        dimensions=("instrument",
+                                                    "visit", "detector")):
     finalVisitSummary = connectionTypes.Input(
         doc="Summary of visit information including ra, dec, and time",
         name="finalVisitSummary",
         storageClass="ExposureCatalog",
-        dimensions={"instrument", "visit", "detector"},
+        dimensions={"instrument", "visit"},
     )
 
     ssObjects = connectionTypes.Output(
         doc="MPSky-provided Solar System objects observable in this detector-visit",
-        name="preloaded_SsObjects",
+        name="preloaded_DRP_SsObjects",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector"),
     )
 
 
-class MPSkyEphemerisQueryConfig(
+class MPSkyEphemerisQueryDRPConfig(
         PipelineTaskConfig,
-        pipelineConnections=MPSkyEphemerisQueryConnections):
+        pipelineConnections=MPSkyEphemerisQueryDRPConnections):
     observerCode = pexConfig.Field(
         dtype=str,
         doc="IAU Minor Planet Center observer code for queries "
@@ -87,18 +89,18 @@ class MPSkyEphemerisQueryConfig(
     )
 
 
-class MPSkyEphemerisQueryTask(PipelineTask):
+class MPSkyEphemerisQueryDRPTask(PipelineTask):
     """Task to query the MPSky service and retrieve the solar system objects
     that are observable within the input visit.
     """
-    ConfigClass = MPSkyEphemerisQueryConfig
-    _DefaultName = "mpSkyEphemerisQuery"
+    ConfigClass = MPSkyEphemerisQueryDRPConfig
+    _DefaultName = "mpSkyEphemerisQueryDRP"
 
     def runQuantum(
         self,
-        butlerQC: QuantumContext,
-        inputRefs: InputQuantizedConnection,
-        outputRefs: OutputQuantizedConnection,
+        butlerQC,
+        inputRefs,
+        outputRefs,
     ):
         """Do butler IO and transform to provide in memory
         objects for tasks `~Task.run` method.
@@ -123,12 +125,11 @@ class MPSkyEphemerisQueryTask(PipelineTask):
         """
         inputs = butlerQC.get(inputRefs)
         detector = butlerQC.quantum.dataId["detector"]
-        outputs = self.run(**inputs, detector)
+        outputs = self.run(detector, **inputs)
         butlerQC.put(outputs, outputRefs)
 
-
     @timeMethod
-    def run(self, finalVisitSummary, detector):
+    def run(self, detector, finalVisitSummary):
         """Parse the information on the current visit and retrieve the
         observable solar system objects from MPSky.
 
@@ -169,12 +170,12 @@ class MPSkyEphemerisQueryTask(PipelineTask):
         for corner in corners:
             corner_coords.append(SpherePoint(corner[0], corner[1], units=degrees).getVector())
         detectorPolygon = ConvexPolygon(corner_coords)
-        radius = detectorPolygon.getBoundingCircle().getOpeningAngle().asDegrees()
+        expRadius = detectorPolygon.getBoundingCircle().getOpeningAngle().asDegrees()
         expMidPointEPOCH = visitInfo.date.toAstropy().mjd
 
         # MPSky service query
         mpSkyURL = os.environ.get('MP_SKY_URL', self.config.mpSkyFallbackURL)
-        mpSkySsObjects = self._mpSkyConeSearch(expCenter, expMidPointEPOCH,
+        mpSkySsObjects = self._mpSkyConeSearch(ra, dec, expMidPointEPOCH,
                                                expRadius + self.config.queryBufferRadiusDegrees, mpSkyURL)
         return Struct(
             ssObjects=mpSkySsObjects,
@@ -219,7 +220,7 @@ class MPSkyEphemerisQueryTask(PipelineTask):
         t_max = columns["tmax"].to_numpy()
         return objID, ra, dec, object_polynomial, observer_polynomial, t_min, t_max
 
-    def _mpSkyConeSearch(self, expCenter, epochMJD, queryRadius, mpSkyURL):
+    def _mpSkyConeSearch(self, fieldRA, fieldDec, epochMJD, queryRadius, mpSkyURL):
         """Query MPSky ephemeris service for objects near the expected detector position
 
         Parameters
@@ -239,9 +240,6 @@ class MPSkyEphemerisQueryTask(PipelineTask):
             DataFrame with Solar System Object information and RA/DEC position
             within the visit.
         """
-        fieldRA = expCenter.getRa().asDegrees()
-        fieldDec = expCenter.getDec().asDegrees()
-
         params = {
             "t": epochMJD,
             "ra": fieldRA,
@@ -271,7 +269,7 @@ class MPSkyEphemerisQueryTask(PipelineTask):
             mpSkySsObjects['tmax'] = tmax
             mpSkySsObjects['dec'] = dec
             mpSkySsObjects['Err(arcsec)'] = 2
-            mpSkySsObjects['ssObjectId'] = [objID_to_ssObjectID(v) for v in mpSkySsObjects['ObjID'].values]
+            mpSkySsObjects['ssObjectId'] = [obj_id_to_ss_object_id(v) for v in mpSkySsObjects['ObjID'].values]
             nFound = len(mpSkySsObjects)
 
             if nFound == 0:
