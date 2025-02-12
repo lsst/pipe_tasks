@@ -162,6 +162,7 @@ class FinalizeCharacterizationConfig(pipeBase.PipelineTaskConfig,
         source_selector.signalToNoise.errField = 'base_GaussianFlux_instFluxErr'
 
         source_selector.flags.bad = ['base_PixelFlags_flag_edge',
+                                     'base_PixelFlags_flag_nodata',
                                      'base_PixelFlags_flag_interpolatedCenter',
                                      'base_PixelFlags_flag_saturatedCenter',
                                      'base_PixelFlags_flag_crCenter',
