@@ -1011,6 +1011,25 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
 
     def run(self, handle, funcs=None, dataId=None, band=None, **kwargs):
         # NOTE: band kwarg is ignored here.
+        # TODO: Document and improve funcs argument usage in DM-48895
+        # self.getAnalysis only supports list, dict and CompositeFunctor
+        if isinstance(funcs, CompositeFunctor):
+            funcDict_in = funcs.funcDict
+        elif isinstance(funcs, dict):
+            funcDict_in = funcs
+        elif isinstance(funcs, list):
+            funcDict_in = {idx: v for idx, v in enumerate(funcs)}
+        else:
+            raise TypeError(f"Unsupported {type(funcs)=}")
+
+        handles_multi = {}
+        funcDicts_multiband = {}
+        for dataset in self.datasets_multiband:
+            if (handle_multi := kwargs.get(f"handle_{dataset}")) is None:
+                raise RuntimeError(f"Missing required handle_{dataset} kwarg")
+            handles_multi[dataset] = handle_multi
+            funcDicts_multiband[dataset] = {}
+
         dfDict = {}
         analysisDict = {}
         templateDf = pd.DataFrame()
@@ -1022,9 +1041,8 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
 
         # Split up funcs for per-band and multiband tables
         funcDict_band = {}
-        funcDicts_multiband = {dataset: {} for dataset in self.datasets_multiband}
 
-        for name, func in funcs.funcDict.items():
+        for name, func in funcDict_in.items():
             if func.dataset in funcDicts_multiband:
                 if band := getattr(func, "band_to_check", None):
                     if band not in outputBands:
@@ -1088,7 +1106,7 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
 
         # Apply per-dataset functors to each multiband dataset in turn
         for dataset, funcDict in funcDicts_multiband.items():
-            handle_multiband = kwargs[f"handle_{dataset}"]
+            handle_multiband = handles_multi[dataset]
             df_dataset = handle_multiband.get()
             if isinstance(df_dataset, astropy.table.Table):
                 df_dataset = df_dataset.to_pandas().set_index(name_index, drop=False)
@@ -1108,7 +1126,13 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
                 columns_drop = [column for column in self.config.columnsFromDataId if column in result.df]
                 if columns_drop:
                     result.df.drop(columns_drop, axis=1, inplace=True)
-            df = pd.concat([df, result.df], axis=1)
+            # Make the same multi-index for the multiband table if needed
+            # This might end up making copies, one of several reasons to avoid
+            # using multilevel indexes, or DataFrames at all
+            to_concat = pd.concat(
+                {band: result.df for band in self.config.outputBands}, axis=1, names=["band", "column"]
+            ) if self.config.multilevelOutput else result.df
+            df = pd.concat([df, to_concat], axis=1)
             analysisDict[dataset] = result.analysis
             del result
 
