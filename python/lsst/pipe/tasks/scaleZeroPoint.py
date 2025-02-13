@@ -19,6 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+
+from __future__ import annotations
+
 __all__ = ["ImageScaler", "SpatialImageScaler", "ScaleZeroPointTask"]
 
 import numpy
@@ -27,6 +30,7 @@ import lsst.afw.image as afwImage
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.selectImages import BaseSelectImagesTask
+from deprecated.sphinx import deprecated
 
 
 class ImageScaler:
@@ -42,6 +46,13 @@ class ImageScaler:
 
     def __init__(self, scale=1.0):
         self._scale = scale
+
+    # TODO: Remove this property in DM-49402.
+    @property
+    @deprecated("This property will be removed after v30.", version="v30", category=FutureWarning)
+    def scale(self) -> float:
+        """Scale that it applies to a specified image."""
+        return self._scale
 
     def scaleMaskedImage(self, maskedImage):
         """Scale the specified image or masked image in place.
@@ -89,6 +100,13 @@ class SpatialImageScaler(ImageScaler):
         self._xList = xList
         self._yList = yList
         self._scaleList = scaleList
+
+    # TODO: Remove this property in DM-49402.
+    @property
+    @deprecated("This property will be removed after v30.", version="v30", category=FutureWarning)
+    def scale(self) -> float:
+        """Mean scale that it applies to a specified image."""
+        return numpy.mean(self._scaleList)
 
     def scaleMaskedImage(self, maskedImage):
         """Apply scale correction to the specified masked image.
