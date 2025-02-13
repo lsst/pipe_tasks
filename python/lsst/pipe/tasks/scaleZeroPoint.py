@@ -19,6 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+
+from __future__ import annotations
+
 __all__ = ["ImageScaler", "SpatialImageScaler", "ScaleZeroPointTask"]
 
 import numpy
@@ -42,6 +45,11 @@ class ImageScaler:
 
     def __init__(self, scale=1.0):
         self._scale = scale
+
+    @property
+    def scale(self) -> float:
+        """Scale that it applies to a specified image."""
+        return self._scale
 
     def scaleMaskedImage(self, maskedImage):
         """Scale the specified image or masked image in place.
