@@ -56,10 +56,10 @@ class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
         multiple=True
     )
     ssObjectTableRefs = pipeBase.connectionTypes.Input(
-        doc="TODO. Old: Catalog of SolarSolarSystem objects expected to be observable in "
-            "this detectorVisit.",
+        doc="Reference to catalogs of SolarSolarSystem objects expected to be "
+            "observable in each (visit, detector).",
         name="preloaded_DRP_SsObjects",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument", "visit", "detector"),
         minimum=0,
         deferLoad=True,
@@ -73,7 +73,7 @@ class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
         dimensions=("skymap", ),
     )
     visitInfoRefs = pipeBase.connectionTypes.Input(
-        doc="TODO",
+        doc="Reference to visitInfo of each exposure",
         name="calexp.visitInfo",
         storageClass="VisitInfo",
         dimensions=("instrument", "visit", "detector"),
@@ -81,7 +81,7 @@ class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
         multiple=True
     )
     bboxRefs = pipeBase.connectionTypes.Input(
-        doc="TODO",
+        doc="Reference to bbox of each exposure",
         name="calexp.bbox",
         storageClass="Box2I",
         dimensions=("instrument", "visit", "detector"),
@@ -89,7 +89,7 @@ class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
         multiple=True
     )
     wcsRefs = pipeBase.connectionTypes.Input(
-        doc="TODO",
+        doc="Reference to wcs of each exposure",
         name="calexp.wcs",
         storageClass="Wcs",
         dimensions=("instrument", "visit", "detector"),
@@ -207,15 +207,16 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         ----------
         diaSourceTables : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             Set of DiaSource catalogs potentially covering this patch/tract.
-        ssObjectTableRefs: TODO
+        ssObjectTableRefs: `list` of `lsst.daf.butler.DeferredDatasetHandle`
+            Set of known SSO ephemerides potentially covering this patch/tract.
         skyMap : `lsst.skymap.BaseSkyMap`
             SkyMap defining the patch/tract
-        visitInfoRefs :
-            TODO
-        bboxRefs :
-            TODO
-        wcsRefs :
-            TODO
+        visitInfoRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
+            visitInfos of exposures potentially covering this patch/tract
+        bboxRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
+            bboxes of exposures potentially covering this patch/tract
+        wcsRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
+            WCSs of exposures potentially covering this patch/tract
         tractId : `int`
             Id of current tract being processed.
         patchId : `int`
@@ -270,7 +271,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 ssCatRef = ssObjectIdDict[key]
                 ssCat = ssCatRef.get()
                 ssoAssocResult = self.solarSystemAssociator.run(
-                    diaCat,
+                    tb.Table.from_pandas(diaCat),
                     ssCat,
                     visitInfoIdDict[key].get(),
                     bboxIdDict[key].get(),
@@ -280,33 +281,36 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 associatedSsSources = ssoAssocResult.associatedSsSources
                 ssInTractPatch = self._trimToPatch(associatedSsSources.to_pandas(),
                                                    innerPatchBox,
+                                                   innerTractSkyRegion,
                                                    skyInfo.wcs)
                 associatedSsSources = associatedSsSources[ssInTractPatch]
 
                 unassociatedSsObjects = ssoAssocResult.unassociatedSsObjects
                 ssObjInTractPatch = self._trimToPatch(unassociatedSsObjects.to_pandas(),
                                                       innerPatchBox,
+                                                      innerTractSkyRegion,
                                                       skyInfo.wcs)
                 unassociatedSsObjects = unassociatedSsObjects[ssObjInTractPatch]
                 nSsSrc = ssInTractPatch.sum()
                 nSsObj = ssObjInTractPatch.sum()
-                diaCat = ssoAssocResult.unAssocDiaSources
+                diaCat = ssoAssocResult.unAssocDiaSources.to_pandas()
 
             diaInTractPatch = self._trimToPatch(diaCat,
                                                 innerPatchBox,
+                                                innerTractSkyRegion,
                                                 skyInfo.wcs)
             diaCat = diaCat[diaInTractPatch]
 
-            nDiaSrc = diaInTractPatch.sum() + nSsSrc
+            nDiaSrc = diaInTractPatch.sum()
 
             self.log.info(
                 "Read DiaSource catalog of length %i from visit %i, "
                 "detector %i. Found %i sources within the patch/tract "
-                "footprint, including %i associated with solar system objects.",
+                "footprint, including %i associated with SSOs.",
                 len(diaCat), diaCatRef.dataId["visit"],
-                diaCatRef.dataId["detector"], nDiaSrc, nSsSrc)
+                diaCatRef.dataId["detector"], nDiaSrc + nSsSrc, nSsSrc)
 
-            if nDiaSrc >= 0:
+            if nDiaSrc > 0:
                 diaSourceHistory.append(diaCat)
             if nSsSrc > 0:
                 ssSourceHistory.append(associatedSsSources)
@@ -318,21 +322,26 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         else:
             diaSourceHistoryCat = diaCat.drop(diaCat.index)
         if self.config.doSolarSystemAssociation:
+            nSsSrc, nSsObj = 0, 0
             if ssSourceHistory:
                 ssSourceHistoryCat = tb.vstack(ssSourceHistory)
+                nSsSrc = len(ssSourceHistoryCat)
             else:
                 ssSourceHistoryCat = associatedSsSources  # Empty table?
             if unassociatedSsObjectHistory:
                 unassociatedSsObjectHistoryCat = tb.vstack(unassociatedSsObjectHistory)
+                nSsObj = len(unassociatedSsObjectHistoryCat)
             else:
                 unassociatedSsObjectHistoryCat = unassociatedSsObjects  # Empty table?
-        if (not diaSourceHistory) and not (self.doSolarSystemAssociation and ssSourceHistory):
+            self.log.info("Found %i ssSources and %i missing ssObjects in patch %i, tract %i",
+                          nSsSrc, nSsObj, patchId, tractId)
+
+        if (not diaSourceHistory) and not (self.config.doSolarSystemAssociation and ssSourceHistory):
             if not self.config.doWriteEmptyTables:
                 raise pipeBase.NoWorkFound("Found no overlapping DIASources to associate.")
 
         self.log.info("Found %i DiaSources overlapping patch %i, tract %i",
                       len(diaSourceHistoryCat), patchId, tractId)
-        # TODO add logging
 
         assocResult = self.associator.run(diaSourceHistoryCat, idGenerator=idGenerator)
 
