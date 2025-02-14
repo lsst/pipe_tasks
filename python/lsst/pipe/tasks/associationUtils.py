@@ -261,4 +261,3 @@ def ssObjectID_to_objID(ssObjectID):
 
     objID = ''.join([chr((ssObjectID >> (8 * i)) % 256) for i in reversed(range(0, 7))])
     return objID, ssObjectID >> (8 * 7) % 256
-
