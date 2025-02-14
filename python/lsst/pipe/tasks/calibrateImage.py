@@ -48,8 +48,8 @@ class NoPsfStarsToStarsMatchError(pipeBase.AlgorithmError):
     """
     def __init__(self, *, n_psf_stars, n_stars):
         msg = (f"No psf stars out of {n_psf_stars} matched {n_stars} calib stars."
-               " Downstream processes probably won't have useful stars in this case."
-               " Is `star_source_selector` too strict or is this a bad image?")
+               " Downstream processes probably won't have useful {calib_type} stars in this case."
+               " Is `star_selector` too strict or is this a bad image?")
         super().__init__(msg)
         self.n_psf_stars = n_psf_stars
         self.n_stars = n_stars
@@ -316,14 +316,14 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         # like CRs for very good seeing images.
         self.install_simple_psf.fwhm = 4
 
-        # S/N>=50 sources for PSF determination, but detection to S/N=5.
+        # S/N>=50 sources for PSF determination, but detection to S/N=10.
         # The thresholdValue sets the minimum flux in a pixel to be included in the
         # footprint, while peaks are only detected when they are above
         # thresholdValue * includeThresholdMultiplier. The low thresholdValue
         # ensures that the footprints are large enough for the noise replacer
         # to mask out faint undetected neighbors that are not to be measured.
-        self.psf_detection.thresholdValue = 5.0
-        self.psf_detection.includeThresholdMultiplier = 10.0
+        self.psf_detection.thresholdValue = 10.0
+        self.psf_detection.includeThresholdMultiplier = 5.0
         # TODO investigation: Probably want False here, but that may require
         # tweaking the background spatial scale, to make it small enough to
         # prevent extra peaks in the wings of bright objects.
@@ -402,7 +402,11 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
 
         # Only reject sky sources; we already selected good stars.
         self.astrometry.sourceSelector["science"].doFlags = True
-        self.astrometry.sourceSelector["science"].flags.bad = ["sky_source"]
+        self.astrometry.sourceSelector["science"].flags.good = ["calib_psf_candidate"]
+        self.astrometry.sourceSelector["science"].flags.bad = []
+        self.astrometry.sourceSelector["science"].doUnresolved = False
+        self.astrometry.sourceSelector["science"].doIsolated = False
+        self.astrometry.sourceSelector["science"].doRequirePrimary = False
         self.photometry.match.sourceSelection.doFlags = True
         self.photometry.match.sourceSelection.flags.bad = ["sky_source"]
         # Unset the (otherwise reasonable, but we've already made the
@@ -482,20 +486,23 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.makeSubtask("psf_repair")
         self.makeSubtask("psf_subtract_background")
         self.psf_schema = afwTable.SourceTable.makeMinimalSchema()
+        afwTable.CoordKey.addErrorFields(self.psf_schema)
         self.makeSubtask("psf_detection", schema=self.psf_schema)
         self.makeSubtask("psf_source_measurement", schema=self.psf_schema)
         self.makeSubtask("psf_measure_psf", schema=self.psf_schema)
         self.makeSubtask("psf_normalized_calibration_flux", schema=self.psf_schema)
 
         self.makeSubtask("measure_aperture_correction", schema=self.psf_schema)
+        self.makeSubtask("astrometry", schema=self.psf_schema)
 
         # star measurement subtasks
         if initial_stars_schema is None:
             initial_stars_schema = afwTable.SourceTable.makeMinimalSchema()
 
-        # These fields let us track which sources were used for psf and
-        # aperture correction calculations.
+        # These fields let us track which sources were used for psf modeling,
+        # astrometric fitting, and aperture correction calculations.
         self.psf_fields = ("calib_psf_candidate", "calib_psf_used", "calib_psf_reserved",
+                           "calib_astrometry_used",
                            # TODO DM-39203: these can be removed once apcorr is gone.
                            "apcorr_slot_CalibFlux_used", "apcorr_base_GaussianFlux_used",
                            "apcorr_base_PsfFlux_used")
@@ -514,10 +521,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.makeSubtask("star_catalog_calculation", schema=initial_stars_schema)
         self.makeSubtask("star_set_primary_flags", schema=initial_stars_schema, isSingleFrame=True)
         self.makeSubtask("star_selector")
-
-        self.makeSubtask("astrometry", schema=initial_stars_schema)
         self.makeSubtask("photometry", schema=initial_stars_schema)
-
         self.makeSubtask("compute_summary_stats")
 
         # The final catalog will have calibrated flux columns, which we add to
@@ -655,21 +659,33 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             have_fit_psf = True
             self._measure_aperture_correction(result.exposure, result.psf_stars_footprints)
             result.psf_stars = result.psf_stars_footprints.asAstropy()
-
-            result.stars_footprints = self._find_stars(result.exposure, result.background, id_generator)
-            self._match_psf_stars(result.psf_stars_footprints, result.stars_footprints)
-            summary_stat_catalog = result.stars_footprints
-            result.stars = result.stars_footprints.asAstropy()
-            self.metadata["star_count"] = np.sum(~result.stars["sky_source"])
-
+            # Run astrometry using PSF candidate stars
             astrometry_matches, astrometry_meta = self._fit_astrometry(
-                result.exposure, result.stars_footprints
+                result.exposure, result.psf_stars_footprints
             )
-            have_fit_astrometry = True
             self.metadata["astrometry_matches_count"] = len(astrometry_matches)
             if "astrometry_matches" in self.config.optional_outputs:
                 result.astrometry_matches = lsst.meas.astrom.denormalizeMatches(astrometry_matches,
                                                                                 astrometry_meta)
+            result.psf_stars = result.psf_stars_footprints.asAstropy()
+
+            # Run the stars_detection subtask for the photometric calibration.
+            result.stars_footprints = self._find_stars(result.exposure, result.background, id_generator)
+            self._match_psf_stars(result.psf_stars_footprints, result.stars_footprints)
+
+            # Update the source cooordinates with the current wcs.
+            afwTable.updateSourceCoords(result.exposure.wcs, sourceList=result.stars_footprints)
+
+            summary_stat_catalog = result.stars_footprints
+            result.stars = result.stars_footprints.asAstropy()
+            self.metadata["star_count"] = np.sum(~result.stars["sky_source"])
+
+            # Validate the astrometric fit. Send in the stars_footprints
+            # catalog so that its coords get set to NaN if the fit is deemed
+            # a failure.
+            self.astrometry.check(result.exposure, result.stars_footprints, len(astrometry_matches))
+            result.stars = result.stars_footprints.asAstropy()
+            have_fit_astrometry = True
 
             result.stars_footprints, photometry_matches, \
                 photometry_meta, photo_calib = self._fit_photometry(result.exposure, result.stars_footprints)
@@ -894,13 +910,15 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
     def _match_psf_stars(self, psf_stars, stars):
         """Match calibration stars to psf stars, to identify which were psf
-        candidates, and which were used or reserved during psf measurement.
+        candidates, and which were used or reserved during psf measurement
+        and the astrometric fit.
 
         Parameters
         ----------
         psf_stars : `lsst.afw.table.SourceCatalog`
-            PSF candidate stars that were sent to the psf determiner. Used to
-            populate psf-related flag fields.
+            PSF candidate stars that were sent to the psf determiner and
+            used in the astrometric fit. Used to populate psf and astrometry
+            related flag fields.
         stars : `lsst.afw.table.SourceCatalog`
             Stars that will be used for calibration; psf-related fields will
             be updated in-place.
@@ -932,7 +950,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         if (n_matches := len(matches)) == 0:
             raise NoPsfStarsToStarsMatchError(n_psf_stars=len(psf_stars), n_stars=len(stars))
 
-        self.log.info("%d psf stars out of %d matched %d calib stars", n_matches, len(psf_stars), len(stars))
+        self.log.info("%d psf/astrometry stars out of %d matched %d calib stars",
+                      n_matches, len(psf_stars), len(stars))
         self.metadata["matched_psf_star_count"] = n_matches
 
         # Check that no stars sources are listed twice; we already know
