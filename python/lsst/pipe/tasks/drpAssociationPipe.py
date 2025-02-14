@@ -31,7 +31,7 @@ import numpy as np
 import pandas as pd
 
 
-from lsst.ap.association.ssoAssociation import SolarSystemAssociationTask
+from lsst.pipe.tasks.ssoAssociation import SolarSystemAssociationTask
 import lsst.geom as geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
