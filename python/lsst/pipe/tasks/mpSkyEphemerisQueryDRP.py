@@ -34,7 +34,7 @@ import numpy as np
 import pyarrow as pa
 import requests
 
-from lsst.ap.association.utils import objID_to_ssObjectID
+from lsst.pipe.tasks.associationUtils import objID_to_ssObjectID
 from lsst.geom import SpherePoint, degrees
 import lsst.pex.config as pexConfig
 from lsst.sphgeom import ConvexPolygon
