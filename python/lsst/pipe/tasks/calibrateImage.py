@@ -28,6 +28,7 @@ import os
 
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
+import lsst.afw.math as afwMath
 from lsst.ip.diffim.utils import evaluateMaskFraction, populate_sattle_visit_cache
 import lsst.meas.algorithms
 import lsst.meas.algorithms.installGaussianPsf
@@ -248,6 +249,29 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         doc="Task to combine two snaps to make one exposure.",
     )
 
+    do_init_const_background = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Do an initial constant background subtraction whose value is the "
+            " 0.4-precentile of the image array."
+    )
+    init_const_background_percentile = pexConfig.Field(
+        dtype=float,
+        default=0.4,
+        doc="Percentile of the image pixels from which to set the initial "
+            "constant background subtraction value."
+    )
+    maintain_init_const_background = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Do not include the initial constant background subtraction in the "
+            "background list.  The use-case here is for making pretty picutres in "
+            "fields with extended features (e.g. nebulosity) where our standard "
+            "background subtraction has difficulty, so we want to add back all "
+            "but the initial constant level prior to running the warping tasks "
+            "prior to coaddition.  This is NOT recommended for science coadds.",
+    )
+
     # subtasks used during psf characterization
     install_simple_psf = pexConfig.ConfigurableField(
         target=lsst.meas.algorithms.installGaussianPsf.InstallGaussianPsfTask,
@@ -421,6 +445,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         # tweaking the background spatial scale, to make it small enough to
         # prevent extra peaks in the wings of bright objects.
         self.psf_detection.doTempLocalBackground = False
+        self.psf_detection.reEstimateBackground = False
         # NOTE: we do want reEstimateBackground=True in psf_detection, so that
         # each measurement step is done with the best background available.
 
@@ -829,6 +854,19 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 id_generator,
                 background_to_photometric_ratio=result.background_to_photometric_ratio,
             )
+
+            if self.config.do_init_const_background:
+                init_const_bg_obj, pre_detection_threshold_value = self._subtract_initial_constant_background(
+                    result.exposure
+                )
+                self._pre_detection_for_psf_selection(
+                    result.exposure,
+                    pre_detection_threshold_value=pre_detection_threshold_value
+                )
+
+            result.psf_stars_footprints, result.background, _ = self._compute_psf(
+                result.exposure, id_generator,
+            )
             have_fit_psf = True
 
             # Check if all centroids have been flagged. This should happen
@@ -842,6 +880,18 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                     psf_shape_iyy=psf_shape.getIyy(),
                     psf_shape_ixy=psf_shape.getIxy(),
                     psf_size=psf_shape.getDeterminantRadius(),
+                )
+            centroid_flags = result.psf_stars_footprints["slot_Centroid_flag"]
+            self.log.info("result.psf_stars_footprints[slot_Centroid_flag] = %d/%d (%.1f percent flagged)",
+                          sum(centroid_flags), len(centroid_flags),
+                          100*(sum(centroid_flags)/len(centroid_flags)))
+
+            # If desired, include the initial constant background that was
+            # subtracted to the background object list.
+            if self.config.do_init_const_background and not self.config.maintain_init_const_background:
+                result.background.append(
+                    (init_const_bg_obj, afwMath.Interpolate.CONSTANT, afwMath.REDUCE_INTERP_ORDER,
+                     afwMath.ApproximateControl.UNKNOWN, 0, 0, False)
                 )
 
             self._measure_aperture_correction(result.exposure, result.psf_stars_footprints)
@@ -1036,6 +1086,17 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             exposure=exposure,
             backgroundToPhotometricRatio=background_to_photometric_ratio,
         ).background
+
+        if self.config.do_init_const_background:
+            # Clear the detected mask planes from the initial pre-detection
+            # step (having used them above to measure the initial background).
+            detected_mask_planes = ["DETECTED", "DETECTED_NEGATIVE"]
+            mask = exposure.mask
+            for mp in detected_mask_planes:
+                if mp not in mask.getMaskPlaneDict():
+                    mask.addMaskPlane(mp)
+            mask &= ~mask.getPlaneBitMask(detected_mask_planes)
+
         log_psf("Initial PSF:")
         self.psf_repair.run(exposure=exposure, keepCRs=True)
 
@@ -1399,3 +1460,142 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             self.metadata[f"{maskPlane.lower()}_mask_fraction"] = (
                 evaluateMaskFraction(mask, maskPlane)
             )
+
+    def _subtract_initial_constant_background(self, exposure):
+        exp_array = exposure.image.array
+        percentile = self.config.init_const_background_percentile
+        bg_value_to_subtract = max(0, np.percentile(exp_array, percentile, method="linear"))
+        self.log.info("Subtracting constant background equal to percentile = %.1f: %.2f",
+                      percentile, bg_value_to_subtract)
+        exposure.image.array = exposure.image.array - bg_value_to_subtract
+        pre_detection_threshold_value = max(10.0, 0.3*np.sqrt(bg_value_to_subtract))
+
+        # Make a background object of the subtracted constant background to
+        # be optionally appended to the background list.
+        init_const_bg_ctrl = afwMath.BackgroundControl(1, 1)
+        init_const_bg_im = afwImage.ImageF(exposure.getBBox())
+        init_const_bg_im.array[:] = bg_value_to_subtract
+        init_const_bg_obj = afwMath.makeBackground(init_const_bg_im, init_const_bg_ctrl)
+
+        return init_const_bg_obj, pre_detection_threshold_value
+
+    def _pre_detection_for_psf_selection(self, exposure, pre_detection_threshold_value=10.0):
+        # To set low-threshold DETECTION masks prior to initial background
+        # esimation.
+        bad_mask_planes = ["BAD", "EDGE", "NO_DATA"]
+        detected_mask_planes = ["DETECTED", "DETECTED_NEGATIVE"]
+        min_delta = 0.5
+        self.log.info("PSF estimation initialized with 'simple' PSF for preDectection...")
+
+        self.log.info("In pre_detection: pre_threshold value = %.2f ",
+                      pre_detection_threshold_value)
+        self.install_simple_psf.run(exposure=exposure)
+        pre_table = afwTable.SourceTable.make(self.initial_stars_schema.schema)  # , preSourceIdFactory)
+
+        pre_detection_config = lsst.meas.algorithms.SourceDetectionConfig()
+        pre_detection_config.thresholdValue = pre_detection_threshold_value
+        pre_detection_config.thresholdType = "stdev"  # "pixel_stdev"
+        pre_detection_config.reEstimateBackground = False
+        pre_detection_config.doTempLocalBackground = False
+        pre_detection = lsst.meas.algorithms.SourceDetectionTask(config=pre_detection_config)
+
+        pre_detection.run(table=pre_table, exposure=exposure, doSmooth=True)
+        bad_pixel_mask = afwImage.Mask.getPlaneBitMask(bad_mask_planes)
+        n_good_pix = np.sum(exposure.mask.array & bad_pixel_mask == 0)
+        detected_pixel_mask = afwImage.Mask.getPlaneBitMask(detected_mask_planes)
+        n_detected_pix = np.sum((exposure.mask.array & detected_pixel_mask != 0)
+                                & (exposure.mask.array & bad_pixel_mask == 0))
+        detected_fraction = n_detected_pix/n_good_pix
+        self.log.info("Fraction of pixels marked as DETECTED or DETECTED_NEGATIVE in "
+                      "pre_detection = %.5f", detected_fraction)
+
+        pre_detection_threshold_orig = pre_detection_config.thresholdValue
+        fraction_delta = max(min_delta, 0.5*pre_detection_threshold_orig)
+        fraction_delta_orig = fraction_delta
+        n_pre_dyn_det_iter = 0
+        max_pre_dyn_det_iter = 10
+        n_above_max_per_amp = 0
+        no_zero_det_amps = False
+        max_detected_fraction_per_amp = -9.99
+        while n_pre_dyn_det_iter < max_pre_dyn_det_iter and (
+                detected_fraction > 0.96 or n_above_max_per_amp > 2 or not no_zero_det_amps):
+            n_pre_dyn_det_iter += 1
+            if not no_zero_det_amps and detected_fraction < 0.96:
+                fraction_delta = -(max(min_delta, 0.6*np.abs(fraction_delta)))
+            else:
+                fraction_delta = max(
+                    4.0*min_delta, fraction_delta - 0.2*fraction_delta_orig*n_pre_dyn_det_iter
+                )
+            pre_detection_threshold_value += fraction_delta
+            if pre_detection_threshold_value < 1.0:
+                self.log.warning("Can't go any lower: pre_detection_threshold_value = %.2f",
+                                 pre_detection_threshold_value)
+                n_pre_dyn_det_iter = max_pre_dyn_det_iter
+                break
+            pre_detection_config.thresholdValue = pre_detection_threshold_value
+            if detected_fraction > 0.96:
+                self.log.warning("Redoing pre_detection with threshold %.2f to increase the threshold "
+                                 "due to too high DETECTED fraction (%.5f)",
+                                 pre_detection_threshold_value, detected_fraction)
+            else:
+                if not no_zero_det_amps:
+                    self.log.warning("Redoing pre_detection with threshold %.2f due to too low "
+                                     "DETECTED fraction in more than two amp-sized section "
+                                     "of the exposure",
+                                     pre_detection_threshold_value)
+                else:
+                    self.log.warning("Redoing pre_detection with threshold %.2f due to too high "
+                                     "DETECTED fraction in more than two amp-sized section "
+                                     "of the exposure (%.5f)",
+                                     pre_detection_threshold_value, max_detected_fraction_per_amp)
+
+            mask = exposure.mask
+            for mp in detected_mask_planes:
+                if mp not in mask.getMaskPlaneDict():
+                    detected_mask_planes.remove(mp)
+            mask &= ~mask.getPlaneBitMask(detected_mask_planes)
+            pre_table = afwTable.SourceTable.make(self.initial_stars_schema.schema)
+            pre_detection = lsst.meas.algorithms.SourceDetectionTask(config=pre_detection_config)
+            pre_detection.run(table=pre_table, exposure=exposure, doSmooth=True)
+            n_detected_pix = np.sum((exposure.mask.array & detected_pixel_mask != 0)
+                                    & (exposure.mask.array & bad_pixel_mask == 0))
+            detected_fraction = n_detected_pix/n_good_pix
+            if detected_fraction <= 0.96:
+                max_detected_fraction_per_amp = -9.99
+                n_above_max_per_amp = 0
+                n_no_zero_det_amps = 0
+                no_zero_det_amps = True
+                amps = exposure.detector.getAmplifiers()
+                if amps is not None:
+                    for ia, amp in enumerate(amps):
+                        amp_bbox = amp.getBBox()
+                        exp_bbox = exposure.getBBox()
+                        if not exp_bbox.contains(amp_bbox):
+                            self.log.info("Bounding box of amplifier (%s) does not fit in exposure's "
+                                          "bounding box (%s).  Skipping...", amp_bbox, exp_bbox)
+                            continue
+                        sub_image = exposure.subset(amp.getBBox())
+                        n_good_pix_sub = np.sum(sub_image.mask.array & bad_pixel_mask == 0)
+                        n_detected_pix_sub = np.sum((sub_image.mask.array & detected_pixel_mask != 0)
+                                                    & (sub_image.mask.array & bad_pixel_mask == 0))
+                        detected_fraction_sub = n_detected_pix_sub/n_good_pix_sub
+                        if detected_fraction_sub < 0.002:
+                            n_no_zero_det_amps += 1
+                            if n_no_zero_det_amps > 2:
+                                no_zero_det_amps = False
+                                break
+                        max_detected_fraction_per_amp = max(detected_fraction_sub,
+                                                            max_detected_fraction_per_amp)
+                        if max_detected_fraction_per_amp > min(0.998, max(0.8, 3.0*detected_fraction)):
+                            n_above_max_per_amp += 1
+                            if n_above_max_per_amp > 2:
+                                break
+                else:
+                    self.log.info("No amplifier object for detector %, so skipping per-amp "
+                                  "detection fraction checks.", exposure.detector.getId())
+
+        self.log.info("Fraction of pixels marked as DETECTED or DETECTED_NEGATIVE is now %.5f "
+                      "(max per amp section = %.5f)", detected_fraction, max_detected_fraction_per_amp)
+        self.log.info("Number of pre_dynamic_detection iterations: %d", n_pre_dyn_det_iter)
+
+        return
