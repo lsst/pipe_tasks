@@ -1279,6 +1279,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         self.log.info("Fraction of pixels marked as DETECTED or DETECTED_NEGATIVE is now %.5f "
                       "(max per amp section = %.5f)", detected_fraction, max_detected_fraction_per_amp)
-        self.log.info("Number of pre_dynamicDetection itertions: %d", n_pre_dyn_det_iter)
+        self.log.info("Number of pre_dynamic_detection iterations: %d", n_pre_dyn_det_iter)
 
         return
