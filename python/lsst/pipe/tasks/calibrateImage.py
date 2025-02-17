@@ -236,6 +236,10 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         target=lsst.meas.algorithms.SourceDetectionTask,
         doc="Task to detect sources for PSF determination."
     )
+    psf_dynamic_detection = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.DynamicThresholdDetectionTask,
+        doc="Task to dynamically detect sources for PSF determination."
+    )
     psf_source_measurement = pexConfig.ConfigurableField(
         target=lsst.meas.base.SingleFrameMeasurementTask,
         doc="Task to measure sources to be used for psf estimation."
@@ -513,6 +517,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.psf_schema = afwTable.SourceTable.makeMinimalSchema()
         afwTable.CoordKey.addErrorFields(self.psf_schema)
         self.makeSubtask("psf_detection", schema=self.psf_schema)
+        self.makeSubtask("psf_dynamic_detection")
         self.makeSubtask("psf_source_measurement", schema=self.psf_schema)
         self.makeSubtask("psf_measure_psf", schema=self.psf_schema)
         self.makeSubtask("psf_normalized_calibration_flux", schema=self.psf_schema)
@@ -836,7 +841,14 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         table = afwTable.SourceTable.make(self.psf_schema, id_generator.make_table_id_factory())
         # Re-estimate the background during this detection step, so that
         # measurement uses the most accurate background-subtraction.
-        detections = self.psf_detection.run(table=table, exposure=exposure, background=background)
+        if 0:
+            detections = self.psf_detection.run(table=table, exposure=exposure, background=background)
+        else:
+            detections = self.psf_dynamic_detection.run(
+                table, exposure,
+                initialThreshold=self.config.psf_detection.thresholdValue,
+                initialThresholdMultiplier=self.config.psf_detection.includeThresholdMultiplier
+            )
         self.metadata["initial_psf_positive_footprint_count"] = detections.numPos
         self.metadata["initial_psf_negative_footprint_count"] = detections.numNeg
         self.metadata["initial_psf_positive_peak_count"] = detections.numPosPeaks
