@@ -112,6 +112,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # Use PCA psf fitter, as psfex fails if there are only 4 stars.
         self.config.psf_measure_psf.psfDeterminer = 'pca'
         # We don't have many test points, so can't match on complicated shapes.
+        self.config.astrometry.sourceSelector["science"].flags.good = []
         self.config.astrometry.matcher.numPointsForShape = 3
         # ApFlux has more noise than PsfFlux (the latter unrealistically small
         # in this test data), so we need to do magnitude rejection at higher
@@ -421,7 +422,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         stars = stars.copy(deep=True)
         np.testing.assert_array_equal(stars["calib_psf_candidate"],
                                       [False, False, False, True, True, True])
-        np.testing.assert_array_equal(stars["calib_psf_used"], [False, False, False, True, True, True])
+        np.testing.assert_array_equal(stars["calib_psf_used"],
+                                      [False, False, False, True, True, True])
         # Too few sources to reserve any in these tests.
         self.assertEqual(stars["calib_psf_reserved"].sum(), 0)
 
