@@ -290,6 +290,10 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         target=lsst.meas.algorithms.SourceDetectionTask,
         doc="Task to detect sources for PSF determination."
     )
+    psf_dynamic_detection = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.DynamicThresholdDetectionTask,
+        doc="Task to dynamically detect sources for PSF determination."
+    )
     psf_source_measurement = pexConfig.ConfigurableField(
         target=lsst.meas.base.SingleFrameMeasurementTask,
         doc="Task to measure sources to be used for psf estimation."
@@ -520,8 +524,8 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
 
         # Only reject sky sources; we already selected good stars.
         self.astrometry.sourceSelector["science"].doFlags = True
-        self.astrometry.sourceSelector["science"].flags.good = ["calib_psf_candidate"]
-        self.astrometry.sourceSelector["science"].flags.bad = []
+        self.astrometry.sourceSelector["science"].flags.good = [] #  ["calib_psf_candidate"]
+        # self.astrometry.sourceSelector["science"].flags.bad = []
         self.astrometry.sourceSelector["science"].doUnresolved = False
         self.astrometry.sourceSelector["science"].doIsolated = False
         self.astrometry.sourceSelector["science"].doRequirePrimary = False
@@ -637,6 +641,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.psf_schema = afwTable.SourceTable.makeMinimalSchema()
         afwTable.CoordKey.addErrorFields(self.psf_schema)
         self.makeSubtask("psf_detection", schema=self.psf_schema)
+        self.makeSubtask("psf_dynamic_detection")
         self.makeSubtask("psf_source_measurement", schema=self.psf_schema)
         self.makeSubtask("psf_measure_psf", schema=self.psf_schema)
         self.makeSubtask("psf_normalized_calibration_flux", schema=self.psf_schema)
@@ -1103,12 +1108,20 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         table = afwTable.SourceTable.make(self.psf_schema, id_generator.make_table_id_factory())
         # Re-estimate the background during this detection step, so that
         # measurement uses the most accurate background-subtraction.
-        detections = self.psf_detection.run(
-            table=table,
-            exposure=exposure,
-            background=background,
-            backgroundToPhotometricRatio=background_to_photometric_ratio,
-        )
+        if 0:
+            detections = self.psf_detection.run(
+                table=table,
+                exposure=exposure,
+                background=background,
+                backgroundToPhotometricRatio=background_to_photometric_ratio,
+            )
+        else:
+            dynDetResStruct = self.psf_dynamic_detection.run(
+                table, exposure,
+                initialThreshold=self.config.psf_detection.thresholdValue,
+                initialThresholdMultiplier=self.config.psf_detection.includeThresholdMultiplier
+            )
+            detections = dynDetResStruct.detections
         self.metadata["initial_psf_positive_footprint_count"] = detections.numPos
         self.metadata["initial_psf_negative_footprint_count"] = detections.numNeg
         self.metadata["initial_psf_positive_peak_count"] = detections.numPosPeaks
@@ -1128,14 +1141,24 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # and GaussianFlux *after* we have a PSF? Maybe that's not relevant
         # once DM-39203 is merged?
         self.psf_repair.run(exposure=exposure, keepCRs=True)
-        # Re-estimate the background during this detection step, so that
+        # *DON'T* Re-estimate the background during this detection step, so that
         # measurement uses the most accurate background-subtraction.
-        detections = self.psf_detection.run(
-            table=table,
-            exposure=exposure,
-            background=background,
-            backgroundToPhotometricRatio=background_to_photometric_ratio,
-        )
+        if 0:
+            detections = self.psf_detection.run(
+                table=table,
+                exposure=exposure,
+                background=background,
+                backgroundToPhotometricRatio=background_to_photometric_ratio,
+            )
+        else:
+            # Use the thresholdd and multiplier found in the previous dynamic
+            # detection.
+            dynDetRedStruct = self.psf_dynamic_detection.run(
+                table, exposure,
+                initialThreshold=dynDetResStruct.thresholdValue,
+                initialThresholdMultiplier=dynDetResStruct.includeThresholdMultiplier
+            )
+            detections = dynDetResStruct.detections
         self.metadata["simple_psf_positive_footprint_count"] = detections.numPos
         self.metadata["simple_psf_negative_footprint_count"] = detections.numNeg
         self.metadata["simple_psf_positive_peak_count"] = detections.numPosPeaks
