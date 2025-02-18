@@ -112,10 +112,10 @@ class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
         super().__init__(config=config)
 
         if not config.doSolarSystemAssociation:
-            del ssObjectTableRefs
-            del associatedSsSources
-            del unassociatedSsObjects
-            del finalVisitSummaryRefs
+            del self.ssObjectTableRefs
+            del self.associatedSsSources
+            del self.unassociatedSsObjects
+            del self.finalVisitSummaryRefs
 
 
 class DrpAssociationPipeConfig(
