@@ -59,6 +59,7 @@ from lsst.pipe.base import (
 import cv2
 
 from lsst.pipe.base.connectionTypes import Input, Output
+from lsst.pipe.base import NoWorkFound
 from lsst.geom import Box2I, Point2I, Extent2I
 from lsst.afw.image import Exposure, Mask
 
@@ -71,7 +72,10 @@ import tempfile
 if TYPE_CHECKING:
     from numpy.typing import NDArray
     from lsst.pipe.base import QuantumContext, InputQuantizedConnection, OutputQuantizedConnection
+    from lsst.pipe.base.connectionTypes import BaseInput, Output
     from lsst.skymap import TractInfo, PatchInfo
+    from collections.abc import Collection
+    from lsst.daf.butler import DatasetRef, DataCoordinate
 
 
 class PrettyPictureConnections(
@@ -103,6 +107,27 @@ class PrettyPictureConnections(
         storageClass="Mask",
         dimensions=("tract", "patch", "skymap"),
     )
+
+    def adjustQuantum(
+        self,
+        inputs: dict[str, tuple[BaseInput, Collection[DatasetRef]]],
+        outputs: dict[str, tuple[Output, Collection[DatasetRef]]],
+        label: str,
+        data_id: DataCoordinate,
+    ) -> tuple[
+        Mapping[str, tuple[BaseInput, Collection[DatasetRef]]],
+        Mapping[str, tuple[Output, Collection[DatasetRef]]],
+    ]:
+        _, refs = inputs['inputCoadds']
+        allBands = {str(ref.dataId['band']) for ref in refs}
+        config: PrettyPictureConfig = self.config
+        configBands: set[str] = set(config.channelConfig.keys())
+        if not configBands.issubset(allBands):
+            raise NoWorkFound(
+                f"Bands {configBands - allBands} are to be used in rgb production, "
+                "but are missing from input datasets."
+            )
+        return super().adjustQuantum(inputs, outputs, label, data_id)
 
 
 class ChannelRGBConfig(Config):
