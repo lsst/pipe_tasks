@@ -77,7 +77,7 @@ class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
         "visitInfo, bbox, and wcs.",
         name="finalVisitSummary",
         storageClass="ExposureCatalog",
-        dimensions=("instrument", "visit", "detector"),
+        dimensions=("instrument", "visit"),
         deferLoad=True,
         multiple=True
     )
