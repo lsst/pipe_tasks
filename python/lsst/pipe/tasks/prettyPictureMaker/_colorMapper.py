@@ -65,11 +65,6 @@ def latLum(
     # Scale values from 0-1 to 0-100 as various algorithm expect that range.
     values *= 100
 
-    # Find what fraction of 100 the brightest pixel is. This is then used to
-    # re-normalize after all the non-linear scaling such that the brightest part
-    # of the image corresponds to the same absolute brightness.
-    maxRatio = values.max() / 100
-
     # Calculate the slope for arcsinh transformation based on Q and stretch
     # parameters.
     slope = 0.1 * 100 / np.arcsinh(0.1 * Q)
@@ -78,7 +73,10 @@ def latLum(
     soften = Q / stretch
     intensities = A * np.arcsinh((abs(values) * soften + floor) * slope) + b0
 
-    intensities /= intensities.max() / maxRatio
+    # Always normalize by what the original max value (100) scales to.
+    norm = A * np.arcsinh((100 * soften + floor) * slope) + b0
+
+    intensities /= norm
     np.clip(intensities, 0, 1, out=intensities)
     intensities *= 100
 
@@ -386,19 +384,10 @@ def _handelLuminance(
     )
     lum = Lab[:, :, 0]
 
-    # This works because lum must be between zero and one, so the max it the ratio of the max
-    maxRatio = lum.max()
-
     # Enhance the contrast of the input image before mapping.
     if doLocalContrast:
         newLum = localContrast(lum, sigma, highlights, shadows, clarity=clarity, maxLevel=maxLevel)
-        # Sometimes at the faint end the shadows can be driven a bit negative.
-        # Take the abs to avoid black clipping issues.
-        newLum = abs(newLum)
-        # because contrast enhancement can change the maximum value, linearly
-        # rescale the image such that the maximum is at the same ratio as the
-        # original maximum.
-        newLum /= newLum.max() / maxRatio
+        newLum = np.clip(newLum, 0, 1)
     else:
         newLum = lum
 
