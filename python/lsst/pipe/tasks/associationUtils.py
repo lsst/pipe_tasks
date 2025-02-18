@@ -24,7 +24,7 @@ http://github.com/LSSTDESC/dia_pipe and then translated to hpgeom.
 """
 
 __all__ = ["toIndex", "toRaDec", "eq2xyz", "eq2xyzVec", "convert_spherical",
-           "convert_spherical_array", "query_disc", "objID_to_ssObjectID", "ssObjectID_to_objID"]
+           "convert_spherical_array", "query_disc", "obj_id_to_ss_object_id", "ss_object_id_to_obj_id"]
 
 import hpgeom as hpg
 import numpy as np
@@ -195,7 +195,7 @@ def query_disc(nside, ra, dec, max_rad, min_rad=0):
     return pixels
 
 
-def objID_to_ssObjectID(objID, flags=0):
+def obj_id_to_ss_object_id(objID, flags=0):
     """Convert from Minor Planet Center packed provisional object ID to
     Rubin ssObjectID.
 
@@ -236,7 +236,7 @@ def objID_to_ssObjectID(objID, flags=0):
     return ssObjectID
 
 
-def ssObjectID_to_objID(ssObjectID):
+def ss_object_id_to_obj_id(ssObjectID):
     """Convert from Rubin ssObjectID to Minor Planet Center packed provisional
     object ID.
 

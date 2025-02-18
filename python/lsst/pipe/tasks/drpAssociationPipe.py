@@ -72,26 +72,11 @@ class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
         storageClass="SkyMap",
         dimensions=("skymap", ),
     )
-    visitInfoRefs = pipeBase.connectionTypes.Input(
-        doc="Reference to visitInfo of each exposure",
-        name="calexp.visitInfo",
-        storageClass="VisitInfo",
-        dimensions=("instrument", "visit", "detector"),
-        deferLoad=True,
-        multiple=True
-    )
-    bboxRefs = pipeBase.connectionTypes.Input(
-        doc="Reference to bbox of each exposure",
-        name="calexp.bbox",
-        storageClass="Box2I",
-        dimensions=("instrument", "visit", "detector"),
-        deferLoad=True,
-        multiple=True
-    )
-    wcsRefs = pipeBase.connectionTypes.Input(
-        doc="Reference to wcs of each exposure",
-        name="calexp.wcs",
-        storageClass="Wcs",
+    finalVisitSummaryRefs = pipeBase.connectionTypes.Input(
+        doc="Reference to finalVisitSummary of each exposure, containing "
+        "visitInfo, bbox, and wcs."
+        name="finalVisitSummary",
+        storageClass="ExposureCatalog",
         dimensions=("instrument", "visit", "detector"),
         deferLoad=True,
         multiple=True
@@ -127,8 +112,10 @@ class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
         super().__init__(config=config)
 
         if not config.doSolarSystemAssociation:
-            self.inputs.remove("solarSystemObjectTables")
-            self.outputs.remove("associatedSsSources")
+            del ssObjectTableRefs
+            del associatedSsSources
+            del unassociatedSsObjects
+            del finalVisitSummaryRefs
 
 
 class DrpAssociationPipeConfig(
@@ -191,9 +178,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             diaSourceTables,
             ssObjectTableRefs,
             skyMap,
-            visitInfoRefs,
-            bboxRefs,
-            wcsRefs,
+            finalVisitSummaryRefs,
             tractId,
             patchId,
             idGenerator=None):
@@ -212,11 +197,8 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         skyMap : `lsst.skymap.BaseSkyMap`
             SkyMap defining the patch/tract
         visitInfoRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
-            visitInfos of exposures potentially covering this patch/tract
-        bboxRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
-            bboxes of exposures potentially covering this patch/tract
-        wcsRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
-            WCSs of exposures potentially covering this patch/tract
+            Reference to finalVisitSummary of each exposure potentially 
+            covering this patch/tract, which contain visitInfo, bbox, and wcs
         tractId : `int`
             Id of current tract being processed.
         patchId : `int`
@@ -247,18 +229,14 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
 
         def visitDetectorPair(dataRef):
             return (dataRef.dataId["visit"], dataRef.dataId["detector"])
-        diaIdDict, ssObjectIdDict, visitInfoIdDict, bboxIdDict, wcsIdDict = {}, {}, {}, {}, {}
+        diaIdDict, ssObjectIdDict, finalVisitSummaryIdDict = {}, {}, {}
         for diaCatRef in diaSourceTables:
             diaIdDict[visitDetectorPair(diaCatRef)] = diaCatRef
         if self.config.doSolarSystemAssociation:
             for ssCatRef in ssObjectTableRefs:
                 ssObjectIdDict[visitDetectorPair(ssCatRef)] = ssCatRef
-            for visitInfoRef in visitInfoRefs:
-                visitInfoIdDict[visitDetectorPair(visitInfoRef)] = visitInfoRef
-            for bboxRef in bboxRefs:
-                bboxIdDict[visitDetectorPair(bboxRef)] = bboxRef
-            for wcsRef in wcsRefs:
-                wcsIdDict[visitDetectorPair(wcsRef)] = wcsRef
+            for finalVisitSummaryRef in finalVisitSummaryRefs:
+                finalVisitSummaryIdDict[visitDetectorPair(finalVisitSummaryRef)] = finalVisitSummaryRef
 
         diaSourceHistory, ssSourceHistory, unassociatedSsObjectHistory = [], [], []
         for key in diaIdDict:
@@ -267,15 +245,19 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             associatedSsSources, unassociatedSsObjects = None, None
             nSsSrc, nSsObj = 0, 0
             # Always false if ! self.config.doSolarSystemAssociation
-            if all([key in idDict for idDict in [ssObjectIdDict, visitInfoIdDict, bboxIdDict, wcsIdDict]]):
+            if all([key in ssObjectIdDict and key in  finalVisitSummaryIdDict]):
                 ssCatRef = ssObjectIdDict[key]
                 ssCat = ssCatRef.get()
+                finalVisitSummary = finalVisitSummaryIdDict[key].get()
+                visitInfo = finalVisitSummary[0].visitInfo
+                bbox = finalVisitSummary[0].getBBox()
+                wcs = finalVisitSummary[0].wcs
                 ssoAssocResult = self.solarSystemAssociator.run(
                     tb.Table.from_pandas(diaCat),
                     ssCat,
-                    visitInfoIdDict[key].get(),
-                    bboxIdDict[key].get(),
-                    wcsIdDict[key].get(),
+                    visitInfo,
+                    bbox,
+                    wcs,
                 )
 
                 associatedSsSources = ssoAssocResult.associatedSsSources
