@@ -24,7 +24,7 @@ http://github.com/LSSTDESC/dia_pipe and then translated to hpgeom.
 """
 
 __all__ = ["toIndex", "toRaDec", "eq2xyz", "eq2xyzVec", "convert_spherical",
-           "convert_spherical_array", "query_disc"]
+           "convert_spherical_array", "query_disc", "obj_id_to_ss_object_id", "ss_object_id_to_obj_id"]
 
 import hpgeom as hpg
 import numpy as np
@@ -193,3 +193,71 @@ def query_disc(nside, ra, dec, max_rad, min_rad=0):
         pixels = pixels[match]
 
     return pixels
+
+
+def obj_id_to_ss_object_id(objID, flags=0):
+    """Convert from Minor Planet Center packed provisional object ID to
+    Rubin ssObjectID.
+
+    Parameters
+    ----------
+    objID : `str`
+        Minor Planet Center packed provisional designation for a small solar
+        system object. Must be fewer than eight characters.
+    flags : `int`, optional
+        Eight free bits to enable future decoupling between Minor Planet Center
+        and Rubin. Zero by default, should not be changed unless we need to
+        move away from a 1:1 mapping with the MPC. Must be within [0, 255].
+
+    Returns
+    -------
+    ssObjectID : `int`
+        Rubin ssObjectID
+
+    Raises
+    ------
+    ValueError
+        Raised if either objID is longer than 7 characters or flags is greater
+        than 255 or less than 0.
+    """
+    if len(objID) > 7:
+        raise ValueError(f'objID longer than 7 characters: "{objID}"')
+    if len(objID) < 7:
+        raise ValueError(f'objID shorter than 7 characters: "{objID}"')
+    if flags < 0 or flags > 255:
+        raise ValueError(f'Flags ({flags}) outside [0, 255].')
+    if any([ord(c) > 255 for c in objID]):
+        raise ValueError(f'{[c for c in objID if ord(c) > 255]} not legal objID characters (ascii [1, 255])')
+
+    ssObjectID = flags
+    for character in objID:
+        ssObjectID <<= 8
+        ssObjectID += ord(character)
+    return ssObjectID
+
+
+def ss_object_id_to_obj_id(ssObjectID):
+    """Convert from Rubin ssObjectID to Minor Planet Center packed provisional
+    object ID.
+
+    Parameters
+    ----------
+    ssObjectID : `int`
+        Rubin ssObjectID
+
+    Returns
+    -------
+    objID : `str`
+        Minor Planet Center packed provisional designation.
+
+    flags : `int`
+        Rubin flags (not yet defined, but usable in case we decouple from MPC).
+
+    Raises
+    ------
+    """
+    if ssObjectID < 0 or ssObjectID >= (1 << 64):
+        raise ValueError(f'ssObjectID ({ssObjectID}) outside [0, 2^64 - 1].')
+
+    objID = ''.join([chr((ssObjectID >> (8 * i)) % 256) for i in reversed(range(0, 7))])
+    return objID, ssObjectID >> (8 * 7) % 256
