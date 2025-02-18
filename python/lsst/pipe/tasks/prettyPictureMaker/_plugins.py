@@ -194,8 +194,11 @@ def fixBackground(image, mask, maskDict):
     mask = image < maxLikely
     initial_std = (image[mask] - maxLikely).std()
 
-    result = minimize(neg_log_likelihood, (maxLikely, initial_std), args=(image[mask]), bounds=((maxLikely, None), (1e-8, None)))
-    mu_hat, sigma_hat = result.x
+    if len(image[mask]) > 0:
+        result = minimize(neg_log_likelihood, (maxLikely, initial_std), args=(image[mask]), bounds=((maxLikely, None), (1e-8, None)))
+        mu_hat, sigma_hat = result.x
+    else:
+        mu_hat, sigma_hat = (maxLikely, 2*initial_std)
     threshhold = mu_hat + sigma_hat
     image_mask = image < threshhold
 
