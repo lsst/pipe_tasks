@@ -317,6 +317,9 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 unassociatedSsObjectHistoryCat = unassociatedSsObjects  # Empty table?
             self.log.info("Found %i ssSources and %i missing ssObjects in patch %i, tract %i",
                           nSsSrc, nSsObj, patchId, tractId)
+        else:
+            ssSourceHistoryCat = None
+            unassociatedSsObjectHistoryCat = None
 
         if (not diaSourceHistory) and not (self.config.doSolarSystemAssociation and ssSourceHistory):
             if not self.config.doWriteEmptyTables:
