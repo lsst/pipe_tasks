@@ -168,8 +168,6 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         inputs["tractId"] = butlerQC.quantum.dataId["tract"]
         inputs["patchId"] = butlerQC.quantum.dataId["patch"]
         inputs["idGenerator"] = self.config.idGenerator.apply(butlerQC.quantum.dataId)
-        if not self.config.doSolarSystemAssociation:
-            self.inputs.remove("solarSystemObjectTable")
 
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
