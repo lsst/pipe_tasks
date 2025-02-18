@@ -23,7 +23,7 @@ import hpgeom as hpg
 import numpy as np
 import unittest
 
-from lsst.pipe.tasks.associationUtils import query_disc, objID_to_ssObjectID, ssObjectID_to_objID
+from lsst.pipe.tasks.associationUtils import query_disc, obj_id_to_ss_object_id, ss_object_id_to_obj_id
 import lsst.utils.tests
 
 
@@ -55,7 +55,7 @@ class TestAssociationUtils(lsst.utils.tests.TestCase):
         self.assertEqual(len(pixelReturn), 16)
         self.assertFalse(centerPixNumber in pixelReturn)
 
-    def test_ssObjectID_to_objID_and_objID_to_ssObjectID(self):
+    def test_conversions_between_obj_id_and_ss_object_id(self):
         """Convert between ssObjectIDs and MPC packed designations
         """
         allowed_strings = ['J95X00A', 'J95X01L', 'J95F13B', 'J98SA8Q', 'J98SC7V', 'J98SG2S'] \
@@ -65,14 +65,14 @@ class TestAssociationUtils(lsst.utils.tests.TestCase):
         allowed_ssObjectIDs = [0, 1 << 64 - 1] + [1 << n for n in range(64)]
         for allowed_string in allowed_strings:
             for allowed_flag in allowed_flags:
-                returned_string, returned_flag = ssObjectID_to_objID(
-                    objID_to_ssObjectID(allowed_string, allowed_flag))
+                returned_string, returned_flag = ss_object_id_to_obj_id(
+                    obj_id_to_ss_object_id(allowed_string, allowed_flag))
                 self.assertEqual((allowed_string, allowed_flag), (returned_string, returned_flag))
         for allowed_ssObjectID in allowed_ssObjectIDs:
-            returned_ssObjectID = objID_to_ssObjectID(*ssObjectID_to_objID(allowed_ssObjectID))
+            returned_ssObjectID = obj_id_to_ss_object_id(*ss_object_id_to_obj_id(allowed_ssObjectID))
             self.assertEqual(allowed_ssObjectID, returned_ssObjectID)
 
-    def test_invalid_ssObjectID_to_objID_and_objID_to_ssObjectID(self):
+    def test_invalid_conversions_between_obj_id_and_ss_object_id(self):
         """Convert between ssObjectIDs and MPC packed designations
         """
         allowed_strings = ['J95X00A', 'J95X01L', 'J95F13B', 'J98SA8Q', 'J98SC7V', 'J98SG2S'] \
@@ -86,18 +86,18 @@ class TestAssociationUtils(lsst.utils.tests.TestCase):
         for allowed_string in allowed_strings:
             for disallowed_flag in disallowed_flags:
                 with self.assertRaises(ValueError):
-                    objID_to_ssObjectID(allowed_string, disallowed_flag)
+                    obj_id_to_ss_object_id(allowed_string, disallowed_flag)
         for disallowed_string in disallowed_strings:
             for allowed_flag in allowed_flags:
                 with self.assertRaises(ValueError):
-                    objID_to_ssObjectID(disallowed_string, allowed_flag)
+                    obj_id_to_ss_object_id(disallowed_string, allowed_flag)
         for disallowed_string in disallowed_strings:
             for disallowed_flag in disallowed_flags:
                 with self.assertRaises(ValueError):
-                    objID_to_ssObjectID(disallowed_string, disallowed_flag)
+                    obj_id_to_ss_object_id(disallowed_string, disallowed_flag)
         for disallowed_ssObjectID in disallowed_ssObjectIDs:
             with self.assertRaises(ValueError):
-                ssObjectID_to_objID(disallowed_ssObjectID)
+                ss_object_id_to_obj_id(disallowed_ssObjectID)
 
 
 class MemoryTestCase(lsst.utils.tests.MemoryTestCase):

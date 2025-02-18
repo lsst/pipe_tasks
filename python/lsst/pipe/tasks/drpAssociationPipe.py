@@ -74,7 +74,7 @@ class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
     )
     finalVisitSummaryRefs = pipeBase.connectionTypes.Input(
         doc="Reference to finalVisitSummary of each exposure, containing "
-        "visitInfo, bbox, and wcs."
+        "visitInfo, bbox, and wcs.",
         name="finalVisitSummary",
         storageClass="ExposureCatalog",
         dimensions=("instrument", "visit", "detector"),
@@ -197,7 +197,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         skyMap : `lsst.skymap.BaseSkyMap`
             SkyMap defining the patch/tract
         visitInfoRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
-            Reference to finalVisitSummary of each exposure potentially 
+            Reference to finalVisitSummary of each exposure potentially
             covering this patch/tract, which contain visitInfo, bbox, and wcs
         tractId : `int`
             Id of current tract being processed.
@@ -245,7 +245,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             associatedSsSources, unassociatedSsObjects = None, None
             nSsSrc, nSsObj = 0, 0
             # Always false if ! self.config.doSolarSystemAssociation
-            if all([key in ssObjectIdDict and key in  finalVisitSummaryIdDict]):
+            if all([key in ssObjectIdDict and key in finalVisitSummaryIdDict]):
                 ssCatRef = ssObjectIdDict[key]
                 ssCat = ssCatRef.get()
                 finalVisitSummary = finalVisitSummaryIdDict[key].get()
