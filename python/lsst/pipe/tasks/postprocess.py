@@ -1044,9 +1044,18 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
 
         for name, func in funcDict_in.items():
             if func.dataset in funcDicts_multiband:
+                # This is something like a MultibandColumn
                 if band := getattr(func, "band_to_check", None):
                     if band not in outputBands:
                         continue
+                # This is something like a ReferenceBand that has configurable bands
+                elif hasattr(func, "bands"):
+                    # TODO: Determine if this can be avoided DM-48895
+                    # This will work fine if the init doesn't manipulate bands
+                    # If it does, then one would need to make a new functor
+                    # Determining the (kw)args is tricky in that case
+                    func.bands = tuple(inputBands)
+
             funcDict = funcDicts_multiband.get(func.dataset, funcDict_band)
             funcDict[name] = func
 
