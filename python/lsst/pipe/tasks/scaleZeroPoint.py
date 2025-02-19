@@ -113,8 +113,8 @@ class SpatialImageScaler(ImageScaler):
 
         Parameters
         ----------
-        image : `lsst.afw.image.MaskedImage`
-            To scale; scale is applied in place.
+        maskedImage : `lsst.afw.image.MaskedImage`
+            Masked image to scale; scale is applied in place.
         """
         scale = self.getInterpImage(maskedImage.getBBox())
         maskedImage *= scale
@@ -193,14 +193,14 @@ class ScaleZeroPointTask(pipeBase.Task):
         ----------
         exposure : `lsst.afw.image.Exposure`
             Exposure to scale; masked image is scaled in place.
-        dataRef : `Unknown`
+        dataRef : `Unknown`, optional
             Data reference for exposure.
             Not used, but in API so that users can switch between spatially variant
             and invariant tasks.
 
         Returns
         -------
-        result : `lsst.pipe.base.Struct`
+        result : `~lsst.pipe.base.Struct`
             Results as a struct with attributes:
 
             ``imageScaler``
@@ -240,6 +240,11 @@ class ScaleZeroPointTask(pipeBase.Task):
 
     def scaleFromPhotoCalib(self, calib):
         """Compute the scale for the specified PhotoCalib.
+
+        Parameter
+        ---------
+        calib : `lsst.afw.image.PhotoCalib`
+            PhotoCalib object to compute the scale from.
 
         Returns
         -------
