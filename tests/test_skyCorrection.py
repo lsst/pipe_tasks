@@ -24,9 +24,10 @@ from copy import deepcopy
 
 import lsst.utils.tests
 import numpy as np
-from lsst.afw.image import ExposureF
+from lsst.afw.image import ExposureF, ImageF
 from lsst.afw.math import BackgroundMI
 from lsst.obs.base.instrument_tests import DummyCam
+from lsst.pipe.base import InMemoryDatasetHandle
 from lsst.pipe.tasks.skyCorrection import SkyCorrectionConfig, SkyCorrectionTask
 
 
@@ -51,9 +52,11 @@ class SkyCorrectionTestCase(lsst.utils.tests.TestCase):
         # Generate calexp/calexpBackground/sky for all detectors
         self.calExps = []
         self.calBkgs = []
+        self.backgroundToPhotometricRatioHandles = []
         self.skyFrames = []
         self.background_level = 3000
         self.sky_level = 5
+        self.background_to_photometric_ratio_level = 1.1
         for detector in [0, 1]:
             rng = np.random.default_rng(detector)
 
@@ -109,11 +112,22 @@ class SkyCorrectionTestCase(lsst.utils.tests.TestCase):
             sky.image.array -= np.sum(sky.image.array) / (125 * 128)
             self.skyFrames.append(sky)
 
+            # Illumination correction handles.
+            backgroundToPhotometricRatio = ImageF(bbox)
+            backgroundToPhotometricRatio.array[:, :] = self.background_to_photometric_ratio_level
+            backgroundToPhotometricRatioHandle = InMemoryDatasetHandle(
+                backgroundToPhotometricRatio,
+                detector=detector,
+                visit=0,
+            )
+            self.backgroundToPhotometricRatioHandles.append(backgroundToPhotometricRatioHandle)
+
     def tearDown(self):
         del self.camera
         del self.calExps
         del self.calBkgs
         del self.skyFrames
+        del self.backgroundToPhotometricRatioHandles
 
     def testSkyCorrectionDefault(self):
         """Test SkyCorrectionTask with mostly default configuration values."""
@@ -145,6 +159,30 @@ class SkyCorrectionTestCase(lsst.utils.tests.TestCase):
             np.nanmean(self.calExps[0].image.array) + self.background_level,
             delta=1e-2,
         )
+
+    def testSkyCorrectionIlluminationCorrection(self):
+        """Test SkyCorrectionTask with illumination corrections."""
+        config = self.skyCorrectionConfig
+        config.doApplyFlatBackgroundRatio = True
+
+        skyCorrectionTask = SkyCorrectionTask(config=config)
+        # Pass in deep copies, as the task modifies the input data
+        results = skyCorrectionTask.run(
+            deepcopy(self.calExps),
+            deepcopy(self.calBkgs),
+            self.skyFrames,
+            self.camera,
+            backgroundToPhotometricRatioHandles=self.backgroundToPhotometricRatioHandles,
+        )
+        skyFrameScale = results.skyFrameScale
+        skyCorr = results.skyCorr
+        self.assertEqual(len(skyCorr), len(self.calExps))
+        self.assertAlmostEqual(
+            skyFrameScale,
+            self.sky_level * self.background_to_photometric_ratio_level,
+            delta=1e-1,
+        )
+        self.assertAlmostEqual(np.nanmean(results.calExpMosaic.array), 0, delta=1e-2)
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):

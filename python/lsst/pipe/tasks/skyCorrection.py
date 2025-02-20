@@ -121,6 +121,15 @@ class SkyCorrectionConnections(PipelineTaskConnections, dimensions=("instrument"
         storageClass="Background",
         dimensions=["instrument", "visit", "detector"],
     )
+    backgroundToPhotometricRatioHandles = cT.Input(
+        doc="Ratio of a background-flattened image to a photometric-flattened image. "
+            "Only used if doApplyFlatBackgroundRatio is True.",
+        multiple=True,
+        name="background_to_photometric_ratio",
+        storageClass="Image",
+        dimensions=["instrument", "visit", "detector"],
+        deferLoad=True,
+    )
     skyFrames = cT.PrerequisiteInput(
         doc="Calibration sky frames.",
         name="sky",
@@ -162,9 +171,16 @@ class SkyCorrectionConnections(PipelineTaskConnections, dimensions=("instrument"
         assert config is not None
         if not config.doSky:
             del self.skyFrames
+        if not config.doApplyFlatBackgroundRatio:
+            del self.backgroundToPhotometricRatioHandles
 
 
 class SkyCorrectionConfig(PipelineTaskConfig, pipelineConnections=SkyCorrectionConnections):
+    doApplyFlatBackgroundRatio = Field(
+        dtype=bool,
+        default=False,
+        doc="This should be True if the input image was processed with an illumination correction.",
+    )
     maskObjects = ConfigurableField(
         target=MaskObjectsTask,
         doc="Mask Objects",
@@ -250,6 +266,15 @@ class SkyCorrectionTask(PipelineTask):
             )
         else:
             inputRefs.skyFrames = []
+        # Only attempt to fetch flat ratios if they are going to be applied.
+        if self.config.doApplyFlatBackgroundRatio:
+            inputRefs.backgroundToPhotometricRatioHandles = _reorderAndPadList(
+                inputRefs.backgroundToPhotometricRatioHandles,
+                [ref.dataId["detector"] for ref in inputRefs.backgroundToPhotometricRatioHandles],
+                detectorOrder,
+            )
+        else:
+            inputRefs.backgroundToPhotometricRatioHandles = []
         outputRefs.skyCorr = _reorderAndPadList(
             outputRefs.skyCorr, [ref.dataId["detector"] for ref in outputRefs.skyCorr], detectorOrder
         )
@@ -258,7 +283,7 @@ class SkyCorrectionTask(PipelineTask):
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, calExps, calBkgs, skyFrames, camera):
+    def run(self, calExps, calBkgs, skyFrames, camera, backgroundToPhotometricRatioHandles=[]):
         """Perform sky correction on a visit.
 
         The original visit-level background is first restored to the calibrated
@@ -296,6 +321,9 @@ class SkyCorrectionTask(PipelineTask):
             Sky frame calibration data for the input detectors.
         camera : `lsst.afw.cameraGeom.Camera`
             Camera matching the input data to process.
+        backgroundToPhotometricRatioHandles : `list` [`lsst.daf.butler.DeferredDatasetHandle`], optional
+            Deferred dataset handles pointing to the Background to photometric ratio images
+            for the input detectors.
 
         Returns
         -------
@@ -311,6 +339,18 @@ class SkyCorrectionTask(PipelineTask):
                 Visit-level mosaic of the sky correction background, binned.
                 Analogous to `calexpBackground + skyCorr`.
         """
+        if self.config.doApplyFlatBackgroundRatio:
+            if not backgroundToPhotometricRatioHandles:
+                raise ValueError(
+                    "A list of backgroundToPhotometricRatioHandles must be supplied if "
+                    "config.doApplyFlatBackgroundRatio=True.",
+                )
+            # Convert from photometric flattened images to background flattened
+            # images.
+            for calExp, ratioHandle in zip(calExps, backgroundToPhotometricRatioHandles):
+                ratioImage = ratioHandle.get()
+                calExp.maskedImage *= ratioImage
+
         # Restore original backgrounds in-place; optionally refine mask maps
         numOrigBkgElements = [len(calBkg) for calBkg in calBkgs]
         _ = self._restoreOriginalBackgroundRefineMask(calExps, calBkgs)
@@ -343,6 +383,13 @@ class SkyCorrectionTask(PipelineTask):
         calBkgMosaic = self._binAndMosaic(
             skyCorrExtras, camera, self.config.binning, ids=calExpIds, refExps=calExps
         )
+
+        if self.config.doApplyFlatBackgroundRatio:
+            # Convert from background flattened images to photometric flattened
+            # images.
+            for calExp, ratioHandle in zip(calExps, backgroundToPhotometricRatioHandles):
+                ratioImage = ratioHandle.get()
+                calExp.maskedImage /= ratioImage
 
         return Struct(
             skyFrameScale=skyFrameScale, skyCorr=calBkgs, calExpMosaic=calExpMosaic, calBkgMosaic=calBkgMosaic
