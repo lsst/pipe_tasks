@@ -27,6 +27,7 @@ __all__ = ["HealSparseInputMapTask", "HealSparseInputMapConfig",
            "ConsolidateHealSparsePropertyMapTask"]
 
 from collections import defaultdict
+import dataclasses
 import esutil
 import warnings
 import numbers
@@ -330,7 +331,9 @@ class HealSparseInputMapTask(pipeBase.Task):
 class HealSparsePropertyMapConnections(pipeBase.PipelineTaskConnections,
                                        dimensions=("tract", "band", "skymap",),
                                        defaultTemplates={"coaddName": "deep",
-                                                         "calexpType": ""}):
+                                                         "calexpType": "",
+                                                         # If set, prefix replaces "{coaddName}Coadd_".
+                                                         "prefix": ""}):
     input_maps = pipeBase.connectionTypes.Input(
         doc="Healsparse bit-wise coadd input maps",
         name="{coaddName}Coadd_inputMap",
@@ -364,7 +367,7 @@ class HealSparsePropertyMapConnections(pipeBase.PipelineTaskConnections,
 
     # Create output connections for all possible maps defined in the
     # registry.  The vars() trick used here allows us to set class attributes
-    # programatically.  Taken from
+    # programmatically.  Taken from
     # https://stackoverflow.com/questions/2519807/
     # setting-a-class-attribute-with-a-given-name-in-python-while-defining-the-class
     for name in BasePropertyMap.registry:
@@ -425,6 +428,23 @@ class HealSparsePropertyMapConnections(pipeBase.PipelineTaskConnections,
                 self.outputs.remove(f"{name}_map_weighted_mean")
             if not prop_config.do_sum:
                 self.outputs.remove(f"{name}_map_sum")
+
+        if config.connections.prefix:
+            # If the 'prefix' connection template is set, replace
+            # '{coaddName}Coadd_' with that; this is a fully-backwards
+            # compatible way of overriding more than just the
+            # currently-configurable part of the prefix.
+            for connection_name in self.outputs:
+                old_connection = getattr(self, connection_name)
+                new_dataset_type_name = old_connection.name.replace(
+                    f"{self.config.connections.coaddName}Coadd_",
+                    config.connections.prefix,
+                )
+                setattr(
+                    self,
+                    connection_name,
+                    dataclasses.replace(old_connection, name=new_dataset_type_name)
+                )
 
 
 class HealSparsePropertyMapConfig(pipeBase.PipelineTaskConfig,
@@ -737,9 +757,15 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
         return nside_coverage_tract
 
 
-class ConsolidateHealSparsePropertyMapConnections(pipeBase.PipelineTaskConnections,
-                                                  dimensions=("band", "skymap",),
-                                                  defaultTemplates={"coaddName": "deep"}):
+class ConsolidateHealSparsePropertyMapConnections(
+    pipeBase.PipelineTaskConnections,
+    dimensions=("band", "skymap",),
+    defaultTemplates={
+        "coaddName": "deep",
+        # If set, prefix replaces "{coaddName}Coadd_".
+        "prefix": ""
+    }
+):
     sky_map = pipeBase.connectionTypes.Input(
         doc="Input definition of geometry/bbox and projection/wcs for coadded exposures",
         name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
@@ -855,6 +881,25 @@ class ConsolidateHealSparsePropertyMapConnections(pipeBase.PipelineTaskConnectio
             if not prop_config.do_sum:
                 self.inputs.remove(f"{name}_map_sum")
                 self.outputs.remove(f"{name}_consolidated_map_sum")
+
+        if config.connections.prefix:
+            # If the 'prefix' connection template is set, replace
+            # '{coaddName}Coadd_' with that; this is a fully-backwards
+            # compatible way of overriding more than just the
+            # currently-configurable part of the prefix.
+            for connection_name in self.inputs | self.outputs:
+                if connection_name == "sky_map":
+                    continue
+                old_connection = getattr(self, connection_name)
+                new_dataset_type_name = old_connection.name.replace(
+                    f"{self.config.connections.coaddName}Coadd_",
+                    config.connections.prefix,
+                )
+                setattr(
+                    self,
+                    connection_name,
+                    dataclasses.replace(old_connection, name=new_dataset_type_name)
+                )
 
 
 class ConsolidateHealSparsePropertyMapConfig(pipeBase.PipelineTaskConfig,
