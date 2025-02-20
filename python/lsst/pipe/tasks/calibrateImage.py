@@ -731,6 +731,13 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self._recordMaskedPixelFractions(result.exposure)
         self.log.info("Initial PhotoCalib: %s", result.exposure.getPhotoCalib())
 
+        # Check input image processing.
+        if self.config.do_illumination_correction:
+            if not result.exposure.metadata.get("LSST ISR FLAT APPLIED", False):
+                raise RuntimeError(
+                    "Cannot use do_illumination_correction with an image that has not had a flat applied",
+                )
+
         result.background = None
         summary_stat_catalog = None
         # Some exposure components are set to initial placeholder objects
@@ -1220,7 +1227,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         assert photo_calib._isConstant, \
             "Background calibration assumes a constant PhotoCalib; PhotoCalTask should always return that."
-        # FIXME: what to do about background_to_photometric_ratio here?
+
         for bg in background:
             # The statsImage is a view, but we can't assign to a function call in python.
             binned_image = bg[0].getStatsImage()

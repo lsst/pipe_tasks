@@ -103,6 +103,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.exposure.info.setVisitInfo(self.truth_exposure.visitInfo)
         # "truth" filter, to match the "truth" refcat.
         self.exposure.setFilter(lsst.afw.image.FilterLabel(physical='truth', band="truth"))
+        self.exposure.metadata["LSST ISR FLAT APPLIED"] = True
 
         # Test-specific configuration:
         self.config = CalibrateImageTask.ConfigClass()
