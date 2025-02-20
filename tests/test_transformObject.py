@@ -46,6 +46,21 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
 
         self.dataId = {"tract": 9615, "patch": "4,4"}
         self.handle = InMemoryDatasetHandle(df, storageClass="DataFrame", dataId=self.dataId)
+        n_rows = len(df)
+        tab_ref = astropy.table.Table({df.index.name: df.index, "refBand": ["r"]*n_rows})
+        tab_sersic = astropy.table.Table({df.index.name: df.index, "sersic_n_iter": [0] * n_rows})
+        self.kwargs_task = {
+            "handle_ref": InMemoryDatasetHandle(
+                tab_ref, storageClass="ArrowAstropy", dataId=self.dataId,
+            ),
+            "handle_Sersic_multiprofit": InMemoryDatasetHandle(
+                tab_sersic, storageClass="ArrowAstropy", dataId=self.dataId,
+            ),
+        }
+        self.funcs_multi = {
+            "refBand": Column("refBand", dataset="ref"),
+            "sersic_n_iter": Column("sersic_n_iter", dataset="Sersic_multiprofit"),
+        }
 
     def testNullFilter(self):
         """Test that columns for all filters are created despite they may not
@@ -66,7 +81,8 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
                  'IntColumn': Column('base_InputCount_value', dataset='meas'),
                  'GoodFlagColumn': Column('slot_GaussianFlux_flag', dataset='meas'),
                  'BadFlagColumn': Column('slot_Centroid_flag', dataset='meas')}
-        tbl = task.run(self.handle, funcs=funcs, dataId=self.dataId).outputCatalog
+        funcs.update(self.funcs_multi)
+        tbl = task.run(self.handle, funcs=funcs, dataId=self.dataId, **self.kwargs_task).outputCatalog
         self.assertIsInstance(tbl, astropy.table.Table)
 
         for filt in config.outputBands:
@@ -101,7 +117,8 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         config.camelCase = False
         task = TransformObjectCatalogTask(config=config)
         funcs = {'Fwhm': HsmFwhm(dataset='meas')}
-        tbl = task.run(self.handle, funcs=funcs, dataId=self.dataId).outputCatalog
+        funcs.update(self.funcs_multi)
+        tbl = task.run(self.handle, funcs=funcs, dataId=self.dataId, **self.kwargs_task).outputCatalog
         self.assertIsInstance(tbl, astropy.table.Table)
         for filt in config.outputBands:
             self.assertIn(filt + '_Fwhm', tbl.columns)
@@ -113,7 +130,8 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         config.multilevelOutput = True
         task = TransformObjectCatalogTask(config=config)
         funcs = {'Fwhm': HsmFwhm(dataset='meas')}
-        df = task.run(self.handle, funcs=funcs, dataId=self.dataId).outputCatalog
+        funcs.update(self.funcs_multi)
+        df = task.run(self.handle, funcs=funcs, dataId=self.dataId, **self.kwargs_task).outputCatalog
         self.assertIsInstance(df, pd.DataFrame)
         self.assertNotIn('g', df)
         for filt in config.outputBands:
@@ -126,7 +144,8 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         config = TransformObjectCatalogConfig()
         task = TransformObjectCatalogTask(config=config)
         funcs = {'Fwhm': HsmFwhm(dataset='meas')}
-        tbl = task.run(self.handle, funcs=funcs, dataId=self.dataId).outputCatalog
+        funcs.update(self.funcs_multi)
+        tbl = task.run(self.handle, funcs=funcs, dataId=self.dataId, **self.kwargs_task).outputCatalog
         self.assertIsInstance(tbl, astropy.table.Table)
         self.assertNotIn('HSC-G_Fwhm', tbl.columns)
         for filt in ['g', 'r', 'i']:

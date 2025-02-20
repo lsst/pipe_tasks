@@ -745,6 +745,17 @@ class RADecCovColumn(Column):
         return output
 
 
+class MultibandColumn(Column):
+    """A column with a band in a multiband table."""
+    def __init__(self, col, band_to_check, **kwargs):
+        self._band_to_check = band_to_check
+        super().__init__(col=col, **kwargs)
+
+    @property
+    def band_to_check(self):
+        return self._band_to_check
+
+
 class HtmIndex20(Functor):
     """Compute the level 20 HtmIndex for the catalog.
 
@@ -1536,14 +1547,15 @@ class ReferenceBand(Functor):
     name = 'Reference Band'
     shortname = 'refBand'
 
+    band_order = ("i", "r", "z", "y", "g", "u")
+
     @property
     def columns(self):
-        return ["merge_measurement_i",
-                "merge_measurement_r",
-                "merge_measurement_z",
-                "merge_measurement_y",
-                "merge_measurement_g",
-                "merge_measurement_u"]
+        # Build the actual input column list, not hardcoded ugrizy
+        bands = [band for band in self.band_order if band in self.bands]
+        # In the unlikely scenario that users attempt to add non-ugrizy bands
+        bands += [band for band in self.bands if band not in self.band_order]
+        return [f"merge_measurement_{band}" for band in bands]
 
     def _func(self, df: pd.DataFrame) -> pd.Series:
         def getFilterAliasName(row):
@@ -1557,6 +1569,10 @@ class ReferenceBand(Functor):
         # Makes a Series of dtype object if df is empty.
         return df[columns].apply(getFilterAliasName, axis=1,
                                  result_type='reduce').astype('object')
+
+    def __init__(self, bands: tuple[str] | list[str] | None = None, **kwargs):
+        super().__init__(**kwargs)
+        self.bands = self.band_order if bands is None else tuple(bands)
 
 
 class Photometry(Functor):

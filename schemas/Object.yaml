@@ -718,6 +718,209 @@ funcs:
         functor: Column
         args: deblend_zeroFlux
         dataset: meas
+    # MultiProFit Two Gaussian PSF model fit parameters
+    psfModel_TwoGaussian_gauss1_sigma_x:
+        functor: Column
+        args: TwoGaussianPsf_gauss1_sigma_x
+        dataset: psfs_multiprofit
+    psfModel_TwoGaussian_gauss1_sigma_y:
+        functor: Column
+        args: TwoGaussianPsf_gauss1_sigma_y
+        dataset: psfs_multiprofit
+    psfModel_TwoGaussian_gauss1_rho:
+        functor: Column
+        args: TwoGaussianPsf_gauss1_rho
+        dataset: psfs_multiprofit
+    psfModel_TwoGaussian_gauss1_fluxfrac:
+        functor: Column
+        args: TwoGaussianPsf_gauss1_fluxfrac
+        dataset: psfs_multiprofit
+    psfModel_TwoGaussian_gauss2_sigma_x:
+        functor: Column
+        args: TwoGaussianPsf_gauss2_sigma_x
+        dataset: psfs_multiprofit
+    psfModel_TwoGaussian_gauss2_sigma_y:
+        functor: Column
+        args: TwoGaussianPsf_gauss2_sigma_y
+        dataset: psfs_multiprofit
+    psfModel_TwoGaussian_gauss2_rho:
+        functor: Column
+        args: TwoGaussianPsf_gauss2_rho
+        dataset: psfs_multiprofit
+    psfModel_TwoGaussian_n_iter:
+        functor: Column
+        args: TwoGaussianPsf_n_iter
+        dataset: psfs_multiprofit
+    psfModel_TwoGaussian_chisq_reduced:
+        functor: Column
+        args: TwoGaussianPsf_chisq_reduced
+        dataset: psfs_multiprofit
+    psfModel_TwoGaussian_unknown_flag:
+        functor: Column
+        args: TwoGaussianPsf_unknown_flag
+        dataset: psfs_multiprofit
+    psfModel_TwoGaussian_no_inputs_flag:
+        functor: Column
+        args: TwoGaussianPsf_no_inputs_flag
+        dataset: psfs_multiprofit
+    # MultiProFit multiband single Sersic object model fit parameters
+    sersic_x:
+        functor: Column
+        args: cen_x
+        dataset: Sersic_multiprofit
+    sersic_y:
+        functor: Column
+        args: cen_y
+        dataset: Sersic_multiprofit
+    sersic_ra:
+        functor: Column
+        args: cen_ra
+        dataset: Sersic_multiprofit
+    sersic_dec:
+        functor: Column
+        args: cen_dec
+        dataset: Sersic_multiprofit
+    sersic_reff_x:
+        functor: Column
+        args: reff_x
+        dataset: Sersic_multiprofit
+    sersic_reff_y:
+        functor: Column
+        args: reff_y
+        dataset: Sersic_multiprofit
+    sersic_rho:
+        functor: Column
+        args: rho
+        dataset: Sersic_multiprofit
+    g_sersicFlux:
+        functor: MultibandColumn
+        args:
+            - g_Flux
+            - g
+        dataset: Sersic_multiprofit
+    i_sersicFlux:
+        functor: MultibandColumn
+        args:
+            - i_Flux
+            - i
+        dataset: Sersic_multiprofit
+    r_sersicFlux:
+        functor: MultibandColumn
+        args:
+            - r_Flux
+            - r
+        dataset: Sersic_multiprofit
+    u_sersicFlux:
+        functor: MultibandColumn
+        args:
+            - u_Flux
+            - u
+        dataset: Sersic_multiprofit
+    y_sersicFlux:
+        functor: MultibandColumn
+        args:
+            - y_Flux
+            - y
+        dataset: Sersic_multiprofit
+    z_sersicFlux:
+        functor: MultibandColumn
+        args:
+            - z_Flux
+            - z
+        dataset: Sersic_multiprofit
+    sersic_index:
+        functor: Column
+        args: sersic_index
+        dataset: Sersic_multiprofit
+    sersic_xErr:
+        functor: Column
+        args: cen_xErr
+        dataset: Sersic_multiprofit
+    sersic_yErr:
+        functor: Column
+        args: cen_yErr
+        dataset: Sersic_multiprofit
+    sersic_raErr:
+        functor: Column
+        args: cen_raErr
+        dataset: Sersic_multiprofit
+    sersic_decErr:
+        functor: Column
+        args: cen_decErr
+        dataset: Sersic_multiprofit
+    sersic_reff_xErr:
+        functor: Column
+        args: reff_xErr
+        dataset: Sersic_multiprofit
+    sersic_reff_yErr:
+        functor: Column
+        args: reff_yErr
+        dataset: Sersic_multiprofit
+    sersic_rhoErr:
+        functor: Column
+        args: rhoErr
+        dataset: Sersic_multiprofit
+    g_sersicFluxErr:
+        functor: MultibandColumn
+        args:
+            - g_FluxErr
+            - g
+        dataset: Sersic_multiprofit
+    i_sersicFluxErr:
+        functor: MultibandColumn
+        args:
+            - i_FluxErr
+            - i
+        dataset: Sersic_multiprofit
+    r_sersicFluxErr:
+        functor: MultibandColumn
+        args:
+            - r_FluxErr
+            - r
+        dataset: Sersic_multiprofit
+    u_sersicFluxErr:
+        functor: MultibandColumn
+        args:
+            - u_FluxErr
+            - u
+        dataset: Sersic_multiprofit
+    y_sersicFluxErr:
+        functor: MultibandColumn
+        args:
+            - y_FluxErr
+            - y
+        dataset: Sersic_multiprofit
+    z_sersicFluxErr:
+        functor: MultibandColumn
+        args:
+            - z_FluxErr
+            - z
+        dataset: Sersic_multiprofit
+    sersic_indexErr:
+        functor: Column
+        args: sersic_indexErr
+        dataset: Sersic_multiprofit
+    sersic_n_eval_jac:
+        functor: Column
+        args: n_eval_jac
+        dataset: Sersic_multiprofit
+    sersic_n_iter:
+        functor: Column
+        args: n_iter
+        dataset: Sersic_multiprofit
+    sersic_chisq_reduced:
+        functor: Column
+        args: chisq_reduced
+        dataset: Sersic_multiprofit
+    sersic_unknown_flag:
+        functor: Column
+        args: unknown_flag
+        dataset: Sersic_multiprofit
+    sersic_no_data_flag:
+        functor: Column
+        args: no_data_flag
+        dataset: Sersic_multiprofit
+
     # DM-22247: Add Star/Galaxy sep columns
     #     - Morphological Star Galaxy Classifier (Names? float 0-1)]
     #     - Morphological + Color (SED-based) Star Galaxy Classifier (Names? float 0-1)]
