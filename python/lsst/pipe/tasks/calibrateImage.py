@@ -89,6 +89,21 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
         dimensions=["instrument", "exposure", "detector"],
     )
 
+    background_flat = connectionTypes.PrerequisiteInput(
+        name="flat",
+        doc="Flat calibration frame used for background correction.",
+        storageClass="Exposure",
+        dimensions=["instrument", "detector", "physical_filter"],
+        isCalibration=True,
+    )
+    illumination_correction = connectionTypes.PrerequisiteInput(
+        name="illuminationCorrection",
+        doc="Illumination correction frame.",
+        storageClass="Exposure",
+        dimensions=["instrument", "detector", "physical_filter"],
+        isCalibration=True,
+    )
+
     # outputs
     initial_stars_schema = connectionTypes.InitOutput(
         doc="Schema of the output initial stars catalog.",
@@ -134,6 +149,13 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
         storageClass="Background",
         dimensions=("instrument", "visit", "detector"),
     )
+    background_to_photometric_ratio = connectionTypes.Output(
+        doc="Ratio of a background-flattened image to a photometric-flattened image. Only persisted "
+            "if do_illumination_correction is True.",
+        name="background_to_photometric_ratio",
+        storageClass="Image",
+        dimensions=("instrument", "visit", "detector"),
+    )
 
     # Optional outputs
     psf_stars_footprints = connectionTypes.Output(
@@ -174,6 +196,10 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
             del self.photometry_matches
         if not config.do_calibrate_pixels:
             del self.applied_photo_calib
+        if not config.do_illumination_correction:
+            del self.background_flat
+            del self.illumination_correction
+            del self.background_to_photometric_ratio
 
 
 class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=CalibrateImageConnections):
@@ -294,6 +320,14 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     compute_summary_stats = pexConfig.ConfigurableField(
         target=computeExposureSummaryStats.ComputeExposureSummaryStatsTask,
         doc="Task to to compute summary statistics on the calibrated exposure."
+    )
+
+    do_illumination_correction = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="If True, apply the illumination correction. This assumes that the "
+            "input image has already been flat-fielded such that it is suitable "
+            "for background subtraction.",
     )
 
     do_calibrate_pixels = pexConfig.Field(
@@ -463,6 +497,32 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
                 "as it would be run before the photometry fit."
             )
 
+        # Check for illumination correction and background consistency.
+        if self.do_illumination_correction:
+            if not self.psf_subtract_background.doApplyFlatBackgroundRatio:
+                raise pexConfig.FieldValidationError(
+                    CalibrateImageConfig.psf_subtract_background,
+                    self,
+                    "CalibrateImageTask.psf_subtract_background must be configured with "
+                    "doApplyFlatBackgroundRatio=True if do_illumination_correction=True."
+                )
+            if self.psf_detection.reEstimateBackground:
+                if not self.psf_detection.doApplyFlatBackgroundRatio:
+                    raise pexConfig.FieldValidationError(
+                        CalibrateImageConfig.psf_detection,
+                        self,
+                        "CalibrateImageTask.psf_detection background must be configured with "
+                        "doApplyFlatBackgroundRatio=True if do_illumination_correction=True."
+                    )
+            if self.star_detection.reEstimateBackground:
+                if not self.star_detection.doApplyFlatBackgroundRatio:
+                    raise pexConfig.FieldValidationError(
+                        CalibrateImageConfig.star_detection,
+                        self,
+                        "CalibrateImageTask.star_detection background must be configured with "
+                        "doApplyFlatBackgroundRatio=True if do_illumination_correction=True."
+                    )
+
 
 class CalibrateImageTask(pipeBase.PipelineTask):
     """Compute the PSF, aperture corrections, astrometric and photometric
@@ -556,17 +616,32 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             config=self.config.photometry_ref_loader, log=self.log)
         self.photometry.match.setRefObjLoader(photometry_loader)
 
+        if self.config.do_illumination_correction:
+            background_flat = inputs.pop("background_flat")
+            illumination_correction = inputs.pop("illumination_correction")
+        else:
+            background_flat = None
+            illumination_correction = None
+
         # This should not happen with a properly configured execution context.
         assert not inputs, "runQuantum got more inputs than expected"
 
         # Specify the fields that `annotate` needs below, to ensure they
         # exist, even as None.
-        result = pipeBase.Struct(exposure=None,
-                                 stars_footprints=None,
-                                 psf_stars_footprints=None,
-                                 )
+        result = pipeBase.Struct(
+            exposure=None,
+            stars_footprints=None,
+            psf_stars_footprints=None,
+            background_to_photometric_ratio=None,
+        )
         try:
-            self.run(exposures=exposures, result=result, id_generator=id_generator)
+            self.run(
+                exposures=exposures,
+                result=result,
+                id_generator=id_generator,
+                background_flat=background_flat,
+                illumination_correction=illumination_correction,
+            )
         except pipeBase.AlgorithmError as e:
             error = pipeBase.AnnotatedPartialOutputsError.annotate(
                 e,
@@ -582,7 +657,15 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         butlerQC.put(result, outputRefs)
 
     @timeMethod
-    def run(self, *, exposures, id_generator=None, result=None):
+    def run(
+        self,
+        *,
+        exposures,
+        id_generator=None,
+        result=None,
+        background_flat=None,
+        illumination_correction=None,
+    ):
         """Find stars and perform psf measurement, then do a deeper detection
         and measurement and calibrate astrometry and photometry from that.
 
@@ -599,6 +682,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             Result struct that is modified to allow saving of partial outputs
             for some failure conditions. If the task completes successfully,
             this is also returned.
+        background_flat : `lsst.afw.image.Exposure`, optional
+            Background flat-field image.
+        illumination_correction : `lsst.afw.image.Exposure`, optional
+            Illumination correction image.
 
         Returns
         -------
@@ -654,8 +741,17 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         have_fit_astrometry = False
         have_fit_photometry = False
         try:
-            result.psf_stars_footprints, result.background, _ = self._compute_psf(result.exposure,
-                                                                                  id_generator)
+            result.background_to_photometric_ratio = self._apply_illumination_correction(
+                result.exposure,
+                background_flat,
+                illumination_correction,
+            )
+
+            result.psf_stars_footprints, result.background, _ = self._compute_psf(
+                result.exposure,
+                id_generator,
+                background_to_photometric_ratio=result.background_to_photometric_ratio,
+            )
             have_fit_psf = True
             self._measure_aperture_correction(result.exposure, result.psf_stars_footprints)
             result.psf_stars = result.psf_stars_footprints.asAstropy()
@@ -670,7 +766,12 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             result.psf_stars = result.psf_stars_footprints.asAstropy()
 
             # Run the stars_detection subtask for the photometric calibration.
-            result.stars_footprints = self._find_stars(result.exposure, result.background, id_generator)
+            result.stars_footprints = self._find_stars(
+                result.exposure,
+                result.background,
+                id_generator,
+                background_to_photometric_ratio=result.background_to_photometric_ratio,
+            )
             self._match_psf_stars(result.psf_stars_footprints, result.stars_footprints)
 
             # Update the source cooordinates with the current wcs.
@@ -719,13 +820,59 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             self._summarize(result.exposure, summary_stat_catalog, result.background)
 
         if self.config.do_calibrate_pixels:
-            self._apply_photometry(result.exposure, result.background)
+            self._apply_photometry(
+                result.exposure,
+                result.background,
+                background_to_photometric_ratio=result.background_to_photometric_ratio,
+            )
             result.applied_photo_calib = photo_calib
         else:
             result.applied_photo_calib = None
         return result
 
-    def _compute_psf(self, exposure, id_generator):
+    def _apply_illumination_correction(self, exposure, background_flat, illumination_correction):
+        """Apply the illumination correction to a background-flattened image.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
+            Exposure to convert to a photometric-flattened image.
+        background_flat : `lsst.afw.image.Exposure`
+            Flat image that had previously been applied to exposure.
+        illumination_correction : `lsst.afw.image.Exposure`
+            Illumination correction image to convert to photometric-flattened image.
+
+        Returns
+        -------
+        background_to_photometric_ratio : `lsst.afw.image.Image`
+            Ratio image to convert a photometric-flattened image to/from
+            a background-flattened image. Will be None if task not
+            configured to use the illumination correction.
+        """
+        if not self.config.do_illumination_correction:
+            return None
+
+        # From a raw image to a background-flattened image, we have:
+        #   bfi = image / background_flat
+        # From a raw image to a photometric-flattened image, we have:
+        #   pfi = image / reference_flux_flat
+        #   pfi = image / (dome_flat * illumination_correction),
+        # where the illumination correction contains the jacobian
+        # of the wcs, converting to fluence units.
+        # Currently background_flat == dome_flat, so we have for the
+        # "background_to_photometric_ratio", the ratio of the background-
+        # flattened image to the photometric-flattened image:
+        #   bfi / pfi = illumination_correction.
+
+        background_to_photometric_ratio = illumination_correction.image.clone()
+
+        # Dividing the ratio will convert a background-flattened image to
+        # a photometric-flattened image.
+        exposure.maskedImage /= background_to_photometric_ratio
+
+        return background_to_photometric_ratio
+
+    def _compute_psf(self, exposure, id_generator, background_to_photometric_ratio=None):
         """Find bright sources detected on an exposure and fit a PSF model to
         them, repairing likely cosmic rays before detection.
 
@@ -736,8 +883,11 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         ----------
         exposure : `lsst.afw.image.Exposure`
             Exposure to detect and measure bright stars on.
-        id_generator : `lsst.meas.base.IdGenerator`, optional
+        id_generator : `lsst.meas.base.IdGenerator`
             Object that generates source IDs and provides random seeds.
+        background_to_photometric_ratio : `lsst.afw.image.Image`, optional
+            Image to convert photometric-flattened image to
+            background-flattened image.
 
         Returns
         -------
@@ -774,14 +924,22 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                       self.config.install_simple_psf.fwhm)
         self.install_simple_psf.run(exposure=exposure)
 
-        background = self.psf_subtract_background.run(exposure=exposure).background
+        background = self.psf_subtract_background.run(
+            exposure=exposure,
+            backgroundToPhotometricRatio=background_to_photometric_ratio,
+        ).background
         log_psf("Initial PSF:")
         self.psf_repair.run(exposure=exposure, keepCRs=True)
 
         table = afwTable.SourceTable.make(self.psf_schema, id_generator.make_table_id_factory())
         # Re-estimate the background during this detection step, so that
         # measurement uses the most accurate background-subtraction.
-        detections = self.psf_detection.run(table=table, exposure=exposure, background=background)
+        detections = self.psf_detection.run(
+            table=table,
+            exposure=exposure,
+            background=background,
+            backgroundToPhotometricRatio=background_to_photometric_ratio,
+        )
         self.metadata["initial_psf_positive_footprint_count"] = detections.numPos
         self.metadata["initial_psf_negative_footprint_count"] = detections.numNeg
         self.metadata["initial_psf_positive_peak_count"] = detections.numPosPeaks
@@ -803,7 +961,12 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.psf_repair.run(exposure=exposure, keepCRs=True)
         # Re-estimate the background during this detection step, so that
         # measurement uses the most accurate background-subtraction.
-        detections = self.psf_detection.run(table=table, exposure=exposure, background=background)
+        detections = self.psf_detection.run(
+            table=table,
+            exposure=exposure,
+            background=background,
+            backgroundToPhotometricRatio=background_to_photometric_ratio,
+        )
         self.metadata["simple_psf_positive_footprint_count"] = detections.numPos
         self.metadata["simple_psf_negative_footprint_count"] = detections.numNeg
         self.metadata["simple_psf_positive_peak_count"] = detections.numPosPeaks
@@ -852,7 +1015,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         exposure.info.setApCorrMap(ap_corr_map)
 
-    def _find_stars(self, exposure, background, id_generator):
+    def _find_stars(self, exposure, background, id_generator, background_to_photometric_ratio=None):
         """Detect stars on an exposure that has a PSF model, and measure their
         PSF, circular aperture, compensated gaussian fluxes.
 
@@ -865,6 +1028,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             modified in-place during subsequent detection.
         id_generator : `lsst.meas.base.IdGenerator`
             Object that generates source IDs and provides random seeds.
+        background_to_photometric_ratio : `lsst.afw.image.Image`, optional
+            Image to convert photometric-flattened image to
+            background-flattened image.
 
         Returns
         -------
@@ -876,7 +1042,12 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                           id_generator.make_table_id_factory())
         # Re-estimate the background during this detection step, so that
         # measurement uses the most accurate background-subtraction.
-        detections = self.star_detection.run(table=table, exposure=exposure, background=background)
+        detections = self.star_detection.run(
+            table=table,
+            exposure=exposure,
+            background=background,
+            backgroundToPhotometricRatio=background_to_photometric_ratio,
+        )
         sources = detections.sources
         self.star_sky_sources.run(exposure.mask, id_generator.catalog_id, sources)
 
@@ -1023,7 +1194,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         exposure.setPhotoCalib(result.photoCalib)
         return calibrated_stars, result.matches, result.matchMeta, result.photoCalib
 
-    def _apply_photometry(self, exposure, background):
+    def _apply_photometry(self, exposure, background, background_to_photometric_ratio=None):
         """Apply the photometric model attached to the exposure to the
         exposure's pixels and an associated background model.
 
@@ -1035,6 +1206,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             photometric transform will be attached.
         background : `lsst.afw.math.BackgroundList`
             Background model to convert to nanojansky units in place.
+        background_to_photometric_ratio : `lsst.afw.image.Image`, optional
+            Image to convert photometric-flattened image to
+            background-flattened image.
         """
         photo_calib = exposure.getPhotoCalib()
         exposure.maskedImage = photo_calib.calibrateImage(exposure.maskedImage)
@@ -1046,6 +1220,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         assert photo_calib._isConstant, \
             "Background calibration assumes a constant PhotoCalib; PhotoCalTask should always return that."
+        # FIXME: what to do about background_to_photometric_ratio here?
         for bg in background:
             # The statsImage is a view, but we can't assign to a function call in python.
             binned_image = bg[0].getStatsImage()
