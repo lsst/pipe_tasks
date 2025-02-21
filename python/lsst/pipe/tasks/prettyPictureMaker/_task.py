@@ -125,6 +125,19 @@ class LumConfig(Config):
     )
     floor = Field[float](doc="A scaling factor to apply to the luminance before asinh scaling", default=0.0)
     Q = Field[float](doc="softening parameter", default=0.7)
+    highlight = Field[float](
+        doc="The value of highlights in scaling factor applied to post asinh streaching",
+        default=1.0
+    )
+    shadow = Field[float](
+        doc="The value of shadows in scaling factor applied to post asinh streaching",
+        default=0.0
+    )
+    midtone = Field[float](
+        doc="The value of midtone in scaling factor applied to post asinh streaching",
+        default=0.0
+    )
+
 
 
 class LocalContrastConfig(Config):
