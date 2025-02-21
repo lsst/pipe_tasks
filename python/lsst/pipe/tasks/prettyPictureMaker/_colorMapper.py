@@ -25,8 +25,9 @@ def latLum(
     floor: float = 0.00,
     Q: float = 0.7,
     doDenoise: bool = False,
-    contrastQuantiles: tuple[float, float] = (0.2, 0.8),
-    outputScale: tuple[float, float] = (0.33501239,  0.5032317)
+    highlight: float = 1.0,
+    shadow: float = 0.0,
+    midtone: float = 0.5,
 ) -> NDArray:
     """
     Scale the input luminosity values to maximize the dynamic range visible.
@@ -73,16 +74,16 @@ def latLum(
 
     # Apply the modified luminosity transformation using arcsinh function.
     soften = Q / stretch
-    intensities = A * np.arcsinh((abs(values) * soften + floor) * slope) + b0
+    intensities = np.arcsinh((abs(values) * soften + floor) * slope)
 
     # Always normalize by what the original max value (100) scales to.
-    norm = A * np.arcsinh((100 * soften + floor) * slope) + b0
+    norm = np.arcsinh((100 * soften + floor) * slope)
 
     intensities /= norm
 
-    # stretch lum to ensure good contrast
-    quantiles = np.quantile(intensities, contrastQuantiles)
-    intensities = (intensities - quantiles[0])/(quantiles[1]-quantiles[0])*(outputScale[1]-outputScale[0]) + outputScale[0]
+    # Scale the intensities with linear manipulation for contrast
+    intensities = (intensities - shadow)/(highlight-shadow)
+    intensities = ((midtone - 1)*intensities)/(((2*midtone - 1)*intensities) - midtone)
 
     np.clip(intensities, 0, 1, out=intensities)
     intensities *= 100
