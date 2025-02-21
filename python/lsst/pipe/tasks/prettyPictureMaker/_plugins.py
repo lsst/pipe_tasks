@@ -147,7 +147,6 @@ def neg_log_likelihood(params, x):
     M = np.max(x)
     if mu < M - 1e-8:  # Allow for floating point precision issues
         return np.inf
-    loglikelihood = 0.0
     z = (x - mu) / sigma
     term = np.log(2) - np.log(sigma) + norm.logpdf(z)
     loglikelihood = np.sum(term)
@@ -194,7 +193,7 @@ def fixBackground(image, mask, maskDict):
     mask = image < maxLikely
     initial_std = (image[mask] - maxLikely).std()
 
-    if len(image[mask]) > 0:
+    if np.any(mask):
         result = minimize(neg_log_likelihood, (maxLikely, initial_std), args=(image[mask]), bounds=((maxLikely, None), (1e-8, None)))
         mu_hat, sigma_hat = result.x
     else:
@@ -222,4 +221,4 @@ def fixBackground(image, mask, maskDict):
     inter = RBFInterpolator(np.vstack((yloc, xloc)).T, values, kernel='thin_plate_spline', degree=4, smoothing=0.05)
     backgrounds = inter(np.array(positions)[::-1].reshape(2,-1).T).reshape(image.shape)
 
-    return backgrounds
+    return image - backgrounds
