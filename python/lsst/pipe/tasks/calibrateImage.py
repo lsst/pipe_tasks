@@ -315,6 +315,14 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         doc="Task to compute the aperture correction from the bright stars."
     )
 
+    star_background = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.SubtractBackgroundTask,
+        doc="Task to perform final background subtraction, just before photoCal.",
+    )
+    star_background_detection = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.SourceDetectionTask,
+        doc="Task to detect sources for final sky background determination prior to photoCal."
+    )
     # subtasks used during star measurement
     star_detection = pexConfig.ConfigurableField(
         target=lsst.meas.algorithms.SourceDetectionTask,
@@ -480,8 +488,13 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         self.measure_aperture_correction.sourceSelector["science"].flags.good = ["calib_psf_used"]
         self.measure_aperture_correction.sourceSelector["science"].flags.bad = []
 
+        # Make this pretty low for the final background estimation.
+        self.star_background_detection.thresholdValue = 5.0
+        self.star_background_detection.thresholdType = "stdev"  # "pixel_stdev
+        self.star_background_detection.reEstimateBackground = False
         # Detection for good S/N for astrometry/photometry and other
         # downstream tasks; detection mask to S/N>=5, but S/N>=10 peaks.
+        self.star_detection.reEstimateBackground = False
         self.star_detection.thresholdValue = 5.0
         self.star_detection.includeThresholdMultiplier = 2.0
         self.star_measurement.plugins = ["base_PixelFlags",
@@ -524,7 +537,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
 
         # Only reject sky sources; we already selected good stars.
         self.astrometry.sourceSelector["science"].doFlags = True
-        self.astrometry.sourceSelector["science"].flags.good = [] #  ["calib_psf_candidate"]
+        self.astrometry.sourceSelector["science"].flags.good = []  # ["calib_psf_candidate"]
         # self.astrometry.sourceSelector["science"].flags.bad = []
         self.astrometry.sourceSelector["science"].doUnresolved = False
         self.astrometry.sourceSelector["science"].doIsolated = False
@@ -669,6 +682,11 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                       doc="id of this source in psf_stars; 0 if there is no match.")
 
         afwTable.CoordKey.addErrorFields(initial_stars_schema)
+
+        self.do_psf_background = True
+        self.makeSubtask("star_background")
+        self.makeSubtask("star_background_detection", schema=initial_stars_schema)
+
         self.makeSubtask("star_detection", schema=initial_stars_schema)
         self.makeSubtask("star_sky_sources", schema=initial_stars_schema)
         self.makeSubtask("star_deblend", schema=initial_stars_schema)
@@ -864,10 +882,14 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 init_const_bg_obj, pre_detection_threshold_value = self._subtract_initial_constant_background(
                     result.exposure
                 )
-                self._pre_detection_for_psf_selection(
+                pre_detected_fraction = self._pre_detection_for_psf_selection(
                     result.exposure,
                     pre_detection_threshold_value=pre_detection_threshold_value
                 )
+                if pre_detected_fraction > 0.85:
+                    self.do_psf_background = False
+                    self.log.warning("Not subtracting background in psf measurement due to high "
+                                     "detection fraction in pre-detection: %.2f", pre_detected_fraction)
 
             result.psf_stars_footprints, result.background, _ = self._compute_psf(
                 result.exposure, id_generator,
@@ -893,6 +915,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
             # If desired, include the initial constant background that was
             # subtracted to the background object list.
+            if result.background is None:
+                result.background = afwMath.BackgroundList()
+
             if self.config.do_init_const_background and not self.config.maintain_init_const_background:
                 result.background.append(
                     (init_const_bg_obj, afwMath.Interpolate.CONSTANT, afwMath.REDUCE_INTERP_ORDER,
@@ -910,6 +935,46 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 result.astrometry_matches = lsst.meas.astrom.denormalizeMatches(astrometry_matches,
                                                                                 astrometry_meta)
             result.psf_stars = result.psf_stars_footprints.asAstropy()
+
+            # Do a final background measurement with a very low detection
+            # threshold.
+            if 1:
+                bad_mask_planes = ["BAD", "EDGE", "NO_DATA"]
+                detected_mask_planes = ["DETECTED", "DETECTED_NEGATIVE"]
+                if 1:
+                    # Clear detected mask planes first
+                    mask = result.exposure.mask
+                    for mp in detected_mask_planes:
+                        if mp not in mask.getMaskPlaneDict():
+                            mask.addMaskPlane(mp)
+                    mask &= ~mask.getPlaneBitMask(detected_mask_planes)
+
+                table = afwTable.SourceTable.make(self.initial_stars_schema.schema)
+                self.star_background_detection.run(table=table, exposure=result.exposure)
+                # result.background.append(star_background)
+                bad_pixel_mask = afwImage.Mask.getPlaneBitMask(bad_mask_planes)
+                n_good_pix = np.sum(result.exposure.mask.array & bad_pixel_mask == 0)
+                detected_pixel_mask = afwImage.Mask.getPlaneBitMask(detected_mask_planes)
+                n_detected_pix = np.sum((result.exposure.mask.array & detected_pixel_mask != 0)
+                                        & (result.exposure.mask.array & bad_pixel_mask == 0))
+                detected_fraction = n_detected_pix/n_good_pix
+                self.log.info("*****Fraction of pixels marked as DETECTED or DETECTED_NEGATIVE in "
+                              "star_background_detection = %.5f", detected_fraction)
+                maxDetFracForFinalBg = 0.8
+                if detected_fraction < maxDetFracForFinalBg:
+                    star_background = self.star_background.run(exposure=result.exposure).background
+                    result.background.append(star_background[0])
+                else:
+                    self.log.warning("*****Skipping final background subtraction because the "
+                                     "fraction of pixels marked as DETECTED or DETECTED_NEGATIVE in "
+                                     "star_background_detection = %.3f (max = %.3f)",
+                                     detected_fraction, maxDetFracForFinalBg)
+                # Re-clear detected mask plane
+                mask = result.exposure.mask
+                for mp in detected_mask_planes:
+                    if mp not in mask.getMaskPlaneDict():
+                        mask.addMaskPlane(mp)
+                mask &= ~mask.getPlaneBitMask(detected_mask_planes)
 
             # Run the stars_detection subtask for the photometric calibration.
             result.stars_footprints = self._find_stars(
@@ -1077,9 +1142,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             position = exposure.psf.getAveragePosition()
             sigma = exposure.psf.computeShape(position).getDeterminantRadius()
             dimensions = exposure.psf.computeImage(position).getDimensions()
-            median_background = np.median(background.getImage().array)
-            self.log.info("%s sigma=%0.4f, dimensions=%s; median background=%0.2f",
-                          msg, sigma, dimensions, median_background)
+            if background is not None:
+                median_background = np.median(background.getImage().array)
+                self.log.info("%s sigma=%0.4f, dimensions=%s; median background=%0.2f",
+                              msg, sigma, dimensions, median_background)
             if addToMetadata:
                 self.metadata["final_psf_sigma"] = sigma
 
@@ -1087,10 +1153,13 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                       self.config.install_simple_psf.fwhm)
         self.install_simple_psf.run(exposure=exposure)
 
-        background = self.psf_subtract_background.run(
-            exposure=exposure,
-            backgroundToPhotometricRatio=background_to_photometric_ratio,
-        ).background
+        if self.do_psf_background:
+            background = self.psf_subtract_background.run(
+                exposure=exposure,
+                backgroundToPhotometricRatio=background_to_photometric_ratio,
+            ).background
+        else:
+            background = None  # afwMath.BackgroundList()
 
         if self.config.do_init_const_background:
             # Clear the detected mask planes from the initial pre-detection
@@ -1116,9 +1185,14 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 backgroundToPhotometricRatio=background_to_photometric_ratio,
             )
         else:
+            initialThreshold = self.config.psf_detection.thresholdValue
+            initialThresholdMultiplier = self.config.psf_detection.includeThresholdMultiplier
+            if not self.do_psf_background:
+                initialThreshold *= 2.0
+                initialThresholdMultiplier /= 2.0
             dynDetResStruct = self.psf_dynamic_detection.run(
                 table, exposure,
-                initialThreshold=self.config.psf_detection.thresholdValue,
+                initialThreshold=initialThreshold,
                 initialThresholdMultiplier=self.config.psf_detection.includeThresholdMultiplier
             )
             detections = dynDetResStruct.detections
@@ -1153,7 +1227,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         else:
             # Use the thresholdd and multiplier found in the previous dynamic
             # detection.
-            dynDetRedStruct = self.psf_dynamic_detection.run(
+            dynDetResStruct = self.psf_dynamic_detection.run(
                 table, exposure,
                 initialThreshold=dynDetResStruct.thresholdValue,
                 initialThresholdMultiplier=dynDetResStruct.includeThresholdMultiplier
@@ -1621,4 +1695,4 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                       "(max per amp section = %.5f)", detected_fraction, max_detected_fraction_per_amp)
         self.log.info("Number of pre_dynamic_detection iterations: %d", n_pre_dyn_det_iter)
 
-        return
+        return detected_fraction
