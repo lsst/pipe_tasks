@@ -345,11 +345,6 @@ class MakeWarpTask(CoaddBaseTask):
                     if exposure is None:
                         continue
                     warp = warps[warpType]
-                    if didSetMetadata[warpType]:
-                        mimg = exposure.getMaskedImage()
-                        mimg *= (warp.getPhotoCalib().getInstFluxAtZeroMagnitude()
-                                 / exposure.getPhotoCalib().getInstFluxAtZeroMagnitude())
-                        del mimg
                     numGoodPix[warpType] = coaddUtils.copyGoodPixels(
                         warp.getMaskedImage(), exposure.getMaskedImage(), self.getBadPixelMask())
                     totGoodPix[warpType] += numGoodPix[warpType]
@@ -532,10 +527,10 @@ class MakeWarpTask(CoaddBaseTask):
             # Calibrate the image.
             calexp.maskedImage = photoCalib.calibrateImage(calexp.maskedImage,
                                                            includeScaleUncertainty=includeCalibVar)
-            calexp.maskedImage /= photoCalib.getCalibrationMean()
-            # TODO: The images will have a calibration of 1.0 everywhere once
-            # RFC-545 is implemented.
-            # exposure.setCalib(afwImage.Calib(1.0))
+            # This new PhotoCalib shouldn't need to be used, but setting it
+            # here to reflect the fact that the image now has calibrated pixels
+            # might help avoid future bugs.
+            calexp.setPhotoCalib(afwImage.PhotoCalib(1.0))
 
             indices.append(index)
             calExpList[index] = calexp
@@ -560,6 +555,8 @@ class MakeWarpTask(CoaddBaseTask):
         exp = afwImage.ExposureF(skyInfo.bbox, skyInfo.wcs)
         exp.getMaskedImage().set(numpy.nan, afwImage.Mask
                                  .getPlaneBitMask("NO_DATA"), numpy.inf)
+        exp.setPhotoCalib(afwImage.PhotoCalib(1.0))
+        exp.metadata["BUNIT"] = "nJy"
         return exp
 
     def getWarpTypeList(self):
