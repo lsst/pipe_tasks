@@ -913,6 +913,11 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                           sum(centroid_flags), len(centroid_flags),
                           100*(sum(centroid_flags)/len(centroid_flags)))
 
+            centroid_flags = result.psf_stars_footprints["slot_Centroid_flag"]
+            self.log.info("result.psf_stars_footprints[slot_Centroid_flag] = %d/%d (%.1f percent flagged)",
+                          sum(centroid_flags), len(centroid_flags),
+                          100*(sum(centroid_flags)/len(centroid_flags)))
+
             # If desired, include the initial constant background that was
             # subtracted to the background object list.
             if result.background is None:
