@@ -275,7 +275,10 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 unassociatedSsObjects = unassociatedSsObjects[ssObjInTractPatch]
                 nSsSrc = ssInTractPatch.sum()
                 nSsObj = ssObjInTractPatch.sum()
-                diaCat = ssoAssocResult.unAssocDiaSources.to_pandas()
+                if len(ssoAssocResult.unAssocDiaSources) > 0:
+                    diaCat = ssoAssocResult.unAssocDiaSources.to_pandas()
+                else:
+                    diaCat = pd.DataFrame(columns=ssoAssocResult.unAssocDiaSources.columns)
 
             diaInTractPatch = self._trimToPatch(diaCat,
                                                 innerPatchBox,
