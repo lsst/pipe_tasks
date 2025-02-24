@@ -13,6 +13,7 @@ from lsst.cpputils import fixGamutOK
 
 from numpy.typing import NDArray
 from typing import Callable, Mapping
+from . import bayes_denoise as bd
 
 
 def latLum(
@@ -82,10 +83,12 @@ def latLum(
     intensities /= norm
 
     # Scale the intensities with linear manipulation for contrast
+    print(f"######### {shadow} / {midtone} / {highlight}")
     intensities = (intensities - shadow)/(highlight-shadow)
     intensities = ((midtone - 1)*intensities)/(((2*midtone - 1)*intensities) - midtone)
 
-    np.clip(intensities, 0, 1, out=intensities)
+    # np.clip(intensities, 0, 1, out=intensities)
+    intensities[intensities < 0 ] = 0
     intensities *= 100
 
     # Apply a specific tone cure to the luminocity defined by the below interpolant.
@@ -94,14 +97,14 @@ def latLum(
     # is preserved as we only apply this filter to the luminocity data.
     # filtered = medfilt2d(intensities, 3)
 
-    control_points = (
-        [0, 0.5, 2, 5, 13.725490196078432, 25, 30, 55.294117647058826, 73.72549019607844, 98, 100],
-        [0, 10, 15, 20, 25.686274509803921, 40, 50, 80.35294117647058, 94.11764705882352, 98, 100],
-    )
-    scaled = pchip_interpolate(*control_points, intensities)
-    scaled[scaled == 0] = 1e-7
-    intensities = scaled
-    intensities[intensities > max] = max
+    # control_points = (
+    #     [0, 0.5, 2, 5, 13.725490196078432, 25, 30, 55.294117647058826, 73.72549019607844, 98, 100],
+    #     [0, 10, 15, 20, 25.686274509803921, 40, 50, 80.35294117647058, 94.11764705882352, 98, 100],
+    # )
+    # scaled = pchip_interpolate(*control_points, intensities)
+    # scaled[scaled == 0] = 1e-7
+    # intensities = scaled
+    # intensities[intensities > max] = max
 
     # If values end up near 100 it's best to "bend" them a little to help
     # the out of gamut fixer to appropriately handle luminosity and chroma
@@ -110,8 +113,8 @@ def latLum(
     # is close to 1. Right near the upper part of the domain, it
     # returns values slightly below 1 such that it scales a value of 100
     # to a value near 95.
-    intensities *= (-1 * erf(-1 * (1 / intensities * 210))) ** 20
-    intensities[np.isnan(intensities)] = 0
+    # intensities *= (-1 * erf(-1 * (1 / intensities * 210))) ** 20
+    # intensities[np.isnan(intensities)] = 0
 
     # Reset the input array.
     values /= 100
@@ -167,19 +170,23 @@ def mapUpperBounds(
     g = img[:, :, 1]
     b = img[:, :, 2]
 
-    turnover = np.max(np.vstack((r, g, b)))
+    r_quant = np.quantile(r, 0.95)
+    g_quant = np.quantile(g, 0.95)
+    b_quant = np.quantile(b, 0.95)
+    turnover = np.max((r_quant, g_quant, b_quant))
 
     # If scaleBoundFactor is not none and absMax is not None, check that the
     # determined turnover is not less than the supplied absMax times the
     # scaleBoundFactor. This fixes patches that may have max values much less
     # than others for some processing reason.
-    if absMax is not None:
-        if scaleBoundFactor is not None and turnover < scaleBoundFactor * absMax:
-            scale = turnover * quant
-        else:
-            scale = absMax
-    else:
-        scale = turnover * quant
+    scale = absMax
+    # if absMax is not None:
+    #     if scaleBoundFactor is not None and turnover < scaleBoundFactor * absMax:
+    #         scale = turnover * quant
+    #     else:
+    #         scale = absMax
+    # else:
+    #     scale = turnover * quant
 
     image = np.empty(img.shape)
     image[:, :, 0] = r / scale
@@ -511,6 +518,9 @@ def lsstRGB(
     img[:, :, 0] = rArray
     img[:, :, 1] = gArray
     img[:, :, 2] = bArray
+    # If there are nan's in the image there is no real option other than to
+    # set them to zero or throw.
+    img[np.isnan(img)] = 0
 
     # The image might contain pixels less than zero due to noise. The options
     # for handling this are to either set them to zero, which creates weird
@@ -520,11 +530,39 @@ def lsstRGB(
     # raising the floor of the image a bit, this isn't really a bad thing as
     # it makes the background a grey color rather that pitch black which
     # can cause perceptual contrast issues.
-    img = abs(img)
 
-    # If there are nan's in the image there is no real option other than to
-    # set them to zero or throw.
-    img[np.isnan(img)] = 0
+    r_neg = img[:, :, 0][img[:, :, 0] < 0]
+    if len(r_neg) == 0:
+        r_std = 0
+    else:
+        r_pos = abs(r_neg)
+        r_std = np.std(np.concatenate((r_neg, r_pos)))
+
+    g_neg = img[:, :, 1][img[:, :, 1] < 0]
+    if len(g_neg) == 0:
+        g_std = 0
+    else:
+        g_pos = abs(g_neg)
+        g_std = np.std(np.concatenate((g_neg, g_pos)))
+
+    b_neg = img[:, :, 2][img[:, :, 2] < 0]
+    if len(b_neg) == 0:
+        b_std = 0
+    else:
+        b_pos = abs(b_neg)
+        b_std = np.std(np.concatenate((b_neg, b_pos))) * 3
+
+    if r_std == 0:
+        r_std = 1e-8
+    if g_std == 0:
+        g_std = 1e-8
+    if b_std == 0:
+        b_std = 1e-8
+
+    img = bd.denoise_image(img, 3, 1, np.array((r_std, g_std, b_std)))
+    # might need to do image mixing here
+    # img = np.clip(img, 0, 1)
+    # img = abs(img)
 
     if not brackets:
         brackets = [1]
