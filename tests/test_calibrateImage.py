@@ -200,6 +200,11 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # Check that all necessary fields are in the output.
         lsst.pipe.base.testUtils.assertValidOutput(calibrate, result)
 
+        # Check metadata.
+        key = "LSST CALIB ILLUMCORR APPLIED"
+        self.assertIn(key, result.exposure.metadata)
+        self.assertEqual(result.exposure.metadata[key], False)
+
     def test_run(self):
         """Test that run() returns reasonable values to be butler put.
         """
@@ -493,6 +498,11 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
             result.applied_photo_calib.getCalibrationMean() * self.background_level,
             rtol=1e-3,
         )
+
+        # Check metadata.
+        key = "LSST CALIB ILLUMCORR APPLIED"
+        self.assertIn(key, result.exposure.metadata)
+        self.assertEqual(result.exposure.metadata[key], True)
 
 
 class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):

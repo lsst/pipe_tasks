@@ -731,6 +731,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self._recordMaskedPixelFractions(result.exposure)
         self.log.info("Initial PhotoCalib: %s", result.exposure.getPhotoCalib())
 
+        result.exposure.metadata["LSST CALIB ILLUMCORR APPLIED"] = False
+
         # Check input image processing.
         if self.config.do_illumination_correction:
             if not result.exposure.metadata.get("LSST ISR FLAT APPLIED", False):
@@ -876,6 +878,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # Dividing the ratio will convert a background-flattened image to
         # a photometric-flattened image.
         exposure.maskedImage /= background_to_photometric_ratio
+
+        exposure.metadata["LSST CALIB ILLUMCORR APPLIED"] = True
 
         return background_to_photometric_ratio
 
