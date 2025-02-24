@@ -106,11 +106,11 @@ class ChannelRGBConfig(Config):
     g = Field[float](doc="The amount of green contained in this channel")
     b = Field[float](doc="The amount of blue contained in this channel")
 
-    def validate(self):
-        for f in (self.r, self.g, self.b):
-            if f < 0 or f > 1:
-                raise ValueError(f"Field {f} can not have a value less than 0 or greater than one")
-        return super().validate()
+    # def validate(self):
+    #     for f in (self.r, self.g, self.b):
+    #         if f < 0 or f > 1:
+    #             raise ValueError(f"Field {f} can not have a value less than 0 or greater than one")
+    #     return super().validate()
 
 
 class LumConfig(Config):
