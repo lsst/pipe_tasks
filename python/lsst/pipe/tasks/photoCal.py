@@ -31,7 +31,7 @@ import lsst.pex.config as pexConf
 import lsst.pipe.base as pipeBase
 from lsst.afw.image import abMagErrFromFluxErr, makePhotoCalibFromCalibZeroPoint
 import lsst.afw.table as afwTable
-from lsst.meas.astrom import DirectMatchTask, DirectMatchConfigWithoutLoader
+from lsst.meas.astrom import DirectMatchTask, DirectMatchConfigWithoutLoader, MatcherFailure
 import lsst.afw.display as afwDisplay
 from lsst.meas.algorithms import getRefFluxField, ReserveSourcesTask
 from lsst.utils.timer import timeMethod
@@ -259,7 +259,7 @@ class PhotoCalTask(pipeBase.Task):
         srcInstFluxErrArr = srcInstFluxErrArr * referenceFlux
 
         if not matches:
-            raise RuntimeError("No reference stars are available")
+            raise MatcherFailure("No reference stars are available")
         refSchema = matches[0].first.schema
 
         if self.config.applyColorTerms:
