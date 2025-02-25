@@ -92,7 +92,7 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
     background_flat = connectionTypes.PrerequisiteInput(
         name="flat",
         doc="Flat calibration frame used for background correction.",
-        storageClass="Exposure",
+        storageClass="ExposureF",
         dimensions=["instrument", "detector", "physical_filter"],
         isCalibration=True,
     )
