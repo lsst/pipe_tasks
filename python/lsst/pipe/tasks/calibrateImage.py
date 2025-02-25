@@ -736,7 +736,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # Check input image processing.
         if self.config.do_illumination_correction:
             if not result.exposure.metadata.get("LSST ISR FLAT APPLIED", False):
-                raise RuntimeError(
+                raise pipeBase.InvalidQuantumError(
                     "Cannot use do_illumination_correction with an image that has not had a flat applied",
                 )
 
