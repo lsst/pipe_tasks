@@ -289,7 +289,7 @@ def removeMaskPlanes(
             mask &= ~mask.getPlaneBitMask(maskPlane)
         except InvalidParameterError:
             if logger:
-                logger.warn(
+                logger.warning(
                     "Unable to remove mask plane %s: no mask plane with that name was found.",
                     maskPlane,
                 )
