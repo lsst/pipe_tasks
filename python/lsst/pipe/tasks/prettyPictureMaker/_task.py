@@ -31,9 +31,14 @@ __all__ = (
 )
 
 from collections.abc import Iterable, Mapping
+from lsst.afw.image import ExposureF
 import numpy as np
 from typing import TYPE_CHECKING, cast, Any
 from lsst.skymap import BaseSkyMap
+
+from scipy.stats import norm
+from scipy.optimize import minimize
+from scipy.interpolate import griddata, RBFInterpolator
 
 from lsst.daf.butler import Butler, DeferredDatasetHandle
 from lsst.daf.butler import DatasetRef
@@ -392,6 +397,127 @@ class PrettyPictureTask(PipelineTask):
         for key, value in kwargs.items():
             sortedImages[key] = value
         return sortedImages
+
+
+class PrettyPictureBackgroundFixerConnections(
+        PipelineTaskConnections,
+        dimensions=("tract", "patch", "skymap", "band"),
+        defaultTemplates={"coaddTypeName": "deep"}):
+    inputCoadd = Input(
+        doc=(
+            "Input coadd for which the background is to be removed"
+        ),
+        name="{coaddTypeName}CoaddPsfMatched",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "skymap", "band"),
+    )
+    outputCoadd = Output(
+        doc="The coadd with the background fixed and subtracted",
+        name="pretty_picture_coadd_bg_subtracted",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "skymap", "band"),
+    )
+
+
+class PrettyPictureBackgroundFixerConfig(PipelineTaskConfig, pipelineConnections=PrettyMosaicConnections):
+    pass
+
+
+class PrettyPictureBackgroundFixerTask(PipelineTask):
+    _DefaultName = "prettyPictureBackgroundFixerTask"
+    ConfigClass = PrettyPictureBackgroundFixerConfig
+
+    config: ConfigClass
+
+    def neg_log_likelihood(self, params, x):
+        mu, sigma = params
+        if sigma <= 0:
+            return np.inf
+        M = np.max(x)
+        if mu < M - 1e-8:  # Allow for floating point precision issues
+            return np.inf
+        z = (x - mu) / sigma
+        term = np.log(2) - np.log(sigma) + norm.logpdf(z)
+        loglikelihood = np.sum(term)
+        return -loglikelihood
+
+    def tile_slices(self, arr, R, C):
+        M = arr.shape[0]
+        N = arr.shape[1]
+
+        # Function to compute slices for a given dimension size and number of divisions
+        def get_slices(total_size, num_divisions):
+            base = total_size // num_divisions
+            remainder = total_size % num_divisions
+            slices = []
+            start = 0
+            for i in range(num_divisions):
+                end = start + base
+                if i < remainder:
+                    end += 1
+                slices.append((start, end))
+                start = end
+            return slices
+
+        # Get row and column slices
+        row_slices = get_slices(M, R)
+        col_slices = get_slices(N, C)
+
+        # Generate all possible tile combinations of row and column slices
+        tiles = []
+        for rs in row_slices:
+            r_start, r_end = rs
+            for cs in col_slices:
+                c_start, c_end = cs
+                tile_slice = (slice(r_start, r_end), slice(c_start, c_end))
+                tiles.append(tile_slice)
+
+        return tiles
+
+    def fixBackground(self, image):
+        maxLikely = np.median(image, axis=None)
+
+        mask = image < maxLikely
+        initial_std = (image[mask] - maxLikely).std()
+
+        if np.any(mask):
+            result = minimize(self.neg_log_likelihood, (maxLikely, initial_std), args=(image[mask]), bounds=((maxLikely, None), (1e-8, None)))
+            mu_hat, sigma_hat = result.x
+        else:
+            mu_hat, sigma_hat = (maxLikely, 2*initial_std)
+        threshhold = mu_hat + sigma_hat
+        image_mask = image < threshhold
+
+        tiles = self.tile_slices(image, 25, 25)
+
+        yloc = []
+        xloc = []
+        values = []
+
+        for (xslice, yslice) in tiles:
+            ypos = (yslice.stop - yslice.start)/2 + yslice.start
+            xpos = (xslice.stop - xslice.start)/2 + xslice.start
+            yloc.append(ypos)
+            xloc.append(xpos)
+            window = image[yslice, xslice][image_mask[yslice, xslice]]
+            if window.size > 0:
+                value = np.median(window)
+            else:
+                value = 0
+            values.append(value)
+
+        positions = np.meshgrid(np.arange(image.shape[0]), np.arange(image.shape[1]))
+        inter = RBFInterpolator(np.vstack((yloc, xloc)).T, values, kernel='thin_plate_spline', degree=4, smoothing=0.05)
+        backgrounds = inter(np.array(positions)[::-1].reshape(2,-1).T).reshape(image.shape)
+
+        return backgrounds
+
+    def run(self, inputCoadd: Exposure):
+        background = self.fixBackground(inputCoadd.image.array)
+        # create a copy to mutate
+        output = ExposureF(inputCoadd.image.array)
+        output.image.array -= background
+        return Struct(outputCoadd=output)
 
 
 class PrettyMosaicConnections(PipelineTaskConnections, dimensions=("tract", "skymap")):
