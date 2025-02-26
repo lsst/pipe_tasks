@@ -182,6 +182,10 @@ class TableVStack:
             the rows of all of them.
         """
         handles = tuple(handles)  # guard against single-pass iterators
+        # Ensure that zero length catalogs are not included
+        rowcount = tuple(handle.get(component="rowcount") for handle in handles)
+        handles = tuple(handle for handle, count in zip(handles, rowcount) if count > 0)
+
         vstack = cls.from_handles(handles)
         for handle in handles:
             vstack.extend(handle.get())
