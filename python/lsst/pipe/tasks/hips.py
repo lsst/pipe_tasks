@@ -1649,14 +1649,20 @@ class GenerateColorHipsConfig(GenerateHipsConfig, pipelineConnections=GenerateCo
     def setDefaults(self):
         super().setDefaults()
         self.rgbGenerator: PrettyPictureConfig
-        self.rgbGenerator.imageRemappingConfig.absMax = 300
-        # self.rgbGenerator.imageRemappingConfig.quant = 1
+        self.rgbGenerator.imageRemappingConfig.absMax = 550
         self.rgbGenerator.luminanceConfig.Q = 0.7
         self.rgbGenerator.doPSFDeconcovlve = False
-        self.rgbGenerator.exposureBrackets = [0.9, 1, 3]
         self.rgbGenerator.exposureBrackets = None
         self.rgbGenerator.luminanceConfig.stretch = 220
         self.rgbGenerator.localContrastConfig.doLocalContrast = False
+        self.rgbGenerator.luminanceConfig.highlight = 0.805882
+        self.rgbGenerator.luminanceConfig.shadow = 0.09
+        self.rgbGenerator.luminanceConfig.midtone = 0.3
+        self.rgbGenerator.doPSFDeconcovlve = False
+        self.rgbGenerator.colorConfig.maxChroma = 80
+        self.rgbGenerator.colorConfig.saturation = 0.6
+        self.rgbGenerator.cieWhitePoint = (0.28, 0.28)
+
         return
 
 
