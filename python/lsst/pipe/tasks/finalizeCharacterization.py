@@ -59,6 +59,7 @@ class FinalizeCharacterizationConnections(pipeBase.PipelineTaskConnections,
         dimensions=('instrument', 'visit', 'detector'),
         deferLoad=True,
         multiple=True,
+        deferGraphConstraint=True,
     )
     calexps = pipeBase.connectionTypes.Input(
         doc='Calexps for the visit',
