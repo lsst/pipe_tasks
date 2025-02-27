@@ -517,7 +517,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
     def run(self, inputCoadd: Exposure):
         background = self.fixBackground(inputCoadd.image.array)
         # create a copy to mutate
-        output = ExposureF(inputCoadd.image.array)
+        output = ExposureF(inputCoadd, deep=True)
         output.image.array -= background
         return Struct(outputCoadd=output)
 
