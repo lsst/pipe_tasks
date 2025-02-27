@@ -69,25 +69,21 @@ funcs:
     # psPm: No moving point source model yet
     # psParallax: No moving point source model yet
     psfFlux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: slot_PsfFlux_instFlux
     psfFluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - slot_PsfFlux_instFlux
-            - slot_PsfFlux_instFluxErr
+        args: slot_PsfFlux_instFluxErr
     free_psfFlux:
-        functor: NanoJansky
+        functor: Column
         dataset: meas
         args: slot_PsfFlux_instFlux
     free_psfFluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: meas
-        args:
-            - slot_PsfFlux_instFlux
-            - slot_PsfFlux_instFluxErr
+        args: slot_PsfFlux_instFluxErr
     free_psfFlux_flag:
         functor: Column
         dataset: meas
@@ -151,25 +147,21 @@ funcs:
     # bdSamples: DM-22242 Remove from the DPDD and
     # replace with other shear estimation parameters. e.g. How e1 and e2 respond to shear.
     bdFluxB:
-        functor: NanoJansky
+        functor: Column
         dataset: meas
         args: modelfit_CModel_dev_instFlux
     bdFluxBErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: meas
-        args:
-            - modelfit_CModel_dev_instFlux
-            - modelfit_CModel_dev_instFluxErr
+        args: modelfit_CModel_dev_instFluxErr
     bdFluxD:
-        functor: NanoJansky
+        functor: Column
         dataset: meas
         args: modelfit_CModel_exp_instFlux
     bdFluxDErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: meas
-        args:
-            - modelfit_CModel_exp_instFlux
-            - modelfit_CModel_exp_instFluxErr
+        args: modelfit_CModel_exp_instFluxErr
     # DM-22243: Replace these with g, r, i, z, y and the blessed fluxes to use for colors
     # Need a new name like "gModelColorFlux", "gMatchedApertureGalaxyFlux", or
     # "gMatchedApertureFlux", "gStdFlux"
@@ -183,81 +175,67 @@ funcs:
     # zyStd:
     #  PSF GAaP flux
     gaapPsfFlux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_PsfFlux_instFlux
     gaapPsfFluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - ext_gaap_GaapFlux_1_15x_PsfFlux_instFlux
-            - ext_gaap_GaapFlux_1_15x_PsfFlux_instFluxErr
+        args: ext_gaap_GaapFlux_1_15x_PsfFlux_instFluxErr
     # 0.7 arcsec sigma GAaP flux
     gaap0p7Flux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_0_7_instFlux
     gaap0p7FluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - ext_gaap_GaapFlux_1_15x_0_7_instFlux
-            - ext_gaap_GaapFlux_1_15x_0_7_instFluxErr
+        args: ext_gaap_GaapFlux_1_15x_0_7_instFluxErr
     # 1.0 arcsec sigma GAaP flux
     gaap1p0Flux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_1_0_instFlux
     gaap1p0FluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - ext_gaap_GaapFlux_1_15x_1_0_instFlux
-            - ext_gaap_GaapFlux_1_15x_1_0_instFluxErr
+        args: ext_gaap_GaapFlux_1_15x_1_0_instFluxErr
     # 1.5 arcsec sigma GAaP flux
     gaap1p5Flux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_1_5_instFlux
     gaap1p5FluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - ext_gaap_GaapFlux_1_15x_1_5_instFlux
-            - ext_gaap_GaapFlux_1_15x_1_5_instFluxErr
+        args: ext_gaap_GaapFlux_1_15x_1_5_instFluxErr
     # 2.5 arcsec sigma GAaP flux
     gaap2p5Flux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_2_5_instFlux
     gaap2p5FluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - ext_gaap_GaapFlux_1_15x_2_5_instFlux
-            - ext_gaap_GaapFlux_1_15x_2_5_instFluxErr
+        args: ext_gaap_GaapFlux_1_15x_2_5_instFluxErr
     # 3.0 arcsec sigma GAaP flux
     gaap3p0Flux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_3_0_instFlux
     gaap3p0FluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - ext_gaap_GaapFlux_1_15x_3_0_instFlux
-            - ext_gaap_GaapFlux_1_15x_3_0_instFluxErr
+        args: ext_gaap_GaapFlux_1_15x_3_0_instFluxErr
     #  Optimal GAaP flux
     gaapOptimalFlux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_Optimal_instFlux
     gaapOptimalFluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - ext_gaap_GaapFlux_1_15x_Optimal_instFlux
-            - ext_gaap_GaapFlux_1_15x_Optimal_instFluxErr
+        args: ext_gaap_GaapFlux_1_15x_Optimal_instFluxErr
     # Taking Shape from meas
     ixx:
         functor: Column
@@ -345,154 +323,132 @@ funcs:
     # kronRadErr: # Not computed
     # kronBand: replaced with `refBand`
     kronFlux:
-        functor: NanoJansky
+        functor: Column
         dataset: meas  # or forced_src?
         args: ext_photometryKron_KronFlux_instFlux
     kronFluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: meas  # or forced_src?
-        args:
-            - ext_photometryKron_KronFlux_instFlux
-            - ext_photometryKron_KronFlux_instFluxErr
+        args: ext_photometryKron_KronFlux_instFluxErr
     # kronRad50: Need to compute DM-16313
     # kronRad50Err: Need to compute DM-16313
     # kronRad90: Need to compute DM-16313
     # kronRad90Err: Need to compute DM-16313
     # apFlux renamed to calibFlux because it is not guaranteed to be an apFlux
     calibFlux:
-        functor: NanoJansky
+        functor: Column
         dataset: meas
         args: slot_CalibFlux_instFlux
     calibFluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: meas
-        args:
-            - slot_CalibFlux_instFlux
-            - slot_CalibFlux_instFluxErr
+        args: slot_CalibFlux_instFluxErr
     # Not in DPDD. Used for QA
     ap03Flux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: base_CircularApertureFlux_3_0_instFlux
     ap03FluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - base_CircularApertureFlux_3_0_instFlux
-            - base_CircularApertureFlux_3_0_instFluxErr
+        args: base_CircularApertureFlux_3_0_instFluxErr
     ap03Flux_flag:
         functor: Column
         dataset: forced_src
         args: base_CircularApertureFlux_3_0_flag
     # if we need to add decimal apertures call them e.g. ap04p5Flux
     ap06Flux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: base_CircularApertureFlux_6_0_instFlux
     ap06FluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - base_CircularApertureFlux_6_0_instFlux
-            - base_CircularApertureFlux_6_0_instFluxErr
+        args: base_CircularApertureFlux_6_0_instFluxErr
     ap06Flux_flag:
         functor: Column
         dataset: forced_src
         args: base_CircularApertureFlux_6_0_flag
     ap09Flux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: base_CircularApertureFlux_9_0_instFlux
     ap09FluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - base_CircularApertureFlux_9_0_instFlux
-            - base_CircularApertureFlux_9_0_instFluxErr
+        args: base_CircularApertureFlux_9_0_instFluxErr
     ap09Flux_flag:
         functor: Column
         dataset: forced_src
         args: base_CircularApertureFlux_9_0_flag
     ap12Flux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: base_CircularApertureFlux_12_0_instFlux
     ap12FluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - base_CircularApertureFlux_12_0_instFlux
-            - base_CircularApertureFlux_12_0_instFluxErr
+        args: base_CircularApertureFlux_12_0_instFluxErr
     ap12Flux_flag:
         functor: Column
         dataset: forced_src
         args: base_CircularApertureFlux_12_0_flag
     ap17Flux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: base_CircularApertureFlux_17_0_instFlux
     ap17FluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - base_CircularApertureFlux_17_0_instFlux
-            - base_CircularApertureFlux_17_0_instFluxErr
+        args: base_CircularApertureFlux_17_0_instFluxErr
     ap17Flux_flag:
         functor: Column
         dataset: forced_src
         args: base_CircularApertureFlux_17_0_flag
     ap25Flux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: base_CircularApertureFlux_25_0_instFlux
     ap25FluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - base_CircularApertureFlux_25_0_instFlux
-            - base_CircularApertureFlux_25_0_instFluxErr
+        args: base_CircularApertureFlux_25_0_instFluxErr
     ap25Flux_flag:
         functor: Column
         dataset: forced_src
         args: base_CircularApertureFlux_25_0_flag
     ap35Flux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: base_CircularApertureFlux_35_0_instFlux
     ap35FluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - base_CircularApertureFlux_35_0_instFlux
-            - base_CircularApertureFlux_35_0_instFluxErr
+        args: base_CircularApertureFlux_35_0_instFluxErr
     ap35Flux_flag:
         functor: Column
         dataset: forced_src
         args: base_CircularApertureFlux_35_0_flag
     ap50Flux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: base_CircularApertureFlux_50_0_instFlux
     ap50FluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - base_CircularApertureFlux_50_0_instFlux
-            - base_CircularApertureFlux_50_0_instFluxErr
+        args: base_CircularApertureFlux_50_0_instFluxErr
     ap50Flux_flag:
         functor: Column
         dataset: forced_src
         args: base_CircularApertureFlux_50_0_flag
     ap70Flux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: base_CircularApertureFlux_70_0_instFlux
     ap70FluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - base_CircularApertureFlux_70_0_instFlux
-            - base_CircularApertureFlux_70_0_instFluxErr
+        args: base_CircularApertureFlux_70_0_instFluxErr
     ap70Flux_flag:
         functor: Column
         dataset: forced_src
@@ -555,31 +511,27 @@ funcs:
     refFwhm:
         functor: HsmFwhm
     cModelFlux:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: modelfit_CModel_instFlux
     cModelFluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: forced_src
-        args:
-            - modelfit_CModel_instFlux
-            - modelfit_CModel_instFluxErr
+        args: modelfit_CModel_instFluxErr
     cModelFlux_inner:
-        functor: NanoJansky
+        functor: Column
         dataset: forced_src
         args: modelfit_CModel_instFlux_inner
     free_cModelFlux: # to dm-naming things
-        functor: NanoJansky
+        functor: Column
         dataset: meas
         args: modelfit_CModel_instFlux
     free_cModelFluxErr:
-        functor: NanoJanskyErr
+        functor: Column
         dataset: meas
-        args:
-            - modelfit_CModel_instFlux
-            - modelfit_CModel_instFluxErr
+        args: modelfit_CModel_instFluxErr
     free_cModelFlux_inner:
-        functor: NanoJansky
+        functor: Column
         dataset: meas
         args: modelfit_CModel_instFlux_inner
     free_cModelFlux_flag:
