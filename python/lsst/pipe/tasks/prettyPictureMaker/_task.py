@@ -421,7 +421,7 @@ class PrettyPictureBackgroundFixerConnections(
     )
 
 
-class PrettyPictureBackgroundFixerConfig(PipelineTaskConfig, pipelineConnections=PrettyMosaicConnections):
+class PrettyPictureBackgroundFixerConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureBackgroundFixerConnections):
     pass
 
 
