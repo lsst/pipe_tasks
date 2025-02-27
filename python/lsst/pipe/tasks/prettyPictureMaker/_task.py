@@ -28,6 +28,8 @@ __all__ = (
     "PrettyMosaicTask",
     "PrettyMosaicConnections",
     "PrettyMosaicConfig",
+    "PrettyPictureBackgroundFixerConfig",
+    "PrettyPictureBackgroundFixerTask",
 )
 
 from collections.abc import Iterable, Mapping
