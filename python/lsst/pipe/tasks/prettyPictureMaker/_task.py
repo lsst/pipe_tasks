@@ -285,7 +285,7 @@ class PrettyPictureTask(PipelineTask):
             # run all the plugins designed for array based interaction
             for plug in plugins.channel():
                 imageArray = plug(
-                    imageArray, imageExposure.mask.array, imageExposure.mask.getMaskPlaneDict()
+                    imageArray, imageExposure.mask.array, imageExposure.mask.getMaskPlaneDict(), self.config
                 ).astype(np.float32)
             channels[channel] = imageArray
             # This will get done each loop, but they are trivial lookups so it
@@ -317,6 +317,13 @@ class PrettyPictureTask(PipelineTask):
             psf = exposure.psf.computeImage(boxCenter).array
         except Exception:
             psf = None
+
+        # assert for typing reasons
+        assert jointMask is not None
+        # Run any image level correction plugins
+        for plug in plugins.partial():
+            colorImage = plug(colorImage, jointMask, maskDict, self.config)
+
         # Ignore type because Exposures do in fact have a bbox, but it is c++
         # and not typed.
         colorImage = lsstRGB(
@@ -353,11 +360,6 @@ class PrettyPictureTask(PipelineTask):
         # lsstRGB returns an image in 0-1 scale it to the maximum value
         colorImage *= maxVal  # type: ignore
 
-        # assert for typing reasons
-        assert jointMask is not None
-        # Run any image level correction plugins
-        for plug in plugins.partial():
-            colorImage = plug(colorImage, jointMask, maskDict)
 
         # pack the joint mask back into a mask object
         lsstMask = Mask(width=jointMask.shape[1], height=jointMask.shape[0], planeDefs=maskDict)
