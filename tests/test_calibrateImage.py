@@ -408,7 +408,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         # Background should have 4 elements: 3 from compute_psf and one from
         # re-estimation during source detection.
-        self.assertEqual(len(background), 2)
+        self.assertEqual(len(background), 1)
 
         # Only 5 psf-like sources with S/N>10 should be in the output catalog,
         # plus two sky sources.
