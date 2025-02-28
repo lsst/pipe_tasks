@@ -321,15 +321,19 @@ class PrettyPictureTask(PipelineTask):
         # assert for typing reasons
         assert jointMask is not None
         # Run any image level correction plugins
+        colorImage = np.zeros((*imageRArray.shape, 3))
+        colorImage[:,:,0] = imageRArray
+        colorImage[:,:,1] = imageGArray
+        colorImage[:,:,2] = imageBArray
         for plug in plugins.partial():
             colorImage = plug(colorImage, jointMask, maskDict, self.config)
 
         # Ignore type because Exposures do in fact have a bbox, but it is c++
         # and not typed.
         colorImage = lsstRGB(
-            imageRArray,
-            imageGArray,
-            imageBArray,
+            colorImage[:,:,0],
+            colorImage[:,:,1],
+            colorImage[:,:,2],
             scaleLumKWargs=self.config.luminanceConfig.toDict(),
             remapBoundsKwargs=self.config.imageRemappingConfig.toDict(),
             scaleColorKWargs=self.config.colorConfig.toDict(),
