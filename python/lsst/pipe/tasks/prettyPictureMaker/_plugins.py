@@ -25,12 +25,10 @@ __all__ = ("PluginsRegistry", "plugins")
 
 from enum import Enum, auto
 from collections.abc import Callable
-from scipy.stats import median_abs_deviation
 from typing import TYPE_CHECKING, Generator
 import numpy as np
-from scipy.stats import norm
-from scipy.optimize import minimize
-from scipy.interpolate import griddata, RBFInterpolator
+from skimage.restoration import inpaint
+from lsst.pipe.base import PipelineTaskConfig
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -118,8 +116,8 @@ class PluginsRegistry:
         """
 
         def wrapper(
-            func: Callable[[NDArray, NDArray, Mapping[str, int]], NDArray],
-        ) -> Callable[[NDArray, NDArray, Mapping[str, int]], NDArray]:
+            func: Callable[[NDArray, NDArray, Mapping[str, int], PipelineTaskConfig], NDArray],
+        ) -> Callable[[NDArray, NDArray, Mapping[str, int], PipelineTaskConfig], NDArray]:
             match kind:
                 case PluginType.PARTIAL:
                     self._partial_values.append((order, func))
@@ -140,3 +138,18 @@ register any plugins. Or, preferably, add them to this file to avoid
 needing any other import time logic elsewhere.
 """
 
+@plugins.register(1, PluginType.PARTIAL)
+def fixStarCores(
+    image: NDArray,
+    mask: NDArray,
+    maskDict: Mapping[str, int],
+    config: PipelineTaskConfig
+    ) -> NDArray:
+    sat_bit = maskDict["SAT"]
+    no_data_bit = maskDict['NO_DATA']
+    together = ((mask & 2**sat_bit).astype(bool) | (mask & 2**no_data_bit).astype(bool))
+    bright_mask = image[:, :, 0] > 0.5*config.luminanceConfig.max
+
+    result = inpaint.inpaint_biharmonic(image, together & bright_mask, channel_axis=-1)
+
+    return result
