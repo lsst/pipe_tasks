@@ -257,7 +257,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     )
     init_const_background_percentile = pexConfig.Field(
         dtype=float,
-        default=0.4,
+        default=0.05,  # 0.0005,  # 0.4,
         doc="Percentile of the image pixels from which to set the initial "
             "constant background subtraction value."
     )
@@ -488,8 +488,9 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         self.measure_aperture_correction.sourceSelector["science"].flags.good = ["calib_psf_used"]
         self.measure_aperture_correction.sourceSelector["science"].flags.bad = []
 
-        # Make this pretty low for the final background estimation.
-        self.star_background_detection.thresholdValue = 5.0
+        # Make this pretty low for the final background estimation (but not
+        # too low or it will pick up the vignetted corners as detected sources).
+        self.star_background_detection.thresholdValue = 6.0
         self.star_background_detection.thresholdType = "stdev"  # "pixel_stdev
         self.star_background_detection.reEstimateBackground = False
         # Detection for good S/N for astrometry/photometry and other
@@ -886,7 +887,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                     result.exposure,
                     pre_detection_threshold_value=pre_detection_threshold_value
                 )
-                if pre_detected_fraction > 0.85:
+                if pre_detected_fraction > 0.98:
                     self.do_psf_background = False
                     self.log.warning("Not subtracting background in psf measurement due to high "
                                      "detection fraction in pre-detection: %.2f", pre_detected_fraction)
@@ -965,7 +966,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 detected_fraction = n_detected_pix/n_good_pix
                 self.log.info("*****Fraction of pixels marked as DETECTED or DETECTED_NEGATIVE in "
                               "star_background_detection = %.5f", detected_fraction)
-                maxDetFracForFinalBg = 0.8
+                maxDetFracForFinalBg = 0.9
                 if detected_fraction < maxDetFracForFinalBg:
                     star_background = self.star_background.run(exposure=result.exposure).background
                     result.background.append(star_background[0])
@@ -1180,7 +1181,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.psf_repair.run(exposure=exposure, keepCRs=True)
 
         table = afwTable.SourceTable.make(self.psf_schema, id_generator.make_table_id_factory())
-        # Re-estimate the background during this detection step, so that
+        # DON'T Re-estimate the background during this detection step, so that
         # measurement uses the most accurate background-subtraction.
         if 0:
             detections = self.psf_detection.run(
@@ -1566,11 +1567,13 @@ class CalibrateImageTask(pipeBase.PipelineTask):
     def _subtract_initial_constant_background(self, exposure):
         exp_array = exposure.image.array
         percentile = self.config.init_const_background_percentile
-        bg_value_to_subtract = max(0, np.percentile(exp_array, percentile, method="linear"))
-        self.log.info("Subtracting constant background equal to percentile = %.1f: %.2f",
+        # bg_value_to_subtract = max(0, np.percentile(exp_array, percentile, method="linear"))
+        bg_value_to_subtract = np.percentile(exp_array, percentile, method="linear")
+        self.log.info("Subtracting constant background equal to percentile = %.4f: %.2f",
                       percentile, bg_value_to_subtract)
         exposure.image.array = exposure.image.array - bg_value_to_subtract
-        pre_detection_threshold_value = max(10.0, 0.3*np.sqrt(bg_value_to_subtract))
+        pre_detection_threshold_value = max(5.0, 0.99*np.sqrt(bg_value_to_subtract))
+        # pre_detection_threshold_value = max(5.0, 0.75*np.sqrt(bg_value_to_subtract))
 
         # Make a background object of the subtracted constant background to
         # be optionally appended to the background list.
@@ -1618,15 +1621,17 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         max_pre_dyn_det_iter = 10
         n_above_max_per_amp = 0
         no_zero_det_amps = False
-        max_detected_fraction_per_amp = -9.99
+        highest_detected_fraction_per_amp = -9.99
+        max_detected_fraction = 0.96
         while n_pre_dyn_det_iter < max_pre_dyn_det_iter and (
-                detected_fraction > 0.96 or n_above_max_per_amp > 2 or not no_zero_det_amps):
+                detected_fraction > max_detected_fraction or n_above_max_per_amp > 2 or not no_zero_det_amps):
             n_pre_dyn_det_iter += 1
-            if not no_zero_det_amps and detected_fraction < 0.96:
+            if not no_zero_det_amps and detected_fraction < max_detected_fraction:
                 fraction_delta = -(max(min_delta, 0.6*np.abs(fraction_delta)))
             else:
                 fraction_delta = max(
-                    4.0*min_delta, fraction_delta - 0.2*fraction_delta_orig*n_pre_dyn_det_iter
+                    # 4.0*min_delta, fraction_delta - 0.2*fraction_delta_orig*n_pre_dyn_det_iter
+                    4.0*min_delta, fraction_delta - 0.25*fraction_delta_orig*n_pre_dyn_det_iter
                 )
             pre_detection_threshold_value += fraction_delta
             if pre_detection_threshold_value < 1.0:
@@ -1635,7 +1640,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 n_pre_dyn_det_iter = max_pre_dyn_det_iter
                 break
             pre_detection_config.thresholdValue = pre_detection_threshold_value
-            if detected_fraction > 0.96:
+            if detected_fraction > 0.9999:
+                pre_detection_threshold_value *= 1.2
+            if detected_fraction > max_detected_fraction:
                 self.log.warning("Redoing pre_detection with threshold %.2f to increase the threshold "
                                  "due to too high DETECTED fraction (%.5f)",
                                  pre_detection_threshold_value, detected_fraction)
@@ -1649,7 +1656,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                     self.log.warning("Redoing pre_detection with threshold %.2f due to too high "
                                      "DETECTED fraction in more than two amp-sized section "
                                      "of the exposure (%.5f)",
-                                     pre_detection_threshold_value, max_detected_fraction_per_amp)
+                                     pre_detection_threshold_value, highest_detected_fraction_per_amp)
 
             mask = exposure.mask
             for mp in detected_mask_planes:
@@ -1662,8 +1669,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             n_detected_pix = np.sum((exposure.mask.array & detected_pixel_mask != 0)
                                     & (exposure.mask.array & bad_pixel_mask == 0))
             detected_fraction = n_detected_pix/n_good_pix
-            if detected_fraction <= 0.96:
-                max_detected_fraction_per_amp = -9.99
+            if detected_fraction <= max_detected_fraction:
+                highest_detected_fraction_per_amp = -9.99
                 n_above_max_per_amp = 0
                 n_no_zero_det_amps = 0
                 no_zero_det_amps = True
@@ -1686,9 +1693,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                             if n_no_zero_det_amps > 2:
                                 no_zero_det_amps = False
                                 break
-                        max_detected_fraction_per_amp = max(detected_fraction_sub,
-                                                            max_detected_fraction_per_amp)
-                        if max_detected_fraction_per_amp > min(0.998, max(0.8, 3.0*detected_fraction)):
+                        highest_detected_fraction_per_amp = max(detected_fraction_sub,
+                                                                highest_detected_fraction_per_amp)
+                        if highest_detected_fraction_per_amp > min(0.998, max(0.8, 3.0*detected_fraction)):
                             n_above_max_per_amp += 1
                             if n_above_max_per_amp > 2:
                                 break
@@ -1697,7 +1704,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                   "detection fraction checks.", exposure.detector.getId())
 
         self.log.info("Fraction of pixels marked as DETECTED or DETECTED_NEGATIVE is now %.5f "
-                      "(max per amp section = %.5f)", detected_fraction, max_detected_fraction_per_amp)
+                      "(highest per amp section = %.5f)",
+                      detected_fraction, highest_detected_fraction_per_amp)
         self.log.info("Number of pre_dynamic_detection iterations: %d", n_pre_dyn_det_iter)
 
         return detected_fraction
