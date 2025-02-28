@@ -404,7 +404,13 @@ class PhotoCalTask(pipeBase.Task):
         filterLabel = exposure.getFilter()
 
         # Match sources
-        matchResults = self.match.run(sourceCat, filterLabel.bandLabel)
+        if exposure.visitInfo is not None:
+            epoch = exposure.visitInfo.date.toAstropy()
+        else:
+            epoch = None
+            self.log.warning("visitInfo is None for exposure %d.  Setting epoch to None.", expId)
+
+        matchResults = self.match.run(sourceCat, filterLabel.bandLabel, epoch=epoch)
         matches = matchResults.matches
 
         reserveResults = self.reserve.run([mm.second for mm in matches], expId=expId)
