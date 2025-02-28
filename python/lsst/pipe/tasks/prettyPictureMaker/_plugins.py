@@ -148,7 +148,7 @@ def fixStarCores(
     sat_bit = maskDict["SAT"]
     no_data_bit = maskDict['NO_DATA']
     together = ((mask & 2**sat_bit).astype(bool) | (mask & 2**no_data_bit).astype(bool))
-    bright_mask = image[:, :, 0] > 0.5*config.luminanceConfig.max
+    bright_mask = image[:, :, 0] > 0.05*config.luminanceConfig.max
 
     result = inpaint.inpaint_biharmonic(image, together & bright_mask, channel_axis=-1)
 
