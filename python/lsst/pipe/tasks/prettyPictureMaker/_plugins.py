@@ -140,13 +140,11 @@ register any plugins. Or, preferably, add them to this file to avoid
 needing any other import time logic elsewhere.
 """
 
-#@plugins.register(1, PluginType.PARTIAL)
+
+# @plugins.register(1, PluginType.PARTIAL)
 def fixStarCores(
-    image: NDArray,
-    mask: NDArray,
-    maskDict: Mapping[str, int],
-    config: PipelineTaskConfig
-    ) -> NDArray:
+    image: NDArray, mask: NDArray, maskDict: Mapping[str, int], config: PipelineTaskConfig
+) -> NDArray:
     local_image = np.copy(image)
     sat_bit = maskDict["SAT"]
     no_data_bit = maskDict["NO_DATA"]

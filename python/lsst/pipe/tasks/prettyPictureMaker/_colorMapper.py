@@ -84,8 +84,8 @@ def latLum(
 
     # Scale the intensities with linear manipulation for contrast
     print(f"######### {shadow} / {midtone} / {highlight}")
-    intensities = (intensities - shadow)/(highlight-shadow)
-    intensities = ((midtone - 1)*intensities)/(((2*midtone - 1)*intensities) - midtone)
+    intensities = (intensities - shadow) / (highlight - shadow)
+    intensities = ((midtone - 1) * intensities) / (((2 * midtone - 1) * intensities) - midtone)
 
     np.clip(intensities, 0, 1, out=intensities)
     intensities *= 100
