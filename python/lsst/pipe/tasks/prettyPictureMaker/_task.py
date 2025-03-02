@@ -280,6 +280,10 @@ class PrettyPictureTask(PipelineTask):
         shape = (0, 0)
         jointMask: None | NDArray = None
         maskDict: Mapping[str, int] = {}
+        doJointMaskInit = False
+        if jointMask is None:
+            doJointMask = True
+            doJointMaskInit = True
         for channel, imageExposure in images.items():
             imageArray = imageExposure.image.array
             # run all the plugins designed for array based interaction
@@ -292,8 +296,10 @@ class PrettyPictureTask(PipelineTask):
             # does not matter
             shape = imageArray.shape
             maskDict = imageExposure.mask.getMaskPlaneDict()
-            if jointMask is None:
+            if doJointMaskInit:
                 jointMask = np.zeros(shape, dtype=imageExposure.mask.dtype)
+                doJointMaskInit = False
+            if doJointMask:
                 jointMask |= imageExposure.mask.array
 
         # mix the images to rgb
