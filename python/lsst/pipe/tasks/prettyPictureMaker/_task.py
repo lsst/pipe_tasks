@@ -600,9 +600,9 @@ class PrettyPictureStarFixerTask(PipelineTask):
         # do the actual fixing of values
         results = {}
         for band, imageExposure in inputs.items():
-            if np.sum(jointMask) > 0:
-                inpainted = inpaint_biharmonic(imageExposure.image.array, jointMask, split_into_regions=True)
-                imageExposure.image.array[jointMask] = inpainted[jointMask]
+            if np.sum(both) > 0:
+                inpainted = inpaint_biharmonic(imageExposure.image.array, both, split_into_regions=True)
+                imageExposure.image.array[both] = inpainted[both]
             results[band] = imageExposure
         return Struct(results=results)
 
