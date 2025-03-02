@@ -817,6 +817,17 @@ class GenerateHipsConnections(
         deferLoad=True,
     )
 
+    def __init__(self, *, config):
+        super().__init__(config=config)
+        if config.parallel_highest_order:
+            healpix_dimensions = self.hips_exposure_handles.dimensions
+            for dim in healpix_dimensions:
+                if "healpix" in dim:
+                    hdim = dim
+
+            current_dimensions = self.dimensions
+            self.dimensions = set((*current_dimensions, hdim))
+
 
 class GenerateHipsConfig(pipeBase.PipelineTaskConfig, pipelineConnections=GenerateHipsConnections):
     """Configuration parameters for GenerateHipsTask."""
@@ -860,6 +871,46 @@ class GenerateHipsConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Genera
         dtype=float,
         default=8.0,
     )
+    parallel_highest_order = pexConfig.Field[bool](
+        doc=(
+            "If this is set to True, each of the highest order hips pixels will"
+            " be put into their own quanta, and can be run in parallel. The "
+            "trade off is the highest order must be run alone by setting "
+            "min_order to be the the same as the healpix dimension. This will "
+            "skip writing all sky info, which must be done in another"
+            " invocation of this task."
+        ),
+        default=False,
+    )
+    skip_highest_image = pexConfig.Field[bool](
+        doc=(
+            "This option should be used if in another task instance"
+            "parallel_highest_order was set to True. This option will skip"
+            "making and writing png for the highest order."
+        ),
+        default=False,
+    )
+    file_extension = pexConfig.ChoiceField[str](
+        doc="Extension for the presisted image, must be png or webp",
+        allowed={"png": "Use the png image extension", "webp": "Use the webp image extension"},
+        default="webp",
+    )
+
+    def validate(self):
+        if self.parallel_highest_order:
+            dimensions = self.connections.ConnectionsClass.hips_exposure_handles.dimensions
+            order = -1
+            for dim in dimensions:
+                if "healpix" in dim:
+                    order = int(dim.replace("healpix", ""))
+            if order == -1:
+                raise RuntimeError("Could not determine the healpix dim order")
+            if self.min_order != order:
+                raise ValueError(
+                    "min_order must be the same as healpix order if parallel_highest_order is True"
+                )
+            if self.skip_highest_image:
+                raise ValueError("Skip_highest_image should be False when parallel_highest_order is True")
 
 
 class GenerateHipsTask(pipeBase.PipelineTask):
@@ -868,6 +919,8 @@ class GenerateHipsTask(pipeBase.PipelineTask):
     ConfigClass = GenerateHipsConfig
     _DefaultName = "generateHips"
     color_task = False
+
+    config: ConfigClass
 
     @timeMethod
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
@@ -1010,30 +1063,36 @@ class GenerateHipsTask(pipeBase.PipelineTask):
 
                 # We can now write out the images for each band.
                 # Note this will always trigger at the max order where each pixel is unique.
-                if not do_color:
-                    for band in bands:
-                        self._write_hips_image(
-                            hips_base_path.join(f"band_{band}", forceDirectory=True),
+                if self.config.skip_highest_image and order == max_order:
+                    do_write_image = False
+                else:
+                    do_write_image = True
+
+                if do_write_image:
+                    if not do_color:
+                        for band in bands:
+                            self._write_hips_image(
+                                hips_base_path.join(f"band_{band}", forceDirectory=True),
+                                order,
+                                pixels_shifted[order][pixel_counter],
+                                exposures[(band, order)].image,
+                                png_grayscale_mapping,
+                                shift_order=shift_order,
+                            )
+                    else:
+                        # Make a color png.
+                        band_mapping = {}
+                        for band in bands:
+                            key = (band, order)
+                            if (value := exposures.get(key)) is not None:
+                                band_mapping[band] = value
+
+                        self._write_hips_color_png(
+                            hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
                             order,
                             pixels_shifted[order][pixel_counter],
-                            exposures[(band, order)].image,
-                            png_grayscale_mapping,
-                            shift_order=shift_order,
+                            band_mapping,
                         )
-                else:
-                    # Make a color png.
-                    band_mapping = {}
-                    for band in bands:
-                        key = (band, order)
-                        if (value := exposures.get(key)) is not None:
-                            band_mapping[band] = value
-
-                    self._write_hips_color_png(
-                        hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
-                        order,
-                        pixels_shifted[order][pixel_counter],
-                        band_mapping,
-                    )
 
                 log_level = self.log.INFO if order == (max_order - 3) else self.log.DEBUG
                 self.log.log(
@@ -1085,41 +1144,42 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                     if order < max_order:
                         exposures[(band, order)].image.array[:, :] = np.nan
 
-        # Write the properties files and MOCs.
-        if not do_color:
-            for band in bands:
-                band_pixels = np.array(
-                    [pixel for pixel, band_ in hips_exposure_handle_dict.keys() if band_ == band]
-                )
-                band_pixels = np.sort(band_pixels)
+        if not self.config.parallel_highest_order:
+            # Write the properties files and MOCs.
+            if not do_color:
+                for band in bands:
+                    band_pixels = np.array(
+                        [pixel for pixel, band_ in hips_exposure_handle_dict.keys() if band_ == band]
+                    )
+                    band_pixels = np.sort(band_pixels)
 
+                    self._write_properties_and_moc(
+                        hips_base_path.join(f"band_{band}", forceDirectory=True),
+                        max_order,
+                        band_pixels,
+                        exp0,
+                        shift_order,
+                        band,
+                        False,
+                    )
+                    self._write_allsky_file(
+                        hips_base_path.join(f"band_{band}", forceDirectory=True),
+                        min_order,
+                    )
+            else:
                 self._write_properties_and_moc(
-                    hips_base_path.join(f"band_{band}", forceDirectory=True),
+                    hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
                     max_order,
-                    band_pixels,
+                    pixels[:-1],
                     exp0,
                     shift_order,
-                    band,
-                    False,
+                    colorstr,
+                    True,
                 )
                 self._write_allsky_file(
-                    hips_base_path.join(f"band_{band}", forceDirectory=True),
+                    hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
                     min_order,
                 )
-        else:
-            self._write_properties_and_moc(
-                hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
-                max_order,
-                pixels[:-1],
-                exp0,
-                shift_order,
-                colorstr,
-                True,
-            )
-            self._write_allsky_file(
-                hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
-                min_order,
-            )
 
     def _write_hips_image(self, hips_base_path, order, pixel, image, png_mapping, shift_order=9):
         """Write a HiPS image.
@@ -1166,7 +1226,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         vals[~np.isfinite(image.array) | (image.array < 0)] = 0
         im = Image.fromarray(vals[::-1, :], "L")
 
-        uri = hips_dir.join(f"Npix{pixel}.png")
+        uri = hips_dir.join(f"Npix{pixel}.{self.config.file_extension}")
 
         with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
             im.save(temporary_uri.ospath)
@@ -1201,7 +1261,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
 
         im = Image.fromarray(image_array[::-1, :, :], mode="RGB")
 
-        uri = hips_dir.join(f"Npix{pixel}.png")
+        uri = hips_dir.join(f"Npix{pixel}.{self.config.file_extension}")
 
         with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
             im.save(temporary_uri.ospath)
@@ -1525,7 +1585,13 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         allsky_image = None
 
         allsky_order_uri = hips_base_path.join(f"Norder{allsky_order}", forceDirectory=True)
-        pixel_regex = re.compile(r"Npix([0-9]+)\.png$")
+        if self.config.file_extension == "png":
+            pixel_regex = re.compile(r"Npix([0-9]+)\.png$")
+        elif self.config.file_extension == "webp":
+            pixel_regex = re.compile(r"Npix([0-9]+)\.webp$")
+        else:
+            raise RuntimeError("Unknown file extension")
+
         png_uris = list(
             ResourcePath.findFileResources(
                 candidates=[allsky_order_uri],
@@ -1583,6 +1649,17 @@ class GenerateColorHipsConnections(
         multiple=True,
         deferLoad=True,
     )
+
+    def __init__(self, *, config):
+        super().__init__(config=config)
+        if config.parallel_highest_order:
+            healpix_dimensions = self.hips_exposure_handles.dimensions
+            for dim in healpix_dimensions:
+                if "healpix" in dim:
+                    hdim = dim
+
+            current_dimensions = self.dimensions
+            self.dimensions = set((*current_dimensions, hdim))
 
 
 class GenerateColorHipsConfig(GenerateHipsConfig, pipelineConnections=GenerateColorHipsConnections):
@@ -1653,12 +1730,12 @@ class GenerateColorHipsConfig(GenerateHipsConfig, pipelineConnections=GenerateCo
         self.rgbGenerator.luminanceConfig.Q = 0.7
         self.rgbGenerator.doPSFDeconcovlve = False
         self.rgbGenerator.exposureBrackets = None
-        self.rgbGenerator.luminanceConfig.stretch = 220
         self.rgbGenerator.localContrastConfig.doLocalContrast = False
-        self.rgbGenerator.luminanceConfig.highlight = 0.805882
-        self.rgbGenerator.luminanceConfig.shadow = 0.09
-        self.rgbGenerator.luminanceConfig.midtone = 0.3
-        self.rgbGenerator.doPSFDeconcovlve = False
+        self.rgbGenerator.luminanceConfig.stretch = 250
+        self.rgbGenerator.luminanceConfig.max = 100
+        self.rgbGenerator.luminanceConfig.highlight = 0.905882
+        self.rgbGenerator.luminanceConfig.shadow = 0.12
+        self.rgbGenerator.luminanceConfig.midtone = 0.25
         self.rgbGenerator.colorConfig.maxChroma = 80
         self.rgbGenerator.colorConfig.saturation = 0.6
         self.rgbGenerator.cieWhitePoint = (0.28, 0.28)
