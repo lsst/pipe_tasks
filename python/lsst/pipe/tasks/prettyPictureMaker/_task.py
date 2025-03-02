@@ -137,18 +137,14 @@ class LumConfig(Config):
     floor = Field[float](doc="A scaling factor to apply to the luminance before asinh scaling", default=0.0)
     Q = Field[float](doc="softening parameter", default=0.7)
     highlight = Field[float](
-        doc="The value of highlights in scaling factor applied to post asinh streaching",
-        default=1.0
+        doc="The value of highlights in scaling factor applied to post asinh streaching", default=1.0
     )
     shadow = Field[float](
-        doc="The value of shadows in scaling factor applied to post asinh streaching",
-        default=0.0
+        doc="The value of shadows in scaling factor applied to post asinh streaching", default=0.0
     )
     midtone = Field[float](
-        doc="The value of midtone in scaling factor applied to post asinh streaching",
-        default=0.0
+        doc="The value of midtone in scaling factor applied to post asinh streaching", default=0.0
     )
-
 
 
 class LocalContrastConfig(Config):
@@ -332,18 +328,18 @@ class PrettyPictureTask(PipelineTask):
         assert jointMask is not None
         # Run any image level correction plugins
         colorImage = np.zeros((*imageRArray.shape, 3))
-        colorImage[:,:,0] = imageRArray
-        colorImage[:,:,1] = imageGArray
-        colorImage[:,:,2] = imageBArray
+        colorImage[:, :, 0] = imageRArray
+        colorImage[:, :, 1] = imageGArray
+        colorImage[:, :, 2] = imageBArray
         for plug in plugins.partial():
             colorImage = plug(colorImage, jointMask, maskDict, self.config)
 
         # Ignore type because Exposures do in fact have a bbox, but it is c++
         # and not typed.
         colorImage = lsstRGB(
-            colorImage[:,:,0],
-            colorImage[:,:,1],
-            colorImage[:,:,2],
+            colorImage[:, :, 0],
+            colorImage[:, :, 1],
+            colorImage[:, :, 2],
             scaleLumKWargs=self.config.luminanceConfig.toDict(),
             remapBoundsKwargs=self.config.imageRemappingConfig.toDict(),
             scaleColorKWargs=self.config.colorConfig.toDict(),
@@ -373,7 +369,6 @@ class PrettyPictureTask(PipelineTask):
 
         # lsstRGB returns an image in 0-1 scale it to the maximum value
         colorImage *= maxVal  # type: ignore
-
 
         # pack the joint mask back into a mask object
         lsstMask = Mask(width=jointMask.shape[1], height=jointMask.shape[0], planeDefs=maskDict)
@@ -418,13 +413,12 @@ class PrettyPictureTask(PipelineTask):
 
 
 class PrettyPictureBackgroundFixerConnections(
-        PipelineTaskConnections,
-        dimensions=("tract", "patch", "skymap", "band"),
-        defaultTemplates={"coaddTypeName": "deep"}):
+    PipelineTaskConnections,
+    dimensions=("tract", "patch", "skymap", "band"),
+    defaultTemplates={"coaddTypeName": "deep"},
+):
     inputCoadd = Input(
-        doc=(
-            "Input coadd for which the background is to be removed"
-        ),
+        doc=("Input coadd for which the background is to be removed"),
         name="{coaddTypeName}CoaddPsfMatched",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "band"),
@@ -437,7 +431,9 @@ class PrettyPictureBackgroundFixerConnections(
     )
 
 
-class PrettyPictureBackgroundFixerConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureBackgroundFixerConnections):
+class PrettyPictureBackgroundFixerConfig(
+    PipelineTaskConfig, pipelineConnections=PrettyPictureBackgroundFixerConnections
+):
     pass
 
 
@@ -499,10 +495,15 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         initial_std = (image[mask] - maxLikely).std()
 
         if np.any(mask):
-            result = minimize(self.neg_log_likelihood, (maxLikely, initial_std), args=(image[mask]), bounds=((maxLikely, None), (1e-8, None)))
+            result = minimize(
+                self.neg_log_likelihood,
+                (maxLikely, initial_std),
+                args=(image[mask]),
+                bounds=((maxLikely, None), (1e-8, None)),
+            )
             mu_hat, sigma_hat = result.x
         else:
-            mu_hat, sigma_hat = (maxLikely, 2*initial_std)
+            mu_hat, sigma_hat = (maxLikely, 2 * initial_std)
         threshhold = mu_hat + sigma_hat
         image_mask = image < threshhold
 
@@ -512,9 +513,9 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         xloc = []
         values = []
 
-        for (xslice, yslice) in tiles:
-            ypos = (yslice.stop - yslice.start)/2 + yslice.start
-            xpos = (xslice.stop - xslice.start)/2 + xslice.start
+        for xslice, yslice in tiles:
+            ypos = (yslice.stop - yslice.start) / 2 + yslice.start
+            xpos = (xslice.stop - xslice.start) / 2 + xslice.start
             yloc.append(ypos)
             xloc.append(xpos)
             window = image[yslice, xslice][image_mask[yslice, xslice]]
@@ -525,8 +526,10 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             values.append(value)
 
         positions = np.meshgrid(np.arange(image.shape[0]), np.arange(image.shape[1]))
-        inter = RBFInterpolator(np.vstack((yloc, xloc)).T, values, kernel='thin_plate_spline', degree=4, smoothing=0.05)
-        backgrounds = inter(np.array(positions)[::-1].reshape(2,-1).T).reshape(image.shape)
+        inter = RBFInterpolator(
+            np.vstack((yloc, xloc)).T, values, kernel="thin_plate_spline", degree=4, smoothing=0.05
+        )
+        backgrounds = inter(np.array(positions)[::-1].reshape(2, -1).T).reshape(image.shape)
 
         return backgrounds
 
@@ -539,25 +542,24 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
 
 class PrettyPictureStarFixerConnections(
-        PipelineTaskConnections,
-        dimensions=("tract", "patch", "skymap"),
-        ):
+    PipelineTaskConnections,
+    dimensions=("tract", "patch", "skymap"),
+):
     inputCoadd = Input(
-        doc=(
-            "Input coadd for which the background is to be removed"
-        ),
+        doc=("Input coadd for which the background is to be removed"),
         name="pretty_picture_coadd_bg_subtracted",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "band"),
-        multiple=True
+        multiple=True,
     )
     outputCoadd = Output(
         doc="The coadd with the background fixed and subtracted",
         name="pretty_picture_coadd_fixed_stars",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "band"),
-        multiple=True
+        multiple=True,
     )
+
 
 class PrettyPictureStarFixerConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureStarFixerConnections):
     brightnessThresh = Field[float](
@@ -592,7 +594,7 @@ class PrettyPictureStarFixerTask(PipelineTaskConfig):
         # to include pixels in an irregular shape, as only the star cores should be
         # fixed.
         both = together & bright_mask
-        struct = np.array(((0,1,0), (1,1,1), (0,1,0)), dtype=bool)
+        struct = np.array(((0, 1, 0), (1, 1, 1), (0, 1, 0)), dtype=bool)
         both = binary_dilation(both, struct, iterations=4).astype(bool)
 
         # do the actual fixing of values
@@ -769,14 +771,14 @@ class PrettyMosaicTask(PipelineTask):
                     np.expand_dims(ramp, 1), tmpImg.shape[1], axis=1
                 )
 
-                tmpImg[-1 * tractInfo.patch_border * 2:, :] = np.repeat(
+                tmpImg[-1 * tractInfo.patch_border * 2 :, :] = np.repeat(
                     np.expand_dims(1 - ramp, 1), tmpImg.shape[1], axis=1
                 )
                 tmpImg[:, : tractInfo.patch_border * 2] = np.repeat(
                     np.expand_dims(ramp, 0), tmpImg.shape[0], axis=0
                 )
 
-                tmpImg[:, -1 * tractInfo.patch_border * 2:] = np.repeat(
+                tmpImg[:, -1 * tractInfo.patch_border * 2 :] = np.repeat(
                     np.expand_dims(1 - ramp, 0), tmpImg.shape[0], axis=0
                 )
                 tmpImg = np.repeat(np.expand_dims(tmpImg, 2), 3, axis=2)
