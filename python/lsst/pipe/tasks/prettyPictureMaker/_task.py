@@ -567,7 +567,7 @@ class PrettyPictureStarFixerConfig(PipelineTaskConfig, pipelineConnections=Prett
     )
 
 
-class PrettyPictureStarFixerTask(PipelineTaskConfig):
+class PrettyPictureStarFixerTask(PipelineTask):
     _DefaultName = "prettyPictureStarFixerTask"
     ConfigClass = PrettyPictureStarFixerConfig
 
