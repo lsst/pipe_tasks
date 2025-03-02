@@ -300,7 +300,7 @@ def fixOutOfGamutColors(
     # If all pixels are in bounds, return immediately.
     if not np.any(outOfBounds):
         logging.info("There are no out of gamut pixels.")
-        return
+        return rgb_prime
 
     logging.info("There are out of gamut pixels, remapping colors")
     # results = fixGamutOK(Lab[outOfBounds])
