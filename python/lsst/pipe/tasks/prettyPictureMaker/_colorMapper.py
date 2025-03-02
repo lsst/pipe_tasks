@@ -7,13 +7,13 @@ import colour
 import cv2
 from scipy.special import erf
 from scipy.interpolate import pchip_interpolate
+from skimage.restoration import inpaint_biharmonic
 
 from ._localContrast import localContrast, makeGaussianPyramid, makeLapPyramid, levelPadder
 from lsst.cpputils import fixGamutOK
 
 from numpy.typing import NDArray
 from typing import Callable, Mapping
-from . import bayes_denoise as bd
 
 
 def latLum(
@@ -87,8 +87,7 @@ def latLum(
     intensities = (intensities - shadow)/(highlight-shadow)
     intensities = ((midtone - 1)*intensities)/(((2*midtone - 1)*intensities) - midtone)
 
-    # np.clip(intensities, 0, 1, out=intensities)
-    intensities[intensities < 0 ] = 0
+    np.clip(intensities, 0, 1, out=intensities)
     intensities *= 100
 
     # Apply a specific tone cure to the luminocity defined by the below interpolant.
@@ -273,7 +272,7 @@ def colorConstantSat(
 def fixOutOfGamutColors(
     Lab: NDArray,
     colourspace: str = "Display P3",
-) -> None:
+) -> NDArray:
     """Remap colors that fall outside an RGB color gamut back into it.
 
     This function modifies the input Lab array in-place for memory reasons.
@@ -304,10 +303,11 @@ def fixOutOfGamutColors(
         return
 
     logging.info("There are out of gamut pixels, remapping colors")
-    results = fixGamutOK(Lab[outOfBounds])
+    # results = fixGamutOK(Lab[outOfBounds])
+    results = inpaint_biharmonic(rgb_prime, outOfBounds, channel_axis=-1)
     logging.debug(f"The total number of remapped pixels is: {np.sum(outOfBounds)}")
-    Lab[outOfBounds] = results
-    return
+    # Lab[outOfBounds] = results
+    return results
 
 
 def _fuseExposure(images, sigma=0.2, maxLevel=3):
@@ -559,7 +559,7 @@ def lsstRGB(
     if b_std == 0:
         b_std = 1e-8
 
-    img = bd.denoise_image(img, 3, 1, np.array((r_std, g_std, b_std)))
+    # img = bd.denoise_image(img, 3, 1, np.array((r_std, g_std, b_std)))
     # might need to do image mixing here
     # img = np.clip(img, 0, 1)
     # img = abs(img)
@@ -598,10 +598,10 @@ def lsstRGB(
         Lab = _fuseExposure(exposures)
 
     # Fix any colors that fall outside of the RGB colour gamut.
-    fixOutOfGamutColors(Lab)
+    result = fixOutOfGamutColors(Lab)
 
     # Transform back to RGB coordinates
-    result = colour.XYZ_to_RGB(colour.Oklab_to_XYZ(Lab), colourspace="Display P3")
+    # result = colour.XYZ_to_RGB(colour.Oklab_to_XYZ(Lab), colourspace="Display P3")
 
     # explicitly cut at 1 even though the mapping above was to map colors
     # appropriately because the Z matrix transform can produce values above
