@@ -30,6 +30,8 @@ __all__ = (
     "PrettyMosaicConfig",
     "PrettyPictureBackgroundFixerConfig",
     "PrettyPictureBackgroundFixerTask",
+    "PrettyPictureStarFixerConfig",
+    "PrettyPictureStarFixerTask",
 )
 
 from collections.abc import Iterable, Mapping
@@ -39,8 +41,10 @@ from typing import TYPE_CHECKING, cast, Any
 from lsst.skymap import BaseSkyMap
 
 from scipy.stats import norm
+from scipy.ndimage import binary_dilation
 from scipy.optimize import minimize
 from scipy.interpolate import griddata, RBFInterpolator
+from skimage.restoration import inpaint_biharmonic
 
 from lsst.daf.butler import Butler, DeferredDatasetHandle
 from lsst.daf.butler import DatasetRef
@@ -532,6 +536,93 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         output = ExposureF(inputCoadd, deep=True)
         output.image.array -= background
         return Struct(outputCoadd=output)
+
+
+class PrettyPictureStarFixerConnections(
+        PipelineTaskConnections,
+        dimensions=("tract", "patch", "skymap"),
+        ):
+    inputCoadd = Input(
+        doc=(
+            "Input coadd for which the background is to be removed"
+        ),
+        name="pretty_picture_coadd_bg_subtracted",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "skymap", "band"),
+        multiple=True
+    )
+    outputCoadd = Output(
+        doc="The coadd with the background fixed and subtracted",
+        name="pretty_picture_coadd_fixed_stars",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "skymap", "band"),
+        multiple=True
+    )
+
+class PrettyPictureStarFixerConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureStarFixerConnections):
+    brightnessThresh = Field[float](
+        doc="The flux value below which pixels with SAT or NO_DATA bits will be ignored"
+    )
+
+
+class PrettyPictureStarFixerTask(PipelineTaskConfig):
+    _DefaultName = "prettyPictureStarFixerTask"
+    ConfigClass = PrettyPictureStarFixerConfig
+
+    config: ConfigClass
+
+    def run(self, inputs: Mapping[str, ExposureF]) -> Struct:
+        # make the joint mask of all the channels
+        doJointMaskInit = True
+        for imageExposure in inputs.values():
+            maskDict = imageExposure.mask.getMaskPlaneDict()
+            if doJointMaskInit:
+                jointMask = np.zeros(imageExposure.mask.array.shape, dtype=imageExposure.mask.array.dtype)
+                doJointMaskInit = False
+            jointMask |= imageExposure.mask.array
+
+        sat_bit = maskDict["SAT"]
+        no_data_bit = maskDict["NO_DATA"]
+        together = (jointMask & 2**sat_bit).astype(bool) | (jointMask & 2**no_data_bit).astype(bool)
+
+        # use the last imageExposure as it is likely close enough across all bands
+        bright_mask = imageExposure.image.array > self.config.brightnessThresh
+
+        # dilate the mask a bit, this helps get a bit fainter mask without starting
+        # to include pixels in an irregular shape, as only the star cores should be
+        # fixed.
+        both = together & bright_mask
+        struct = np.array(((0,1,0), (1,1,1), (0,1,0)), dtype=bool)
+        both = binary_dilation(both, struct, iterations=4).astype(bool)
+
+        # do the actual fixing of values
+        results = {}
+        for band, imageExposure in inputs.items():
+            inpainted = inpaint_biharmonic(imageExposure.image.array, jointMask, split_into_regions=True)
+            imageExposure.image.array[jointMask] = inpainted[jointMask]
+            results[band] = imageExposure
+        return Struct(results=results)
+
+    def runQuantum(
+        self,
+        butlerQC: QuantumContext,
+        inputRefs: InputQuantizedConnection,
+        outputRefs: OutputQuantizedConnection,
+    ) -> None:
+        refs = inputRefs.inputCoadd
+        sortedImages: dict[str, Exposure] = {}
+        for ref in refs:
+            key: str = cast(str, ref.dataId["band"])
+            image = butlerQC.get(ref)
+            sortedImages[key] = image
+
+        outputs = self.run(sortedImages).results
+        sortedOutputs = {}
+        for ref in outputRefs.outputCoadd:
+            sortedOutputs[ref.dataId["band"]] = ref
+
+        for band, data in outputs.items():
+            butlerQC.put(data, sortedOutputs[band])
 
 
 class PrettyMosaicConnections(PipelineTaskConnections, dimensions=("tract", "skymap")):
