@@ -261,11 +261,13 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 )
 
                 associatedSsSources = ssoAssocResult.associatedSsSources
+                associatedSsDiaSources = ssoAssocResult.ssoAssocDiaSources
                 ssInTractPatch = self._trimToPatch(associatedSsSources.to_pandas(),
                                                    innerPatchBox,
                                                    innerTractSkyRegion,
                                                    skyInfo.wcs)
                 associatedSsSources = associatedSsSources[ssInTractPatch]
+                associatedSsDiaSources = associatedSsDiaSources[ssInTractPatch]
 
                 unassociatedSsObjects = ssoAssocResult.unassociatedSsObjects
                 ssObjInTractPatch = self._trimToPatch(unassociatedSsObjects.to_pandas(),
@@ -299,6 +301,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 diaSourceHistory.append(diaCat)
             if nSsSrc > 0:
                 ssSourceHistory.append(associatedSsSources)
+                diaSourceHistory.append(associatedSsDiaSources.to_pandas())
             if nSsObj > 0:
                 unassociatedSsObjectHistory.append(unassociatedSsObjects)
 
