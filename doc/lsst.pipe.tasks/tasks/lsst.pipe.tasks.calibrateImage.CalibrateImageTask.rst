@@ -73,6 +73,53 @@ Configuration fields
 
 .. lsst-task-config-fields:: lsst.pipe.tasks.calibrateImage.CalibrateImageTask
 
+.. _lsst.pipe.tasks.calibrateImage.CalibrateImageTask-indepth:
+
+In Depth
+========
+
+.. _lsst.pipe.tasks.calibrateImage.CalibrateImageTask-psf-crossmatch:
+
+Catalog cross-matching
+----------------------
+
+The catalog of calibrated stars (``initial_stars_detector``) produced by this task has different source ids than the catalog of stars that were detected for PSF determination (``initial_psf_stars_detector``), because those subtasks used different detection configurations.
+The stars catalog contains a ``psf_id`` field, which if non-zero is the source id of the corresponding record in the psf stars catalog.
+This also applies to the reference/source match catalogs for astrometry (``initial_astrometry_match_detector``) and photometry (``initial_photometry_match_detector``).
+We use the psf star catalog for the astrometry fit, so the ``src_id`` values in the astrometry match catalog refer to the psf stars, not the calibrated stars.
+
+For how to find the matching objects in the respective `astropy Table`_ output catalogs, see this example:
+
+.. code-block:: python
+    :name: psf-crossmatch-example
+
+    import esutil
+
+    matches = esutil.numpy_util.match(psf_stars["id"], stars["psf_id"])
+    # psf_stars[matches[0]] and stars[matched[1]] are the matching objects.
+
+    matches = esutil.numpy_util.match(astrometry_matches["src_id"], photometry_matches["src_psf_id"])
+    # astrometry_matches[matches[0]] and photometry_matches[matched[1]] are the matching objects.
+
+.. warning::
+    Only boolean index arrays are supported on `lsst.afw.table` Catalogs, so you cannot use the matched index arrays shown in the examples above with the ``astrometry_matches`` or ``photometry_matches`` catalogs directly.
+    You can instead access by column first, or convert the table to astropy:
+
+    .. code-block:: python
+        :name: psf-crossmatch-warning
+
+        # raises error
+        astrometry_matches[matches[0]]
+
+        # column-first access
+        ra = astrometry_matches["src_ra"][matches[0]]
+        dec = astrometry_matches["src_dec"][matches[0]]
+
+        # astropy conversion
+        astrometry_matches_astropy = astrometry_matches.asAstropy()
+        astrometry_matches_astropy[matches[0]]  # all columns
+
 .. _Mask: http://doxygen.lsst.codes/stack/doxygen/x_masterDoxyDoc/classlsst_1_1afw_1_1image_1_1_mask.html#details
 .. _SkyWcs: http://doxygen.lsst.codes/stack/doxygen/x_masterDoxyDoc/classlsst_1_1afw_1_1geom_1_1_sky_wcs.html#details
 .. _PhotoCalib: http://doxygen.lsst.codes/stack/doxygen/x_masterDoxyDoc/classlsst_1_1afw_1_1image_1_1_photo_calib.html#details
+.. _astropy Table: https://docs.astropy.org/en/latest/table/index.html
