@@ -73,6 +73,37 @@ Configuration fields
 
 .. lsst-task-config-fields:: lsst.pipe.tasks.calibrateImage.CalibrateImageTask
 
+.. _lsst.pipe.tasks.calibrateImage.CalibrateImageTask-indepth:
+
+In Depth
+========
+
+.. _lsst.pipe.tasks.calibrateImage.CalibrateImageTask-psf-crossmatch:
+
+Catalog cross-matching
+----------------------
+
+The catalog of calibrated stars (``initial_stars_detector``) produced by this task has different source ids than the catalog of stars that were detected for PSF determination (``initial_psf_stars_detector``), because those subtasks used different detection configurations.
+The stars catalog contains a ``psf_id`` field, which if non-zero is the source id of the corresponding record in the psf stars catalog.
+This also applies to the reference/source match catalogs for astrometry (``initial_astrometry_match_detector``) and photometry (``initial_photometry_match_detector``).
+We use the psf star catalog for the astrometry fit, so the ``src_id`` values in the astrometry match catalog refer to the psf stars, not the calibrated stars.
+
+For how to find the matching objects in the respective `astropy Table`_ output catalogs, see this example:
+
+.. code-block:: python
+    :name: psf-crossmatch-example
+
+    # only non-zero psf_ids have cross-matches
+    matched_ids = stars["psf_id"] > 0
+    matches = np.searchsorted(psf_stars["id"], stars["psf_id"][matched_ids])
+    # psf_stars[matches] and stars[matched_ids] are the matching objects.
+
+    # only non-zero psf_ids have cross-matches
+    matched_ids = photometry_matches["src_psf_id"] > 0
+    matches = np.searchsorted(astrometry_matches["src_id"], photometry_matches["src_psf_id"][matched_ids])
+    # astrometry_matches[matches] and photometry_matches[matched_ids] are the matching objects.
+
 .. _Mask: http://doxygen.lsst.codes/stack/doxygen/x_masterDoxyDoc/classlsst_1_1afw_1_1image_1_1_mask.html#details
 .. _SkyWcs: http://doxygen.lsst.codes/stack/doxygen/x_masterDoxyDoc/classlsst_1_1afw_1_1geom_1_1_sky_wcs.html#details
 .. _PhotoCalib: http://doxygen.lsst.codes/stack/doxygen/x_masterDoxyDoc/classlsst_1_1afw_1_1image_1_1_photo_calib.html#details
+.. _astropy Table: https://docs.astropy.org/en/latest/table/index.html
