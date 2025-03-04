@@ -24,7 +24,7 @@
 __all__ = ["SolarSystemAssociationConfig", "SolarSystemAssociationTask"]
 
 from astropy import units as u
-from astropy.table import Table
+from astropy.table import Table, Column
 from astropy.coordinates import SkyCoord
 import healpy as hp
 import numpy as np
@@ -188,7 +188,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
         # Query the KDtree for DIA nearest neighbors to SSOs. Currently only
         # picks the DiaSource with the shortest distance. We can do something
         # fancier later.
-        ssSourceData = []
+        ssSourceData, ssObjectIds = [], []
         ras, decs, residual_ras, residual_decs, dia_ids = [], [], [], [], []
         diaSourceCatalog["ssObjectId"] = 0
         source_column = 'id'
@@ -203,7 +203,8 @@ class SolarSystemAssociationTask(pipeBase.Task):
             if len(idx) == 1 and np.isfinite(dist[0]):
                 nFound += 1
                 diaSourceCatalog[idx[0]]["ssObjectId"] = ssObject["ssObjectId"]
-                ssSourceData.append(list(ssObject[["ssObjectId", "phaseAngle", "heliocentricDist",
+                ssObjectIds.append(ssObject["ssObjectId"])
+                ssSourceData.append(list(ssObject[["phaseAngle", "heliocentricDist",
                                                    "topocentricDist"] + stateVectorColumns].values()))
                 dia_ra = diaSourceCatalog[idx[0]]["ra"]
                 dia_dec = diaSourceCatalog[idx[0]]["dec"]
@@ -225,8 +226,9 @@ class SolarSystemAssociationTask(pipeBase.Task):
         ssSourceData = np.array(ssSourceData)
         ssSourceData = Table(ssSourceData,
                              names=[
-                                 "ssObjectId", "phaseAngle", "heliocentricDist", "topocentricDist"
+                                 "phaseAngle", "heliocentricDist", "topocentricDist"
                              ] + stateVectorColumns)
+        ssSourceData['ssObjectId'] = Column(data=ssObjectIds, dtype=int)
         ssSourceData["ra"] = ras
         ssSourceData["dec"] = decs
         ssSourceData["residualRa"] = residual_ras
@@ -349,6 +351,6 @@ class SolarSystemAssociationTask(pipeBase.Task):
             nTotalSsObjects=0,
             nAssociatedSsObjects=0,
             associatedSsSources=Table(names=["ssObjectId", "ra", "dec", "obs_position", "obj_position",
-                                      "residual_ras", "residual_decs"]),
+                                      "residual_ras", "residual_decs"], dtype=[int] + [float] * 6),
             unassociatedSsObjects=Table(names=emptySolarSystemObjects.columns)
         )
