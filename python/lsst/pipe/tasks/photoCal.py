@@ -408,7 +408,7 @@ class PhotoCalTask(pipeBase.Task):
         if reserveResults.reserved.sum() > 0:
             matches = [mm for mm, use in zip(matches, reserveResults.use) if use]
         if len(matches) == 0:
-            raise RuntimeError("No matches to use for photocal")
+            raise MatcherFailure("No matches to use for photocal.")
         if self.usedKey is not None:
             for mm in matches:
                 mm.second.set(self.usedKey, True)
