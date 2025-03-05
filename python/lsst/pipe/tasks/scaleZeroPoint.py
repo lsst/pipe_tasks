@@ -30,6 +30,7 @@ import lsst.afw.image as afwImage
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.selectImages import BaseSelectImagesTask
+from deprecated.sphinx import deprecated
 
 
 class ImageScaler:
@@ -47,6 +48,7 @@ class ImageScaler:
         self._scale = scale
 
     @property
+    @deprecated("This property will be removed after v30.", version="v30", category=FutureWarning)
     def scale(self) -> float:
         """Scale that it applies to a specified image."""
         return self._scale
@@ -97,6 +99,12 @@ class SpatialImageScaler(ImageScaler):
         self._xList = xList
         self._yList = yList
         self._scaleList = scaleList
+
+    @property
+    @deprecated("This property will be removed after v30.")
+    def scale(self) -> float:
+        """Mean scale that it applies to a specified image."""
+        return numpy.mean(self._scaleList)
 
     def scaleMaskedImage(self, maskedImage):
         """Apply scale correction to the specified masked image.
