@@ -33,8 +33,26 @@ import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.pipe.base as pipeBase
 
-from lsst.pipe.tasks.finalizeCharacterization import (FinalizeCharacterizationConfig,
-                                                      FinalizeCharacterizationTask)
+from lsst.pipe.tasks.finalizeCharacterization import (
+    FinalizeCharacterizationConfig,
+    FinalizeCharacterizationTask,
+    FinalizeCharacterizationDetectorConfig,
+    FinalizeCharacterizationDetectorTask,
+)
+
+
+def _make_dummy_psf_and_ap_corr_map():
+    # Make dummy versions of these products, including required fields.
+    psf = afwDetection.GaussianPsf(15, 15, 2.0)
+    ap_corr_map = afwImage.ApCorrMap()
+    schema = afwTable.SourceTable.makeMinimalSchema()
+    schema.addField("visit", type=np.int64, doc="Visit number for the sources.")
+    schema.addField("detector", type=np.int32, doc="Detector number for the sources.")
+    measured_src = afwTable.SourceCatalog(schema)
+    measured_src.resize(10)
+    measured_src["id"] = np.arange(10)
+
+    return psf, ap_corr_map, measured_src
 
 
 class MockFinalizeCharacterizationTask(FinalizeCharacterizationTask):
@@ -59,17 +77,29 @@ class MockFinalizeCharacterizationTask(FinalizeCharacterizationTask):
         if use_super:
             return super().compute_psf_and_ap_corr_map(visit, detector, exposure, src, isolated_src_table)
 
-        # Make dummy versions of these products, including required fields.
-        psf = afwDetection.GaussianPsf(15, 15, 2.0)
-        ap_corr_map = afwImage.ApCorrMap()
-        schema = afwTable.SourceTable.makeMinimalSchema()
-        schema.addField("visit", type=np.int64, doc="Visit number for the sources.")
-        schema.addField("detector", type=np.int32, doc="Detector number for the sources.")
-        measured_src = afwTable.SourceCatalog(schema)
-        measured_src.resize(10)
-        measured_src["id"] = np.arange(10)
+        return _make_dummy_psf_and_ap_corr_map()
 
-        return psf, ap_corr_map, measured_src
+
+class MockFinalizeCharacterizationDetectorTask(FinalizeCharacterizationDetectorTask):
+    """A derived class which skips the initialization routines.
+    """
+    def __init__(self, **kwargs):
+        pipeBase.PipelineTask.__init__(self, **kwargs)
+
+        self.makeSubtask('reserve_selection')
+        self.makeSubtask('source_selector')
+
+    def compute_psf_and_ap_corr_map(
+        self,
+        visit,
+        detector,
+        exposure,
+        src,
+        isolated_src_table,
+        use_super=False,
+    ):
+        """A mocked version of this method."""
+        return _make_dummy_psf_and_ap_corr_map()
 
 
 class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
@@ -85,6 +115,12 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
 
         self.finalizeCharacterizationTask = MockFinalizeCharacterizationTask(
             config=config,
+        )
+
+        config_det = FinalizeCharacterizationDetectorConfig()
+
+        self.finalizeCharacterizationDetectorTask = MockFinalizeCharacterizationDetectorTask(
+            config=config_det,
         )
 
         self.isolated_star_cat_dict, self.isolated_star_source_dict = self._make_isocats()
@@ -300,13 +336,7 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
         )
 
         # Get the dummy values.
-        psf, ap_corr_map, measured_src = self.finalizeCharacterizationTask.compute_psf_and_ap_corr_map(
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        psf, ap_corr_map, measured_src = _make_dummy_psf_and_ap_corr_map()
 
         self.assertEqual(len(results.psf_ap_corr_cat), 2)
         np.testing.assert_array_equal(results.psf_ap_corr_cat["id"], [detector0, detector1])
@@ -318,6 +348,59 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
         table_len = len(results.output_table)
         np.testing.assert_array_equal(results.output_table["detector"][0: table_len // 2], detector0)
         np.testing.assert_array_equal(results.output_table["detector"][table_len // 2:], detector1)
+
+    def test_run_detectors(self):
+        """Test the run method on individual detectors."""
+        visit = 100
+        detector0 = 0
+        detector1 = 1
+        band = 'r'
+
+        src0 = afwTable.SourceCatalog(afwTable.SourceTable.makeMinimalSchema())
+        src1 = afwTable.SourceCatalog(afwTable.SourceTable.makeMinimalSchema())
+        calexp0 = afwImage.ExposureF()
+        calexp1 = afwImage.ExposureF()
+
+        results0 = self.finalizeCharacterizationDetectorTask.run(
+            visit,
+            band,
+            detector0,
+            self.isolated_star_cat_dict,
+            self.isolated_star_source_dict,
+            src0,
+            calexp0,
+        )
+
+        results1 = self.finalizeCharacterizationDetectorTask.run(
+            visit,
+            band,
+            detector1,
+            self.isolated_star_cat_dict,
+            self.isolated_star_source_dict,
+            src1,
+            calexp1,
+        )
+
+        # Get the dummy values.
+        psf, ap_corr_map, measured_src = _make_dummy_psf_and_ap_corr_map()
+
+        # Compare to expected values.
+        self.assertEqual(len(results0.psf_ap_corr_cat), 1)
+        self.assertEqual(len(results1.psf_ap_corr_cat), 1)
+        np.testing.assert_array_equal(results0.psf_ap_corr_cat["id"], detector0)
+        np.testing.assert_array_equal(results1.psf_ap_corr_cat["id"], detector1)
+        np.testing.assert_array_equal(results0.psf_ap_corr_cat["visit"], visit)
+        np.testing.assert_array_equal(results1.psf_ap_corr_cat["visit"], visit)
+        row = results0.psf_ap_corr_cat.find(detector0)
+        self.assertEqual(row.getPsf().getSigma(), psf.getSigma())
+        self.assertEqual(list(row.getApCorrMap()), list(ap_corr_map))
+        row = results1.psf_ap_corr_cat.find(detector1)
+        self.assertEqual(row.getPsf().getSigma(), psf.getSigma())
+        self.assertEqual(list(row.getApCorrMap()), list(ap_corr_map))
+        np.testing.assert_array_equal(results0.output_table["visit"], visit)
+        np.testing.assert_array_equal(results1.output_table["visit"], visit)
+        np.testing.assert_array_equal(results0.output_table["detector"], detector0)
+        np.testing.assert_array_equal(results1.output_table["detector"], detector1)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
