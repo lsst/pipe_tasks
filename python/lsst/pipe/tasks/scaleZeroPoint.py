@@ -101,7 +101,7 @@ class SpatialImageScaler(ImageScaler):
         self._scaleList = scaleList
 
     @property
-    @deprecated("This property will be removed after v30.")
+    @deprecated("This property will be removed after v30.", version="v30", category=FutureWarning)
     def scale(self) -> float:
         """Mean scale that it applies to a specified image."""
         return numpy.mean(self._scaleList)
