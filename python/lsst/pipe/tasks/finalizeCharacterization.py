@@ -45,6 +45,7 @@ from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask
 from lsst.meas.algorithms.sourceSelector import sourceSelectorRegistry
 
 from .reserveIsolatedStars import ReserveIsolatedStarsTask
+from .postprocess import TableVStack
 
 
 class FinalizeCharacterizationConnectionsBase(
@@ -134,15 +135,14 @@ class FinalizeCharacterizationDetectorConnections(
         dimensions=('instrument', 'visit', 'detector'),
     )
     finalized_psf_ap_corr_detector_cat = pipeBase.connectionTypes.Output(
-        doc=('Per-visit finalized psf models and aperture corrections.  This '
-             'catalog uses detector id for the id and are sorted for fast '
-             'lookups of a detector.'),
+        doc=('Per-visit/per-detector finalized psf models and aperture corrections.  This '
+             'catalog uses detector id for the id.'),
         name='finalized_psf_ap_corr_detector_catalog',
         storageClass='ExposureCatalog',
         dimensions=('instrument', 'visit', 'detector'),
     )
     finalized_src_detector_table = pipeBase.connectionTypes.Output(
-        doc=('Per-visit catalog of measurements for psf/flag/etc.'),
+        doc=('Per-visit/per-detector catalog of measurements for psf/flag/etc.'),
         name='finalized_src_detector_table',
         storageClass='ArrowAstropy',
         dimensions=('instrument', 'visit', 'detector'),
@@ -419,16 +419,18 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
                 measured_src['visit'][:] = visit
                 measured_src['detector'][:] = detector
 
-                measured_src_tables.append(measured_src.asAstropy().as_array())
+                measured_src_tables.append(measured_src.asAstropy())
 
         if len(measured_src_tables) > 0:
-            measured_src_table = np.concatenate(measured_src_tables)
+            measured_src_table = astropy.table.vstack(measured_src_tables, join_type='exact')
 
         if measured_src_table is None:
             raise pipeBase.NoWorkFound(f'No good sources found for any detectors in visit {visit}')
 
-        return pipeBase.Struct(psf_ap_corr_cat=psf_ap_corr_cat,
-                               output_table=measured_src_table)
+        return pipeBase.Struct(
+            psf_ap_corr_cat=psf_ap_corr_cat,
+            output_table=measured_src_table,
+        )
 
     def _make_output_schema_mapper(self, input_schema):
         """Make the schema mapper from the input schema to the output schema.
@@ -832,10 +834,8 @@ class FinalizeCharacterizationTask(FinalizeCharacterizationTaskBase):
             calexp_dict,
         )
 
-        butlerQC.put(struct.psf_ap_corr_cat,
-                     outputRefs.finalized_psf_ap_corr_cat)
-        butlerQC.put(astropy.table.Table(struct.output_table),
-                     outputRefs.finalized_src_table)
+        butlerQC.put(struct.psf_ap_corr_cat, outputRefs.finalized_psf_ap_corr_cat)
+        butlerQC.put(struct.output_table, outputRefs.finalized_src_table)
 
 
 class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
@@ -860,18 +860,24 @@ class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
         isolated_star_source_dict = {tract: isolated_star_source_dict_temp[tract] for
                                      tract in sorted(isolated_star_source_dict_temp.keys())}
 
-        struct = self.run(visit,
-                          band,
-                          detector,
-                          isolated_star_cat_dict,
-                          isolated_star_source_dict,
-                          input_handle_dict['src'],
-                          input_handle_dict['calexp'])
+        struct = self.run(
+            visit,
+            band,
+            detector,
+            isolated_star_cat_dict,
+            isolated_star_source_dict,
+            input_handle_dict['src'],
+            input_handle_dict['calexp'],
+        )
 
-        butlerQC.put(struct.psf_ap_corr_cat,
-                     outputRefs.finalized_psf_ap_corr_detector_cat)
-        butlerQC.put(astropy.table.Table(struct.output_table),
-                     outputRefs.finalized_src_detector_table)
+        butlerQC.put(
+            struct.psf_ap_corr_cat,
+            outputRefs.finalized_psf_ap_corr_detector_cat,
+        )
+        butlerQC.put(
+            struct.output_table,
+            outputRefs.finalized_src_detector_table,
+        )
 
     def run(self, visit, band, detector, isolated_star_cat_dict, isolated_star_source_dict, src, exposure):
         """
