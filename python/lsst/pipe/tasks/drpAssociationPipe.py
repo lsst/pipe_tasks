@@ -229,6 +229,8 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
 
         def visitDetectorPair(dataRef):
             return (dataRef.dataId["visit"], dataRef.dataId["detector"])
+
+        # Keep track of our diaCats, ssObject cats, and finalVisitSummaries by their (visit, detector) IDs
         diaIdDict, ssObjectIdDict, finalVisitSummaryIdDict = {}, {}, {}
         for diaCatRef in diaSourceTables:
             diaIdDict[visitDetectorPair(diaCatRef)] = diaCatRef
@@ -239,19 +241,20 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 finalVisitSummaryIdDict[finalVisitSummaryRef.dataId["visit"]] = finalVisitSummaryRef
 
         diaSourceHistory, ssSourceHistory, unassociatedSsObjectHistory = [], [], []
-        for key in diaIdDict:
-            diaCatRef = diaIdDict[key]
+        for visit, detector in diaIdDict:
+            diaCatRef = diaIdDict[(visit, detector)]
             diaCat = diaCatRef.get()
             associatedSsSources, unassociatedSsObjects = None, None
             nSsSrc, nSsObj = 0, 0
             # Always false if ! self.config.doSolarSystemAssociation
-            if all([key in ssObjectIdDict and key[0] in finalVisitSummaryIdDict]):
-                ssCatRef = ssObjectIdDict[key]
-                ssCat = ssCatRef.get()
-                finalVisitSummary = finalVisitSummaryIdDict[key[0]].get()
-                visitInfo = finalVisitSummary[0].visitInfo
-                bbox = finalVisitSummary[0].getBBox()
-                wcs = finalVisitSummary[0].wcs
+            if all([(visit, detector) in ssObjectIdDict and visit in finalVisitSummaryIdDict]):
+                # Get the ssCat and finalVisitSummary
+                ssCat = ssObjectIdDict[(visit, detector)].get()
+                finalVisitSummary = finalVisitSummaryIdDict[visit].get()
+                # Get the exposure metadata from the detector's row in the finalVisitSummary table.
+                visitInfo = finalVisitSummary.find(detector).visitInfo
+                bbox = finalVisitSummary.find(detector).getBBox()
+                wcs = finalVisitSummary.find(detector).wcs
                 ssoAssocResult = self.solarSystemAssociator.run(
                     tb.Table.from_pandas(diaCat),
                     ssCat,
