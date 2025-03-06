@@ -33,8 +33,12 @@ import lsst.afw.table as afwTable
 from lsst.meas.algorithms import SkyObjectsTask
 from lsst.skymap import BaseSkyMap
 from lsst.pex.config import Config, Field, ListField, ConfigurableField, ConfigField
-from lsst.pipe.base import (PipelineTask, PipelineTaskConfig, Struct,
-                            PipelineTaskConnections)
+from lsst.pipe.base import (
+    PipelineTask,
+    PipelineTaskConfig,
+    Struct,
+    PipelineTaskConnections,
+)
 import lsst.pipe.base.connectionTypes as cT
 from lsst.meas.base import SkyMapIdGeneratorConfig
 
@@ -81,24 +85,42 @@ def matchCatalogsExact(catalog1, catalog2, patch1=None, patch2=None):
 
     if patch1 is not None:
         if patch2 is None:
-            msg = ("If the catalogs are from different patches then patch1 and patch2 must be specified"
-                   ", got {} and {}").format(patch1, patch2)
+            msg = (
+                "If the catalogs are from different patches then patch1 and patch2 must be specified"
+                ", got {} and {}"
+            ).format(patch1, patch2)
             raise ValueError(msg)
         patch1 = patch1[sidx1]
         patch2 = patch2[sidx2]
 
-        key1 = np.rec.array((parents1, peaks1, patch1, index1),
-                            dtype=[('parent', np.int64), ('peakId', np.int32),
-                                   ("patch", patch1.dtype), ("index", np.int32)])
-        key2 = np.rec.array((parents2, peaks2, patch2, index2),
-                            dtype=[('parent', np.int64), ('peakId', np.int32),
-                                   ("patch", patch2.dtype), ("index", np.int32)])
+        key1 = np.rec.array(
+            (parents1, peaks1, patch1, index1),
+            dtype=[
+                ("parent", np.int64),
+                ("peakId", np.int32),
+                ("patch", patch1.dtype),
+                ("index", np.int32),
+            ],
+        )
+        key2 = np.rec.array(
+            (parents2, peaks2, patch2, index2),
+            dtype=[
+                ("parent", np.int64),
+                ("peakId", np.int32),
+                ("patch", patch2.dtype),
+                ("index", np.int32),
+            ],
+        )
         matchColumns = ("parent", "peakId", "patch")
     else:
-        key1 = np.rec.array((parents1, peaks1, index1),
-                            dtype=[('parent', np.int64), ('peakId', np.int32), ("index", np.int32)])
-        key2 = np.rec.array((parents2, peaks2, index2),
-                            dtype=[('parent', np.int64), ('peakId', np.int32), ("index", np.int32)])
+        key1 = np.rec.array(
+            (parents1, peaks1, index1),
+            dtype=[("parent", np.int64), ("peakId", np.int32), ("index", np.int32)],
+        )
+        key2 = np.rec.array(
+            (parents2, peaks2, index2),
+            dtype=[("parent", np.int64), ("peakId", np.int32), ("index", np.int32)],
+        )
         matchColumns = ("parent", "peakId")
     # Match the two keys.
     # This line performs an inner join on the structured
@@ -119,25 +141,27 @@ def matchCatalogsExact(catalog1, catalog2, patch1=None, patch2=None):
     return matches
 
 
-class MergeDetectionsConnections(PipelineTaskConnections,
-                                 dimensions=("tract", "patch", "skymap"),
-                                 defaultTemplates={"inputCoaddName": 'deep', "outputCoaddName": "deep"}):
+class MergeDetectionsConnections(
+    PipelineTaskConnections,
+    dimensions=("tract", "patch", "skymap"),
+    defaultTemplates={"inputCoaddName": "deep", "outputCoaddName": "deep"},
+):
     schema = cT.InitInput(
         doc="Schema of the input detection catalog",
         name="{inputCoaddName}Coadd_det_schema",
-        storageClass="SourceCatalog"
+        storageClass="SourceCatalog",
     )
 
     outputSchema = cT.InitOutput(
         doc="Schema of the merged detection catalog",
         name="{outputCoaddName}Coadd_mergeDet_schema",
-        storageClass="SourceCatalog"
+        storageClass="SourceCatalog",
     )
 
     outputPeakSchema = cT.InitOutput(
         doc="Output schema of the Footprint peak catalog",
         name="{outputCoaddName}Coadd_peak_schema",
-        storageClass="PeakCatalog"
+        storageClass="PeakCatalog",
     )
 
     catalogs = cT.Input(
@@ -145,7 +169,7 @@ class MergeDetectionsConnections(PipelineTaskConnections,
         name="{inputCoaddName}Coadd_det",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "skymap", "band"),
-        multiple=True
+        multiple=True,
     )
 
     skyMap = cT.Input(
@@ -163,29 +187,47 @@ class MergeDetectionsConnections(PipelineTaskConnections,
     )
 
 
-class MergeDetectionsConfig(PipelineTaskConfig, pipelineConnections=MergeDetectionsConnections):
-    """Configuration parameters for the MergeDetectionsTask.
-    """
-    minNewPeak = Field(dtype=float, default=1,
-                       doc="Minimum distance from closest peak to create a new one (in arcsec).")
+class MergeDetectionsConfig(
+    PipelineTaskConfig, pipelineConnections=MergeDetectionsConnections
+):
+    """Configuration parameters for the MergeDetectionsTask."""
 
-    maxSamePeak = Field(dtype=float, default=0.3,
-                        doc="When adding new catalogs to the merge, all peaks less than this distance "
-                        " (in arcsec) to an existing peak will be flagged as detected in that catalog.")
-    cullPeaks = ConfigField(dtype=CullPeaksConfig, doc="Configuration for how to cull peaks.")
+    minNewPeak = Field(
+        dtype=float,
+        default=1,
+        doc="Minimum distance from closest peak to create a new one (in arcsec).",
+    )
 
-    skyFilterName = Field(dtype=str, default="sky",
-                          doc="Name of `filter' used to label sky objects (e.g. flag merge_peak_sky is set)\n"
-                          "(N.b. should be in MergeMeasurementsConfig.pseudoFilterList)")
+    maxSamePeak = Field(
+        dtype=float,
+        default=0.3,
+        doc="When adding new catalogs to the merge, all peaks less than this distance "
+        " (in arcsec) to an existing peak will be flagged as detected in that catalog.",
+    )
+    cullPeaks = ConfigField(
+        dtype=CullPeaksConfig, doc="Configuration for how to cull peaks."
+    )
+
+    skyFilterName = Field(
+        dtype=str,
+        default="sky",
+        doc="Name of `filter' used to label sky objects (e.g. flag merge_peak_sky is set)\n"
+        "(N.b. should be in MergeMeasurementsConfig.pseudoFilterList)",
+    )
     skyObjects = ConfigurableField(target=SkyObjectsTask, doc="Generate sky objects")
-    priorityList = ListField(dtype=str, default=[],
-                             doc="Priority-ordered list of filter bands for the merge.")
+    priorityList = ListField(
+        dtype=str,
+        default=[],
+        doc="Priority-ordered list of filter bands for the merge.",
+    )
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
     idGenerator = SkyMapIdGeneratorConfig.make_field()
 
     def setDefaults(self):
         Config.setDefaults(self)
-        self.skyObjects.avoidMask = ["DETECTED"]  # Nothing else is available in our custom mask
+        self.skyObjects.avoidMask = [
+            "DETECTED"
+        ]  # Nothing else is available in our custom mask
 
     def validate(self):
         super().validate()
@@ -223,6 +265,7 @@ class MergeDetectionsTask(PipelineTask):
     **kwargs
         Additional keyword arguments.
     """
+
     ConfigClass = MergeDetectionsConfig
     _DefaultName = "mergeCoaddDetections"
 
@@ -230,7 +273,7 @@ class MergeDetectionsTask(PipelineTask):
         super().__init__(**kwargs)
 
         if initInputs is not None:
-            schema = initInputs['schema'].schema
+            schema = initInputs["schema"].schema
 
         if schema is None:
             raise ValueError("No input schema or initInputs['schema'] provided.")
@@ -250,22 +293,24 @@ class MergeDetectionsTask(PipelineTask):
         idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
         inputs["skySeed"] = idGenerator.catalog_id
         inputs["idFactory"] = idGenerator.make_table_id_factory()
-        catalogDict = {ref.dataId['band']: cat for ref, cat in zip(inputRefs.catalogs,
-                       inputs['catalogs'])}
-        inputs['catalogs'] = catalogDict
-        skyMap = inputs.pop('skyMap')
+        catalogDict = {
+            ref.dataId["band"]: cat
+            for ref, cat in zip(inputRefs.catalogs, inputs["catalogs"])
+        }
+        inputs["catalogs"] = catalogDict
+        skyMap = inputs.pop("skyMap")
         # Can use the first dataId to find the tract and patch being worked on
-        tractNumber = inputRefs.catalogs[0].dataId['tract']
+        tractNumber = inputRefs.catalogs[0].dataId["tract"]
         tractInfo = skyMap[tractNumber]
-        patchInfo = tractInfo.getPatchInfo(inputRefs.catalogs[0].dataId['patch'])
+        patchInfo = tractInfo.getPatchInfo(inputRefs.catalogs[0].dataId["patch"])
         skyInfo = Struct(
             skyMap=skyMap,
             tractInfo=tractInfo,
             patchInfo=patchInfo,
             wcs=tractInfo.getWcs(),
-            bbox=patchInfo.getOuterBBox()
+            bbox=patchInfo.getOuterBBox(),
         )
-        inputs['skyInfo'] = skyInfo
+        inputs["skyInfo"] = skyInfo
 
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
@@ -297,22 +342,37 @@ class MergeDetectionsTask(PipelineTask):
         # Convert distance to tract coordinate
         tractWcs = skyInfo.wcs
         peakDistance = self.config.minNewPeak / tractWcs.getPixelScale().asArcseconds()
-        samePeakDistance = self.config.maxSamePeak / tractWcs.getPixelScale().asArcseconds()
+        samePeakDistance = (
+            self.config.maxSamePeak / tractWcs.getPixelScale().asArcseconds()
+        )
 
         # Put catalogs, filters in priority order
-        orderedCatalogs = [catalogs[band] for band in self.config.priorityList if band in catalogs.keys()]
-        orderedBands = [band for band in self.config.priorityList if band in catalogs.keys()]
+        orderedCatalogs = [
+            catalogs[band]
+            for band in self.config.priorityList
+            if band in catalogs.keys()
+        ]
+        orderedBands = [
+            band for band in self.config.priorityList if band in catalogs.keys()
+        ]
 
-        mergedList = self.merged.getMergedSourceCatalog(orderedCatalogs, orderedBands, peakDistance,
-                                                        self.schema, idFactory,
-                                                        samePeakDistance)
+        mergedList = self.merged.getMergedSourceCatalog(
+            orderedCatalogs,
+            orderedBands,
+            peakDistance,
+            self.schema,
+            idFactory,
+            samePeakDistance,
+        )
 
         #
         # Add extra sources that correspond to blank sky
         #
         skySourceFootprints = self.getSkySourceFootprints(mergedList, skyInfo, skySeed)
         if skySourceFootprints:
-            key = mergedList.schema.find("merge_footprint_%s" % self.config.skyFilterName).key
+            key = mergedList.schema.find(
+                "merge_footprint_%s" % self.config.skyFilterName
+            ).key
             for foot in skySourceFootprints:
                 s = mergedList.addNew()
                 s.setFootprint(foot)
@@ -334,8 +394,13 @@ class MergeDetectionsTask(PipelineTask):
         catalog : `lsst.afw.table.SourceCatalog`
             Source catalog.
         """
-        keys = [item.key for item in self.merged.getPeakSchema().extract("merge_peak_*").values()]
-        assert len(keys) > 0, "Error finding flags that associate peaks with their detection bands."
+        keys = [
+            item.key
+            for item in self.merged.getPeakSchema().extract("merge_peak_*").values()
+        ]
+        assert (
+            len(keys) > 0
+        ), "Error finding flags that associate peaks with their detection bands."
         totalPeaks = 0
         culledPeaks = 0
         for parentSource in catalog:
@@ -347,10 +412,18 @@ class MergeDetectionsTask(PipelineTask):
             familySize = len(oldPeaks)
             totalPeaks += familySize
             for rank, peak in enumerate(oldPeaks):
-                if ((rank < self.config.cullPeaks.rankSufficient)
-                    or (sum([peak.get(k) for k in keys]) >= self.config.cullPeaks.nBandsSufficient)
-                    or (rank < self.config.cullPeaks.rankConsidered
-                        and rank < self.config.cullPeaks.rankNormalizedConsidered * familySize)):
+                if (
+                    (rank < self.config.cullPeaks.rankSufficient)
+                    or (
+                        sum([peak.get(k) for k in keys])
+                        >= self.config.cullPeaks.nBandsSufficient
+                    )
+                    or (
+                        rank < self.config.cullPeaks.rankConsidered
+                        and rank
+                        < self.config.cullPeaks.rankNormalizedConsidered * familySize
+                    )
+                ):
                     keptPeaks.append(peak)
                 else:
                     culledPeaks += 1

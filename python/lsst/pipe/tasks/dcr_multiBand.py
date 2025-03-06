@@ -21,11 +21,20 @@
 
 __all__ = ["DetectCoaddSourcesConfig", "DetectCoaddSourcesTask"]
 
-from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
+from lsst.pipe.base import (
+    Struct,
+    PipelineTask,
+    PipelineTaskConfig,
+    PipelineTaskConnections,
+)
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.config import Field, ConfigurableField, ChoiceField
-from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader, ScaleVarianceTask, \
-    SetPrimaryFlagsTask
+from lsst.meas.algorithms import (
+    DynamicDetectionTask,
+    ReferenceObjectLoader,
+    ScaleVarianceTask,
+    SetPrimaryFlagsTask,
+)
 from lsst.meas.base import (
     SingleFrameMeasurementTask,
     ApplyApCorrTask,
@@ -35,10 +44,14 @@ from lsst.meas.base import (
 from lsst.meas.extensions.scarlet.io import updateCatalogFootprints
 from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
 from lsst.pipe.tasks.propagateSourceFlags import PropagateSourceFlagsTask
-from lsst.pipe.tasks.multiBand import (MeasureMergedCoaddSourcesConnections,
-                                       MeasureMergedCoaddSourcesConfig, MeasureMergedCoaddSourcesTask,
-                                       DetectCoaddSourcesConnections, DetectCoaddSourcesConfig,
-                                       DetectCoaddSourcesTask)
+from lsst.pipe.tasks.multiBand import (
+    MeasureMergedCoaddSourcesConnections,
+    MeasureMergedCoaddSourcesConfig,
+    MeasureMergedCoaddSourcesTask,
+    DetectCoaddSourcesConnections,
+    DetectCoaddSourcesConfig,
+    DetectCoaddSourcesTask,
+)
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
 from lsst.daf.base import PropertyList
@@ -46,7 +59,10 @@ from lsst.skymap import BaseSkyMap
 
 # NOTE: these imports are a convenience so multiband users only have to import this file.
 from .mergeDetections import MergeDetectionsConfig, MergeDetectionsTask  # noqa: F401
-from .mergeMeasurements import MergeMeasurementsConfig, MergeMeasurementsTask  # noqa: F401
+from .mergeMeasurements import (
+    MergeMeasurementsConfig,
+    MergeMeasurementsTask,
+)  # noqa: F401
 from .multiBandUtils import CullPeaksConfig  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesSingleConfig  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesSingleTask  # noqa: F401
@@ -69,10 +85,11 @@ the mergeDet, meas, and ref dataset Footprints:
 
 
 ##############################################################################################################
-class DcrDetectCoaddSourcesConnections(DetectCoaddSourcesConnections,
-                                       dimensions=("tract", "patch", "band", "subfilter", "skymap"),
-                                       defaultTemplates={"inputCoaddName": "dcr",
-                                                         "outputCoaddName": "dcr"}):
+class DcrDetectCoaddSourcesConnections(
+    DetectCoaddSourcesConnections,
+    dimensions=("tract", "patch", "band", "subfilter", "skymap"),
+    defaultTemplates={"inputCoaddName": "dcr", "outputCoaddName": "dcr"},
+):
     detectionSchema = cT.InitOutput(
         doc="Schema of the detection catalog",
         name="{outputCoaddName}Coadd_det_schema",
@@ -82,35 +99,39 @@ class DcrDetectCoaddSourcesConnections(DetectCoaddSourcesConnections,
         doc="Exposure on which detections are to be performed",
         name="{inputCoaddName}Coadd",
         storageClass="ExposureF",
-        dimensions=("tract", "patch", "band", "subfilter", "skymap")
+        dimensions=("tract", "patch", "band", "subfilter", "skymap"),
     )
     outputBackgrounds = cT.Output(
         doc="Output Backgrounds used in detection",
         name="{outputCoaddName}Coadd_calexp_background",
         storageClass="Background",
-        dimensions=("tract", "patch", "band", "subfilter", "skymap")
+        dimensions=("tract", "patch", "band", "subfilter", "skymap"),
     )
     outputSources = cT.Output(
         doc="Detected sources catalog",
         name="{outputCoaddName}Coadd_det",
         storageClass="SourceCatalog",
-        dimensions=("tract", "patch", "band", "subfilter", "skymap")
+        dimensions=("tract", "patch", "band", "subfilter", "skymap"),
     )
     outputExposure = cT.Output(
         doc="Exposure post detection",
         name="{outputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
-        dimensions=("tract", "patch", "band", "subfilter", "skymap")
+        dimensions=("tract", "patch", "band", "subfilter", "skymap"),
     )
 
 
-class DcrDetectCoaddSourcesConfig(DetectCoaddSourcesConfig,
-                                  pipelineConnections=DcrDetectCoaddSourcesConnections):
-    """Configuration parameters for the DetectCoaddSourcesTask
-    """
+class DcrDetectCoaddSourcesConfig(
+    DetectCoaddSourcesConfig, pipelineConnections=DcrDetectCoaddSourcesConnections
+):
+    """Configuration parameters for the DetectCoaddSourcesTask"""
 
-    doScaleVariance = Field(dtype=bool, default=True, doc="Scale variance plane using empirical noise?")
-    scaleVariance = ConfigurableField(target=ScaleVarianceTask, doc="Variance rescaling")
+    doScaleVariance = Field(
+        dtype=bool, default=True, doc="Scale variance plane using empirical noise?"
+    )
+    scaleVariance = ConfigurableField(
+        target=ScaleVarianceTask, doc="Variance rescaling"
+    )
     detection = ConfigurableField(target=DynamicDetectionTask, doc="Source detection")
     coaddName = Field(dtype=str, default="dcr", doc="Name of coadd")
     hasFakes = Field(
@@ -128,8 +149,10 @@ class DcrDetectCoaddSourcesConfig(DetectCoaddSourcesConfig,
         self.detection.reEstimateBackground = False
         self.detection.background.useApprox = False
         self.detection.background.binSize = 4096
-        self.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
-        self.detection.doTempWideBackground = True  # Suppress large footprints that overwhelm the deblender
+        self.detection.background.undersampleStyle = "REDUCE_INTERP_ORDER"
+        self.detection.doTempWideBackground = (
+            True  # Suppress large footprints that overwhelm the deblender
+        )
         # Include band in packed data IDs that go into object IDs (None -> "as
         # many bands as are defined", rather than the default of zero).
         self.idGenerator.packer.n_bands = None
@@ -224,7 +247,11 @@ class DcrDetectCoaddSourcesTask(DetectCoaddSourcesTask):
         if hasattr(detections, "background") and detections.background:
             for bg in detections.background:
                 backgrounds.append(bg)
-        return Struct(outputSources=sources, outputBackgrounds=backgrounds, outputExposure=exposure)
+        return Struct(
+            outputSources=sources,
+            outputBackgrounds=backgrounds,
+            outputExposure=exposure,
+        )
 
 
 class DcrMeasureMergedCoaddSourcesConnections(
@@ -243,13 +270,13 @@ class DcrMeasureMergedCoaddSourcesConnections(
     inputSchema = cT.InitInput(
         doc="Input schema for measure merged task produced by a deblender or detection task",
         name="deepCoadd_deblendedFlux_schema",
-        storageClass="SourceCatalog"
+        storageClass="SourceCatalog",
         # dimensions=("tract", "patch", "band", "skymap")
     )
     outputSchema = cT.InitOutput(
         doc="Output schema after all new fields are added by task",
         name="{inputCoaddName}Coadd_meas_schema",
-        storageClass="SourceCatalog"
+        storageClass="SourceCatalog",
     )
     # TODO[DM-47797]: remove this deprecated connection.
     # refCat = cT.PrerequisiteInput(
@@ -265,7 +292,7 @@ class DcrMeasureMergedCoaddSourcesConnections(
         doc="Input coadd image",
         name="{inputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
-        dimensions=("tract", "patch", "band", "subfilter", "skymap")
+        dimensions=("tract", "patch", "band", "subfilter", "skymap"),
     )
     # skyMap = cT.Input(
     #     doc="SkyMap to use in processing",
@@ -303,12 +330,14 @@ class DcrMeasureMergedCoaddSourcesConnections(
     # )
     # # TODO[DM-47797]: remove this deprecated connection.
     inputCatalog = cT.Input(
-        doc=("Name of the input catalog to use."
-             "If the single band deblender was used this should be 'deblendedFlux."
-             "If the multi-band deblender was used this should be 'deblendedModel, "
-             "or deblendedFlux if the multiband deblender was configured to output "
-             "deblended flux catalogs. If no deblending was performed this should "
-             "be 'mergeDet'"),
+        doc=(
+            "Name of the input catalog to use."
+            "If the single band deblender was used this should be 'deblendedFlux."
+            "If the multi-band deblender was used this should be 'deblendedModel, "
+            "or deblendedFlux if the multiband deblender was configured to output "
+            "deblended flux catalogs. If no deblending was performed this should "
+            "be 'mergeDet'"
+        ),
         name="deepCoadd_{deblendedCatalog}",
         storageClass="SourceCatalog",
         deprecated="Support for old deblender outputs will be removed after v29.",
@@ -345,7 +374,7 @@ class DcrMeasureMergedCoaddSourcesConnections(
     # # TODO[DM-47797]: remove this deprecated connection.
     denormMatches = cT.Output(
         doc="Denormalized Match catalog produced by configured matcher, optional on "
-            "doWriteMatchesDenormalized",
+        "doWriteMatchesDenormalized",
         name="{outputCoaddName}Coadd_measMatchFull",
         dimensions=("tract", "patch", "band", "subfilter", "skymap"),
         storageClass="Catalog",
@@ -382,10 +411,12 @@ class DcrMeasureMergedCoaddSourcesConnections(
         #     del self.denormMatches
 
 
-class DcrMeasureMergedCoaddSourcesConfig(MeasureMergedCoaddSourcesConfig,
-                                         pipelineConnections=DcrMeasureMergedCoaddSourcesConnections):
-    """Configuration parameters for the MeasureMergedCoaddSourcesTask
-    """
+class DcrMeasureMergedCoaddSourcesConfig(
+    MeasureMergedCoaddSourcesConfig,
+    pipelineConnections=DcrMeasureMergedCoaddSourcesConnections,
+):
+    """Configuration parameters for the MeasureMergedCoaddSourcesTask"""
+
     # inputCatalog = ChoiceField(
     #     dtype=str,
     #     default="deblendedCatalog",
@@ -476,24 +507,34 @@ class DcrMeasureMergedCoaddSourcesConfig(MeasureMergedCoaddSourcesConfig,
 
     def setDefaults(self):
         super().setDefaults()
-        self.measurement.plugins.names |= ['base_InputCount',
-                                           'base_Variance',
-                                           'base_LocalPhotoCalib',
-                                           'base_LocalWcs']
+        self.measurement.plugins.names |= [
+            "base_InputCount",
+            "base_Variance",
+            "base_LocalPhotoCalib",
+            "base_LocalWcs",
+        ]
 
         # TODO: Remove STREAK in DM-44658, streak masking to happen only in
         # ip_diffim; if we can propagate the streak mask from diffim, we can
         # still set flags with it here.
-        self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['CLIPPED', 'SENSOR_EDGE',
-                                                                       'INEXACT_PSF']
-        self.measurement.plugins['base_PixelFlags'].masksFpCenter = ['CLIPPED', 'SENSOR_EDGE',
-                                                                     'INEXACT_PSF']
+        self.measurement.plugins["base_PixelFlags"].masksFpAnywhere = [
+            "CLIPPED",
+            "SENSOR_EDGE",
+            "INEXACT_PSF",
+        ]
+        self.measurement.plugins["base_PixelFlags"].masksFpCenter = [
+            "CLIPPED",
+            "SENSOR_EDGE",
+            "INEXACT_PSF",
+        ]
 
     def validate(self):
         super().validate()
 
         if not self.doMatchSources and self.doWriteMatchesDenormalized:
-            raise ValueError("Cannot set doWriteMatchesDenormalized if doMatchSources is False.")
+            raise ValueError(
+                "Cannot set doWriteMatchesDenormalized if doMatchSources is False."
+            )
 
 
 class DcrMeasureMergedCoaddSourcesTask(MeasureMergedCoaddSourcesTask):
@@ -540,8 +581,9 @@ class DcrMeasureMergedCoaddSourcesTask(MeasureMergedCoaddSourcesTask):
     _DefaultName = "dcrMeasureCoaddSources"
     ConfigClass = DcrMeasureMergedCoaddSourcesConfig
 
-    def __init__(self, schema=None, peakSchema=None, refObjLoader=None, initInputs=None,
-                 **kwargs):
+    def __init__(
+        self, schema=None, peakSchema=None, refObjLoader=None, initInputs=None, **kwargs
+    ):
         super().__init__(schema, peakSchema, refObjLoader, initInputs, **kwargs)
         # self.deblended = self.config.inputCatalog.startswith("deblended")
         # self.inputCatalog = "Coadd_" + self.config.inputCatalog
@@ -571,29 +613,33 @@ class DcrMeasureMergedCoaddSourcesTask(MeasureMergedCoaddSourcesTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        print(f'inputs {inputs}')
-        print(f'input refs {inputRefs}')
+        print(f"inputs {inputs}")
+        print(f"input refs {inputRefs}")
 
         # TODO[DM-47797]: remove this block
         if self.config.doMatchSources:
-            refObjLoader = ReferenceObjectLoader([ref.datasetRef.dataId for ref in inputRefs.refCat],
-                                                 inputs.pop('refCat'),
-                                                 name=self.config.connections.refCat,
-                                                 config=self.config.refObjLoader,
-                                                 log=self.log)
+            refObjLoader = ReferenceObjectLoader(
+                [ref.datasetRef.dataId for ref in inputRefs.refCat],
+                inputs.pop("refCat"),
+                name=self.config.connections.refCat,
+                config=self.config.refObjLoader,
+                log=self.log,
+            )
             self.match.setRefObjLoader(refObjLoader)
 
         # Set psfcache
         # move this to run after gen2 deprecation
-        inputs['exposure'].getPsf().setCacheCapacity(self.config.psfCache)
+        inputs["exposure"].getPsf().setCacheCapacity(self.config.psfCache)
 
         # Get unique integer ID for IdFactory and RNG seeds; only the latter
         # should really be used as the IDs all come from the input catalog.
         idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
-        inputs['exposureId'] = idGenerator.catalog_id
+        inputs["exposureId"] = idGenerator.catalog_id
 
         # Transform inputCatalog
-        table = afwTable.SourceTable.make(self.schema, idGenerator.make_table_id_factory())
+        table = afwTable.SourceTable.make(
+            self.schema, idGenerator.make_table_id_factory()
+        )
         sources = afwTable.SourceCatalog(table)
         # Load the correct input catalog
         if "scarletCatalog" in inputs:
@@ -606,9 +652,9 @@ class DcrMeasureMergedCoaddSourcesTask(MeasureMergedCoaddSourcesTask):
         del inputCatalog
         # Add the HeavyFootprints to the deblended sources
         if self.config.doAddFootprints:
-            modelData = inputs.pop('scarletModels')
+            modelData = inputs.pop("scarletModels")
             if self.config.doConserveFlux:
-                imageForRedistribution = inputs['exposure']
+                imageForRedistribution = inputs["exposure"]
             else:
                 imageForRedistribution = None
             updateCatalogFootprints(
@@ -620,21 +666,23 @@ class DcrMeasureMergedCoaddSourcesTask(MeasureMergedCoaddSourcesTask):
                 updateFluxColumns=True,
             )
         table = sources.getTable()
-        table.setMetadata(self.algMetadata)  # Capture algorithm metadata to write out to the source catalog.
-        inputs['sources'] = sources
+        table.setMetadata(
+            self.algMetadata
+        )  # Capture algorithm metadata to write out to the source catalog.
+        inputs["sources"] = sources
 
-        skyMap = inputs.pop('skyMap')
-        tractNumber = catalogRef.dataId['tract']
+        skyMap = inputs.pop("skyMap")
+        tractNumber = catalogRef.dataId["tract"]
         tractInfo = skyMap[tractNumber]
-        patchInfo = tractInfo.getPatchInfo(catalogRef.dataId['patch'])
+        patchInfo = tractInfo.getPatchInfo(catalogRef.dataId["patch"])
         skyInfo = Struct(
             skyMap=skyMap,
             tractInfo=tractInfo,
             patchInfo=patchInfo,
             wcs=tractInfo.getWcs(),
-            bbox=patchInfo.getOuterBBox()
+            bbox=patchInfo.getOuterBBox(),
         )
-        inputs['skyInfo'] = skyInfo
+        inputs["skyInfo"] = skyInfo
 
         if self.config.doPropagateFlags:
             ccdInputs = inputs["exposure"].getInfo().getCoaddInputs().ccds
@@ -642,21 +690,35 @@ class DcrMeasureMergedCoaddSourcesTask(MeasureMergedCoaddSourcesTask):
 
             if "sourceTableHandles" in inputs:
                 sourceTableHandles = inputs.pop("sourceTableHandles")
-                sourceTableHandleDict = {handle.dataId["visit"]: handle for handle in sourceTableHandles}
+                sourceTableHandleDict = {
+                    handle.dataId["visit"]: handle for handle in sourceTableHandles
+                }
                 inputs["sourceTableHandleDict"] = sourceTableHandleDict
             if "finalizedSourceTableHandles" in inputs:
                 finalizedSourceTableHandles = inputs.pop("finalizedSourceTableHandles")
-                finalizedSourceTableHandleDict = {handle.dataId["visit"]: handle
-                                                  for handle in finalizedSourceTableHandles}
-                inputs["finalizedSourceTableHandleDict"] = finalizedSourceTableHandleDict
+                finalizedSourceTableHandleDict = {
+                    handle.dataId["visit"]: handle
+                    for handle in finalizedSourceTableHandles
+                }
+                inputs["finalizedSourceTableHandleDict"] = (
+                    finalizedSourceTableHandleDict
+                )
 
         outputs = self.run(**inputs)
         # Strip HeavyFootprints to save space on disk
         sources = outputs.outputSources
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, exposure, sources, skyInfo, exposureId, ccdInputs=None,
-            sourceTableHandleDict=None, finalizedSourceTableHandleDict=None):
+    def run(
+        self,
+        exposure,
+        sources,
+        skyInfo,
+        exposureId,
+        ccdInputs=None,
+        sourceTableHandleDict=None,
+        finalizedSourceTableHandleDict=None,
+    ):
         """Run measurement algorithms on the input exposure, and optionally populate the
         resulting catalog with extra information.
 
@@ -696,8 +758,7 @@ class DcrMeasureMergedCoaddSourcesTask(MeasureMergedCoaddSourcesTask):
 
         if self.config.doApCorr:
             self.applyApCorr.run(
-                catalog=sources,
-                apCorrMap=exposure.getInfo().getApCorrMap()
+                catalog=sources, apCorrMap=exposure.getInfo().getApCorrMap()
             )
 
         # TODO DM-11568: this contiguous check-and-copy could go away if we
@@ -710,33 +771,45 @@ class DcrMeasureMergedCoaddSourcesTask(MeasureMergedCoaddSourcesTask):
         if self.config.doRunCatalogCalculation:
             self.catalogCalculation.run(sources)
 
-        self.setPrimaryFlags.run(sources, skyMap=skyInfo.skyMap, tractInfo=skyInfo.tractInfo,
-                                 patchInfo=skyInfo.patchInfo)
+        self.setPrimaryFlags.run(
+            sources,
+            skyMap=skyInfo.skyMap,
+            tractInfo=skyInfo.tractInfo,
+            patchInfo=skyInfo.patchInfo,
+        )
         if self.config.doPropagateFlags:
             self.propagateFlags.run(
                 sources,
                 ccdInputs,
                 sourceTableHandleDict,
-                finalizedSourceTableHandleDict
+                finalizedSourceTableHandleDict,
             )
 
         results = Struct()
 
         # TODO[DM-47797]: remove this block
         if self.config.doMatchSources:
-            matchResult = self.match.run(sources, exposure.getInfo().getFilter().bandLabel)
+            matchResult = self.match.run(
+                sources, exposure.getInfo().getFilter().bandLabel
+            )
             matches = afwTable.packMatches(matchResult.matches)
             matches.table.setMetadata(matchResult.matchMeta)
             results.matchResult = matches
             if self.config.doWriteMatchesDenormalized:
                 if matchResult.matches:
-                    denormMatches = denormalizeMatches(matchResult.matches, matchResult.matchMeta)
+                    denormMatches = denormalizeMatches(
+                        matchResult.matches, matchResult.matchMeta
+                    )
                 else:
-                    self.log.warning("No matches, so generating dummy denormalized matches file")
+                    self.log.warning(
+                        "No matches, so generating dummy denormalized matches file"
+                    )
                     denormMatches = afwTable.BaseCatalog(afwTable.Schema())
                     denormMatches.setMetadata(PropertyList())
-                    denormMatches.getMetadata().add("COMMENT",
-                                                    "This catalog is empty because no matches were found.")
+                    denormMatches.getMetadata().add(
+                        "COMMENT",
+                        "This catalog is empty because no matches were found.",
+                    )
                     results.denormMatches = denormMatches
                 results.denormMatches = denormMatches
 
