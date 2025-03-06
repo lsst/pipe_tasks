@@ -38,6 +38,8 @@ from lsst.pipe.tasks.finalizeCharacterization import (
     FinalizeCharacterizationTask,
     FinalizeCharacterizationDetectorConfig,
     FinalizeCharacterizationDetectorTask,
+    ConsolidateFinalizeCharacterizationDetectorConfig,
+    ConsolidateFinalizeCharacterizationDetectorTask,
 )
 
 
@@ -401,6 +403,36 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
         np.testing.assert_array_equal(results1.output_table["visit"], visit)
         np.testing.assert_array_equal(results0.output_table["detector"], detector0)
         np.testing.assert_array_equal(results1.output_table["detector"], detector1)
+
+        # Now test the task to concatenate these together.
+        consolidate_task = ConsolidateFinalizeCharacterizationDetectorTask(
+            config=ConsolidateFinalizeCharacterizationDetectorConfig(),
+        )
+
+        psf_ap_corr_detector_dict = {
+            detector0: pipeBase.InMemoryDatasetHandle(results0.psf_ap_corr_cat),
+            detector1: pipeBase.InMemoryDatasetHandle(results1.psf_ap_corr_cat),
+        }
+        src_detector_table_dict = {
+            detector0: pipeBase.InMemoryDatasetHandle(results0.output_table, storageClass="ArrowAstropy"),
+            detector1: pipeBase.InMemoryDatasetHandle(results1.output_table, storageClass="ArrowAstropy"),
+        }
+
+        results = consolidate_task.run(
+            psf_ap_corr_detector_dict=psf_ap_corr_detector_dict,
+            src_detector_table_dict=src_detector_table_dict,
+        )
+
+        self.assertEqual(len(results.psf_ap_corr_cat), 2)
+        np.testing.assert_array_equal(results.psf_ap_corr_cat["id"], [detector0, detector1])
+        np.testing.assert_array_equal(results.psf_ap_corr_cat["visit"], visit)
+        row = results.psf_ap_corr_cat.find(detector0)
+        self.assertEqual(row.getPsf().getSigma(), psf.getSigma())
+        self.assertEqual(list(row.getApCorrMap()), list(ap_corr_map))
+        np.testing.assert_array_equal(results.output_table["visit"], visit)
+        table_len = len(results.output_table)
+        np.testing.assert_array_equal(results.output_table["detector"][0: table_len // 2], detector0)
+        np.testing.assert_array_equal(results.output_table["detector"][table_len // 2:], detector1)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
