@@ -30,7 +30,7 @@ In the second stage, the task will run per-detector:
 - Run the aperture correction measurement task configured in ``config.measure_ap_corr`` using the PSF stars.
 - Run the aperture correction application task configured in ``config.apply_ap_corr`` on the PSF stars.
 
-An exposure catalog containing all the PSF models in the visit, another containing all the aperture correction maps in the visit, and a data frame with all the measurements and flags are returned for persistence.
+The task returns an exposure catalog containing all the PSF models in the visit and all the aperture correction maps in the visit, and an astropy table with all the measurements and flags are returned for persistence.
 
 .. _lsst.pipe.tasks.finalizeCharacterization.FinalizeCharacterizationTask-api:
 
