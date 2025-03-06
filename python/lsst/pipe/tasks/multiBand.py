@@ -19,14 +19,28 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["DetectCoaddSourcesConfig", "DetectCoaddSourcesTask", "MeasureMergedCoaddSourcesConnections",
-           "MeasureMergedCoaddSourcesConfig", "MeasureMergedCoaddSourcesTask"]
+__all__ = [
+    "DetectCoaddSourcesConfig",
+    "DetectCoaddSourcesTask",
+    "MeasureMergedCoaddSourcesConnections",
+    "MeasureMergedCoaddSourcesConfig",
+    "MeasureMergedCoaddSourcesTask",
+]
 
-from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
+from lsst.pipe.base import (
+    Struct,
+    PipelineTask,
+    PipelineTaskConfig,
+    PipelineTaskConnections,
+)
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.config import Field, ConfigurableField, ChoiceField
-from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader, ScaleVarianceTask, \
-    SetPrimaryFlagsTask
+from lsst.meas.algorithms import (
+    DynamicDetectionTask,
+    ReferenceObjectLoader,
+    ScaleVarianceTask,
+    SetPrimaryFlagsTask,
+)
 from lsst.meas.base import (
     SingleFrameMeasurementTask,
     ApplyApCorrTask,
@@ -43,7 +57,10 @@ from lsst.skymap import BaseSkyMap
 
 # NOTE: these imports are a convenience so multiband users only have to import this file.
 from .mergeDetections import MergeDetectionsConfig, MergeDetectionsTask  # noqa: F401
-from .mergeMeasurements import MergeMeasurementsConfig, MergeMeasurementsTask  # noqa: F401
+from .mergeMeasurements import (
+    MergeMeasurementsConfig,
+    MergeMeasurementsTask,
+)  # noqa: F401
 from .multiBandUtils import CullPeaksConfig  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesSingleConfig  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesSingleTask  # noqa: F401
@@ -66,9 +83,11 @@ the mergeDet, meas, and ref dataset Footprints:
 
 
 ##############################################################################################################
-class DetectCoaddSourcesConnections(PipelineTaskConnections,
-                                    dimensions=("tract", "patch", "band", "skymap"),
-                                    defaultTemplates={"inputCoaddName": "deep", "outputCoaddName": "deep"}):
+class DetectCoaddSourcesConnections(
+    PipelineTaskConnections,
+    dimensions=("tract", "patch", "band", "skymap"),
+    defaultTemplates={"inputCoaddName": "deep", "outputCoaddName": "deep"},
+):
     detectionSchema = cT.InitOutput(
         doc="Schema of the detection catalog",
         name="{outputCoaddName}Coadd_det_schema",
@@ -78,34 +97,39 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
         doc="Exposure on which detections are to be performed",
         name="{inputCoaddName}Coadd",
         storageClass="ExposureF",
-        dimensions=("tract", "patch", "band", "skymap")
+        dimensions=("tract", "patch", "band", "skymap"),
     )
     outputBackgrounds = cT.Output(
         doc="Output Backgrounds used in detection",
         name="{outputCoaddName}Coadd_calexp_background",
         storageClass="Background",
-        dimensions=("tract", "patch", "band", "skymap")
+        dimensions=("tract", "patch", "band", "skymap"),
     )
     outputSources = cT.Output(
         doc="Detected sources catalog",
         name="{outputCoaddName}Coadd_det",
         storageClass="SourceCatalog",
-        dimensions=("tract", "patch", "band", "skymap")
+        dimensions=("tract", "patch", "band", "skymap"),
     )
     outputExposure = cT.Output(
         doc="Exposure post detection",
         name="{outputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
-        dimensions=("tract", "patch", "band", "skymap")
+        dimensions=("tract", "patch", "band", "skymap"),
     )
 
 
-class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoaddSourcesConnections):
-    """Configuration parameters for the DetectCoaddSourcesTask
-    """
+class DetectCoaddSourcesConfig(
+    PipelineTaskConfig, pipelineConnections=DetectCoaddSourcesConnections
+):
+    """Configuration parameters for the DetectCoaddSourcesTask"""
 
-    doScaleVariance = Field(dtype=bool, default=True, doc="Scale variance plane using empirical noise?")
-    scaleVariance = ConfigurableField(target=ScaleVarianceTask, doc="Variance rescaling")
+    doScaleVariance = Field(
+        dtype=bool, default=True, doc="Scale variance plane using empirical noise?"
+    )
+    scaleVariance = ConfigurableField(
+        target=ScaleVarianceTask, doc="Variance rescaling"
+    )
     detection = ConfigurableField(target=DynamicDetectionTask, doc="Source detection")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
     hasFakes = Field(
@@ -123,8 +147,10 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
         self.detection.reEstimateBackground = False
         self.detection.background.useApprox = False
         self.detection.background.binSize = 4096
-        self.detection.background.undersampleStyle = 'REDUCE_INTERP_ORDER'
-        self.detection.doTempWideBackground = True  # Suppress large footprints that overwhelm the deblender
+        self.detection.background.undersampleStyle = "REDUCE_INTERP_ORDER"
+        self.detection.doTempWideBackground = (
+            True  # Suppress large footprints that overwhelm the deblender
+        )
         # Include band in packed data IDs that go into object IDs (None -> "as
         # many bands as are defined", rather than the default of zero).
         self.idGenerator.packer.n_bands = None
@@ -219,7 +245,11 @@ class DetectCoaddSourcesTask(PipelineTask):
         if hasattr(detections, "background") and detections.background:
             for bg in detections.background:
                 backgrounds.append(bg)
-        return Struct(outputSources=sources, outputBackgrounds=backgrounds, outputExposure=exposure)
+        return Struct(
+            outputSources=sources,
+            outputBackgrounds=backgrounds,
+            outputExposure=exposure,
+        )
 
 
 class MeasureMergedCoaddSourcesConnections(
@@ -238,12 +268,12 @@ class MeasureMergedCoaddSourcesConnections(
     inputSchema = cT.InitInput(
         doc="Input schema for measure merged task produced by a deblender or detection task",
         name="{inputCoaddName}Coadd_deblendedFlux_schema",
-        storageClass="SourceCatalog"
+        storageClass="SourceCatalog",
     )
     outputSchema = cT.InitOutput(
         doc="Output schema after all new fields are added by task",
         name="{inputCoaddName}Coadd_meas_schema",
-        storageClass="SourceCatalog"
+        storageClass="SourceCatalog",
     )
     # TODO[DM-47797]: remove this deprecated connection.
     refCat = cT.PrerequisiteInput(
@@ -259,7 +289,7 @@ class MeasureMergedCoaddSourcesConnections(
         doc="Input coadd image",
         name="{inputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
-        dimensions=("tract", "patch", "band", "skymap")
+        dimensions=("tract", "patch", "band", "skymap"),
     )
     skyMap = cT.Input(
         doc="SkyMap to use in processing",
@@ -277,9 +307,11 @@ class MeasureMergedCoaddSourcesConnections(
         deprecated="Deprecated and unused.  Will be removed after v29.",
     )
     sourceTableHandles = cT.Input(
-        doc=("Source tables that are derived from the ``CalibrateTask`` sources. "
-             "These tables contain astrometry and photometry flags, and optionally "
-             "PSF flags."),
+        doc=(
+            "Source tables that are derived from the ``CalibrateTask`` sources. "
+            "These tables contain astrometry and photometry flags, and optionally "
+            "PSF flags."
+        ),
         name="sourceTable_visit",
         storageClass="ArrowAstropy",
         dimensions=("instrument", "visit"),
@@ -287,8 +319,10 @@ class MeasureMergedCoaddSourcesConnections(
         deferLoad=True,
     )
     finalizedSourceTableHandles = cT.Input(
-        doc=("Finalized source tables from ``FinalizeCalibrationTask``. These "
-             "tables contain PSF flags from the finalized PSF estimation."),
+        doc=(
+            "Finalized source tables from ``FinalizeCalibrationTask``. These "
+            "tables contain PSF flags from the finalized PSF estimation."
+        ),
         name="finalized_src_table",
         storageClass="ArrowAstropy",
         dimensions=("instrument", "visit"),
@@ -297,12 +331,14 @@ class MeasureMergedCoaddSourcesConnections(
     )
     # TODO[DM-47797]: remove this deprecated connection.
     inputCatalog = cT.Input(
-        doc=("Name of the input catalog to use."
-             "If the single band deblender was used this should be 'deblendedFlux."
-             "If the multi-band deblender was used this should be 'deblendedModel, "
-             "or deblendedFlux if the multiband deblender was configured to output "
-             "deblended flux catalogs. If no deblending was performed this should "
-             "be 'mergeDet'"),
+        doc=(
+            "Name of the input catalog to use."
+            "If the single band deblender was used this should be 'deblendedFlux."
+            "If the multi-band deblender was used this should be 'deblendedModel, "
+            "or deblendedFlux if the multiband deblender was configured to output "
+            "deblended flux catalogs. If no deblending was performed this should "
+            "be 'mergeDet'"
+        ),
         name="{inputCoaddName}Coadd_{deblendedCatalog}",
         storageClass="SourceCatalog",
         deprecated="Support for old deblender outputs will be removed after v29.",
@@ -337,7 +373,7 @@ class MeasureMergedCoaddSourcesConnections(
     # TODO[DM-47797]: remove this deprecated connection.
     denormMatches = cT.Output(
         doc="Denormalized Match catalog produced by configured matcher, optional on "
-            "doWriteMatchesDenormalized",
+        "doWriteMatchesDenormalized",
         name="{outputCoaddName}Coadd_measMatchFull",
         dimensions=("tract", "patch", "band", "skymap"),
         storageClass="Catalog",
@@ -374,42 +410,58 @@ class MeasureMergedCoaddSourcesConnections(
             del self.denormMatches
 
 
-class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
-                                      pipelineConnections=MeasureMergedCoaddSourcesConnections):
-    """Configuration parameters for the MeasureMergedCoaddSourcesTask
-    """
+class MeasureMergedCoaddSourcesConfig(
+    PipelineTaskConfig, pipelineConnections=MeasureMergedCoaddSourcesConnections
+):
+    """Configuration parameters for the MeasureMergedCoaddSourcesTask"""
+
     inputCatalog = ChoiceField(
         dtype=str,
         default="deblendedCatalog",
         allowed={
             "deblendedCatalog": "Output catalog from ScarletDeblendTask",
             "deblendedFlux": "Output catalog from SourceDeblendTask",
-            "mergeDet": "The merged detections before deblending."
+            "mergeDet": "The merged detections before deblending.",
         },
         doc="The name of the input catalog.",
         # TODO[DM-47797]: remove this config option and anything using it.
         deprecated="Support for old deblender outputs will be removed after v29.",
     )
-    doAddFootprints = Field(dtype=bool,
-                            default=True,
-                            doc="Whether or not to add footprints to the input catalog from scarlet models. "
-                                "This should be true whenever using the multi-band deblender, "
-                                "otherwise this should be False.")
-    doConserveFlux = Field(dtype=bool, default=True,
-                           doc="Whether to use the deblender models as templates to re-distribute the flux "
-                               "from the 'exposure' (True), or to perform measurements on the deblender "
-                               "model footprints.")
-    doStripFootprints = Field(dtype=bool, default=True,
-                              doc="Whether to strip footprints from the output catalog before "
-                                  "saving to disk. "
-                                  "This is usually done when using scarlet models to save disk space.")
-    measurement = ConfigurableField(target=SingleFrameMeasurementTask, doc="Source measurement")
-    setPrimaryFlags = ConfigurableField(target=SetPrimaryFlagsTask, doc="Set flags for primary tract/patch")
-    doPropagateFlags = Field(
-        dtype=bool, default=True,
-        doc="Whether to match sources to CCD catalogs to propagate flags (to e.g. identify PSF stars)"
+    doAddFootprints = Field(
+        dtype=bool,
+        default=True,
+        doc="Whether or not to add footprints to the input catalog from scarlet models. "
+        "This should be true whenever using the multi-band deblender, "
+        "otherwise this should be False.",
     )
-    propagateFlags = ConfigurableField(target=PropagateSourceFlagsTask, doc="Propagate source flags to coadd")
+    doConserveFlux = Field(
+        dtype=bool,
+        default=True,
+        doc="Whether to use the deblender models as templates to re-distribute the flux "
+        "from the 'exposure' (True), or to perform measurements on the deblender "
+        "model footprints.",
+    )
+    doStripFootprints = Field(
+        dtype=bool,
+        default=True,
+        doc="Whether to strip footprints from the output catalog before "
+        "saving to disk. "
+        "This is usually done when using scarlet models to save disk space.",
+    )
+    measurement = ConfigurableField(
+        target=SingleFrameMeasurementTask, doc="Source measurement"
+    )
+    setPrimaryFlags = ConfigurableField(
+        target=SetPrimaryFlagsTask, doc="Set flags for primary tract/patch"
+    )
+    doPropagateFlags = Field(
+        dtype=bool,
+        default=True,
+        doc="Whether to match sources to CCD catalogs to propagate flags (to e.g. identify PSF stars)",
+    )
+    propagateFlags = ConfigurableField(
+        target=PropagateSourceFlagsTask, doc="Propagate source flags to coadd"
+    )
     doMatchSources = Field(
         dtype=bool,
         default=False,
@@ -424,8 +476,10 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
     doWriteMatchesDenormalized = Field(
         dtype=bool,
         default=False,
-        doc=("Write reference matches in denormalized format? "
-             "This format uses more disk space, but is more convenient to read."),
+        doc=(
+            "Write reference matches in denormalized format? "
+            "This format uses more disk space, but is more convenient to read."
+        ),
         deprecated="Reference matching in measureCoaddSources will be removed after v29.",
     )
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
@@ -435,29 +489,22 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
         dtype=str,
         default="raise",
     )
-    doApCorr = Field(
-        dtype=bool,
-        default=True,
-        doc="Apply aperture corrections"
-    )
+    doApCorr = Field(dtype=bool, default=True, doc="Apply aperture corrections")
     applyApCorr = ConfigurableField(
-        target=ApplyApCorrTask,
-        doc="Subtask to apply aperture corrections"
+        target=ApplyApCorrTask, doc="Subtask to apply aperture corrections"
     )
     doRunCatalogCalculation = Field(
-        dtype=bool,
-        default=True,
-        doc='Run catalogCalculation task'
+        dtype=bool, default=True, doc="Run catalogCalculation task"
     )
     catalogCalculation = ConfigurableField(
         target=CatalogCalculationTask,
-        doc="Subtask to run catalogCalculation plugins on catalog"
+        doc="Subtask to run catalogCalculation plugins on catalog",
     )
 
     hasFakes = Field(
         dtype=bool,
         default=False,
-        doc="Should be set to True if fake sources have been inserted into the input data."
+        doc="Should be set to True if fake sources have been inserted into the input data.",
     )
     idGenerator = SkyMapIdGeneratorConfig.make_field()
 
@@ -467,24 +514,34 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
 
     def setDefaults(self):
         super().setDefaults()
-        self.measurement.plugins.names |= ['base_InputCount',
-                                           'base_Variance',
-                                           'base_LocalPhotoCalib',
-                                           'base_LocalWcs']
+        self.measurement.plugins.names |= [
+            "base_InputCount",
+            "base_Variance",
+            "base_LocalPhotoCalib",
+            "base_LocalWcs",
+        ]
 
         # TODO: Remove STREAK in DM-44658, streak masking to happen only in
         # ip_diffim; if we can propagate the streak mask from diffim, we can
         # still set flags with it here.
-        self.measurement.plugins['base_PixelFlags'].masksFpAnywhere = ['CLIPPED', 'SENSOR_EDGE',
-                                                                       'INEXACT_PSF']
-        self.measurement.plugins['base_PixelFlags'].masksFpCenter = ['CLIPPED', 'SENSOR_EDGE',
-                                                                     'INEXACT_PSF']
+        self.measurement.plugins["base_PixelFlags"].masksFpAnywhere = [
+            "CLIPPED",
+            "SENSOR_EDGE",
+            "INEXACT_PSF",
+        ]
+        self.measurement.plugins["base_PixelFlags"].masksFpCenter = [
+            "CLIPPED",
+            "SENSOR_EDGE",
+            "INEXACT_PSF",
+        ]
 
     def validate(self):
         super().validate()
 
         if not self.doMatchSources and self.doWriteMatchesDenormalized:
-            raise ValueError("Cannot set doWriteMatchesDenormalized if doMatchSources is False.")
+            raise ValueError(
+                "Cannot set doWriteMatchesDenormalized if doMatchSources is False."
+            )
 
 
 class MeasureMergedCoaddSourcesTask(PipelineTask):
@@ -531,13 +588,14 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
     _DefaultName = "measureCoaddSources"
     ConfigClass = MeasureMergedCoaddSourcesConfig
 
-    def __init__(self, schema=None, peakSchema=None, refObjLoader=None, initInputs=None,
-                 **kwargs):
+    def __init__(
+        self, schema=None, peakSchema=None, refObjLoader=None, initInputs=None, **kwargs
+    ):
         super().__init__(**kwargs)
         self.deblended = self.config.inputCatalog.startswith("deblended")
         self.inputCatalog = "Coadd_" + self.config.inputCatalog
         if initInputs is not None:
-            schema = initInputs['inputSchema'].schema
+            schema = initInputs["inputSchema"].schema
         if schema is None:
             raise ValueError("Schema must be defined.")
         self.schemaMapper = afwTable.SchemaMapper(schema)
@@ -545,7 +603,9 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         self.schema = self.schemaMapper.getOutputSchema()
         afwTable.CoordKey.addErrorFields(self.schema)
         self.algMetadata = PropertyList()
-        self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
+        self.makeSubtask(
+            "measurement", schema=self.schema, algMetadata=self.algMetadata
+        )
         self.makeSubtask("setPrimaryFlags", schema=self.schema)
         # TODO[DM-47797]: remove match subtask
         if self.config.doMatchSources:
@@ -565,24 +625,28 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
 
         # TODO[DM-47797]: remove this block
         if self.config.doMatchSources:
-            refObjLoader = ReferenceObjectLoader([ref.datasetRef.dataId for ref in inputRefs.refCat],
-                                                 inputs.pop('refCat'),
-                                                 name=self.config.connections.refCat,
-                                                 config=self.config.refObjLoader,
-                                                 log=self.log)
+            refObjLoader = ReferenceObjectLoader(
+                [ref.datasetRef.dataId for ref in inputRefs.refCat],
+                inputs.pop("refCat"),
+                name=self.config.connections.refCat,
+                config=self.config.refObjLoader,
+                log=self.log,
+            )
             self.match.setRefObjLoader(refObjLoader)
 
         # Set psfcache
         # move this to run after gen2 deprecation
-        inputs['exposure'].getPsf().setCacheCapacity(self.config.psfCache)
+        inputs["exposure"].getPsf().setCacheCapacity(self.config.psfCache)
 
         # Get unique integer ID for IdFactory and RNG seeds; only the latter
         # should really be used as the IDs all come from the input catalog.
         idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
-        inputs['exposureId'] = idGenerator.catalog_id
+        inputs["exposureId"] = idGenerator.catalog_id
 
         # Transform inputCatalog
-        table = afwTable.SourceTable.make(self.schema, idGenerator.make_table_id_factory())
+        table = afwTable.SourceTable.make(
+            self.schema, idGenerator.make_table_id_factory()
+        )
         sources = afwTable.SourceCatalog(table)
         # Load the correct input catalog
         if "scarletCatalog" in inputs:
@@ -595,9 +659,9 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         del inputCatalog
         # Add the HeavyFootprints to the deblended sources
         if self.config.doAddFootprints:
-            modelData = inputs.pop('scarletModels')
+            modelData = inputs.pop("scarletModels")
             if self.config.doConserveFlux:
-                imageForRedistribution = inputs['exposure']
+                imageForRedistribution = inputs["exposure"]
             else:
                 imageForRedistribution = None
             updateCatalogFootprints(
@@ -609,21 +673,23 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
                 updateFluxColumns=True,
             )
         table = sources.getTable()
-        table.setMetadata(self.algMetadata)  # Capture algorithm metadata to write out to the source catalog.
-        inputs['sources'] = sources
+        table.setMetadata(
+            self.algMetadata
+        )  # Capture algorithm metadata to write out to the source catalog.
+        inputs["sources"] = sources
 
-        skyMap = inputs.pop('skyMap')
-        tractNumber = catalogRef.dataId['tract']
+        skyMap = inputs.pop("skyMap")
+        tractNumber = catalogRef.dataId["tract"]
         tractInfo = skyMap[tractNumber]
-        patchInfo = tractInfo.getPatchInfo(catalogRef.dataId['patch'])
+        patchInfo = tractInfo.getPatchInfo(catalogRef.dataId["patch"])
         skyInfo = Struct(
             skyMap=skyMap,
             tractInfo=tractInfo,
             patchInfo=patchInfo,
             wcs=tractInfo.getWcs(),
-            bbox=patchInfo.getOuterBBox()
+            bbox=patchInfo.getOuterBBox(),
         )
-        inputs['skyInfo'] = skyInfo
+        inputs["skyInfo"] = skyInfo
 
         if self.config.doPropagateFlags:
             ccdInputs = inputs["exposure"].getInfo().getCoaddInputs().ccds
@@ -631,21 +697,35 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
 
             if "sourceTableHandles" in inputs:
                 sourceTableHandles = inputs.pop("sourceTableHandles")
-                sourceTableHandleDict = {handle.dataId["visit"]: handle for handle in sourceTableHandles}
+                sourceTableHandleDict = {
+                    handle.dataId["visit"]: handle for handle in sourceTableHandles
+                }
                 inputs["sourceTableHandleDict"] = sourceTableHandleDict
             if "finalizedSourceTableHandles" in inputs:
                 finalizedSourceTableHandles = inputs.pop("finalizedSourceTableHandles")
-                finalizedSourceTableHandleDict = {handle.dataId["visit"]: handle
-                                                  for handle in finalizedSourceTableHandles}
-                inputs["finalizedSourceTableHandleDict"] = finalizedSourceTableHandleDict
+                finalizedSourceTableHandleDict = {
+                    handle.dataId["visit"]: handle
+                    for handle in finalizedSourceTableHandles
+                }
+                inputs["finalizedSourceTableHandleDict"] = (
+                    finalizedSourceTableHandleDict
+                )
 
         outputs = self.run(**inputs)
         # Strip HeavyFootprints to save space on disk
         sources = outputs.outputSources
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, exposure, sources, skyInfo, exposureId, ccdInputs=None,
-            sourceTableHandleDict=None, finalizedSourceTableHandleDict=None):
+    def run(
+        self,
+        exposure,
+        sources,
+        skyInfo,
+        exposureId,
+        ccdInputs=None,
+        sourceTableHandleDict=None,
+        finalizedSourceTableHandleDict=None,
+    ):
         """Run measurement algorithms on the input exposure, and optionally populate the
         resulting catalog with extra information.
 
@@ -685,8 +765,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
 
         if self.config.doApCorr:
             self.applyApCorr.run(
-                catalog=sources,
-                apCorrMap=exposure.getInfo().getApCorrMap()
+                catalog=sources, apCorrMap=exposure.getInfo().getApCorrMap()
             )
 
         # TODO DM-11568: this contiguous check-and-copy could go away if we
@@ -699,33 +778,45 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         if self.config.doRunCatalogCalculation:
             self.catalogCalculation.run(sources)
 
-        self.setPrimaryFlags.run(sources, skyMap=skyInfo.skyMap, tractInfo=skyInfo.tractInfo,
-                                 patchInfo=skyInfo.patchInfo)
+        self.setPrimaryFlags.run(
+            sources,
+            skyMap=skyInfo.skyMap,
+            tractInfo=skyInfo.tractInfo,
+            patchInfo=skyInfo.patchInfo,
+        )
         if self.config.doPropagateFlags:
             self.propagateFlags.run(
                 sources,
                 ccdInputs,
                 sourceTableHandleDict,
-                finalizedSourceTableHandleDict
+                finalizedSourceTableHandleDict,
             )
 
         results = Struct()
 
         # TODO[DM-47797]: remove this block
         if self.config.doMatchSources:
-            matchResult = self.match.run(sources, exposure.getInfo().getFilter().bandLabel)
+            matchResult = self.match.run(
+                sources, exposure.getInfo().getFilter().bandLabel
+            )
             matches = afwTable.packMatches(matchResult.matches)
             matches.table.setMetadata(matchResult.matchMeta)
             results.matchResult = matches
             if self.config.doWriteMatchesDenormalized:
                 if matchResult.matches:
-                    denormMatches = denormalizeMatches(matchResult.matches, matchResult.matchMeta)
+                    denormMatches = denormalizeMatches(
+                        matchResult.matches, matchResult.matchMeta
+                    )
                 else:
-                    self.log.warning("No matches, so generating dummy denormalized matches file")
+                    self.log.warning(
+                        "No matches, so generating dummy denormalized matches file"
+                    )
                     denormMatches = afwTable.BaseCatalog(afwTable.Schema())
                     denormMatches.setMetadata(PropertyList())
-                    denormMatches.getMetadata().add("COMMENT",
-                                                    "This catalog is empty because no matches were found.")
+                    denormMatches.getMetadata().add(
+                        "COMMENT",
+                        "This catalog is empty because no matches were found.",
+                    )
                     results.denormMatches = denormMatches
                 results.denormMatches = denormMatches
 
