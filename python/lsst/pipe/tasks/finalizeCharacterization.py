@@ -1039,7 +1039,10 @@ class ConsolidateFinalizeCharacterizationDetectorTask(pipeBase.PipelineTask):
             for detector in sorted(src_detector_table_dict_temp.keys())
         }
 
-        result = self.run(psf_ap_corr_detector_dict, src_detector_table_dict)
+        result = self.run(
+            psf_ap_corr_detector_dict=psf_ap_corr_detector_dict,
+            src_detector_table_dict=src_detector_table_dict,
+        )
 
         butlerQC.put(result.psf_ap_corr_cat, outputRefs.finalized_psf_ap_corr_cat)
         butlerQC.put(result.output_table, outputRefs.finalized_src_table)
