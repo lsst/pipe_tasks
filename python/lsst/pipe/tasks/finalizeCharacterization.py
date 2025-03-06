@@ -131,7 +131,6 @@ class FinalizeCharacterizationDetectorConnections(
         name='src',
         storageClass='SourceCatalog',
         dimensions=('instrument', 'visit', 'detector'),
-        deferGraphConstraint=True,
     )
     calexp = pipeBase.connectionTypes.Input(
         doc='Calexps for the visit',
