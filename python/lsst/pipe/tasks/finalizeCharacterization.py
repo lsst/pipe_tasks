@@ -22,12 +22,17 @@
 """Task to run a finalized image characterization, using additional data.
 """
 
-__all__ = ['FinalizeCharacterizationConnections',
-           'FinalizeCharacterizationConfig',
-           'FinalizeCharacterizationTask',
-           'FinalizeCharacterizationDetectorConnections',
-           'FinalizeCharacterizationDetectorConfig',
-           'FinalizeCharacterizationDetectorTask']
+__all__ = [
+    'FinalizeCharacterizationConnections',
+    'FinalizeCharacterizationConfig',
+    'FinalizeCharacterizationTask',
+    'FinalizeCharacterizationDetectorConnections',
+    'FinalizeCharacterizationDetectorConfig',
+    'FinalizeCharacterizationDetectorTask',
+    'ConsolidateFinalizeCharacterizationDetectorConnections',
+    'ConsolidateFinalizeCharacterizationDetectorConfig',
+    'ConsolidateFinalizeCharacterizationDetectorTask',
+]
 
 import astropy.table
 import numpy as np
@@ -955,10 +960,133 @@ class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
             measured_src['visit'][:] = visit
             measured_src['detector'][:] = detector
 
-            measured_src_table = measured_src.asAstropy().as_array()
+            measured_src_table = measured_src.asAstropy()
 
         if measured_src_table is None:
             raise pipeBase.NoWorkFound(f'No good sources found for visit {visit} / detector {detector}')
 
-        return pipeBase.Struct(psf_ap_corr_cat=psf_ap_corr_cat,
-                               output_table=measured_src_table)
+        return pipeBase.Struct(
+            psf_ap_corr_cat=psf_ap_corr_cat,
+            output_table=measured_src_table,
+        )
+
+
+class ConsolidateFinalizeCharacterizationDetectorConnections(
+    pipeBase.PipelineTaskConnections,
+    dimensions=('instrument', 'visit',),
+):
+    finalized_psf_ap_corr_detector_cats = pipeBase.connectionTypes.Input(
+        doc='Per-visit/per-detector finalized psf models and aperture corrections.',
+        name='finalized_psf_ap_corr_detector_catalog',
+        storageClass='ExposureCatalog',
+        dimensions=('instrument', 'visit', 'detector'),
+        multiple=True,
+        deferLoad=True,
+    )
+    finalized_src_detector_tables = pipeBase.connectionTypes.Input(
+        doc=('Per-visit/per-detector catalog of measurements for psf/flag/etc.'),
+        name='finalized_src_detector_table',
+        storageClass='ArrowAstropy',
+        dimensions=('instrument', 'visit', 'detector'),
+        multiple=True,
+        deferLoad=True,
+    )
+    finalized_psf_ap_corr_cat = pipeBase.connectionTypes.Output(
+        doc=('Per-visit finalized psf models and aperture corrections.  This '
+             'catalog uses detector id for the id and are sorted for fast '
+             'lookups of a detector.'),
+        name='finalized_psf_ap_corr_catalog',
+        storageClass='ExposureCatalog',
+        dimensions=('instrument', 'visit'),
+    )
+    finalized_src_table = pipeBase.connectionTypes.Output(
+        doc=('Per-visit catalog of measurements for psf/flag/etc.'),
+        name='finalized_src_table',
+        storageClass='ArrowAstropy',
+        dimensions=('instrument', 'visit'),
+    )
+
+
+class ConsolidateFinalizeCharacterizationDetectorConfig(
+    pipeBase.PipelineTaskConfig,
+    pipelineConnections=ConsolidateFinalizeCharacterizationDetectorConnections,
+):
+    pass
+
+
+class ConsolidateFinalizeCharacterizationDetectorTask(pipeBase.PipelineTask):
+    """Consolidate per-detector finalize characterization catalogs."""
+    ConfigClass = ConsolidateFinalizeCharacterizationDetectorConfig
+    _DefaultName = 'consolidate_finalize_characterization_detector'
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        input_handle_dict = butlerQC.get(inputRefs)
+
+        psf_ap_corr_detector_dict_temp = {
+            handle.dataId['detector']: handle
+            for handle in input_handle_dict['finalized_psf_ap_corr_detector_cats']
+        }
+        src_detector_table_dict_temp = {
+            handle.dataId['detector']: handle
+            for handle in input_handle_dict['finalized_src_detector_tables']
+        }
+
+        psf_ap_corr_detector_dict = {
+            detector: psf_ap_corr_detector_dict_temp[detector]
+            for detector in sorted(psf_ap_corr_detector_dict_temp.keys())
+        }
+        src_detector_table_dict = {
+            detector: src_detector_table_dict_temp[detector]
+            for detector in sorted(src_detector_table_dict_temp.keys())
+        }
+
+        result = self.run(psf_ap_corr_detector_dict, src_detector_table_dict)
+
+        butlerQC.put(result.psf_ap_corr_cat, outputRefs.finalized_psf_ap_corr_cat)
+        butlerQC.put(result.output_table, outputRefs.finalized_src_table)
+
+    def run(self, *, psf_ap_corr_detector_dict, src_detector_table_dict):
+        """
+        Run the ConsolidateFinalizeCharacterizationDetectorTask.
+
+        Parameters
+        ----------
+        psf_ap_corr_detector_dict : `dict` [`int`, `lsst.daf.butler.DeferredDatasetHandle`]
+            Dictionary of input exposure catalogs, keyed by detector id.
+        src_detector_table_dict : `dict` [`int`, `lsst.daf.butler.DeferredDatasetHandle`]
+            Dictionary of input source tables, keyed by detector id.
+
+        Returns
+        -------
+        result : `lsst.pipe.base.struct`
+            Struct with the following outputs:
+            ``psf_ap_corr_cat``: Consolidated exposure catalog
+            ``src_table``: Consolidated source table.
+        """
+        if not len(psf_ap_corr_detector_dict):
+            raise pipeBase.NoWorkFound("No inputs found.")
+
+        if not np.all(
+            np.asarray(psf_ap_corr_detector_dict.keys())
+            == np.asarray(src_detector_table_dict.keys())
+        ):
+            raise ValueError(
+                "Input psf_ap_corr_detector_dict and src_detector_table_dict must have the same keys",
+            )
+
+        psf_ap_corr_cat = None
+        for detector_id, handle in psf_ap_corr_detector_dict.items():
+            if psf_ap_corr_cat is None:
+                psf_ap_corr_cat = handle.get()
+            else:
+                psf_ap_corr_cat.append(handle.get().find(detector_id))
+
+        # Make sure it is a contiguous catalog.
+        psf_ap_corr_cat = psf_ap_corr_cat.copy(deep=True)
+
+        src_table = TableVStack.vstack_handles(src_detector_table_dict.values())
+
+        return pipeBase.Struct(
+            psf_ap_corr_cat=psf_ap_corr_cat,
+            output_table=src_table,
+        )
