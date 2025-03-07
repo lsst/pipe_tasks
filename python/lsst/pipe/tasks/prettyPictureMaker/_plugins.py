@@ -29,7 +29,6 @@ from typing import TYPE_CHECKING, Generator
 import numpy as np
 from skimage.restoration import inpaint
 from lsst.pipe.base import PipelineTaskConfig
-from scipy.ndimage import binary_dilation
 
 
 if TYPE_CHECKING:
@@ -139,27 +138,3 @@ should import from here and use the register method as a decorator to
 register any plugins. Or, preferably, add them to this file to avoid
 needing any other import time logic elsewhere.
 """
-
-
-# @plugins.register(1, PluginType.PARTIAL)
-def fixStarCores(
-    image: NDArray, mask: NDArray, maskDict: Mapping[str, int], config: PipelineTaskConfig
-) -> NDArray:
-    local_image = np.copy(image)
-    sat_bit = maskDict["SAT"]
-    no_data_bit = maskDict["NO_DATA"]
-    together = (mask & 2**sat_bit).astype(bool) | (mask & 2**no_data_bit).astype(bool)
-    bright_mask = local_image[:, :, 0] > 0.05 * config.imageRemappingConfig.absMax
-    local_image /= config.imageRemappingConfig.absMax
-    both = together & bright_mask
-    struct = np.ones((3, 3), dtype=bool)
-    both = binary_dilation(both, struct, iterations=4).astype(bool)
-
-    # Try looping over each band to see how it looks
-    inpainted = np.zeros(local_image.shape)
-    for i in range(3):
-        inpainted[:, :, i] = inpaint.inpaint_biharmonic(local_image[:, :, i], both, split_into_regions=True)
-    result = np.copy(image)
-    result[both] = inpainted[both] * config.imageRemappingConfig.absMax
-
-    return result

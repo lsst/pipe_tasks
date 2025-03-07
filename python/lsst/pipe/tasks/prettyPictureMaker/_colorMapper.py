@@ -13,16 +13,13 @@ from ._localContrast import localContrast, makeGaussianPyramid, makeLapPyramid, 
 from lsst.cpputils import fixGamutOK
 
 from numpy.typing import NDArray
-from typing import Callable, Mapping
+from typing import Callable, Mapping, Literal
 
 
 def latLum(
     values,
     stretch: float = 400,
-    max: float = 85,
-    A: float = 1,
-    b0: float = 0.0,
-    minimum: float = 0,
+    max: float = 1,
     floor: float = 0.00,
     Q: float = 0.7,
     doDenoise: bool = False,
@@ -40,21 +37,30 @@ def latLum(
     stretch : `float`, optional
         A parameter for the arcsinh function.
     max : `float`, optional
-        Maximum value for intensity scaling.
-    A : `float`, optional
-        Linear scaling factor for the transformed intensities.
-    b0 : `float` optional
-        Offset term added to the arcsinh transformation.
-    minimum : `float`
-        Threshold below which pixel values are set to zero.
-    floor : `float`
+        Maximum value for intensity scaling on a scale of 0-1.
+    floor : `float`, optional
         A value added to each pixel in arcsinh transform, this ensures values in
-        the arcsinh transform will be no smaller than the supplied value.
-    Q : `float`
+        the arcsinh transform is no smaller than the supplied value.
+    Q : `float`, optional
         Another parameter for the arcsinh function and scaling factor for
         softening.
-    doDenoise : `bool`
+    doDenoise : `bool`, optional
         Denoise the image if desired.
+    highlight : `float`
+        This is the value (between 0 and 1) that maps to be "white" in the
+        output. Decreasing this makes fainter things more luminous but
+        clips the brightest end. This is a linear transform applied to the
+        values after arcsinh.
+    shadow : `float`
+        This is the value (between 0 and 1) that maps to be "black" in the
+        output. Increasing this makes fainter things darker but
+        clips the lowest values. This is a linear transform applied to the
+        values after arcsinh.
+    midtone : `float`
+        This is the value (between 0 and 1) that adjusts the balance between
+        white and black. Decreasing this makes fainter things more luminous,
+        increasing does the opposite. This is a linear transform applied to the
+        values after arcsinh.
 
     Returns:
         luminance : `NDArray`
@@ -83,50 +89,18 @@ def latLum(
     intensities /= norm
 
     # Scale the intensities with linear manipulation for contrast
-    print(f"######### {shadow} / {midtone} / {highlight}")
     intensities = (intensities - shadow) / (highlight - shadow)
     intensities = ((midtone - 1) * intensities) / (((2 * midtone - 1) * intensities) - midtone)
 
-    np.clip(intensities, 0, 1, out=intensities)
-    intensities *= 100
-
-    # Apply a specific tone cure to the luminocity defined by the below interpolant.
-    # This is calculated on the median of the image to smooth out pixel to pixel
-    # variations that are most likely due to noise. The sharpness of the image
-    # is preserved as we only apply this filter to the luminocity data.
-    # filtered = medfilt2d(intensities, 3)
-
-    # control_points = (
-    #     [0, 0.5, 2, 5, 13.725490196078432, 25, 30, 55.294117647058826, 73.72549019607844, 98, 100],
-    #     [0, 10, 15, 20, 25.686274509803921, 40, 50, 80.35294117647058, 94.11764705882352, 98, 100],
-    # )
-    # scaled = pchip_interpolate(*control_points, intensities)
-    # scaled[scaled == 0] = 1e-7
-    # intensities = scaled
-    # intensities[intensities > max] = max
-
-    # If values end up near 100 it's best to "bend" them a little to help
-    # the out of gamut fixer to appropriately handle luminosity and chroma
-    # issues. This is an empirically derived formula that returns
-    # scaling factors. For most of the domain it will return a value that
-    # is close to 1. Right near the upper part of the domain, it
-    # returns values slightly below 1 such that it scales a value of 100
-    # to a value near 95.
-    # intensities *= (-1 * erf(-1 * (1 / intensities * 210))) ** 20
-    # intensities[np.isnan(intensities)] = 0
+    np.clip(intensities, 0, max, out=intensities)
 
     # Reset the input array.
     values /= 100
 
-    # Rescale the output array.
-    intensities /= 100
-
     return intensities
 
 
-def mapUpperBounds(
-    img: NDArray, quant: float = 0.9, absMax: float | None = None, scaleBoundFactor: float | None = None
-) -> NDArray:
+def mapUpperBounds(img: NDArray, quant: float = 0.9, absMax: float | None = None) -> NDArray:
     """Bound images to a range between zero and one.
 
     Some images supplied aren't properly bounded with a maximum value of 1.
@@ -151,11 +125,6 @@ def mapUpperBounds(
         and quant is larger than scaleBoundFactor times absMax. This is
         to prevent individual frames in a mosaic from being scaled too
         faint if absMax is too large for one region.
-    scaleBoundFactor : `float` or `None`
-        Factor used to compare absMax and the emperically determined
-        maximim. if emperical_max is less than scaleBoundFactor*absMax
-        then the emperical_max is used instead of absMax, even if it
-        is set. Set to None to skip this comparison.
 
     Returns
     -------
@@ -174,18 +143,10 @@ def mapUpperBounds(
     b_quant = np.quantile(b, 0.95)
     turnover = np.max((r_quant, g_quant, b_quant))
 
-    # If scaleBoundFactor is not none and absMax is not None, check that the
-    # determined turnover is not less than the supplied absMax times the
-    # scaleBoundFactor. This fixes patches that may have max values much less
-    # than others for some processing reason.
-    scale = absMax
-    # if absMax is not None:
-    #     if scaleBoundFactor is not None and turnover < scaleBoundFactor * absMax:
-    #         scale = turnover * quant
-    #     else:
-    #         scale = absMax
-    # else:
-    #     scale = turnover * quant
+    if absMax is not None:
+        scale = absMax
+    else:
+        scale = turnover * quant
 
     image = np.empty(img.shape)
     image[:, :, 0] = r / scale
@@ -199,7 +160,12 @@ def mapUpperBounds(
 
 
 def colorConstantSat(
-    oldLum: NDArray, luminance: NDArray, a: NDArray, b: NDArray, saturation: float = 1, maxChroma: float = 50
+    oldLum: NDArray,
+    luminance: NDArray,
+    a: NDArray,
+    b: NDArray,
+    saturation: float = 0.6,
+    maxChroma: float = 80,
 ) -> tuple[NDArray, NDArray]:
     """
     Adjusts the color saturation while keeping the hue constant.
@@ -262,16 +228,15 @@ def colorConstantSat(
     chroma2 = np.sqrt(chroma2_2)
     new_a = chroma2 * cosHue
 
-    # Compute new 'b' values by scaling 'new_a' with the tangent of the sin
-    # angle.
+    # Compute new 'b' values using the root of the adjusted chroma and hue
+    # direction.
     new_b = chroma2 * sinHue
 
     return new_a, new_b
 
 
 def fixOutOfGamutColors(
-    Lab: NDArray,
-    colourspace: str = "Display P3",
+    Lab: NDArray, colourspace: str = "Display P3", gamut_method: Literal["mapping", "inpaint"] = "inpaint"
 ) -> NDArray:
     """Remap colors that fall outside an RGB color gamut back into it.
 
@@ -281,10 +246,13 @@ def fixOutOfGamutColors(
     ----------
     Lab : `NDArray`
         A NxMX3 array that contains data in the Lab colorspace.
-    colourspace : `str`
+    colourspace : `str`, optional
         The target colourspace to map outlying pixels into. This must
         correspond to an RGB colourspace understood by the colour-science
-        python package
+        python package.
+    gamut_method : `str`, optional
+        This determines what algorithm will be used to map out of gamut
+        colors. Must be one of ``mapping`` or ``inpaint``.
     """
     # Convert back into the CIE XYZ colourspace.
     xyz_prime = colour.Oklab_to_XYZ(Lab)
@@ -303,10 +271,17 @@ def fixOutOfGamutColors(
         return rgb_prime
 
     logging.info("There are out of gamut pixels, remapping colors")
-    # results = fixGamutOK(Lab[outOfBounds])
-    results = inpaint_biharmonic(rgb_prime, outOfBounds, channel_axis=-1)
+    match gamut_method:
+        case "inpaint":
+            results = inpaint_biharmonic(rgb_prime, outOfBounds, channel_axis=-1)
+        case "mapping":
+            results = fixGamutOK(Lab[outOfBounds])
+            Lab[outOfBounds] = results
+            results = colour.XYZ_to_RGB(colour.Oklab_to_XYZ(Lab), colourspace=colourspace)
+        case _:
+            raise ValueError(f"gamut correction {gamut_method} is not supported")
+
     logging.debug(f"The total number of remapped pixels is: {np.sum(outOfBounds)}")
-    # Lab[outOfBounds] = results
     return results
 
 
@@ -436,6 +411,7 @@ def lsstRGB(
     maxLevel: int | None = None,
     psf: NDArray | None = None,
     brackets: list[float] | None = None,
+    doRemapGamut: bool = True,
 ) -> NDArray:
     """Enhance the lightness and color preserving hue using perceptual methods.
 
@@ -499,6 +475,12 @@ def lsstRGB(
         which can be used to create for instance an under, over, and ballanced
         expoisure. Theese will then be fusioned into a final single exposure
         selecting the proper elements from each of the images.
+    doRemapGamut : `bool`, optional
+        If this is `True` then any pixels which lay outside the representable
+        color gamut after manipulation will be remapped to a "best" value
+        which will be some compromise in hue, chroma, and lum. If this is
+        `False` then the values will clip. This may be useful for
+        seeing where problems in processing occur.
 
     Returns
     -------
@@ -521,48 +503,6 @@ def lsstRGB(
     # If there are nan's in the image there is no real option other than to
     # set them to zero or throw.
     img[np.isnan(img)] = 0
-
-    # The image might contain pixels less than zero due to noise. The options
-    # for handling this are to either set them to zero, which creates weird
-    # holes in the scaled output image, throw an exception and have the user
-    # handle it, which they might not have to proper understanding to, or take
-    # the abs. Here the code uses the later, though this may have the effect of
-    # raising the floor of the image a bit, this isn't really a bad thing as
-    # it makes the background a grey color rather that pitch black which
-    # can cause perceptual contrast issues.
-
-    r_neg = img[:, :, 0][img[:, :, 0] < 0]
-    if len(r_neg) == 0:
-        r_std = 0
-    else:
-        r_pos = abs(r_neg)
-        r_std = np.std(np.concatenate((r_neg, r_pos)))
-
-    g_neg = img[:, :, 1][img[:, :, 1] < 0]
-    if len(g_neg) == 0:
-        g_std = 0
-    else:
-        g_pos = abs(g_neg)
-        g_std = np.std(np.concatenate((g_neg, g_pos)))
-
-    b_neg = img[:, :, 2][img[:, :, 2] < 0]
-    if len(b_neg) == 0:
-        b_std = 0
-    else:
-        b_pos = abs(b_neg)
-        b_std = np.std(np.concatenate((b_neg, b_pos))) * 3
-
-    if r_std == 0:
-        r_std = 1e-8
-    if g_std == 0:
-        g_std = 1e-8
-    if b_std == 0:
-        b_std = 1e-8
-
-    # img = bd.denoise_image(img, 3, 1, np.array((r_std, g_std, b_std)))
-    # might need to do image mixing here
-    # img = np.clip(img, 0, 1)
-    # img = abs(img)
 
     if not brackets:
         brackets = [1]
@@ -600,12 +540,8 @@ def lsstRGB(
     # Fix any colors that fall outside of the RGB colour gamut.
     result = fixOutOfGamutColors(Lab)
 
-    # Transform back to RGB coordinates
-    # result = colour.XYZ_to_RGB(colour.Oklab_to_XYZ(Lab), colourspace="Display P3")
-
-    # explicitly cut at 1 even though the mapping above was to map colors
-    # appropriately because the Z matrix transform can produce values above
-    # 1 and is a known feature of the transform.
-    result[result > 1] = 1
-    result[result < 0] = 0
+    # explicitly cut at 1 even though the mapping was to map colors
+    # appropriately because the Z matrix transform can produce values greater
+    # than 1 and is a known feature of the transform.
+    result = np.clip(result, 0, 1)
     return result

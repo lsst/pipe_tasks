@@ -117,20 +117,12 @@ class ChannelRGBConfig(Config):
     g = Field[float](doc="The amount of green contained in this channel")
     b = Field[float](doc="The amount of blue contained in this channel")
 
-    # def validate(self):
-    #     for f in (self.r, self.g, self.b):
-    #         if f < 0 or f > 1:
-    #             raise ValueError(f"Field {f} can not have a value less than 0 or greater than one")
-    #     return super().validate()
-
 
 class LumConfig(Config):
     """Configurations to control how luminance is mapped in the rgb code"""
 
     stretch = Field[float](doc="The stretch of the luminance in asinh", default=400)
     max = Field[float](doc="The maximum allowed luminance on a 0 to 100 scale", default=85)
-    A = Field[float](doc="A scaling factor to apply post asinh stretching", default=1)
-    b0 = Field[float](doc="A linear offset to apply post asinh stretching", default=0.00)
     minimum = Field[float](
         doc="The minimum intensity value after stretch, values lower will be set to zero", default=0
     )
@@ -143,7 +135,7 @@ class LumConfig(Config):
         doc="The value of shadows in scaling factor applied to post asinh streaching", default=0.0
     )
     midtone = Field[float](
-        doc="The value of midtone in scaling factor applied to post asinh streaching", default=0.0
+        doc="The value of midtone in scaling factor applied to post asinh streaching", default=0.5
     )
 
 
@@ -168,7 +160,7 @@ class LocalContrastConfig(Config):
 
 
 class ScaleColorConfig(Config):
-    """Controls color scaling in the rgb generation process."""
+    """Controls color scaling in the RGB generation process."""
 
     saturation = Field[float](
         doc=(
@@ -205,15 +197,6 @@ class RemapBoundsConfig(Config):
     absMax = Field[float](
         doc="Instead of determining the maximum value from the image, use this fixed value instead",
         default=220,
-        optional=True,
-    )
-    scaleBoundFactor = Field[float](
-        doc=(
-            "Factor used to compare absMax and the emperically determined"
-            "maximim. if emperical_max is less than scaleBoundFactor*absMax"
-            "then the emperical_max is used instead of absMax, even if it"
-            "is set. Do not set this field to skip this comparison."
-        ),
         optional=True,
     )
 
@@ -270,12 +253,34 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
 
 
 class PrettyPictureTask(PipelineTask):
+    """Turns inputs into an RGB image."""
+
     _DefaultName = "prettyPictureTask"
     ConfigClass = PrettyPictureConfig
 
     config: ConfigClass
 
     def run(self, images: Mapping[str, Exposure]) -> Struct:
+        """Turns the input arguments in arguments into an RGB array.
+
+        Parameters
+        ----------
+        images : `Mapping` of `str` to `Exposure`
+            A mapping of input images and the band they correspond to.
+
+        Returns
+        -------
+        result : `Struct`
+            A struct with the corresponding RGB image, and mask used in
+            RGB image construction. The struct will have the attributes
+            outputRGBImage and outputRGBMask. Each of the outputs will
+            be a `NDarray` object.
+
+        Notes
+        -----
+        Construction of input images are made easier by use of the
+        makeInputsFrom* methods.
+        """
         channels = {}
         shape = (0, 0)
         jointMask: None | NDArray = None
@@ -292,8 +297,8 @@ class PrettyPictureTask(PipelineTask):
                     imageArray, imageExposure.mask.array, imageExposure.mask.getMaskPlaneDict(), self.config
                 ).astype(np.float32)
             channels[channel] = imageArray
-            # This will get done each loop, but they are trivial lookups so it
-            # does not matter
+            # These operations are trivial look-ups and don't matter if they
+            # happen in each loop.
             shape = imageArray.shape
             maskDict = imageExposure.mask.getMaskPlaneDict()
             if doJointMaskInit:
@@ -302,7 +307,7 @@ class PrettyPictureTask(PipelineTask):
             if doJointMask:
                 jointMask |= imageExposure.mask.array
 
-        # mix the images to rgb
+        # mix the images to RGB
         imageRArray = np.zeros(shape, dtype=np.float32)
         imageGArray = np.zeros(shape, dtype=np.float32)
         imageBArray = np.zeros(shape, dtype=np.float32)
@@ -334,7 +339,7 @@ class PrettyPictureTask(PipelineTask):
         for plug in plugins.partial():
             colorImage = plug(colorImage, jointMask, maskDict, self.config)
 
-        # Ignore type because Exposures do in fact have a bbox, but it is c++
+        # Ignore type because Exposures do in fact have a bbox, but it's c++
         # and not typed.
         colorImage = lsstRGB(
             colorImage[:, :, 0],
@@ -389,6 +394,21 @@ class PrettyPictureTask(PipelineTask):
     def makeInputsFromRefs(
         self, refs: Iterable[DatasetRef], butler: Butler | QuantumContext
     ) -> dict[str, Exposure]:
+        """Make valid inputs for the run method from butler references.
+
+        Parameters
+        ----------
+        refs : `Iterable` of `DatasetRef`
+            Some `Iterable` container of `Butler` `DatasetRef`\ s
+        butler : `Butler` or `QuantumContext`
+            This is the object that fetches the input data.
+
+        Returns
+        -------
+        sortedImages : `dict` of `str` to `Exposure`
+            A dictionary of `Exposure`\ s that keyed by the band they
+            correspond to.
+        """
         sortedImages: dict[str, Exposure] = {}
         for ref in refs:
             key: str = cast(str, ref.dataId["band"])
@@ -397,7 +417,22 @@ class PrettyPictureTask(PipelineTask):
         return sortedImages
 
     def makeInputsFromArrays(self, **kwargs) -> dict[int, DeferredDatasetHandle]:
-        # ignore type because there are not proper stubs for afw
+        """Make valid inputs for the run method from numpy arrays.
+
+        Parameters
+        ----------
+        kwargs : `NDArray`
+            This is standard python kwargs where the left side of the equals
+            is the data band, and the right side is the corresponding `NDArray`
+            array.
+
+        Returns
+        -------
+        sortedImages : `dict` of `str` to `Exposure`
+            A dictionary of `Exposure`\ s that keyed by the band they
+            correspond to.
+        """
+        # ignore type because there aren't proper stubs for afw
         temp = {}
         for key, array in kwargs.items():
             temp[key] = Exposure(Box2I(Point2I(0, 0), Extent2I(*array.shape)), dtype=array.dtype)
@@ -406,6 +441,21 @@ class PrettyPictureTask(PipelineTask):
         return self.makeInputsFromExposures(**temp)
 
     def makeInputsFromExposures(self, **kwargs) -> dict[int, DeferredDatasetHandle]:
+        """Make valid inputs for the run method from `Exposure` objects.
+
+        Parameters
+        ----------
+        kwargs : `Exposure`
+            This is standard python kwargs where the left side of the equals
+            is the data band, and the right side is the corresponding
+            `Exposure`.
+
+        Returns
+        -------
+        sortedImages : `dict` of `str` to `Exposure`
+            A dictionary of `Exposure`\ s that keyed by the band they
+            correspond to.
+        """
         sortedImages = {}
         for key, value in kwargs.items():
             sortedImages[key] = value
@@ -438,12 +488,21 @@ class PrettyPictureBackgroundFixerConfig(
 
 
 class PrettyPictureBackgroundFixerTask(PipelineTask):
+    """Empirically flatten an images background.
+
+    Many astrophysical images have backgrounds with imperfections in them.
+    This Task attempts to determine control points which are considered
+    background values, and fits a radial basis function model to those
+    points. This model is then subtracted off the image.
+
+    """
+
     _DefaultName = "prettyPictureBackgroundFixerTask"
     ConfigClass = PrettyPictureBackgroundFixerConfig
 
     config: ConfigClass
 
-    def neg_log_likelihood(self, params, x):
+    def _neg_log_likelihood(self, params, x):
         mu, sigma = params
         if sigma <= 0:
             return np.inf
@@ -455,7 +514,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         loglikelihood = np.sum(term)
         return -loglikelihood
 
-    def tile_slices(self, arr, R, C):
+    def _tile_slices(self, arr, R, C):
         M = arr.shape[0]
         N = arr.shape[1]
 
@@ -489,14 +548,23 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         return tiles
 
     def fixBackground(self, image):
+        # Find the median value in the image, which is likely to be
+        # close to average background. Note this doesn't work well
+        # in fields with high density or diffuse flux.
         maxLikely = np.median(image, axis=None)
 
+        # find all the pixels that are fainter than this
+        # and find the std. This is just used as an initialization
+        # parameter and doesn't need to be accurate.
         mask = image < maxLikely
         initial_std = (image[mask] - maxLikely).std()
 
+        # Don't do anything if there are no pixels to check
         if np.any(mask):
+            # use a minimizer to determine best mu and sigma for a Gaussian
+            # given only samples below the mean of the Gaussian.
             result = minimize(
-                self.neg_log_likelihood,
+                self._neg_log_likelihood,
                 (maxLikely, initial_std),
                 args=(image[mask]),
                 bounds=((maxLikely, None), (1e-8, None)),
@@ -504,15 +572,21 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             mu_hat, sigma_hat = result.x
         else:
             mu_hat, sigma_hat = (maxLikely, 2 * initial_std)
+
+        # create a new masking threshold that is the determined
+        # mean plus std from the fit
         threshhold = mu_hat + sigma_hat
         image_mask = image < threshhold
 
-        tiles = self.tile_slices(image, 25, 25)
+        # create python slices that tile the image.
+        tiles = self._tile_slices(image, 25, 25)
 
         yloc = []
         xloc = []
         values = []
 
+        # for each box find the middle position and the median background
+        # value in the window.
         for xslice, yslice in tiles:
             ypos = (yslice.stop - yslice.start) / 2 + yslice.start
             xpos = (xslice.stop - xslice.start) / 2 + xslice.start
@@ -526,6 +600,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             values.append(value)
 
         positions = np.meshgrid(np.arange(image.shape[0]), np.arange(image.shape[1]))
+        # create an interpolant for the background and interpolate over the image.
         inter = RBFInterpolator(
             np.vstack((yloc, xloc)).T, values, kernel="thin_plate_spline", degree=4, smoothing=0.05
         )
@@ -534,6 +609,20 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         return backgrounds
 
     def run(self, inputCoadd: Exposure):
+        """Estimate a background for an input Exposure and remove it.
+
+        Parameters
+        ----------
+        inputCoadd : `Exposure`
+            The exposure the background will be removed from.
+
+        Returns
+        -------
+        result : `Struct`
+            A `Struct` that contains the exposure with the background removed.
+            This `Struct` will have an attribute named ``outputCoadd``.
+
+        """
         background = self.fixBackground(inputCoadd.image.array)
         # create a copy to mutate
         output = ExposureF(inputCoadd, deep=True)
@@ -568,12 +657,39 @@ class PrettyPictureStarFixerConfig(PipelineTaskConfig, pipelineConnections=Prett
 
 
 class PrettyPictureStarFixerTask(PipelineTask):
+    """This class fixes up regions in an image where there is no, or bad data.
+
+    The fixes done by this task are overwhelmingly comprised of the cores of
+    bright stars for which there is no data.
+    """
+
     _DefaultName = "prettyPictureStarFixerTask"
     ConfigClass = PrettyPictureStarFixerConfig
 
     config: ConfigClass
 
     def run(self, inputs: Mapping[str, ExposureF]) -> Struct:
+        """Fix areas in an image where this is no data, most likely to be
+        the cores of bright stars.
+
+        Because we want to have consistent fixes accross bands, this method
+        relies on supplying all bands and fixing pixels that are marked
+        as having a defect in any band even if within one band there  is
+        no issue.
+
+        Parameters
+        ----------
+        inputs : `Mapping` of `str` to `ExposureF`
+            This mapping has keys of band as a `str` and the corresponding
+            ExposureF as a value.
+
+        Returns
+        -------
+        results : `Struct` of `Mapping` of `str` to `ExposureF`
+            A `Struct` that has a mapping of band to `ExposureF`. The `Struct`
+            has an attribute named ``results``.
+
+        """
         # make the joint mask of all the channels
         doJointMaskInit = True
         for imageExposure in inputs.values():
@@ -667,6 +783,8 @@ class PrettyMosaicConfig(PipelineTaskConfig, pipelineConnections=PrettyMosaicCon
 
 
 class PrettyMosaicTask(PipelineTask):
+    """Combines multiple RGB arrays into one mosaic."""
+
     _DefaultName = "prettyMosaicTask"
     ConfigClass = PrettyMosaicConfig
 
@@ -678,6 +796,28 @@ class PrettyMosaicTask(PipelineTask):
         skyMap: BaseSkyMap,
         inputRGBMask: Iterable[DeferredDatasetHandle],
     ) -> Struct:
+        """Assemble individual `NDArrays` into a mosaic.
+
+        Each input is a `DeferredDatasetHandle` because they're loaded in one
+        at a time to be placed into the mosaic to save memory.
+
+        Parameters
+        ----------
+        inputRGB : `Iterable` of `DeferredDatasetHandle`
+            `DeferredDatasetHandle`\ s pointing to RGB `NDArrays`.
+        skyMap : `BaseSkyMap`
+            The skymap that defines the relative position of each of the input
+            images.
+        inputRGBMask : `Iterable` of `DeferredDatasetHandle`
+            `DeferredDatasetHandle`\ s pointing to masks for each of the
+            corresponding images.
+
+        Returns
+        -------
+        result : `Struct`
+            The `Struct` containing the combined mosaic. The `Struct` has
+            and attribute named ``outputRGBMosaic``.
+        """
         # create the bounding region
         newBox = Box2I()
         # store the bounds as they are retrieved from the skymap
@@ -824,6 +964,21 @@ class PrettyMosaicTask(PipelineTask):
     def makeInputsFromArrays(
         self, inputs: Iterable[tuple[Mapping[str, Any], NDArray]]
     ) -> Iterable[DeferredDatasetHandle]:
+        """Make valid inputs for the run method from numpy arrays.
+
+        Parameters
+        ----------
+        inputs : `Iterable` of `tuple` of `Mapping` and `NDArray`
+            An iterable where each element is a tuble with the first
+            element is a mapping that corresponds to an arrays dataId,
+            and the second is an `NDArray`.
+
+        Returns
+        -------
+        sortedImages : `dict` of `str` to `Exposure`
+            A dictionary of `Exposure`\ s that keyed by the band they
+            correspond to.
+        """
         structuredInputs = []
         for dataId, array in inputs:
             structuredInputs.append(InMemoryDatasetHandle(inMemoryDataset=array, **dataId))
