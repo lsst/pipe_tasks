@@ -306,6 +306,8 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 ssSourceHistory.append(associatedSsSources)
                 diaSourceHistory.append(associatedSsDiaSources.to_pandas())
             if nSsObj > 0:
+                unassociatedSsObjects['visit'] = visit
+                unassociatedSsObjects['detector'] = detector
                 unassociatedSsObjectHistory.append(unassociatedSsObjects)
 
         if diaSourceHistory:
