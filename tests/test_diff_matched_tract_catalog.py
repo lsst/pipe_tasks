@@ -31,16 +31,11 @@ from lsst.pipe.tasks.diff_matched_tract_catalog import (
 
 from astropy.table import Table
 import numpy as np
-import os
 import pytest
 
 
 def _error_format(column):
     return f'{column}Err'
-
-
-ROOT = os.path.dirname(__file__)
-filename_diff_matched = os.path.join(ROOT, "data", "test_diff_matched.txt")
 
 
 class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
@@ -62,8 +57,6 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
         eps_coord = np.array((2.3, 0.6, -1.7, 3.6, -2.4, 55.0, -40.8))
         err_coord = np.full_like(eps_coord, 0.02)
         eps_coord *= err_coord
-        extended_ref = [True, False, True, False, True, False, True]
-        extended_target = [False, False, True, True, True, False, True]
         flags = np.ones_like(eps_coord, dtype=bool)
 
         bands = ['g', 'r']
@@ -92,7 +85,6 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             column_dec_ref: dec[idx_ref],
             columns_flux[0]: fluxes[0][idx_ref],
             columns_flux[1]: fluxes[1][idx_ref],
-            DiffMatchedTractCatalogConfig.column_ref_extended.default: extended_ref,
         }
         self.catalog_ref = Table(data=data_ref)
 
@@ -103,11 +95,10 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             column_dec_target_err: err_coord,
             columns_flux[0]: fluxes[0]*(1 + err_flux),
             columns_flux[1]: fluxes[1]*(1 + err_flux),
-            _error_format(columns_flux[0]): np.sqrt(fluxes[0]),
-            _error_format(columns_flux[1]): np.sqrt(fluxes[1]),
+            columns_flux_err[0]: np.sqrt(fluxes[0]),
+            columns_flux_err[1]: np.sqrt(fluxes[1]),
             DiffMatchedTractCatalogConfig.columns_target_select_true.default[0]: flags,
             DiffMatchedTractCatalogConfig.columns_target_select_false.default[0]: ~flags,
-            DiffMatchedTractCatalogConfig.column_target_extended.default: extended_target,
         }
         self.catalog_target = Table(data=data_target)
 
@@ -123,8 +114,6 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             'match_row': match_row,
         })
 
-        self.diff_matched = np.loadtxt(filename_diff_matched)
-
         columns_flux_configs = {
             band: MatchedCatalogFluxesConfig(
                 column_ref_flux=columns_flux[idx],
@@ -133,13 +122,10 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             )
             for idx, band in enumerate(bands)
         }
-
-        # TODO: To be removed in DM-44988
-        self.config, self.config_stats = (DiffMatchedTractCatalogConfig(
+        self.config = DiffMatchedTractCatalogConfig(
             columns_target_coord_err=[column_ra_target_err, column_dec_target_err],
             columns_flux=columns_flux_configs,
-            mag_num_bins=1,
-        ) for _ in range(2))
+        )
 
         self.wcs = afwGeom.makeSkyWcs(crpix=lsst.geom.Point2D(9000, 9000),
                                       crval=lsst.geom.SpherePoint(ra_cen, dec_cen, lsst.geom.degrees),
@@ -151,14 +137,12 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
         del self.catalog_match_ref
         del self.catalog_match_target
         del self.config
-        del self.config_stats
-        del self.diff_matched
         del self.wcs
 
     def test_DiffMatchedTractCatalogTask(self):
         # These tables will have columns added to them in run
         columns_ref, columns_target = (list(x.columns) for x in (self.catalog_ref, self.catalog_target))
-        task = DiffMatchedTractCatalogTask(config=self.config_stats)
+        task = DiffMatchedTractCatalogTask(config=self.config)
         result = task.run(
             catalog_ref=self.catalog_ref,
             catalog_target=self.catalog_target,
@@ -178,25 +162,6 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             self.assertListEqual(list(result.cat_matched.columns), list(result_pd.cat_matched.columns))
             for column in result.cat_matched.columns:
                 self.assertListEqual(list(result.cat_matched[column]), list(result_pd.cat_matched[column]))
-        # TODO: Remove diff_matched support in DM-44988
-        with pytest.warns(FutureWarning):
-            task.config.compute_stats = True
-            result_stats = task.run(
-                catalog_ref=self.catalog_ref,
-                catalog_target=self.catalog_target,
-                catalog_match_ref=self.catalog_match_ref,
-                catalog_match_target=self.catalog_match_target,
-                wcs=self.wcs,
-            )
-            self.assertGreater(len(result_stats.diff_matched), 0)
-            row = np.array([float(x) for x in result_stats.diff_matched[0].values()])
-            # Run to re-save reference data. Will be loaded after this test completes.
-            resave = False
-            if resave:
-                np.savetxt(filename_diff_matched, row)
-
-            self.assertEqual(len(row), len(self.diff_matched))
-            self.assertFloatsAlmostEqual(row, self.diff_matched, atol=1e-8, rtol=1e-8)
 
         columns_result = list(result.cat_matched.columns)
         columns_expect = list(columns_target) + ["match_distance", "match_distanceErr"]
