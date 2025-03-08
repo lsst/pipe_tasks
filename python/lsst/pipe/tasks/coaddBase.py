@@ -71,6 +71,7 @@ class CoaddBaseConfig(pexConfig.Config):
         dtype=bool,
         doc="Add photometric calibration variance to warp variance plane.",
         default=False,
+        deprecated="Deprecated and ignored.  Will be removed after v30.",
     )
     # TODO: Remove this field in DM-44792.
     matchingKernelSize = pexConfig.Field(
