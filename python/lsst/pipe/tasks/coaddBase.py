@@ -67,13 +67,6 @@ class CoaddBaseConfig(pexConfig.Config):
         doc="Subtask that helps fill CoaddInputs catalogs added to the final Exposure",
         target=CoaddInputRecorderTask,
     )
-    # TODO[DM-49400]: remove this field (it already does nothing).
-    includeCalibVar = pexConfig.Field(
-        dtype=bool,
-        doc="Add photometric calibration variance to warp variance plane.",
-        default=False,
-        deprecated="Deprecated and ignored.  Will be removed after v29.",
-    )
     # TODO: Remove this field in DM-44792.
     matchingKernelSize = pexConfig.Field(
         dtype=int,
