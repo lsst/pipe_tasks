@@ -127,13 +127,13 @@ class FinalizeCharacterizationDetectorConnections(
     defaultTemplates={},
 ):
     src = pipeBase.connectionTypes.Input(
-        doc='Source catalogs for the visit',
+        doc='Source catalog for the visit/detector.',
         name='src',
         storageClass='SourceCatalog',
         dimensions=('instrument', 'visit', 'detector'),
     )
     calexp = pipeBase.connectionTypes.Input(
-        doc='Calexps for the visit',
+        doc='Calibrated exposure for the visit/detector.',
         name='calexp',
         storageClass='ExposureF',
         dimensions=('instrument', 'visit', 'detector'),
@@ -327,114 +327,6 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
 
         # Only log warning and fatal errors from the source_selector
         self.source_selector.log.setLevel(self.source_selector.log.WARN)
-
-    def run(self, visit, band, isolated_star_cat_dict, isolated_star_source_dict, src_dict, calexp_dict):
-        """
-        Run the FinalizeCharacterizationTask.
-
-        Parameters
-        ----------
-        visit : `int`
-            Visit number.  Used in the output catalogs.
-        band : `str`
-            Band name.  Used to select reserved stars.
-        isolated_star_cat_dict : `dict`
-            Per-tract dict of isolated star catalog handles.
-        isolated_star_source_dict : `dict`
-            Per-tract dict of isolated star source catalog handles.
-        src_dict : `dict`
-            Per-detector dict of src catalog handles.
-        calexp_dict : `dict`
-            Per-detector dict of calibrated exposure handles.
-
-        Returns
-        -------
-        struct : `lsst.pipe.base.struct`
-            Struct with outputs for persistence.
-
-        Raises
-        ------
-        NoWorkFound
-            Raised if the selector returns no good sources.
-        """
-        # Check if we have the same inputs for each of the
-        # src_dict and calexp_dict.
-        src_detectors = set(src_dict.keys())
-        calexp_detectors = set(calexp_dict.keys())
-
-        if src_detectors != calexp_detectors:
-            detector_keys = sorted(src_detectors.intersection(calexp_detectors))
-            self.log.warning(
-                "Input src and calexp have mismatched detectors; "
-                "running intersection of %d detectors.",
-                len(detector_keys),
-            )
-        else:
-            detector_keys = sorted(src_detectors)
-
-        # We do not need the isolated star table in this task.
-        # However, it is used in tests to confirm consistency of indexes.
-        _, isolated_source_table = self.concat_isolated_star_cats(
-            band,
-            isolated_star_cat_dict,
-            isolated_star_source_dict
-        )
-
-        if isolated_source_table is None:
-            raise pipeBase.NoWorkFound(f'No good isolated sources found for any detectors in visit {visit}')
-
-        exposure_cat_schema = afwTable.ExposureTable.makeMinimalSchema()
-        exposure_cat_schema.addField('visit', type='L', doc='Visit number')
-
-        metadata = dafBase.PropertyList()
-        metadata.add("COMMENT", "Catalog id is detector id, sorted.")
-        metadata.add("COMMENT", "Only detectors with data have entries.")
-
-        psf_ap_corr_cat = afwTable.ExposureCatalog(exposure_cat_schema)
-        psf_ap_corr_cat.setMetadata(metadata)
-
-        measured_src_tables = []
-        measured_src_table = None
-
-        self.log.info("Running finalizeCharacterization on %d detectors.", len(detector_keys))
-        for detector in detector_keys:
-            self.log.info("Starting finalizeCharacterization on detector ID %d.", detector)
-            src = src_dict[detector].get()
-            exposure = calexp_dict[detector].get()
-
-            psf, ap_corr_map, measured_src = self.compute_psf_and_ap_corr_map(
-                visit,
-                detector,
-                exposure,
-                src,
-                isolated_source_table
-            )
-
-            # And now we package it together...
-            if measured_src is not None:
-                record = psf_ap_corr_cat.addNew()
-                record['id'] = int(detector)
-                record['visit'] = visit
-                if psf is not None:
-                    record.setPsf(psf)
-                if ap_corr_map is not None:
-                    record.setApCorrMap(ap_corr_map)
-
-                measured_src['visit'][:] = visit
-                measured_src['detector'][:] = detector
-
-                measured_src_tables.append(measured_src.asAstropy())
-
-        if len(measured_src_tables) > 0:
-            measured_src_table = astropy.table.vstack(measured_src_tables, join_type='exact')
-
-        if measured_src_table is None:
-            raise pipeBase.NoWorkFound(f'No good sources found for any detectors in visit {visit}')
-
-        return pipeBase.Struct(
-            psf_ap_corr_cat=psf_ap_corr_cat,
-            output_table=measured_src_table,
-        )
 
     def _make_output_schema_mapper(self, input_schema):
         """Make the schema mapper from the input schema to the output schema.
@@ -840,6 +732,114 @@ class FinalizeCharacterizationTask(FinalizeCharacterizationTaskBase):
 
         butlerQC.put(struct.psf_ap_corr_cat, outputRefs.finalized_psf_ap_corr_cat)
         butlerQC.put(struct.output_table, outputRefs.finalized_src_table)
+
+    def run(self, visit, band, isolated_star_cat_dict, isolated_star_source_dict, src_dict, calexp_dict):
+        """
+        Run the FinalizeCharacterizationTask.
+
+        Parameters
+        ----------
+        visit : `int`
+            Visit number.  Used in the output catalogs.
+        band : `str`
+            Band name.  Used to select reserved stars.
+        isolated_star_cat_dict : `dict`
+            Per-tract dict of isolated star catalog handles.
+        isolated_star_source_dict : `dict`
+            Per-tract dict of isolated star source catalog handles.
+        src_dict : `dict`
+            Per-detector dict of src catalog handles.
+        calexp_dict : `dict`
+            Per-detector dict of calibrated exposure handles.
+
+        Returns
+        -------
+        struct : `lsst.pipe.base.struct`
+            Struct with outputs for persistence.
+
+        Raises
+        ------
+        NoWorkFound
+            Raised if the selector returns no good sources.
+        """
+        # Check if we have the same inputs for each of the
+        # src_dict and calexp_dict.
+        src_detectors = set(src_dict.keys())
+        calexp_detectors = set(calexp_dict.keys())
+
+        if src_detectors != calexp_detectors:
+            detector_keys = sorted(src_detectors.intersection(calexp_detectors))
+            self.log.warning(
+                "Input src and calexp have mismatched detectors; "
+                "running intersection of %d detectors.",
+                len(detector_keys),
+            )
+        else:
+            detector_keys = sorted(src_detectors)
+
+        # We do not need the isolated star table in this task.
+        # However, it is used in tests to confirm consistency of indexes.
+        _, isolated_source_table = self.concat_isolated_star_cats(
+            band,
+            isolated_star_cat_dict,
+            isolated_star_source_dict
+        )
+
+        if isolated_source_table is None:
+            raise pipeBase.NoWorkFound(f'No good isolated sources found for any detectors in visit {visit}')
+
+        exposure_cat_schema = afwTable.ExposureTable.makeMinimalSchema()
+        exposure_cat_schema.addField('visit', type='L', doc='Visit number')
+
+        metadata = dafBase.PropertyList()
+        metadata.add("COMMENT", "Catalog id is detector id, sorted.")
+        metadata.add("COMMENT", "Only detectors with data have entries.")
+
+        psf_ap_corr_cat = afwTable.ExposureCatalog(exposure_cat_schema)
+        psf_ap_corr_cat.setMetadata(metadata)
+
+        measured_src_tables = []
+        measured_src_table = None
+
+        self.log.info("Running finalizeCharacterization on %d detectors.", len(detector_keys))
+        for detector in detector_keys:
+            self.log.info("Starting finalizeCharacterization on detector ID %d.", detector)
+            src = src_dict[detector].get()
+            exposure = calexp_dict[detector].get()
+
+            psf, ap_corr_map, measured_src = self.compute_psf_and_ap_corr_map(
+                visit,
+                detector,
+                exposure,
+                src,
+                isolated_source_table
+            )
+
+            # And now we package it together...
+            if measured_src is not None:
+                record = psf_ap_corr_cat.addNew()
+                record['id'] = int(detector)
+                record['visit'] = visit
+                if psf is not None:
+                    record.setPsf(psf)
+                if ap_corr_map is not None:
+                    record.setApCorrMap(ap_corr_map)
+
+                measured_src['visit'][:] = visit
+                measured_src['detector'][:] = detector
+
+                measured_src_tables.append(measured_src.asAstropy())
+
+        if len(measured_src_tables) > 0:
+            measured_src_table = astropy.table.vstack(measured_src_tables, join_type='exact')
+
+        if measured_src_table is None:
+            raise pipeBase.NoWorkFound(f'No good sources found for any detectors in visit {visit}')
+
+        return pipeBase.Struct(
+            psf_ap_corr_cat=psf_ap_corr_cat,
+            output_table=measured_src_table,
+        )
 
 
 class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
