@@ -917,6 +917,7 @@ flags:
     - base_PixelFlags_flag_inexact_psfCenter
     - base_PixelFlags_flag_interpolated
     - base_PixelFlags_flag_interpolatedCenter
+    - base_PixelFlags_flag_nodata
     - base_PixelFlags_flag_offimage
     - base_PixelFlags_flag_saturated
     - base_PixelFlags_flag_saturatedCenter
