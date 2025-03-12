@@ -19,6 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+
+from __future__ import annotations
+
 __all__ = ["ImageScaler", "SpatialImageScaler", "ScaleZeroPointTask"]
 
 import numpy
@@ -27,6 +30,7 @@ import lsst.afw.image as afwImage
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.tasks.selectImages import BaseSelectImagesTask
+from deprecated.sphinx import deprecated
 
 
 class ImageScaler:
@@ -42,6 +46,13 @@ class ImageScaler:
 
     def __init__(self, scale=1.0):
         self._scale = scale
+
+    # TODO: Remove this property in DM-49402.
+    @property
+    @deprecated("This property will be removed after v30.", version="v30", category=FutureWarning)
+    def scale(self) -> float:
+        """Scale that it applies to a specified image."""
+        return self._scale
 
     def scaleMaskedImage(self, maskedImage):
         """Scale the specified image or masked image in place.
@@ -90,13 +101,20 @@ class SpatialImageScaler(ImageScaler):
         self._yList = yList
         self._scaleList = scaleList
 
+    # TODO: Remove this property in DM-49402.
+    @property
+    @deprecated("This property will be removed after v30.", version="v30", category=FutureWarning)
+    def scale(self) -> float:
+        """Mean scale that it applies to a specified image."""
+        return numpy.mean(self._scaleList)
+
     def scaleMaskedImage(self, maskedImage):
         """Apply scale correction to the specified masked image.
 
         Parameters
         ----------
-        image : `lsst.afw.image.MaskedImage`
-            To scale; scale is applied in place.
+        maskedImage : `lsst.afw.image.MaskedImage`
+            Masked image to scale; scale is applied in place.
         """
         scale = self.getInterpImage(maskedImage.getBBox())
         maskedImage *= scale
@@ -175,14 +193,14 @@ class ScaleZeroPointTask(pipeBase.Task):
         ----------
         exposure : `lsst.afw.image.Exposure`
             Exposure to scale; masked image is scaled in place.
-        dataRef : `Unknown`
+        dataRef : `Unknown`, optional
             Data reference for exposure.
             Not used, but in API so that users can switch between spatially variant
             and invariant tasks.
 
         Returns
         -------
-        result : `lsst.pipe.base.Struct`
+        result : `~lsst.pipe.base.Struct`
             Results as a struct with attributes:
 
             ``imageScaler``
@@ -222,6 +240,11 @@ class ScaleZeroPointTask(pipeBase.Task):
 
     def scaleFromPhotoCalib(self, calib):
         """Compute the scale for the specified PhotoCalib.
+
+        Parameter
+        ---------
+        calib : `lsst.afw.image.PhotoCalib`
+            PhotoCalib object to compute the scale from.
 
         Returns
         -------
