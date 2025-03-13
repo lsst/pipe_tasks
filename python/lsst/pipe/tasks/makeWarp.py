@@ -450,8 +450,6 @@ class MakeWarpTask(CoaddBaseTask):
         backgroundList = len(calExpList)*[None] if backgroundList is None else backgroundList
         skyCorrList = len(calExpList)*[None] if skyCorrList is None else skyCorrList
 
-        includeCalibVar = self.config.includeCalibVar
-
         indices = []
         for index, (calexp, background, skyCorr) in enumerate(zip(calExpList,
                                                                   backgroundList,
@@ -525,8 +523,7 @@ class MakeWarpTask(CoaddBaseTask):
                 calexp.maskedImage -= skyCorr.getImage()
 
             # Calibrate the image.
-            calexp.maskedImage = photoCalib.calibrateImage(calexp.maskedImage,
-                                                           includeScaleUncertainty=includeCalibVar)
+            calexp.maskedImage = photoCalib.calibrateImage(calexp.maskedImage)
             # This new PhotoCalib shouldn't need to be used, but setting it
             # here to reflect the fact that the image now has calibrated pixels
             # might help avoid future bugs.
