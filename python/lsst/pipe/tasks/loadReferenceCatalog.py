@@ -126,7 +126,7 @@ class LoadReferenceCatalogTask(pipeBase.Task):
                  ('refMag', 'np.float32', (len(filterList), )),
                  ('refMagErr', 'np.float32', (len(filterList), ))]
 
-        Reference magnitudes (AB) and errors will be 99 for non-detections
+        Reference magnitudes (AB) and errors will be NaN for non-detections
         in a given band.
 
         Parameters
@@ -184,7 +184,7 @@ class LoadReferenceCatalogTask(pipeBase.Task):
                  ('refMag', 'np.float32', (len(filterList), )),
                  ('refMagErr', 'np.float32', (len(filterList), ))]
 
-        Reference magnitudes (AB) and errors will be 99 for non-detections
+        Reference magnitudes (AB) and errors will be NaN for non-detections
         in a given band.
 
         Parameters
@@ -258,9 +258,9 @@ class LoadReferenceCatalogTask(pipeBase.Task):
         npRefCat['ra'] = np.rad2deg(refCat['coord_ra'][selected])
         npRefCat['dec'] = np.rad2deg(refCat['coord_dec'][selected])
 
-        # Default (unset) values are 99.0
-        npRefCat['refMag'][:, :] = 99.0
-        npRefCat['refMagErr'][:, :] = 99.0
+        # Default (unset) values are np.nan
+        npRefCat['refMag'][:, :] = np.nan
+        npRefCat['refMagErr'][:, :] = np.nan
 
         if self.config.doApplyColorTerms:
             refCatName = self.refObjLoader.name
@@ -268,7 +268,7 @@ class LoadReferenceCatalogTask(pipeBase.Task):
             for i, (filterName, fluxField) in enumerate(zip(self._fluxFilters, self._fluxFields)):
                 if fluxField is None:
                     # There is no matching reference band.
-                    # This will leave the column filled with 99s
+                    # This will leave the column filled with np.nans
                     continue
                 self.log.debug("Applying color terms for filterName='%s'", filterName)
 
@@ -276,10 +276,10 @@ class LoadReferenceCatalogTask(pipeBase.Task):
 
                 refMag, refMagErr = colorterm.getCorrectedMagnitudes(refCat)
 
-                # nan_to_num replaces nans with zeros, and this ensures
+                # nan_to_num below replaces nans with 99, and this ensures
                 # that we select magnitudes that both filter out nans and are
                 # not very large (corresponding to very small fluxes), as "99"
-                # is a commen sentinel for illegal magnitudes.
+                # is a common sentinel for illegal magnitudes in reference catalogs.
                 good, = np.where((np.nan_to_num(refMag[selected], nan=99.0) < 90.0)
                                  & (np.nan_to_num(refMagErr[selected], nan=99.0) < 90.0)
                                  & (np.nan_to_num(refMagErr[selected]) > 0.0))
@@ -289,7 +289,7 @@ class LoadReferenceCatalogTask(pipeBase.Task):
         else:
             # No color terms to apply
             for i, (filterName, fluxField) in enumerate(zip(self._fluxFilters, self._fluxFields)):
-                # nan_to_num replaces nans with zeros, and this ensures that
+                # nan_to_num below replaces nans with zeros, and this ensures that
                 # we select fluxes that both filter out nans and are positive.
                 good, = np.where((np.nan_to_num(refCat[fluxField][selected]) > 0.0)
                                  & (np.nan_to_num(refCat[fluxField+'Err'][selected]) > 0.0))
