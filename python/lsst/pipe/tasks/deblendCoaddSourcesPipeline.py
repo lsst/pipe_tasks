@@ -251,13 +251,13 @@ class DeblendCoaddSourcesMultiTask(PipelineTask):
         inputRefs = reorderRefs(inputRefs, bandOrder, dataIdKey="band")
         inputs = butlerQC.get(inputRefs)
         inputs["idFactory"] = self.config.idGenerator.apply(butlerQC.quantum.dataId).make_table_id_factory()
-        inputs["filters"] = [dRef.dataId["band"] for dRef in inputRefs.coadds]
+        inputs["bands"] = [dRef.dataId["band"] for dRef in inputRefs.coadds]
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, coadds, filters, mergedDetections, idFactory):
+    def run(self, coadds, bands, mergedDetections, idFactory):
         sources = self._makeSourceCatalog(mergedDetections, idFactory)
-        multiExposure = afwImage.MultibandExposure.fromExposures(filters, coadds)
+        multiExposure = afwImage.MultibandExposure.fromExposures(bands, coadds)
         catalog, modelData = self.multibandDeblend.run(multiExposure, sources)
         retStruct = Struct(deblendedCatalog=catalog, scarletModelData=modelData)
         return retStruct
