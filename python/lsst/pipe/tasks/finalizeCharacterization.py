@@ -981,7 +981,7 @@ class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
         fgcm_standard_star_cat = []
 
         for tract in fgcm_standard_star_dict:
-            astropy_fgcm = isolated_star_cat_dict[tract].get()
+            astropy_fgcm = fgcm_standard_star_dict[tract].get()
             table_fgcm = np.asarray(astropy_fgcm)
             fgcm_standard_star_cat.append(table_fgcm)
 
