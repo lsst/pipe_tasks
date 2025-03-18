@@ -81,6 +81,15 @@ class FinalizeCharacterizationConnectionsBase(
         deferLoad=True,
         multiple=True,
     )
+    fgcm_standard_star = pipeBase.connectionTypes.Input(
+        doc=('Catalog of fgcm for color corrections, and indexes to the '
+             'isolated_star_cats catalogs.'),
+        name='fgcm_standard_star',
+        storageClass='ArrowAstropy',
+        dimensions=('instrument', 'tract', 'skymap'),
+        deferLoad=True,
+        multiple=True,
+    )
 
 
 class FinalizeCharacterizationConnections(
@@ -327,6 +336,9 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
 
         # Only log warning and fatal errors from the source_selector
         self.source_selector.log.setLevel(self.source_selector.log.WARN)
+        self.isPsfDeterminerPiff = False
+        if isinstance(self.psf_determiner, lsst.meas.extensions.piff.piffPsfDeterminer.PiffPsfDeterminerTask):
+            self.isPsfDeterminerPiff = True
 
     def _make_output_schema_mapper(self, input_schema):
         """Make the schema mapper from the input schema to the output schema.
@@ -542,7 +554,7 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
 
         return isolated_table, isolated_source_table
 
-    def compute_psf_and_ap_corr_map(self, visit, detector, exposure, src, isolated_source_table):
+    def compute_psf_and_ap_corr_map(self, visit, detector, exposure, src, isolated_source_table, fgcm_standard_star_cat):
         """Compute psf model and aperture correction map for a single exposure.
 
         Parameters
@@ -640,9 +652,12 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
                                       ~psf_cand_cat['calib_psf_reserved']) if use]
         flag_key = psf_cand_cat.schema['calib_psf_used'].asKey()
         try:
+            # print('PF: Piff PSF ', self.isPsfDeterminerPiff)
+            # print('PF: Piff PSF ', self.psf_determiner.config.piffBasisPolynomialSolver)
             psf, cell_set = self.psf_determiner.determinePsf(exposure,
                                                              psf_determiner_list,
                                                              self.metadata,
+                                                             fgcmCat=fgcm_standard_star_cat,
                                                              flagKey=flag_key)
         except Exception as e:
             self.log.exception('Failed to determine PSF for visit %d, detector %d: %s',
@@ -864,11 +879,28 @@ class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
                                        for handle in input_handle_dict['isolated_star_cats']}
         isolated_star_source_dict_temp = {handle.dataId['tract']: handle
                                           for handle in input_handle_dict['isolated_star_sources']}
+        fgcm_standard_star_dict_temp = {handle.dataId['tract']: handle
+                                        for handle in input_handle_dict['fgcm_standard_star']}
 
         isolated_star_cat_dict = {tract: isolated_star_cat_dict_temp[tract] for
                                   tract in sorted(isolated_star_cat_dict_temp.keys())}
         isolated_star_source_dict = {tract: isolated_star_source_dict_temp[tract] for
                                      tract in sorted(isolated_star_source_dict_temp.keys())}
+        fgcm_standard_star_dict = {tract: fgcm_standard_star_dict_temp[tract] for
+                                   tract in sorted(fgcm_standard_star_dict_temp.keys())}
+
+        import pickle
+
+        dicPF = {'fgcm_standard_star_dict': fgcm_standard_star_dict,
+        'isolated_star_source': isolated_star_source_dict,
+        'isolated_star_cat_dict': isolated_star_cat_dict,
+        'visit': visit,
+        'band': band,
+        'detector': detector,}
+
+        pickleFile = open("/sdf/home/l/leget/rubin-user/lsst_dev/tickets/DM-45569_add_color_psf/test.pkl", 'wb')
+        pickle.dump(dicPF, pickleFile)
+        pickleFile.close()
 
         struct = self.run(
             visit,
@@ -876,6 +908,7 @@ class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
             detector,
             isolated_star_cat_dict,
             isolated_star_source_dict,
+            fgcm_standard_star_dict,
             input_handle_dict['src'],
             input_handle_dict['calexp'],
         )
@@ -889,7 +922,7 @@ class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
             outputRefs.finalized_src_detector_table,
         )
 
-    def run(self, visit, band, detector, isolated_star_cat_dict, isolated_star_source_dict, src, exposure):
+    def run(self, visit, band, detector, isolated_star_cat_dict, isolated_star_source_dict, fgcm_standard_star_dict, src, exposure):
         """
         Run the FinalizeCharacterizationDetectorTask.
 
@@ -905,6 +938,8 @@ class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
             Per-tract dict of isolated star catalog handles.
         isolated_star_source_dict : `dict`
             Per-tract dict of isolated star source catalog handles.
+        fgcm_standard_star_dict : `dict`
+            Per-tract dict of fgcm photometry catalog handles.
         src : `lsst.afw.table.SourceCatalog`
             Src catalog.
         exposure : `lsst.afw.image.Exposure`
@@ -925,7 +960,7 @@ class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
         _, isolated_source_table = self.concat_isolated_star_cats(
             band,
             isolated_star_cat_dict,
-            isolated_star_source_dict
+            isolated_star_source_dict,
         )
 
         if isolated_source_table is None:
@@ -943,12 +978,22 @@ class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
 
         self.log.info("Starting finalizeCharacterization on detector ID %d.", detector)
 
+        fgcm_standard_star_cat = []
+
+        for tract in fgcm_standard_star_dict:
+            astropy_fgcm = isolated_star_cat_dict[tract].get()
+            table_fgcm = np.asarray(astropy_fgcm)
+            fgcm_standard_star_cat.append(table_fgcm)
+
+        fgcm_standard_star_cat = np.concatenate(fgcm_standard_star_cat)
+
         psf, ap_corr_map, measured_src = self.compute_psf_and_ap_corr_map(
             visit,
             detector,
             exposure,
             src,
             isolated_source_table,
+            fgcm_standard_star_cat,
         )
 
         # And now we package it together...
