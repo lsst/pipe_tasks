@@ -569,6 +569,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         for field in self.psf_fields:
             item = self.psf_schema.find(field)
             initial_stars_schema.addField(item.getField())
+        id_type = self.psf_schema["id"].asField().getTypeString()
+        initial_stars_schema.addField("psf_id",
+                                      type=id_type,
+                                      doc="id of this source in psf_stars; 0 if there is no match.")
 
         afwTable.CoordKey.addErrorFields(initial_stars_schema)
         self.makeSubtask("star_detection", schema=initial_stars_schema)
@@ -1150,6 +1154,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             result = np.zeros(len(stars), dtype=bool)
             result[idx_stars] = psf_stars[field][idx_psf_stars]
             stars[field] = result
+        stars['psf_id'][idx_stars] = psf_stars['id'][idx_psf_stars]
 
     def _fit_astrometry(self, exposure, stars):
         """Fit an astrometric model to the data and return the reference

@@ -27,6 +27,7 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord
 import copy
 import numpy as np
+import esutil
 
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
@@ -204,6 +205,17 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         key = "LSST CALIB ILLUMCORR APPLIED"
         self.assertIn(key, result.exposure.metadata)
         self.assertEqual(result.exposure.metadata[key], False)
+
+        # Check that the psf_stars cross match worked correctly.
+        matches = esutil.numpy_util.match(result.psf_stars["id"], result.stars["psf_id"])
+        self.assertFloatsAlmostEqual(result.psf_stars["slot_Centroid_x"][matches[0]],
+                                     result.stars["slot_Centroid_x"][matches[1]], atol=2e-5)
+        if "astrometry_matches" in self.config.optional_outputs:
+            matches = esutil.numpy_util.match(result.astrometry_matches["src_id"],
+                                              result.photometry_matches["src_psf_id"])
+            self.assertFloatsAlmostEqual(result.astrometry_matches["src_slot_Centroid_x"][matches[0]],
+                                         result.photometry_matches["src_slot_Centroid_x"][matches[1]],
+                                         atol=2e-5)
 
     def test_run(self):
         """Test that run() returns reasonable values to be butler put.
