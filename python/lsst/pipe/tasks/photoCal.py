@@ -116,6 +116,7 @@ class PhotoCalConfig(pexConf.Config):
         self.match.sourceSelection.doFlags = True
         self.match.sourceSelection.flags.bad = [
             "base_PixelFlags_flag_edge",
+            "base_PixelFlags_flag_nodata",
             "base_PixelFlags_flag_interpolated",
             "base_PixelFlags_flag_saturated",
         ]
