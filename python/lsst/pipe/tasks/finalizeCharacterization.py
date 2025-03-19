@@ -43,6 +43,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
+from lsst.afw.image import Color
 import lsst.meas.algorithms as measAlg
 import lsst.meas.extensions.piff.piffPsfDeterminer  # noqa: F401
 from lsst.meas.algorithms import MeasureApCorrTask
@@ -664,7 +665,7 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
                                visit, detector, e)
             return None, None, measured_src
         # Verify that the PSF is usable by downstream tasks
-        sigma = psf.computeShape(psf.getAveragePosition()).getDeterminantRadius()
+        sigma = psf.computeShape(psf.getAveragePosition(), psf.getAverageColor()).getDeterminantRadius()
         if np.isnan(sigma):
             self.log.warning('Failed to determine psf for visit %d, detector %d: '
                              'Computed final PSF size is NAN.',
