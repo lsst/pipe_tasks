@@ -205,6 +205,12 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.assertIn(key, result.exposure.metadata)
         self.assertEqual(result.exposure.metadata[key], False)
 
+        # Check that the psf_stars cross match worked correctly.
+        matched_ids = result.stars["psf_id"] > 0
+        matches = np.searchsorted(result.psf_stars["id"], result.stars["psf_id"][matched_ids])
+        self.assertFloatsAlmostEqual(result.psf_stars["slot_Centroid_x"][matches],
+                                     result.stars["slot_Centroid_x"][matched_ids], atol=2e-5)
+
     def test_run(self):
         """Test that run() returns reasonable values to be butler put.
         """
