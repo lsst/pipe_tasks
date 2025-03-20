@@ -5,8 +5,6 @@ import numpy as np
 import skimage
 import colour
 import cv2
-from scipy.special import erf
-from scipy.interpolate import pchip_interpolate
 from skimage.restoration import inpaint_biharmonic
 
 from ._localContrast import localContrast, makeGaussianPyramid, makeLapPyramid, levelPadder
@@ -236,7 +234,7 @@ def colorConstantSat(
 
 
 def fixOutOfGamutColors(
-    Lab: NDArray, colourspace: str = "Display P3", gamut_method: Literal["mapping", "inpaint"] = "inpaint"
+    Lab: NDArray, colourspace: str = "Display P3", gamutMethod: Literal["mapping", "inpaint"] = "inpaint"
 ) -> NDArray:
     """Remap colors that fall outside an RGB color gamut back into it.
 
@@ -271,7 +269,7 @@ def fixOutOfGamutColors(
         return rgb_prime
 
     logging.info("There are out of gamut pixels, remapping colors")
-    match gamut_method:
+    match gamutMethod:
         case "inpaint":
             results = inpaint_biharmonic(rgb_prime, outOfBounds, channel_axis=-1)
         case "mapping":
@@ -279,7 +277,7 @@ def fixOutOfGamutColors(
             Lab[outOfBounds] = results
             results = colour.XYZ_to_RGB(colour.Oklab_to_XYZ(Lab), colourspace=colourspace)
         case _:
-            raise ValueError(f"gamut correction {gamut_method} is not supported")
+            raise ValueError(f"gamut correction {gamutMethod} is not supported")
 
     logging.debug(f"The total number of remapped pixels is: {np.sum(outOfBounds)}")
     return results
@@ -412,6 +410,7 @@ def lsstRGB(
     psf: NDArray | None = None,
     brackets: list[float] | None = None,
     doRemapGamut: bool = True,
+    gamutMethod: Literal["mapping", "inpaint"] = "inpaint",
 ) -> NDArray:
     """Enhance the lightness and color preserving hue using perceptual methods.
 
@@ -508,7 +507,7 @@ def lsstRGB(
         brackets = [1]
 
     exposures = []
-    for im_num, bracket in enumerate(brackets):
+    for bracket in brackets:
         tmp_lum, Lab = _handelLuminance(
             img,
             scaleLum,
@@ -519,6 +518,7 @@ def lsstRGB(
             sigma=sigma,
             highlights=highlights,
             clarity=clarity,
+            shadows=shadows,
             maxLevel=maxLevel,
             cieWhitePoint=cieWhitePoint,
             bracket=bracket,
@@ -538,7 +538,8 @@ def lsstRGB(
         Lab = _fuseExposure(exposures)
 
     # Fix any colors that fall outside of the RGB colour gamut.
-    result = fixOutOfGamutColors(Lab)
+    if doRemapGamut:
+        result = fixOutOfGamutColors(Lab, gamutMethod=gamutMethod)
 
     # explicitly cut at 1 even though the mapping was to map colors
     # appropriately because the Z matrix transform can produce values greater
