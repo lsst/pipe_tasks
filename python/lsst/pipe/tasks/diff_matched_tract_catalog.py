@@ -30,6 +30,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
 from lsst.skymap import BaseSkyMap
+from lsst.daf.butler import DatasetProvenance
 
 import astropy.table
 import astropy.units as u
@@ -338,6 +339,15 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
             catalog_match_ref = astropy.table.Table.from_pandas(catalog_match_ref)
         if is_match_target_pd:
             catalog_match_target = astropy.table.Table.from_pandas(catalog_match_target)
+
+        # Strip any provenance from tables before merging to prevent
+        # warnings from conflicts being issued by astropy.utils.merge during
+        # vstack or hstack calls.
+        DatasetProvenance.strip_provenance_from_flat_dict(catalog_ref.meta)
+        DatasetProvenance.strip_provenance_from_flat_dict(catalog_target.meta)
+        DatasetProvenance.strip_provenance_from_flat_dict(catalog_match_ref.meta)
+        DatasetProvenance.strip_provenance_from_flat_dict(catalog_match_target.meta)
+
         # TODO: Remove pandas support in DM-46523
         if is_ref_pd or is_target_pd or is_match_ref_pd or is_match_target_pd:
             warnings.warn("pandas usage in MatchProbabilisticTask is deprecated; it will be removed "
