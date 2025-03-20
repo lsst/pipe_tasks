@@ -925,14 +925,14 @@ class PrettyMosaicTask(PipelineTask):
                     np.expand_dims(ramp, 1), tmpImg.shape[1], axis=1
                 )
 
-                tmpImg[-1 * tractInfo.patch_border * 2 :, :] = np.repeat(
+                tmpImg[-1 * tractInfo.patch_border * 2 :, :] = np.repeat(  # noqa: E203
                     np.expand_dims(1 - ramp, 1), tmpImg.shape[1], axis=1
                 )
                 tmpImg[:, : tractInfo.patch_border * 2] = np.repeat(
                     np.expand_dims(ramp, 0), tmpImg.shape[0], axis=0
                 )
 
-                tmpImg[:, -1 * tractInfo.patch_border * 2 :] = np.repeat(
+                tmpImg[:, -1 * tractInfo.patch_border * 2 :] = np.repeat(  # noqa: E203
                     np.expand_dims(1 - ramp, 0), tmpImg.shape[0], axis=0
                 )
                 tmpImg = np.repeat(np.expand_dims(tmpImg, 2), 3, axis=2)
