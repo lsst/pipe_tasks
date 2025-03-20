@@ -26,8 +26,6 @@ __all__ = ("PluginsRegistry", "plugins")
 from enum import Enum, auto
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Generator
-import numpy as np
-from skimage.restoration import inpaint
 from lsst.pipe.base import PipelineTaskConfig
 
 

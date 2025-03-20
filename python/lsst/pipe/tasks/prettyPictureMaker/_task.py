@@ -43,7 +43,7 @@ from lsst.skymap import BaseSkyMap
 from scipy.stats import norm
 from scipy.ndimage import binary_dilation
 from scipy.optimize import minimize
-from scipy.interpolate import griddata, RBFInterpolator
+from scipy.interpolate import RBFInterpolator
 from skimage.restoration import inpaint_biharmonic
 
 from lsst.daf.butler import Butler, DeferredDatasetHandle
@@ -244,6 +244,17 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         optional=True,
         default=[1.25, 1, 0.75],
     )
+    doRemapGamut = Field[bool](
+        doc="Apply a color correction to unrepresentable colors, if false they will clip", default=True
+    )
+    gamutMethod = ChoiceField[str](
+        doc="If doRemapGamut is True this determines the method",
+        default="inptaint",
+        allowed={
+            "mapping": "Use a mapping function",
+            "inptaint": "Use surrounding pixels to determine likely value",
+        },
+    )
 
     def setDefaults(self):
         self.channelConfig["i"] = ChannelRGBConfig(r=1, g=0, b=0)
@@ -352,6 +363,8 @@ class PrettyPictureTask(PipelineTask):
             cieWhitePoint=tuple(self.config.cieWhitePoint),  # type: ignore
             psf=psf if self.config.doPSFDeconcovlve else None,
             brackets=list(self.config.exposureBrackets) if self.config.exposureBrackets else None,
+            doRemapGamut=self.config.doRemapGamut,
+            gamutMethod=self.config.gamutMethod,
         )
 
         # Find the dataset type and thus the maximum values as well
@@ -394,7 +407,7 @@ class PrettyPictureTask(PipelineTask):
     def makeInputsFromRefs(
         self, refs: Iterable[DatasetRef], butler: Butler | QuantumContext
     ) -> dict[str, Exposure]:
-        """Make valid inputs for the run method from butler references.
+        r"""Make valid inputs for the run method from butler references.
 
         Parameters
         ----------
@@ -417,7 +430,7 @@ class PrettyPictureTask(PipelineTask):
         return sortedImages
 
     def makeInputsFromArrays(self, **kwargs) -> dict[int, DeferredDatasetHandle]:
-        """Make valid inputs for the run method from numpy arrays.
+        r"""Make valid inputs for the run method from numpy arrays.
 
         Parameters
         ----------
@@ -441,7 +454,7 @@ class PrettyPictureTask(PipelineTask):
         return self.makeInputsFromExposures(**temp)
 
     def makeInputsFromExposures(self, **kwargs) -> dict[int, DeferredDatasetHandle]:
-        """Make valid inputs for the run method from `Exposure` objects.
+        r"""Make valid inputs for the run method from `Exposure` objects.
 
         Parameters
         ----------
@@ -796,7 +809,7 @@ class PrettyMosaicTask(PipelineTask):
         skyMap: BaseSkyMap,
         inputRGBMask: Iterable[DeferredDatasetHandle],
     ) -> Struct:
-        """Assemble individual `NDArrays` into a mosaic.
+        r"""Assemble individual `NDArrays` into a mosaic.
 
         Each input is a `DeferredDatasetHandle` because they're loaded in one
         at a time to be placed into the mosaic to save memory.
@@ -964,7 +977,7 @@ class PrettyMosaicTask(PipelineTask):
     def makeInputsFromArrays(
         self, inputs: Iterable[tuple[Mapping[str, Any], NDArray]]
     ) -> Iterable[DeferredDatasetHandle]:
-        """Make valid inputs for the run method from numpy arrays.
+        r"""Make valid inputs for the run method from numpy arrays.
 
         Parameters
         ----------
