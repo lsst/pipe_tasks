@@ -40,7 +40,6 @@ funcs:
             - base_PsfFlux_instFlux
             - base_PsfFlux_instFluxErr
             - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
     psfFluxErr:
         functor: LocalNanojanskyErr
         dataset: calexp
@@ -48,7 +47,6 @@ funcs:
             - base_PsfFlux_instFlux
             - base_PsfFlux_instFluxErr
             - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
     psfFlux_flag:
         functor: Column
         dataset: calexp
@@ -60,7 +58,6 @@ funcs:
             - base_PsfFlux_instFlux
             - base_PsfFlux_instFluxErr
             - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
     psfDiffFluxErr:
         functor: LocalNanojanskyErr
         dataset: diff
@@ -68,7 +65,6 @@ funcs:
             - base_PsfFlux_instFlux
             - base_PsfFlux_instFluxErr
             - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
     psfDiffFlux_flag:
         functor: Column
         dataset: diff

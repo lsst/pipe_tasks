@@ -51,7 +51,7 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
 
-class FunctorTestCase(unittest.TestCase):
+class FunctorTestCase(lsst.utils.tests.TestCase):
 
     def getMultiIndexDataFrame(self, dataDict):
         """Create a simple test multi-index DataFrame."""
@@ -444,18 +444,16 @@ class FunctorTestCase(unittest.TestCase):
         flux = 1000
         fluxErr = 10
         calib = 10
-        calibErr = 1
+        calibErr = 0.0
         self.dataDict["base_PsfFlux_instFlux"] = np.full(self.nRecords, flux)
         self.dataDict["base_PsfFlux_instFluxErr"] = np.full(self.nRecords,
                                                             fluxErr)
         self.dataDict["base_LocalPhotoCalib"] = np.full(self.nRecords, calib)
-        self.dataDict["base_LocalPhotoCalibErr"] = np.full(self.nRecords,
-                                                           calibErr)
+
         df = self.getMultiIndexDataFrame(self.dataDict)
         func = LocalPhotometry("base_PsfFlux_instFlux",
                                "base_PsfFlux_instFluxErr",
-                               "base_LocalPhotoCalib",
-                               "base_LocalPhotoCalibErr")
+                               "base_LocalPhotoCalib")
 
         nanoJansky = func.instFluxToNanojansky(
             df[("meas", "g", "base_PsfFlux_instFlux")],
@@ -466,13 +464,11 @@ class FunctorTestCase(unittest.TestCase):
         nanoJanskyErr = func.instFluxErrToNanojanskyErr(
             df[("meas", "g", "base_PsfFlux_instFlux")],
             df[("meas", "g", "base_PsfFlux_instFluxErr")],
-            df[("meas", "g", "base_LocalPhotoCalib")],
-            df[("meas", "g", "base_LocalPhotoCalibErr")])
+            df[("meas", "g", "base_LocalPhotoCalib")])
         magErr = func.instFluxErrToMagnitudeErr(
             df[("meas", "g", "base_PsfFlux_instFlux")],
             df[("meas", "g", "base_PsfFlux_instFluxErr")],
-            df[("meas", "g", "base_LocalPhotoCalib")],
-            df[("meas", "g", "base_LocalPhotoCalibErr")])
+            df[("meas", "g", "base_LocalPhotoCalib")])
 
         self.assertTrue(np.allclose(nanoJansky.values,
                                     flux * calib,
@@ -503,8 +499,7 @@ class FunctorTestCase(unittest.TestCase):
     def _testLocalPhotometryFunctors(self, functor, df, testValues):
         func = functor("base_PsfFlux_instFlux",
                        "base_PsfFlux_instFluxErr",
-                       "base_LocalPhotoCalib",
-                       "base_LocalPhotoCalibErr")
+                       "base_LocalPhotoCalib")
         val = self._funcVal(func, df)
         self.assertTrue(np.allclose(testValues.values,
                                     val.values,
@@ -517,7 +512,7 @@ class FunctorTestCase(unittest.TestCase):
         fluxPos = 101
         fluxErr = 10
         calib = 10
-        calibErr = 1
+        calibErr = 0.0
 
         # compute expected values.
         absMean = 0.5*(fluxPos - fluxNeg)*calib
@@ -532,57 +527,51 @@ class FunctorTestCase(unittest.TestCase):
         self.dataDict["ip_diffim_DipoleFluxPos_instFlux"] = np.full(self.nRecords, fluxPos)
         self.dataDict["ip_diffim_DipoleFluxPos_instFluxErr"] = np.full(self.nRecords, fluxErr)
         self.dataDict["base_LocalPhotoCalib"] = np.full(self.nRecords, calib)
-        self.dataDict["base_LocalPhotoCalibErr"] = np.full(self.nRecords,
-                                                           calibErr)
 
         df = self.getMultiIndexDataFrame(self.dataDict)
         func = LocalDipoleMeanFlux("ip_diffim_DipoleFluxPos_instFlux",
                                    "ip_diffim_DipoleFluxNeg_instFlux",
                                    "ip_diffim_DipoleFluxPos_instFluxErr",
                                    "ip_diffim_DipoleFluxNeg_instFluxErr",
-                                   "base_LocalPhotoCalib",
-                                   "base_LocalPhotoCalibErr")
+                                   "base_LocalPhotoCalib")
         val = self._funcVal(func, df)
-        self.assertTrue(np.allclose(val.values,
-                                    absMean,
-                                    atol=1e-13,
-                                    rtol=0))
+        self.assertFloatsAlmostEqual(val.values,
+                                     absMean,
+                                     atol=1e-13,
+                                     rtol=0)
 
         func = LocalDipoleMeanFluxErr("ip_diffim_DipoleFluxPos_instFlux",
                                       "ip_diffim_DipoleFluxNeg_instFlux",
                                       "ip_diffim_DipoleFluxPos_instFluxErr",
                                       "ip_diffim_DipoleFluxNeg_instFluxErr",
-                                      "base_LocalPhotoCalib",
-                                      "base_LocalPhotoCalibErr")
+                                      "base_LocalPhotoCalib")
         val = self._funcVal(func, df)
-        self.assertTrue(np.allclose(val.values,
-                                    absMeanErr,
-                                    atol=1e-13,
-                                    rtol=0))
+        self.assertFloatsAlmostEqual(val.values,
+                                     absMeanErr,
+                                     atol=1e-13,
+                                     rtol=0)
 
         func = LocalDipoleDiffFlux("ip_diffim_DipoleFluxPos_instFlux",
                                    "ip_diffim_DipoleFluxNeg_instFlux",
                                    "ip_diffim_DipoleFluxPos_instFluxErr",
                                    "ip_diffim_DipoleFluxNeg_instFluxErr",
-                                   "base_LocalPhotoCalib",
-                                   "base_LocalPhotoCalibErr")
+                                   "base_LocalPhotoCalib")
         val = self._funcVal(func, df)
-        self.assertTrue(np.allclose(val.values,
-                                    absDiff,
-                                    atol=1e-13,
-                                    rtol=0))
+        self.assertFloatsAlmostEqual(val.values,
+                                     absDiff,
+                                     atol=1e-13,
+                                     rtol=0)
 
         func = LocalDipoleDiffFluxErr("ip_diffim_DipoleFluxPos_instFlux",
                                       "ip_diffim_DipoleFluxNeg_instFlux",
                                       "ip_diffim_DipoleFluxPos_instFluxErr",
                                       "ip_diffim_DipoleFluxNeg_instFluxErr",
-                                      "base_LocalPhotoCalib",
-                                      "base_LocalPhotoCalibErr")
+                                      "base_LocalPhotoCalib")
         val = self._funcVal(func, df)
-        self.assertTrue(np.allclose(val.values,
-                                    absDiffErr,
-                                    atol=1e-13,
-                                    rtol=0))
+        self.assertFloatsAlmostEqual(val.values,
+                                     absDiffErr,
+                                     atol=1e-13,
+                                     rtol=0)
 
     def testComputePositionAngle(self, offset=0.0001):
         """Test computation of position angle from (RA1, Dec1) to (RA2, Dec2)
