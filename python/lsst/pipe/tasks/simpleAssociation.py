@@ -42,7 +42,7 @@ class SimpleAssociationConfig(pexConfig.Config):
     tolerance = pexConfig.Field(
         dtype=float,
         doc='maximum distance to match sources together in arcsec',
-        default=0.5
+        default=1.
     )
     nside = pexConfig.Field(
         dtype=int,
