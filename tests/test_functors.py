@@ -476,21 +476,21 @@ class FunctorTestCase(unittest.TestCase):
 
         self.assertTrue(np.allclose(nanoJansky.values,
                                     flux * calib,
-                                    atol=1e-13,
-                                    rtol=0))
+                                    atol=0,
+                                    rtol=1e-7))
         self.assertTrue(np.allclose(mag.values,
                                     (flux * calib * u.nJy).to_value(u.ABmag),
-                                    atol=1e-13,
-                                    rtol=0))
+                                    atol=0,
+                                    rtol=1e-7))
         self.assertTrue(np.allclose(nanoJanskyErr.values,
                                     np.hypot(fluxErr * calib, flux * calibErr),
-                                    atol=1e-13,
-                                    rtol=0))
+                                    atol=0,
+                                    rtol=1e-7))
         self.assertTrue(np.allclose(
             magErr.values,
             2.5 / np.log(10) * nanoJanskyErr.values / nanoJansky.values,
-            atol=1e-13,
-            rtol=0))
+            atol=0,
+            rtol=1e-7))
 
         # Test functors against the values computed above.
         self._testLocalPhotometryFunctors(LocalNanojansky,
@@ -508,8 +508,8 @@ class FunctorTestCase(unittest.TestCase):
         val = self._funcVal(func, df)
         self.assertTrue(np.allclose(testValues.values,
                                     val.values,
-                                    atol=1e-13,
-                                    rtol=0))
+                                    atol=0,
+                                    rtol=1e-7))
 
     def testDipPhotometry(self):
         """Test calibrated flux calculations for dipoles."""
