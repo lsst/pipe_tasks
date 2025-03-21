@@ -21,7 +21,7 @@
 
 __all__ = ["init_fromDict", "Functor", "CompositeFunctor", "mag_aware_eval",
            "CustomFunctor", "Column", "Index", "CoordColumn", "RAColumn",
-           "DecColumn", "HtmIndex20", "fluxName", "fluxErrName", "Mag",
+           "DecColumn", "SinglePrecisionFloatColumn", "HtmIndex20", "fluxName", "fluxErrName", "Mag",
            "MagErr", "MagDiff", "Color", "DeconvolvedMoments", "SdssTraceSize",
            "PsfSdssTraceSizeDiff", "HsmTraceSize", "PsfHsmTraceSizeDiff",
            "HsmFwhm", "E1", "E2", "RadiusFromQuadrupole", "LocalWcs",
@@ -756,6 +756,13 @@ class MultibandColumn(Column):
         return self._band_to_check
 
 
+class SinglePrecisionFloatColumn(Column):
+    """Return a column cast to a single-precision float."""
+
+    def _func(self, df):
+        return df[self.col].astype(np.float32)
+
+
 class HtmIndex20(Functor):
     """Compute the level 20 HtmIndex for the catalog.
 
@@ -1115,8 +1122,9 @@ class HsmFwhm(Functor):
     SIGMA2FWHM = 2*np.sqrt(2*np.log(2))
 
     def _func(self, df):
-        return self.pixelScale*self.SIGMA2FWHM*np.sqrt(
-            0.5*(df['ext_shapeHSM_HsmPsfMoments_xx'] + df['ext_shapeHSM_HsmPsfMoments_yy']))
+        return (self.pixelScale*self.SIGMA2FWHM*np.sqrt(
+            0.5*(df['ext_shapeHSM_HsmPsfMoments_xx']
+                 + df['ext_shapeHSM_HsmPsfMoments_yy']))).astype(np.float32)
 
 
 class E1(Functor):
@@ -1144,7 +1152,8 @@ class E1(Functor):
         return [self.colXX, self.colXY, self.colYY]
 
     def _func(self, df):
-        return df[self.colXX] - df[self.colYY] / (df[self.colXX] + df[self.colYY])
+        return (df[self.colXX] - df[self.colYY] / (df[self.colXX]
+                                                   + df[self.colYY])).astype(np.float32)
 
 
 class E2(Functor):
@@ -1170,7 +1179,7 @@ class E2(Functor):
         return [self.colXX, self.colXY, self.colYY]
 
     def _func(self, df):
-        return 2*df[self.colXY] / (df[self.colXX] + df[self.colYY])
+        return (2*df[self.colXY] / (df[self.colXX] + df[self.colYY])).astype(np.float32)
 
 
 class RadiusFromQuadrupole(Functor):
@@ -1196,7 +1205,7 @@ class RadiusFromQuadrupole(Functor):
         return [self.colXX, self.colXY, self.colYY]
 
     def _func(self, df):
-        return (df[self.colXX]*df[self.colYY] - df[self.colXY]**2)**0.25
+        return ((df[self.colXX]*df[self.colYY] - df[self.colXY]**2)**0.25).astype(np.float32)
 
 
 class LocalWcs(Functor):
@@ -1614,25 +1623,25 @@ class Photometry(Functor):
 
     def dn2flux(self, dn, fluxMag0):
         """Convert instrumental flux to nanojanskys."""
-        return self.AB_FLUX_SCALE * dn / fluxMag0
+        return (self.AB_FLUX_SCALE * dn / fluxMag0).astype(np.float32)
 
     def dn2mag(self, dn, fluxMag0):
         """Convert instrumental flux to AB magnitude."""
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', r'invalid value encountered')
             warnings.filterwarnings('ignore', r'divide by zero')
-            return -2.5 * np.log10(dn/fluxMag0)
+            return (-2.5 * np.log10(dn/fluxMag0)).astype(np.float32)
 
     def dn2fluxErr(self, dn, dnErr, fluxMag0, fluxMag0Err):
         """Convert instrumental flux error to nanojanskys."""
         retVal = self.vhypot(dn * fluxMag0Err, dnErr * fluxMag0)
         retVal *= self.AB_FLUX_SCALE / fluxMag0 / fluxMag0
-        return retVal
+        return retVal.astype(np.float32)
 
     def dn2MagErr(self, dn, dnErr, fluxMag0, fluxMag0Err):
         """Convert instrumental flux error to AB magnitude error."""
         retVal = self.dn2fluxErr(dn, dnErr, fluxMag0, fluxMag0Err) / self.dn2flux(dn, fluxMag0)
-        return self.FIVE_OVER_2LOG10 * retVal
+        return (self.FIVE_OVER_2LOG10 * retVal).astype(np.float32)
 
 
 class NanoJansky(Photometry):
@@ -1779,7 +1788,8 @@ class LocalNanojansky(LocalPhotometry):
         return f'flux_{self.instFluxCol}'
 
     def _func(self, df):
-        return self.instFluxToNanojansky(df[self.instFluxCol], df[self.photoCalibCol])
+        return self.instFluxToNanojansky(df[self.instFluxCol],
+                                         df[self.photoCalibCol]).astype(np.float32)
 
 
 class LocalNanojanskyErr(LocalPhotometry):
@@ -1799,7 +1809,8 @@ class LocalNanojanskyErr(LocalPhotometry):
 
     def _func(self, df):
         return self.instFluxErrToNanojanskyErr(df[self.instFluxCol], df[self.instFluxErrCol],
-                                               df[self.photoCalibCol], df[self.photoCalibErrCol])
+                                               df[self.photoCalibCol],
+                                               df[self.photoCalibErrCol]).astype(np.float32)
 
 
 class LocalDipoleMeanFlux(LocalPhotometry):
@@ -1962,6 +1973,4 @@ class Ebv(Functor):
     def _func(self, df):
         coords = SkyCoord(df['coord_ra'].values * u.rad, df['coord_dec'].values * u.rad)
         ebv = self.sfd(coords)
-        # Double precision unnecessary scientifically but currently needed for
-        # ingest to qserv.
-        return pd.Series(ebv, index=df.index).astype('float64')
+        return pd.Series(ebv, index=df.index).astype('float32')
