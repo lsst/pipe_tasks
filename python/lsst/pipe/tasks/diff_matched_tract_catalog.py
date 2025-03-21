@@ -159,6 +159,12 @@ class DiffMatchedTractCatalogConfig(
         default=False,
         doc='Whether to include unmatched rows in the matched table',
     )
+    prefix_best_coord = pexConfig.Field[str](
+        default=None,
+        doc="A string prefix for ra/dec coordinate columns generated from the reference coordinate if "
+            "available, and target otherwise. Ignored if None or include_unmatched is False.",
+        optional=True,
+    )
 
     @property
     def columns_in_ref(self) -> list[str]:
@@ -457,6 +463,30 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         if config.include_unmatched:
             # This is probably less efficient than just doing an outer join originally; worth checking
             cat_matched = astropy.table.vstack([cat_matched, cat_unmatched])
+            if (prefix_coord := config.prefix_best_coord) is not None:
+                columns_coord_best = (
+                    f"{prefix_coord}{col_coord}" for col_coord in (
+                        ("ra", "dec") if config.coord_format.coords_spherical else ("coord1", "coord2")
+                    )
+                )
+                for column_coord_best, column_coord_ref, column_coord_target in zip(
+                        columns_coord_best,
+                        (config.coord_format.column_ref_coord1, config.coord_format.column_ref_coord2),
+                        (config.coord_format.column_target_coord1, config.coord_format.column_target_coord2),
+                ):
+                    column_full_ref = f'{config.column_matched_prefix_ref}{column_coord_ref}'
+                    values = cat_matched[column_full_ref]
+                    unit = values.unit
+                    values_bad = np.ma.masked_invalid(values).mask
+                    # Cast to an unmasked array - there will be no bad values
+                    values = np.array(values)
+                    values[values_bad] = cat_matched[column_coord_target][values_bad]
+                    cat_matched[column_coord_best] = values
+                    cat_matched[column_coord_best].unit = unit
+                    cat_matched[column_coord_best].description = (
+                        f"Best {columns_coord_best} value from {column_full_ref} if available"
+                        f" else {column_coord_target}"
+                    )
 
         retStruct = pipeBase.Struct(cat_matched=cat_matched)
         return retStruct
