@@ -28,7 +28,7 @@ import numpy as np
 import lsst.utils.tests
 
 from lsst.pipe.base import InMemoryDatasetHandle
-from lsst.pipe.tasks.functors import HsmFwhm, Column
+from lsst.pipe.tasks.functors import CoordColumn, Column
 from lsst.pipe.tasks.postprocess import TransformObjectCatalogTask, TransformObjectCatalogConfig
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
@@ -77,7 +77,7 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         # Add in a float column, an integer column, a good flag, and
         # a bad flag.  It does not matter which columns we choose, just
         # that they have the appropriate type.
-        funcs = {'FloatColumn': HsmFwhm(dataset='meas'),
+        funcs = {'FloatColumn': CoordColumn('coord_ra', dataset='meas'),
                  'IntColumn': Column('base_InputCount_value', dataset='meas'),
                  'GoodFlagColumn': Column('slot_GaussianFlux_flag', dataset='meas'),
                  'BadFlagColumn': Column('slot_Centroid_flag', dataset='meas')}
@@ -116,12 +116,12 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         config.outputBands = ["g", "r", "i"]
         config.camelCase = False
         task = TransformObjectCatalogTask(config=config)
-        funcs = {'Fwhm': HsmFwhm(dataset='meas')}
+        funcs = {'ra': CoordColumn('coord_ra', dataset='meas')}
         funcs.update(self.funcs_multi)
         tbl = task.run(self.handle, funcs=funcs, dataId=self.dataId, **self.kwargs_task).outputCatalog
         self.assertIsInstance(tbl, astropy.table.Table)
         for filt in config.outputBands:
-            self.assertIn(filt + '_Fwhm', tbl.columns)
+            self.assertIn(filt + '_ra', tbl.columns)
 
     def testMultilevelOutput(self):
         """Test the non-flattened result dataframe with a multilevel column index"""
@@ -129,27 +129,27 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         config.outputBands = ["r", "i"]
         config.multilevelOutput = True
         task = TransformObjectCatalogTask(config=config)
-        funcs = {'Fwhm': HsmFwhm(dataset='meas')}
+        funcs = {'ra': CoordColumn('coord_ra', dataset='meas')}
         funcs.update(self.funcs_multi)
         df = task.run(self.handle, funcs=funcs, dataId=self.dataId, **self.kwargs_task).outputCatalog
         self.assertIsInstance(df, pd.DataFrame)
         self.assertNotIn('g', df)
         for filt in config.outputBands:
             self.assertIsInstance(df[filt], pd.DataFrame)
-            self.assertIn('Fwhm', df[filt].columns)
+            self.assertIn('ra', df[filt].columns)
 
     def testNoOutputBands(self):
         """All the input bands should go into the output, and nothing else.
         """
         config = TransformObjectCatalogConfig()
         task = TransformObjectCatalogTask(config=config)
-        funcs = {'Fwhm': HsmFwhm(dataset='meas')}
+        funcs = {'ra': CoordColumn('coord_ra', dataset='meas')}
         funcs.update(self.funcs_multi)
         tbl = task.run(self.handle, funcs=funcs, dataId=self.dataId, **self.kwargs_task).outputCatalog
         self.assertIsInstance(tbl, astropy.table.Table)
         self.assertNotIn('HSC-G_Fwhm', tbl.columns)
         for filt in ['g', 'r', 'i']:
-            self.assertIn(f'{filt}_Fwhm', tbl.columns)
+            self.assertIn(f'{filt}_ra', tbl.columns)
 
 
 if __name__ == "__main__":

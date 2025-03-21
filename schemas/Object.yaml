@@ -141,7 +141,7 @@ funcs:
     # with either a total and fraction in Bulge or Disk
     # We should change the name BD, it assumes algorithm choice
     bdChi2:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: meas
         args: modelfit_CModel_objective
     # bdSamples: DM-22242 Remove from the DPDD and
@@ -238,15 +238,15 @@ funcs:
         args: ext_gaap_GaapFlux_1_15x_Optimal_instFluxErr
     # Taking Shape from meas
     ixx:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_Shape_xx
         dataset: meas
     iyy:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_Shape_yy
         dataset: meas
     ixy:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_Shape_xy
         dataset: meas
     i_flag:
@@ -256,15 +256,15 @@ funcs:
     # Icov: # need to compute
     # DM-22249 Evaluate whether we want to replace IxxPSF/IyyPSF/IxyPSF w/ FWHM
     ixxPSF:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_PsfShape_xx
         dataset: meas
     iyyPSF:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_PsfShape_yy
         dataset: meas
     ixyPSF:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_PsfShape_xy
         dataset: meas
     iPSF_flag:
@@ -272,31 +272,31 @@ funcs:
         args: slot_PsfShape_flag
         dataset: meas
     ixxRound:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_ShapeRound_xx
         dataset: meas
     iyyRound:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_ShapeRound_yy
         dataset: meas
     ixyRound:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_ShapeRound_xy
         dataset: meas
     iRound_flag:
         functor: Column
-        args: slot_ShapeRound_xy
+        args: slot_ShapeRound_flag
         dataset: meas
     ixxDebiasedPSF:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: ext_shapeHSM_HsmPsfMomentsDebiased_xx
         dataset: meas
     iyyDebiasedPSF:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: ext_shapeHSM_HsmPsfMomentsDebiased_yy
         dataset: meas
     ixyDebiasedPSF:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args:  ext_shapeHSM_HsmPsfMomentsDebiased_xy
         dataset: meas
     iDebiasedPSF_flag:
@@ -458,19 +458,19 @@ funcs:
     # i.e. remove apNann, apMeanSb, apMeanSbSigma
     # DM-22247: Replace Extendedness with a view or paragraph in docs on how to compute
     refExtendedness:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: base_ClassificationExtendedness_value
         dataset: ref
     extendedness:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: base_ClassificationExtendedness_value
         dataset: meas
     refSizeExtendedness:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: base_ClassificationSizeExtendedness_value
         dataset: ref
     sizeExtendedness:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: base_ClassificationSizeExtendedness_value
         dataset: meas
     # lcPeriodic:  # Not computed. Need multi-epoch forced phot S19
@@ -500,7 +500,7 @@ funcs:
         dataset: ref
     # Not in DPDD
     blendedness:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: base_Blendedness_abs
         dataset: meas
     # DM-22249: Make FWHM a view of IxxPsf IxyPsf IyyPsf
@@ -541,15 +541,15 @@ funcs:
     # exp, dev, total, fracdev
     # We need different ellipticities for shear measurement:
     hsmShapeRegauss_e1:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: ext_shapeHSM_HsmShapeRegauss_e1
         dataset: meas
     hsmShapeRegauss_e2:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: ext_shapeHSM_HsmShapeRegauss_e2
         dataset: meas
     hsmShapeRegauss_sigma:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: ext_shapeHSM_HsmShapeRegauss_sigma
         dataset: meas
     hsmShapeRegauss_flag:
@@ -557,75 +557,75 @@ funcs:
         args: ext_shapeHSM_HsmShapeRegauss_flag
         dataset: meas
     hsm_moments_30:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_30
       dataset: meas
     hsm_momentsPsf_30:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_30
       dataset: meas
     hsm_moments_21:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_21
       dataset: meas
     hsm_momentsPsf_21:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_21
       dataset: meas
     hsm_moments_12:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_12
       dataset: meas
     hsm_momentsPsf_12:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_12
       dataset: meas
     hsm_moments_03:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_03
       dataset: meas
     hsm_momentsPsf_03:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_03
       dataset: meas
     hsm_moments_40:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_40
       dataset: meas
     hsm_momentsPsf_40:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_40
       dataset: meas
     hsm_moments_31:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_31
       dataset: meas
     hsm_momentsPsf_31:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_31
       dataset: meas
     hsm_moments_22:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_22
       dataset: meas
     hsm_momentsPsf_22:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_22
       dataset: meas
     hsm_moments_13:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_13
       dataset: meas
     hsm_momentsPsf_13:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_13
       dataset: meas
     hsm_moments_04:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_04
       dataset: meas
     hsm_momentsPsf_04:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_04
       dataset: meas
     hsm_moments_flag:
@@ -872,7 +872,18 @@ funcs:
         functor: Column
         args: no_data_flag
         dataset: Sersic_multiprofit
-
+    shape_xx:
+        functor: SinglePrecisionFloatColumn
+        args: slot_Shape_xx
+        dataset: ref
+    shape_yy:
+        functor: SinglePrecisionFloatColumn
+        args: slot_Shape_yy
+        dataset: ref
+    shape_xy:
+        functor: SinglePrecisionFloatColumn
+        args: slot_Shape_xy
+        dataset: ref
     # DM-22247: Add Star/Galaxy sep columns
     #     - Morphological Star Galaxy Classifier (Names? float 0-1)]
     #     - Morphological + Color (SED-based) Star Galaxy Classifier (Names? float 0-1)]
@@ -901,9 +912,6 @@ refFlags:
     - deblend_peak_center_y
     - deblend_logL
     - slot_Shape_flag
-    - slot_Shape_xx
-    - slot_Shape_xy
-    - slot_Shape_yy
 flags:
     # flags are columns taken and exploded per-band from the meas tables
     - base_Blendedness_flag
