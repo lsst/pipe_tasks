@@ -1845,7 +1845,6 @@ class LocalDipoleMeanFlux(LocalPhotometry):
         super().__init__(instFluxNegCol,
                          instFluxNegErrCol,
                          photoCalibCol,
-                         photoCalibErrCol,
                          **kwargs)
 
     @property
