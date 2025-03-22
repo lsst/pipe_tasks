@@ -21,10 +21,10 @@ funcs:
         args: parent
     # htmId20: not available
     x:
-        functor: SinglePrecisionFloatColumn
+        functor: Column
         args: slot_Centroid_x
     y:
-        functor: SinglePrecisionFloatColumn
+        functor: Column
         args: slot_Centroid_y
     xErr:
         functor: SinglePrecisionFloatColumn
