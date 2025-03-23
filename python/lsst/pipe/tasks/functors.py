@@ -755,6 +755,9 @@ class MultibandColumn(Column):
     def band_to_check(self):
         return self._band_to_check
 
+    def _func(self, df):
+        return df[self.col].astype(np.float32)
+
 
 class SinglePrecisionFloatColumn(Column):
     """Return a column cast to a single-precision float."""
