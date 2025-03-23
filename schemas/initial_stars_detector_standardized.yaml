@@ -37,11 +37,6 @@ funcs:
         functor: RAColumn
     dec:
         functor: DecColumn
-
-   # RFC-924: Temporarily keep a duplicate "decl" entry for backwards
-   # compatibility. To be removed after September 2023.
-    decl:
-        functor: DecColumn
     raErr:
         functor: RAErrColumn
     decErr:
