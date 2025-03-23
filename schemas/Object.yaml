@@ -38,14 +38,6 @@ funcs:
         functor: CoordColumn
         args: coord_dec
         dataset: meas
-
-    # RFC-924: Temporarily keep a duplicate "decl" entry for backwards
-    # compatibility. To be removed after September 2023.
-    decl:
-        functor: CoordColumn
-        args: coord_dec
-        dataset: meas
-
     raErr:
         functor: RAErrColumn
         dataset: meas
