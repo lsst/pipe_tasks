@@ -1664,9 +1664,6 @@ class LocalPhotometry(Functor):
         Name of the assocated error columns for ``instFluxCol``.
     photoCalibCol : `str`
         Name of local calibration column.
-    photoCalibErrCol : `str`, optional
-        Error associated with ``photoCalibCol``.  Ignored and deprecated; will
-        be removed after v29.
 
     See Also
     --------
@@ -1679,15 +1676,10 @@ class LocalPhotometry(Functor):
                  instFluxCol,
                  instFluxErrCol,
                  photoCalibCol,
-                 photoCalibErrCol=None,
                  **kwargs):
         self.instFluxCol = instFluxCol
         self.instFluxErrCol = instFluxErrCol
         self.photoCalibCol = photoCalibCol
-        # TODO[DM-49400]: remove this check and the argument it corresponds to.
-        if photoCalibErrCol is not None:
-            warnings.warn("The photoCalibErrCol argument is deprecated and will be removed after v29.",
-                          category=FutureWarning)
         super().__init__(**kwargs)
 
     def instFluxToNanojansky(self, instFlux, localCalib):
@@ -1707,7 +1699,7 @@ class LocalPhotometry(Functor):
         """
         return instFlux * localCalib
 
-    def instFluxErrToNanojanskyErr(self, instFlux, instFluxErr, localCalib, localCalibErr=None):
+    def instFluxErrToNanojanskyErr(self, instFlux, instFluxErr, localCalib):
         """Convert instrument flux to nanojanskys.
 
         Parameters
@@ -1720,19 +1712,12 @@ class LocalPhotometry(Functor):
             Errors on associated ``instFlux`` values.
         localCalib : `~numpy.ndarray` or `~pandas.Series`
             Array of local photometric calibration estimates.
-        localCalibErr : `~numpy.ndarray` or `~pandas.Series`, optional
-            Errors on associated ``localCalib`` values.  Ignored and deprecated;
-            will be removed after v29.
 
         Returns
         -------
         calibFluxErr : `~numpy.ndarray` or `~pandas.Series`
             Errors on calibrated flux measurements.
         """
-        # TODO[DM-49400]: remove this check and the argument it corresponds to.
-        if localCalibErr is not None:
-            warnings.warn("The localCalibErr argument is deprecated and will be removed after v29.",
-                          category=FutureWarning)
         return instFluxErr * localCalib
 
     def instFluxToMagnitude(self, instFlux, localCalib):
@@ -1752,7 +1737,7 @@ class LocalPhotometry(Functor):
         """
         return -2.5 * np.log10(self.instFluxToNanojansky(instFlux, localCalib)) + self.logNJanskyToAB
 
-    def instFluxErrToMagnitudeErr(self, instFlux, instFluxErr, localCalib, localCalibErr=None):
+    def instFluxErrToMagnitudeErr(self, instFlux, instFluxErr, localCalib):
         """Convert instrument flux err to nanojanskys.
 
         Parameters
@@ -1763,19 +1748,12 @@ class LocalPhotometry(Functor):
             Errors on associated ``instFlux`` values.
         localCalib : `~numpy.ndarray` or `~pandas.Series`
             Array of local photometric calibration estimates.
-        localCalibErr : `~numpy.ndarray` or `~pandas.Series`, optional
-            Errors on associated ``localCalib`` values.  Ignored and deprecated;
-            will be removed after v29.
 
         Returns
         -------
         calibMagErr: `~numpy.ndarray` or `~pandas.Series`
             Error on calibrated AB magnitudes.
         """
-        # TODO[DM-49400]: remove this check and the argument it corresponds to.
-        if localCalibErr is not None:
-            warnings.warn("The localCalibErr argument is deprecated and will be removed after v29.",
-                          category=FutureWarning)
         err = self.instFluxErrToNanojanskyErr(instFlux, instFluxErr, localCalib)
         return 2.5 / np.log(10) * err / self.instFluxToNanojansky(instFlux, instFluxErr)
 
