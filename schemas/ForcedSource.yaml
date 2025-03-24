@@ -85,15 +85,15 @@ calexpFlags:
     - base_LocalWcs_CDMatrix_2_2
     - base_LocalBackground_instFlux
     - base_LocalBackground_instFluxErr
+    - base_PixelFlags_flag_bad
+    - base_PixelFlags_flag_cr
+    - base_PixelFlags_flag_crCenter
     - base_PixelFlags_flag_edge
     - base_PixelFlags_flag_interpolated
-    - base_PixelFlags_flag_saturated
-    - base_PixelFlags_flag_cr
-    - base_PixelFlags_flag_bad
-    - base_PixelFlags_flag_suspect
     - base_PixelFlags_flag_interpolatedCenter
+    - base_PixelFlags_flag_saturated
     - base_PixelFlags_flag_saturatedCenter
-    - base_PixelFlags_flag_crCenter
+    - base_PixelFlags_flag_suspect
     - base_PixelFlags_flag_suspectCenter
     # Streak flags not yet propagated from compareWarp (DM-46947, DM-43077).
     # - base_PixelFlags_flag_streak
