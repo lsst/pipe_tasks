@@ -123,9 +123,6 @@ class LumConfig(Config):
 
     stretch = Field[float](doc="The stretch of the luminance in asinh", default=400)
     max = Field[float](doc="The maximum allowed luminance on a 0 to 100 scale", default=85)
-    minimum = Field[float](
-        doc="The minimum intensity value after stretch, values lower will be set to zero", default=0
-    )
     floor = Field[float](doc="A scaling factor to apply to the luminance before asinh scaling", default=0.0)
     Q = Field[float](doc="softening parameter", default=0.7)
     highlight = Field[float](
