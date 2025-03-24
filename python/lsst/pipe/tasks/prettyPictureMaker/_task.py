@@ -246,10 +246,10 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
     )
     gamutMethod = ChoiceField[str](
         doc="If doRemapGamut is True this determines the method",
-        default="inptaint",
+        default="inpaint",
         allowed={
             "mapping": "Use a mapping function",
-            "inptaint": "Use surrounding pixels to determine likely value",
+            "inpaint": "Use surrounding pixels to determine likely value",
         },
     )
 
