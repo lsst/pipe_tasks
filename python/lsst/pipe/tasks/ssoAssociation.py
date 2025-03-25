@@ -44,7 +44,7 @@ class SolarSystemAssociationConfig(pexConfig.Config):
         dtype=float,
         doc='Maximum distance in arcseconds to test for a DIASource to be a '
             'match to a SSObject.',
-        default=2.0,
+        default=1.0,
     )
     maxPixelMargin = pexConfig.RangeField(
         doc="Maximum padding to add to the ccd bounding box before masking "
