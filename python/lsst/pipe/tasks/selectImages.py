@@ -283,6 +283,31 @@ class PsfWcsSelectImagesConfig(pipeBase.PipelineTaskConfig,
         default=0.22,
         optional=True,
     )
+    minNPsfStarPerBand = pexConfig.DictField(
+        keytype=str,
+        itemtype=float,
+        default={
+            "u": 10,
+            "g": 22,
+            "r": 22,
+            "i": 22,
+            "z": 22,
+            "y": 22,
+            "fallback": 15,
+        },
+        doc="Minimum number of PSF stars for the final PSF model to be considered "
+        "well-constrained and suitible for inclusion in the coadd.  This number should "
+        "take into consideration the spatial order used for the PSF model.  If the current "
+        "band for the exposure is not included as a key in this dict, the value associated "
+        "with the \"fallback\" key will be used.",
+    )
+
+    def validate(self):
+        super().validate()
+        if "fallback" not in self.minNPsfStarPerBand:
+            msg = ("Must include a \"fallback\" key in the config.minNPsfStarPerBand config dict. "
+                   f"It is currenly: {self.minNPsfStarPerBand}.")
+            raise pexConfig.FieldValidationError(self.__class__.minNPsfStarPerBand, self, msg)
 
 
 class PsfWcsSelectImagesTask(WcsSelectImagesTask):
@@ -360,6 +385,12 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
             self.log.warning("Removing detector %d because summary stats not available.", detectorId)
             return False
 
+        band = row["band"]
+        if band in self.config.minNPsfStarPerBand:
+            minNPsfStar = self.config.minNPsfStarPerBand[band]
+        else:
+            minNPsfStar = self.config.minNPsfStarPerBand["fallback"]
+        nPsfStar = row["nPsfStar"]
         medianE = np.sqrt(row["psfStarDeltaE1Median"]**2. + row["psfStarDeltaE2Median"]**2.)
         scatterSize = row["psfStarDeltaSizeScatter"]
         scaledScatterSize = row["psfStarScaledDeltaSizeScatter"]
@@ -409,6 +440,12 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
                 "values scaled (divided) by the psfSigma across the unmasked detector pixels is not "
                 "finite or too large: %.3f vs %.3f (fatcor)",
                 row["visit"], detectorId, psfApCorrSigmaScaledDelta, self.config.maxPsfApCorrSigmaScaledDelta
+            )
+            valid = False
+        elif minNPsfStar and (nPsfStar < minNPsfStar):
+            self.log.info(
+                "Removing visit %d detector %d because the PSF model had too few stars: %d vs %d",
+                row["visit"], detectorId, nPsfStar, minNPsfStar
             )
             valid = False
 
