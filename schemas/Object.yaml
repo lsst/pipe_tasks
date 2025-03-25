@@ -295,6 +295,28 @@ funcs:
         functor: Column
         args: ext_shapeHSM_HsmPsfMomentsDebiased_flag
         dataset: meas
+    moments_a:
+        functor: SemimajorAxisFromMoments
+        args:
+            - slot_Shape_xx
+            - slot_Shape_yy
+            - slot_Shape_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_b:
+        functor: SemiminorAxisFromMoments
+        args:
+            - slot_Shape_xx
+            - slot_Shape_yy
+            - slot_Shape_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_theta:
+        functor: PositionAngleFromMoments
     # m4: Request removal from DPDD (DM-22250)
     # Petrosian magnitudes not yet implemented. Planning pacakge DMBP-116
     # Redefine Kron (DM-22245) and Petrosian (DM-22244) columns to report in DPDD

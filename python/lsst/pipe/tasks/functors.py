@@ -1977,3 +1977,130 @@ class Ebv(Functor):
         coords = SkyCoord(df['coord_ra'].values * u.rad, df['coord_dec'].values * u.rad)
         ebv = self.sfd(coords)
         return pd.Series(ebv, index=df.index).astype('float32')
+
+class PositionAngleFromMoments(Functor):
+    """Compute position angle"""
+    _defaultDataset = 'meas'
+    name = "moments_theta"
+    shortname = "moments_theta"
+
+
+    def __init__(self, **kwargs):
+        self._columns = ['slot_Shape_xx',
+                         'slot_Shape_yy',
+                         'slot_Shape_xy']
+        super().__init__(**kwargs)
+
+    def _func(self, df):
+        i_xx = df['slot_Shape_xx']
+        i_yy = df['slot_Shape_yy']
+        i_xy = df['slot_Shape_xy']
+        raw_angle = np.arctan(2*i_xy / (i_xx + i_yy))
+        return pd.Series(np.degrees(raw_angle), index=df.index).astype('float32')
+
+
+class SemimajorAxisFromMoments(Functor):
+    """Compute the semimajor axis length in arcseconds"""
+    _defaultDataset = 'meas'
+    name = "moments_a"
+    shortname = "moments_a"
+
+
+    def __init__(self,
+                 shape_xx,
+                 shape_yy,
+                 shape_xy,
+                 colCD_1_1,
+                 colCD_1_2,
+                 colCD_2_1,
+                 colCD_2_2,
+                 **kwargs):
+        self.shape_xx = shape_xx
+        self.shape_yy = shape_yy
+        self.shape_xy = shape_xy
+        self.colCD_1_1 = colCD_1_1
+        self.colCD_1_2 = colCD_1_2
+        self.colCD_2_1 = colCD_2_1
+        self.colCD_2_2 = colCD_2_2
+        self.computePixelScale = ComputePixelScale(colCD_1_1,
+                                                   colCD_1_2,
+                                                   colCD_2_1,
+                                                   colCD_2_2)
+        super().__init__(**kwargs)
+
+    @property
+    def columns(self):
+        return [
+            self.shape_xx,
+            self.shape_yy,
+            self.shape_xy,
+            self.colCD_1_1,
+            self.colCD_1_2,
+            self.colCD_2_1,
+            self.colCD_2_2 ]
+
+    def _func(self, df):
+        i_xx = df[self.shape_xx]
+        i_yy = df[self.shape_yy]
+        i_xy = df[self.shape_xy]
+        angle_rad = np.arctan(2*i_xy / (i_xx + i_yy))
+        a_pixels = ((np.cos(angle_rad)**2 * i_xx)
+                    + (np.sin(angle_rad)**2 * i_yy)
+                    - (2*np.cos(angle_rad) * np.sin(angle_rad) * i_xy))
+        pixel_scale = self.computePixelScale(df)
+
+
+        return pd.Series(a_pixels * pixel_scale, index=df.index).astype('float32')
+
+class SemiminorAxisFromMoments(Functor):
+    """Compute the semiminor axis length in arcseconds"""
+    _defaultDataset = 'meas'
+    name = "moments_b"
+    shortname = "moments_b"
+
+
+    def __init__(self,
+                 shape_xx,
+                 shape_yy,
+                 shape_xy,
+                 colCD_1_1,
+                 colCD_1_2,
+                 colCD_2_1,
+                 colCD_2_2,
+                 **kwargs):
+        self.shape_xx = shape_xx
+        self.shape_yy = shape_yy
+        self.shape_xy = shape_xy
+        self.colCD_1_1 = colCD_1_1
+        self.colCD_1_2 = colCD_1_2
+        self.colCD_2_1 = colCD_2_1
+        self.colCD_2_2 = colCD_2_2
+        self.computePixelScale = ComputePixelScale(colCD_1_1,
+                                                   colCD_1_2,
+                                                   colCD_2_1,
+                                                   colCD_2_2)
+        super().__init__(**kwargs)
+
+    @property
+    def columns(self):
+        return [
+            self.shape_xx,
+            self.shape_yy,
+            self.shape_xy,
+            self.colCD_1_1,
+            self.colCD_1_2,
+            self.colCD_2_1,
+            self.colCD_2_2 ]
+
+    def _func(self, df):
+        i_xx = df[self.shape_xx]
+        i_yy = df[self.shape_yy]
+        i_xy = df[self.shape_xy]
+        angle_rad = np.arctan(2*i_xy / (i_xx + i_yy))
+        b_pixels = ((np.sin(angle_rad)**2 * i_xx)
+                    + (np.cos(angle_rad)**2 * i_yy)
+                    + (2*np.cos(angle_rad) * np.sin(angle_rad) * i_xy))
+        pixel_scale = self.computePixelScale(df)
+
+
+        return pd.Series(b_pixels * pixel_scale, index=df.index).astype('float32')
