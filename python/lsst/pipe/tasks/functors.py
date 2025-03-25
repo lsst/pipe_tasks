@@ -1984,3 +1984,181 @@ class Ebv(Functor):
         coords = SkyCoord(df['coord_ra'].values * u.rad, df['coord_dec'].values * u.rad)
         ebv = self.sfd(coords)
         return pd.Series(ebv, index=df.index).astype('float32')
+
+
+class MomentsBase(Functor):
+    """Base class for functors that use shape moments and localWCS"""
+
+    def __init__(self,
+                 shape_xx,
+                 shape_yy,
+                 shape_xy,
+                 colCD_1_1,
+                 colCD_1_2,
+                 colCD_2_1,
+                 colCD_2_2,
+                 **kwargs):
+        self.shape_xx = shape_xx
+        self.shape_yy = shape_yy
+        self.shape_xy = shape_xy
+        self.colCD_1_1 = colCD_1_1
+        self.colCD_1_2 = colCD_1_2
+        self.colCD_2_1 = colCD_2_1
+        self.colCD_2_2 = colCD_2_2
+        super().__init__(**kwargs)
+
+    @property
+    def columns(self):
+        return [
+            self.shape_xx,
+            self.shape_yy,
+            self.shape_xy,
+            self.colCD_1_1,
+            self.colCD_1_2,
+            self.colCD_2_1,
+            self.colCD_2_2]
+
+
+class MomentsIxxSky(MomentsBase):
+    """Rotate pixel moments Ixx,Iyy,Iyy into ra,dec frame and arcseconds"""
+    _defaultDataset = 'meas'
+    name = "moments_xx"
+    shortname = "moments_xx"
+
+    def _func(self, df):
+        i_xx = df[self.shape_xx]
+        i_yy = df[self.shape_yy]
+        i_xy = df[self.shape_xy]
+        localWCS_CD_1_1 = df[self.colCD_1_1]
+        localWCS_CD_1_2 = df[self.colCD_1_2]
+        localWCS_CD_2_1 = df[self.colCD_2_1]
+
+        # Evaluate one element of CD_matrix * moments_matrix * CD_matrix.T
+        sky_xx = (localWCS_CD_1_1*(i_xx*localWCS_CD_1_1 + i_xy*localWCS_CD_2_1)
+                  + localWCS_CD_1_2*(i_xy*localWCS_CD_1_1 + i_yy*localWCS_CD_2_1))
+
+        return pd.Series(sky_xx*(180/np.pi*3600)**2, index=df.index).astype('float32')
+
+
+class MomentsIyySky(MomentsBase):
+    """Rotate pixel moments Ixx,Iyy,Iyy into ra,dec frame and arcseconds"""
+    _defaultDataset = 'meas'
+    name = "moments_yy"
+    shortname = "moments_yy"
+
+    def _func(self, df):
+        i_xx = df[self.shape_xx]
+        i_yy = df[self.shape_yy]
+        i_xy = df[self.shape_xy]
+        localWCS_CD_1_2 = df[self.colCD_1_2]
+        localWCS_CD_2_1 = df[self.colCD_2_1]
+        localWCS_CD_2_2 = df[self.colCD_2_2]
+
+        # Evaluate one element of CD_matrix * moments_matrix * CD_matrix.T
+        sky_yy = (localWCS_CD_2_1*(i_xx*localWCS_CD_1_2 + i_xy*localWCS_CD_2_2)
+                  + localWCS_CD_2_2*(i_xy*localWCS_CD_1_2 + i_yy*localWCS_CD_2_2))
+
+        return pd.Series(sky_yy*(180/np.pi*3600)**2, index=df.index).astype('float32')
+
+
+class MomentsIxySky(MomentsBase):
+    """Rotate pixel moments Ixx,Iyy,Iyy into ra,dec frame and arcseconds"""
+    _defaultDataset = 'meas'
+    name = "moments_xy"
+    shortname = "moments_xy"
+
+    def _func(self, df):
+        i_xx = df[self.shape_xx]
+        i_yy = df[self.shape_yy]
+        i_xy = df[self.shape_xy]
+        localWCS_CD_1_1 = df[self.colCD_1_1]
+        localWCS_CD_1_2 = df[self.colCD_1_2]
+        localWCS_CD_2_1 = df[self.colCD_2_1]
+        localWCS_CD_2_2 = df[self.colCD_2_2]
+
+        # Evaluate one element of CD_matrix * moments_matrix * CD_matrix.T
+        sky_xy = ((localWCS_CD_1_1 * i_xx + localWCS_CD_1_2 * i_xy) * localWCS_CD_2_1
+                  + (localWCS_CD_1_1 * i_xy + localWCS_CD_1_2 * i_yy) * localWCS_CD_2_2)
+
+        return pd.Series(sky_xy*(180/np.pi*3600)**2, index=df.index).astype('float32')
+
+
+class PositionAngleFromMoments(MomentsBase):
+    """Compute position angle relative to ra,dec frame, in degrees."""
+    _defaultDataset = 'meas'
+    name = "moments_theta"
+    shortname = "moments_theta"
+
+    def _func(self, df):
+        i_xx = df[self.shape_xx]
+        i_yy = df[self.shape_yy]
+        i_xy = df[self.shape_xy]
+        localWCS_CD_1_1 = df[self.colCD_1_1]
+        localWCS_CD_1_2 = df[self.colCD_1_2]
+        localWCS_CD_2_1 = df[self.colCD_2_1]
+        localWCS_CD_2_2 = df[self.colCD_2_2]
+
+        sky_xx = (localWCS_CD_1_1*(i_xx*localWCS_CD_1_1 + i_xy*localWCS_CD_2_1)
+                  + localWCS_CD_1_2*(i_xy*localWCS_CD_1_1 + i_yy*localWCS_CD_2_1))
+        sky_yy = (localWCS_CD_2_1*(i_xx*localWCS_CD_1_2 + i_xy*localWCS_CD_2_2)
+                  + localWCS_CD_2_2*(i_xy*localWCS_CD_1_2 + i_yy*localWCS_CD_2_2))
+        sky_xy = ((localWCS_CD_1_1 * i_xx + localWCS_CD_1_2 * i_xy) * localWCS_CD_2_1
+                  + (localWCS_CD_1_1 * i_xy + localWCS_CD_1_2 * i_yy) * localWCS_CD_2_2)
+
+        theta = 0.5*np.arctan2(2*sky_xy, sky_xx - sky_yy)
+
+        return pd.Series(np.degrees(np.array(theta)), index=df.index).astype('float32')
+
+
+class SemimajorAxisFromMoments(MomentsBase):
+    """Compute the semimajor axis length in arcseconds"""
+    _defaultDataset = 'meas'
+    name = "moments_a"
+    shortname = "moments_a"
+
+    def _func(self, df):
+        i_xx = df[self.shape_xx]
+        i_yy = df[self.shape_yy]
+        i_xy = df[self.shape_xy]
+
+        # This copies what is done (unvectorized) in afw.geom.
+        xx_p_yy = i_xx + i_yy
+        xx_m_yy = i_xx - i_yy
+        t = np.sqrt(xx_m_yy * xx_m_yy + 4 * i_xy * i_xy)
+        a_pixels = np.sqrt(0.5 * (xx_p_yy + t))
+
+        computePixelScale = ComputePixelScale(self.colCD_1_1,
+                                              self.colCD_1_2,
+                                              self.colCD_2_1,
+                                              self.colCD_2_2)
+
+        pixel_scale = computePixelScale(df)
+
+        return pd.Series(a_pixels * pixel_scale, index=df.index).astype('float32')
+
+
+class SemiminorAxisFromMoments(MomentsBase):
+    """Compute the semiminor axis length in arcseconds"""
+    _defaultDataset = 'meas'
+    name = "moments_b"
+    shortname = "moments_b"
+
+    def _func(self, df):
+        i_xx = df[self.shape_xx]
+        i_yy = df[self.shape_yy]
+        i_xy = df[self.shape_xy]
+
+        # This copies what is done (unvectorized) in afw.geom.
+        xx_p_yy = i_xx + i_yy
+        xx_m_yy = i_xx - i_yy
+        t = np.sqrt(xx_m_yy * xx_m_yy + 4 * i_xy * i_xy)
+        b_pixels = np.sqrt(0.5 * (xx_p_yy - t))
+
+        computePixelScale = ComputePixelScale(self.colCD_1_1,
+                                              self.colCD_1_2,
+                                              self.colCD_2_1,
+                                              self.colCD_2_2)
+
+        pixel_scale = computePixelScale(df)
+
+        return pd.Series(b_pixels * pixel_scale, index=df.index).astype('float32')
