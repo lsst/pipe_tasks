@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["MakeSsTablesConfig", "MakeSsTablesTask"]
+__all__ = ["ConsolidateSsTablesConfig", "ConsolidateSsTablesTask", "ConsolidateSsTablesConnections"]
 
 import astropy.table as tb
 import numpy as np
@@ -33,10 +33,10 @@ from lsst.utils.timer import timeMethod
 warnings.filterwarnings('ignore')
 
 
-class MakeSsTablesConnections(pipeBase.PipelineTaskConnections,
-                              dimensions=(),
-                              defaultTemplates={"coaddName": "goodSeeing",
-                                                "fakesType": ""}):
+class ConsolidateSsTablesConnections(pipeBase.PipelineTaskConnections,
+                                     dimensions=("skymap",),
+                                     defaultTemplates={"coaddName": "goodSeeing",
+                                                       "fakesType": ""}):
     inputCatalogs = cT.Input(
         doc="associated ssSources from all tract-patches.",
         name="{fakesType}{coaddName}Diff_assocSsSrcTable",
@@ -59,21 +59,21 @@ class MakeSsTablesConnections(pipeBase.PipelineTaskConnections,
     )
 
 
-class MakeSsTablesConfig(pipeBase.PipelineTaskConfig,
-                         pipelineConnections=MakeSsTablesConnections):
+class ConsolidateSsTablesConfig(pipeBase.PipelineTaskConfig,
+                                pipelineConnections=ConsolidateSsTablesConnections):
 
-    """Config for MakeSsTablesTask"""
+    """Config for ConsolidateSsTablesTask"""
 
 
-class MakeSsTablesTask(pipeBase.PipelineTask):
+class ConsolidateSsTablesTask(pipeBase.PipelineTask):
     """ Consolidate per-patch ssSource tables into a single table.
         Create ssObject table
         TODO (DM-49451): Fit per-object parameters
         TODO (DM-49453): Generate MPCORB table.
     """
 
-    ConfigClass = MakeSsTablesConfig
-    _DefaultName = "MakeSsTables"
+    ConfigClass = ConsolidateSsTablesConfig
+    _DefaultName = "consolidateSsTables"
 
     @timeMethod
     def run(self, inputCatalogs):
