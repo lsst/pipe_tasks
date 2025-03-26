@@ -37,7 +37,7 @@ import lsst.meas.base as measBase
 import lsst.utils.tests
 from lsst.pipe.base import InMemoryDatasetHandle
 from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, RAColumn,
-                                      DecColumn, Mag, MagDiff, Color,
+                                      DecColumn, FlagNanColumn, Mag, MagDiff, Color,
                                       DeconvolvedMoments, SdssTraceSize, PsfSdssTraceSizeDiff,
                                       HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm,
                                       LocalPhotometry, LocalNanojansky, LocalNanojanskyErr,
@@ -908,6 +908,22 @@ class FunctorTestCase(unittest.TestCase):
             val.values,
             [0.029100, 0.029013, 0.028857, 0.028802, 0.028797]
         )
+
+    def testFlagNanColumn(self):
+        """Test FlagNanColumn flags Nans correctly"""
+        flux = 1000.
+        self.columns.extend(["base_PsfFlux_instFlux"])
+        self.dataDict["base_PsfFlux_instFlux"] = np.concatenate(
+            (np.full(self.nRecords-2, np.nan), np.full(2, flux))
+        )
+        df = self.getMultiIndexDataFrame(self.dataDict)
+
+        func = FlagNanColumn('base_PsfFlux_instFlux')
+
+        val = self._funcVal(func, df)
+        expectedValues = np.concatenate((np.full(self.nRecords-2, True), np.full(2, False)))
+
+        np.testing.assert_array_equal(val.values, expectedValues)
 
     def _dropLevels(self, df):
         levelsToDrop = [n for lev, n in zip(df.columns.levels, df.columns.names) if len(lev) == 1]
