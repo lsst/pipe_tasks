@@ -105,6 +105,8 @@ class SplitPrimaryConfig(
             "detect_isPatchInner",
             "detect_isTractInner",
             "detect_isDeblendedSource",
+            "sky_object",
+            "merge_peak_sky",
         ],
     )
     discard_nonprimary_columns = ListField[str](
