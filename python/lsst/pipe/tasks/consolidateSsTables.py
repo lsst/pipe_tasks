@@ -103,6 +103,7 @@ class ConsolidateSsTablesTask(pipeBase.PipelineTask):
         ssObjectTable = tb.Table()
         ssObjectTable['ssObjectId'], ssObjectTable['numObs'] = np.unique(ssSourceTable['ssObjectId'],
                                                                          return_counts=True)
+        ssObjectTable['discoverySubmissionDate'] = np.nan
 
         return pipeBase.Struct(
             ssSourceTable=ssSourceTable,
