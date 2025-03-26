@@ -82,9 +82,9 @@ def latLum(
     intensities = np.arcsinh((abs(values) * soften + floor) * slope)
 
     # Always normalize by what the original max value (100) scales to.
-    norm = np.arcsinh((100 * soften + floor) * slope)
+    maximum_intensity = np.arcsinh((100 * soften + floor) * slope)
 
-    intensities /= norm
+    intensities /= maximum_intensity
 
     # Scale the intensities with linear manipulation for contrast
     intensities = (intensities - shadow) / (highlight - shadow)
