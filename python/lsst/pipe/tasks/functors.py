@@ -21,8 +21,8 @@
 
 __all__ = ["init_fromDict", "Functor", "CompositeFunctor", "mag_aware_eval",
            "CustomFunctor", "Column", "Index", "CoordColumn", "RAColumn",
-           "DecColumn", "HtmIndex20", "fluxName", "fluxErrName", "Mag",
-           "MagErr", "MagDiff", "Color", "DeconvolvedMoments", "SdssTraceSize",
+           "DecColumn", "FlagNanColumn", "HtmIndex20", "fluxName", "fluxErrName",
+           "Mag", "MagErr", "MagDiff", "Color", "DeconvolvedMoments", "SdssTraceSize",
            "PsfSdssTraceSizeDiff", "HsmTraceSize", "PsfHsmTraceSizeDiff",
            "HsmFwhm", "E1", "E2", "RadiusFromQuadrupole", "LocalWcs",
            "ComputePixelScale", "ConvertPixelToArcseconds",
@@ -754,6 +754,18 @@ class MultibandColumn(Column):
     @property
     def band_to_check(self):
         return self._band_to_check
+
+
+class FlagNanColumn(Column):
+    """
+    A column which flags the presence of a NaN within the
+    specified input reference column (self.col).
+    """
+    def __init__(self, col, **kwargs):
+        super().__init__(col, **kwargs)
+
+    def _func(self, df):
+        return np.isnan(df[self.col])
 
 
 class HtmIndex20(Functor):

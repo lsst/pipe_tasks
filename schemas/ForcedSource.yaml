@@ -73,6 +73,10 @@ funcs:
         functor: Column
         dataset: diff
         args: base_PsfFlux_flag
+    diff_pixelFlags_nodataCenter:
+        functor: FlagNanColumn
+        dataset: diff
+        args: base_PsfFlux_instFlux
 # PixelFlags exist in forced_src and forced_diff dataset, but they're all False
 calexpFlags:
     - base_LocalPhotoCalib
