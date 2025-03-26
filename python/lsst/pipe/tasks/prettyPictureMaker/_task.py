@@ -513,6 +513,29 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
     config: ConfigClass
 
     def _neg_log_likelihood(self, params, x):
+        """Calculate the negative log-likelihood for a Gaussian distribution.
+
+        This function computes the negative log-likelihood of a set of data `x`
+        given a Gaussian distribution with parameters `mu` and `sigma`.  It's
+        designed to be used as the objective function for a minimization routine
+        to find the best-fit Gaussian parameters.
+
+        Parameters
+        ----------
+        params : `tuple`
+            A tuple containing the mean (`mu`) and standard deviation (`sigma`)
+            of the Gaussian distribution.
+        x : `NDArray`
+            The data samples for which to calculate the log-likelihood.
+
+        Returns
+        -------
+        float
+            The negative log-likelihood of the data given the Gaussian parameters.
+            Returns infinity if sigma is non-positive or if the mean is less than
+            the maximum value in x (to enforce the constraint that the Gaussian
+            only models the lower tail of the distribution).
+        """
         mu, sigma = params
         if sigma <= 0:
             return np.inf
@@ -525,6 +548,28 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         return -loglikelihood
 
     def _tile_slices(self, arr, R, C):
+        """Generate slices for tiling an array.
+
+        This function divides an array into a grid of tiles and returns a list of
+        slice objects representing each tile.  It handles cases where the array
+        dimensions are not evenly divisible by the number of tiles in each
+        dimension, distributing the remainder among the tiles.
+
+        Parameters
+        ----------
+        arr : `NDArray`
+           The input array to be tiled. Used only to determine the array's shape.
+        R : `int`
+           The number of tiles in the row dimension.
+        C : `int`
+           The number of tiles in the column dimension.
+
+        Returns
+        -------
+        slices : `list` of `tuple`
+           A list of tuples, where each tuple contains two `slice` objects
+           representing the row and column slices for a single tile.
+        """
         M = arr.shape[0]
         N = arr.shape[1]
 
@@ -558,6 +603,23 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         return tiles
 
     def fixBackground(self, image):
+        """Estimate and subtract the background from an image.
+
+        This function estimates the background level in an image using a median-based
+        approach combined with Gaussian fitting and radial basis function interpolation.
+        It aims to provide a more accurate background estimation than a simple median
+        filter, especially in images with varying background levels.
+
+        Parameters
+        ----------
+        image : `NDArray`
+            The input image as a NumPy array.
+
+        Returns
+        -------
+        numpy.ndarray
+            An array representing the estimated background level across the image.
+        """
         # Find the median value in the image, which is likely to be
         # close to average background. Note this doesn't work well
         # in fields with high density or diffuse flux.
