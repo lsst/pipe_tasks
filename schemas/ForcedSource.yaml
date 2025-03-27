@@ -60,6 +60,10 @@ funcs:
         functor: Column
         dataset: diff
         args: base_PsfFlux_flag
+    diff_PixelFlags_nodataCenter:
+        functor: Column
+        dataset: diff
+        args: base_PixelFlags_flag_nodataCenter
 # PixelFlags exist in forced_src and forced_diff dataset, but they're all False
 calexpFlags:
     - base_PixelFlags_flag_bad
