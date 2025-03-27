@@ -976,7 +976,7 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
         # detection.
         if self.config.doScaleVariance:
             # Here, we iterate over references to the exposures, not copies.
-            for band in mExposure.filters:
+            for band in mExposure.bands:
                 self._scaleVariance(mExposure[band], band=f"'{band}'")
 
         # Detect sources in the reference band and populate the catalog.
@@ -1041,12 +1041,12 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
         # Multi-band-specific validation and adjustments.
         if isinstance(mExposure, afwImage.MultibandExposure):
             if bands is not None:
-                if any(b not in mExposure.filters for b in bands):
+                if any(b not in mExposure.bands for b in bands):
                     raise ValueError(
                         "Some bands in the 'bands' list are not present in the input multi-band exposure"
                     )
                 self.log.info(
-                    f"Using bands {bands} out of the available {mExposure.filters} in the multi-band exposure"
+                    f"Using bands {bands} out of the available {mExposure.bands} in the multi-band exposure"
                 )
         elif isinstance(mExposure, list):
             if bands is None:
@@ -1073,14 +1073,14 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
         # provided.
         mExposure = self._buildMultibandExposure(mExposure, bands)
 
-        if len(mExposure.filters) == 1:
+        if len(mExposure.bands) == 1:
             # N.B. Scarlet is designed to leverage multi-band information to
             # differentiate overlapping sources based on their spectral and
             # spatial profiles. However, it can also run on a single band and
             # often give better results than 'meas_deblender'.
             self.log.info(f"Running '{self._Deblender}' in single-band mode; make sure it was intended!")
             if refBand is None:
-                refBand = mExposure.filters[0]
+                refBand = mExposure.bands[0]
                 self.log.info(
                     "No reference band provided for single-band data; "
                     f"using the only available band ('{refBand}') as the reference band"
@@ -1092,7 +1092,7 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
                 else:
                     measInfo = (
                         "while subtasks downstream of deblending will be run in each of "
-                        f"the {mExposure.filters} bands"
+                        f"the {mExposure.bands} bands"
                     )
                 self.log.info(f"Using '{refBand}' as the reference band for detection {measInfo}")
 
@@ -1100,7 +1100,7 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
         if refBand is None:
             raise ValueError("Reference band must be provided for multi-band data")
 
-        if refBand not in mExposure.filters:
+        if refBand not in mExposure.bands:
             raise ValueError(f"Requested band '{refBand}' is not present in the multi-band exposure")
 
         if bands is not None and refBand not in bands:
@@ -1139,7 +1139,7 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
         catalog, modelData = self.deblend.run(mExposure, catalog)
 
         # Determine which bands to process post-deblending.
-        bands = [refBand] if self.config.measureOnlyInRefBand else mExposure.filters
+        bands = [refBand] if self.config.measureOnlyInRefBand else mExposure.bands
 
         catalogs = {band: catalog.copy(deep=True) for band in bands}
         for band in bands:
@@ -1184,9 +1184,9 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
             Converted multi-band exposure.
         """
         if isinstance(mExposureData, afwImage.MultibandExposure):
-            if bands and not set(bands).issubset(mExposureData.filters):
+            if bands and not set(bands).issubset(mExposureData.bands):
                 raise ValueError(
-                    f"Requested bands {bands} are not a subset of available bands: {mExposureData.filters}"
+                    f"Requested bands {bands} are not a subset of available bands: {mExposureData.bands}"
                 )
             return mExposureData[bands,] if bands and len(bands) > 1 else mExposureData
         elif isinstance(mExposureData, list):
