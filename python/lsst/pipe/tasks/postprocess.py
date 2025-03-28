@@ -1524,7 +1524,7 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
                 visitSummary["psfSigma"] * visitSummary["pixelScale"] * np.sqrt(8 * np.log(2))
             )
             ccdEntry["skyRotation"] = visitInfo.getBoresightRotAngle().asDegrees()
-            ccdEntry["expMidpt"] = np.datetime64(visitInfo.getDate().toPython(), "ns")
+            ccdEntry["expMidpt"] = np.datetime64(visitInfo.date.nsecs(scale=dafBase.DateTime.TAI), "ns")
             ccdEntry["expMidptMJD"] = visitInfo.getDate().get(dafBase.DateTime.MJD)
             expTime = visitInfo.getExposureTime()
             ccdEntry["obsStart"] = (
@@ -1626,7 +1626,7 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
             visitEntry["airmass"] = visitInfo.getBoresightAirmass()
             expTime = visitInfo.getExposureTime()
             visitEntry["expTime"] = expTime
-            visitEntry["expMidpt"] = np.datetime64(visitInfo.getDate().toPython(), "ns")
+            visitEntry["expMidpt"] = np.datetime64(visitInfo.date.nsecs(scale=dafBase.DateTime.TAI), "ns")
             visitEntry["expMidptMJD"] = visitInfo.getDate().get(dafBase.DateTime.MJD)
             visitEntry["obsStart"] = visitEntry["expMidpt"] - 0.5 * np.timedelta64(int(expTime * 1E9), "ns")
             expTime_days = expTime / (60*60*24)
