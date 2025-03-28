@@ -350,7 +350,13 @@ class SolarSystemAssociationTask(pipeBase.Task):
             unAssocDiaSources=diaSourceCatalog,
             nTotalSsObjects=0,
             nAssociatedSsObjects=0,
-            associatedSsSources=Table(names=["ssObjectId", "ra", "dec", "obs_position", "obj_position",
-                                      "residual_ras", "residual_decs"], dtype=[int] + [float] * 6),
+            associatedSsSources=Table(names=['phaseAngle', 'heliocentricDist', 'topocentricDist',
+                                             'heliocentricX', 'heliocentricY', 'heliocentricZ',
+                                             'heliocentricVX', 'heliocentricVY', 'heliocentricVZ',
+                                             'topocentricX', 'topocentricY', 'topocentricZ',
+                                             'topocentricVX', 'topocentricVY', 'topocentricVZ',
+                                             'residualRa', 'residualDec', 'eclipticLambda', 'eclipticBeta',
+                                             'galacticL', 'galacticB', 'ssObjectId', 'diaSourceId'],
+                                      dtype=[float] * 21 + [int] * 2),
             unassociatedSsObjects=Table(names=emptySolarSystemObjects.columns)
         )
