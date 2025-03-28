@@ -1263,8 +1263,13 @@ class GenerateHipsTask(pipeBase.PipelineTask):
 
         uri = hips_dir.join(f"Npix{pixel}.{self.config.file_extension}")
 
+        extra_args = {}
+        if self.config.file_extension == "webp":
+            extra_args["lossless"] = True
+            extra_args["quality"] = 80
+
         with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
-            im.save(temporary_uri.ospath)
+            im.save(temporary_uri.ospath, **extra_args)
 
             uri.transfer_from(temporary_uri, transfer="copy", overwrite=True)
 
@@ -1452,10 +1457,10 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                 _write_property(fh, "hips_tile_width", str(exposure.getBBox().getWidth()))
                 _write_property(fh, "hips_status", "private master clonableOnce")
                 if multiband:
-                    _write_property(fh, "hips_tile_format", "png")
+                    _write_property(fh, "hips_tile_format", self.config.file_extension)
                     _write_property(fh, "dataproduct_subtype", "color")
                 else:
-                    _write_property(fh, "hips_tile_format", "png fits")
+                    _write_property(fh, "hips_tile_format", f"{self.config.file_extension} fits")
                 _write_property(fh, "hips_pixel_bitpix", str(bitpix))
                 _write_property(fh, "hips_pixel_scale", str(pixel_scale))
                 _write_property(fh, "hips_initial_ra", str(initial_ra))
@@ -1615,7 +1620,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                 )
             allsky_image.paste(tile_image_shrunk, box)
 
-        uri = allsky_order_uri.join("Allsky.png")
+        uri = allsky_order_uri.join(f"Allsky.{self.config.file_extension}")
 
         with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
             allsky_image.save(temporary_uri.ospath)
