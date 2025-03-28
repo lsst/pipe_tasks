@@ -893,7 +893,7 @@ class GenerateHipsConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Genera
     file_extension = pexConfig.ChoiceField[str](
         doc="Extension for the presisted image, must be png or webp",
         allowed={"png": "Use the png image extension", "webp": "Use the webp image extension"},
-        default="webp",
+        default="png",
     )
 
     def validate(self):
