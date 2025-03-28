@@ -897,6 +897,13 @@ class TransformObjectCatalogConnections(pipeBase.PipelineTaskConnections,
         name="{coaddName}Coadd_obj",
         deferLoad=True,
     )
+    inputCatalogEpoch = connectionTypes.Input(
+        doc="Catalog with per-band epochs for each object",
+        dimensions=("tract", "patch", "skymap"),
+        storageClass="ArrowAstropy",
+        name="object_epoch",
+        deferLoad=True,
+    )
     inputCatalogRef = connectionTypes.Input(
         doc="Catalog marking the primary detection (which band provides a good shape and position)"
             "for each detection in deepCoadd_mergeDet.",
@@ -999,7 +1006,7 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
     _DefaultName = "transformObjectCatalog"
     ConfigClass = TransformObjectCatalogConfig
 
-    datasets_multiband = ("ref", "Sersic_multiprofit")
+    datasets_multiband = ("epoch", "ref", "Sersic_multiprofit")
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -1008,6 +1015,7 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
                              "Must be a valid path to yaml in order to run Task as a PipelineTask.")
         result = self.run(handle=inputs["inputCatalog"], funcs=self.funcs,
                           dataId=dict(outputRefs.outputCatalog.dataId.mapping),
+                          handle_epoch=inputs["inputCatalogEpoch"],
                           handle_ref=inputs["inputCatalogRef"],
                           handle_Sersic_multiprofit=inputs["inputCatalogSersicMultiprofit"],
                           )
@@ -1122,7 +1130,18 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
             handle_multiband = handles_multi[dataset]
             df_dataset = handle_multiband.get()
             if isinstance(df_dataset, astropy.table.Table):
-                df_dataset = df_dataset.to_pandas().set_index(name_index, drop=False)
+                # Allow astropy table inputs to already have the output index
+                if name_index not in df_dataset.colnames:
+                    if self.config.primaryKey in df_dataset.colnames:
+                        name_index_ap = self.config.primaryKey
+                    else:
+                        raise RuntimeError(
+                            f"Neither of {name_index=} nor {self.config.primaryKey=} appear in"
+                            f" {df_dataset.colnames=} for {dataset=}"
+                        )
+                else:
+                    name_index_ap = name_index
+                df_dataset = df_dataset.to_pandas().set_index(name_index_ap, drop=False)
             elif isinstance(df_dataset, afwTable.SourceCatalog):
                 df_dataset = df_dataset.asAstropy().to_pandas().set_index(name_index, drop=False)
             # TODO: should funcDict have noDup funcs removed?

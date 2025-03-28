@@ -49,6 +49,11 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         n_rows = len(df)
         tab_ref = astropy.table.Table({df.index.name: df.index, "refBand": ["r"]*n_rows})
         tab_sersic = astropy.table.Table({df.index.name: df.index, "sersic_n_iter": [0] * n_rows})
+        columns_epoch = {df.index.name: df.index}
+        bands = ("g", "i", "r", "u", "z", "y")
+        for band in bands:
+            columns_epoch[f"{band}_epoch"] = [60000.]*n_rows
+        tab_epoch = astropy.table.Table(columns_epoch)
         self.kwargs_task = {
             "handle_ref": InMemoryDatasetHandle(
                 tab_ref, storageClass="ArrowAstropy", dataId=self.dataId,
@@ -56,11 +61,16 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
             "handle_Sersic_multiprofit": InMemoryDatasetHandle(
                 tab_sersic, storageClass="ArrowAstropy", dataId=self.dataId,
             ),
+            "handle_epoch": InMemoryDatasetHandle(
+                tab_epoch, storageClass="ArrowAstropy", dataId=self.dataId,
+            ),
         }
         self.funcs_multi = {
             "refBand": Column("refBand", dataset="ref"),
             "sersic_n_iter": Column("sersic_n_iter", dataset="Sersic_multiprofit"),
         }
+        for band in bands:
+            self.funcs_multi[f"{band}_epoch"] = Column(f"{band}_epoch", dataset="epoch")
 
     def testNullFilter(self):
         """Test that columns for all filters are created despite they may not
