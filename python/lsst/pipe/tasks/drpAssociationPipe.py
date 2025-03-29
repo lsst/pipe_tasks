@@ -270,7 +270,9 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                                                    innerTractSkyRegion,
                                                    skyInfo.wcs)
                 associatedSsSources = associatedSsSources[ssInTractPatch]
-                associatedSsDiaSources = associatedSsDiaSources[ssInTractPatch]
+                assocDiaSrcIds = set(associatedSsSources['diaSourceId'])
+                diaSrcMask = [diaId in assocDiaSrcIds for diaId in associatedSsDiaSources['diaSourceId']]
+                associatedSsDiaSources = associatedSsDiaSources[np.array(diaSrcMask)]
 
                 unassociatedSsObjects = ssoAssocResult.unassociatedSsObjects
                 ssObjInTractPatch = self._trimToPatch(unassociatedSsObjects.to_pandas(),
