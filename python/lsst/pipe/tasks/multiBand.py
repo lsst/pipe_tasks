@@ -75,7 +75,7 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
     )
     exposure = cT.Input(
         doc="Exposure on which detections are to be performed",
-        name="{inputCoaddName}Coadd",
+        name="{inputCoaddName}CoaddCell_stitched",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "band", "skymap")
     )
