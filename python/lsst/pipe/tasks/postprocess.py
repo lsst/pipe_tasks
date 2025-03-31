@@ -1819,6 +1819,9 @@ class TransformForcedSourceTableTask(TransformCatalogBaseTask):
 
         outputCatalog = pd.concat(dfs)
 
+        if outputCatalog.empty:
+            raise NoWorkFound(f"No forced photometry rows for {dataId}.")
+
         # Now that we are done joining on config.keyRef
         # Change index to config.key by
         outputCatalog.index.rename(self.config.keyRef, inplace=True)
