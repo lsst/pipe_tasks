@@ -876,6 +876,42 @@ funcs:
         functor: SinglePrecisionFloatColumn
         args: slot_Shape_xy
         dataset: ref
+    g_epoch:
+        functor: MultibandColumn
+        args:
+            - g_epoch
+            - g
+        dataset: epoch
+    i_epoch:
+        functor: MultibandColumn
+        args:
+            - i_epoch
+            - i
+        dataset: epoch
+    r_epoch:
+        functor: MultibandColumn
+        args:
+            - r_epoch
+            - r
+        dataset: epoch
+    u_epoch:
+        functor: MultibandColumn
+        args:
+            - u_epoch
+            - u
+        dataset: epoch
+    y_epoch:
+        functor: MultibandColumn
+        args:
+            - y_epoch
+            - y
+        dataset: epoch
+    z_epoch:
+        functor: MultibandColumn
+        args:
+            - z_epoch
+            - z
+        dataset: epoch
     # DM-22247: Add Star/Galaxy sep columns
     #     - Morphological Star Galaxy Classifier (Names? float 0-1)]
     #     - Morphological + Color (SED-based) Star Galaxy Classifier (Names? float 0-1)]

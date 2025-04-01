@@ -47,9 +47,13 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         self.dataId = {"tract": 9615, "patch": "4,4"}
         self.handle = InMemoryDatasetHandle(df, storageClass="DataFrame", dataId=self.dataId)
         n_rows = len(df)
+        tab_epoch = astropy.table.Table({df.index.name: df.index, "r_epoch": [0.]*n_rows})
         tab_ref = astropy.table.Table({df.index.name: df.index, "refBand": ["r"]*n_rows})
         tab_sersic = astropy.table.Table({df.index.name: df.index, "sersic_n_iter": [0] * n_rows})
         self.kwargs_task = {
+            "handle_epoch": InMemoryDatasetHandle(
+                tab_epoch, storageClass="ArrowAstropy", dataId=self.dataId,
+            ),
             "handle_ref": InMemoryDatasetHandle(
                 tab_ref, storageClass="ArrowAstropy", dataId=self.dataId,
             ),
@@ -58,6 +62,7 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
             ),
         }
         self.funcs_multi = {
+            "epoch": Column("r_epoch", dataset="epoch"),
             "refBand": Column("refBand", dataset="ref"),
             "sersic_n_iter": Column("sersic_n_iter", dataset="Sersic_multiprofit"),
         }
