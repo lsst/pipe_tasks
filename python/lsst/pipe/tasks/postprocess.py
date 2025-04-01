@@ -52,7 +52,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 from lsst.daf.butler.formatters.parquet import pandas_to_astropy
-from lsst.pipe.base import connectionTypes
+from lsst.pipe.base import NoWorkFound, connectionTypes
 import lsst.afw.table as afwTable
 from lsst.afw.image import ExposureSummaryStats, ExposureF
 from lsst.meas.base import SingleFrameMeasurementTask, DetectorVisitIdGeneratorConfig
@@ -1739,7 +1739,7 @@ class TransformForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
         doc="Narrower, temporally-aggregated, per-patch ForcedSource Table transformed and converted per a "
             "specified set of functors",
         name="forcedSourceTable",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("tract", "patch", "skymap")
     )
 
@@ -1819,6 +1819,9 @@ class TransformForcedSourceTableTask(TransformCatalogBaseTask):
 
         outputCatalog = pd.concat(dfs)
 
+        if outputCatalog.empty:
+            raise NoWorkFound(f"No forced photometry rows for {dataId}.")
+
         # Now that we are done joining on config.keyRef
         # Change index to config.key by
         outputCatalog.index.rename(self.config.keyRef, inplace=True)
@@ -1832,7 +1835,7 @@ class TransformForcedSourceTableTask(TransformCatalogBaseTask):
 
         self.log.info("Made a table of %d columns and %d rows",
                       len(outputCatalog.columns), len(outputCatalog))
-        return pipeBase.Struct(outputCatalog=outputCatalog)
+        return pipeBase.Struct(outputCatalog=pandas_to_astropy(outputCatalog))
 
 
 class ConsolidateTractConnections(pipeBase.PipelineTaskConnections,
