@@ -1003,7 +1003,20 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                 Q=self.config.png_gray_asinh_softening,
             )
         else:
-            colorstr = "".join(bands)
+            match self.config.rgbStyle:
+                case "lupton":
+                    png_color_mapping = AsinhMapping(
+                        self.config.png_color_asinh_minimum,
+                        self.config.png_color_asinh_stretch,
+                        Q=self.config.png_color_asinh_softening,
+                    )
+
+                    bcb = self.config.blue_channel_band
+                    gcb = self.config.green_channel_band
+                    rcb = self.config.red_channel_band
+                    colorstr = f"{bcb}{gcb}{rcb}"
+                case "lsstRGB":
+                    colorstr = "".join(bands)
 
         # The base path is based on the hips_base_uri.
         hips_base_path = ResourcePath(self.config.hips_base_uri, forceDirectory=True)
@@ -1081,17 +1094,36 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                             )
                     else:
                         # Make a color png.
-                        band_mapping = {}
-                        for band in bands:
-                            key = (band, order)
-                            if (value := exposures.get(key)) is not None:
-                                band_mapping[band] = value
+                        lupton_args = {}
+                        lsstRGB_args = {}
+                        match self.config.rgbStyle:
+                            case "lupton":
+                                lupton_args["image_red"] = exposures[
+                                    (self.config.red_channel_band, order)
+                                ].image
+                                lupton_args["image_green"] = exposures[
+                                    (self.config.green_channel_band, order)
+                                ].image
+
+                                lupton_args["image_blue"] = exposures[
+                                    (self.config.blue_channel_band, order)
+                                ].image
+
+                                lupton_args["png_mapping"] = png_color_mapping
+                            case "lsstRGB":
+                                band_mapping = {}
+                                for band in bands:
+                                    key = (band, order)
+                                    if (value := exposures.get(key)) is not None:
+                                        band_mapping[band] = value
+                                lsstRGB_args["band_mapping"] = band_mapping
 
                         self._write_hips_color_png(
                             hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
                             order,
                             pixels_shifted[order][pixel_counter],
-                            band_mapping,
+                            lupton_args,
+                            lsstRGB_args,
                         )
 
                 log_level = self.log.INFO if order == (max_order - 3) else self.log.DEBUG
@@ -1233,7 +1265,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
 
             uri.transfer_from(temporary_uri, transfer="copy", overwrite=True)
 
-    def _write_hips_color_png(self, hips_base_path, order, pixel, band_mapping):
+    def _write_hips_color_png(self, hips_base_path, order, pixel, lupton_args, lsstRGB_args):
         """Write a color png HiPS image.
 
         Parameters
@@ -1244,8 +1276,10 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             HEALPix order of the HiPS image to write.
         pixel : `int`
             HEALPix pixel of the HiPS image.
-        band_mapping : `dict` of `str` to `Exposure`
-            A mapping of a band identifier to the exposure for that band.
+        lupton_args : `dict`
+            A mapping of parameters used when building lupton color images.
+        lsstRGB_args : `dict`
+            A mapping of parameters used when building lsstRGB color images.
         """
         # WARNING: In general PipelineTasks are not allowed to do any outputs
         # outside of the butler.  This task has been given (temporary)
@@ -1256,9 +1290,22 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         hips_dir = hips_base_path.join(f"Norder{order}", forceDirectory=True).join(
             f"Dir{dir_number}", forceDirectory=True
         )
+        match self.config.rgbStyle:
+            case "lupton":
+                # We need to convert nans to the minimum values in the mapping.
+                png_mapping = lupton_args["png_mapping"]
+                arr_red = lupton_args["image_red"].array.copy()
+                arr_red[np.isnan(arr_red)] = png_mapping.minimum[0]
+                arr_green = lupton_args["image_green"].array.copy()
+                arr_green[np.isnan(arr_green)] = png_mapping.minimum[1]
+                arr_blue = lupton_args["image_blue"].array.copy()
+                arr_blue[np.isnan(arr_blue)] = png_mapping.minimum[2]
 
-        image_array = self.rgbGenerator.run(band_mapping).outputRGB
+                image_array = png_mapping.make_rgb_image(arr_red, arr_green, arr_blue)
+            case "lsstRGB":
+                image_array = self.rgbGenerator.run(lsstRGB_args["band_mapping"]).outputRGB
 
+        breakpoint()
         im = Image.fromarray(image_array[::-1, :, :], mode="RGB")
 
         uri = hips_dir.join(f"Npix{pixel}.{self.config.file_extension}")
@@ -1671,61 +1718,45 @@ class GenerateColorHipsConfig(GenerateHipsConfig, pipelineConnections=GenerateCo
     """Configuration parameters for GenerateColorHipsTask."""
 
     blue_channel_band = pexConfig.Field(
-        doc="Band to use for blue channel of color pngs.",
+        doc="Band to use for blue channel of color pngs in lupton color mapping.",
         dtype=str,
         default="g",
-        deprecated=(
-            "This field is deprecated, set options in the rgbGenerator sub-config"
-            "This will be removed in version 29"
-        ),
     )
     green_channel_band = pexConfig.Field(
-        doc="Band to use for green channel of color pngs.",
+        doc="Band to use for green channel of color pngs in lupton color mapping.",
         dtype=str,
         default="r",
-        deprecated=(
-            "This field is deprecated, set options in the rgbGenerator sub-config"
-            "This will be removed in version 29"
-        ),
     )
     red_channel_band = pexConfig.Field(
-        doc="Band to use for red channel of color pngs.",
+        doc="Band to use for red channel of color pngs in lupton color mapping.",
         dtype=str,
         default="i",
-        deprecated=(
-            "This field is deprecated, set options in the rgbGenerator sub-config"
-            "This will be removed in version 29"
-        ),
     )
     png_color_asinh_minimum = pexConfig.Field(
-        doc="AsinhMapping intensity to be mapped to black for color png scaling.",
+        doc="AsinhMapping intensity to be mapped to black for color png scaling in lupton color mapping.",
         dtype=float,
         default=0.0,
-        deprecated=(
-            "This field is deprecated, set options in the rgbGenerator sub-config"
-            "This will be removed in version 29"
-        ),
     )
     png_color_asinh_stretch = pexConfig.Field(
-        doc="AsinhMapping linear stretch for color png scaling.",
+        doc="AsinhMapping linear stretch for color png scaling in lupton color mapping.",
         dtype=float,
         default=5.0,
-        deprecated=(
-            "This field is deprecated, set options in the rgbGenerator sub-config"
-            "This will be removed in version 29"
-        ),
     )
     png_color_asinh_softening = pexConfig.Field(
-        doc="AsinhMapping softening parameter (Q) for color png scaling.",
+        doc="AsinhMapping softening parameter (Q) for color png scaling in lupton color mapping.",
         dtype=float,
         default=8.0,
-        deprecated=(
-            "This field is deprecated, set options in the rgbGenerator sub-config"
-            "This will be removed in version 29"
-        ),
     )
     rgbGenerator = pexConfig.ConfigurableField[PrettyPictureTask](
         doc="The task to use to generate an RGB image", target=PrettyPictureTask
+    )
+    rgbStyle = pexConfig.ChoiceField[str](
+        doc="The rgb mapping style, must be one of lsstRGB or lupton",
+        allowed={
+            "lupton": "Use the lupton algorithm for RGB images",
+            "lsstRGB": "Use new style lsstRGB color algorithm for RGB images",
+        },
+        default="lsstRGB",
     )
 
     def setDefaults(self):
@@ -1777,28 +1808,50 @@ class GenerateColorHipsTask(GenerateHipsTask):
         if len(data_bands) == 0:
             raise RuntimeError("GenerateColorHipsTask must have data from at least one band.")
 
-        # The pretty picture maker task supports compositing more than 3 bands
-        # into an rgb image. Find all the bands specified and list them in
-        # bgr order according to the hue specified for each astrophysical band.
-        band_names = []
-        band_values = []
-        for band_name, config in self.config.rgbGenerator.channelConfig.items():
-            band_names.append(band_name)
-            band_values.append((config.r, config.g, config.b))
-        # convert to a space where it is easy to calcualte the hue
-        labs = colour.XYZ_to_Oklab(colour.RGB_to_XYZ(band_values, colourspace="CIE RGB"))
-        hues = np.arctan2(labs[:, 2], labs[:, 1])
-        # transform negative angles to an offset from 2pi
-        hues[hues < 0] = 2 * np.pi + hues[hues < 0]
-        # reversed here to transform from rgb to bgr order
-        order = np.argsort(hues)[::-1]
-        config_bands = [band_names[index] for index in order]
+        match self.config.rgbStyle:
+            case "lupton":
+                if self.config.blue_channel_band not in data_bands:
+                    self.log.warning(
+                        "Color png blue_channel_band %s not in dataset.", self.config.blue_channel_band
+                    )
+                if self.config.green_channel_band not in data_bands:
+                    self.log.warning(
+                        "Color png green_channel_band %s not in dataset.", self.config.green_channel_band
+                    )
+                if self.config.red_channel_band not in data_bands:
+                    self.log.warning(
+                        "Color png red_channel_band %s not in dataset.", self.config.red_channel_band
+                    )
 
-        for band_name in config_bands:
-            if band_name not in data_bands:
-                self.log.warning(
-                    f"Data band {band_name} is specified in the RGB config but there is no input data for "
-                    "that band."
-                )
+                bands = [
+                    self.config.blue_channel_band,
+                    self.config.green_channel_band,
+                    self.config.red_channel_band,
+                ]
+                return bands
+            case "lsstRGB":
+                # The pretty picture maker task supports compositing more than 3 bands
+                # into an rgb image. Find all the bands specified and list them in
+                # bgr order according to the hue specified for each astrophysical band.
+                band_names = []
+                band_values = []
+                for band_name, config in self.config.rgbGenerator.channelConfig.items():
+                    band_names.append(band_name)
+                    band_values.append((config.r, config.g, config.b))
+                # convert to a space where it is easy to calcualte the hue
+                labs = colour.XYZ_to_Oklab(colour.RGB_to_XYZ(band_values, colourspace="CIE RGB"))
+                hues = np.arctan2(labs[:, 2], labs[:, 1])
+                # transform negative angles to an offset from 2pi
+                hues[hues < 0] = 2 * np.pi + hues[hues < 0]
+                # reversed here to transform from rgb to bgr order
+                order = np.argsort(hues)[::-1]
+                config_bands = [band_names[index] for index in order]
 
-        return config_bands
+                for band_name in config_bands:
+                    if band_name not in data_bands:
+                        self.log.warning(
+                            f"Data band {band_name} is specified in the RGB config but there is no input data for "
+                            "that band."
+                        )
+
+                return config_bands
