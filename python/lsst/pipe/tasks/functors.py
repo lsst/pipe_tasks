@@ -2019,11 +2019,11 @@ class MomentsBase(Functor):
             self.colCD_2_2]
 
 
-class MomentsIxxSky(MomentsBase):
+class MomentsIuuSky(MomentsBase):
     """Rotate pixel moments Ixx,Iyy,Iyy into ra,dec frame and arcseconds"""
     _defaultDataset = 'meas'
-    name = "moments_xx"
-    shortname = "moments_xx"
+    name = "moments_uu"
+    shortname = "moments_uu"
 
     def _func(self, df):
         i_xx = df[self.shape_xx]
@@ -2034,17 +2034,17 @@ class MomentsIxxSky(MomentsBase):
         localWCS_CD_2_1 = df[self.colCD_2_1]
 
         # Evaluate one element of CD_matrix * moments_matrix * CD_matrix.T
-        sky_xx = (localWCS_CD_1_1*(i_xx*localWCS_CD_1_1 + i_xy*localWCS_CD_2_1)
+        sky_uu = (localWCS_CD_1_1*(i_xx*localWCS_CD_1_1 + i_xy*localWCS_CD_2_1)
                   + localWCS_CD_1_2*(i_xy*localWCS_CD_1_1 + i_yy*localWCS_CD_2_1))
 
-        return pd.Series(sky_xx*(180/np.pi*3600)**2, index=df.index).astype('float32')
+        return pd.Series(sky_uu*(180/np.pi*3600)**2, index=df.index).astype('float32')
 
 
-class MomentsIyySky(MomentsBase):
+class MomentsIvvSky(MomentsBase):
     """Rotate pixel moments Ixx,Iyy,Iyy into ra,dec frame and arcseconds"""
     _defaultDataset = 'meas'
-    name = "moments_yy"
-    shortname = "moments_yy"
+    name = "moments_vv"
+    shortname = "moments_vv"
 
     def _func(self, df):
         i_xx = df[self.shape_xx]
@@ -2055,17 +2055,17 @@ class MomentsIyySky(MomentsBase):
         localWCS_CD_2_2 = df[self.colCD_2_2]
 
         # Evaluate one element of CD_matrix * moments_matrix * CD_matrix.T
-        sky_yy = (localWCS_CD_2_1*(i_xx*localWCS_CD_1_2 + i_xy*localWCS_CD_2_2)
+        sky_vv = (localWCS_CD_2_1*(i_xx*localWCS_CD_1_2 + i_xy*localWCS_CD_2_2)
                   + localWCS_CD_2_2*(i_xy*localWCS_CD_1_2 + i_yy*localWCS_CD_2_2))
 
-        return pd.Series(sky_yy*(180/np.pi*3600)**2, index=df.index).astype('float32')
+        return pd.Series(sky_vv*(180/np.pi*3600)**2, index=df.index).astype('float32')
 
 
-class MomentsIxySky(MomentsBase):
+class MomentsIuvSky(MomentsBase):
     """Rotate pixel moments Ixx,Iyy,Iyy into ra,dec frame and arcseconds"""
     _defaultDataset = 'meas'
-    name = "moments_xy"
-    shortname = "moments_xy"
+    name = "moments_uv"
+    shortname = "moments_uv"
 
     def _func(self, df):
         i_xx = df[self.shape_xx]
@@ -2077,10 +2077,10 @@ class MomentsIxySky(MomentsBase):
         localWCS_CD_2_2 = df[self.colCD_2_2]
 
         # Evaluate one element of CD_matrix * moments_matrix * CD_matrix.T
-        sky_xy = ((localWCS_CD_1_1 * i_xx + localWCS_CD_1_2 * i_xy) * localWCS_CD_2_1
+        sky_uv = ((localWCS_CD_1_1 * i_xx + localWCS_CD_1_2 * i_xy) * localWCS_CD_2_1
                   + (localWCS_CD_1_1 * i_xy + localWCS_CD_1_2 * i_yy) * localWCS_CD_2_2)
 
-        return pd.Series(sky_xy*(180/np.pi*3600)**2, index=df.index).astype('float32')
+        return pd.Series(sky_uv*(180/np.pi*3600)**2, index=df.index).astype('float32')
 
 
 class PositionAngleFromMoments(MomentsBase):
@@ -2098,14 +2098,14 @@ class PositionAngleFromMoments(MomentsBase):
         localWCS_CD_2_1 = df[self.colCD_2_1]
         localWCS_CD_2_2 = df[self.colCD_2_2]
 
-        sky_xx = (localWCS_CD_1_1*(i_xx*localWCS_CD_1_1 + i_xy*localWCS_CD_2_1)
+        sky_uu = (localWCS_CD_1_1*(i_xx*localWCS_CD_1_1 + i_xy*localWCS_CD_2_1)
                   + localWCS_CD_1_2*(i_xy*localWCS_CD_1_1 + i_yy*localWCS_CD_2_1))
-        sky_yy = (localWCS_CD_2_1*(i_xx*localWCS_CD_1_2 + i_xy*localWCS_CD_2_2)
+        sky_vv = (localWCS_CD_2_1*(i_xx*localWCS_CD_1_2 + i_xy*localWCS_CD_2_2)
                   + localWCS_CD_2_2*(i_xy*localWCS_CD_1_2 + i_yy*localWCS_CD_2_2))
-        sky_xy = ((localWCS_CD_1_1 * i_xx + localWCS_CD_1_2 * i_xy) * localWCS_CD_2_1
+        sky_uv = ((localWCS_CD_1_1 * i_xx + localWCS_CD_1_2 * i_xy) * localWCS_CD_2_1
                   + (localWCS_CD_1_1 * i_xy + localWCS_CD_1_2 * i_yy) * localWCS_CD_2_2)
 
-        theta = 0.5*np.arctan2(2*sky_xy, sky_xx - sky_yy)
+        theta = 0.5*np.arctan2(2*sky_uv, sky_uu - sky_vv)
 
         return pd.Series(np.degrees(np.array(theta)), index=df.index).astype('float32')
 

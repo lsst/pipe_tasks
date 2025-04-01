@@ -46,7 +46,7 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
                                       LocalWcs, ComputePixelScale, ConvertPixelToArcseconds,
                                       ConvertPixelSqToArcsecondsSq,
                                       ConvertDetectorAngleToPositionAngle,
-                                      HtmIndex20, Ebv, MomentsIxxSky, MomentsIyySky, MomentsIxySky,
+                                      HtmIndex20, Ebv, MomentsIuuSky, MomentsIvvSky, MomentsIuvSky,
                                       SemimajorAxisFromMoments, SemiminorAxisFromMoments,
                                       PositionAngleFromMoments)
 
@@ -931,9 +931,9 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
                                       "base_LocalWcs_CDMatrix_1_2",
                                       "base_LocalWcs_CDMatrix_2_1",
                                       "base_LocalWcs_CDMatrix_2_2"]
-        skyXX_functor = MomentsIxxSky(*col_names, filt="g")
-        skyYY_functor = MomentsIyySky(*col_names, filt="g")
-        skyXY_functor = MomentsIxySky(*col_names, filt="g")
+        skyXX_functor = MomentsIuuSky(*col_names, filt="g")
+        skyYY_functor = MomentsIvvSky(*col_names, filt="g")
+        skyXY_functor = MomentsIuvSky(*col_names, filt="g")
 
         axesA_functor = SemimajorAxisFromMoments(*col_names, filt="g")
         axesB_functor = SemiminorAxisFromMoments(*col_names, filt="g")

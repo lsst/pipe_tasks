@@ -297,7 +297,7 @@ funcs:
         args: ext_shapeHSM_HsmPsfMomentsDebiased_flag
         dataset: meas
     moments_uu:
-        functor: MomentsIxxSky
+        functor: MomentsIuuSky
         args:
             - slot_Shape_xx
             - slot_Shape_yy
@@ -307,7 +307,7 @@ funcs:
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
     moments_vv:
-        functor: MomentsIyySky
+        functor: MomentsIvvSky
         args:
             - slot_Shape_xx
             - slot_Shape_yy
@@ -317,7 +317,7 @@ funcs:
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
     moments_uv:
-        functor: MomentsIxySky
+        functor: MomentsIuvSky
         args:
             - slot_Shape_xx
             - slot_Shape_yy
@@ -361,7 +361,7 @@ funcs:
         args: slot_Shape_flag
         dataset: meas
     moments_psf_uu:
-        functor: MomentsIxxSky
+        functor: MomentsIuuSky
         args:
             - slot_PsfShape_xx
             - slot_PsfShape_yy
@@ -371,7 +371,7 @@ funcs:
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
     moments_psf_vv:
-        functor: MomentsIyySky
+        functor: MomentsIvvSky
         args:
             - slot_PsfShape_xx
             - slot_PsfShape_yy
@@ -381,7 +381,7 @@ funcs:
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
     moments_psf_uv:
-        functor: MomentsIxySky
+        functor: MomentsIuvSky
         args:
             - slot_PsfShape_xx
             - slot_PsfShape_yy
@@ -395,7 +395,7 @@ funcs:
         args: slot_PsfShape_flag
         dataset: meas
     moments_psf_debiased_uu:
-        functor: MomentsIxxSky
+        functor: MomentsIuuSky
         args:
             - ext_shapeHSM_HsmPsfMomentsDebiased_xx
             - ext_shapeHSM_HsmPsfMomentsDebiased_yy
@@ -405,7 +405,7 @@ funcs:
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
     moments_psf_debiased_vv:
-        functor: MomentsIyySky
+        functor: MomentsIvvSky
         args:
             - ext_shapeHSM_HsmPsfMomentsDebiased_xx
             - ext_shapeHSM_HsmPsfMomentsDebiased_yy
@@ -415,7 +415,7 @@ funcs:
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
     moments_psf_debiased_uv:
-        functor: MomentsIxySky
+        functor: MomentsIuvSky
         args:
             - ext_shapeHSM_HsmPsfMomentsDebiased_xx
             - ext_shapeHSM_HsmPsfMomentsDebiased_yy
