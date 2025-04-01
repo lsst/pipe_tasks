@@ -1161,13 +1161,13 @@ class GenerateHipsTask(pipeBase.PipelineTask):
 
                     # Fill the correct subregion.
                     if sub_index == 0:
-                        exp.image.array[npix // 2 :, 0 : npix // 2] = binned_image_arr
+                        exp.image.array[npix // 2 :, 0 : npix // 2] = binned_image_arr  # noqa: E203
                     elif sub_index == 1:
-                        exp.image.array[0 : npix // 2, 0 : npix // 2] = binned_image_arr
+                        exp.image.array[0 : npix // 2, 0 : npix // 2] = binned_image_arr  # noqa: E203
                     elif sub_index == 2:
-                        exp.image.array[npix // 2 :, npix // 2 :] = binned_image_arr
+                        exp.image.array[npix // 2 :, npix // 2 :] = binned_image_arr  # noqa: E203
                     elif sub_index == 3:
-                        exp.image.array[0 : npix // 2, npix // 2 :] = binned_image_arr
+                        exp.image.array[0 : npix // 2, npix // 2 :] = binned_image_arr  # noqa: E203
                     else:
                         # This should be impossible.
                         raise ValueError("Illegal pixel sub index")
@@ -1850,8 +1850,8 @@ class GenerateColorHipsTask(GenerateHipsTask):
                 for band_name in config_bands:
                     if band_name not in data_bands:
                         self.log.warning(
-                            f"Data band {band_name} is specified in the RGB config but there is no input data for "
-                            "that band."
+                            f"Data band {band_name} is specified in the RGB config but there is no input "
+                            "data for that band."
                         )
 
                 return config_bands
