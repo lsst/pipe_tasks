@@ -1756,7 +1756,7 @@ class GenerateColorHipsConfig(GenerateHipsConfig, pipelineConnections=GenerateCo
             "lupton": "Use the lupton algorithm for RGB images",
             "lsstRGB": "Use new style lsstRGB color algorithm for RGB images",
         },
-        default="lsstRGB",
+        default="lupton",
     )
 
     def setDefaults(self):
