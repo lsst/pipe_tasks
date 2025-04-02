@@ -394,6 +394,40 @@ funcs:
         functor: Column
         args: slot_PsfShape_flag
         dataset: meas
+    moments_round_uu:
+        functor: MomentsIuuSky
+        args:
+            - slot_ShapeRound_xx
+            - slot_ShapeRound_yy
+            - slot_ShapeRound_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_round_vv:
+        functor: MomentsIvvSky
+        args:
+            - slot_ShapeRound_xx
+            - slot_ShapeRound_yy
+            - slot_ShapeRound_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_round_uv:
+        functor: MomentsIuvSky
+        args:
+            - slot_ShapeRound_xx
+            - slot_ShapeRound_yy
+            - slot_ShapeRound_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_round_flag:
+        functor: Column
+        args: slot_ShapeRound_flag
+        dataset: meas
     moments_psf_debiased_uu:
         functor: MomentsIuuSky
         args:
