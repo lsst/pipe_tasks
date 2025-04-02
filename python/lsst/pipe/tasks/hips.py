@@ -877,15 +877,15 @@ class GenerateHipsConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Genera
             " be put into their own quanta, and can be run in parallel. The "
             "trade off is the highest order must be run alone by setting "
             "min_order to be the the same as the healpix dimension. This will "
-            "skip writing all sky info, which must be done in another"
-            " invocation of this task."
+            "skip writing all sky info, which must be done in another "
+            "invocation of this task."
         ),
         default=False,
     )
     skip_highest_image = pexConfig.Field[bool](
         doc=(
-            "This option should be used if in another task instance"
-            "parallel_highest_order was set to True. This option will skip"
+            "This option should be used if in another task instance "
+            "parallel_highest_order was set to True. This option will skip "
             "making and writing png for the highest order."
         ),
         default=False,
