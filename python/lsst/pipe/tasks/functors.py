@@ -2018,6 +2018,42 @@ class MomentsBase(Functor):
             self.colCD_2_1,
             self.colCD_2_2]
 
+    # Each of sky_uu, sky_vv, sky_uv evalutes one element of
+    # CD_matrix * moments_matrix * CD_matrix.T
+    def sky_uu(self, df):
+        """Return the component of the moments tensor aligned with the RA axis, in radians."""
+        i_xx = df[self.shape_xx]
+        i_yy = df[self.shape_yy]
+        i_xy = df[self.shape_xy]
+        CD_1_1 = df[self.colCD_1_1]
+        CD_1_2 = df[self.colCD_1_2]
+        CD_2_1 = df[self.colCD_2_1]
+        return (CD_1_1*(i_xx*CD_1_1 + i_xy*CD_2_1)
+                + CD_1_2*(i_xy*CD_1_1 + i_yy*CD_2_1))
+
+    def sky_vv(self, df):
+        """Return the component of the moments tensor aligned with the dec axis, in radians."""
+        i_xx = df[self.shape_xx]
+        i_yy = df[self.shape_yy]
+        i_xy = df[self.shape_xy]
+        CD_1_2 = df[self.colCD_1_2]
+        CD_2_1 = df[self.colCD_2_1]
+        CD_2_2 = df[self.colCD_2_2]
+        return (CD_2_1*(i_xx*CD_1_2 + i_xy*CD_2_2)
+                + CD_2_2*(i_xy*CD_1_2 + i_yy*CD_2_2))
+
+    def sky_uv(self, df):
+        """Return the covariance of the moments tensor in ra, dec coordinates, in radians."""
+        i_xx = df[self.shape_xx]
+        i_yy = df[self.shape_yy]
+        i_xy = df[self.shape_xy]
+        CD_1_1 = df[self.colCD_1_1]
+        CD_1_2 = df[self.colCD_1_2]
+        CD_2_1 = df[self.colCD_2_1]
+        CD_2_2 = df[self.colCD_2_2]
+        return ((CD_1_1 * i_xx + CD_1_2 * i_xy) * CD_2_1
+                + (CD_1_1 * i_xy + CD_1_2 * i_yy) * CD_2_2)
+
 
 class MomentsIuuSky(MomentsBase):
     """Rotate pixel moments Ixx,Iyy,Iyy into ra,dec frame and arcseconds"""
@@ -2026,18 +2062,9 @@ class MomentsIuuSky(MomentsBase):
     shortname = "moments_uu"
 
     def _func(self, df):
-        i_xx = df[self.shape_xx]
-        i_yy = df[self.shape_yy]
-        i_xy = df[self.shape_xy]
-        localWCS_CD_1_1 = df[self.colCD_1_1]
-        localWCS_CD_1_2 = df[self.colCD_1_2]
-        localWCS_CD_2_1 = df[self.colCD_2_1]
+        sky_uu_radians = self.sky_uu(df)
 
-        # Evaluate one element of CD_matrix * moments_matrix * CD_matrix.T
-        sky_uu = (localWCS_CD_1_1*(i_xx*localWCS_CD_1_1 + i_xy*localWCS_CD_2_1)
-                  + localWCS_CD_1_2*(i_xy*localWCS_CD_1_1 + i_yy*localWCS_CD_2_1))
-
-        return pd.Series(sky_uu*(180/np.pi*3600)**2, index=df.index).astype('float32')
+        return pd.Series(sky_uu_radians*((180/np.pi)*3600)**2, index=df.index).astype('float32')
 
 
 class MomentsIvvSky(MomentsBase):
@@ -2047,18 +2074,9 @@ class MomentsIvvSky(MomentsBase):
     shortname = "moments_vv"
 
     def _func(self, df):
-        i_xx = df[self.shape_xx]
-        i_yy = df[self.shape_yy]
-        i_xy = df[self.shape_xy]
-        localWCS_CD_1_2 = df[self.colCD_1_2]
-        localWCS_CD_2_1 = df[self.colCD_2_1]
-        localWCS_CD_2_2 = df[self.colCD_2_2]
+        sky_vv_radians = self.sky_vv(df)
 
-        # Evaluate one element of CD_matrix * moments_matrix * CD_matrix.T
-        sky_vv = (localWCS_CD_2_1*(i_xx*localWCS_CD_1_2 + i_xy*localWCS_CD_2_2)
-                  + localWCS_CD_2_2*(i_xy*localWCS_CD_1_2 + i_yy*localWCS_CD_2_2))
-
-        return pd.Series(sky_vv*(180/np.pi*3600)**2, index=df.index).astype('float32')
+        return pd.Series(sky_vv_radians*((180/np.pi)*3600)**2, index=df.index).astype('float32')
 
 
 class MomentsIuvSky(MomentsBase):
@@ -2068,19 +2086,9 @@ class MomentsIuvSky(MomentsBase):
     shortname = "moments_uv"
 
     def _func(self, df):
-        i_xx = df[self.shape_xx]
-        i_yy = df[self.shape_yy]
-        i_xy = df[self.shape_xy]
-        localWCS_CD_1_1 = df[self.colCD_1_1]
-        localWCS_CD_1_2 = df[self.colCD_1_2]
-        localWCS_CD_2_1 = df[self.colCD_2_1]
-        localWCS_CD_2_2 = df[self.colCD_2_2]
+        sky_uv_radians = self.sky_uv(df)
 
-        # Evaluate one element of CD_matrix * moments_matrix * CD_matrix.T
-        sky_uv = ((localWCS_CD_1_1 * i_xx + localWCS_CD_1_2 * i_xy) * localWCS_CD_2_1
-                  + (localWCS_CD_1_1 * i_xy + localWCS_CD_1_2 * i_yy) * localWCS_CD_2_2)
-
-        return pd.Series(sky_uv*(180/np.pi*3600)**2, index=df.index).astype('float32')
+        return pd.Series(sky_uv_radians*((180/np.pi)*3600)**2, index=df.index).astype('float32')
 
 
 class PositionAngleFromMoments(MomentsBase):
@@ -2090,21 +2098,10 @@ class PositionAngleFromMoments(MomentsBase):
     shortname = "moments_theta"
 
     def _func(self, df):
-        i_xx = df[self.shape_xx]
-        i_yy = df[self.shape_yy]
-        i_xy = df[self.shape_xy]
-        localWCS_CD_1_1 = df[self.colCD_1_1]
-        localWCS_CD_1_2 = df[self.colCD_1_2]
-        localWCS_CD_2_1 = df[self.colCD_2_1]
-        localWCS_CD_2_2 = df[self.colCD_2_2]
 
-        sky_uu = (localWCS_CD_1_1*(i_xx*localWCS_CD_1_1 + i_xy*localWCS_CD_2_1)
-                  + localWCS_CD_1_2*(i_xy*localWCS_CD_1_1 + i_yy*localWCS_CD_2_1))
-        sky_vv = (localWCS_CD_2_1*(i_xx*localWCS_CD_1_2 + i_xy*localWCS_CD_2_2)
-                  + localWCS_CD_2_2*(i_xy*localWCS_CD_1_2 + i_yy*localWCS_CD_2_2))
-        sky_uv = ((localWCS_CD_1_1 * i_xx + localWCS_CD_1_2 * i_xy) * localWCS_CD_2_1
-                  + (localWCS_CD_1_1 * i_xy + localWCS_CD_1_2 * i_yy) * localWCS_CD_2_2)
-
+        sky_uu = self.sky_uu(df)
+        sky_vv = self.sky_vv(df)
+        sky_uv = self.sky_uv(df)
         theta = 0.5*np.arctan2(2*sky_uv, sky_uu - sky_vv)
 
         return pd.Series(np.degrees(np.array(theta)), index=df.index).astype('float32')
@@ -2117,24 +2114,18 @@ class SemimajorAxisFromMoments(MomentsBase):
     shortname = "moments_a"
 
     def _func(self, df):
-        i_xx = df[self.shape_xx]
-        i_yy = df[self.shape_yy]
-        i_xy = df[self.shape_xy]
+
+        sky_uu = self.sky_uu(df)
+        sky_vv = self.sky_vv(df)
+        sky_uv = self.sky_uv(df)
 
         # This copies what is done (unvectorized) in afw.geom.
-        xx_p_yy = i_xx + i_yy
-        xx_m_yy = i_xx - i_yy
-        t = np.sqrt(xx_m_yy * xx_m_yy + 4 * i_xy * i_xy)
-        a_pixels = np.sqrt(0.5 * (xx_p_yy + t))
+        xx_p_yy = sky_uu + sky_vv
+        xx_m_yy = sky_uu - sky_vv
+        t = np.sqrt(xx_m_yy * xx_m_yy + 4 * sky_uv * sky_uv)
+        a_radians = np.sqrt(0.5 * (xx_p_yy + t))
 
-        computePixelScale = ComputePixelScale(self.colCD_1_1,
-                                              self.colCD_1_2,
-                                              self.colCD_2_1,
-                                              self.colCD_2_2)
-
-        pixel_scale = computePixelScale(df)
-
-        return pd.Series(a_pixels * pixel_scale, index=df.index).astype('float32')
+        return pd.Series(np.degrees(a_radians)*3600, index=df.index).astype('float32')
 
 
 class SemiminorAxisFromMoments(MomentsBase):
@@ -2144,21 +2135,15 @@ class SemiminorAxisFromMoments(MomentsBase):
     shortname = "moments_b"
 
     def _func(self, df):
-        i_xx = df[self.shape_xx]
-        i_yy = df[self.shape_yy]
-        i_xy = df[self.shape_xy]
+
+        sky_uu = self.sky_uu(df)
+        sky_vv = self.sky_vv(df)
+        sky_uv = self.sky_uv(df)
 
         # This copies what is done (unvectorized) in afw.geom.
-        xx_p_yy = i_xx + i_yy
-        xx_m_yy = i_xx - i_yy
-        t = np.sqrt(xx_m_yy * xx_m_yy + 4 * i_xy * i_xy)
-        b_pixels = np.sqrt(0.5 * (xx_p_yy - t))
+        xx_p_yy = sky_uu + sky_vv
+        xx_m_yy = sky_uu - sky_vv
+        t = np.sqrt(xx_m_yy * xx_m_yy + 4 * sky_uv * sky_uv)
+        b_radians = np.sqrt(0.5 * (xx_p_yy - t))
 
-        computePixelScale = ComputePixelScale(self.colCD_1_1,
-                                              self.colCD_1_2,
-                                              self.colCD_2_1,
-                                              self.colCD_2_2)
-
-        pixel_scale = computePixelScale(df)
-
-        return pd.Series(b_pixels * pixel_scale, index=df.index).astype('float32')
+        return pd.Series(np.degrees(b_radians)*3600, index=df.index).astype('float32')
