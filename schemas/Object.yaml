@@ -737,37 +737,37 @@ funcs:
         args: rho
         dataset: Sersic_multiprofit
     g_sersicFlux:
-        functor: MultibandColumn
+        functor: MultibandSinglePrecisionFloatColumn
         args:
             - g_Flux
             - g
         dataset: Sersic_multiprofit
     i_sersicFlux:
-        functor: MultibandColumn
+        functor: MultibandSinglePrecisionFloatColumn
         args:
             - i_Flux
             - i
         dataset: Sersic_multiprofit
     r_sersicFlux:
-        functor: MultibandColumn
+        functor: MultibandSinglePrecisionFloatColumn
         args:
             - r_Flux
             - r
         dataset: Sersic_multiprofit
     u_sersicFlux:
-        functor: MultibandColumn
+        functor: MultibandSinglePrecisionFloatColumn
         args:
             - u_Flux
             - u
         dataset: Sersic_multiprofit
     y_sersicFlux:
-        functor: MultibandColumn
+        functor: MultibandSinglePrecisionFloatColumn
         args:
             - y_Flux
             - y
         dataset: Sersic_multiprofit
     z_sersicFlux:
-        functor: MultibandColumn
+        functor: MultibandSinglePrecisionFloatColumn
         args:
             - z_Flux
             - z
@@ -805,37 +805,37 @@ funcs:
         args: rhoErr
         dataset: Sersic_multiprofit
     g_sersicFluxErr:
-        functor: MultibandColumn
+        functor: MultibandSinglePrecisionFloatColumn
         args:
             - g_FluxErr
             - g
         dataset: Sersic_multiprofit
     i_sersicFluxErr:
-        functor: MultibandColumn
+        functor: MultibandSinglePrecisionFloatColumn
         args:
             - i_FluxErr
             - i
         dataset: Sersic_multiprofit
     r_sersicFluxErr:
-        functor: MultibandColumn
+        functor: MultibandSinglePrecisionFloatColumn
         args:
             - r_FluxErr
             - r
         dataset: Sersic_multiprofit
     u_sersicFluxErr:
-        functor: MultibandColumn
+        functor: MultibandSinglePrecisionFloatColumn
         args:
             - u_FluxErr
             - u
         dataset: Sersic_multiprofit
     y_sersicFluxErr:
-        functor: MultibandColumn
+        functor: MultibandSinglePrecisionFloatColumn
         args:
             - y_FluxErr
             - y
         dataset: Sersic_multiprofit
     z_sersicFluxErr:
-        functor: MultibandColumn
+        functor: MultibandSinglePrecisionFloatColumn
         args:
             - z_FluxErr
             - z
@@ -876,6 +876,42 @@ funcs:
         functor: SinglePrecisionFloatColumn
         args: slot_Shape_xy
         dataset: ref
+    g_epoch:
+        functor: MultibandColumn
+        args:
+            - g_epoch
+            - g
+        dataset: epoch
+    i_epoch:
+        functor: MultibandColumn
+        args:
+            - i_epoch
+            - i
+        dataset: epoch
+    r_epoch:
+        functor: MultibandColumn
+        args:
+            - r_epoch
+            - r
+        dataset: epoch
+    u_epoch:
+        functor: MultibandColumn
+        args:
+            - u_epoch
+            - u
+        dataset: epoch
+    y_epoch:
+        functor: MultibandColumn
+        args:
+            - y_epoch
+            - y
+        dataset: epoch
+    z_epoch:
+        functor: MultibandColumn
+        args:
+            - z_epoch
+            - z
+        dataset: epoch
     # DM-22247: Add Star/Galaxy sep columns
     #     - Morphological Star Galaxy Classifier (Names? float 0-1)]
     #     - Morphological + Color (SED-based) Star Galaxy Classifier (Names? float 0-1)]
