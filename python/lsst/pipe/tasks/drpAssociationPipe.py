@@ -318,6 +318,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             nSsSrc, nSsObj = 0, 0
             if ssSourceHistory:
                 ssSourceHistoryCat = tb.vstack(ssSourceHistory)
+                ssSourceHistoryCat.remove_columns(['ra', 'dec'])
                 nSsSrc = len(ssSourceHistoryCat)
             else:
                 ssSourceHistoryCat = associatedSsSources  # Empty table?
