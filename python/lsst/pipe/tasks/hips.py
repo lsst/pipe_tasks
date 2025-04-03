@@ -21,21 +21,13 @@
 
 """Tasks for making and manipulating HIPS images."""
 
-__all__ = [
-    "HighResolutionHipsTask",
-    "HighResolutionHipsConfig",
-    "HighResolutionHipsConnections",
-    "HighResolutionHipsQuantumGraphBuilder",
-    "GenerateHipsTask",
-    "GenerateHipsConfig",
-    "GenerateColorHipsTask",
-    "GenerateColorHipsConfig",
-]
+__all__ = ["HighResolutionHipsTask", "HighResolutionHipsConfig", "HighResolutionHipsConnections",
+           "HighResolutionHipsQuantumGraphBuilder",
+           "GenerateHipsTask", "GenerateHipsConfig", "GenerateColorHipsTask", "GenerateColorHipsConfig"]
 
 from collections import defaultdict
 import numpy as np
 import argparse
-import colour
 import io
 import sys
 import re
@@ -45,7 +37,6 @@ from datetime import datetime
 import hpgeom as hpg
 import healsparse as hsp
 from astropy.io import fits
-
 try:
     from astropy.visualization.lupton_rgb import AsinhMapping
 except ImportError:
@@ -68,12 +59,11 @@ from lsst.afw.geom import makeHpxWcs
 from lsst.resources import ResourcePath
 
 from .healSparseMapping import _is_power_of_two
-from .prettyPictureMaker import PrettyPictureTask, PrettyPictureConfig
 
 
-class HighResolutionHipsConnections(
-    pipeBase.PipelineTaskConnections, dimensions=("healpix9", "band"), defaultTemplates={"coaddName": "deep"}
-):
+class HighResolutionHipsConnections(pipeBase.PipelineTaskConnections,
+                                    dimensions=("healpix9", "band"),
+                                    defaultTemplates={"coaddName": "deep"}):
     coadd_exposure_handles = pipeBase.connectionTypes.Input(
         doc="Coadded exposures to convert to HIPS format.",
         name="{coaddName}Coadd_calexp",
@@ -118,9 +108,8 @@ class HighResolutionHipsConnections(
             raise ValueError("healpix dimension order must match config.hips_order.")
 
 
-class HighResolutionHipsConfig(
-    pipeBase.PipelineTaskConfig, pipelineConnections=HighResolutionHipsConnections
-):
+class HighResolutionHipsConfig(pipeBase.PipelineTaskConfig,
+                               pipelineConnections=HighResolutionHipsConnections):
     """Configuration parameters for HighResolutionHipsTask.
 
     Notes
@@ -155,7 +144,6 @@ class HighResolutionHipsConfig(
     | 13         | 805306368       | 25.77 arcsec | 50.32mas         |
     +------------+-----------------+--------------+------------------+
     """
-
     hips_order = pexConfig.Field(
         doc="HIPS image order.",
         dtype=int,
@@ -185,7 +173,6 @@ class HipsTaskNameDescriptor:
         The prefix of the Default name, to which the order will be
         appended.
     """
-
     def __init__(self, prefix):
         # create a defaultName template
         self._defaultName = f"{prefix}{{}}"
@@ -193,7 +180,9 @@ class HipsTaskNameDescriptor:
 
     def __get__(self, obj, klass=None):
         if klass is None:
-            raise RuntimeError("HipsTaskDescriptor was used in an unexpected context")
+            raise RuntimeError(
+                "HipsTaskDescriptor was used in an unexpected context"
+            )
         if self._order is None:
             klassDimensions = klass.ConfigClass.ConnectionsClass.dimensions
             for dim in klassDimensions:
@@ -201,13 +190,14 @@ class HipsTaskNameDescriptor:
                     self._order = int(match.group(1))
                     break
             else:
-                raise RuntimeError("Could not find healpix dimension in connections class")
+                raise RuntimeError(
+                    "Could not find healpix dimension in connections class"
+                )
         return self._defaultName.format(self._order)
 
 
 class HighResolutionHipsTask(pipeBase.PipelineTask):
     """Task for making high resolution HiPS images."""
-
     ConfigClass = HighResolutionHipsConfig
     _DefaultName = HipsTaskNameDescriptor("highResolutionHips")
 
@@ -221,14 +211,13 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
 
         healpix_dim = f"healpix{self.config.hips_order}"
 
-        pixels = [hips_exposure.dataId[healpix_dim] for hips_exposure in outputRefs.hips_exposures]
+        pixels = [hips_exposure.dataId[healpix_dim]
+                  for hips_exposure in outputRefs.hips_exposures]
 
         outputs = self.run(pixels=pixels, coadd_exposure_handles=inputs["coadd_exposure_handles"])
 
-        hips_exposure_ref_dict = {
-            hips_exposure_ref.dataId[healpix_dim]: hips_exposure_ref
-            for hips_exposure_ref in outputRefs.hips_exposures
-        }
+        hips_exposure_ref_dict = {hips_exposure_ref.dataId[healpix_dim]:
+                                  hips_exposure_ref for hips_exposure_ref in outputRefs.hips_exposures}
         for pixel, hips_exposure in outputs.hips_exposures.items():
             butlerQC.put(hips_exposure, hips_exposure_ref_dict[pixel])
 
@@ -250,7 +239,8 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
         self.log.info("Generating HPX images for %d pixels at order %d", len(pixels), self.config.hips_order)
 
         npix = 2**self.config.shift_order
-        bbox_hpx = geom.Box2I(corner=geom.Point2I(0, 0), dimensions=geom.Extent2I(npix, npix))
+        bbox_hpx = geom.Box2I(corner=geom.Point2I(0, 0),
+                              dimensions=geom.Extent2I(npix, npix))
 
         # For each healpix pixel we will create an empty exposure with the
         # correct HPX WCS. We furthermore create a dict to hold each of
@@ -286,7 +276,9 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
                 if warped.getBBox().getArea() == 0 or not np.any(np.isfinite(warped.image.array)):
                     # There is no overlap, skip.
                     self.log.debug(
-                        "No overlap between output HPX %d and input exposure %s", pixel, handle.dataId
+                        "No overlap between output HPX %d and input exposure %s",
+                        pixel,
+                        handle.dataId
                     )
                     continue
 
@@ -319,9 +311,9 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
                 warp_dict[pixel],
                 stats_flags,
                 stats_ctrl,
-                [1.0] * len(warp_dict[pixel]),
+                [1.0]*len(warp_dict[pixel]),
                 clipped=0,
-                maskMap=[],
+                maskMap=[]
             )
 
         return pipeBase.Struct(hips_exposures=exp_hpx_dict)
@@ -415,12 +407,16 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
         parser : `argparse.ArgumentParser`
         """
         parser = argparse.ArgumentParser(
-            description=("Build a QuantumGraph that runs HighResolutionHipsTask on existing coadd datasets."),
+            description=(
+                "Build a QuantumGraph that runs HighResolutionHipsTask on existing coadd datasets."
+            ),
         )
         subparsers = parser.add_subparsers(help="sub-command help", dest="subparser_name")
 
-        parser_segment = subparsers.add_parser("segment", help="Determine survey segments for workflow.")
-        parser_build = subparsers.add_parser("build", help="Build quantum graph for HighResolutionHipsTask")
+        parser_segment = subparsers.add_parser("segment",
+                                               help="Determine survey segments for workflow.")
+        parser_build = subparsers.add_parser("build",
+                                             help="Build quantum graph for HighResolutionHipsTask")
 
         for sub in [parser_segment, parser_build]:
             # These arguments are in common.
@@ -568,11 +564,12 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
         (output_edge,) = task_node.outputs.values()
         output_dataset_type_node = subgraph.dataset_types[output_edge.parent_dataset_type_name]
         (hpx_output_dimension,) = (
-            self.butler.dimensions.skypix_dimensions[d] for d in output_dataset_type_node.dimensions.skypix
+            self.butler.dimensions.skypix_dimensions[d]
+            for d in output_dataset_type_node.dimensions.skypix
         )
-        constraint_hpx_pixelization = self.butler.dimensions.skypix_dimensions[
-            f"healpix{self.constraint_order}"
-        ].pixelization
+        constraint_hpx_pixelization = (
+            self.butler.dimensions.skypix_dimensions[f"healpix{self.constraint_order}"].pixelization
+        )
         common_skypix_pixelization = self.butler.dimensions.commonSkyPix.pixelization
 
         # We will need all the pixels at the quantum resolution as well.
@@ -584,7 +581,7 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
         hpx_pixelization = hpx_dimension.pixelization
         if hpx_pixelization.level < self.constraint_order:
             raise ValueError(f"Quantum order {hpx_pixelization.level} must be < {self.constraint_order}")
-        hpx_ranges = self.constraint_ranges.scaled(4 ** (hpx_pixelization.level - self.constraint_order))
+        hpx_ranges = self.constraint_ranges.scaled(4**(hpx_pixelization.level - self.constraint_order))
 
         # We can be generous in looking for pixels here, because we constrain
         # by actual patch regions below.
@@ -619,14 +616,13 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
         # data IDs because we want regions.  Immediately group this by patch so
         # we don't do later geometric stuff n_bands more times than we need to.
         with self.butler.query() as query:
-            input_refs = (
-                query.datasets(input_dataset_type_node.dataset_type, collections=self.input_collections)
-                .where(
-                    where,
-                    self.where,
-                )
-                .with_dimension_records()
-            )
+            input_refs = query.datasets(
+                input_dataset_type_node.dataset_type,
+                collections=self.input_collections
+            ).where(
+                where,
+                self.where,
+            ).with_dimension_records()
             inputs_by_patch = defaultdict(set)
             patch_dimensions = self.butler.dimensions.conform(["patch"])
             skeleton = QuantumGraphSkeleton([task_node.label])
@@ -665,7 +661,7 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
                 # Add the regular outputs.
                 hpx_pixel_ranges = RangeSet(hpx_index)
                 hpx_output_ranges = hpx_pixel_ranges.scaled(
-                    4 ** (task_node.config.hips_order - hpx_pixelization.level)
+                    4**(task_node.config.hips_order - hpx_pixelization.level)
                 )
                 for begin, end in hpx_output_ranges:
                     for hpx_output_index in range(begin, end):
@@ -698,9 +694,9 @@ class HipsPropertiesSpectralTerm(pexConfig.Config):
 
 class HipsPropertiesConfig(pexConfig.Config):
     """Configuration parameters for writing a HiPS properties file."""
-
     creator_did_template = pexConfig.Field(
-        doc=("Unique identifier of the HiPS - Format: IVOID. Use ``{band}`` to substitute the band name."),
+        doc=("Unique identifier of the HiPS - Format: IVOID. "
+             "Use ``{band}`` to substitute the band name."),
         dtype=str,
         optional=False,
     )
@@ -710,11 +706,9 @@ class HipsPropertiesConfig(pexConfig.Config):
         optional=True,
     )
     obs_description_template = pexConfig.Field(
-        doc=(
-            "Data set description - Format: free text, longer free text "
-            "description of the dataset.  Use ``{band}`` to substitute "
-            "the band name."
-        ),
+        doc=("Data set description - Format: free text, longer free text "
+             "description of the dataset.  Use ``{band}`` to substitute "
+             "the band name."),
         dtype=str,
     )
     prov_progenitor = pexConfig.ListField(
@@ -723,10 +717,8 @@ class HipsPropertiesConfig(pexConfig.Config):
         default=[],
     )
     obs_title_template = pexConfig.Field(
-        doc=(
-            "Data set title format: free text, but should be short. "
-            "Use ``{band}`` to substitute the band name."
-        ),
+        doc=("Data set title format: free text, but should be short. "
+             "Use ``{band}`` to substitute the band name."),
         dtype=str,
         optional=False,
     )
@@ -778,36 +770,34 @@ class HipsPropertiesConfig(pexConfig.Config):
         # Values here taken from
         # https://github.com/lsst-dm/dax_obscore/blob/44ac15029136e2ec15/configs/dp02.yaml#L46
         u_term = HipsPropertiesSpectralTerm()
-        u_term.lambda_min = 330.0
-        u_term.lambda_max = 400.0
+        u_term.lambda_min = 330.
+        u_term.lambda_max = 400.
         self.spectral_ranges["u"] = u_term
         g_term = HipsPropertiesSpectralTerm()
-        g_term.lambda_min = 402.0
-        g_term.lambda_max = 552.0
+        g_term.lambda_min = 402.
+        g_term.lambda_max = 552.
         self.spectral_ranges["g"] = g_term
         r_term = HipsPropertiesSpectralTerm()
-        r_term.lambda_min = 552.0
-        r_term.lambda_max = 691.0
+        r_term.lambda_min = 552.
+        r_term.lambda_max = 691.
         self.spectral_ranges["r"] = r_term
         i_term = HipsPropertiesSpectralTerm()
-        i_term.lambda_min = 691.0
-        i_term.lambda_max = 818.0
+        i_term.lambda_min = 691.
+        i_term.lambda_max = 818.
         self.spectral_ranges["i"] = i_term
         z_term = HipsPropertiesSpectralTerm()
-        z_term.lambda_min = 818.0
-        z_term.lambda_max = 922.0
+        z_term.lambda_min = 818.
+        z_term.lambda_max = 922.
         self.spectral_ranges["z"] = z_term
         y_term = HipsPropertiesSpectralTerm()
-        y_term.lambda_min = 970.0
-        y_term.lambda_max = 1060.0
+        y_term.lambda_min = 970.
+        y_term.lambda_max = 1060.
         self.spectral_ranges["y"] = y_term
 
 
-class GenerateHipsConnections(
-    pipeBase.PipelineTaskConnections,
-    dimensions=("instrument", "band"),
-    defaultTemplates={"coaddName": "deep"},
-):
+class GenerateHipsConnections(pipeBase.PipelineTaskConnections,
+                              dimensions=("instrument", "band"),
+                              defaultTemplates={"coaddName": "deep"}):
     hips_exposure_handles = pipeBase.connectionTypes.Input(
         doc="HiPS-compatible HPX images.",
         name="{coaddName}Coadd_hpx",
@@ -817,21 +807,10 @@ class GenerateHipsConnections(
         deferLoad=True,
     )
 
-    def __init__(self, *, config):
-        super().__init__(config=config)
-        if config.parallel_highest_order:
-            healpix_dimensions = self.hips_exposure_handles.dimensions
-            for dim in healpix_dimensions:
-                if "healpix" in dim:
-                    hdim = dim
 
-            current_dimensions = self.dimensions
-            self.dimensions = set((*current_dimensions, hdim))
-
-
-class GenerateHipsConfig(pipeBase.PipelineTaskConfig, pipelineConnections=GenerateHipsConnections):
+class GenerateHipsConfig(pipeBase.PipelineTaskConfig,
+                         pipelineConnections=GenerateHipsConnections):
     """Configuration parameters for GenerateHipsTask."""
-
     # WARNING: In general PipelineTasks are not allowed to do any outputs
     # outside of the butler.  This task has been given (temporary)
     # Special Dispensation because of the nature of HiPS outputs until
@@ -871,56 +850,13 @@ class GenerateHipsConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Genera
         dtype=float,
         default=8.0,
     )
-    parallel_highest_order = pexConfig.Field[bool](
-        doc=(
-            "If this is set to True, each of the highest order hips pixels will"
-            " be put into their own quanta, and can be run in parallel. The "
-            "trade off is the highest order must be run alone by setting "
-            "min_order to be the the same as the healpix dimension. This will "
-            "skip writing all sky info, which must be done in another "
-            "invocation of this task."
-        ),
-        default=False,
-    )
-    skip_highest_image = pexConfig.Field[bool](
-        doc=(
-            "This option should be used if in another task instance "
-            "parallel_highest_order was set to True. This option will skip "
-            "making and writing png for the highest order."
-        ),
-        default=False,
-    )
-    file_extension = pexConfig.ChoiceField[str](
-        doc="Extension for the presisted image, must be png or webp",
-        allowed={"png": "Use the png image extension", "webp": "Use the webp image extension"},
-        default="png",
-    )
-
-    def validate(self):
-        if self.parallel_highest_order:
-            dimensions = self.connections.ConnectionsClass.hips_exposure_handles.dimensions
-            order = -1
-            for dim in dimensions:
-                if "healpix" in dim:
-                    order = int(dim.replace("healpix", ""))
-            if order == -1:
-                raise RuntimeError("Could not determine the healpix dim order")
-            if self.min_order != order:
-                raise ValueError(
-                    "min_order must be the same as healpix order if parallel_highest_order is True"
-                )
-            if self.skip_highest_image:
-                raise ValueError("Skip_highest_image should be False when parallel_highest_order is True")
 
 
 class GenerateHipsTask(pipeBase.PipelineTask):
     """Task for making a HiPS tree with FITS and grayscale PNGs."""
-
     ConfigClass = GenerateHipsConfig
     _DefaultName = "generateHips"
     color_task = False
-
-    config: ConfigClass
 
     @timeMethod
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
@@ -937,16 +873,13 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             raise RuntimeError("Could not determine healpix order for input exposures.")
 
         hips_exposure_handle_dict = {
-            (
-                hips_exposure_handle.dataId[healpix_dim],
-                hips_exposure_handle.dataId["band"],
-            ): hips_exposure_handle
+            (hips_exposure_handle.dataId[healpix_dim],
+             hips_exposure_handle.dataId["band"]): hips_exposure_handle
             for hips_exposure_handle in inputs["hips_exposure_handles"]
         }
 
-        data_bands = {
-            hips_exposure_handle.dataId["band"] for hips_exposure_handle in inputs["hips_exposure_handles"]
-        }
+        data_bands = {hips_exposure_handle.dataId["band"]
+                      for hips_exposure_handle in inputs["hips_exposure_handles"]}
         bands = self._check_data_bands(data_bands)
 
         self.run(
@@ -1003,20 +936,16 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                 Q=self.config.png_gray_asinh_softening,
             )
         else:
-            match self.config.rgbStyle:
-                case "lupton":
-                    png_color_mapping = AsinhMapping(
-                        self.config.png_color_asinh_minimum,
-                        self.config.png_color_asinh_stretch,
-                        Q=self.config.png_color_asinh_softening,
-                    )
+            png_color_mapping = AsinhMapping(
+                self.config.png_color_asinh_minimum,
+                self.config.png_color_asinh_stretch,
+                Q=self.config.png_color_asinh_softening,
+            )
 
-                    bcb = self.config.blue_channel_band
-                    gcb = self.config.green_channel_band
-                    rcb = self.config.red_channel_band
-                    colorstr = f"{bcb}{gcb}{rcb}"
-                case "lsstRGB":
-                    colorstr = "".join(bands)
+            bcb = self.config.blue_channel_band
+            gcb = self.config.green_channel_band
+            rcb = self.config.red_channel_band
+            colorstr = f"{bcb}{gcb}{rcb}"
 
         # The base path is based on the hips_base_uri.
         hips_base_path = ResourcePath(self.config.hips_base_uri, forceDirectory=True)
@@ -1076,55 +1005,27 @@ class GenerateHipsTask(pipeBase.PipelineTask):
 
                 # We can now write out the images for each band.
                 # Note this will always trigger at the max order where each pixel is unique.
-                if self.config.skip_highest_image and order == max_order:
-                    do_write_image = False
-                else:
-                    do_write_image = True
-
-                if do_write_image:
-                    if not do_color:
-                        for band in bands:
-                            self._write_hips_image(
-                                hips_base_path.join(f"band_{band}", forceDirectory=True),
-                                order,
-                                pixels_shifted[order][pixel_counter],
-                                exposures[(band, order)].image,
-                                png_grayscale_mapping,
-                                shift_order=shift_order,
-                            )
-                    else:
-                        # Make a color png.
-                        lupton_args = {}
-                        lsstRGB_args = {}
-                        match self.config.rgbStyle:
-                            case "lupton":
-                                lupton_args["image_red"] = exposures[
-                                    (self.config.red_channel_band, order)
-                                ].image
-                                lupton_args["image_green"] = exposures[
-                                    (self.config.green_channel_band, order)
-                                ].image
-
-                                lupton_args["image_blue"] = exposures[
-                                    (self.config.blue_channel_band, order)
-                                ].image
-
-                                lupton_args["png_mapping"] = png_color_mapping
-                            case "lsstRGB":
-                                band_mapping = {}
-                                for band in bands:
-                                    key = (band, order)
-                                    if (value := exposures.get(key)) is not None:
-                                        band_mapping[band] = value
-                                lsstRGB_args["band_mapping"] = band_mapping
-
-                        self._write_hips_color_png(
-                            hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
+                if not do_color:
+                    for band in bands:
+                        self._write_hips_image(
+                            hips_base_path.join(f"band_{band}", forceDirectory=True),
                             order,
                             pixels_shifted[order][pixel_counter],
-                            lupton_args,
-                            lsstRGB_args,
+                            exposures[(band, order)].image,
+                            png_grayscale_mapping,
+                            shift_order=shift_order,
                         )
+                else:
+                    # Make a color png.
+                    self._write_hips_color_png(
+                        hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
+                        order,
+                        pixels_shifted[order][pixel_counter],
+                        exposures[(self.config.red_channel_band, order)].image,
+                        exposures[(self.config.green_channel_band, order)].image,
+                        exposures[(self.config.blue_channel_band, order)].image,
+                        png_color_mapping,
+                    )
 
                 log_level = self.log.INFO if order == (max_order - 3) else self.log.DEBUG
                 self.log.log(
@@ -1145,29 +1046,28 @@ class GenerateHipsTask(pipeBase.PipelineTask):
 
                 # Now average the images for each band.
                 for band in bands:
-                    arr = exposures[(band, order)].image.array.reshape(npix // 2, 2, npix // 2, 2)
+                    arr = exposures[(band, order)].image.array.reshape(npix//2, 2, npix//2, 2)
                     with warnings.catch_warnings():
                         warnings.simplefilter("ignore")
                         binned_image_arr = np.nanmean(arr, axis=(1, 3))
 
                     # Fill the next level up.  We figure out which of the four
                     # sub-pixels the current pixel occupies.
-                    sub_index = pixels_shifted[order][pixel_counter] - np.left_shift(
-                        pixels_shifted[order - 1][pixel_counter], 2
-                    )
+                    sub_index = (pixels_shifted[order][pixel_counter]
+                                 - np.left_shift(pixels_shifted[order - 1][pixel_counter], 2))
 
                     # Fill exposure at the next level up.
                     exp = exposures[(band, order - 1)]
 
                     # Fill the correct subregion.
                     if sub_index == 0:
-                        exp.image.array[npix // 2 :, 0 : npix // 2] = binned_image_arr  # noqa: E203
+                        exp.image.array[npix//2:, 0: npix//2] = binned_image_arr
                     elif sub_index == 1:
-                        exp.image.array[0 : npix // 2, 0 : npix // 2] = binned_image_arr  # noqa: E203
+                        exp.image.array[0: npix//2, 0: npix//2] = binned_image_arr
                     elif sub_index == 2:
-                        exp.image.array[npix // 2 :, npix // 2 :] = binned_image_arr  # noqa: E203
+                        exp.image.array[npix//2:, npix//2:] = binned_image_arr
                     elif sub_index == 3:
-                        exp.image.array[0 : npix // 2, npix // 2 :] = binned_image_arr  # noqa: E203
+                        exp.image.array[0: npix//2, npix//2:] = binned_image_arr
                     else:
                         # This should be impossible.
                         raise ValueError("Illegal pixel sub index")
@@ -1176,42 +1076,41 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                     if order < max_order:
                         exposures[(band, order)].image.array[:, :] = np.nan
 
-        if not self.config.parallel_highest_order:
-            # Write the properties files and MOCs.
-            if not do_color:
-                for band in bands:
-                    band_pixels = np.array(
-                        [pixel for pixel, band_ in hips_exposure_handle_dict.keys() if band_ == band]
-                    )
-                    band_pixels = np.sort(band_pixels)
+        # Write the properties files and MOCs.
+        if not do_color:
+            for band in bands:
+                band_pixels = np.array([pixel
+                                        for pixel, band_ in hips_exposure_handle_dict.keys()
+                                        if band_ == band])
+                band_pixels = np.sort(band_pixels)
 
-                    self._write_properties_and_moc(
-                        hips_base_path.join(f"band_{band}", forceDirectory=True),
-                        max_order,
-                        band_pixels,
-                        exp0,
-                        shift_order,
-                        band,
-                        False,
-                    )
-                    self._write_allsky_file(
-                        hips_base_path.join(f"band_{band}", forceDirectory=True),
-                        min_order,
-                    )
-            else:
                 self._write_properties_and_moc(
-                    hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
+                    hips_base_path.join(f"band_{band}", forceDirectory=True),
                     max_order,
-                    pixels[:-1],
+                    band_pixels,
                     exp0,
                     shift_order,
-                    colorstr,
-                    True,
+                    band,
+                    False,
                 )
                 self._write_allsky_file(
-                    hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
+                    hips_base_path.join(f"band_{band}", forceDirectory=True),
                     min_order,
                 )
+        else:
+            self._write_properties_and_moc(
+                hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
+                max_order,
+                pixels[:-1],
+                exp0,
+                shift_order,
+                colorstr,
+                True,
+            )
+            self._write_allsky_file(
+                hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
+                min_order,
+            )
 
     def _write_hips_image(self, hips_base_path, order, pixel, image, png_mapping, shift_order=9):
         """Write a HiPS image.
@@ -1237,8 +1136,12 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         # a more controlled solution can be found.
 
         dir_number = self._get_dir_number(pixel)
-        hips_dir = hips_base_path.join(f"Norder{order}", forceDirectory=True).join(
-            f"Dir{dir_number}", forceDirectory=True
+        hips_dir = hips_base_path.join(
+            f"Norder{order}",
+            forceDirectory=True
+        ).join(
+            f"Dir{dir_number}",
+            forceDirectory=True
         )
 
         wcs = makeHpxWcs(order, pixel, shift_order=shift_order)
@@ -1258,14 +1161,23 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         vals[~np.isfinite(image.array) | (image.array < 0)] = 0
         im = Image.fromarray(vals[::-1, :], "L")
 
-        uri = hips_dir.join(f"Npix{pixel}.{self.config.file_extension}")
+        uri = hips_dir.join(f"Npix{pixel}.png")
 
         with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
             im.save(temporary_uri.ospath)
 
             uri.transfer_from(temporary_uri, transfer="copy", overwrite=True)
 
-    def _write_hips_color_png(self, hips_base_path, order, pixel, lupton_args, lsstRGB_args):
+    def _write_hips_color_png(
+            self,
+            hips_base_path,
+            order,
+            pixel,
+            image_red,
+            image_green,
+            image_blue,
+            png_mapping,
+    ):
         """Write a color png HiPS image.
 
         Parameters
@@ -1276,10 +1188,14 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             HEALPix order of the HiPS image to write.
         pixel : `int`
             HEALPix pixel of the HiPS image.
-        lupton_args : `dict`
-            A mapping of parameters used when building lupton color images.
-        lsstRGB_args : `dict`
-            A mapping of parameters used when building lsstRGB color images.
+        image_red : `lsst.afw.image.Image`
+            Input for red channel of output png.
+        image_green : `lsst.afw.image.Image`
+            Input for green channel of output png.
+        image_blue : `lsst.afw.image.Image`
+            Input for blue channel of output png.
+        png_mapping : `astropy.visualization.lupton_rgb.AsinhMapping`
+            Mapping to convert image to scaled png.
         """
         # WARNING: In general PipelineTasks are not allowed to do any outputs
         # outside of the butler.  This task has been given (temporary)
@@ -1287,41 +1203,42 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         # a more controlled solution can be found.
 
         dir_number = self._get_dir_number(pixel)
-        hips_dir = hips_base_path.join(f"Norder{order}", forceDirectory=True).join(
-            f"Dir{dir_number}", forceDirectory=True
+        hips_dir = hips_base_path.join(
+            f"Norder{order}",
+            forceDirectory=True
+        ).join(
+            f"Dir{dir_number}",
+            forceDirectory=True
         )
-        match self.config.rgbStyle:
-            case "lupton":
-                # We need to convert nans to the minimum values in the mapping.
-                png_mapping = lupton_args["png_mapping"]
-                arr_red = lupton_args["image_red"].array.copy()
-                arr_red[np.isnan(arr_red)] = png_mapping.minimum[0]
-                arr_green = lupton_args["image_green"].array.copy()
-                arr_green[np.isnan(arr_green)] = png_mapping.minimum[1]
-                arr_blue = lupton_args["image_blue"].array.copy()
-                arr_blue[np.isnan(arr_blue)] = png_mapping.minimum[2]
 
-                image_array = png_mapping.make_rgb_image(arr_red, arr_green, arr_blue)
-            case "lsstRGB":
-                image_array = self.rgbGenerator.run(lsstRGB_args["band_mapping"]).outputRGB
+        # We need to convert nans to the minimum values in the mapping.
+        arr_red = image_red.array.copy()
+        arr_red[np.isnan(arr_red)] = png_mapping.minimum[0]
+        arr_green = image_green.array.copy()
+        arr_green[np.isnan(arr_green)] = png_mapping.minimum[1]
+        arr_blue = image_blue.array.copy()
+        arr_blue[np.isnan(arr_blue)] = png_mapping.minimum[2]
 
-        breakpoint()
+        image_array = png_mapping.make_rgb_image(arr_red, arr_green, arr_blue)
+
         im = Image.fromarray(image_array[::-1, :, :], mode="RGB")
 
-        uri = hips_dir.join(f"Npix{pixel}.{self.config.file_extension}")
-
-        extra_args = {}
-        if self.config.file_extension == "webp":
-            extra_args["lossless"] = True
-            extra_args["quality"] = 80
+        uri = hips_dir.join(f"Npix{pixel}.png")
 
         with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
-            im.save(temporary_uri.ospath, **extra_args)
+            im.save(temporary_uri.ospath)
 
             uri.transfer_from(temporary_uri, transfer="copy", overwrite=True)
 
     def _write_properties_and_moc(
-        self, hips_base_path, max_order, pixels, exposure, shift_order, band, multiband
+            self,
+            hips_base_path,
+            max_order,
+            pixels,
+            exposure,
+            shift_order,
+            band,
+            multiband
     ):
         """Write HiPS properties file and MOC.
 
@@ -1342,7 +1259,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         multiband : `bool`
             Is band multiband / color?
         """
-        area = hpg.nside_to_pixel_area(2**max_order, degrees=True) * len(pixels)
+        area = hpg.nside_to_pixel_area(2**max_order, degrees=True)*len(pixels)
 
         initial_ra = self.config.properties.initial_ra
         initial_dec = self.config.properties.initial_dec
@@ -1356,7 +1273,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                 temp_pixels = np.append(temp_pixels, [temp_pixels[0]])
             medpix = int(np.median(temp_pixels))
             _initial_ra, _initial_dec = hpg.pixel_to_angle(2**max_order, medpix)
-            _initial_fov = hpg.nside_to_resolution(2**max_order, units="arcminutes") / 60.0
+            _initial_fov = hpg.nside_to_resolution(2**max_order, units='arcminutes')/60.
 
             if initial_ra is None or initial_dec is None:
                 initial_ra = _initial_ra
@@ -1386,18 +1303,18 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         )
 
     def _write_hips_properties_file(
-        self,
-        hips_base_path,
-        properties_config,
-        band,
-        multiband,
-        exposure,
-        max_order,
-        shift_order,
-        area,
-        initial_ra,
-        initial_dec,
-        initial_fov,
+            self,
+            hips_base_path,
+            properties_config,
+            band,
+            multiband,
+            exposure,
+            max_order,
+            shift_order,
+            area,
+            initial_ra,
+            initial_dec,
+            initial_fov
     ):
         """Write HiPS properties file.
 
@@ -1427,7 +1344,6 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         initial_fov : `float`
             Initial HiPS display size (degrees).
         """
-
         # WARNING: In general PipelineTasks are not allowed to do any outputs
         # outside of the butler.  This task has been given (temporary)
         # Special Dispensation because of the nature of HiPS outputs until
@@ -1461,7 +1377,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             bitpix = 32
 
         date_iso8601 = datetime.utcnow().isoformat(timespec="seconds") + "Z"
-        pixel_scale = hpg.nside_to_resolution(2 ** (max_order + shift_order), units="degrees")
+        pixel_scale = hpg.nside_to_resolution(2**(max_order + shift_order), units='degrees')
 
         uri = hips_base_path.join("properties")
         with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
@@ -1492,7 +1408,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                 _write_property(fh, "obs_regime", "Optical")
                 _write_property(fh, "data_pixel_bitpix", str(bitpix))
                 _write_property(fh, "dataproduct_type", "image")
-                _write_property(fh, "moc_sky_fraction", str(area / 41253.0))
+                _write_property(fh, "moc_sky_fraction", str(area/41253.))
                 _write_property(fh, "data_ucd", "phot.flux")
                 _write_property(fh, "hips_creation_date", date_iso8601)
                 _write_property(fh, "hips_builder", "lsst.pipe.tasks.hips.GenerateHipsTask")
@@ -1504,10 +1420,10 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                 _write_property(fh, "hips_tile_width", str(exposure.getBBox().getWidth()))
                 _write_property(fh, "hips_status", "private master clonableOnce")
                 if multiband:
-                    _write_property(fh, "hips_tile_format", self.config.file_extension)
+                    _write_property(fh, "hips_tile_format", "png")
                     _write_property(fh, "dataproduct_subtype", "color")
                 else:
-                    _write_property(fh, "hips_tile_format", f"{self.config.file_extension} fits")
+                    _write_property(fh, "hips_tile_format", "png fits")
                 _write_property(fh, "hips_pixel_bitpix", str(bitpix))
                 _write_property(fh, "hips_pixel_scale", str(pixel_scale))
                 _write_property(fh, "hips_initial_ra", str(initial_ra))
@@ -1515,23 +1431,23 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                 _write_property(fh, "hips_initial_fov", str(initial_fov))
                 if multiband:
                     if self.config.blue_channel_band in properties_config.spectral_ranges:
-                        em_min = (
-                            properties_config.spectral_ranges[self.config.blue_channel_band].lambda_min / 1e9
-                        )
+                        em_min = properties_config.spectral_ranges[
+                            self.config.blue_channel_band
+                        ].lambda_min/1e9
                     else:
                         self.log.warning("blue band %s not in self.config.spectral_ranges.", band)
                         em_min = 3e-7
                     if self.config.red_channel_band in properties_config.spectral_ranges:
-                        em_max = (
-                            properties_config.spectral_ranges[self.config.red_channel_band].lambda_max / 1e9
-                        )
+                        em_max = properties_config.spectral_ranges[
+                            self.config.red_channel_band
+                        ].lambda_max/1e9
                     else:
                         self.log.warning("red band %s not in self.config.spectral_ranges.", band)
                         em_max = 1e-6
                 else:
                     if band in properties_config.spectral_ranges:
-                        em_min = properties_config.spectral_ranges[band].lambda_min / 1e9
-                        em_max = properties_config.spectral_ranges[band].lambda_max / 1e9
+                        em_min = properties_config.spectral_ranges[band].lambda_min/1e9
+                        em_max = properties_config.spectral_ranges[band].lambda_max/1e9
                     else:
                         self.log.warning("band %s not in self.config.spectral_ranges.", band)
                         em_min = 3e-7
@@ -1566,7 +1482,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         # a more controlled solution can be found.
 
         # Make the initial list of UNIQ pixels
-        uniq = 4 * (4**max_order) + pixels
+        uniq = 4*(4**max_order) + pixels
 
         # Make a healsparse map which provides easy degrade/comparisons.
         hspmap = hsp.HealSparseMap.make_empty(2**min_uniq_order, 2**max_order, dtype=np.float32)
@@ -1575,14 +1491,14 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         # Loop over orders, degrade each time, and look for pixels with full coverage.
         for uniq_order in range(max_order - 1, min_uniq_order - 1, -1):
             hspmap = hspmap.degrade(2**uniq_order, reduction="sum")
-            pix_shift = np.right_shift(pixels, 2 * (max_order - uniq_order))
+            pix_shift = np.right_shift(pixels, 2*(max_order - uniq_order))
             # Check if any of the pixels at uniq_order have full coverage.
-            (covered,) = np.isclose(hspmap[pix_shift], 4 ** (max_order - uniq_order)).nonzero()
+            covered, = np.isclose(hspmap[pix_shift], 4**(max_order - uniq_order)).nonzero()
             if covered.size == 0:
                 # No pixels at uniq_order are fully covered, we're done.
                 break
             # Replace the UNIQ pixels that are fully covered.
-            uniq[covered] = 4 * (4**uniq_order) + pix_shift[covered]
+            uniq[covered] = 4*(4**uniq_order) + pix_shift[covered]
 
         # Remove duplicate pixels.
         uniq = np.unique(uniq)
@@ -1591,7 +1507,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         tbl = np.zeros(uniq.size, dtype=[("UNIQ", "i8")])
         tbl["UNIQ"] = uniq
 
-        order = np.log2(tbl["UNIQ"] // 4).astype(np.int32) // 2
+        order = np.log2(tbl["UNIQ"]//4).astype(np.int32)//2
         moc_order = np.max(order)
 
         hdu = fits.BinTableHDU(tbl)
@@ -1637,13 +1553,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         allsky_image = None
 
         allsky_order_uri = hips_base_path.join(f"Norder{allsky_order}", forceDirectory=True)
-        if self.config.file_extension == "png":
-            pixel_regex = re.compile(r"Npix([0-9]+)\.png$")
-        elif self.config.file_extension == "webp":
-            pixel_regex = re.compile(r"Npix([0-9]+)\.webp$")
-        else:
-            raise RuntimeError("Unknown file extension")
-
+        pixel_regex = re.compile(r"Npix([0-9]+)\.png$")
         png_uris = list(
             ResourcePath.findFileResources(
                 candidates=[allsky_order_uri],
@@ -1655,19 +1565,19 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             matches = re.match(pixel_regex, png_uri.basename())
             pix_num = int(matches.group(1))
             tile_image = Image.open(io.BytesIO(png_uri.read()))
-            row = math.floor(pix_num // n_tiles_wide)
+            row = math.floor(pix_num//n_tiles_wide)
             column = pix_num % n_tiles_wide
-            box = (column * tile_size, row * tile_size, (column + 1) * tile_size, (row + 1) * tile_size)
+            box = (column*tile_size, row*tile_size, (column + 1)*tile_size, (row + 1)*tile_size)
             tile_image_shrunk = tile_image.resize((tile_size, tile_size))
 
             if allsky_image is None:
                 allsky_image = Image.new(
                     tile_image.mode,
-                    (n_tiles_wide * tile_size, n_tiles_high * tile_size),
+                    (n_tiles_wide*tile_size, n_tiles_high*tile_size),
                 )
             allsky_image.paste(tile_image_shrunk, box)
 
-        uri = allsky_order_uri.join(f"Allsky.{self.config.file_extension}")
+        uri = allsky_order_uri.join("Allsky.png")
 
         with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
             allsky_image.save(temporary_uri.ospath)
@@ -1687,12 +1597,12 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         dir_number : `int`
             HiPS directory number.
         """
-        return (pixel // 10000) * 10000
+        return (pixel//10000)*10000
 
 
-class GenerateColorHipsConnections(
-    pipeBase.PipelineTaskConnections, dimensions=("instrument",), defaultTemplates={"coaddName": "deep"}
-):
+class GenerateColorHipsConnections(pipeBase.PipelineTaskConnections,
+                                   dimensions=("instrument", ),
+                                   defaultTemplates={"coaddName": "deep"}):
     hips_exposure_handles = pipeBase.connectionTypes.Input(
         doc="HiPS-compatible HPX images.",
         name="{coaddName}Coadd_hpx",
@@ -1702,93 +1612,47 @@ class GenerateColorHipsConnections(
         deferLoad=True,
     )
 
-    def __init__(self, *, config):
-        super().__init__(config=config)
-        if config.parallel_highest_order:
-            healpix_dimensions = self.hips_exposure_handles.dimensions
-            for dim in healpix_dimensions:
-                if "healpix" in dim:
-                    hdim = dim
 
-            current_dimensions = self.dimensions
-            self.dimensions = set((*current_dimensions, hdim))
-
-
-class GenerateColorHipsConfig(GenerateHipsConfig, pipelineConnections=GenerateColorHipsConnections):
+class GenerateColorHipsConfig(GenerateHipsConfig,
+                              pipelineConnections=GenerateColorHipsConnections):
     """Configuration parameters for GenerateColorHipsTask."""
-
     blue_channel_band = pexConfig.Field(
-        doc="Band to use for blue channel of color pngs in lupton color mapping.",
+        doc="Band to use for blue channel of color pngs.",
         dtype=str,
         default="g",
     )
     green_channel_band = pexConfig.Field(
-        doc="Band to use for green channel of color pngs in lupton color mapping.",
+        doc="Band to use for green channel of color pngs.",
         dtype=str,
         default="r",
     )
     red_channel_band = pexConfig.Field(
-        doc="Band to use for red channel of color pngs in lupton color mapping.",
+        doc="Band to use for red channel of color pngs.",
         dtype=str,
         default="i",
     )
     png_color_asinh_minimum = pexConfig.Field(
-        doc="AsinhMapping intensity to be mapped to black for color png scaling in lupton color mapping.",
+        doc="AsinhMapping intensity to be mapped to black for color png scaling.",
         dtype=float,
         default=0.0,
     )
     png_color_asinh_stretch = pexConfig.Field(
-        doc="AsinhMapping linear stretch for color png scaling in lupton color mapping.",
+        doc="AsinhMapping linear stretch for color png scaling.",
         dtype=float,
         default=5.0,
     )
     png_color_asinh_softening = pexConfig.Field(
-        doc="AsinhMapping softening parameter (Q) for color png scaling in lupton color mapping.",
+        doc="AsinhMapping softening parameter (Q) for color png scaling.",
         dtype=float,
         default=8.0,
     )
-    rgbGenerator = pexConfig.ConfigurableField[PrettyPictureTask](
-        doc="The task to use to generate an RGB image", target=PrettyPictureTask
-    )
-    rgbStyle = pexConfig.ChoiceField[str](
-        doc="The rgb mapping style, must be one of lsstRGB or lupton",
-        allowed={
-            "lupton": "Use the lupton algorithm for RGB images",
-            "lsstRGB": "Use new style lsstRGB color algorithm for RGB images",
-        },
-        default="lupton",
-    )
-
-    def setDefaults(self):
-        super().setDefaults()
-        self.rgbGenerator: PrettyPictureConfig
-        self.rgbGenerator.imageRemappingConfig.absMax = 550
-        self.rgbGenerator.luminanceConfig.Q = 0.7
-        self.rgbGenerator.doPSFDeconcovlve = False
-        self.rgbGenerator.exposureBrackets = None
-        self.rgbGenerator.localContrastConfig.doLocalContrast = False
-        self.rgbGenerator.luminanceConfig.stretch = 250
-        self.rgbGenerator.luminanceConfig.max = 100
-        self.rgbGenerator.luminanceConfig.highlight = 0.905882
-        self.rgbGenerator.luminanceConfig.shadow = 0.12
-        self.rgbGenerator.luminanceConfig.midtone = 0.25
-        self.rgbGenerator.colorConfig.maxChroma = 80
-        self.rgbGenerator.colorConfig.saturation = 0.6
-        self.rgbGenerator.cieWhitePoint = (0.28, 0.28)
-
-        return
 
 
 class GenerateColorHipsTask(GenerateHipsTask):
     """Task for making a HiPS tree with color pngs."""
-
     ConfigClass = GenerateColorHipsConfig
     _DefaultName = "generateColorHips"
     color_task = True
-
-    def __init__(self, *, config=None, log=None, initInputs=None, **kwargs):
-        super().__init__(config=config, log=log, **kwargs)
-        self.makeSubtask("rgbGenerator")
 
     def _check_data_bands(self, data_bands):
         """Check the data for configured bands.
@@ -1808,50 +1672,26 @@ class GenerateColorHipsTask(GenerateHipsTask):
         if len(data_bands) == 0:
             raise RuntimeError("GenerateColorHipsTask must have data from at least one band.")
 
-        match self.config.rgbStyle:
-            case "lupton":
-                if self.config.blue_channel_band not in data_bands:
-                    self.log.warning(
-                        "Color png blue_channel_band %s not in dataset.", self.config.blue_channel_band
-                    )
-                if self.config.green_channel_band not in data_bands:
-                    self.log.warning(
-                        "Color png green_channel_band %s not in dataset.", self.config.green_channel_band
-                    )
-                if self.config.red_channel_band not in data_bands:
-                    self.log.warning(
-                        "Color png red_channel_band %s not in dataset.", self.config.red_channel_band
-                    )
+        if self.config.blue_channel_band not in data_bands:
+            self.log.warning(
+                "Color png blue_channel_band %s not in dataset.",
+                self.config.blue_channel_band
+            )
+        if self.config.green_channel_band not in data_bands:
+            self.log.warning(
+                "Color png green_channel_band %s not in dataset.",
+                self.config.green_channel_band
+            )
+        if self.config.red_channel_band not in data_bands:
+            self.log.warning(
+                "Color png red_channel_band %s not in dataset.",
+                self.config.red_channel_band
+            )
 
-                bands = [
-                    self.config.blue_channel_band,
-                    self.config.green_channel_band,
-                    self.config.red_channel_band,
-                ]
-                return bands
-            case "lsstRGB":
-                # The pretty picture maker task supports compositing more than 3 bands
-                # into an rgb image. Find all the bands specified and list them in
-                # bgr order according to the hue specified for each astrophysical band.
-                band_names = []
-                band_values = []
-                for band_name, config in self.config.rgbGenerator.channelConfig.items():
-                    band_names.append(band_name)
-                    band_values.append((config.r, config.g, config.b))
-                # convert to a space where it is easy to calcualte the hue
-                labs = colour.XYZ_to_Oklab(colour.RGB_to_XYZ(band_values, colourspace="CIE RGB"))
-                hues = np.arctan2(labs[:, 2], labs[:, 1])
-                # transform negative angles to an offset from 2pi
-                hues[hues < 0] = 2 * np.pi + hues[hues < 0]
-                # reversed here to transform from rgb to bgr order
-                order = np.argsort(hues)[::-1]
-                config_bands = [band_names[index] for index in order]
+        bands = [
+            self.config.blue_channel_band,
+            self.config.green_channel_band,
+            self.config.red_channel_band,
+        ]
 
-                for band_name in config_bands:
-                    if band_name not in data_bands:
-                        self.log.warning(
-                            f"Data band {band_name} is specified in the RGB config but there is no input "
-                            "data for that band."
-                        )
-
-                return config_bands
+        return bands
