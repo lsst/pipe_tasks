@@ -46,7 +46,9 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
                                       LocalWcs, ComputePixelScale, ConvertPixelToArcseconds,
                                       ConvertPixelSqToArcsecondsSq,
                                       ConvertDetectorAngleToPositionAngle,
-                                      HtmIndex20, Ebv)
+                                      HtmIndex20, Ebv, MomentsIuuSky, MomentsIvvSky, MomentsIuvSky,
+                                      SemimajorAxisFromMoments, SemiminorAxisFromMoments,
+                                      PositionAngleFromMoments)
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
@@ -897,6 +899,95 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
             val.values,
             [0.029100, 0.029013, 0.028857, 0.028802, 0.028797]
         )
+
+    def testSkyMoments(self):
+        self.columns.extend([
+            "slot_Shape_xx",
+            "slot_Shape_yy",
+            "slot_Shape_xy",
+            "base_LocalWcs_CDMatrix_1_1",
+            "base_LocalWcs_CDMatrix_1_2",
+            "base_LocalWcs_CDMatrix_2_1",
+            "base_LocalWcs_CDMatrix_1_1"])
+
+        # CD Matrix from a ComCam exposure.
+        self.dataDict["base_LocalWcs_CDMatrix_1_1"] = \
+            np.full(self.nRecords, -9.695088e-07)
+        self.dataDict["base_LocalWcs_CDMatrix_1_2"] = \
+            np.full(self.nRecords, 3.950301849959342e-09)
+        self.dataDict["base_LocalWcs_CDMatrix_2_1"] = \
+            np.full(self.nRecords, 3.8766915166433014e-09)
+        self.dataDict["base_LocalWcs_CDMatrix_2_2"] = \
+            np.full(self.nRecords, 9.695092484727074e-07)
+        self.dataDict["slot_Shape_xx"] = \
+            np.array([6.52675084, 74.17426471, 6.45283335, 36.82870958, 6.45685472])
+        self.dataDict["slot_Shape_yy"] = \
+            np.array([6.12848637, 80.99510036, 6.05671667, 35.79219613, 5.97778765])
+        self.dataDict["slot_Shape_xy"] = \
+            np.array([-0.10281872, 0.88788384, -0.1261287, -1.60504171, 0.11974515])
+
+        col_names = ["slot_Shape_xx", "slot_Shape_yy", "slot_Shape_xy",
+                                      "base_LocalWcs_CDMatrix_1_1",
+                                      "base_LocalWcs_CDMatrix_1_2",
+                                      "base_LocalWcs_CDMatrix_2_1",
+                                      "base_LocalWcs_CDMatrix_2_2"]
+        skyXX_functor = MomentsIuuSky(*col_names, filt="g")
+        skyYY_functor = MomentsIvvSky(*col_names, filt="g")
+        skyXY_functor = MomentsIuvSky(*col_names, filt="g")
+
+        axesA_functor = SemimajorAxisFromMoments(*col_names, filt="g")
+        axesB_functor = SemiminorAxisFromMoments(*col_names, filt="g")
+        axesTheta_functor = PositionAngleFromMoments(*col_names, filt="g")
+
+        df = self.getMultiIndexDataFrame(self.dataDict)
+        output_sky_xx = skyXX_functor(df)
+        output_sky_yy = skyYY_functor(df)
+        output_sky_xy = skyXY_functor(df)
+
+        output_axes_a = axesA_functor(df)
+        output_axes_b = axesB_functor(df)
+        output_axes_theta = axesTheta_functor(df)
+
+        transformed_xx = []
+        transformed_yy = []
+        transformed_xy = []
+        axes_a = []
+        axes_b = []
+        axes_theta = []
+
+        for n in range(5):
+            Ixx = df[('meas', 'g', 'slot_Shape_xx')].iloc[n]
+            Iyy = df[('meas', 'g', 'slot_Shape_yy')].iloc[n]
+            Ixy = df[('meas', 'g', 'slot_Shape_xy')].iloc[n]
+            localWCS_CD_1_1 = df[('meas', 'g', 'base_LocalWcs_CDMatrix_1_1')].iloc[n]
+            localWCS_CD_2_1 = df[('meas', 'g', 'base_LocalWcs_CDMatrix_2_1')].iloc[n]
+            localWCS_CD_1_2 = df[('meas', 'g', 'base_LocalWcs_CDMatrix_1_2')].iloc[n]
+            localWCS_CD_2_2 = df[('meas', 'g', 'base_LocalWcs_CDMatrix_2_2')].iloc[n]
+            CD_matrix = np.array([[localWCS_CD_1_1, localWCS_CD_1_2],
+                                  [localWCS_CD_2_1, localWCS_CD_2_2]])
+
+            q = afwGeom.ellipses.Quadrupole(Ixx, Iyy, Ixy)
+            lt = geom.LinearTransform(CD_matrix)
+            transformed_q = q.transform(lt)
+            transformed_q.scale((180/np.pi) * (3600))
+
+            axes = afwGeom.ellipses.Axes(transformed_q)
+
+            transformed_xx.append(transformed_q.getIxx())
+            transformed_yy.append(transformed_q.getIyy())
+            transformed_xy.append(transformed_q.getIxy())
+
+            axes_a.append(axes.getA())
+            axes_b.append(axes.getB())
+            axes_theta.append(np.degrees(axes.getTheta()))
+
+        self.assertFloatsAlmostEqual(output_sky_xx, np.array(transformed_xx), rtol=1e-5)
+        self.assertFloatsAlmostEqual(output_sky_yy, np.array(transformed_yy), rtol=1e-5)
+        self.assertFloatsAlmostEqual(output_sky_xy, np.array(transformed_xy), rtol=1e-5)
+
+        self.assertFloatsAlmostEqual(output_axes_a, np.array(axes_a), rtol=1e-5)
+        self.assertFloatsAlmostEqual(output_axes_b, np.array(axes_b), rtol=1e-5)
+        self.assertFloatsAlmostEqual(output_axes_theta, np.array(axes_theta), rtol=1e-5)
 
     def _dropLevels(self, df):
         levelsToDrop = [n for lev, n in zip(df.columns.levels, df.columns.names) if len(lev) == 1]

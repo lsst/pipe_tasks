@@ -229,6 +229,7 @@ funcs:
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_Optimal_instFluxErr
     # Taking Shape from meas
+    # These pixel-coordinate versions are deprecated following RFC-1081.
     ixx:
         functor: SinglePrecisionFloatColumn
         args: slot_Shape_xx
@@ -292,6 +293,172 @@ funcs:
         args:  ext_shapeHSM_HsmPsfMomentsDebiased_xy
         dataset: meas
     iDebiasedPSF_flag:
+        functor: Column
+        args: ext_shapeHSM_HsmPsfMomentsDebiased_flag
+        dataset: meas
+    moments_uu:
+        functor: MomentsIuuSky
+        args:
+            - slot_Shape_xx
+            - slot_Shape_yy
+            - slot_Shape_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_vv:
+        functor: MomentsIvvSky
+        args:
+            - slot_Shape_xx
+            - slot_Shape_yy
+            - slot_Shape_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_uv:
+        functor: MomentsIuvSky
+        args:
+            - slot_Shape_xx
+            - slot_Shape_yy
+            - slot_Shape_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_a:
+        functor: SemimajorAxisFromMoments
+        args:
+            - slot_Shape_xx
+            - slot_Shape_yy
+            - slot_Shape_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_b:
+        functor: SemiminorAxisFromMoments
+        args:
+            - slot_Shape_xx
+            - slot_Shape_yy
+            - slot_Shape_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_theta:
+        functor: PositionAngleFromMoments
+        args:
+            - slot_Shape_xx
+            - slot_Shape_yy
+            - slot_Shape_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_flag:
+        functor: Column
+        args: slot_Shape_flag
+        dataset: meas
+    moments_psf_uu:
+        functor: MomentsIuuSky
+        args:
+            - slot_PsfShape_xx
+            - slot_PsfShape_yy
+            - slot_PsfShape_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_psf_vv:
+        functor: MomentsIvvSky
+        args:
+            - slot_PsfShape_xx
+            - slot_PsfShape_yy
+            - slot_PsfShape_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_psf_uv:
+        functor: MomentsIuvSky
+        args:
+            - slot_PsfShape_xx
+            - slot_PsfShape_yy
+            - slot_PsfShape_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_psf_flag:
+        functor: Column
+        args: slot_PsfShape_flag
+        dataset: meas
+    moments_round_uu:
+        functor: MomentsIuuSky
+        args:
+            - slot_ShapeRound_xx
+            - slot_ShapeRound_yy
+            - slot_ShapeRound_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_round_vv:
+        functor: MomentsIvvSky
+        args:
+            - slot_ShapeRound_xx
+            - slot_ShapeRound_yy
+            - slot_ShapeRound_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_round_uv:
+        functor: MomentsIuvSky
+        args:
+            - slot_ShapeRound_xx
+            - slot_ShapeRound_yy
+            - slot_ShapeRound_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_round_flag:
+        functor: Column
+        args: slot_ShapeRound_flag
+        dataset: meas
+    moments_psf_debiased_uu:
+        functor: MomentsIuuSky
+        args:
+            - ext_shapeHSM_HsmPsfMomentsDebiased_xx
+            - ext_shapeHSM_HsmPsfMomentsDebiased_yy
+            - ext_shapeHSM_HsmPsfMomentsDebiased_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_psf_debiased_vv:
+        functor: MomentsIvvSky
+        args:
+            - ext_shapeHSM_HsmPsfMomentsDebiased_xx
+            - ext_shapeHSM_HsmPsfMomentsDebiased_yy
+            - ext_shapeHSM_HsmPsfMomentsDebiased_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_psf_debiased_uv:
+        functor: MomentsIuvSky
+        args:
+            - ext_shapeHSM_HsmPsfMomentsDebiased_xx
+            - ext_shapeHSM_HsmPsfMomentsDebiased_yy
+            - ext_shapeHSM_HsmPsfMomentsDebiased_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    moments_psf_debiased_flag:
         functor: Column
         args: ext_shapeHSM_HsmPsfMomentsDebiased_flag
         dataset: meas
@@ -495,13 +662,6 @@ funcs:
         functor: SinglePrecisionFloatColumn
         args: base_Blendedness_abs
         dataset: meas
-    # DM-22249: Make FWHM a view of IxxPsf IxyPsf IyyPsf
-    # Or remove ixxPsf, IxyPsf, IyyPsf.
-    fwhm:
-        functor: HsmFwhm
-        dataset: meas
-    refFwhm:
-        functor: HsmFwhm
     cModelFlux:
         functor: SinglePrecisionFloatColumn
         dataset: forced_src

@@ -1984,3 +1984,166 @@ class Ebv(Functor):
         coords = SkyCoord(df['coord_ra'].values * u.rad, df['coord_dec'].values * u.rad)
         ebv = self.sfd(coords)
         return pd.Series(ebv, index=df.index).astype('float32')
+
+
+class MomentsBase(Functor):
+    """Base class for functors that use shape moments and localWCS"""
+
+    def __init__(self,
+                 shape_xx,
+                 shape_yy,
+                 shape_xy,
+                 colCD_1_1,
+                 colCD_1_2,
+                 colCD_2_1,
+                 colCD_2_2,
+                 **kwargs):
+        self.shape_xx = shape_xx
+        self.shape_yy = shape_yy
+        self.shape_xy = shape_xy
+        self.colCD_1_1 = colCD_1_1
+        self.colCD_1_2 = colCD_1_2
+        self.colCD_2_1 = colCD_2_1
+        self.colCD_2_2 = colCD_2_2
+        super().__init__(**kwargs)
+
+    @property
+    def columns(self):
+        return [
+            self.shape_xx,
+            self.shape_yy,
+            self.shape_xy,
+            self.colCD_1_1,
+            self.colCD_1_2,
+            self.colCD_2_1,
+            self.colCD_2_2]
+
+    # Each of sky_uu, sky_vv, sky_uv evalutes one element of
+    # CD_matrix * moments_matrix * CD_matrix.T
+    def sky_uu(self, df):
+        """Return the component of the moments tensor aligned with the RA axis, in radians."""
+        i_xx = df[self.shape_xx]
+        i_yy = df[self.shape_yy]
+        i_xy = df[self.shape_xy]
+        CD_1_1 = df[self.colCD_1_1]
+        CD_1_2 = df[self.colCD_1_2]
+        CD_2_1 = df[self.colCD_2_1]
+        return (CD_1_1*(i_xx*CD_1_1 + i_xy*CD_2_1)
+                + CD_1_2*(i_xy*CD_1_1 + i_yy*CD_2_1))
+
+    def sky_vv(self, df):
+        """Return the component of the moments tensor aligned with the dec axis, in radians."""
+        i_xx = df[self.shape_xx]
+        i_yy = df[self.shape_yy]
+        i_xy = df[self.shape_xy]
+        CD_1_2 = df[self.colCD_1_2]
+        CD_2_1 = df[self.colCD_2_1]
+        CD_2_2 = df[self.colCD_2_2]
+        return (CD_2_1*(i_xx*CD_1_2 + i_xy*CD_2_2)
+                + CD_2_2*(i_xy*CD_1_2 + i_yy*CD_2_2))
+
+    def sky_uv(self, df):
+        """Return the covariance of the moments tensor in ra, dec coordinates, in radians."""
+        i_xx = df[self.shape_xx]
+        i_yy = df[self.shape_yy]
+        i_xy = df[self.shape_xy]
+        CD_1_1 = df[self.colCD_1_1]
+        CD_1_2 = df[self.colCD_1_2]
+        CD_2_1 = df[self.colCD_2_1]
+        CD_2_2 = df[self.colCD_2_2]
+        return ((CD_1_1 * i_xx + CD_1_2 * i_xy) * CD_2_1
+                + (CD_1_1 * i_xy + CD_1_2 * i_yy) * CD_2_2)
+
+
+class MomentsIuuSky(MomentsBase):
+    """Rotate pixel moments Ixx,Iyy,Iyy into ra,dec frame and arcseconds"""
+    _defaultDataset = 'meas'
+    name = "moments_uu"
+    shortname = "moments_uu"
+
+    def _func(self, df):
+        sky_uu_radians = self.sky_uu(df)
+
+        return pd.Series(sky_uu_radians*((180/np.pi)*3600)**2, index=df.index).astype('float32')
+
+
+class MomentsIvvSky(MomentsBase):
+    """Rotate pixel moments Ixx,Iyy,Iyy into ra,dec frame and arcseconds"""
+    _defaultDataset = 'meas'
+    name = "moments_vv"
+    shortname = "moments_vv"
+
+    def _func(self, df):
+        sky_vv_radians = self.sky_vv(df)
+
+        return pd.Series(sky_vv_radians*((180/np.pi)*3600)**2, index=df.index).astype('float32')
+
+
+class MomentsIuvSky(MomentsBase):
+    """Rotate pixel moments Ixx,Iyy,Iyy into ra,dec frame and arcseconds"""
+    _defaultDataset = 'meas'
+    name = "moments_uv"
+    shortname = "moments_uv"
+
+    def _func(self, df):
+        sky_uv_radians = self.sky_uv(df)
+
+        return pd.Series(sky_uv_radians*((180/np.pi)*3600)**2, index=df.index).astype('float32')
+
+
+class PositionAngleFromMoments(MomentsBase):
+    """Compute position angle relative to ra,dec frame, in degrees."""
+    _defaultDataset = 'meas'
+    name = "moments_theta"
+    shortname = "moments_theta"
+
+    def _func(self, df):
+
+        sky_uu = self.sky_uu(df)
+        sky_vv = self.sky_vv(df)
+        sky_uv = self.sky_uv(df)
+        theta = 0.5*np.arctan2(2*sky_uv, sky_uu - sky_vv)
+
+        return pd.Series(np.degrees(np.array(theta)), index=df.index).astype('float32')
+
+
+class SemimajorAxisFromMoments(MomentsBase):
+    """Compute the semimajor axis length in arcseconds"""
+    _defaultDataset = 'meas'
+    name = "moments_a"
+    shortname = "moments_a"
+
+    def _func(self, df):
+
+        sky_uu = self.sky_uu(df)
+        sky_vv = self.sky_vv(df)
+        sky_uv = self.sky_uv(df)
+
+        # This copies what is done (unvectorized) in afw.geom.
+        xx_p_yy = sky_uu + sky_vv
+        xx_m_yy = sky_uu - sky_vv
+        t = np.sqrt(xx_m_yy * xx_m_yy + 4 * sky_uv * sky_uv)
+        a_radians = np.sqrt(0.5 * (xx_p_yy + t))
+
+        return pd.Series(np.degrees(a_radians)*3600, index=df.index).astype('float32')
+
+
+class SemiminorAxisFromMoments(MomentsBase):
+    """Compute the semiminor axis length in arcseconds"""
+    _defaultDataset = 'meas'
+    name = "moments_b"
+    shortname = "moments_b"
+
+    def _func(self, df):
+
+        sky_uu = self.sky_uu(df)
+        sky_vv = self.sky_vv(df)
+        sky_uv = self.sky_uv(df)
+
+        # This copies what is done (unvectorized) in afw.geom.
+        xx_p_yy = sky_uu + sky_vv
+        xx_m_yy = sky_uu - sky_vv
+        t = np.sqrt(xx_m_yy * xx_m_yy + 4 * sky_uv * sky_uv)
+        b_radians = np.sqrt(0.5 * (xx_p_yy - t))
+
+        return pd.Series(np.degrees(b_radians)*3600, index=df.index).astype('float32')
