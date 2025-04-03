@@ -1305,7 +1305,6 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             case "lsstRGB":
                 image_array = self.rgbGenerator.run(lsstRGB_args["band_mapping"]).outputRGB
 
-        breakpoint()
         im = Image.fromarray(image_array[::-1, :, :], mode="RGB")
 
         uri = hips_dir.join(f"Npix{pixel}.{self.config.file_extension}")
