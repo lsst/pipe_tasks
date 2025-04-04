@@ -24,7 +24,7 @@
 __all__ = ["BrightStarStackConnections", "BrightStarStackConfig", "BrightStarStackTask"]
 
 import numpy as np
-from lsst.afw.image import ImageF
+from lsst.afw.image import ImageF, MaskedImageF
 from lsst.afw.math import StatisticsControl, statisticsStack, stringToStatisticsProperty
 from lsst.geom import Box2I, Extent2I, Point2I
 from lsst.meas.algorithms import BrightStarStamps
@@ -187,12 +187,16 @@ class BrightStarStackTask(PipelineTask):
                 badMaskBitMask = stampMI.mask.getPlaneBitMask(self.config.badMaskPlanes)
                 statisticsControl.setAndMask(badMaskBitMask)
 
+                # Amir: In case the total number of stamps is less than 20, the following will result in an
+                # empty subsetStampMIs list.
                 if len(tempStampMIs) == self.config.subsetStampNumber:
                     subsetStampMIs.append(statisticsStack(tempStampMIs, stackTypeProperty, statisticsControl))
                     # TODO: what to do with remaining temp stamps?
                     tempStampMIs = []
 
         # TODO: which stamp mask plane to use here?
+        # TODO: Amir: there might be cases where subsetStampMIs is an empty list. What do we want to do then?
+        # Currently, we get an "IndexError: list index out of range"
         badMaskBitMask = subsetStampMIs[0].mask.getPlaneBitMask(self.config.badMaskPlanes)
         statisticsControl.setAndMask(badMaskBitMask)
         extendedPsfMI = statisticsStack(subsetStampMIs, stackTypeProperty, statisticsControl)
@@ -200,6 +204,7 @@ class BrightStarStackTask(PipelineTask):
         extendedPsfExtent = extendedPsfMI.getBBox().getDimensions()
         extendedPsfOrigin = Point2I(-1 * (extendedPsfExtent.x // 2), -1 * (extendedPsfExtent.y // 2))
         extendedPsfMI.setXY0(extendedPsfOrigin)
+        # return Struct(extendedPsf=[extendedPsfMI])
 
         return Struct(extendedPsf=extendedPsfMI.getImage())
 
