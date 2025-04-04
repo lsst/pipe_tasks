@@ -27,22 +27,16 @@ funcs:
         functor: Column
         args: slot_Centroid_y
     xErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_Centroid_xErr
     yErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_Centroid_yErr
     # x_y_Cov: not available
     ra:
         functor: RAColumn
     dec:
         functor: DecColumn
-
-   # RFC-924: Temporarily keep a duplicate "decl" entry for backwards
-   # compatibility. To be removed after September 2023.
-    decl:
-        functor: DecColumn
-
     raErr:
         functor: RAErrColumn
     decErr:
@@ -246,32 +240,32 @@ funcs:
     # psFlux_psDecl_Cov
 
     ixx:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_Shape_xx
     iyy:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_Shape_yy
     ixy:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_Shape_xy
     # DPDD should include Psf Shape
     ixxPSF:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_PsfShape_xx
     iyyPSF:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_PsfShape_yy
     ixyPSF:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_PsfShape_xy
     ixxDebiasedPSF:
-        functor:  Column
+        functor:  SinglePrecisionFloatColumn
         args: ext_shapeHSM_HsmPsfMomentsDebiased_xx
     iyyDebiasedPSF:
-        functor:  Column
+        functor:  SinglePrecisionFloatColumn
         args: ext_shapeHSM_HsmPsfMomentsDebiased_yy
     ixyDebiasedPSF:
-        functor:  Column
+        functor:  SinglePrecisionFloatColumn
         args: ext_shapeHSM_HsmPsfMomentsDebiased_xy
     # apNann: Replaced by raw Aperture instFluxes in flags section below
     # apMeanSb: Replaced by raw Aperture instFluxes in flags section below
@@ -292,11 +286,14 @@ funcs:
             - base_GaussianFlux_instFluxErr
             - base_LocalPhotoCalib
     extendedness:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: base_ClassificationExtendedness_value
     sizeExtendedness:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: base_ClassificationSizeExtendedness_value
+    blendedness_abs:
+        functor: SinglePrecisionFloatColumn
+        args: base_Blendedness_abs
 flags:
    - base_LocalPhotoCalib
    - base_LocalPhotoCalib_flag
@@ -306,7 +303,6 @@ flags:
    - base_LocalWcs_CDMatrix_1_1
    - base_LocalWcs_CDMatrix_1_2
    - base_LocalWcs_CDMatrix_2_2
-   - base_Blendedness_abs
    - base_Blendedness_flag
    - base_Blendedness_flag_noCentroid
    - base_Blendedness_flag_noShape

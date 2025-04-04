@@ -33,42 +33,29 @@ funcs:
         functor: Column
         dataset: calexp
         args: band
+    # Images have already been calibrated by reprocessVisitImage,
+    # so instFluxes are actually nanoJanskys
     psfFlux:
-        functor: LocalNanojansky
+        functor: SinglePrecisionFloatColumn
         dataset: calexp
-        args:
-            - base_PsfFlux_instFlux
-            - base_PsfFlux_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+        args: base_PsfFlux_instFlux
     psfFluxErr:
-        functor: LocalNanojanskyErr
+        functor: SinglePrecisionFloatColumn
         dataset: calexp
-        args:
-            - base_PsfFlux_instFlux
-            - base_PsfFlux_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+        args: base_PsfFlux_instFluxErr
     psfFlux_flag:
         functor: Column
         dataset: calexp
         args: base_PsfFlux_flag
+    # Difference images have also been calibrated, instFlux is nanoJanskys.
     psfDiffFlux:
-        functor: LocalNanojansky
+        functor: SinglePrecisionFloatColumn
         dataset: diff
-        args:
-            - base_PsfFlux_instFlux
-            - base_PsfFlux_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+        args: base_PsfFlux_instFlux
     psfDiffFluxErr:
-        functor: LocalNanojanskyErr
+        functor: SinglePrecisionFloatColumn
         dataset: diff
-        args:
-            - base_PsfFlux_instFlux
-            - base_PsfFlux_instFluxErr
-            - base_LocalPhotoCalib
-            - base_LocalPhotoCalibErr
+        args: base_PsfFlux_instFluxErr
     psfDiffFlux_flag:
         functor: Column
         dataset: diff
@@ -79,16 +66,6 @@ funcs:
         args: base_PixelFlags_flag_nodataCenter
 # PixelFlags exist in forced_src and forced_diff dataset, but they're all False
 calexpFlags:
-    - base_LocalPhotoCalib
-    - base_LocalPhotoCalib_flag
-    - base_LocalPhotoCalibErr
-    - base_LocalWcs_flag
-    - base_LocalWcs_CDMatrix_2_1
-    - base_LocalWcs_CDMatrix_1_1
-    - base_LocalWcs_CDMatrix_1_2
-    - base_LocalWcs_CDMatrix_2_2
-    - base_LocalBackground_instFlux
-    - base_LocalBackground_instFluxErr
     - base_PixelFlags_flag_bad
     - base_PixelFlags_flag_cr
     - base_PixelFlags_flag_crCenter
@@ -107,4 +84,3 @@ calexpFlags:
 flag_rename_rules:
     - ['base_PixelFlags_flag', 'pixelFlags']
     - ['base_InvalidPsf_flag', 'invalidPsfFlag']
-    - ['base_Local', 'local']

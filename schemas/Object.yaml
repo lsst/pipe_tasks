@@ -38,14 +38,6 @@ funcs:
         functor: CoordColumn
         args: coord_dec
         dataset: meas
-
-    # RFC-924: Temporarily keep a duplicate "decl" entry for backwards
-    # compatibility. To be removed after September 2023.
-    decl:
-        functor: CoordColumn
-        args: coord_dec
-        dataset: meas
-
     raErr:
         functor: RAErrColumn
         dataset: meas
@@ -69,19 +61,19 @@ funcs:
     # psPm: No moving point source model yet
     # psParallax: No moving point source model yet
     psfFlux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: slot_PsfFlux_instFlux
     psfFluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: slot_PsfFlux_instFluxErr
     free_psfFlux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: meas
         args: slot_PsfFlux_instFlux
     free_psfFluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: meas
         args: slot_PsfFlux_instFluxErr
     free_psfFlux_flag:
@@ -141,25 +133,25 @@ funcs:
     # with either a total and fraction in Bulge or Disk
     # We should change the name BD, it assumes algorithm choice
     bdChi2:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: meas
         args: modelfit_CModel_objective
     # bdSamples: DM-22242 Remove from the DPDD and
     # replace with other shear estimation parameters. e.g. How e1 and e2 respond to shear.
     bdFluxB:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: meas
         args: modelfit_CModel_dev_instFlux
     bdFluxBErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: meas
         args: modelfit_CModel_dev_instFluxErr
     bdFluxD:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: meas
         args: modelfit_CModel_exp_instFlux
     bdFluxDErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: meas
         args: modelfit_CModel_exp_instFluxErr
     # DM-22243: Replace these with g, r, i, z, y and the blessed fluxes to use for colors
@@ -175,78 +167,78 @@ funcs:
     # zyStd:
     #  PSF GAaP flux
     gaapPsfFlux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_PsfFlux_instFlux
     gaapPsfFluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_PsfFlux_instFluxErr
     # 0.7 arcsec sigma GAaP flux
     gaap0p7Flux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_0_7_instFlux
     gaap0p7FluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_0_7_instFluxErr
     # 1.0 arcsec sigma GAaP flux
     gaap1p0Flux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_1_0_instFlux
     gaap1p0FluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_1_0_instFluxErr
     # 1.5 arcsec sigma GAaP flux
     gaap1p5Flux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_1_5_instFlux
     gaap1p5FluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_1_5_instFluxErr
     # 2.5 arcsec sigma GAaP flux
     gaap2p5Flux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_2_5_instFlux
     gaap2p5FluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_2_5_instFluxErr
     # 3.0 arcsec sigma GAaP flux
     gaap3p0Flux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_3_0_instFlux
     gaap3p0FluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_3_0_instFluxErr
     #  Optimal GAaP flux
     gaapOptimalFlux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_Optimal_instFlux
     gaapOptimalFluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_Optimal_instFluxErr
     # Taking Shape from meas
     ixx:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_Shape_xx
         dataset: meas
     iyy:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_Shape_yy
         dataset: meas
     ixy:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_Shape_xy
         dataset: meas
     i_flag:
@@ -256,15 +248,15 @@ funcs:
     # Icov: # need to compute
     # DM-22249 Evaluate whether we want to replace IxxPSF/IyyPSF/IxyPSF w/ FWHM
     ixxPSF:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_PsfShape_xx
         dataset: meas
     iyyPSF:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_PsfShape_yy
         dataset: meas
     ixyPSF:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_PsfShape_xy
         dataset: meas
     iPSF_flag:
@@ -272,31 +264,31 @@ funcs:
         args: slot_PsfShape_flag
         dataset: meas
     ixxRound:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_ShapeRound_xx
         dataset: meas
     iyyRound:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_ShapeRound_yy
         dataset: meas
     ixyRound:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: slot_ShapeRound_xy
         dataset: meas
     iRound_flag:
         functor: Column
-        args: slot_ShapeRound_xy
+        args: slot_ShapeRound_flag
         dataset: meas
     ixxDebiasedPSF:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: ext_shapeHSM_HsmPsfMomentsDebiased_xx
         dataset: meas
     iyyDebiasedPSF:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: ext_shapeHSM_HsmPsfMomentsDebiased_yy
         dataset: meas
     ixyDebiasedPSF:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args:  ext_shapeHSM_HsmPsfMomentsDebiased_xy
         dataset: meas
     iDebiasedPSF_flag:
@@ -317,17 +309,17 @@ funcs:
     # petroRad90Err:
     kronRad:
         # Convert to sky coords
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: ext_photometryKron_KronFlux_radius
         dataset: meas  # or forced_src?
     # kronRadErr: # Not computed
     # kronBand: replaced with `refBand`
     kronFlux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: meas  # or forced_src?
         args: ext_photometryKron_KronFlux_instFlux
     kronFluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: meas  # or forced_src?
         args: ext_photometryKron_KronFlux_instFluxErr
     # kronRad50: Need to compute DM-16313
@@ -336,20 +328,20 @@ funcs:
     # kronRad90Err: Need to compute DM-16313
     # apFlux renamed to calibFlux because it is not guaranteed to be an apFlux
     calibFlux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: meas
         args: slot_CalibFlux_instFlux
     calibFluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: meas
         args: slot_CalibFlux_instFluxErr
     # Not in DPDD. Used for QA
     ap03Flux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_3_0_instFlux
     ap03FluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_3_0_instFluxErr
     ap03Flux_flag:
@@ -358,11 +350,11 @@ funcs:
         args: base_CircularApertureFlux_3_0_flag
     # if we need to add decimal apertures call them e.g. ap04p5Flux
     ap06Flux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_6_0_instFlux
     ap06FluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_6_0_instFluxErr
     ap06Flux_flag:
@@ -370,11 +362,11 @@ funcs:
         dataset: forced_src
         args: base_CircularApertureFlux_6_0_flag
     ap09Flux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_9_0_instFlux
     ap09FluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_9_0_instFluxErr
     ap09Flux_flag:
@@ -382,11 +374,11 @@ funcs:
         dataset: forced_src
         args: base_CircularApertureFlux_9_0_flag
     ap12Flux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_12_0_instFlux
     ap12FluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_12_0_instFluxErr
     ap12Flux_flag:
@@ -394,11 +386,11 @@ funcs:
         dataset: forced_src
         args: base_CircularApertureFlux_12_0_flag
     ap17Flux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_17_0_instFlux
     ap17FluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_17_0_instFluxErr
     ap17Flux_flag:
@@ -406,11 +398,11 @@ funcs:
         dataset: forced_src
         args: base_CircularApertureFlux_17_0_flag
     ap25Flux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_25_0_instFlux
     ap25FluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_25_0_instFluxErr
     ap25Flux_flag:
@@ -418,11 +410,11 @@ funcs:
         dataset: forced_src
         args: base_CircularApertureFlux_25_0_flag
     ap35Flux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_35_0_instFlux
     ap35FluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_35_0_instFluxErr
     ap35Flux_flag:
@@ -430,11 +422,11 @@ funcs:
         dataset: forced_src
         args: base_CircularApertureFlux_35_0_flag
     ap50Flux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_50_0_instFlux
     ap50FluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_50_0_instFluxErr
     ap50Flux_flag:
@@ -442,11 +434,11 @@ funcs:
         dataset: forced_src
         args: base_CircularApertureFlux_50_0_flag
     ap70Flux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_70_0_instFlux
     ap70FluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: base_CircularApertureFlux_70_0_instFluxErr
     ap70Flux_flag:
@@ -458,19 +450,19 @@ funcs:
     # i.e. remove apNann, apMeanSb, apMeanSbSigma
     # DM-22247: Replace Extendedness with a view or paragraph in docs on how to compute
     refExtendedness:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: base_ClassificationExtendedness_value
         dataset: ref
     extendedness:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: base_ClassificationExtendedness_value
         dataset: meas
     refSizeExtendedness:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: base_ClassificationSizeExtendedness_value
         dataset: ref
     sizeExtendedness:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: base_ClassificationSizeExtendedness_value
         dataset: meas
     # lcPeriodic:  # Not computed. Need multi-epoch forced phot S19
@@ -500,7 +492,7 @@ funcs:
         dataset: ref
     # Not in DPDD
     blendedness:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: base_Blendedness_abs
         dataset: meas
     # DM-22249: Make FWHM a view of IxxPsf IxyPsf IyyPsf
@@ -511,27 +503,27 @@ funcs:
     refFwhm:
         functor: HsmFwhm
     cModelFlux:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: modelfit_CModel_instFlux
     cModelFluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: modelfit_CModel_instFluxErr
     cModelFlux_inner:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: modelfit_CModel_instFlux_inner
     free_cModelFlux: # to dm-naming things
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: meas
         args: modelfit_CModel_instFlux
     free_cModelFluxErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: meas
         args: modelfit_CModel_instFluxErr
     free_cModelFlux_inner:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         dataset: meas
         args: modelfit_CModel_instFlux_inner
     free_cModelFlux_flag:
@@ -541,15 +533,15 @@ funcs:
     # exp, dev, total, fracdev
     # We need different ellipticities for shear measurement:
     hsmShapeRegauss_e1:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: ext_shapeHSM_HsmShapeRegauss_e1
         dataset: meas
     hsmShapeRegauss_e2:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: ext_shapeHSM_HsmShapeRegauss_e2
         dataset: meas
     hsmShapeRegauss_sigma:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: ext_shapeHSM_HsmShapeRegauss_sigma
         dataset: meas
     hsmShapeRegauss_flag:
@@ -557,75 +549,75 @@ funcs:
         args: ext_shapeHSM_HsmShapeRegauss_flag
         dataset: meas
     hsm_moments_30:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_30
       dataset: meas
     hsm_momentsPsf_30:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_30
       dataset: meas
     hsm_moments_21:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_21
       dataset: meas
     hsm_momentsPsf_21:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_21
       dataset: meas
     hsm_moments_12:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_12
       dataset: meas
     hsm_momentsPsf_12:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_12
       dataset: meas
     hsm_moments_03:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_03
       dataset: meas
     hsm_momentsPsf_03:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_03
       dataset: meas
     hsm_moments_40:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_40
       dataset: meas
     hsm_momentsPsf_40:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_40
       dataset: meas
     hsm_moments_31:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_31
       dataset: meas
     hsm_momentsPsf_31:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_31
       dataset: meas
     hsm_moments_22:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_22
       dataset: meas
     hsm_momentsPsf_22:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_22
       dataset: meas
     hsm_moments_13:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_13
       dataset: meas
     hsm_momentsPsf_13:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_13
       dataset: meas
     hsm_moments_04:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsSource_04
       dataset: meas
     hsm_momentsPsf_04:
-      functor: Column
+      functor: SinglePrecisionFloatColumn
       args: ext_shapeHSM_HigherOrderMomentsPSF_04
       dataset: meas
     hsm_moments_flag:
@@ -672,31 +664,31 @@ funcs:
         dataset: meas
     # MultiProFit Two Gaussian PSF model fit parameters
     psfModel_TwoGaussian_gauss1_sigma_x:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: TwoGaussianPsf_gauss1_sigma_x
         dataset: psfs_multiprofit
     psfModel_TwoGaussian_gauss1_sigma_y:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: TwoGaussianPsf_gauss1_sigma_y
         dataset: psfs_multiprofit
     psfModel_TwoGaussian_gauss1_rho:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: TwoGaussianPsf_gauss1_rho
         dataset: psfs_multiprofit
     psfModel_TwoGaussian_gauss1_fluxfrac:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: TwoGaussianPsf_gauss1_fluxfrac
         dataset: psfs_multiprofit
     psfModel_TwoGaussian_gauss2_sigma_x:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: TwoGaussianPsf_gauss2_sigma_x
         dataset: psfs_multiprofit
     psfModel_TwoGaussian_gauss2_sigma_y:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: TwoGaussianPsf_gauss2_sigma_y
         dataset: psfs_multiprofit
     psfModel_TwoGaussian_gauss2_rho:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: TwoGaussianPsf_gauss2_rho
         dataset: psfs_multiprofit
     psfModel_TwoGaussian_n_iter:
@@ -704,7 +696,7 @@ funcs:
         args: TwoGaussianPsf_n_iter
         dataset: psfs_multiprofit
     psfModel_TwoGaussian_chisq_reduced:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: TwoGaussianPsf_chisq_reduced
         dataset: psfs_multiprofit
     psfModel_TwoGaussian_unknown_flag:
@@ -733,15 +725,15 @@ funcs:
         args: cen_dec
         dataset: Sersic_multiprofit
     sersic_reff_x:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: reff_x
         dataset: Sersic_multiprofit
     sersic_reff_y:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: reff_y
         dataset: Sersic_multiprofit
     sersic_rho:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: rho
         dataset: Sersic_multiprofit
     g_sersicFlux:
@@ -781,35 +773,35 @@ funcs:
             - z
         dataset: Sersic_multiprofit
     sersic_index:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: sersic_index
         dataset: Sersic_multiprofit
     sersic_xErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: cen_xErr
         dataset: Sersic_multiprofit
     sersic_yErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: cen_yErr
         dataset: Sersic_multiprofit
     sersic_raErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: cen_raErr
         dataset: Sersic_multiprofit
     sersic_decErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: cen_decErr
         dataset: Sersic_multiprofit
     sersic_reff_xErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: reff_xErr
         dataset: Sersic_multiprofit
     sersic_reff_yErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: reff_yErr
         dataset: Sersic_multiprofit
     sersic_rhoErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: rhoErr
         dataset: Sersic_multiprofit
     g_sersicFluxErr:
@@ -849,7 +841,7 @@ funcs:
             - z
         dataset: Sersic_multiprofit
     sersic_indexErr:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: sersic_indexErr
         dataset: Sersic_multiprofit
     sersic_n_eval_jac:
@@ -861,7 +853,7 @@ funcs:
         args: n_iter
         dataset: Sersic_multiprofit
     sersic_chisq_reduced:
-        functor: Column
+        functor: SinglePrecisionFloatColumn
         args: chisq_reduced
         dataset: Sersic_multiprofit
     sersic_unknown_flag:
@@ -872,7 +864,18 @@ funcs:
         functor: Column
         args: no_data_flag
         dataset: Sersic_multiprofit
-
+    shape_xx:
+        functor: SinglePrecisionFloatColumn
+        args: slot_Shape_xx
+        dataset: ref
+    shape_yy:
+        functor: SinglePrecisionFloatColumn
+        args: slot_Shape_yy
+        dataset: ref
+    shape_xy:
+        functor: SinglePrecisionFloatColumn
+        args: slot_Shape_xy
+        dataset: ref
     # DM-22247: Add Star/Galaxy sep columns
     #     - Morphological Star Galaxy Classifier (Names? float 0-1)]
     #     - Morphological + Color (SED-based) Star Galaxy Classifier (Names? float 0-1)]
@@ -901,9 +904,6 @@ refFlags:
     - deblend_peak_center_y
     - deblend_logL
     - slot_Shape_flag
-    - slot_Shape_xx
-    - slot_Shape_xy
-    - slot_Shape_yy
 flags:
     # flags are columns taken and exploded per-band from the meas tables
     - base_Blendedness_flag
