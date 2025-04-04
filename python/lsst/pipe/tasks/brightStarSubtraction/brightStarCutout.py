@@ -60,6 +60,7 @@ from lsst.pex.config import ChoiceField, ConfigField, Field, ListField
 from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
 from lsst.pipe.base.connectionTypes import Input, Output, PrerequisiteInput
 from lsst.utils.timer import timeMethod
+from copy import deepcopy
 
 NEIGHBOR_MASK_PLANE = "NEIGHBOR"
 
@@ -293,6 +294,8 @@ class BrightStarCutoutTask(PipelineTask):
         # Restore original subtracted background
         inputMI = inputExposure.getMaskedImage()
         inputMI += inputBackground.getImage()
+        # Amir: the above addition to inputMI, also adds to the inputExposure.
+        # Amir: but the calibration, three lines later, only is applied to the inputMI.
 
         # Set up NEIGHBOR mask plane; associate footprints with stars
         inputExposure.mask.addMaskPlane(NEIGHBOR_MASK_PLANE)
@@ -317,9 +320,11 @@ class BrightStarCutoutTask(PipelineTask):
             # Set NEIGHBOR footprints in the mask plane
             if footprintIndex:
                 neighborFootprints = [fp for i, fp in enumerate(allFootprints) if i != footprintIndex]
-                self._setFootprints(inputExposure, neighborFootprints, NEIGHBOR_MASK_PLANE)
+                # self._setFootprints(inputExposure, neighborFootprints, NEIGHBOR_MASK_PLANE)
+                self._setFootprints(inputMI, neighborFootprints, NEIGHBOR_MASK_PLANE)
             else:
-                self._setFootprints(inputExposure, allFootprints, NEIGHBOR_MASK_PLANE)
+                # self._setFootprints(inputExposure, allFootprints, NEIGHBOR_MASK_PLANE)
+                self._setFootprints(inputMI, allFootprints, NEIGHBOR_MASK_PLANE)
 
             # Define linear shifting to recenter stamps
             coordFocalPlaneTan = pixToFocalPlaneTan.applyForward(pixCoord)  # center of warped star
@@ -329,7 +334,8 @@ class BrightStarCutoutTask(PipelineTask):
             pixToPolar = pixToFocalPlaneTan.then(shift).then(rotation)
 
             # Apply the warp to the star stamp (in-place)
-            warpImage(stampMI, inputExposure.maskedImage, pixToPolar, warpingControl)
+            # warpImage(stampMI, inputExposure.maskedImage, pixToPolar, warpingControl)
+            warpImage(stampMI, inputMI, pixToPolar, warpingControl)
 
             # Trim to the base stamp size, check mask coverage, update metadata
             stampMI = stampMI[self.stampBBox]
@@ -579,6 +585,7 @@ class BrightStarCutoutTask(PipelineTask):
         psfMaskedPixels = ImageF(psfImage.getBBox())
         psfMaskedPixels.array[:, :] = (stampMI.mask[psfImage.getBBox()].array & badMaskBitMask).astype(bool)
         # TODO: This is np.float64, else FITS metadata serialization fails
+        # Amir: the following tries to find the fraction of the psf flux in the masked area of the psf image.
         psfMaskedFluxFrac = np.dot(psfImage.array.flat, psfMaskedPixels.array.flat).astype(np.float64)
         if psfMaskedFluxFrac > self.config.psfMaskedFluxFracThreshold:
             return {}  # Handle cases where the PSF image is mostly masked
@@ -587,8 +594,10 @@ class BrightStarCutoutTask(PipelineTask):
         paddedPsfImage = ImageF(stampMI.getBBox())
         paddedPsfImage[psfImage.getBBox()] = psfImage.convertF()
 
+        mask = self.add_psf_mask(paddedPsfImage, stampMI)
         # Create consistently masked data
-        badSpans = SpanSet.fromMask(stampMI.mask, badMaskBitMask)
+        # badSpans = SpanSet.fromMask(stampMI.mask, badMaskBitMask)
+        badSpans = SpanSet.fromMask(mask, badMaskBitMask)
         goodSpans = SpanSet(stampMI.getBBox()).intersectNot(badSpans)
         varianceData = goodSpans.flatten(stampMI.variance.array, stampMI.getXY0())
         if self.config.useMedianVariance:
@@ -598,7 +607,6 @@ class BrightStarCutoutTask(PipelineTask):
         imageData /= sigmaData
         psfData = goodSpans.flatten(paddedPsfImage.array, paddedPsfImage.getXY0())
         psfData /= sigmaData
-
         # Fit the PSF scale factor and global pedestal
         nData = len(imageData)
         coefficientMatrix = np.ones((nData, 4), dtype=float)  # A
@@ -659,3 +667,10 @@ class BrightStarCutoutTask(PipelineTask):
             psfDegreesOfFreedom=psfBBoxDegreesOfFreedom,
             psfMaskedFluxFrac=psfMaskedFluxFrac,
         )
+
+    def add_psf_mask(self, psfImage, stampMI):
+        cond = np.isnan(psfImage.array)
+        cond |= psfImage.array < 0
+        mask = deepcopy(stampMI.mask)
+        mask.array[cond] = np.bitwise_or(mask.array[cond], 1)
+        return mask
