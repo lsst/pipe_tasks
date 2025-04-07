@@ -35,8 +35,10 @@ __all__ = [
 ]
 
 import astropy.table
+import astropy.units as u
 import numpy as np
 import esutil
+from smatch.matcher import Matcher
 
 
 import lsst.pex.config as pexConfig
@@ -414,6 +416,11 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             type=np.int32,
             doc='Detector number for the sources.',
         )
+        output_schema.addField(
+            'psfColor',
+            type=np.float32,
+            doc="Color used in PSF fit."
+        )
 
         alias_map = input_schema.getAliasMap()
         alias_map_output = afwTable.AliasMap()
@@ -446,6 +453,12 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         selection_schema = mapper.getOutputSchema()
 
         selection_schema.setAliasMap(input_schema.getAliasMap())
+
+        selection_schema.addField(
+            'psfColor',
+            type=np.float32,
+            doc="Color used in PSF fit."
+        )
 
         return mapper, selection_schema
 
@@ -555,6 +568,28 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
 
         return isolated_table, isolated_source_table
 
+    def add_src_colors(self, srcCat, fgcmCat):
+
+        if self.isPsfDeterminerPiff:
+
+            raSrc = (srcCat['coord_ra'] * u.radian).to(u.degree).value
+            decSrc = (srcCat['coord_dec'] * u.radian).to(u.degree).value
+
+            with Matcher(raSrc, decSrc) as matcher:
+                idx, idxSrcCat, idxColorCat, d = matcher.query_radius(
+                    fgcmCat["ra"],
+                    fgcmCat["dec"],
+                    1. / 3600.0,
+                    return_indices=True,
+                )
+
+            magStr1 = self.psf_determiner.config.color[0]
+            magStr2 = self.psf_determiner.config.color[1]
+            colors = fgcmCat[f'mag_{magStr1}'] - fgcmCat[f'mag_{magStr2}']
+
+            for idSrc, idColor in zip(idxSrcCat, idxColorCat):
+                srcCat[idSrc]['psfColor'] = colors[idColor]
+
     def compute_psf_and_ap_corr_map(self, visit, detector, exposure, src, isolated_source_table, fgcm_standard_star_cat):
         """Compute psf model and aperture correction map for a single exposure.
 
@@ -636,6 +671,9 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         measured_src['calib_psf_candidate'] = selected_src['calib_psf_candidate']
         measured_src['calib_psf_reserved'] = selected_src['calib_psf_reserved']
 
+        self.add_src_colors(selected_src, fgcm_standard_star_cat)
+        self.add_src_colors(measured_src, fgcm_standard_star_cat)
+
         # Select the psf candidates from the selection catalog
         try:
             psf_selection_result = self.make_psf_candidates.run(selected_src, exposure=exposure)
@@ -652,13 +690,11 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
                                in zip(psf_selection_result.psfCandidates,
                                       ~psf_cand_cat['calib_psf_reserved']) if use]
         flag_key = psf_cand_cat.schema['calib_psf_used'].asKey()
+
         try:
-            # print('PF: Piff PSF ', self.isPsfDeterminerPiff)
-            # print('PF: Piff PSF ', self.psf_determiner.config.piffBasisPolynomialSolver)
             psf, cell_set = self.psf_determiner.determinePsf(exposure,
                                                              psf_determiner_list,
                                                              self.metadata,
-                                                             fgcmCat=fgcm_standard_star_cat,
                                                              flagKey=flag_key)
         except Exception as e:
             self.log.exception('Failed to determine PSF for visit %d, detector %d: %s',
@@ -883,19 +919,6 @@ class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
                                      tract in sorted(isolated_star_source_dict_temp.keys())}
         fgcm_standard_star_dict = {tract: fgcm_standard_star_dict_temp[tract] for
                                    tract in sorted(fgcm_standard_star_dict_temp.keys())}
-
-        import pickle
-
-        dicPF = {'fgcm_standard_star_dict': fgcm_standard_star_dict,
-        'isolated_star_source': isolated_star_source_dict,
-        'isolated_star_cat_dict': isolated_star_cat_dict,
-        'visit': visit,
-        'band': band,
-        'detector': detector,}
-
-        pickleFile = open("/sdf/home/l/leget/rubin-user/lsst_dev/tickets/DM-45569_add_color_psf/test.pkl", 'wb')
-        pickle.dump(dicPF, pickleFile)
-        pickleFile.close()
 
         struct = self.run(
             visit,

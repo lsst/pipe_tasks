@@ -73,11 +73,12 @@ class MockFinalizeCharacterizationTask(FinalizeCharacterizationTask):
         exposure,
         src,
         isolated_src_table,
+        fgcm_standard_star_cat,
         use_super=False,
     ):
         """A mocked version of this method."""
         if use_super:
-            return super().compute_psf_and_ap_corr_map(visit, detector, exposure, src, isolated_src_table)
+            return super().compute_psf_and_ap_corr_map(visit, detector, exposure, src, isolated_src_table, fgcm_standard_star_cat)
 
         return _make_dummy_psf_and_ap_corr_map()
 
@@ -98,6 +99,7 @@ class MockFinalizeCharacterizationDetectorTask(FinalizeCharacterizationDetectorT
         exposure,
         src,
         isolated_src_table,
+        fgcm_standard_star_cat,
         use_super=False,
     ):
         """A mocked version of this method."""
