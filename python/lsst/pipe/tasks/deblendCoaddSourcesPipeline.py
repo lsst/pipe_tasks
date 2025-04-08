@@ -64,8 +64,14 @@ class DeblendCoaddSourceSingleConnections(PipelineTaskConnections,
     )
     coadd = cT.Input(
         doc="Exposure on which to run deblending",
-        name="{inputCoaddName}Coadd_calexp",
-        storageClass="ExposureF",
+        name="{inputCoaddName}CoaddCell",
+        storageClass="MultipleCellCoadd",
+        dimensions=("tract", "patch", "band", "skymap")
+    )
+    background = cT.Input(
+        doc="Background to subtract from the coadd",
+        name="{inputCoaddName}Coadd_background",
+        storageClass="Background",
         dimensions=("tract", "patch", "band", "skymap")
     )
     measureCatalog = cT.Output(
@@ -115,8 +121,15 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
     )
     coadds = cT.Input(
         doc="Exposure on which to run deblending",
-        name="{inputCoaddName}Coadd_calexp",
-        storageClass="ExposureF",
+        name="{inputCoaddName}CoaddCell",
+        storageClass="MultipleCellCoadd",
+        multiple=True,
+        dimensions=("tract", "patch", "band", "skymap")
+    )
+    backgrounds = cT.Input(
+        doc="Background to subtract from the coadd",
+        name="{inputCoaddName}Coadd_background",
+        storageClass="Background",
         multiple=True,
         dimensions=("tract", "patch", "band", "skymap")
     )
@@ -250,6 +263,13 @@ class DeblendCoaddSourcesMultiTask(PipelineTask):
         bandOrder.sort()
         inputRefs = reorderRefs(inputRefs, bandOrder, dataIdKey="band")
         inputs = butlerQC.get(inputRefs)
+
+        exposures = [mcc.stitch().asExposure() for mcc in inputs["coadds"]]
+        backgrounds = [bg.getImage() for bg in inputs.pop("backgrounds")]
+        for exposure, background in zip(exposures, backgrounds):
+            exposure.maskedImage -= background
+        inputs["coadds"] = exposures
+
         inputs["idFactory"] = self.config.idGenerator.apply(butlerQC.quantum.dataId).make_table_id_factory()
         inputs["bands"] = [dRef.dataId["band"] for dRef in inputRefs.coadds]
         outputs = self.run(**inputs)

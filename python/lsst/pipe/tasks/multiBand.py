@@ -75,8 +75,8 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
     )
     exposure = cT.Input(
         doc="Exposure on which detections are to be performed",
-        name="{inputCoaddName}Coadd",
-        storageClass="ExposureF",
+        name="{inputCoaddName}CoaddCell",
+        storageClass="MultipleCellCoadd",
         dimensions=("tract", "patch", "band", "skymap")
     )
     outputBackgrounds = cT.Output(
@@ -175,6 +175,12 @@ class DetectCoaddSourcesTask(PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
+
+        mcc = inputs['exposure']
+        stitched_coadd = mcc.stitch()
+        exposure = stitched_coadd.asExposure()
+        inputs['exposure'] = exposure
+
         idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
         inputs["idFactory"] = idGenerator.make_table_id_factory()
         inputs["expId"] = idGenerator.catalog_id
