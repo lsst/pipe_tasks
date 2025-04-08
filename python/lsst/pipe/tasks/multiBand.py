@@ -570,7 +570,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             self.match.setRefObjLoader(refObjLoader)
 
         mcc = inputs['exposure']
-        exposure = mcc.stitch().asExposureF()
+        exposure = mcc.stitch().asExposure()
         exposure.maskedImage -= inputs['background'].getImage()
         inputs['exposure'] = exposure
         inputs['apCorrMap'] = mcc.stitch().ap_corr_map
