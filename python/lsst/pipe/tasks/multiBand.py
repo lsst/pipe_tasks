@@ -256,8 +256,14 @@ class MeasureMergedCoaddSourcesConnections(
     )
     exposure = cT.Input(
         doc="Input coadd image",
-        name="{inputCoaddName}Coadd_calexp",
-        storageClass="ExposureF",
+        name="{inputCoaddName}CoaddCell",
+        storageClass="MultipleCellCoadd",
+        dimensions=("tract", "patch", "band", "skymap")
+    )
+    background = cT.Input(
+        doc="Background to subtract from coadd",
+        name="{inputCoaddName}Coadd_background",
+        storageClass="Background",
         dimensions=("tract", "patch", "band", "skymap")
     )
     skyMap = cT.Input(
@@ -471,7 +477,6 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
                                            'base_LocalPhotoCalib',
                                            'base_LocalWcs']
 
-
     def validate(self):
         super().validate()
 
@@ -564,6 +569,12 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
                                                  log=self.log)
             self.match.setRefObjLoader(refObjLoader)
 
+        mcc = inputs['exposure']
+        exposure = mcc.stitch().asExposureF()
+        exposure.maskedImage -= inputs['background'].getImage()
+        inputs['exposure'] = exposure
+        inputs['apCorrMap'] = mcc.stitch().ap_corr_map
+
         # Set psfcache
         # move this to run after gen2 deprecation
         inputs['exposure'].getPsf().setCacheCapacity(self.config.psfCache)
@@ -637,7 +648,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     def run(self, exposure, sources, skyInfo, exposureId, ccdInputs=None,
-            sourceTableHandleDict=None, finalizedSourceTableHandleDict=None):
+            sourceTableHandleDict=None, finalizedSourceTableHandleDict=None, apCorrMap=None):
         """Run measurement algorithms on the input exposure, and optionally populate the
         resulting catalog with extra information.
 
@@ -664,6 +675,9 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             Dict for finalized_src_table handles (key is visit) for propagating flags.
             These tables are derived from ``FinalizeCalibrationTask`` and contain
             PSF flags from the finalized PSF estimation.
+        apCorrMap : `lsst.afw.image.ApCorrMap`, optional
+            Aperture correction map to use for aperture correction.
+            If None, will be taken from the exposure.
 
         Returns
         -------
@@ -676,9 +690,12 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         self.measurement.run(sources, exposure, exposureId=exposureId)
 
         if self.config.doApCorr:
+            if apCorrMap is None:
+                apCorrMap = exposure.getInfo().getApCorrMap()
+
             self.applyApCorr.run(
                 catalog=sources,
-                apCorrMap=exposure.getInfo().getApCorrMap()
+                apCorrMap=apCorrMap,
             )
 
         # TODO DM-11568: this contiguous check-and-copy could go away if we
