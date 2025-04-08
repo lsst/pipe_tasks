@@ -570,11 +570,12 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             self.match.setRefObjLoader(refObjLoader)
 
         mcc = inputs['exposure']
-        exposure = mcc.stitch().asExposure()
+        stitched_coadd = mcc.stitch()
+        exposure = stitched_coadd.asExposure()
         background = inputs.pop('background')
         exposure.maskedImage -= background.getImage()
         inputs['exposure'] = exposure
-        inputs['apCorrMap'] = mcc.stitch().ap_corr_map
+        inputs['apCorrMap'] = stitched_coadd.ap_corr_map
 
         # Set psfcache
         # move this to run after gen2 deprecation
