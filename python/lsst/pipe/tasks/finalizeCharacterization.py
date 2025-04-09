@@ -45,7 +45,6 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
-from lsst.afw.image import Color
 import lsst.meas.algorithms as measAlg
 import lsst.meas.extensions.piff.piffPsfDeterminer  # noqa: F401
 from lsst.meas.algorithms import MeasureApCorrTask
@@ -590,7 +589,8 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             for idSrc, idColor in zip(idxSrcCat, idxColorCat):
                 srcCat[idSrc]['psfColor'] = colors[idColor]
 
-    def compute_psf_and_ap_corr_map(self, visit, detector, exposure, src, isolated_source_table, fgcm_standard_star_cat):
+    def compute_psf_and_ap_corr_map(self, visit, detector, exposure, src,
+                                    isolated_source_table, fgcm_standard_star_cat):
         """Compute psf model and aperture correction map for a single exposure.
 
         Parameters
@@ -769,6 +769,8 @@ class FinalizeCharacterizationTask(FinalizeCharacterizationTaskBase):
                                        for handle in input_handle_dict['isolated_star_cats']}
         isolated_star_source_dict_temp = {handle.dataId['tract']: handle
                                           for handle in input_handle_dict['isolated_star_sources']}
+        fgcm_standard_star_dict_temp = {handle.dataId['tract']: handle
+                                        for handle in input_handle_dict['fgcm_standard_star']}
 
         src_dict = {detector: src_dict_temp[detector] for
                     detector in sorted(src_dict_temp.keys())}
@@ -778,12 +780,15 @@ class FinalizeCharacterizationTask(FinalizeCharacterizationTaskBase):
                                   tract in sorted(isolated_star_cat_dict_temp.keys())}
         isolated_star_source_dict = {tract: isolated_star_source_dict_temp[tract] for
                                      tract in sorted(isolated_star_source_dict_temp.keys())}
+        fgcm_standard_star_dict = {tract: fgcm_standard_star_dict_temp[tract] for
+                                   tract in sorted(fgcm_standard_star_dict_temp.keys())}
 
         struct = self.run(
             visit,
             band,
             isolated_star_cat_dict,
             isolated_star_source_dict,
+            fgcm_standard_star_dict,
             src_dict,
             calexp_dict,
         )
@@ -791,7 +796,8 @@ class FinalizeCharacterizationTask(FinalizeCharacterizationTaskBase):
         butlerQC.put(struct.psf_ap_corr_cat, outputRefs.finalized_psf_ap_corr_cat)
         butlerQC.put(struct.output_table, outputRefs.finalized_src_table)
 
-    def run(self, visit, band, isolated_star_cat_dict, isolated_star_source_dict, src_dict, calexp_dict):
+    def run(self, visit, band, isolated_star_cat_dict, isolated_star_source_dict,
+            fgcm_standard_star_dict, src_dict, calexp_dict):
         """
         Run the FinalizeCharacterizationTask.
 
@@ -859,6 +865,15 @@ class FinalizeCharacterizationTask(FinalizeCharacterizationTaskBase):
         measured_src_tables = []
         measured_src_table = None
 
+        fgcm_standard_star_cat = []
+
+        for tract in fgcm_standard_star_dict:
+            astropy_fgcm = fgcm_standard_star_dict[tract].get()
+            table_fgcm = np.asarray(astropy_fgcm)
+            fgcm_standard_star_cat.append(table_fgcm)
+
+        fgcm_standard_star_cat = np.concatenate(fgcm_standard_star_cat)
+
         self.log.info("Running finalizeCharacterization on %d detectors.", len(detector_keys))
         for detector in detector_keys:
             self.log.info("Starting finalizeCharacterization on detector ID %d.", detector)
@@ -870,7 +885,8 @@ class FinalizeCharacterizationTask(FinalizeCharacterizationTaskBase):
                 detector,
                 exposure,
                 src,
-                isolated_source_table
+                isolated_source_table,
+                fgcm_standard_star_cat,
             )
 
             # And now we package it together...
@@ -946,7 +962,8 @@ class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
             outputRefs.finalized_src_detector_table,
         )
 
-    def run(self, visit, band, detector, isolated_star_cat_dict, isolated_star_source_dict, fgcm_standard_star_dict, src, exposure):
+    def run(self, visit, band, detector, isolated_star_cat_dict, isolated_star_source_dict,
+            fgcm_standard_star_dict, src, exposure):
         """
         Run the FinalizeCharacterizationDetectorTask.
 
