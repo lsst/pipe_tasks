@@ -687,6 +687,12 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
                              visit, detector, e)
             return psf, None, measured_src
 
+        # Need to merge the original normalization aperture correction map.
+        ap_corr_map_input = exposure.apCorrMap
+        for key in ap_corr_map_input:
+            if key not in ap_corr_map:
+                ap_corr_map[key] = ap_corr_map_input[key]
+
         self.apply_ap_corr.run(catalog=measured_src, apCorrMap=ap_corr_map)
 
         return psf, ap_corr_map, measured_src
