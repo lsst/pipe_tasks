@@ -26,6 +26,8 @@ __all__ = ("PluginsRegistry", "plugins")
 from enum import Enum, auto
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Generator
+from lsst.pipe.base import PipelineTaskConfig
+
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -113,8 +115,8 @@ class PluginsRegistry:
         """
 
         def wrapper(
-            func: Callable[[NDArray, NDArray, Mapping[str, int]], NDArray],
-        ) -> Callable[[NDArray, NDArray, Mapping[str, int]], NDArray]:
+            func: Callable[[NDArray, NDArray, Mapping[str, int], PipelineTaskConfig], NDArray],
+        ) -> Callable[[NDArray, NDArray, Mapping[str, int], PipelineTaskConfig], NDArray]:
             match kind:
                 case PluginType.PARTIAL:
                     self._partial_values.append((order, func))
