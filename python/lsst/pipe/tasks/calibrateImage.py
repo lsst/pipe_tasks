@@ -41,6 +41,9 @@ from lsst.utils.timer import timeMethod
 
 from . import measurePsf, repair, photoCal, computeExposureSummaryStats, snapCombine
 
+from astropy.utils.iers import conf
+conf.auto_max_age = None
+
 
 class NoPsfStarsToStarsMatchError(pipeBase.AlgorithmError):
     """Raised when there are no matches between the psf_stars and stars
