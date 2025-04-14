@@ -113,7 +113,7 @@ class PropagateSourceFlagsTask(pipeBase.Task):
             self.schema.addField(f, type="Flag", doc="Propagated from finalized sources")
 
     def run(self, coadd_object_cat, ccd_inputs,
-            source_table_handle_dict=None, finalized_source_table_handle_dict=None):
+            source_table_handle_dict=None, finalized_source_table_handle_dict=None, visit_summary_handle_dict=None):
         """Propagate flags from single-frame sources to coadd objects.
 
         Flags are only propagated if a configurable percentage of the sources
@@ -153,9 +153,9 @@ class PropagateSourceFlagsTask(pipeBase.Task):
         # case of cell-based coadds and so optimizing usage in afw is not a priority.
         num_overlaps = np.zeros(len(coadd_object_cat), dtype=np.int32)
         for i, obj in enumerate(coadd_object_cat):
-            num_overlaps[i] = len(ccd_inputs.subsetContaining(obj.getCoord(), True))
+            num_overlaps[i] = len(ccd_inputs.subsetContaining(obj.getCentroid()))
 
-        visits = np.unique(ccd_inputs["visit"])
+        visits = np.unique(ccd_input.visit for ccd_input in ccd_inputs)
 
         matcher = Matcher(np.rad2deg(coadd_object_cat["coord_ra"]),
                           np.rad2deg(coadd_object_cat["coord_dec"]))
@@ -187,9 +187,11 @@ class PropagateSourceFlagsTask(pipeBase.Task):
                     tbl = handle.get(parameters={"columns": columns})
 
                     # Loop over all ccd_inputs rows for this visit.
-                    for row in ccd_inputs[ccd_inputs["visit"] == visit]:
-                        detector = row["ccd"]
-                        wcs = row.getWcs()
+                    for row in ccd_inputs:
+                        if row.visit != visit:
+                            continue
+                        detector = row.detector
+                        wcs = visit_summary_handle_dict[visit].get()[detector].getWcs()
                         if wcs is None:
                             self.log.info("No WCS for visit %d detector %d, so can't match sources to "
                                           "propagate flags.  Skipping...", visit, detector)

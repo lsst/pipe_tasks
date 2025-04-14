@@ -306,6 +306,14 @@ class MeasureMergedCoaddSourcesConnections(
         multiple=True,
         deferLoad=True,
     )
+    finalVisitSummaryHandles = cT.Input(
+        doc="Final visit summary table",
+        name="visit_summary",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit"),
+        multiple=True,
+        deferLoad=True,
+    )
     # TODO[DM-47797]: remove this deprecated connection.
     inputCatalog = cT.Input(
         doc=("Name of the input catalog to use."
@@ -637,7 +645,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         inputs['skyInfo'] = skyInfo
 
         if self.config.doPropagateFlags:
-            ccdInputs = inputs["exposure"].getInfo().getCoaddInputs().ccds
+            ccdInputs = stitched_coadd.inputs
             inputs["ccdInputs"] = ccdInputs
 
             if "sourceTableHandles" in inputs:
