@@ -74,8 +74,15 @@ class CoaddMultibandFitInputConnections(
     )
     coadds = cT.Input(
         doc="Exposures on which to run fits",
-        name="{name_coadd}Coadd_calexp",
-        storageClass="ExposureF",
+        name="{name_coadd}CoaddCell",
+        storageClass="MultipleCellCoadd",
+        dimensions=("tract", "patch", "band", "skymap"),
+        multiple=True,
+    )
+    backgrounds = cT.Input(
+        doc="Backgrounds for each exposure",
+        name="{name_coadd}Coadd_background",
+        storageClass="Background",
         dimensions=("tract", "patch", "band", "skymap"),
         multiple=True,
     )
@@ -332,7 +339,7 @@ class CoaddMultibandFitBase:
     def build_catexps(self, butlerQC, inputRefs, inputs) -> list[CatalogExposureInputs]:
         id_tp = self.config.idGenerator.apply(butlerQC.quantum.dataId).catalog_id
         # This is a roundabout way of ensuring all inputs get sorted and matched
-        keys = ["cats_meas", "coadds"]
+        keys = ["cats_meas", "coadds", "backgrounds"]
         has_psf_models = "models_psf" in inputs
         if has_psf_models:
             keys.append("models_psf")
@@ -343,7 +350,8 @@ class CoaddMultibandFitBase:
         )
         cats = inputs_sorted[0]
         exps = inputs_sorted[1]
-        models_psf = inputs_sorted[2] if has_psf_models else None
+        bgs = inputs_sorted[2]
+        models_psf = inputs_sorted[3] if has_psf_models else None
         dataIds = set(cats).union(set(exps))
         models_scarlet = inputs["models_scarlet"]
         catexp_dict = {}
