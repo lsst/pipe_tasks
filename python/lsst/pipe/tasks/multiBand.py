@@ -657,6 +657,11 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
                 finalizedSourceTableHandleDict = {handle.dataId["visit"]: handle
                                                   for handle in finalizedSourceTableHandles}
                 inputs["finalizedSourceTableHandleDict"] = finalizedSourceTableHandleDict
+            if "finalVisitSummaryHandles" in inputs:
+                finalVisitSummaryHandles = inputs.pop("finalVisitSummaryHandles")
+                finalVisitSummaryHandleDict = {handle.dataId["visit"]: handle
+                                               for handle in finalVisitSummaryHandles}
+                inputs["finalVisitSummaryHandleDict"] = finalVisitSummaryHandleDict
 
         outputs = self.run(**inputs)
         # Strip HeavyFootprints to save space on disk
@@ -664,7 +669,8 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     def run(self, exposure, sources, skyInfo, exposureId, ccdInputs=None,
-            sourceTableHandleDict=None, finalizedSourceTableHandleDict=None, apCorrMap=None):
+            sourceTableHandleDict=None, finalizedSourceTableHandleDict=None, finalVisitSummaryHandleDict=None,
+            apCorrMap=None):
         """Run measurement algorithms on the input exposure, and optionally populate the
         resulting catalog with extra information.
 
@@ -731,7 +737,8 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
                 sources,
                 ccdInputs,
                 sourceTableHandleDict,
-                finalizedSourceTableHandleDict
+                finalizedSourceTableHandleDict,
+                finalVisitSummaryHandleDict,
             )
 
         results = Struct()
