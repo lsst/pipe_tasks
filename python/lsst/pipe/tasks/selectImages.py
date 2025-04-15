@@ -285,15 +285,15 @@ class PsfWcsSelectImagesConfig(pipeBase.PipelineTaskConfig,
     )
     minNPsfStarPerBand = pexConfig.DictField(
         keytype=str,
-        itemtype=float,
+        itemtype=int,
         default={
-            "u": 10,
-            "g": 22,
-            "r": 22,
-            "i": 22,
-            "z": 22,
-            "y": 22,
-            "fallback": 15,
+            "u": 6,
+            "g": 6,
+            "r": 6,
+            "i": 6,
+            "z": 6,
+            "y": 6,
+            "fallback": 6,
         },
         doc="Minimum number of PSF stars for the final PSF model to be considered "
         "well-constrained and suitible for inclusion in the coadd.  This number should "
