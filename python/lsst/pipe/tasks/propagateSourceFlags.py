@@ -155,7 +155,7 @@ class PropagateSourceFlagsTask(pipeBase.Task):
         for i, obj in enumerate(coadd_object_cat):
             num_overlaps[i] = len(ccd_inputs.subsetContaining(obj.getCentroid()))
 
-        visits = np.unique(ccd_input.visit for ccd_input in ccd_inputs)
+        visits = np.unique([ccd_input.visit for ccd_input in ccd_inputs])
 
         matcher = Matcher(np.rad2deg(coadd_object_cat["coord_ra"]),
                           np.rad2deg(coadd_object_cat["coord_dec"]))
