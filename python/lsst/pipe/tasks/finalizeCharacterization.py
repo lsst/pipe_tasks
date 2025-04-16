@@ -93,6 +93,12 @@ class FinalizeCharacterizationConnectionsBase(
         multiple=True,
     )
 
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+
+        if not self.config.psf_determiner['piff'].useColor:
+            self.inputs.remove("fgcm_standard_star")
+
 
 class FinalizeCharacterizationConnections(
     FinalizeCharacterizationConnectionsBase,
@@ -569,7 +575,7 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
 
     def add_src_colors(self, srcCat, fgcmCat):
 
-        if self.isPsfDeterminerPiff:
+        if self.isPsfDeterminerPiff and fgcmCat is not None:
 
             raSrc = (srcCat['coord_ra'] * u.radian).to(u.degree).value
             decSrc = (srcCat['coord_dec'] * u.radian).to(u.degree).value
@@ -769,8 +775,6 @@ class FinalizeCharacterizationTask(FinalizeCharacterizationTaskBase):
                                        for handle in input_handle_dict['isolated_star_cats']}
         isolated_star_source_dict_temp = {handle.dataId['tract']: handle
                                           for handle in input_handle_dict['isolated_star_sources']}
-        fgcm_standard_star_dict_temp = {handle.dataId['tract']: handle
-                                        for handle in input_handle_dict['fgcm_standard_star']}
 
         src_dict = {detector: src_dict_temp[detector] for
                     detector in sorted(src_dict_temp.keys())}
@@ -780,8 +784,14 @@ class FinalizeCharacterizationTask(FinalizeCharacterizationTaskBase):
                                   tract in sorted(isolated_star_cat_dict_temp.keys())}
         isolated_star_source_dict = {tract: isolated_star_source_dict_temp[tract] for
                                      tract in sorted(isolated_star_source_dict_temp.keys())}
-        fgcm_standard_star_dict = {tract: fgcm_standard_star_dict_temp[tract] for
-                                   tract in sorted(fgcm_standard_star_dict_temp.keys())}
+
+        if self.config.psf_determiner['piff'].useColor:
+            fgcm_standard_star_dict_temp = {handle.dataId['tract']: handle
+                                            for handle in input_handle_dict['fgcm_standard_star']}
+            fgcm_standard_star_dict = {tract: fgcm_standard_star_dict_temp[tract] for
+                                       tract in sorted(fgcm_standard_star_dict_temp.keys())}
+        else:
+            fgcm_standard_star_dict = None
 
         struct = self.run(
             visit,
@@ -865,14 +875,18 @@ class FinalizeCharacterizationTask(FinalizeCharacterizationTaskBase):
         measured_src_tables = []
         measured_src_table = None
 
-        fgcm_standard_star_cat = []
+        if fgcm_standard_star_dict is not None:
 
-        for tract in fgcm_standard_star_dict:
-            astropy_fgcm = fgcm_standard_star_dict[tract].get()
-            table_fgcm = np.asarray(astropy_fgcm)
-            fgcm_standard_star_cat.append(table_fgcm)
+            fgcm_standard_star_cat = []
 
-        fgcm_standard_star_cat = np.concatenate(fgcm_standard_star_cat)
+            for tract in fgcm_standard_star_dict:
+                astropy_fgcm = fgcm_standard_star_dict[tract].get()
+                table_fgcm = np.asarray(astropy_fgcm)
+                fgcm_standard_star_cat.append(table_fgcm)
+
+            fgcm_standard_star_cat = np.concatenate(fgcm_standard_star_cat)
+        else:
+            fgcm_standard_star_cat = None
 
         self.log.info("Running finalizeCharacterization on %d detectors.", len(detector_keys))
         for detector in detector_keys:
@@ -932,15 +946,19 @@ class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
                                        for handle in input_handle_dict['isolated_star_cats']}
         isolated_star_source_dict_temp = {handle.dataId['tract']: handle
                                           for handle in input_handle_dict['isolated_star_sources']}
-        fgcm_standard_star_dict_temp = {handle.dataId['tract']: handle
-                                        for handle in input_handle_dict['fgcm_standard_star']}
 
         isolated_star_cat_dict = {tract: isolated_star_cat_dict_temp[tract] for
                                   tract in sorted(isolated_star_cat_dict_temp.keys())}
         isolated_star_source_dict = {tract: isolated_star_source_dict_temp[tract] for
                                      tract in sorted(isolated_star_source_dict_temp.keys())}
-        fgcm_standard_star_dict = {tract: fgcm_standard_star_dict_temp[tract] for
-                                   tract in sorted(fgcm_standard_star_dict_temp.keys())}
+
+        if self.config.psf_determiner['piff'].useColor:
+            fgcm_standard_star_dict_temp = {handle.dataId['tract']: handle
+                                            for handle in input_handle_dict['fgcm_standard_star']}
+            fgcm_standard_star_dict = {tract: fgcm_standard_star_dict_temp[tract] for
+                                       tract in sorted(fgcm_standard_star_dict_temp.keys())}
+        else:
+            fgcm_standard_star_dict = None
 
         struct = self.run(
             visit,
@@ -1019,14 +1037,17 @@ class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
 
         self.log.info("Starting finalizeCharacterization on detector ID %d.", detector)
 
-        fgcm_standard_star_cat = []
+        if fgcm_standard_star_dict is not None:
+            fgcm_standard_star_cat = []
 
-        for tract in fgcm_standard_star_dict:
-            astropy_fgcm = fgcm_standard_star_dict[tract].get()
-            table_fgcm = np.asarray(astropy_fgcm)
-            fgcm_standard_star_cat.append(table_fgcm)
+            for tract in fgcm_standard_star_dict:
+                astropy_fgcm = fgcm_standard_star_dict[tract].get()
+                table_fgcm = np.asarray(astropy_fgcm)
+                fgcm_standard_star_cat.append(table_fgcm)
 
-        fgcm_standard_star_cat = np.concatenate(fgcm_standard_star_cat)
+            fgcm_standard_star_cat = np.concatenate(fgcm_standard_star_cat)
+        else:
+            fgcm_standard_star_cat = None
 
         psf, ap_corr_map, measured_src = self.compute_psf_and_ap_corr_map(
             visit,
