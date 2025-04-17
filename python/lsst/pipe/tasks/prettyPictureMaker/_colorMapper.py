@@ -6,12 +6,27 @@ import skimage
 import colour
 import cv2
 from skimage.restoration import inpaint_biharmonic
+import pywt
 
 from ._localContrast import localContrast, makeGaussianPyramid, makeLapPyramid, levelPadder
 from lsst.cpputils import fixGamutOK
 
 from numpy.typing import NDArray
 from typing import Callable, Mapping, Literal
+
+
+def contrast_equalizer(image, contrast_factors, wavelet='db4'):
+    coeffs = pywt.wavedec2(image, wavelet)
+    # Adjust contrast at each level
+    for i in range(1, len(coeffs)):
+        # Handle case where fewer factors are provided
+        if i - 1 >= len(contrast_factors):
+           factor = 1
+        else:
+           factor = contrast_factors[i-1]
+        cH, cV, cD = coeffs[i]
+        coeffs[i] = (cH * factor, cV * factor, cD * factor)
+    return pywt.waverec2(coeffs, wavelet)
 
 
 def latLum(
@@ -24,6 +39,8 @@ def latLum(
     highlight: float = 1.0,
     shadow: float = 0.0,
     midtone: float = 0.5,
+    equalizer_levels: list[float] | None = None
+    wavelet: str = 'db4'
 ) -> NDArray:
     """
     Scale the input luminosity values to maximize the dynamic range visible.
@@ -85,6 +102,10 @@ def latLum(
     maximum_intensity = np.arcsinh((100 * soften + floor) * slope)
 
     intensities /= maximum_intensity
+
+    # contrast equalizer
+    if equalizer_levels is not None:
+        intensities = contrast_equalizer(intensities, equalizer_levels, wavelet)
 
     # Scale the intensities with linear manipulation for contrast
     intensities = (intensities - shadow) / (highlight - shadow)

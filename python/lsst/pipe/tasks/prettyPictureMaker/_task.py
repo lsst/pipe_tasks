@@ -134,6 +134,17 @@ class LumConfig(Config):
     midtone = Field[float](
         doc="The value of midtone in scaling factor applied to post asinh streaching", default=0.5
     )
+    equalizer_levels = ListField[float](
+        doc=(
+            "A list of factors to modify the constrast in a scale dependent way. "
+            "One coefficient for each spatial scale, starting from the largest. "
+            "Values large than 1 increase contrast, while less than 1 decreases"
+        ),
+        optional=True,
+    )
+    wavlet = Field[str](
+        doc="wavelet to use in contrast equalizer, must be a pywavelets dwt name", default="db4"
+    )
 
 
 class LocalContrastConfig(Config):
