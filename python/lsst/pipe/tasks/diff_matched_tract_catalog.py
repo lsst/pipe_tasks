@@ -153,6 +153,10 @@ class DiffMatchedTractCatalogConfig(
         default='refcat_',
         doc='The prefix for matched columns copied from the reference catalog',
     )
+    column_matched_prefix_target = pexConfig.Field[str](
+        default='',
+        doc='The prefix for matched columns copied from the target catalog',
+    )
     include_unmatched = pexConfig.Field[bool](
         default=False,
         doc='Whether to include unmatched rows in the matched table',
@@ -397,10 +401,16 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         # Create a matched table, preserving the target catalog's named index (if it has one)
         cat_left = cat_target[matched_row]
         cat_right = cat_ref[matched_ref]
-        cat_right.rename_columns(
-            list(cat_right.columns),
-            new_names=[f'{config.column_matched_prefix_ref}{col}' for col in cat_right.columns],
-        )
+        if config.column_matched_prefix_target:
+            cat_left.rename_columns(
+                list(cat_left.columns),
+                new_names=[f'{config.column_matched_prefix_target}{col}' for col in cat_left.columns],
+            )
+        if config.column_matched_prefix_ref:
+            cat_right.rename_columns(
+                list(cat_right.columns),
+                new_names=[f'{config.column_matched_prefix_ref}{col}' for col in cat_right.columns],
+            )
         cat_matched = astropy.table.hstack((cat_left, cat_right))
 
         if config.include_unmatched:
