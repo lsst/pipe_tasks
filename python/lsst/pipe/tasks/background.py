@@ -860,7 +860,7 @@ class TractBackgroundConfig(Config):
     )
     doSmooth = Field(dtype=bool, default=False, doc="Do smoothing?")
     smoothScale = Field(dtype=float, default=2.0, doc="Smoothing scale, as a multiple of the bin size")
-    binning = Field(dtype=int, default=64, doc="Binning to use for warp background model (pixels)")
+    binning = Field(dtype=int, default=200, doc="Binning to use for warp background model (pixels)")
 
 
 class TractBackground:
@@ -895,8 +895,6 @@ class TractBackground:
         ----------
         config : `TractBackgroundConfig`
             Configuration for measuring tract backgrounds.
-        transform : `lsst.afw.geom.TransformPoint2ToPoint2`
-            Transformation from tract coordinates to warp coordinates.
         values : `lsst.afw.image.ImageF`
             Measured background values.
         numbers : `lsst.afw.image.ImageF`
@@ -1097,7 +1095,10 @@ class TractBackground:
         """
         values = self._values.clone()
         values /= self._numbers
-        # This old logic doesn't work because everything outside the FP is bad
+        # TODO: this logic smoothes over bad parts of the image, including NaN
+        # values.  But it doesn't work here because NaN pixels are always found
+        # at the image edges.  Could ignore it, or devise an alternative.
+        # tract have no overlap with the visit?
         # thresh = self.config.minFrac * (self.config.xBin) * (self.config.yBin)
         # isBad = self._numbers.getArray() < thresh
         # if self.config.doSmooth:
