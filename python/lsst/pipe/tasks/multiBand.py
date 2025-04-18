@@ -720,9 +720,9 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         if self.config.doPropagateFlags:
             # These mask planes may not be defined on the coadds always.
             # We add the mask planes, which is a no-op if already defined.
-            for maskPlane in self.config["base_PixelFlags"].masksFpAnywhere:
+            for maskPlane in self.config.measurement["base_PixelFlags"].masksFpAnywhere:
                 afwImage.Mask.addMaskPlane(maskPlane)
-            for maskPlane in self.config["base_PixelFlags"].masksFpCenter:
+            for maskPlane in self.config.measurement["base_PixelFlags"].masksFpCenter:
                 afwImage.Mask.addMaskPlane(maskPlane)
 
         self.measurement.run(sources, exposure, exposureId=exposureId)
