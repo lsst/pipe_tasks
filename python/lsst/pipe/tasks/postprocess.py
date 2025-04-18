@@ -1304,12 +1304,13 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
     - The wcs.
     - The photoCalib.
     - The physical_filter and band (if available).
+    - The detector.
     - The psf size, shape, and effective area at the center of the detector.
     - The corners of the bounding box in right ascension/declination.
 
-    Other quantities such as Detector, Psf, ApCorrMap, and TransmissionCurve
-    are not persisted here because of storage concerns, and because of their
-    limited utility as summary statistics.
+    Other quantities such as Psf, ApCorrMap, and TransmissionCurve are not
+    persisted here because of storage concerns, and because of their limited
+    utility as summary statistics.
 
     Tests for this task are performed in ci_hsc_gen3.
     """
@@ -1374,6 +1375,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
             rec.setVisitInfo(visitInfo)
             rec.setWcs(wcs)
             rec.setPhotoCalib(photoCalib)
+            rec.setDetector(detector)
             rec.setValidPolygon(validPolygon)
 
             rec["physical_filter"] = filterLabel.physicalLabel if filterLabel.hasPhysicalLabel() else ""
