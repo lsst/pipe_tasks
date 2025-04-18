@@ -349,8 +349,16 @@ class CoaddMultibandFitBase:
             for refs, objs in input_refs_objs
         )
         cats = inputs_sorted[0]
-        exps = inputs_sorted[1]
+        temp_exps = inputs_sorted[1]
         bgs = inputs_sorted[2]
+        exps = {}
+        for data_id, background in bgs.items():
+            mcc = temp_exps[data_id]
+            stitched_coadd = mcc.stitch()
+            exposure = stitched_coadd.asExposure()
+            exposure.maskedImage -= background.getImage()
+            exps[data_id] = exposure
+
         models_psf = inputs_sorted[3] if has_psf_models else None
         dataIds = set(cats).union(set(exps))
         models_scarlet = inputs["models_scarlet"]
