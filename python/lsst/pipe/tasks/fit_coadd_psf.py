@@ -167,12 +167,12 @@ class CoaddPsfFitTask(pipeBase.PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
 
-        mcc = inputs['exposure']
+        mcc = inputs['coadd']
         stitched_coadd = mcc.stitch()
         exposure = stitched_coadd.asExposure()
         background = inputs.pop("background")
         exposure.maskedImage -= background.getImage()
-        inputs["exposure"] = exposure
+        inputs["coadd"] = exposure
 
         id_tp = self.config.idGenerator.apply(butlerQC.quantum.dataId).catalog_id
         dataId = inputRefs.cat_meas.dataId
