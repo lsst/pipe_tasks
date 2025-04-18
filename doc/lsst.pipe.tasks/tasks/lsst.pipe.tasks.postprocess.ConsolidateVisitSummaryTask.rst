@@ -4,7 +4,7 @@
 ConsolidateVisitSummaryTask
 ###########################
 
-``ConsolidateVisitSummaryTask`` combines the non-trivial metadata, including the wcs, detector id, psf size and shape, filter, and bounding box corners into one per-visit exposure catalog (dataset `visitSummary`).
+``ConsolidateVisitSummaryTask`` combines the non-trivial metadata, including the wcs, detector information, psf size and shape, filter, and bounding box corners into one per-visit exposure catalog (dataset `visitSummary`).
 
 .. _lsst.pipe.tasks.postprocess.ConsolidateVisitSummary-summary:
 
@@ -21,9 +21,7 @@ The metadata from each exposure/detector includes:
 - The psf size, shape, and effective area at the center of the detector.
 - The corners of the bounding box in right ascension/declination.
 
-Other quantities such as detector, PSF, aperture correction map, and
-transmission curve are not persisted because of storage concerns, and
-because of their limited utility as summary statistics.
+Other quantities such as PSF, aperture correction map, and transmission curve are not persisted because of storage concerns, and because of their limited utility as summary statistics.
 
 .. _lsst.pipe.tasks.postprocess.ConsolidateVisitSummaryTask-api:
 

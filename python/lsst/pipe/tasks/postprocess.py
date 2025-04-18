@@ -1292,7 +1292,15 @@ class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
 class ConsolidateVisitSummaryConfig(pipeBase.PipelineTaskConfig,
                                     pipelineConnections=ConsolidateVisitSummaryConnections):
     """Config for ConsolidateVisitSummaryTask"""
-    pass
+
+    full = pexConfig.Field(
+        "Whether to propate all exposure components. "
+        "This adds PSF, aperture correction map, transmission curve, and detector, which can increase file "
+        "size by more than factor of 10, but it makes the visit summaries produced by this task fully usable"
+        "by tasks that were designed to run downstream of lsst.drp.tasks.UpdateVisitSummaryTask.",
+        dtype=bool,
+        default=False,
+    )
 
 
 class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
@@ -1304,12 +1312,12 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
     - The wcs.
     - The photoCalib.
     - The physical_filter and band (if available).
+    - The detector.
+    - The PSF model.
+    - The aperture correction map.
+    - The transmission curve.
     - The psf size, shape, and effective area at the center of the detector.
     - The corners of the bounding box in right ascension/declination.
-
-    Other quantities such as Detector, Psf, ApCorrMap, and TransmissionCurve
-    are not persisted here because of storage concerns, and because of their
-    limited utility as summary statistics.
 
     Tests for this task are performed in ci_hsc_gen3.
     """
@@ -1365,7 +1373,6 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
             detector = dataRef.get(component="detector")
             wcs = dataRef.get(component="wcs")
             photoCalib = dataRef.get(component="photoCalib")
-            detector = dataRef.get(component="detector")
             bbox = dataRef.get(component="bbox")
             validPolygon = dataRef.get(component="validPolygon")
 
@@ -1375,6 +1382,12 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
             rec.setWcs(wcs)
             rec.setPhotoCalib(photoCalib)
             rec.setValidPolygon(validPolygon)
+
+            if self.config.full:
+                rec.setDetector(dataRef.get(component="detector"))
+                rec.setPsf(dataRef.get(component="psf"))
+                rec.setApCorrMap(dataRef.get(component="apCorrMap"))
+                rec.setTransmissionCurve(dataRef.get(component="transmissionCurve"))
 
             rec["physical_filter"] = filterLabel.physicalLabel if filterLabel.hasPhysicalLabel() else ""
             rec["band"] = filterLabel.bandLabel if filterLabel.hasBandLabel() else ""
