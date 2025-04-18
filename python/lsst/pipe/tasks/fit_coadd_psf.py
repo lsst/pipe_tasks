@@ -59,8 +59,14 @@ class CoaddPsfFitConnections(
 ):
     coadd = cT.Input(
         doc="Coadd image to fit a PSF model to",
-        name="{name_coadd}Coadd_calexp",
-        storageClass="ExposureF",
+        name="{name_coadd}CoaddCell",
+        storageClass="MultipleCellCoadd",
+        dimensions=("tract", "patch", "band", "skymap"),
+    )
+    background = cT.Input(
+        doc="Background to subtract from the coadd",
+        name="{name_coadd}_coadd_background",
+        storageClass="Background",
         dimensions=("tract", "patch", "band", "skymap"),
     )
     cat_meas = cT.Input(
@@ -160,6 +166,14 @@ class CoaddPsfFitTask(pipeBase.PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
+
+        mcc = inputs['exposure']
+        stitched_coadd = mcc.stitch()
+        exposure = stitched_coadd.asExposure()
+        background = inputs.pop("background")
+        exposure.maskedImage -= background.getImage()
+        inputs["exposure"] = exposure
+
         id_tp = self.config.idGenerator.apply(butlerQC.quantum.dataId).catalog_id
         dataId = inputRefs.cat_meas.dataId
         for dataRef in (inputRefs.coadd,):
