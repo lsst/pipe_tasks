@@ -81,7 +81,7 @@ class CoaddMultibandFitInputConnections(
     )
     backgrounds = cT.Input(
         doc="Backgrounds for each exposure",
-        name="{name_coadd}Coadd_background",
+        name="{name_coadd}_coadd_background",
         storageClass="Background",
         dimensions=("tract", "patch", "band", "skymap"),
         multiple=True,
