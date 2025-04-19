@@ -4,10 +4,10 @@
 CalibrateImageTask
 ##################
 
-`~lsst.pipe.tasks.calibrateImage.CalibrateImageTask` performs "single frame processing" on one (single *visit*) or two (two *snap* visit) post- :ref:`Instrument Signature Removal <lsst.ip.isr>` single detector exposure (``postISRCCD``).
+`~lsst.pipe.tasks.calibrateImage.CalibrateImageTask` performs "single frame processing" on one (single *visit*) or two (two *snap* visit) post- :ref:`Instrument Signature Removal <lsst.ip.isr>` single detector exposure (``post_isr_image``).
 This involves merging two *snaps* (if provided) into one *visit* exposure, repairing cosmic rays and defects, detecting and measuring sources on the exposure to make an initial estimation of the point spread function (PSF), using that same catalog of psf stars to compute the astrometric calibration, then re-doing detection and measurement with the fitted PSF to compute the photometric calibrations, and computing summary statistics of the exposure and measured catalog.
-Its primary outputs are a calibrated, background-subtracted exposure (``initial_pvi``, pixel values in nanojansky) and catalog (``initial_stars_detector``) of bright, well-measured point-like sources that were used as inputs to calibration and that are suitable for downstream use (for example as kernel candidates in difference imaging).
-This task replaces the two older tasks `~lsst.pipe.tasks.characterizeImage.CharacterizeImageTask` (roughly repair/estimate PSF/aperture correct) and `~lsst.pipe.tasks.calibrate.CalibrateTask` (roughly detect/measure/astrometry/photometry).
+Its primary outputs are a calibrated, background-subtracted exposure (``preliminary_visit_image``, pixel values in nanojansky) and catalog (``single_visit_star_unstandardized``) of bright, well-measured point-like sources that were used as inputs to calibration and that are suitable for downstream use (for example as kernel candidates in difference imaging).
+This task replaces the two older tasks `~lsst.pipe.tasks.characterizeImage.CharacterizeImageTask` (roughly: repair/estimate PSF/aperture correct) and `~lsst.pipe.tasks.calibrate.CalibrateTask` (roughly: detect/measure/astrometry/photometry).
 
 .. _lsst.pipe.tasks.calibrateImage.CalibrateImageTask-summary:
 
@@ -26,13 +26,13 @@ Processing summary
 
    #. Install an updated Gaussian PSF representation of that first PSF estimate (to reduce noise and help with convergence) and re-run repair/detect/measure/estimate PSF as above.
 
-   #. Use that final fitted PSF to redo repair and measurement (hopefully with all cosmic rays now removed), resulting in the optional ``initial_psf_stars_detector`` and ``initial_psf_stars_footprints_detector`` output catalogs. Note that these catalogs do not have sky coordinates or calibrated fluxes.
+   #. Use that final fitted PSF to redo repair and measurement (hopefully with all cosmic rays now removed), resulting in the optional ``single_visit_psf_star`` and ``single_visit_psf_star_footprints`` output catalogs. Note that these catalogs do not have sky coordinates or calibrated fluxes.
 
 #. Compute an :py:class:`aperture correction <lsst.meas.algorithms.MeasureApCorrTask>` for the exposure using the final catalog measured after the PSF fit.
 
 #. Perform astrometric fit
 
-   #. Use sources flagged as ``calib_psf_candidate`` from the PSF model catalog above, ``initial_psf_stars_footprints_detector``, in the astrometric calibration.
+   #. Use sources flagged as ``calib_psf_candidate`` from the PSF model catalog above, ``single_visit_psf_star_footprints``, in the astrometric calibration.
 
    #. Fit the :py:class:`astrometry <lsst.meas.astrom.AstrometryTask>` to a reference catalog using an :py:class:`affine WCS fitter <lsst.meas.astrom.FitAffineWcsTask>` that requires a reasonable model of the :ref:`camera geometry <section_CameraGeom_Overview>`, to produce a `SkyWcs`_ for the exposure and compute on-sky coordinates for the catalog of stars. The star/refcat matches used in the astrometric fit is saved as the optional ``initial_astrometry_match_detector`` catalog.
 
@@ -42,15 +42,15 @@ Processing summary
 
    #. For the detected sources, :py:class:`deblend <lsst.meas.deblender.SourceDeblendTask>`, :py:class:`measure <lsst.meas.base.sfm.SingleFrameMeasurementTask>`, aperture correct, and set flags based on blendedness, footprint size, and other properties.
 
-   #. Select non-"bad" flagged, unresolved, :math:`S/N >= 10` sources to pass to the subsequent calibration steps and to be saved as the ``initial_stars_detector`` and ``initial_stars_footprints_detector`` output catalogs. Note that these catalogs do not have sky coordinates or calibrated fluxes: those are computed at a later step.
+   #. Select non-"bad" flagged, unresolved, :math:`S/N >= 10` sources to pass to the subsequent calibration steps and to be saved as the ``single_visit_star_unstandardized`` and ``single_visit_psf_star_footprints`` output catalogs. Note that these catalogs do not have sky coordinates or calibrated fluxes: those are computed at a later step.
 
 #. Match the list of stars from the two steps above, to propagate flags (e.g. ``calib_psf_candidate``, ``calib_psf_used``, and ``calib_astrometry_used``) from the psf/astrometry stars catalog into the second, primary output catalog.
 
-#. The steps above perform several rounds of background fitting, which together are saved as the ``initial_pvi_background`` output; this saved background has been calibrated to be in the same nJy units as the ``initial_pvi`` output exposure.
+#. The steps above perform several rounds of background fitting, which together are saved as the ``preliminary_visit_image_background`` output; this saved background has been calibrated to be in the same nJy units as the ``preliminary_visit_image`` output exposure.
 
 #. Fit the :py:class:`photometry <lsst.pipe.tasks.photoCal.PhotoCalTask>` to a reference catalog, to produce a `PhotoCalib`_ for the exposure and calibrate both the image and catalog of stars to have pixels and fluxes respectively in nanojansky. Note that this results in the output exposure having a `PhotoCalib`_ identically 1; the applied `PhotoCalib`_ is saved as the ``initial_photoCalib_detector`` output. The star/refcat matches used in the photometric fit is saved as the optional ``initial_photometry_match_detector`` catalog.
 
-#. Finally, the measurements and fits performed above are combined into a variety of summary statistics which are attached to the exposure, which is saved as the ``initial_pvi`` output.
+#. Finally, the measurements and fits performed above are combined into a variety of summary statistics which are attached to the exposure, which is saved as the ``preliminary_visit_image`` output.
 
 .. _lsst.pipe.tasks.calibrateImage.CalibrateImageTask-api:
 
@@ -83,7 +83,7 @@ In Depth
 Catalog cross-matching
 ----------------------
 
-The catalog of calibrated stars (``initial_stars_detector``) produced by this task has different source ids than the catalog of stars that were detected for PSF determination (``initial_psf_stars_detector``), because those subtasks used different detection configurations.
+The catalog of calibrated stars (``single_visit_star_unstandardized``) produced by this task has different source ids than the catalog of stars that were detected for PSF determination (``single_visit_psf_star``), because those subtasks used different detection configurations.
 The stars catalog contains a ``psf_id`` field, which if non-zero is the source id of the corresponding record in the psf stars catalog.
 This also applies to the reference/source match catalogs for astrometry (``initial_astrometry_match_detector``) and photometry (``initial_photometry_match_detector``).
 We use the psf star catalog for the astrometry fit, so the ``src_id`` values in the astrometry match catalog refer to the psf stars, not the calibrated stars.
