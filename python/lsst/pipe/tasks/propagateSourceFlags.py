@@ -113,7 +113,8 @@ class PropagateSourceFlagsTask(pipeBase.Task):
             self.schema.addField(f, type="Flag", doc="Propagated from finalized sources")
 
     def run(self, coadd_object_cat, ccd_inputs,
-            source_table_handle_dict=None, finalized_source_table_handle_dict=None, visit_summary_handle_dict=None):
+            source_table_handle_dict=None, finalized_source_table_handle_dict=None,
+            visit_summary_handle_dict=None):
         """Propagate flags from single-frame sources to coadd objects.
 
         Flags are only propagated if a configurable percentage of the sources
