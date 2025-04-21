@@ -1312,7 +1312,6 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
     - The wcs.
     - The photoCalib.
     - The physical_filter and band (if available).
-    - The detector.
     - The PSF model.
     - The aperture correction map.
     - The transmission curve.
@@ -1384,7 +1383,6 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
             rec.setValidPolygon(validPolygon)
 
             if self.config.full:
-                rec.setDetector(dataRef.get(component="detector"))
                 rec.setPsf(dataRef.get(component="psf"))
                 rec.setApCorrMap(dataRef.get(component="apCorrMap"))
                 rec.setTransmissionCurve(dataRef.get(component="transmissionCurve"))
