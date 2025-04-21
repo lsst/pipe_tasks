@@ -35,6 +35,7 @@ from lsst.meas.base import (
 from lsst.meas.extensions.scarlet.io import updateCatalogFootprints
 from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
 from lsst.pipe.tasks.propagateSourceFlags import PropagateSourceFlagsTask
+import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
 from lsst.daf.base import PropertyList
@@ -176,15 +177,19 @@ class DetectCoaddSourcesTask(PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
 
-        mcc = inputs['exposure']
-        stitched_coadd = mcc.stitch()
-        exposure = stitched_coadd.asExposure()
-        inputs['exposure'] = exposure
+        exposure = inputs.pop("exposure")
+        if not isinstance(exposure, afwImage.Exposure):
+            # Treat it as a MultipleCellCoadd. Stitch the cell-based coadd
+            # and convert it to an Exposure.
+            exposure = exposure.stitch().asExposure()
 
         idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
-        inputs["idFactory"] = idGenerator.make_table_id_factory()
-        inputs["expId"] = idGenerator.catalog_id
-        outputs = self.run(**inputs)
+        assert not inputs, "runQuantum got more inputs than expected."
+        outputs = self.run(
+            exposure=exposure,
+            idFactory=idGenerator.make_table_id_factory(),
+            expId=idGenerator.catalog_id,
+        )
         butlerQC.put(outputs, outputRefs)
 
     def run(self, exposure, idFactory, expId):
