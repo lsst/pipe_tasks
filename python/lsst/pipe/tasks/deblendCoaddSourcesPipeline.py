@@ -173,6 +173,12 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
         super().__init__(config=config)
         del self.fluxCatalogs
         del self.templateCatalogs
+        if config.useCellCoadd and not self.coadds.storageClass == "MultipleCellCoadd":
+            raise ValueError(
+                "The input coadds must be of type MultipleCellCoadd if useCellCoadd is True."
+            )
+        if not config.useCellCoadd:
+            del self.backgrounds
 
 
 class DeblendCoaddSourcesMultiConfig(PipelineTaskConfig,
@@ -182,6 +188,11 @@ class DeblendCoaddSourcesMultiConfig(PipelineTaskConfig,
         doc="Task to deblend an images in multiple bands"
     )
     idGenerator = SkyMapIdGeneratorConfig.make_field()
+    useCellCoadd = Field[bool](
+        doc="Use cell coadd as input to the deblender? In a pipeline setting, this has to be consistent with "
+        "the connections as well.",
+        default=True,
+    )
 
 
 # TODO[DM-47797] Remove this task.
@@ -264,15 +275,23 @@ class DeblendCoaddSourcesMultiTask(PipelineTask):
         inputRefs = reorderRefs(inputRefs, bandOrder, dataIdKey="band")
         inputs = butlerQC.get(inputRefs)
 
-        exposures = [mcc.stitch().asExposure() for mcc in inputs["coadds"]]
-        backgrounds = [bg.getImage() for bg in inputs.pop("backgrounds")]
-        for exposure, background in zip(exposures, backgrounds):
-            exposure.maskedImage -= background
-        inputs["coadds"] = exposures
+        coadds = inputs.pop("coadds")
+        if self.config.useCellCoadd:
+            exposures = [mcc.stitch().asExposure() for mcc in coadds]
+            backgrounds = [bg.getImage() for bg in inputs.pop("backgrounds")]
+            for exposure, background in zip(exposures, backgrounds):
+                exposure.maskedImage -= background
+            coadds = exposures
 
-        inputs["idFactory"] = self.config.idGenerator.apply(butlerQC.quantum.dataId).make_table_id_factory()
-        inputs["bands"] = [dRef.dataId["band"] for dRef in inputRefs.coadds]
-        outputs = self.run(**inputs)
+        idFactory = self.config.idGenerator.apply(butlerQC.quantum.dataId).make_table_id_factory()
+        mergedDetections=inputs.pop("mergedDetections")
+        bands = [dRef.dataId["band"] for dRef in inputRefs.coadds]
+        outputs = self.run(
+            coadds=coadds,
+            bands=bands,
+            mergedDetections=mergeDetections,
+            idFactory=idFactory,
+        )
         butlerQC.put(outputs, outputRefs)
 
     def run(self, coadds, bands, mergedDetections, idFactory):
