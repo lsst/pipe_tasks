@@ -681,12 +681,10 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             the coadd.
         sourceTableHandleDict : `dict` [`int`, `lsst.daf.butler.DeferredDatasetHandle`], optional
             Dict for sourceTable_visit handles (key is visit) for propagating flags.
-            These tables are derived from the ``CalibrateTask`` sources, and contain
-            astrometry and photometry flags, and optionally PSF flags.
+            These tables contain astrometry and photometry flags, and optionally PSF flags.
         finalizedSourceTableHandleDict : `dict` [`int`, `lsst.daf.butler.DeferredDatasetHandle`], optional
             Dict for finalized_src_table handles (key is visit) for propagating flags.
-            These tables are derived from ``FinalizeCalibrationTask`` and contain
-            PSF flags from the finalized PSF estimation.
+            These tables contain PSF flags from the finalized PSF estimation.
         apCorrMap : `lsst.afw.image.ApCorrMap`, optional
             Aperture correction map attached to the ``exposure``. If None, it
             will be read from the ``exposure``.
