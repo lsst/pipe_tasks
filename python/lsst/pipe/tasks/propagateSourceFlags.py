@@ -126,11 +126,11 @@ class PropagateSourceFlagsTask(pipeBase.Task):
             Table of coadd objects.
         ccd_inputs : `lsst.afw.table.ExposureCatalog`
             Table of single-frame inputs to coadd.
-        source_table_handle_dict : `dict` [`int`: `lsst.daf.butler.DeferredDatasetHandle`]
+        source_table_handle_dict : `dict` [`int`: `lsst.daf.butler.DeferredDatasetHandle`], optional
             Dict for sourceTable_visit handles (key is visit).  May be None if
             ``config.source_flags`` has no entries.
         finalized_source_table_handle_dict : `dict` [`int`:
-                                                     `lsst.daf.butler.DeferredDatasetHandle`]
+                                                     `lsst.daf.butler.DeferredDatasetHandle`], optional
             Dict for finalized_src_table handles (key is visit).  May be None if
             ``config.finalized_source_flags`` has no entries.
         """
