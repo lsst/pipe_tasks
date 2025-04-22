@@ -300,6 +300,14 @@ class MeasureMergedCoaddSourcesConnections(
         multiple=True,
         deferLoad=True,
     )
+    finalVisitSummaryHandles = cT.Input(
+        doc="Final visit summary table",
+        name="finalVisitSummary",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit"),
+        multiple=True,
+        deferLoad=True,
+    )
     # TODO[DM-47797]: remove this deprecated connection.
     inputCatalog = cT.Input(
         doc=("Name of the input catalog to use."
@@ -643,6 +651,12 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
                                                   for handle in finalizedSourceTableHandles}
             else:
                 finalizedSourceTableHandleDict = None
+            if "finalVisitSummaryHandles" in inputs:
+                finalVisitSummaryHandles = inputs.pop("finalVisitSummaryHandles")
+                finalVisitSummaryHandleDict = {handle.dataId["visit"]: handle
+                                               for handle in finalVisitSummaryHandles}
+            else:
+                finalVisitSummaryHandleDict = None
 
         assert not inputs, "runQuantum got more inputs than expected."
         outputs = self.run(
@@ -653,6 +667,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             ccdInputs=ccdInputs,
             sourceTableHandleDict=sourceTableHandleDict,
             finalizedSourceTableHandleDict=finalizedSourceTableHandleDict,
+            finalVisitSummaryHandleDict=finalVisitSummaryHandleDict,
             apCorrMap=apCorrMap,
         )
         # Strip HeavyFootprints to save space on disk
@@ -660,7 +675,8 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     def run(self, exposure, sources, skyInfo, exposureId, ccdInputs=None,
-            sourceTableHandleDict=None, finalizedSourceTableHandleDict=None, apCorrMap=None):
+            sourceTableHandleDict=None, finalizedSourceTableHandleDict=None, finalVisitSummaryHandleDict=None,
+            apCorrMap=None):
         """Run measurement algorithms on the input exposure, and optionally populate the
         resulting catalog with extra information.
 
@@ -685,6 +701,9 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         finalizedSourceTableHandleDict : `dict` [`int`, `lsst.daf.butler.DeferredDatasetHandle`], optional
             Dict for finalized_src_table handles (key is visit) for propagating flags.
             These tables contain PSF flags from the finalized PSF estimation.
+        finalVisitSummaryHandleDict : `dict` [`int`, `lsst.daf.butler.DeferredDatasetHandle`], optional
+            Dict for visit_summary handles (key is visit) for visit-level information.
+            These tables contain the WCS information of the single-visit input images.
         apCorrMap : `lsst.afw.image.ApCorrMap`, optional
             Aperture correction map attached to the ``exposure``. If None, it
             will be read from the ``exposure``.
@@ -724,7 +743,8 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
                 sources,
                 ccdInputs,
                 sourceTableHandleDict,
-                finalizedSourceTableHandleDict
+                finalizedSourceTableHandleDict,
+                finalVisitSummaryHandleDict,
             )
 
         results = Struct()

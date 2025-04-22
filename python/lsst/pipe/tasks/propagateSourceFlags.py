@@ -113,7 +113,8 @@ class PropagateSourceFlagsTask(pipeBase.Task):
             self.schema.addField(f, type="Flag", doc="Propagated from finalized sources")
 
     def run(self, coadd_object_cat, ccd_inputs,
-            source_table_handle_dict=None, finalized_source_table_handle_dict=None):
+            source_table_handle_dict=None, finalized_source_table_handle_dict=None,
+            visit_summary_handle_dict=None):
         """Propagate flags from single-frame sources to coadd objects.
 
         Flags are only propagated if a configurable percentage of the sources
@@ -133,6 +134,9 @@ class PropagateSourceFlagsTask(pipeBase.Task):
                                                      `lsst.daf.butler.DeferredDatasetHandle`], optional
             Dict for finalized_src_table handles (key is visit).  May be None if
             ``config.finalized_source_flags`` has no entries.
+        visit_summary_handle_dict : `dict` [`int`: `lsst.daf.butler.DeferredDatasetHandle`], optional
+            Dict for visitSummary handles (key is visit). If None, using WCS
+            from the ccd_inputs will be attempted.
         """
         if len(self.config.source_flags) == 0 and len(self.config.finalized_source_flags) == 0:
             return
@@ -185,13 +189,18 @@ class PropagateSourceFlagsTask(pipeBase.Task):
                         continue
                     handle = handle_dict[visit]
                     tbl = handle.get(parameters={"columns": columns})
+                    if visit_summary_handle_dict is not None:
+                        visit_summary = visit_summary_handle_dict[visit].get()
 
                     # Loop over all ccd_inputs rows for this visit.
                     for row in ccd_inputs:
                         if row["visit"] != visit:
                             continue
                         detector = row["ccd"]
-                        wcs = row.getWcs()
+                        if visit_summary_handle_dict is None:
+                            wcs = row.getWcs()
+                        else:
+                            wcs = visit_summary.find(detector).getWcs()
                         if wcs is None:
                             self.log.info("No WCS for visit %d detector %d, so can't match sources to "
                                           "propagate flags.  Skipping...", visit, detector)
