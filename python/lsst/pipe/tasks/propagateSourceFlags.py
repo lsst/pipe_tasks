@@ -187,7 +187,9 @@ class PropagateSourceFlagsTask(pipeBase.Task):
                     tbl = handle.get(parameters={"columns": columns})
 
                     # Loop over all ccd_inputs rows for this visit.
-                    for row in ccd_inputs[ccd_inputs["visit"] == visit]:
+                    for row in ccd_inputs:
+                        if row["visit"] != visit:
+                            continue
                         detector = row["ccd"]
                         wcs = row.getWcs()
                         if wcs is None:
