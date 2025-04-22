@@ -178,9 +178,13 @@ class DetectCoaddSourcesTask(PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
-        inputs["idFactory"] = idGenerator.make_table_id_factory()
-        inputs["expId"] = idGenerator.catalog_id
-        outputs = self.run(**inputs)
+        exposure = inputs.pop("exposure")
+        assert not inputs, "runQuantum got more inputs than expected."
+        outputs = self.run(
+            exposure=exposure,
+            idFactory=idGenerator.make_table_id_factory(),
+            expId=idGenerator.catalog_id,
+        )
         butlerQC.put(outputs, outputRefs)
 
     def run(self, exposure, idFactory, expId):
