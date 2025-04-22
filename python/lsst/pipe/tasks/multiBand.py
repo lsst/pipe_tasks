@@ -579,12 +579,14 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
 
         # Set psfcache
         # move this to run after gen2 deprecation
-        inputs['exposure'].getPsf().setCacheCapacity(self.config.psfCache)
+        exposure = inputs.pop("exposure")
+        exposure.getPsf().setCacheCapacity(self.config.psfCache)
+
+        ccdInputs = exposure.getInfo().getCoaddInputs().ccds
 
         # Get unique integer ID for IdFactory and RNG seeds; only the latter
         # should really be used as the IDs all come from the input catalog.
         idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
-        inputs['exposureId'] = idGenerator.catalog_id
 
         # Transform inputCatalog
         table = afwTable.SourceTable.make(self.schema, idGenerator.make_table_id_factory())
@@ -602,7 +604,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         if self.config.doAddFootprints:
             modelData = inputs.pop('scarletModels')
             if self.config.doConserveFlux:
-                imageForRedistribution = inputs['exposure']
+                imageForRedistribution = exposure
             else:
                 imageForRedistribution = None
             updateCatalogFootprints(
@@ -615,7 +617,6 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             )
         table = sources.getTable()
         table.setMetadata(self.algMetadata)  # Capture algorithm metadata to write out to the source catalog.
-        inputs['sources'] = sources
 
         skyMap = inputs.pop('skyMap')
         tractNumber = catalogRef.dataId['tract']
@@ -628,23 +629,30 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             wcs=tractInfo.getWcs(),
             bbox=patchInfo.getOuterBBox()
         )
-        inputs['skyInfo'] = skyInfo
 
         if self.config.doPropagateFlags:
-            ccdInputs = inputs["exposure"].getInfo().getCoaddInputs().ccds
-            inputs["ccdInputs"] = ccdInputs
-
             if "sourceTableHandles" in inputs:
                 sourceTableHandles = inputs.pop("sourceTableHandles")
                 sourceTableHandleDict = {handle.dataId["visit"]: handle for handle in sourceTableHandles}
-                inputs["sourceTableHandleDict"] = sourceTableHandleDict
+            else:
+                sourceTableHandleDict = None
             if "finalizedSourceTableHandles" in inputs:
                 finalizedSourceTableHandles = inputs.pop("finalizedSourceTableHandles")
                 finalizedSourceTableHandleDict = {handle.dataId["visit"]: handle
                                                   for handle in finalizedSourceTableHandles}
-                inputs["finalizedSourceTableHandleDict"] = finalizedSourceTableHandleDict
+            else:
+                finalizedSourceTableHandleDict = None
 
-        outputs = self.run(**inputs)
+        assert not inputs, "runQuantum got more inputs than expected."
+        outputs = self.run(
+            exposure=exposure,
+            sources=sources,
+            skyInfo=skyInfo,
+            exposureId=idGenerator.catalog_id,
+            ccdInputs=ccdInputs,
+            sourceTableHandleDict=sourceTableHandleDict,
+            finalizedSourceTableHandleDict=finalizedSourceTableHandleDict,
+        )
         # Strip HeavyFootprints to save space on disk
         sources = outputs.outputSources
         butlerQC.put(outputs, outputRefs)
