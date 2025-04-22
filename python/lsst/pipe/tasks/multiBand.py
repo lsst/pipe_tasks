@@ -583,6 +583,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         exposure.getPsf().setCacheCapacity(self.config.psfCache)
 
         ccdInputs = exposure.getInfo().getCoaddInputs().ccds
+        apCorrMap = exposure.getInfo().getApCorrMap()
 
         # Get unique integer ID for IdFactory and RNG seeds; only the latter
         # should really be used as the IDs all come from the input catalog.
@@ -652,13 +653,14 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             ccdInputs=ccdInputs,
             sourceTableHandleDict=sourceTableHandleDict,
             finalizedSourceTableHandleDict=finalizedSourceTableHandleDict,
+            apCorrMap=apCorrMap,
         )
         # Strip HeavyFootprints to save space on disk
         sources = outputs.outputSources
         butlerQC.put(outputs, outputRefs)
 
     def run(self, exposure, sources, skyInfo, exposureId, ccdInputs=None,
-            sourceTableHandleDict=None, finalizedSourceTableHandleDict=None):
+            sourceTableHandleDict=None, finalizedSourceTableHandleDict=None, apCorrMap=None):
         """Run measurement algorithms on the input exposure, and optionally populate the
         resulting catalog with extra information.
 
@@ -685,6 +687,9 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             Dict for finalized_src_table handles (key is visit) for propagating flags.
             These tables are derived from ``FinalizeCalibrationTask`` and contain
             PSF flags from the finalized PSF estimation.
+        apCorrMap : `lsst.afw.image.ApCorrMap`, optional
+            Aperture correction map attached to the ``exposure``. If None, it
+            will be read from the ``exposure``.
 
         Returns
         -------
@@ -697,9 +702,11 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         self.measurement.run(sources, exposure, exposureId=exposureId)
 
         if self.config.doApCorr:
+            if apCorrMap is None:
+                apCorrMap = exposure.getInfo().getApCorrMap()
             self.applyApCorr.run(
                 catalog=sources,
-                apCorrMap=exposure.getInfo().getApCorrMap()
+                apCorrMap=apCorrMap,
             )
 
         # TODO DM-11568: this contiguous check-and-copy could go away if we
