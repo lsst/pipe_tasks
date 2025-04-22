@@ -191,7 +191,7 @@ class DetectCoaddSourcesTask(PipelineTask):
         Parameters
         ----------
         exposure : `lsst.afw.image.Exposure`
-            Exposure on which to detect (may be backround-subtracted and scaled,
+            Exposure on which to detect (may be background-subtracted and scaled,
             depending on configuration).
         idFactory : `lsst.afw.table.IdFactory`
             IdFactory to set source identifiers.
