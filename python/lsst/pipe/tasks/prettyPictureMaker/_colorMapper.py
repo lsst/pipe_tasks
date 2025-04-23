@@ -14,19 +14,141 @@ from lsst.cpputils import fixGamutOK
 from numpy.typing import NDArray
 from typing import Callable, Mapping, Literal
 
+import numpy as np
+from scipy.ndimage import gaussian_filter, zoom
+from scipy.interpolate import interp2d
+from scipy.stats import norm
 
-def contrast_equalizer(image, contrast_factors, wavelet='db4'):
-    coeffs = pywt.wavedec2(image, wavelet)
-    # Adjust contrast at each level
-    for i in range(1, len(coeffs)):
-        # Handle case where fewer factors are provided
-        if i - 1 >= len(contrast_factors):
-           factor = 1
-        else:
-           factor = contrast_factors[i-1]
-        cH, cV, cD = coeffs[i]
-        coeffs[i] = (cH * factor, cV * factor, cD * factor)
-    return pywt.waverec2(coeffs, wavelet)
+
+def eigf_variance_analysis_no_mask(guide, sigma):
+    """
+    Computes average and variance of guide using Gaussian filtering.
+
+    Parameters:
+        guide (numpy.ndarray): 2D array representing the guide image.
+        sigma (float): Standard deviation for Gaussian kernel.
+
+    Returns:
+        numpy.ndarray: Array where each pixel has [average, variance].
+    """
+    # Compute average of guide
+    mu_guide = gaussian_filter(guide, sigma=sigma)
+
+    # Compute average of squared guide values
+    guide_squared = guide**2
+    mu_guide_squared = gaussian_filter(guide_squared, sigma=sigma)
+
+    # Calculate variance as E[guide^2] - (E[guide])^2
+    var_guide = mu_guide_squared - mu_guide**2
+
+    # Combine into an output array with shape (height, width, 2)
+    output = np.stack((mu_guide, var_guide), axis=2)
+
+    return output
+
+
+def eigf_blending_no_mask(image, av, feathering, filter_type):
+    """
+    Applies blending without a mask using averages and variances.
+
+    Parameters:
+        image (numpy.ndarray): 2D input image array.
+        av (numpy.ndarray): Array with shape (height*width, 2) containing averages and variances.
+        feathering (float): Feathering parameter for blending.
+        filter_type (int): Blending type: 0 for linear, 1 for geometric mean.
+    """
+    # Reshape 'av' to match image dimensions
+    av_reshaped = av.reshape(image.shape[0], image.shape[1], -1)
+
+    avg_g = av_reshaped[..., 0]
+    var_g = av_reshaped[..., 1]
+
+    norm_g = np.maximum(avg_g * image, 1e-6)
+    normalized_var_guide = var_g / norm_g
+
+    a = normalized_var_guide / (normalized_var_guide + feathering)
+    b = avg_g - a * avg_g
+
+    # Apply blending
+    if filter_type == 0:  # Linear blending
+        image[:] = np.maximum(image * a + b, np.finfo(float).min)
+    else:  # Geometric mean blending
+        image[:] *= np.maximum(image * a + b, np.finfo(float).min)
+        image[:] = np.sqrt(image[:])
+
+
+def fast_eigf_surface_blur(image, sigma, feathering, iterations=1, filter_type=1):
+    """
+    Applies exposure-independent guided blur with down-scaling and up-sampling.
+
+    Parameters:
+        image (numpy.ndarray): Input image array of shape (height, width).
+        sigma (float): Standard deviation for Gaussian kernel.
+        feathering (float): Feathering parameter.
+        iterations (int): Number of iterations to model diffusion.
+        filter_type (int): Blending type: 0 for linear, 1 for geometric mean.
+    """
+    scaling = np.maximum(np.minimum(sigma, 4.0), 1.0)
+    ds_sigma = np.maximum(sigma / scaling, 1.0)
+
+    # Down-sampling dimensions
+
+    for _ in range(iterations):
+        av = eigf_variance_analysis_no_mask(image, ds_sigma)
+        eigf_blending_no_mask(image, av.reshape(-1, 2), feathering, filter_type)
+
+
+def tone_equalizer(image, tone_factors, weight, sigma, feathering, iterations=1, filter_type=1):
+    # need to blur the input luminance image
+    luminance = np.copy(image)
+    fast_eigf_surface_blur(luminance, sigma, feathering, iterations, filter_type)
+    exposure = luminance
+    corrections = np.zeros_like(luminance)
+    EXPOSURE_CENTERS = np.linspace(0, 1, 10)
+    for eq_val, factor in zip(EXPOSURE_CENTERS, tone_factors):
+        corrections += np.exp(-1 * (exposure - eq_val) ** 2 / (2 * weight**2)) * factor
+    return image + corrections
+
+
+def contrast_equalizer(image, contrast_factors):
+    maxLevel = int(np.min(np.log2(image.shape)))
+    support = 1 << (maxLevel - 1)
+    padY_amounts = levelPadder(image.shape[0] + support, maxLevel)
+    padX_amounts = levelPadder(image.shape[1] + support, maxLevel)
+    imagePadded = cv2.copyMakeBorder(
+        image, *(0, support), *(0, support), cv2.BORDER_REFLECT, None, None
+    ).astype(image.dtype)
+    lap = makeLapPyramid(imagePadded, padY_amounts, padX_amounts, None, None)
+    for i, factor in enumerate(contrast_factors):
+        # negative indexing so +1, +1 to skip the highest pyramid
+        i = i + 2
+        if i > len(lap):
+            break
+        lap[-1 * i] *= factor
+    output = lap[-1]
+    for i in range(-2, -1 * len(lap) - 1, -1):
+        upsampled = cv2.pyrUp(output)
+        upsampled = upsampled[
+            : upsampled.shape[0] - 2 * padY_amounts[i + 1], : upsampled.shape[1] - 2 * padX_amounts[i + 1]
+        ]
+        output = lap[i] + upsampled
+    return output[: image.shape[0], : image.shape[1]]
+
+
+def lumScale(values, highlight, shadow, midtone, equalizer_levels, tone_adjustment, tone_width=0.07, max=1):
+    # Scale the values with linear manipulation for contrast
+    intensities = (values - shadow) / (highlight - shadow)
+    intensities = np.clip(intensities, 0, max)
+    intensities = ((midtone - 1) * intensities) / (((2 * midtone - 1) * intensities) - midtone)
+
+    if tone_adjustment is not None:
+        if len(tone_adjustment) != 10:
+            raise ValueError("Tone adjustment must be given by a len 10 sequence")
+        intensities = tone_equalizer(intensities, tone_adjustment, tone_width, 10, 5)
+
+    if equalizer_levels is not None:
+        intensities = contrast_equalizer(intensities, equalizer_levels)
+    return np.clip(intensities, 0, max)
 
 
 def latLum(
@@ -39,8 +161,7 @@ def latLum(
     highlight: float = 1.0,
     shadow: float = 0.0,
     midtone: float = 0.5,
-    equalizer_levels: list[float] | None = None
-    wavelet: str = 'db4'
+    equalizer_levels: list[float] | None = None,
 ) -> NDArray:
     """
     Scale the input luminosity values to maximize the dynamic range visible.
@@ -88,33 +209,34 @@ def latLum(
         values = abs(values)
 
     # Scale values from 0-1 to 0-100 as various algorithm expect that range.
-    values *= 100
+    # values *= 100
 
     # Calculate the slope for arcsinh transformation based on Q and stretch
     # parameters.
-    slope = 0.1 * 100 / np.arcsinh(0.1 * Q)
+    slope = 0.1 * 1 / np.arcsinh(0.1 * Q)
 
     # Apply the modified luminosity transformation using arcsinh function.
     soften = Q / stretch
     intensities = np.arcsinh((abs(values) * soften + floor) * slope)
 
     # Always normalize by what the original max value (100) scales to.
-    maximum_intensity = np.arcsinh((100 * soften + floor) * slope)
+    maximum_intensity = np.arcsinh((1 * soften + floor) * slope)
 
     intensities /= maximum_intensity
 
     # contrast equalizer
     if equalizer_levels is not None:
-        intensities = contrast_equalizer(intensities, equalizer_levels, wavelet)
+        intensities = contrast_equalizer(intensities, equalizer_levels)
 
     # Scale the intensities with linear manipulation for contrast
     intensities = (intensities - shadow) / (highlight - shadow)
+    intensities = np.clip(intensities, 0, max)
     intensities = ((midtone - 1) * intensities) / (((2 * midtone - 1) * intensities) - midtone)
 
-    np.clip(intensities, 0, max, out=intensities)
+    intensities = np.clip(intensities, 0, max)
 
     # Reset the input array.
-    values /= 100
+    # values /= 100
 
     return intensities
 
@@ -185,6 +307,7 @@ def colorConstantSat(
     b: NDArray,
     saturation: float = 0.6,
     maxChroma: float = 80,
+    equalizer_levels: list[float] | None = None,
 ) -> tuple[NDArray, NDArray]:
     """
     Adjusts the color saturation while keeping the hue constant.
@@ -239,12 +362,17 @@ def colorConstantSat(
     sat_original_2 = chroma1_2 / div
     chroma2_2 = saturation * sat_original_2 * luminance**2 / (1 - sat_original_2)
 
-    # Cap the chroma to avoid excessive values that are visually unrealistic
-    chroma2_2[chroma2_2 > maxChroma**2] = maxChroma**2
-
     # Compute new 'a' values using the square root of adjusted chroma and
     # considering hue direction.
     chroma2 = np.sqrt(chroma2_2)
+    # Try equalizing
+    if equalizer_levels is not None:
+        print("equalizing color contrast")
+        chroma2 = contrast_equalizer(chroma2, equalizer_levels, "noop")
+    # Cap the chroma to avoid excessive values that are visually unrealistic
+    #
+    chroma2[chroma2 > maxChroma] = maxChroma
+
     new_a = chroma2 * cosHue
 
     # Compute new 'b' values using the root of the adjusted chroma and hue
@@ -407,7 +535,7 @@ def _handelLuminance(
         lRemapped = newLum
 
     if psf is not None:
-        lRemapped = skimage.restoration.richardson_lucy(lRemapped, psf=psf, clip=False, num_iter=2)
+        lRemapped = skimage.restoration.richardson_lucy(lRemapped, psf=psf, clip=False, num_iter=5)
     return lRemapped, Lab
 
 
@@ -547,7 +675,11 @@ def lsstRGB(
         )
         if scaleColor is not None:
             new_a, new_b = scaleColor(
-                Lab[:, :, 0], tmp_lum, Lab[:, :, 1], Lab[:, :, 2], **(scaleColorKWargs or {})
+                Lab[:, :, 0],
+                tmp_lum,
+                Lab[:, :, 1],
+                Lab[:, :, 2],
+                **(scaleColorKWargs or {}),
             )
             # Replace the color information with the new scaled color information.
             Lab[:, :, 1] = new_a
@@ -561,6 +693,8 @@ def lsstRGB(
     # Fix any colors that fall outside of the RGB colour gamut.
     if doRemapGamut:
         result = fixOutOfGamutColors(Lab, gamutMethod=gamutMethod)
+    else:
+        result = colour.XYZ_to_RGB(colour.Oklab_to_XYZ(Lab), "Display P3")
 
     # explicitly cut at 1 even though the mapping was to map colors
     # appropriately because the Z matrix transform can produce values greater

@@ -63,7 +63,7 @@ from lsst.geom import Box2I, Point2I, Extent2I
 from lsst.afw.image import Exposure, Mask
 
 from ._plugins import plugins
-from ._colorMapper import lsstRGB
+from ._colorMapper import lsstRGB, lumScale, latLum
 
 import tempfile
 
@@ -118,11 +118,51 @@ class ChannelRGBConfig(Config):
     b = Field[float](doc="The amount of blue contained in this channel")
 
 
+class LumConfigV2(Config):
+    highlight = Field[float](
+        doc="The value of highlights in scaling factor applied to post asinh streaching", default=1.0
+    )
+    shadow = Field[float](
+        doc="The value of shadows in scaling factor applied to post asinh streaching", default=0.0
+    )
+    midtone = Field[float](
+        doc="The value of midtone in scaling factor applied to post asinh streaching", default=0.5
+    )
+    equalizer_levels = ListField[float](
+        doc=(
+            "A list of factors to modify the constrast in a scale dependent way. "
+            "One coefficient for each spatial scale, starting from the largest. "
+            "Values large than 1 increase contrast, while less than 1 decreases. "
+            "This adjustment is multaplicative."
+        ),
+        optional=True,
+    )
+    tone_adjustment = ListField[float](
+        doc=(
+            "A list of length 10 that adjusts the brightness of the image ranging "
+            "from dark regions to light. These 10 values represent control points along "
+            "the lumanance interval 0-1, but the actual adjustments made are continuous "
+            "and are calculated from these control points."
+        ),
+        optional=True,
+    )
+    tone_width = Field[float](
+        doc=(
+            "This parameters controls how each tone control point affect the adjustment "
+            "of the values in between. Increase the value to have a more continuous "
+            "change between control points, decrease to make the control shaprer. Value "
+            "must be greater than zero."
+        ),
+        default=0.07,
+    )
+    max = Field[float](doc="The maximum allowed luminance on a 0 to 1 scale", default=1)
+
+
 class LumConfig(Config):
     """Configurations to control how luminance is mapped in the rgb code"""
 
     stretch = Field[float](doc="The stretch of the luminance in asinh", default=400)
-    max = Field[float](doc="The maximum allowed luminance on a 0 to 100 scale", default=85)
+    max = Field[float](doc="The maximum allowed luminance on a 0 to 1 scale", default=1)
     floor = Field[float](doc="A scaling factor to apply to the luminance before asinh scaling", default=0.0)
     Q = Field[float](doc="softening parameter", default=0.7)
     highlight = Field[float](
@@ -141,9 +181,6 @@ class LumConfig(Config):
             "Values large than 1 increase contrast, while less than 1 decreases"
         ),
         optional=True,
-    )
-    wavlet = Field[str](
-        doc="wavelet to use in contrast equalizer, must be a pywavelets dwt name", default="db4"
     )
 
 
@@ -183,6 +220,14 @@ class ScaleColorConfig(Config):
             "values will cause bright pixels to fall outside the RGB gamut."
         ),
         default=50.0,
+    )
+    equalizer_levels = ListField[float](
+        doc=(
+            "A list of factors to modify the color constrast in a scale dependent way. "
+            "One coefficient for each spatial scale, starting from the largest. "
+            "Values large than 1 increase contrast, while less than 1 decreases"
+        ),
+        optional=True,
     )
 
 
@@ -358,12 +403,19 @@ class PrettyPictureTask(PipelineTask):
         for plug in plugins.partial():
             colorImage = plug(colorImage, jointMask, maskDict, self.config)
 
+        match self.config.luminanceConfig:
+            case LumConfig():
+                lum_func = latLum
+            case LumConfigV2():
+                lum_func = lumScale
+
         # Ignore type because Exposures do in fact have a bbox, but it's c++
         # and not typed.
         colorImage = lsstRGB(
             colorImage[:, :, 0],
             colorImage[:, :, 1],
             colorImage[:, :, 2],
+            scaleLum=lum_func,
             scaleLumKWargs=self.config.luminanceConfig.toDict(),
             remapBoundsKwargs=self.config.imageRemappingConfig.toDict(),
             scaleColorKWargs=self.config.colorConfig.toDict(),
