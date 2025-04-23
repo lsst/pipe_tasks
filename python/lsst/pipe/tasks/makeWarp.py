@@ -18,3 +18,14 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+import warnings
+from .coaddBase import reorderRefs  # noqa: F401
+
+# TODO: Remove this entire file in DM-50477.
+warnings.warn(
+    "reorderRefs has been moved to lsst.pipe.tasks.coaddBase. "
+    "Importing from lsst.pipe.tasks.makeWarp is deprecated and will be removed after v30.",
+    DeprecationWarning,
+    stacklevel=2,
+)
