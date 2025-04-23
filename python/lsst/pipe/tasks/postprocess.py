@@ -1441,7 +1441,7 @@ class ConsolidateSourceTableTask(pipeBase.PipelineTask):
     outputDataset = "sourceTable_visit"
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        from .makeWarp import reorderRefs
+        from .coaddBase import reorderRefs
 
         detectorOrder = [ref.dataId["detector"] for ref in inputRefs.inputCatalogs]
         detectorOrder.sort()
