@@ -22,21 +22,22 @@
 __all__ = ["ComputeExposureSummaryStatsTask", "ComputeExposureSummaryStatsConfig"]
 
 import warnings
-import numpy as np
-from scipy.stats import median_abs_deviation as sigmaMad
-import astropy.units as units
-from astropy.time import Time
-from astropy.coordinates import AltAz, SkyCoord, EarthLocation
-from lsst.daf.base import DateTime
 
-import lsst.pipe.base as pipeBase
-import lsst.pex.config as pexConfig
-import lsst.afw.math as afwMath
+import astropy.units as units
 import lsst.afw.image as afwImage
+import lsst.afw.math as afwMath
 import lsst.geom as geom
+import lsst.ip.isr as ipIsr
+import lsst.pex.config as pexConfig
+import lsst.pipe.base as pipeBase
+import numpy as np
+from astropy.coordinates import AltAz, EarthLocation, SkyCoord
+from astropy.time import Time
+from lsst.daf.base import DateTime
 from lsst.meas.algorithms import ScienceSourceSelectorTask
 from lsst.utils.timer import timeMethod
-import lsst.ip.isr as ipIsr
+from scipy.stats import median_abs_deviation as sigmaMad
+from skimage.util import view_as_windows
 
 
 class ComputeExposureSummaryStatsConfig(pexConfig.Config):
@@ -177,6 +178,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     - zenithDistance
     - zeroPoint
     - skyBg
+    - skyLumpiness
     - skyNoise
     - meanVar
     - raCorners
@@ -522,7 +524,12 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         Parameters
         ----------
         summary : `lsst.afw.image.ExposureSummaryStats`
-            Summary object to update in-place.
+            Summary object to update in-place. This method adds the following
+            fields:
+            - `skyBg`: Median sky background value across background models.
+            - `skyLumpiness`: A measure of sky background lumpiness based on
+            the spatial variation of the final background image while remaining
+            robust to outliers, including possible hot pixels.
         background : `lsst.afw.math.BackgroundList` or `None`
             Background model.  If `None`, all fields that depend on the
             background will be reset (generally to NaN).
@@ -538,8 +545,15 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             bgStats = (bg[0].getStatsImage().getImage().array
                        for bg in background)
             summary.skyBg = float(sum(np.median(bg[np.isfinite(bg)]) for bg in bgStats))
+            # NOTE: We could ideally use the full background image below to
+            # compute skyBg, but that slightly changes tests and other results.
+            # Leaving it as-is for now but this may need to be revisited.
+            bgarr = background.getImage().array
+            bgarr[~np.isfinite(bgarr)] = np.nan
+            summary.skyLumpiness = compute_lumpiness(bgarr)
         else:
             summary.skyBg = float("nan")
+            summary.skyLumpiness = float("nan")
 
     def update_masked_image_stats(self, summary, masked_image):
         """Compute summary-statistic fields that depend on the masked image
@@ -897,6 +911,57 @@ def compute_ap_corr_sigma_scaled_delta(
         ap_corr_sigma_scaled_delta = (np.max(ap_corr_good) - np.min(ap_corr_good))/psfSigma
 
     return ap_corr_sigma_scaled_delta
+
+
+def compute_lumpiness(imarr: np.ndarray, patch_size: int = 16) -> float:
+    """Estimate spatial roughness or lumpiness of an image.
+
+    It is based on the Median Absolute Deviation (MAD) of local patch means,
+    normalized by the interquartile range (IQR) of the image values to allow
+    comparison across images with different background levels. In other words,
+    it answers: how much patch-to-patch variation exists, relative to the
+    overall variation in the image (as measured by the IQR). The method is
+    robust to outliers and works best on moderately sized or larger images.
+
+    Parameters
+    ----------
+    imarr : `numpy.ndarray`
+        2D input image array.
+    patch_size : `int`
+        Size of square patches to divide the image into (default is 16).
+        Patches are non-overlapping.
+
+    Returns
+    -------
+    lumpiness : `float`
+        A scalar lumpiness value. Higher values indicate more spatial
+        variability across the image and lower values indicate a more uniform
+        image.
+    """
+    # If the image is smaller than the patch size, return NaN.
+    if patch_size > min(imarr.shape):
+        return float("nan")
+
+    # Pad image with NaNs to make dimensions divisible by patch_size.
+    pad_h = (-imarr.shape[0]) % patch_size
+    pad_w = (-imarr.shape[1]) % patch_size
+    imarr = np.pad(imarr, ((0, pad_h), (0, pad_w)), mode="constant", constant_values=np.nan)
+
+    # Use a memory-efficient view to tile the image into non-overlapping
+    # patches.
+    windows = view_as_windows(imarr, (patch_size, patch_size), step=patch_size)
+
+    # Compute the mean of each patch (last two axes) to summarize local values.
+    local_means = np.nanmean(windows, axis=(-2, -1)).ravel()
+
+    # Compute the interquartile range (IQR) of the image values.
+    iqr = np.subtract(*np.nanpercentile(imarr, [75, 25]))
+
+    # Estimate lumpiness as the median absolute deviation of local means
+    # normalized by the interquartile range. MAD is normalized to match
+    # Gaussian sigma.
+    lumpiness = float(sigmaMad(local_means, scale="normal", nan_policy="omit")/iqr) if iqr else float("nan")
+    return lumpiness
 
 
 def compute_magnitude_limit(
