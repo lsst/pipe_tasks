@@ -219,9 +219,6 @@ Python API reference
 .. automodapi:: lsst.pipe.tasks.quickFrameMeasurement
    :no-inheritance-diagram:
 
-.. automodapi:: lsst.pipe.tasks.read_curated_calibs
-   :no-inheritance-diagram:
-
 .. automodapi:: lsst.pipe.tasks.registerImage
    :no-inheritance-diagram:
 
@@ -254,4 +251,3 @@ Python API reference
 
 .. automodapi:: lsst.pipe.tasks.warpAndPsfMatch
    :no-inheritance-diagram:
-
