@@ -535,9 +535,32 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         as well.
         """
         if background is not None:
-            bgStats = (bg[0].getStatsImage().getImage().array
-                       for bg in background)
-            summary.skyBg = float(sum(np.median(bg[np.isfinite(bg)]) for bg in bgStats))
+            # bgStats = [bg[0].getStatsImage().getImage().array for bg in background]  # Main
+
+            bgStats = []
+            bgStatsFull = []
+            for bg in background:
+                # Binned image.
+                bgArray = bg[0].getStatsImage().getImage().array
+                bgArray[~np.isfinite(bgArray)] = np.nan
+                bgStats.append(bgArray)
+                # Full image.
+                bgArrayFull = bg[0].getImageF().array
+                bgArrayFull[~np.isfinite(bgArrayFull)] = np.nan
+                bgStatsFull.append(bgArrayFull)
+
+            # summary.skyBg = float(sum(np.median(bg[np.isfinite(bg)]) for bg in bgStats))  # Main
+            summary.skyBg = float(sum(np.nanmedian(bg) for bg in bgStats))
+            summary.skyBgFull = float(sum(np.median(bg[np.isfinite(bg)]) for bg in bgStatsFull))
+            print("Background stats over all 4 elements in the BackgroundList:\n"+"-"*80)
+            print(f"skyBg: {summary.skyBg}, skyBgFull: {summary.skyBgFull}")
+            print("\nIndividual background stats from each element in the BackgroundList:\n"+"-"*80)
+            skyBgList = [float(np.nanmedian(bg)) for bg in bgStats]
+            skyBgListFull = [float(np.nanmedian(bg)) for bg in bgStatsFull]
+            skyStdList = [float(np.nanstd(bg)) for bg in bgStats]
+            skyStdListFull = [float(np.nanstd(bg)) for bg in bgStatsFull]
+            print(f"skyBgList: {skyBgList}\nskyBgListFull: {skyBgListFull}")
+            print(f"skyStdList: {skyStdList}\nskyStdListFull: {skyStdListFull}")
         else:
             summary.skyBg = float("nan")
 
