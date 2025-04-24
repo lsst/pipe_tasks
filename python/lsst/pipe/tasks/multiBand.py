@@ -19,7 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["DetectCoaddSourcesConfig", "DetectCoaddSourcesTask"]
+__all__ = ["DetectCoaddSourcesConfig", "DetectCoaddSourcesTask",
+           "MeasureMergedCoaddSourcesConfig", "MeasureMergedCoaddSourcesTask",
+           ]
 
 from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
 import lsst.pipe.base.connectionTypes as cT
@@ -176,9 +178,13 @@ class DetectCoaddSourcesTask(PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
-        inputs["idFactory"] = idGenerator.make_table_id_factory()
-        inputs["expId"] = idGenerator.catalog_id
-        outputs = self.run(**inputs)
+        exposure = inputs.pop("exposure")
+        assert not inputs, "runQuantum got more inputs than expected."
+        outputs = self.run(
+            exposure=exposure,
+            idFactory=idGenerator.make_table_id_factory(),
+            expId=idGenerator.catalog_id,
+        )
         butlerQC.put(outputs, outputRefs)
 
     def run(self, exposure, idFactory, expId):
@@ -191,7 +197,7 @@ class DetectCoaddSourcesTask(PipelineTask):
         Parameters
         ----------
         exposure : `lsst.afw.image.Exposure`
-            Exposure on which to detect (may be backround-subtracted and scaled,
+            Exposure on which to detect (may be background-subtracted and scaled,
             depending on configuration).
         idFactory : `lsst.afw.table.IdFactory`
             IdFactory to set source identifiers.
@@ -290,6 +296,14 @@ class MeasureMergedCoaddSourcesConnections(
              "tables contain PSF flags from the finalized PSF estimation."),
         name="finalized_src_table",
         storageClass="ArrowAstropy",
+        dimensions=("instrument", "visit"),
+        multiple=True,
+        deferLoad=True,
+    )
+    finalVisitSummaryHandles = cT.Input(
+        doc="Final visit summary table",
+        name="finalVisitSummary",
+        storageClass="ExposureCatalog",
         dimensions=("instrument", "visit"),
         multiple=True,
         deferLoad=True,
@@ -573,12 +587,15 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
 
         # Set psfcache
         # move this to run after gen2 deprecation
-        inputs['exposure'].getPsf().setCacheCapacity(self.config.psfCache)
+        exposure = inputs.pop("exposure")
+        exposure.getPsf().setCacheCapacity(self.config.psfCache)
+
+        ccdInputs = exposure.getInfo().getCoaddInputs().ccds
+        apCorrMap = exposure.getInfo().getApCorrMap()
 
         # Get unique integer ID for IdFactory and RNG seeds; only the latter
         # should really be used as the IDs all come from the input catalog.
         idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
-        inputs['exposureId'] = idGenerator.catalog_id
 
         # Transform inputCatalog
         table = afwTable.SourceTable.make(self.schema, idGenerator.make_table_id_factory())
@@ -596,7 +613,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         if self.config.doAddFootprints:
             modelData = inputs.pop('scarletModels')
             if self.config.doConserveFlux:
-                imageForRedistribution = inputs['exposure']
+                imageForRedistribution = exposure
             else:
                 imageForRedistribution = None
             updateCatalogFootprints(
@@ -609,7 +626,6 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             )
         table = sources.getTable()
         table.setMetadata(self.algMetadata)  # Capture algorithm metadata to write out to the source catalog.
-        inputs['sources'] = sources
 
         skyMap = inputs.pop('skyMap')
         tractNumber = catalogRef.dataId['tract']
@@ -622,29 +638,45 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             wcs=tractInfo.getWcs(),
             bbox=patchInfo.getOuterBBox()
         )
-        inputs['skyInfo'] = skyInfo
 
         if self.config.doPropagateFlags:
-            ccdInputs = inputs["exposure"].getInfo().getCoaddInputs().ccds
-            inputs["ccdInputs"] = ccdInputs
-
             if "sourceTableHandles" in inputs:
                 sourceTableHandles = inputs.pop("sourceTableHandles")
                 sourceTableHandleDict = {handle.dataId["visit"]: handle for handle in sourceTableHandles}
-                inputs["sourceTableHandleDict"] = sourceTableHandleDict
+            else:
+                sourceTableHandleDict = None
             if "finalizedSourceTableHandles" in inputs:
                 finalizedSourceTableHandles = inputs.pop("finalizedSourceTableHandles")
                 finalizedSourceTableHandleDict = {handle.dataId["visit"]: handle
                                                   for handle in finalizedSourceTableHandles}
-                inputs["finalizedSourceTableHandleDict"] = finalizedSourceTableHandleDict
+            else:
+                finalizedSourceTableHandleDict = None
+            if "finalVisitSummaryHandles" in inputs:
+                finalVisitSummaryHandles = inputs.pop("finalVisitSummaryHandles")
+                finalVisitSummaryHandleDict = {handle.dataId["visit"]: handle
+                                               for handle in finalVisitSummaryHandles}
+            else:
+                finalVisitSummaryHandleDict = None
 
-        outputs = self.run(**inputs)
+        assert not inputs, "runQuantum got more inputs than expected."
+        outputs = self.run(
+            exposure=exposure,
+            sources=sources,
+            skyInfo=skyInfo,
+            exposureId=idGenerator.catalog_id,
+            ccdInputs=ccdInputs,
+            sourceTableHandleDict=sourceTableHandleDict,
+            finalizedSourceTableHandleDict=finalizedSourceTableHandleDict,
+            finalVisitSummaryHandleDict=finalVisitSummaryHandleDict,
+            apCorrMap=apCorrMap,
+        )
         # Strip HeavyFootprints to save space on disk
         sources = outputs.outputSources
         butlerQC.put(outputs, outputRefs)
 
     def run(self, exposure, sources, skyInfo, exposureId, ccdInputs=None,
-            sourceTableHandleDict=None, finalizedSourceTableHandleDict=None):
+            sourceTableHandleDict=None, finalizedSourceTableHandleDict=None, finalVisitSummaryHandleDict=None,
+            apCorrMap=None):
         """Run measurement algorithms on the input exposure, and optionally populate the
         resulting catalog with extra information.
 
@@ -665,12 +697,16 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             the coadd.
         sourceTableHandleDict : `dict` [`int`, `lsst.daf.butler.DeferredDatasetHandle`], optional
             Dict for sourceTable_visit handles (key is visit) for propagating flags.
-            These tables are derived from the ``CalibrateTask`` sources, and contain
-            astrometry and photometry flags, and optionally PSF flags.
+            These tables contain astrometry and photometry flags, and optionally PSF flags.
         finalizedSourceTableHandleDict : `dict` [`int`, `lsst.daf.butler.DeferredDatasetHandle`], optional
             Dict for finalized_src_table handles (key is visit) for propagating flags.
-            These tables are derived from ``FinalizeCalibrationTask`` and contain
-            PSF flags from the finalized PSF estimation.
+            These tables contain PSF flags from the finalized PSF estimation.
+        finalVisitSummaryHandleDict : `dict` [`int`, `lsst.daf.butler.DeferredDatasetHandle`], optional
+            Dict for visit_summary handles (key is visit) for visit-level information.
+            These tables contain the WCS information of the single-visit input images.
+        apCorrMap : `lsst.afw.image.ApCorrMap`, optional
+            Aperture correction map attached to the ``exposure``. If None, it
+            will be read from the ``exposure``.
 
         Returns
         -------
@@ -683,9 +719,11 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         self.measurement.run(sources, exposure, exposureId=exposureId)
 
         if self.config.doApCorr:
+            if apCorrMap is None:
+                apCorrMap = exposure.getInfo().getApCorrMap()
             self.applyApCorr.run(
                 catalog=sources,
-                apCorrMap=exposure.getInfo().getApCorrMap()
+                apCorrMap=apCorrMap,
             )
 
         # TODO DM-11568: this contiguous check-and-copy could go away if we
@@ -705,7 +743,8 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
                 sources,
                 ccdInputs,
                 sourceTableHandleDict,
-                finalizedSourceTableHandleDict
+                finalizedSourceTableHandleDict,
+                finalVisitSummaryHandleDict,
             )
 
         results = Struct()
