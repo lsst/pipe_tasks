@@ -37,13 +37,6 @@ class PipeTasksImportTestCase(ImportTestCase):
         "lsst.pipe.tasks.dataFrameActions",
     }
 
-    SKIP_FILES = {
-        "lsst.pipe.tasks": {
-            "make_direct_warp.py",  # TODO: Remove in DM-47521.
-            "make_psf_matched_warp.py",  # TODO: Remove in DM-47521.
-        }
-    }
-
 
 if __name__ == "__main__":
     unittest.main()
