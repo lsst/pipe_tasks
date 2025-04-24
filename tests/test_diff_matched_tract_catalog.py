@@ -96,8 +96,8 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             columns_flux[1]: fluxes[1]*(1 + err_flux),
             columns_flux_err[0]: np.sqrt(fluxes[0]),
             columns_flux_err[1]: np.sqrt(fluxes[1]),
-            DiffMatchedTractCatalogConfig.columns_target_select_true.default[0]: flags,
-            DiffMatchedTractCatalogConfig.columns_target_select_false.default[0]: ~flags,
+            "detect_isPrimary": flags,
+            "merge_peak_sky": ~flags,
         }
         self.catalog_target = Table(data=data_target)
 
@@ -124,6 +124,8 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
         self.config = DiffMatchedTractCatalogConfig(
             columns_target_coord_err=[column_ra_target_err, column_dec_target_err],
             columns_flux=columns_flux_configs,
+            columns_target_select_true=["detect_isPrimary"],
+            columns_target_select_false=["merge_peak_sky"],
         )
 
         self.wcs = afwGeom.makeSkyWcs(crpix=lsst.geom.Point2D(9000, 9000),
