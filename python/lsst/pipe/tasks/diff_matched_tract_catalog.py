@@ -262,12 +262,12 @@ class DiffMatchedTractCatalogConfig(
     )
     columns_target_select_true = pexConfig.ListField[str](
         doc='Target table columns to require to be True for selecting sources',
-        default=('detect_isPrimary',),
+        default=[],
         listCheck=is_sequence_set,
     )
     columns_target_select_false = pexConfig.ListField[str](
         doc='Target table columns to require to be False for selecting sources',
-        default=('merge_peak_sky',),
+        default=[],
         listCheck=is_sequence_set,
     )
     coord_format = pexConfig.ConfigField[ConvertCatalogCoordinatesConfig](
