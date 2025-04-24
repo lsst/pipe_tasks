@@ -557,10 +557,11 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             print("\nIndividual background stats from each element in the BackgroundList:\n"+"-"*80)
             skyBgList = [float(np.nanmedian(bg)) for bg in bgStats]
             skyBgListFull = [float(np.nanmedian(bg)) for bg in bgStatsFull]
-            skyStdList = [float(np.nanstd(bg)) for bg in bgStats]
-            skyStdListFull = [float(np.nanstd(bg)) for bg in bgStatsFull]
+            nan_range = lambda x: np.nanmax(x) - np.nanmin(x)
+            skyMaxMinDiffList = [float(nan_range(bg)) for bg in bgStats]
+            skyMaxMinDiffListFull = [float(nan_range(bg)) for bg in bgStatsFull]
             print(f"skyBgList: {skyBgList}\nskyBgListFull: {skyBgListFull}")
-            print(f"skyStdList: {skyStdList}\nskyStdListFull: {skyStdListFull}")
+            print(f"skyMaxMinDiffList: {skyMaxMinDiffList}\nskyMaxMinDiffListFull: {skyMaxMinDiffListFull}")
         else:
             summary.skyBg = float("nan")
 
