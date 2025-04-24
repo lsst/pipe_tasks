@@ -35,6 +35,7 @@ class PipeTasksImportTestCase(ImportTestCase):
         "lsst.pipe.tasks",
         "lsst.pipe.tasks.script",
         "lsst.pipe.tasks.dataFrameActions",
+        "lsst.pipe.tasks.prettyPictureMaker",
     }
 
 
