@@ -159,9 +159,6 @@ Python API reference
 .. automodapi:: lsst.pipe.tasks.makeDiscreteSkyMap
    :no-inheritance-diagram:
 
-.. automodapi:: lsst.pipe.tasks.makeWarp
-   :no-inheritance-diagram:
-
 .. automodapi:: lsst.pipe.tasks.matchBackgrounds
    :no-inheritance-diagram:
 

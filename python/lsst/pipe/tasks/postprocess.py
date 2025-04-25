@@ -58,6 +58,7 @@ from lsst.afw.image import ExposureSummaryStats, ExposureF
 from lsst.meas.base import SingleFrameMeasurementTask, DetectorVisitIdGeneratorConfig
 from lsst.obs.base.utils import strip_provenance_from_fits_header
 
+from .coaddBase import reorderRefs
 from .functors import CompositeFunctor, Column
 
 log = logging.getLogger(__name__)
@@ -1441,8 +1442,7 @@ class ConsolidateSourceTableTask(pipeBase.PipelineTask):
     outputDataset = "sourceTable_visit"
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        from .makeWarp import reorderRefs
-
+        # Docstring inherited.
         detectorOrder = [ref.dataId["detector"] for ref in inputRefs.inputCatalogs]
         detectorOrder.sort()
         inputRefs = reorderRefs(inputRefs, detectorOrder, dataIdKey="detector")

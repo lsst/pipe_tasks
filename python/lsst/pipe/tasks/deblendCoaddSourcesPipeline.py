@@ -37,7 +37,7 @@ from lsst.meas.extensions.scarlet import ScarletDeblendTask
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
 
-from .makeWarp import reorderRefs
+from .coaddBase import reorderRefs
 
 
 deblendBaseTemplates = {"inputCoaddName": "deep", "outputCoaddName": "deep"}
