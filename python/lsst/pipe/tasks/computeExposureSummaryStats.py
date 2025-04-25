@@ -539,13 +539,19 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
             bgStats = []
             bgStatsFull = []
+            statsImageFs = []
+            fullImageFs = []
             for bg in background:
                 # Binned image.
-                bgArray = bg[0].getStatsImage().getImage().array
+                statsImageF = bg[0].getStatsImage().getImage()
+                statsImageFs.append(statsImageF)
+                bgArray = statsImageF.array
                 bgArray[~np.isfinite(bgArray)] = np.nan
                 bgStats.append(bgArray)
                 # Full image.
-                bgArrayFull = bg[0].getImageF().array
+                fullImageF = bg[0].getImageF()
+                fullImageFs.append(fullImageF)
+                bgArrayFull = fullImageF.array
                 bgArrayFull[~np.isfinite(bgArrayFull)] = np.nan
                 bgStatsFull.append(bgArrayFull)
 
@@ -562,6 +568,28 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             skyMaxMinDiffListFull = [float(nan_range(bg)) for bg in bgStatsFull]
             print(f"skyBgList: {skyBgList}\nskyBgListFull: {skyBgListFull}")
             print(f"skyMaxMinDiffList: {skyMaxMinDiffList}\nskyMaxMinDiffListFull: {skyMaxMinDiffListFull}")
+
+            # Visualization of the background.
+            from tau import aimage  # Installed locally!
+            from matplotlib import pyplot as plt
+            fig, ax = plt.subplots(2, 2, figsize=(8, 8), dpi=200)
+            pc = 100
+            cmap = "viridis"
+
+            # Show stats images.
+            _ = aimage(statsImageFs[0], pc=pc, fig=fig, ax=ax[0, 0], title="statsImage[0]", title_loc="center", cmap=cmap)
+            _ = aimage(statsImageFs[1], pc=pc, fig=fig, ax=ax[0, 1], title="statsImage[1]", title_loc="center", cmap=cmap)
+            _ = aimage(statsImageFs[2], pc=pc, fig=fig, ax=ax[1, 0], title="statsImage[2]", title_loc="center", cmap=cmap)
+            _ = aimage(statsImageFs[3], pc=pc, fig=fig, ax=ax[1, 1], title="statsImage[3]", title_loc="center", cmap=cmap)
+            fig.savefig("background_statsImages.png", dpi=200, bbox_inches="tight")
+
+            # Same for full background images.
+            fig, ax = plt.subplots(2, 2, figsize=(8, 8), dpi=200)
+            _ = aimage(fullImageFs[0], pc=pc, fig=fig, ax=ax[0, 0], title="fullImage[0]", title_loc="center", cmap=cmap)
+            _ = aimage(fullImageFs[1], pc=pc, fig=fig, ax=ax[0, 1], title="fullImage[1]", title_loc="center", cmap=cmap)
+            _ = aimage(fullImageFs[2], pc=pc, fig=fig, ax=ax[1, 0], title="fullImage[2]", title_loc="center", cmap=cmap)
+            _ = aimage(fullImageFs[3], pc=pc, fig=fig, ax=ax[1, 1], title="fullImage[3]", title_loc="center", cmap=cmap)
+            fig.savefig("background_fullImages.png", dpi=200, bbox_inches="tight")
         else:
             summary.skyBg = float("nan")
 
