@@ -239,6 +239,3 @@ Python API reference
 
 .. automodapi:: lsst.pipe.tasks.visualizeVisit
    :no-inheritance-diagram:
-
-.. automodapi:: lsst.pipe.tasks.warpAndPsfMatch
-   :no-inheritance-diagram:
