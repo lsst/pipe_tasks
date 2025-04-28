@@ -74,17 +74,6 @@ class CoaddBaseConfig(pexConfig.Config):
         default=False,
         deprecated="Deprecated and ignored.  Will be removed after v29.",
     )
-    # TODO: Remove this field in DM-44792.
-    matchingKernelSize = pexConfig.Field(
-        dtype=int,
-        doc="Size in pixels of matching kernel. Must be odd.",
-        default=None,
-        optional=True,
-        check=lambda x: x % 2 == 1,
-        deprecated=("This field is deprecated without a replacement. Its value has no effect. "
-                    "Will be removed after v29."
-                    ),
-    )
 
 
 class CoaddBaseTask(pipeBase.PipelineTask):
