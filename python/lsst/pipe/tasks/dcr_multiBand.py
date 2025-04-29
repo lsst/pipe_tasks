@@ -235,8 +235,8 @@ class DcrMeasureMergedCoaddSourcesConnections(
     inputSchema = cT.InitInput(
         doc="Input schema for measure merged task produced by a deblender or detection task",
         name="deepCoadd_deblendedFlux_schema",
-        storageClass="SourceCatalog"
-        # dimensions=("tract", "patch", "band", "skymap")
+        storageClass="SourceCatalog",
+        dimensions=("tract", "patch", "band", "skymap")
     )
     outputSchema = cT.InitOutput(
         doc="Output schema after all new fields are added by task",
@@ -248,6 +248,33 @@ class DcrMeasureMergedCoaddSourcesConnections(
         name="{inputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "band", "subfilter", "skymap")
+    )
+    sourceTableHandles = cT.Input(
+        doc=("Source tables that are derived from the ``CalibrateTask`` sources. "
+             "These tables contain astrometry and photometry flags, and optionally "
+             "PSF flags."),
+        name="sourceTable_visit",
+        storageClass="ArrowAstropy",
+        dimensions=("instrument", "visit"),
+        multiple=True,
+        deferLoad=True,
+    )
+    finalizedSourceTableHandles = cT.Input(
+        doc=("Finalized source tables from ``FinalizeCalibrationTask``. These "
+             "tables contain PSF flags from the finalized PSF estimation."),
+        name="finalized_src_table",
+        storageClass="ArrowAstropy",
+        dimensions=("instrument", "visit"),
+        multiple=True,
+        deferLoad=True,
+    )
+    finalVisitSummaryHandles = cT.Input(
+        doc="Final visit summary table",
+        name="finalVisitSummary",
+        storageClass="ExposureCatalog",
+        dimensions=("instrument", "visit"),
+        multiple=True,
+        deferLoad=True,
     )
     inputCatalog = cT.Input(
         doc=("Name of the input catalog to use."
