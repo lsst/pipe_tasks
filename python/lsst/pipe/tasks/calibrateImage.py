@@ -19,7 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["CalibrateImageTask", "CalibrateImageConfig", "NoPsfStarsToStarsMatchError"]
+__all__ = ["CalibrateImageTask", "CalibrateImageConfig", "NoPsfStarsToStarsMatchError",
+           "AllCentroidsFlaggedError"]
 
 import numpy as np
 
@@ -40,6 +41,31 @@ from lsst.pipe.base import connectionTypes
 from lsst.utils.timer import timeMethod
 
 from . import measurePsf, repair, photoCal, computeExposureSummaryStats, snapCombine
+
+
+class AllCentroidsFlaggedError(pipeBase.AlgorithmError):
+    """Raised when there are no valid centroids during psf fitting.
+    """
+    def __init__(self, n_sources, psf_shape_ixx, psf_shape_iyy, psf_shape_ixy, psf_size):
+        msg = (f"All source centroids (out of {n_sources}) flagged during PSF fitting. "
+               "Original image PSF is likely unuseable; best-fit PSF shape parameters: "
+               f"Ixx={psf_shape_ixx}, Iyy={psf_shape_iyy}, Ixy={psf_shape_ixy}, size={psf_size}"
+               )
+        super().__init__(msg)
+        self.n_sources = n_sources
+        self.psf_shape_ixx = psf_shape_ixx
+        self.psf_shape_iyy = psf_shape_iyy
+        self.psf_shape_ixy = psf_shape_ixy
+        self.psf_size = psf_size
+
+    @property
+    def metadata(self):
+        return {"n_sources": self.n_sources,
+                "psf_shape_ixx": self.psf_shape_ixx,
+                "psf_shape_iyy": self.psf_shape_iyy,
+                "psf_shape_ixy": self.psf_shape_ixy,
+                "psf_size": self.psf_size
+                }
 
 
 class NoPsfStarsToStarsMatchError(pipeBase.AlgorithmError):
@@ -995,6 +1021,15 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.psf_repair.run(exposure=exposure)
         # Final measurement with the CRs removed.
         self.psf_source_measurement.run(detections.sources, exposure)
+
+        if detections.sources["slot_Centroid_flag"].all():
+            psf_shape = exposure.psf.computeShape(exposure.psf.getAveragePosition())
+            raise AllCentroidsFlaggedError(n_sources=len(detections.sources),
+                                           psf_shape_ixx=psf_shape.getIxx(),
+                                           psf_shape_iyy=psf_shape.getIyy(),
+                                           psf_shape_ixy=psf_shape.getIxy(),
+                                           psf_size=psf_shape.getDeterminantRadius()
+                                           )
 
         # PSF is set on exposure; candidates are returned to use for
         # calibration flux normalization and aperture corrections.
