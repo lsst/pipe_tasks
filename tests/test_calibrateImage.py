@@ -42,7 +42,8 @@ import lsst.meas.extensions.psfex
 import lsst.meas.base
 import lsst.meas.base.tests
 import lsst.pipe.base.testUtils
-from lsst.pipe.tasks.calibrateImage import CalibrateImageTask, NoPsfStarsToStarsMatchError
+from lsst.pipe.tasks.calibrateImage import CalibrateImageTask, \
+    NoPsfStarsToStarsMatchError, AllCentroidsFlaggedError
 import lsst.utils.tests
 
 
@@ -76,9 +77,9 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         # Bright extended source in the center of the image: should not appear
         # in any of the output catalogs.
-        center = lsst.geom.Point2D(100, 100)
+        self.extended_source = lsst.geom.Point2D(100, 100)
         shape = lsst.afw.geom.Quadrupole(8, 9, 3)
-        dataset.addSource(instFlux=500*noise*psf_scale, centroid=center, shape=shape)
+        dataset.addSource(instFlux=500*noise*psf_scale, centroid=self.extended_source, shape=shape)
 
         schema = dataset.makeMinimalSchema()
         self.truth_exposure, self.truth_cat = dataset.realize(noise=noise, schema=schema)
@@ -305,6 +306,41 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # import lsst.afw.display
         # display = lsst.afw.display.getDisplay()
         # display.mtv(self.exposure)
+
+    def test_compute_psf_bad_centroids(self):
+        """Test that we raise an appropriate error if all measured centroids
+        are bad in compute_psf.
+        The root cause of this is likely an interaction between the PSF fit
+        and cosmic ray repair. An ugly true PSF can result in the centers of
+        sources being masked and repaired as CRs, thus removing the center of
+        the sources and causing them all to be flagged.
+        """
+        # make the sources have a (not too deep) hole in the middle
+        for point in self.centroids:
+            for i in (-1, 0, 1):
+                for j in (-1, 0, 1):
+                    self.exposure.image[point[0]+i, point[1]+j] -= \
+                        (self.exposure.image[point[0]+i, point[1]+j] - self.background_level)/1.1
+        # and the extended central source
+        point = self.extended_source
+        self.exposure.image[point[0], point[1]] -= \
+            (self.exposure.image[point[0], point[1]] - self.background_level)
+
+        # add a diagonal gradient to each source
+        size = 5
+        for point, flux in zip(self.centroids, self.fluxes):
+            box = lsst.geom.Box2I.makeCenteredBox(lsst.geom.Point2D(point[0], point[1]),
+                                                  lsst.geom.Extent2I(size*2, size*2))
+            X, Y = np.ogrid[point[0] - size:point[0] + size, point[1] - size:point[1] + size]
+            distance = np.sqrt((X - point[0])**2 + (Y - point[1])**2)
+            gradient = (X - point[0] + size)*10 + (Y - point[1] + size)*10
+            gradient[distance > size] = 0
+            cutout = self.exposure.image.subset(box)
+            cutout.array += gradient / flux
+
+        calibrate = CalibrateImageTask(config=self.config)
+        with self.assertRaisesRegex(AllCentroidsFlaggedError, r"source centroids \(out of 4\) flagged"):
+            calibrate._compute_psf(self.exposure, self.id_generator)
 
     def test_measure_aperture_correction(self):
         """Test that _measure_aperture_correction() assigns an ApCorrMap to the
