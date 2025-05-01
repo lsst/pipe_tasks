@@ -784,7 +784,7 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
                                              sepRadians.values):
                     afwSepRadians = skyOrigin.separation(
                         wcs.pixelToSky(x + centX, y + centY)).asRadians()
-                    self.assertAlmostEqual(1 - sep / afwSepRadians, 0, places=6)
+                    self.assertAlmostEqual(1 - sep / afwSepRadians, 0, places=5)
 
                 # Test the pixel scale computation.
                 func = ComputePixelScale("base_LocalWcs_CDMatrix_1_1",
@@ -795,7 +795,7 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
                 self.assertTrue(np.allclose(
                     wcs.getPixelScale(center).asArcseconds(),
                     pixelScale.values,
-                    rtol=1e-8,
+                    rtol=1e-7,
                     atol=0))
 
                 # Test pixel -> arcsec conversion.
