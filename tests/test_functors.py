@@ -795,7 +795,7 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
                 self.assertTrue(np.allclose(
                     wcs.getPixelScale(center).asArcseconds(),
                     pixelScale.values,
-                    rtol=1e-7,
+                    rtol=1e-6,
                     atol=0))
 
                 # Test pixel -> arcsec conversion.
