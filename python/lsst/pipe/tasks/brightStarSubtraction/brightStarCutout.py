@@ -180,6 +180,11 @@ class BrightStarCutoutConfig(
         },
     )
 
+    scalePsfModel = Field[bool](
+        doc="If True, uses a scale factor to bring the PSF model data to the same level of the star data.",
+        default=True,
+    )
+
     # PSF Fitting
     useExtendedPsf = Field[bool](
         doc="Use the extended PSF model to normalize bright star cutouts.",
@@ -348,10 +353,18 @@ class BrightStarCutoutTask(PipelineTask):
             # Fit a scaled PSF and a pedestal to each bright star cutout
             psf = WarpedPsf(inputExposure.getPsf(), pixToPolar, warpingControl)
             constantPsf = KernelPsf(FixedKernel(psf.computeKernelImage(Point2D(0, 0))))
+            # TODO: discuss with Lee whether we should warp the psf here as well?
             if self.config.useExtendedPsf:
                 psfImage = extendedPsf  # Assumed to be warped, center at [0,0]
             else:
                 psfImage = constantPsf.computeKernelImage(constantPsf.getAveragePosition())
+            if self.config.scalePsfModel:
+                psfNeg = psfImage.array < 0
+                self.modelScale = np.nanmean(stampMI.image.array) / np.nanmean(psfImage.array[~psfNeg])
+                psfImage.array *= self.modelScale ######## model scale correction ########
+            else:
+                self.modelScale = 1
+
             fitPsfResults = {}
             if self.config.doFitPsf:
                 fitPsfResults = self._fitPsf(stampMI, psfImage)
@@ -586,7 +599,8 @@ class BrightStarCutoutTask(PipelineTask):
         psfMaskedPixels.array[:, :] = (stampMI.mask[psfImage.getBBox()].array & badMaskBitMask).astype(bool)
         # TODO: This is np.float64, else FITS metadata serialization fails
         # Amir: the following tries to find the fraction of the psf flux in the masked area of the psf image.
-        psfMaskedFluxFrac = np.dot(psfImage.array.flat, psfMaskedPixels.array.flat).astype(np.float64)
+        psfMaskedFluxFrac = np.dot(psfImage.array.flat, psfMaskedPixels.array.flat).astype(np.float64) / psfImage.array.sum()
+        # psfMaskedFluxFrac = np.dot(psfImage.array.astype(bool).flat, psfMaskedPixels.array.flat).astype(np.float64) / psfImage.array.astype(bool).sum()
         if psfMaskedFluxFrac > self.config.psfMaskedFluxFracThreshold:
             return {}  # Handle cases where the PSF image is mostly masked
 
@@ -622,13 +636,14 @@ class BrightStarCutoutTask(PipelineTask):
             return {}  # Handle singular matrix errors
         if sumSquaredResiduals.size == 0:
             return {}  # Handle cases where sum of the squared residuals are empty
-        scale = solutions[0]
+        # scale = solutions[0]
+        scale = solutions[0] * self.modelScale ######## model scale correction ########
         if scale <= 0:
             return {}  # Handle cases where the PSF scale fit has failed
-        scaleErr = np.sqrt(covarianceMatrix[0, 0])
+        scaleErr = np.sqrt(covarianceMatrix[0, 0]) * self.modelScale ######## model scale correction ########
         pedestal = solutions[1]
         pedestalErr = np.sqrt(covarianceMatrix[1, 1])
-        scalePedestalCov = covarianceMatrix[0, 1]
+        scalePedestalCov = covarianceMatrix[0, 1] * self.modelScale ######## model scale correction ########
         xGradient = solutions[3]
         yGradient = solutions[2]
 
@@ -641,6 +656,7 @@ class BrightStarCutoutTask(PipelineTask):
         psfBBoxGoodSpans = goodSpans.clippedTo(psfImage.getBBox())
         psfBBoxGoodSpansX, psfBBoxGoodSpansY = psfBBoxGoodSpans.indices()
         psfBBoxData = psfBBoxGoodSpans.flatten(stampMI.image.array, stampMI.getXY0())
+        paddedPsfImage.array /= self.modelScale  ######## model scale correction ########
         psfBBoxModel = (
             psfBBoxGoodSpans.flatten(paddedPsfImage.array, stampMI.getXY0()) * scale
             + pedestal
@@ -652,7 +668,6 @@ class BrightStarCutoutTask(PipelineTask):
         psfBBoxChiSquared = np.sum(psfBBoxResiduals)
         psfBBoxDegreesOfFreedom = len(psfBBoxData) - 4
         psfBBoxReducedChiSquared = psfBBoxChiSquared / psfBBoxDegreesOfFreedom
-
         return dict(
             scale=scale,
             scaleErr=scaleErr,
