@@ -24,9 +24,9 @@
 __all__ = ["BrightStarStackConnections", "BrightStarStackConfig", "BrightStarStackTask"]
 
 import numpy as np
-from lsst.afw.image import ImageF, MaskedImageF
+from lsst.afw.image import ImageF
 from lsst.afw.math import StatisticsControl, statisticsStack, stringToStatisticsProperty
-from lsst.geom import Box2I, Extent2I, Point2I
+from lsst.geom import Point2I
 from lsst.meas.algorithms import BrightStarStamps
 from lsst.pex.config import Field, ListField
 from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
@@ -66,7 +66,7 @@ class BrightStarStackConfig(
 
     subsetStampNumber = Field[int](
         doc="Number of stamps per subset to generate stacked images for.",
-        default=20,
+        default=2,
     )
     globalReducedChiSquaredThreshold = Field[float](
         doc="Threshold for global reduced chi-squared for bright star stamps.",
@@ -172,9 +172,14 @@ class BrightStarStackTask(PipelineTask):
 
         subsetStampMIs = []
         tempStampMIs = []
+        all_stars = 0
+        used_stars = 0
         for stampsDDH in brightStarStamps:
             stamps = stampsDDH.get()
+            all_stars += len(stamps)
             for stamp in stamps:
+                # print("globalReducedChiSquared: stamp ", stamp.globalReducedChiSquared, "config ", self.config.globalReducedChiSquaredThreshold)
+                # print("psfReducedChiSquared: stamp ", stamp.psfReducedChiSquared, "config ", self.config.psfReducedChiSquaredThreshold)
                 if (
                     stamp.globalReducedChiSquared > self.config.globalReducedChiSquaredThreshold
                     or stamp.psfReducedChiSquared > self.config.psfReducedChiSquaredThreshold
@@ -193,7 +198,11 @@ class BrightStarStackTask(PipelineTask):
                     subsetStampMIs.append(statisticsStack(tempStampMIs, stackTypeProperty, statisticsControl))
                     # TODO: what to do with remaining temp stamps?
                     tempStampMIs = []
+                    used_stars += self.config.subsetStampNumber
 
+        self.metadata["psfStarCount"] = {}
+        self.metadata["psfStarCount"]["all"] = all_stars
+        self.metadata["psfStarCount"]["used"] = used_stars
         # TODO: which stamp mask plane to use here?
         # TODO: Amir: there might be cases where subsetStampMIs is an empty list. What do we want to do then?
         # Currently, we get an "IndexError: list index out of range"

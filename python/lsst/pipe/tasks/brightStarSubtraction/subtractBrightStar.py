@@ -27,14 +27,13 @@ import logging
 from typing import Any
 import astropy.units as u
 import numpy as np
-from astropy.coordinates import SkyCoord
 from astropy.table import Table, Column
 from lsst.afw.cameraGeom import FIELD_ANGLE, PIXELS, TAN_PIXELS
 from lsst.afw.detection import Footprint, FootprintSet, Threshold
-from lsst.afw.geom import SkyWcs, SpanSet, makeModifiedWcs
+from lsst.afw.geom import SkyWcs, SpanSet
 from lsst.afw.geom.transformFactory import makeTransform
 from lsst.afw.image import ExposureF, ImageD, ImageF, MaskedImageF
-from lsst.afw.math import BackgroundList, FixedKernel, WarpingControl, warpImage
+from lsst.afw.math import BackgroundList, WarpingControl, warpImage
 from lsst.daf.butler import DataCoordinate
 from lsst.geom import (
     AffineTransform,
@@ -264,27 +263,10 @@ class BrightStarSubtractConfig(PipelineTaskConfig, pipelineConnections=BrightSta
         doc="Magnitude range in Gaia G. Cutouts will be made for all stars in this range.",
         default=[0, 18],
     )
-    # excludeArcsecRadius = Field[float](
-    #     doc="Stars with a star in the range ``excludeMagRange`` mag in ``excludeArcsecRadius`` are not used.",
-    #     default=5,
-    # )
-    # excludeMagRange = ListField[float](
-    #     doc="Stars with a star in the range ``excludeMagRange`` mag in ``excludeArcsecRadius`` are not used.",
-    #     default=[0, 20],
-    # )
     minAreaFraction = Field[float](
         doc="Minimum fraction of the stamp area, post-masking, that must remain for a cutout to be retained.",
         default=0.1,
     )
-    # PSF Fitting
-    # useExtendedPsf = Field[bool](
-    #     doc="Use the extended PSF model to normalize bright star cutouts.",
-    #     default=False,
-    # )
-    # doFitPsf = Field[bool](
-    #     doc="Fit a scaled PSF and a pedestal to each bright star cutout.",
-    #     default=True,
-    # )
     useMedianVariance = Field[bool](
         doc="Use the median of the variance plane for PSF fitting.",
         default=False,
@@ -293,11 +275,10 @@ class BrightStarSubtractConfig(PipelineTaskConfig, pipelineConnections=BrightSta
         doc="Maximum allowed fraction of masked PSF flux for PSF fitting to occur.",
         default=0.97,
     )
-
-    # # Misc
-    # loadReferenceObjectsConfig = ConfigField[LoadReferenceObjectsConfig](
-    #     doc="Reference object loader for astrometric calibration.",
-    # )
+    scalePsfModel = Field[bool](
+        doc="If True, uses a scale factor to bring the PSF model data to the same level of the star data.",
+        default=True,
+    )
 
 
 class BrightStarSubtractTask(PipelineTask):
@@ -322,8 +303,9 @@ class BrightStarSubtractTask(PipelineTask):
         super().__init__(*args, **kwargs)
         stampSize = Extent2D(*self.config.stampSize.list())
         stampRadius = floor(stampSize / 2)
+        # Define a central bounding box of the configured stamp size.
         self.stampBBox = Box2I(corner=Point2I(0, 0), dimensions=Extent2I(1, 1)).dilatedBy(stampRadius)
-        paddedStampSize = stampSize #* self.config.stampSizePadding
+        paddedStampSize = stampSize
         self.paddedStampRadius = floor(paddedStampSize / 2)
         self.paddedStampBBox = Box2I(corner=Point2I(0, 0), dimensions=Extent2I(1, 1)).dilatedBy(
             self.paddedStampRadius
@@ -339,7 +321,7 @@ class BrightStarSubtractTask(PipelineTask):
             name=self.config.connections.refCat,
             config=self.config.refObjLoader,
         )
-        # TODO: include the un-subtracted star here!
+        # TODO: include the un-subtracted stars here!
         subtractor = self.run(**inputs, dataId=dataId, refObjLoader=refObjLoader)
         if self.config.doWriteSubtractedExposure:
             outputExposure = inputs["inputExposure"].clone()
@@ -359,35 +341,46 @@ class BrightStarSubtractTask(PipelineTask):
         inputExposure: ExposureF,
         inputCalexp: ExposureF,
         inputBackground: BackgroundList,
-        # inputBrightStarStamps, #next plan is to use stamps for pedestal and gradients?
         inputExtendedPsf: ImageF,
         dataId: dict[str, Any] | DataCoordinate,
-        # inputBackground: BackgroundList,
         refObjLoader: ReferenceObjectLoader,
     ):
-        """Identify bright stars within an exposure using a reference catalog,
-        extract stamps around each, warp/shift stamps onto a common frame and
-        then optionally fit a PSF plus plane model.
+        """Generate a bright star subtractor image using scaled extended PSF models.
+
+        Identifies bright stars within the calibrated exposure using a
+        reference catalog, extracts stamps around each, warps the extended PSF
+        model onto the stamp frame, fits for a scale factor and pedestal for
+        each star iteratively, and combines the scaled models into a single
+        subtractor exposure.
 
         Parameters
         ----------
         inputExposure : `~lsst.afw.image.ExposureF`
-            The background-subtracted image to extract bright star stamps.
+            The Post-ISR CCD frame. Note: Currently appears unused directly
+            within this method's main logic, but required by the pipeline
+            definition. Cutouts are based on `inputCalexp` + `inputBackground`.
+        inputCalexp:  `~lsst.afw.image.ExposureF`
+            The background-subtracted calibrated exposure used for identifying
+            stars, extracting stamps, and fitting models.
         inputBackground : `~lsst.afw.math.BackgroundList`
-            The background model associated with the input exposure.
-        refObjLoader : `~lsst.meas.algorithms.ReferenceObjectLoader`, optional
-            Loader to find objects within a reference catalog.
+            The background model associated with `inputCalexp`. Added back
+            before processing stamps.
+        inputExtendedPsf : `~lsst.afw.image.ImageF`
+            The extended PSF model (e.g., from MeasureExtendedPsfTask).
+        refObjLoader : `~lsst.meas.algorithms.ReferenceObjectLoader`
+            Loader used to query the reference catalog for bright stars within
+            the exposure footprint.
         dataId : `dict` or `~lsst.daf.butler.DataCoordinate`
-            The dataId of the exposure that bright stars are extracted from.
-            Both 'visit' and 'detector' will be persisted in the output data.
+            The data identifier for the input exposure.
 
         Returns
         -------
-        brightStarResults : `~lsst.pipe.base.Struct`
-            Results as a struct with attributes:
-
-            ``brightStarStamps``
-                (`~lsst.meas.algorithms.brightStarStamps.BrightStarStamps`)
+        subtractor : `~lsst.afw.image.ExposureF`
+            An exposure containing the combined, scaled models of the bright
+            stars identified and processed. This image can be subtracted from
+            the original `inputExposure` (or `inputCalexp` + `inputBackground`).
+            The image plane contains the model flux, while the variance and
+            mask planes are typically empty or minimal unless specifically populated.
         """
         wcs = inputCalexp.getWcs()
         bbox = inputCalexp.getBBox()
@@ -399,9 +392,13 @@ class BrightStarSubtractTask(PipelineTask):
         spherePoints = [SpherePoint(ra, dec) for ra, dec in zipRaDec]
         pixCoords = wcs.skyToPixel(spherePoints)
 
+        # Create image with background added back
+        # Using calibrated exposure for finding the scale factor and creating subtrator.
+        # The generated subtractor will be subtracted from PostISRCCd.
         inputFixed = inputCalexp.getMaskedImage()
         inputFixed += inputBackground.getImage()
         inputCalexp.mask.addMaskPlane(NEIGHBOR_MASK_PLANE)
+        # Associate detected footprints (from DETECTED plane) with the bright reference stars.
         allFootprints, associations = self._associateFootprints(inputCalexp, pixCoords, plane="DETECTED")
 
         subtractorExp = ExposureF(bbox=bbox)
@@ -419,10 +416,12 @@ class BrightStarSubtractTask(PipelineTask):
         for j in range(self.config.min_iterations):
             scaleList = []
             for starIndex, (obj, pixCoord) in enumerate(zip(refCatBright, pixCoords)):  # type: ignore
+                # Start with the background-added image for each star
                 inputMI = deepcopy(inputFixed)
                 restSubtractor = deepcopy(templateSubtractor)
                 myNumber = 0
                 for key in self.warpedDataDict.keys():
+                    # Subtract the *current best models* of all *other* stars before fitting this one.
                     if self.warpedDataDict[key]["subtractor"] is not None and key != obj['id']:
                         restSubtractor.image += self.warpedDataDict[key]["subtractor"].image
                         myNumber += 1
@@ -447,7 +446,7 @@ class BrightStarSubtractTask(PipelineTask):
                     self.log.debug(f"No stamp for star with refID {obj['id']}")
                     removalIndices.append(starIndex)
                     continue
-                warpedStamp = self._warpRawStamp(obj["id"], obj["mag"], rawStamp, warpingControl, pixToTan, pixCoord)
+                warpedStamp = self._warpRawStamp(rawStamp, warpingControl, pixToTan, pixCoord)
                 warpedModel = ImageF(warpedStamp.getBBox())
                 inputExtendedPsfGeneral = deepcopy(inputExtendedPsf)
                 good_pixels = warpImage(warpedModel, inputExtendedPsfGeneral, pixToPolar.inverted(), warpingControl)
@@ -456,6 +455,10 @@ class BrightStarSubtractTask(PipelineTask):
                     self.warpedDataDict[obj["id"]]["scale"] = None
                     self.warpedDataDict[obj["id"]]["subtractor"] = None
                 fitPsfResults = {}
+                if self.config.scalePsfModel:
+                    psfNeg = warpedModel.array < 0
+                    self.modelScale = np.nanmean(warpedStamp.image.array) / np.nanmean(warpedModel.array[~psfNeg])
+                    warpedModel.array *= self.modelScale ######## model scale correction ########
                 fitPsfResults = self._fitPsf( warpedStamp, warpedModel)
                 if fitPsfResults:
                     scaleList.append(fitPsfResults["scale"])
@@ -475,6 +478,9 @@ class BrightStarSubtractTask(PipelineTask):
 
                 else:
                     scaleList.append(np.nan)
+                    if "subtractor" not in self.warpedDataDict[obj["id"]].keys():
+                        self.warpedDataDict[obj["id"]]["subtractor"] = None
+                        self.warpedDataDict[obj["id"]]["scale"] = None
             if j == 0:
                 refCatBright.remove_rows(removalIndices)
                 updatedPixCoords = [item for i, item in enumerate(pixCoords) if i not in removalIndices]
@@ -726,14 +732,25 @@ class BrightStarSubtractTask(PipelineTask):
         )
 
     def add_psf_mask(self, psfImage, stampMI):
-        """Add psf frame mask into the stamp's mask.
+        """Add problematic PSF pixels to the stamp's mask.
 
-        Args:
-            psfImage (`~lsst.afw.image.ImageF`): PSF data
-            stampMI (`~lsst.afw.image.MaskedImageF`): the stamp of the star that being fitted.
+        Identifies pixels in the PSF model image that are NaN or negative
+        and sets the corresponding bits (hardcoded as plane 0, likely 'BAD')
+        in a copy of the input stamp's mask.
 
-        Returns:
-            `~lsst.afw.image.MaskX``: the mask frame containing the stamp plus the psf model mask.
+        Parameters
+        ----------
+        psfImage : `~lsst.afw.image.ImageF`
+            PSF model image defined on the stamp grid.
+        stampMI : `~lsst.afw.image.MaskedImageF`
+            The masked image stamp of the star being fitted. Its mask is used
+            as the base.
+
+        Returns
+        -------
+        mask : `~lsst.afw.image.Mask`
+            A mask object based on the input stamp's mask, updated to include
+            masked pixels derived from the PSF model image.
         """
         cond = np.isnan(psfImage.array)
         cond |= psfImage.array < 0
@@ -788,7 +805,34 @@ class BrightStarSubtractTask(PipelineTask):
             stamp = None
         return stamp
     
-    def _warpRawStamp(self, obj, mag, rawStamp, warpingControl, pixToTan, pixCoord):
+    def _warpRawStamp(self, rawStamp, warpingControl, pixToTan, pixCoord):
+        """Warps a raw image stamp onto a common tangent plane projection.
+
+        Applies a transformation (`pixToTan`) followed by a shift
+        transform to warp the input `rawStamp` onto a destination
+        `MaskedImageF` aligned with a tangent plane centered near the object.
+        The shift aims to place the object center at the center of the
+        destination image.
+
+        Parameters
+        ----------
+        rawStamp : `~lsst.afw.image.ExposureF`
+            The raw cutout image stamp (e.g., from `_getCutout`).
+        warpingControl : `~lsst.afw.math.WarpingControl`
+            Configuration for the warping process.
+        pixToTan : `~lsst.afw.geom.Transform`
+            Transformation from the raw stamp's pixel coordinates to the
+            common tangent plane coordinates.
+        pixCoord : `~lsst.geom.Point2D`
+            Pixel coordinates of the object center in the original exposure,
+            used to calculate the centering shift.
+
+        Returns
+        -------
+        warped_stamp : `~lsst.afw.image.MaskedImageF` or `None`
+            The warped and shifted masked image, or None if warping failed
+            (e.g., due to insufficient good pixels).
+        """
         destImage = MaskedImageF(*self.config.stampSize)
         bottomLeft = Point2D(rawStamp.getXY0())
         newBottomLeft = pixToTan.applyForward(bottomLeft)
