@@ -52,7 +52,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 from lsst.daf.butler.formatters.parquet import pandas_to_astropy
-from lsst.pipe.base import NoWorkFound, connectionTypes
+from lsst.pipe.base import NoWorkFound, UpstreamFailureNoWorkFound, connectionTypes
 import lsst.afw.table as afwTable
 from lsst.afw.image import ExposureSummaryStats, ExposureF
 from lsst.meas.base import SingleFrameMeasurementTask, DetectorVisitIdGeneratorConfig
@@ -850,6 +850,12 @@ class TransformCatalogBaseTask(pipeBase.PipelineTask):
 
         df = self.transform(band, handle, funcs, dataId).df
         self.log.info("Made a table of %d columns and %d rows", len(df.columns), len(df))
+
+        if len(df) == 0:
+            raise UpstreamFailureNoWorkFound(
+                "Input catalog is empty, so there is nothing to transform/standardize",
+            )
+
         result = pipeBase.Struct(outputCatalog=pandas_to_astropy(df))
         return result
 
