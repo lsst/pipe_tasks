@@ -535,63 +535,23 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         as well.
         """
         if background is not None:
-            # bgStats = [bg[0].getStatsImage().getImage().array for bg in background]  # Main
-
             bgStats = []
-            bgStatsFull = []
-            statsImageFs = []
-            fullImageFs = []
             for bg in background:
-                # Binned image.
                 statsImageF = bg[0].getStatsImage().getImage()
-                statsImageFs.append(statsImageF)
                 bgArray = statsImageF.array
                 bgArray[~np.isfinite(bgArray)] = np.nan
                 bgStats.append(bgArray)
-                # Full image.
-                fullImageF = bg[0].getImageF()
-                fullImageFs.append(fullImageF)
-                bgArrayFull = fullImageF.array
-                bgArrayFull[~np.isfinite(bgArrayFull)] = np.nan
-                bgStatsFull.append(bgArrayFull)
-
-            # summary.skyBg = float(sum(np.median(bg[np.isfinite(bg)]) for bg in bgStats))  # Main
             summary.skyBg = float(sum(np.nanmedian(bg) for bg in bgStats))
-            summary.skyBgFull = float(sum(np.median(bg[np.isfinite(bg)]) for bg in bgStatsFull))
-            print("Background stats over all 4 elements in the BackgroundList:\n"+"-"*80)
-            print(f"skyBg: {summary.skyBg}, skyBgFull: {summary.skyBgFull}")
-            print("\nIndividual background stats from each element in the BackgroundList:\n"+"-"*80)
-            skyBgList = [float(np.nanmedian(bg)) for bg in bgStats]
-            skyBgListFull = [float(np.nanmedian(bg)) for bg in bgStatsFull]
-            nan_range = lambda x: np.nanmax(x) - np.nanmin(x)
-            skyMaxMinDiffList = [float(nan_range(bg)) for bg in bgStats]
-            skyMaxMinDiffListFull = [float(nan_range(bg)) for bg in bgStatsFull]
-            print(f"skyBgList: {skyBgList}\nskyBgListFull: {skyBgListFull}")
-            print(f"skyMaxMinDiffList: {skyMaxMinDiffList}\nskyMaxMinDiffListFull: {skyMaxMinDiffListFull}")
-
-            # Visualization of the background.
-            from tau import aimage  # Installed locally!
-            from matplotlib import pyplot as plt
-            fig, ax = plt.subplots(2, 2, figsize=(8, 8), dpi=200)
-            pc = 100
-            cmap = "viridis"
-
-            # Show stats images.
-            _ = aimage(statsImageFs[0], pc=pc, fig=fig, ax=ax[0, 0], title="statsImage[0]", title_loc="center", cmap=cmap)
-            _ = aimage(statsImageFs[1], pc=pc, fig=fig, ax=ax[0, 1], title="statsImage[1]", title_loc="center", cmap=cmap)
-            _ = aimage(statsImageFs[2], pc=pc, fig=fig, ax=ax[1, 0], title="statsImage[2]", title_loc="center", cmap=cmap)
-            _ = aimage(statsImageFs[3], pc=pc, fig=fig, ax=ax[1, 1], title="statsImage[3]", title_loc="center", cmap=cmap)
-            fig.savefig("background_statsImages.png", dpi=200, bbox_inches="tight")
-
-            # Same for full background images.
-            fig, ax = plt.subplots(2, 2, figsize=(8, 8), dpi=200)
-            _ = aimage(fullImageFs[0], pc=pc, fig=fig, ax=ax[0, 0], title="fullImage[0]", title_loc="center", cmap=cmap)
-            _ = aimage(fullImageFs[1], pc=pc, fig=fig, ax=ax[0, 1], title="fullImage[1]", title_loc="center", cmap=cmap)
-            _ = aimage(fullImageFs[2], pc=pc, fig=fig, ax=ax[1, 0], title="fullImage[2]", title_loc="center", cmap=cmap)
-            _ = aimage(fullImageFs[3], pc=pc, fig=fig, ax=ax[1, 1], title="fullImage[3]", title_loc="center", cmap=cmap)
-            fig.savefig("background_fullImages.png", dpi=200, bbox_inches="tight")
+            skyBgSumImage = np.sum(np.array(bgStats), axis=0)
+            try:
+                summary.skyBgNormRange = float(
+                    (np.nanmax(skyBgSumImage) - np.nanmin(skyBgSumImage)) / np.nanmedian(skyBgSumImage)
+                )
+            except ZeroDivisionError:
+                summary.skyBgNormRange = float("nan")
         else:
             summary.skyBg = float("nan")
+            summary.skyBgNormRange = float("nan")
 
     def update_masked_image_stats(self, summary, masked_image):
         """Compute summary-statistic fields that depend on the masked image
