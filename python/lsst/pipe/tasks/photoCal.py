@@ -314,6 +314,10 @@ class PhotoCalTask(pipeBase.Task):
         srcMagErrArr = abMagErrFromFluxErr(srcInstFluxErrArr*1e-9, srcInstFluxArr*1e-9)
 
         good = np.isfinite(srcMagArr) & np.isfinite(refMagArr)
+        if not np.any(good):
+            raise MatcherFailure("No matched reference stars with valid fluxes",
+                                 goodSrc=int(np.sum(np.isfinite(srcMagArr))),
+                                 goodRef=int(np.sum(np.isfinite(refMagArr))))
 
         return pipeBase.Struct(
             srcMag=srcMagArr[good],
