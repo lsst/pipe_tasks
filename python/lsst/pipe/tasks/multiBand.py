@@ -83,10 +83,16 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
         storageClass="SourceCatalog",
     )
     exposure = cT.Input(
-        doc="Exposure on which detections are to be performed",
+        doc="Exposure on which detections are to be performed. ",
         name="{inputCoaddName}Coadd",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "band", "skymap")
+    )
+    exposure_cells = cT.Input(
+        doc="Exposure on which detections are to be performed. ",
+        name="{inputCoaddName}CoaddCell",
+        storageClass="MultipleCellCoadd",
+        dimensions=("tract", "patch", "band", "skymap"),
     )
     outputBackgrounds = cT.Output(
         doc="Output Backgrounds used in detection",
@@ -107,6 +113,14 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
         dimensions=("tract", "patch", "band", "skymap")
     )
 
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        if config:
+            if config.useCellCoadds:
+                del self.exposure
+            else:
+                del self.exposure_cells
+
 
 class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoaddSourcesConnections):
     """Configuration parameters for the DetectCoaddSourcesTask
@@ -116,6 +130,7 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
     scaleVariance = ConfigurableField(target=ScaleVarianceTask, doc="Variance rescaling")
     detection = ConfigurableField(target=DynamicDetectionTask, doc="Source detection")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
+    useCellCoadds = Field(dtype=bool, default=False, doc="Whether to use cell coadds?")
     hasFakes = Field(
         dtype=bool,
         default=False,
@@ -185,7 +200,11 @@ class DetectCoaddSourcesTask(PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
-        exposure = inputs.pop("exposure")
+        if self.config.useCellCoadds:
+            multiple_cell_coadd = inputs.pop("exposure_cells")
+            exposure = multiple_cell_coadd.stitch().asExposure()
+        else:
+            exposure = inputs.pop("exposure")
         assert not inputs, "runQuantum got more inputs than expected."
         try:
             outputs = self.run(
