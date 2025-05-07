@@ -71,7 +71,7 @@ class CoaddPsfFitConnections(
     )
     background = cT.Input(
         doc="Background model to subtract from the coadd_cell",
-        name="{name_coadd}Coadd_background",
+        name="{name_coadd}Coadd_calexp_background",
         storageClass="Background",
         dimensions=("tract", "patch", "band", "skymap"),
     )
