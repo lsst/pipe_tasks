@@ -27,6 +27,7 @@ from smatch.matcher import Matcher
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
+from lsst.afw.table import ExposureCatalog
 
 
 class PropagateSourceFlagsConfig(pexConfig.Config):
@@ -156,10 +157,18 @@ class PropagateSourceFlagsTask(pipeBase.Task):
         # The following code is slow and inefficient, but can be made simpler in the future
         # case of cell-based coadds and so optimizing usage in afw is not a priority.
         num_overlaps = np.zeros(len(coadd_object_cat), dtype=np.int32)
-        for i, obj in enumerate(coadd_object_cat):
-            num_overlaps[i] = len(ccd_inputs.subsetContaining(obj.getCoord(), True))
+        if isinstance(ccd_inputs, ExposureCatalog):
+            for i, obj in enumerate(coadd_object_cat):
+                num_overlaps[i] = len(ccd_inputs.subsetContaining(obj.getCoord(), True))
 
-        visits = np.unique(ccd_inputs["visit"])
+            visits = np.unique(ccd_inputs["visit"])
+        else:  # StitchedExposureCatalog
+            for i, obj in enumerate(coadd_object_cat):
+                # The cell-based coadd inputs can be queried by centroid
+                # on the coadd instead of sky coordinates.
+                num_overlaps[i] = len(ccd_inputs.subsetContaining(obj.getCentroid()))
+
+            visits = np.unique([ccd_input.visit for ccd_input in ccd_inputs])
 
         matcher = Matcher(np.rad2deg(coadd_object_cat["coord_ra"]),
                           np.rad2deg(coadd_object_cat["coord_dec"]))
