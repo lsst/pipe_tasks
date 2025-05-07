@@ -23,11 +23,18 @@ __all__ = ["DetectCoaddSourcesConfig", "DetectCoaddSourcesTask",
            "MeasureMergedCoaddSourcesConfig", "MeasureMergedCoaddSourcesTask",
            ]
 
-from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
+from lsst.pipe.base import (
+    AnnotatedPartialOutputsError,
+    Struct,
+    PipelineTask,
+    PipelineTaskConfig,
+    PipelineTaskConnections
+)
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.config import Field, ConfigurableField, ChoiceField
 from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader, ScaleVarianceTask, \
     SetPrimaryFlagsTask
+from lsst.meas.algorithms.subtractBackground import TooManyMaskedPixelsError
 from lsst.meas.base import (
     SingleFrameMeasurementTask,
     ApplyApCorrTask,
@@ -180,11 +187,21 @@ class DetectCoaddSourcesTask(PipelineTask):
         idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
         exposure = inputs.pop("exposure")
         assert not inputs, "runQuantum got more inputs than expected."
-        outputs = self.run(
-            exposure=exposure,
-            idFactory=idGenerator.make_table_id_factory(),
-            expId=idGenerator.catalog_id,
-        )
+        try:
+            outputs = self.run(
+                exposure=exposure,
+                idFactory=idGenerator.make_table_id_factory(),
+                expId=idGenerator.catalog_id,
+            )
+        except TooManyMaskedPixelsError as e:
+            error = AnnotatedPartialOutputsError(
+                e,
+                self,
+                exposure,
+                log=self.log,
+            )
+            raise error from e
+
         butlerQC.put(outputs, outputRefs)
 
     def run(self, exposure, idFactory, expId):
