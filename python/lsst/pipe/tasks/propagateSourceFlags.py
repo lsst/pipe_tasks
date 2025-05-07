@@ -154,7 +154,7 @@ class PropagateSourceFlagsTask(pipeBase.Task):
         )
 
         # We need the number of overlaps of individual detectors for each coadd source.
-        # The following code is slow and inefficient, but can be made simpler in the future
+        # The following code is slow and inefficient, but can be made simpler in the
         # case of cell-based coadds and so optimizing usage in afw is not a priority.
         num_overlaps = np.zeros(len(coadd_object_cat), dtype=np.int32)
         if isinstance(ccd_inputs, ExposureCatalog):
