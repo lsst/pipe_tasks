@@ -866,6 +866,14 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             reference catalog in the matchResults attribute, and denormalized
             matches in the denormMatches attribute.
         """
+        if self.config.doPropagateFlags:
+            # These mask planes may not be defined on the coadds always.
+            # We add the mask planes, which is a no-op if already defined.
+            for maskPlane in self.config.measurement.plugins["base_PixelFlags"].masksFpAnywhere:
+                exposure.mask.addMaskPlane(maskPlane)
+            for maskPlane in self.config.measurement.plugins["base_PixelFlags"].masksFpCenter:
+                exposure.mask.addMaskPlane(maskPlane)
+
         self.measurement.run(sources, exposure, exposureId=exposureId)
 
         if self.config.doApCorr:
