@@ -352,6 +352,7 @@ class SkyCorrectionTask(PipelineTask):
         detectors = []
         masks = []
         skyCorrs = []
+        bgModel1Indices = []
         if not self.config.doApplyFlatBackgroundRatio:
             backgroundToPhotometricRatioHandles = [None] * len(calExps)
         for calExpHandle, calBkg, backgroundToPhotometricRatioHandle in zip(
@@ -366,6 +367,7 @@ class SkyCorrectionTask(PipelineTask):
             _ = self._restoreOriginalBackgroundRefineMask(calExp, calBkg)
             masks.append(calExp.mask)
             skyCorrs.append(calBkg)  # Contains only the inverted original background elements at this stage
+            bgModel1Indices.append(len(calBkg))  # Index of the original background element
 
             # Make a background model for the image, using bgModel1 configs
             bgModel1Detector = FocalPlaneBackground.fromCamera(self.config.bgModel1, camera)
@@ -383,7 +385,6 @@ class SkyCorrectionTask(PipelineTask):
         self._validateBgModel("bgModel1", bgModel1, self.config.bgModel1)
 
         # Update skyCorrs with new bgModel1 background elements
-        bgModel1Index = len(skyCorrs[0]._backgrounds)  # used to remove bgModel1 if undoBgModel1 is True
         for detector, skyCorr in zip(detectors, skyCorrs):
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", "invalid value encountered")
@@ -399,7 +400,7 @@ class SkyCorrectionTask(PipelineTask):
 
         # Remove the initial background model (bgModel1) from every skyCorr
         if self.config.undoBgModel1:
-            for skyCorr in skyCorrs:
+            for skyCorr, bgModel1Index in zip(skyCorrs, bgModel1Indices):
                 skyCorr._backgrounds.pop(bgModel1Index)
             self.log.info(
                 "Initial background models (bgModel1s) have been removed from all skyCorr background lists",
@@ -438,8 +439,8 @@ class SkyCorrectionTask(PipelineTask):
         # Make camera-level mosaics of bg subtracted calexps and subtracted bgs
         calExpsBinned = []
         calBkgsBinned = []
-        for calExpHandle, mask, skyCorr, backgroundToPhotometricRatioHandle in zip(
-            calExps, masks, skyCorrs, backgroundToPhotometricRatioHandles
+        for calExpHandle, mask, skyCorr, backgroundToPhotometricRatioHandle, bgModel1Index in zip(
+            calExps, masks, skyCorrs, backgroundToPhotometricRatioHandles, bgModel1Indices
         ):
             calExp = self._getCalExp(calExpHandle, mask, skyCorr, backgroundToPhotometricRatioHandle)
 
