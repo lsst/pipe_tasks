@@ -422,8 +422,14 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             doc='Detector number for the sources.',
         )
         output_schema.addField(
-            'psfColor',
+            'psfColorValue',
             type=np.float32,
+            doc="Color used in PSF fit."
+        )
+        output_schema.addField(
+            'psfColorType',
+            type=str,
+            size=10,
             doc="Color used in PSF fit."
         )
 
@@ -460,8 +466,14 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         selection_schema.setAliasMap(input_schema.getAliasMap())
 
         selection_schema.addField(
-            'psfColor',
+            'psfColorValue',
             type=np.float32,
+            doc="Color used in PSF fit."
+        )
+        selection_schema.addField(
+            'psfColorType',
+            type=str,
+            size=10,
             doc="Color used in PSF fit."
         )
 
@@ -593,7 +605,8 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             colors = fgcmCat[f'mag_{magStr1}'] - fgcmCat[f'mag_{magStr2}']
 
             for idSrc, idColor in zip(idxSrcCat, idxColorCat):
-                srcCat[idSrc]['psfColor'] = colors[idColor]
+                srcCat[idSrc]['psfColorValue'] = colors[idColor]
+                srcCat[idSrc]['psfColorType'] = f"{magStr1}-{magStr2}"
 
     def compute_psf_and_ap_corr_map(self, visit, detector, exposure, src,
                                     isolated_source_table, fgcm_standard_star_cat):
