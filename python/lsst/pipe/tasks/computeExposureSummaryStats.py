@@ -535,11 +535,23 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         as well.
         """
         if background is not None:
-            bgStats = (bg[0].getStatsImage().getImage().array
-                       for bg in background)
-            summary.skyBg = float(sum(np.median(bg[np.isfinite(bg)]) for bg in bgStats))
+            bgStats = []
+            for bg in background:
+                statsImageF = bg[0].getStatsImage().getImage()
+                bgArray = statsImageF.array
+                bgArray[~np.isfinite(bgArray)] = np.nan
+                bgStats.append(bgArray)
+            summary.skyBg = float(sum(np.nanmedian(bg) for bg in bgStats))
+            skyBgSumImage = np.sum(np.array(bgStats), axis=0)
+            try:
+                summary.skyBgNormRange = float(
+                    (np.nanmax(skyBgSumImage) - np.nanmin(skyBgSumImage)) / np.nanmedian(skyBgSumImage)
+                )
+            except ZeroDivisionError:
+                summary.skyBgNormRange = float("nan")
         else:
             summary.skyBg = float("nan")
+            summary.skyBgNormRange = float("nan")
 
     def update_masked_image_stats(self, summary, masked_image):
         """Compute summary-statistic fields that depend on the masked image
