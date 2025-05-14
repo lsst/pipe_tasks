@@ -39,6 +39,7 @@ import colour
 import io
 import sys
 import re
+import cv2
 import warnings
 import math
 from datetime import datetime
@@ -67,6 +68,7 @@ import lsst.geom as geom
 from lsst.afw.geom import makeHpxWcs
 from lsst.resources import ResourcePath
 
+from skimage.restoration import inpaint_biharmonic
 from .healSparseMapping import _is_power_of_two
 from .prettyPictureMaker import PrettyPictureTask, PrettyPictureConfig
 
@@ -1118,13 +1120,17 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                                         band_mapping[band] = value
                                 lsstRGB_args["band_mapping"] = band_mapping
 
-                        self._write_hips_color_png(
-                            hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
-                            order,
-                            pixels_shifted[order][pixel_counter],
-                            lupton_args,
-                            lsstRGB_args,
-                        )
+                        try:
+                            self._write_hips_color_png(
+                                hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
+                                order,
+                                pixels_shifted[order][pixel_counter],
+                                lupton_args,
+                                lsstRGB_args,
+                            )
+                        # sometimes making a color image fails, just move onto the next
+                        except Exception:
+                            pass
 
                 log_level = self.log.INFO if order == (max_order - 3) else self.log.DEBUG
                 self.log.log(
@@ -1145,10 +1151,17 @@ class GenerateHipsTask(pipeBase.PipelineTask):
 
                 # Now average the images for each band.
                 for band in bands:
-                    arr = exposures[(band, order)].image.array.reshape(npix // 2, 2, npix // 2, 2)
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore")
-                        binned_image_arr = np.nanmean(arr, axis=(1, 3))
+                    # arr = exposures[(band, order)].image.array.reshape(npix // 2, 2, npix // 2, 2)
+                    # with warnings.catch_warnings():
+                    #     warnings.simplefilter("ignore")
+                    #     binned_image_arr = np.nanmean(arr, axis=(1, 3))
+                    #
+                    # Fix nans
+                    arr = exposures[(band, order)].image.array
+                    arr = inpaint_biharmonic(arr, np.isnan(arr))
+                    binned_image_arr = cv2.pyrDown(arr)
+                    # verify it is the same size
+                    binned_image_arr = binned_image_arr[npix // 2, npix // 2]
 
                     # Fill the next level up.  We figure out which of the four
                     # sub-pixels the current pixel occupies.
