@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["RepairConfig", "RepairTask"]
+__all__ = ["RepairConfig", "RepairTask", "TooManyCosmicRays"]
 
 import lsst.pex.config as pexConfig
 import lsst.afw.math as afwMath
@@ -30,6 +30,34 @@ from lsstDebug import getDebugFrame
 import lsst.afw.display as afwDisplay
 from lsst.pipe.tasks.interpImage import InterpImageTask
 from lsst.utils.timer import timeMethod
+from lsst.pex.exceptions import LengthError
+
+
+class TooManyCosmicRays(pipeBase.AlgorithmError):
+    """Raised if the cosmic ray task fails with too many cosmics.
+
+    Parameters
+    ----------
+    maxCosmicRays : `int`
+        Maximum number of cosmic rays allowed.
+    """
+    def __init__(self, maxCosmicRays, **kwargs):
+        msg = f"Cosmic ray task found more than {maxCosmicRays} cosmics."
+        self.msg = msg
+        self._metadata = kwargs
+        super().__init__(msg, **kwargs)
+        self._metadata["maxCosmicRays"] = maxCosmicRays
+
+    def __str__(self):
+        # Exception doesn't handle **kwargs, so we need a custom str.
+        return f"{self.msg}: {self.metadata}"
+
+    @property
+    def metadata(self):
+        for key, value in self._metadata.items():
+            if not (isinstance(value, int) or isinstance(value, float) or isinstance(value, str)):
+                raise TypeError(f"{key} is of type {type(value)}, but only (int, float, str) are allowed.")
+        return self._metadata
 
 
 class RepairConfig(pexConfig.Config):
@@ -194,8 +222,17 @@ class RepairTask(pipeBase.Task):
         if keepCRs is None:
             keepCRs = self.config.cosmicray.keepCRs
         try:
-            crs = measAlg.findCosmicRays(exposure.getMaskedImage(), psf, medianBg,
-                                         pexConfig.makePropertySet(self.config.cosmicray), keepCRs)
+            try:
+                crs = measAlg.findCosmicRays(
+                    exposure.getMaskedImage(),
+                    psf,
+                    medianBg,
+                    pexConfig.makePropertySet(self.config.cosmicray),
+                    keepCRs,
+                )
+            except LengthError:
+                raise TooManyCosmicRays(self.config.cosmicray.nCrPixelMax) from None
+
             if modelBg:
                 # Add back background image
                 img = exposure.getMaskedImage()
