@@ -1,4 +1,4 @@
-__all__ = ("mapUpperBounds", "latLum", "colorConstantSat", "lsstRGB", "mapUpperBounds")
+__all__ = ("mapUpperBounds", "latLum", "colorConstantSat", "lsstRGB")
 
 import logging
 import numpy as np
@@ -18,6 +18,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter, zoom
 from scipy.interpolate import interp2d
 from scipy.stats import norm
+from . import oklab_rgb
 
 
 def eigf_variance_analysis_no_mask(guide, sigma):
@@ -135,19 +136,59 @@ def contrast_equalizer(image, contrast_factors):
     return output[: image.shape[0], : image.shape[1]]
 
 
-def lumScale(values, highlight, shadow, midtone, equalizer_levels, tone_adjustment, tone_width=0.07, max=1):
-    # Scale the values with linear manipulation for contrast
-    intensities = (values - shadow) / (highlight - shadow)
-    intensities = np.clip(intensities, 0, max)
-    intensities = ((midtone - 1) * intensities) / (((2 * midtone - 1) * intensities) - midtone)
+from scipy.stats import skewnorm
+
+
+def skew(lum, amp, k, loc, scale):
+    # good params 0.27,7,0.1,0.39
+    return lum + amp * skewnorm.pdf(lum, k, loc, scale)
+
+
+def lumScale(
+    values,
+    highlight,
+    shadow,
+    midtone,
+    equalizer_levels,
+    tone_adjustment,
+    tone_width=0.07,
+    max=1,
+    floor=0,
+    stretch=400,
+    doDenoise=False,
+    brackets=None,
+    localContrastArgs=None,
+):
+    if doDenoise:
+        values = skimage.restoration.denoise_wavelet(values)
+        values = abs(values)
+    stack = []
+    if brackets is None:
+        brackets = [1]
+    for bracket in brackets:
+        intensities = np.arcsinh((values - floor) * stretch) / np.arcsinh(stretch)
+        # Scale the values with linear manipulation for contrast
+        intensities = (intensities - shadow) / ((highlight * bracket) - shadow)
+        intensities = ((midtone - 1) * intensities) / (((2 * midtone - 1) * intensities) - midtone)
+        intensities = abs(intensities)
+        intensities = np.clip(intensities, 0, max)
+
+        if equalizer_levels is not None:
+            intensities = contrast_equalizer(intensities, equalizer_levels)
+        if localContrastArgs:
+            intensities = localContrast(intensities, **localContrastArgs)
+        stack.append(intensities)
+    if len(stack) == 1:
+        intensities = stack[0]
+    else:
+        intensities = _fuseExposureLum(stack)
 
     if tone_adjustment is not None:
         if len(tone_adjustment) != 10:
             raise ValueError("Tone adjustment must be given by a len 10 sequence")
+        intensities = np.clip(intensities, 0, max)
         intensities = tone_equalizer(intensities, tone_adjustment, tone_width, 10, 5)
 
-    if equalizer_levels is not None:
-        intensities = contrast_equalizer(intensities, equalizer_levels)
     return np.clip(intensities, 0, max)
 
 
@@ -279,23 +320,23 @@ def mapUpperBounds(img: NDArray, quant: float = 0.9, absMax: float | None = None
     g = img[:, :, 1]
     b = img[:, :, 2]
 
-    r_quant = np.quantile(r, 0.95)
-    g_quant = np.quantile(g, 0.95)
-    b_quant = np.quantile(b, 0.95)
-    turnover = np.max((r_quant, g_quant, b_quant))
-
     if absMax is not None:
         scale = absMax
     else:
+        r_quant = np.quantile(r, 0.95)
+        g_quant = np.quantile(g, 0.95)
+        b_quant = np.quantile(b, 0.95)
+        turnover = np.max((r_quant, g_quant, b_quant))
         scale = turnover * quant
 
-    image = np.empty(img.shape)
-    image[:, :, 0] = r / scale
-    image[:, :, 1] = g / scale
-    image[:, :, 2] = b / scale
+    image = np.copy(img)
+    image /= scale
+    # image[:, :, 0] = r / scale
+    # image[:, :, 1] = g / scale
+    # image[:, :, 2] = b / scale
 
     # Clip values that exceed the bound to ensure all values are within [0, absMax]
-    np.clip(image, 0, 1, out=image)
+    image = np.clip(image, 0, 1)
 
     return image
 
@@ -360,15 +401,17 @@ def colorConstantSat(
 
     # Calculate the square of the new chroma based on desired saturation
     sat_original_2 = chroma1_2 / div
-    chroma2_2 = saturation * sat_original_2 * luminance**2 / (1 - sat_original_2)
+    sat_mult = np.exp(-saturation * luminance)
+    chroma2_2 = sat_original_2 * luminance**2 / (1 - sat_original_2)
+    # chroma2_2 = saturation * sat_original_2 * luminance**2 / (1 - sat_original_2)
 
     # Compute new 'a' values using the square root of adjusted chroma and
     # considering hue direction.
     chroma2 = np.sqrt(chroma2_2)
+    chroma2 *= sat_mult
     # Try equalizing
     if equalizer_levels is not None:
-        print("equalizing color contrast")
-        chroma2 = contrast_equalizer(chroma2, equalizer_levels, "noop")
+        chroma2 = contrast_equalizer(chroma2, equalizer_levels)
     # Cap the chroma to avoid excessive values that are visually unrealistic
     #
     chroma2[chroma2 > maxChroma] = maxChroma
@@ -383,7 +426,10 @@ def colorConstantSat(
 
 
 def fixOutOfGamutColors(
-    Lab: NDArray, colourspace: str = "Display P3", gamutMethod: Literal["mapping", "inpaint"] = "inpaint"
+    Lab: NDArray,
+    xyz_whitepoint,
+    colourspace: str = "Display P3",
+    gamutMethod: Literal["mapping", "inpaint"] = "inpaint",
 ) -> NDArray:
     """Remap colors that fall outside an RGB color gamut back into it.
 
@@ -402,10 +448,11 @@ def fixOutOfGamutColors(
         colors. Must be one of ``mapping`` or ``inpaint``.
     """
     # Convert back into the CIE XYZ colourspace.
-    xyz_prime = colour.Oklab_to_XYZ(Lab)
+    # xyz_prime = colour.Oklab_to_XYZ(Lab)
 
     # And then back to the specified RGB colourspace.
-    rgb_prime = colour.XYZ_to_RGB(xyz_prime, colourspace=colourspace)
+    # rgb_prime = colour.XYZ_to_RGB(xyz_prime, colourspace=colourspace)
+    rgb_prime = oklab_rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), xyz_whitepoint)
 
     # Determine if there are any out of bounds pixels
     outOfBounds = np.bitwise_or(
@@ -424,7 +471,8 @@ def fixOutOfGamutColors(
         case "mapping":
             results = fixGamutOK(Lab[outOfBounds])
             Lab[outOfBounds] = results
-            results = colour.XYZ_to_RGB(colour.Oklab_to_XYZ(Lab), colourspace=colourspace)
+            # results = colour.XYZ_to_RGB(colour.Oklab_to_XYZ(Lab), colourspace=colourspace)
+            results = oklab_rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), xyz_whitepoint)
         case _:
             raise ValueError(f"gamut correction {gamutMethod} is not supported")
 
@@ -456,10 +504,10 @@ def _fuseExposure(images, sigma=0.2, maxLevel=3):
     padX_amounts = levelPadder(image.shape[1] + support, maxLevel)
     for image, weight in zip(images, weights):
         imagePadded = cv2.copyMakeBorder(
-            image, *(0, support), *(0, support), cv2.BORDER_REPLICATE, None, None
+            image, *(0, support), *(0, support), cv2.BORDER_REFLECT, None, None
         ).astype(image.dtype)
         weightPadded = cv2.copyMakeBorder(
-            weight, *(0, support), *(0, support), cv2.BORDER_REPLICATE, None, None
+            weight, *(0, support), *(0, support), cv2.BORDER_REFLECT, None, None
         ).astype(image.dtype)
 
         g_pyr.append(list(makeGaussianPyramid(weightPadded, padY_amounts, padX_amounts, None)))
@@ -472,6 +520,60 @@ def _fuseExposure(images, sigma=0.2, maxLevel=3):
         for img in range(len(g_pyr)):
             for i in range(3):
                 accumulate[:, :, i] += l_pyr[img][level][:, :, i] * g_pyr[img][level]
+        blended.append(accumulate)
+
+    # time to reconstruct
+    output = blended[-1]
+    for i in range(-2, -1 * len(blended) - 1, -1):
+        upsampled = cv2.pyrUp(output)
+        upsampled = upsampled[
+            : upsampled.shape[0] - 2 * padY_amounts[i + 1], : upsampled.shape[1] - 2 * padX_amounts[i + 1]
+        ]
+        output = blended[i] + upsampled
+    return output[:-support, :-support]
+
+
+def _fuseExposureLum(images, sigma=0.1, maxLevel=3):
+    weights = np.zeros((len(images), *images[0].shape[:2]))
+    for i, image in enumerate(images):
+        exposure = np.exp(-((image[:, :] - 0.7) ** 2) / (2 * sigma))
+        # dont weight at all values greater than 1
+        exposure[image > 1] *= 0.5
+
+        weights[i, :, :] = exposure
+    norm = np.sum(weights, axis=0)
+    np.divide(weights, norm, out=weights)
+
+    # loop over each image again to build pyramids
+    g_pyr = []
+    l_pyr = []
+    maxImageLevel = int(np.min(np.log2(images[0].shape[:2])))
+    if maxLevel is None:
+        maxLevel = maxImageLevel
+    if maxImageLevel < maxLevel:
+        raise ValueError(
+            f"The supplied max level {maxLevel} is is greater than the max of the image: {maxImageLevel}"
+        )
+    support = 1 << (maxLevel - 1)
+    padY_amounts = levelPadder(image.shape[0] + support, maxLevel)
+    padX_amounts = levelPadder(image.shape[1] + support, maxLevel)
+    for image, weight in zip(images, weights):
+        imagePadded = cv2.copyMakeBorder(
+            image, *(0, support), *(0, support), cv2.BORDER_REFLECT, None, None
+        ).astype(image.dtype)
+        weightPadded = cv2.copyMakeBorder(
+            weight, *(0, support), *(0, support), cv2.BORDER_REFLECT, None, None
+        ).astype(image.dtype)
+
+        g_pyr.append(list(makeGaussianPyramid(weightPadded, padY_amounts, padX_amounts, None)))
+        l_pyr.append(list(makeLapPyramid(imagePadded, padY_amounts, padX_amounts, None, None)))
+
+    # time to blend
+    blended = []
+    for level in range(len(padY_amounts)):
+        accumulate = np.zeros_like(l_pyr[0][level])
+        for img in range(len(g_pyr)):
+            accumulate[:, :] += l_pyr[img][level][:, :] * g_pyr[img][level]
         blended.append(accumulate)
 
     # time to reconstruct
@@ -506,33 +608,39 @@ def _handelLuminance(
         img = remapBounds(img, **(remapBoundsKwargs or {}))
 
     # scale to the supplied bracket
-    img /= bracket
+    # img /= bracket
 
     # Convert the starting image into the OK L*a*b* color space.
     # https://en.wikipedia.org/wiki/Oklab_color_space
 
-    Lab = colour.XYZ_to_Oklab(
-        colour.RGB_to_XYZ(
-            img,
-            colourspace="CIE RGB",
-            illuminant=np.array(cieWhitePoint),
-            chromatic_adaptation_transform="bradford",
-        )
-    )
+    # Lab = colour.XYZ_to_Oklab(
+    #     colour.RGB_to_XYZ(
+    #         img,
+    #         colourspace="CIE RGB",
+    #         illuminant=np.array(cieWhitePoint),
+    #         chromatic_adaptation_transform="bradford",
+    #     )
+    # )
+    Lab = oklab_rgb.RGB_to_Oklab(img, cieWhitePoint)
     lum = Lab[:, :, 0]
 
-    # Enhance the contrast of the input image before mapping.
-    if doLocalContrast:
-        newLum = localContrast(lum, sigma, highlights, shadows, clarity=clarity, maxLevel=maxLevel)
-        newLum = np.clip(newLum, 0, 1)
-    else:
-        newLum = lum
-
     # Scale the luminance channel if possible.
+    newLum = lum
     if scaleLum is not None:
-        lRemapped = scaleLum(newLum, **(scaleLumKWargs or {}))
+        if doLocalContrast:
+            lcArgs = dict(
+                sigma=sigma, highlights=highlights, shadows=shadows, clarity=clarity, maxLevel=maxLevel
+            )
+        else:
+            lcArgs = None
+        lRemapped = scaleLum(newLum, **(scaleLumKWargs or {}), brackets=bracket, localContrastArgs=lcArgs)
     else:
         lRemapped = newLum
+    # if doLocalContrast:
+    #     lRemapped = localContrast(lRemapped, sigma, highlights, shadows, clarity=clarity, maxLevel=maxLevel)
+    #     lRemapped = np.clip(lRemapped, 0, 1)
+    # else:
+    #     lRemapped = lRemapped
 
     if psf is not None:
         lRemapped = skimage.restoration.richardson_lucy(lRemapped, psf=psf, clip=False, num_iter=5)
@@ -656,45 +764,43 @@ def lsstRGB(
         brackets = [1]
 
     exposures = []
-    for bracket in brackets:
-        tmp_lum, Lab = _handelLuminance(
-            img,
-            scaleLum,
-            scaleLumKWargs=scaleLumKWargs,
-            remapBounds=remapBounds,
-            remapBoundsKwargs=remapBoundsKwargs,
-            doLocalContrast=doLocalContrast,
-            sigma=sigma,
-            highlights=highlights,
-            clarity=clarity,
-            shadows=shadows,
-            maxLevel=maxLevel,
-            cieWhitePoint=cieWhitePoint,
-            bracket=bracket,
-            psf=psf,
+    tmp_lum, Lab = _handelLuminance(
+        img,
+        scaleLum,
+        scaleLumKWargs=scaleLumKWargs,
+        remapBounds=remapBounds,
+        remapBoundsKwargs=remapBoundsKwargs,
+        doLocalContrast=doLocalContrast,
+        sigma=sigma,
+        highlights=highlights,
+        clarity=clarity,
+        shadows=shadows,
+        maxLevel=maxLevel,
+        cieWhitePoint=cieWhitePoint,
+        bracket=brackets,
+        psf=psf,
+    )
+    if scaleColor is not None:
+        new_a, new_b = scaleColor(
+            Lab[:, :, 0],
+            tmp_lum,
+            Lab[:, :, 1],
+            Lab[:, :, 2],
+            **(scaleColorKWargs or {}),
         )
-        if scaleColor is not None:
-            new_a, new_b = scaleColor(
-                Lab[:, :, 0],
-                tmp_lum,
-                Lab[:, :, 1],
-                Lab[:, :, 2],
-                **(scaleColorKWargs or {}),
-            )
-            # Replace the color information with the new scaled color information.
-            Lab[:, :, 1] = new_a
-            Lab[:, :, 2] = new_b
-        # Replace the luminance information with the new scaled luminance information
-        Lab[:, :, 0] = tmp_lum
-        exposures.append(Lab)
-    if len(brackets) > 1:
-        Lab = _fuseExposure(exposures)
+        # Replace the color information with the new scaled color information.
+        Lab[:, :, 1] = new_a
+        Lab[:, :, 2] = new_b
+    # Replace the luminance information with the new scaled luminance information
+    Lab[:, :, 0] = tmp_lum
+    exposures.append(Lab)
 
     # Fix any colors that fall outside of the RGB colour gamut.
     if doRemapGamut:
-        result = fixOutOfGamutColors(Lab, gamutMethod=gamutMethod)
+        result = fixOutOfGamutColors(Lab, cieWhitePoint, gamutMethod=gamutMethod)
     else:
-        result = colour.XYZ_to_RGB(colour.Oklab_to_XYZ(Lab), "Display P3")
+        # result = colour.XYZ_to_RGB(colour.Oklab_to_XYZ(Lab), "Display P3")
+        result = oklab_rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), cieWhitePoint)
 
     # explicitly cut at 1 even though the mapping was to map colors
     # appropriately because the Z matrix transform can produce values greater

@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 __all__ = (
+    "ChannelRGBConfig",
     "PrettyPictureTask",
     "PrettyPictureConnections",
     "PrettyPictureConfig",
@@ -41,7 +42,7 @@ from typing import TYPE_CHECKING, cast, Any
 from lsst.skymap import BaseSkyMap
 
 from scipy.stats import norm
-from scipy.ndimage import binary_dilation
+from scipy.ndimage import binary_dilation, label
 from scipy.optimize import minimize
 from scipy.interpolate import RBFInterpolator
 from skimage.restoration import inpaint_biharmonic
@@ -156,6 +157,8 @@ class LumConfigV2(Config):
         default=0.07,
     )
     max = Field[float](doc="The maximum allowed luminance on a 0 to 1 scale", default=1)
+    streatch = Field[float]("Streach of the lum", default=400)
+    floor = Field[float](doc="A scaling factor to apply to the luminance before asinh scaling", default=0.0)
 
 
 class LumConfig(Config):
@@ -264,7 +267,7 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
     imageRemappingConfig = ConfigField[RemapBoundsConfig](
         doc="Configuration controlling channel normalization process"
     )
-    luminanceConfig = ConfigField[LumConfig](
+    luminanceConfig = ConfigField[LumConfigV2](
         doc="Configuration for the luminance scaling when making an RGB image"
     )
     localContrastConfig = ConfigField[LocalContrastConfig](
@@ -403,11 +406,12 @@ class PrettyPictureTask(PipelineTask):
         for plug in plugins.partial():
             colorImage = plug(colorImage, jointMask, maskDict, self.config)
 
-        match self.config.luminanceConfig:
-            case LumConfig():
-                lum_func = latLum
-            case LumConfigV2():
-                lum_func = lumScale
+        # match self.config.luminanceConfig:
+        #     case LumConfig():
+        #         lum_func = lumScale
+        #     case LumConfigV2():
+        #         lum_func = lumScale
+        lum_func = lumScale
 
         # Ignore type because Exposures do in fact have a bbox, but it's c++
         # and not typed.
@@ -557,7 +561,7 @@ class PrettyPictureBackgroundFixerConnections(
 class PrettyPictureBackgroundFixerConfig(
     PipelineTaskConfig, pipelineConnections=PrettyPictureBackgroundFixerConnections
 ):
-    pass
+    brightnessThresh = Field[float](doc="Ignore any pixels above this value", default=50)
 
 
 class PrettyPictureBackgroundFixerTask(PipelineTask):
@@ -686,13 +690,19 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         # Find the median value in the image, which is likely to be
         # close to average background. Note this doesn't work well
         # in fields with high density or diffuse flux.
-        maxLikely = np.median(image, axis=None)
+        initial_mask = image < self.config.brightnessThresh
+        maxLikely = np.median(image[initial_mask], axis=None)
 
         # find all the pixels that are fainter than this
         # and find the std. This is just used as an initialization
         # parameter and doesn't need to be accurate.
-        mask = image < maxLikely
-        initial_std = (image[mask] - maxLikely).std()
+        # choose a really large initial std
+        initial_std = np.std(image, axis=None)
+        # Do this 3 times for outlier rejection
+        for _ in range(3):
+            mask = image < maxLikely
+            mask *= image > maxLikely - 5 * initial_std
+            initial_std = (image[mask] - maxLikely).std()
 
         # Don't do anything if there are no pixels to check
         if np.any(mask):
@@ -706,12 +716,12 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             )
             mu_hat, sigma_hat = result.x
         else:
-            mu_hat, sigma_hat = (maxLikely, 2 * initial_std)
+            mu_hat, sigma_hat = 0, 0
 
         # create a new masking threshold that is the determined
         # mean plus std from the fit
         threshhold = mu_hat + sigma_hat
-        image_mask = image < threshhold
+        image_mask = (image < threshhold) * (image > mu_hat - 5 * sigma_hat)
 
         # create python slices that tile the image.
         tiles = self._tile_slices(image, 25, 25)
@@ -740,6 +750,8 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             np.vstack((yloc, xloc)).T, values, kernel="thin_plate_spline", degree=4, smoothing=0.05
         )
         backgrounds = inter(np.array(positions)[::-1].reshape(2, -1).T).reshape(image.shape)
+        fixed = image - backgrounds
+        backgrounds += np.median(fixed[(fixed > -3 * sigma_hat) * (fixed < 3 * sigma_hat)])
 
         return backgrounds
 
@@ -788,6 +800,9 @@ class PrettyPictureStarFixerConnections(
 class PrettyPictureStarFixerConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureStarFixerConnections):
     brightnessThresh = Field[float](
         doc="The flux value below which pixels with SAT or NO_DATA bits will be ignored"
+    )
+    maxFixSize = Field[int](
+        doc="Any contiguous region with more than this number of pixels will not be fixed", default=3000
     )
 
 
@@ -845,6 +860,17 @@ class PrettyPictureStarFixerTask(PipelineTask):
         # to include pixels in an irregular shape, as only the star cores should be
         # fixed.
         both = together & bright_mask
+
+        # filter out extremely large areas
+        labels, num_features = label(both)
+        for num in range(1, num_features + 1):
+            label_mask = labels == num
+            amount = np.sum(label_mask)
+            if amount < self.config.maxFixSize:
+                continue
+            else:
+                both[label_mask] = 0
+
         struct = np.array(((0, 1, 0), (1, 1, 1), (0, 1, 0)), dtype=bool)
         both = binary_dilation(both, struct, iterations=4).astype(bool)
 
