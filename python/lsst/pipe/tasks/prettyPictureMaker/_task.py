@@ -697,7 +697,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         # and find the std. This is just used as an initialization
         # parameter and doesn't need to be accurate.
         # choose a really large initial std
-        initial_std = np.std(image, axis=None)
+        initial_std = np.std(image[initial_mask], axis=None)
         # Do this 3 times for outlier rejection
         for _ in range(3):
             mask = image < maxLikely
