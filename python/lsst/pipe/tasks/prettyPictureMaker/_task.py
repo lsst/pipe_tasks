@@ -157,7 +157,7 @@ class LumConfigV2(Config):
         default=0.07,
     )
     max = Field[float](doc="The maximum allowed luminance on a 0 to 1 scale", default=1)
-    streatch = Field[float]("Streach of the lum", default=400)
+    stretch = Field[float]("Streach of the lum", default=400)
     floor = Field[float](doc="A scaling factor to apply to the luminance before asinh scaling", default=0.0)
 
 
