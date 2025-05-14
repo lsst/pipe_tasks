@@ -84,15 +84,17 @@ def createImage(
 
 class WcsSelectImagesTestCase(unittest.TestCase):
 
-    def check(self, patch, patchWcs, wcs, bbox, doesOverlap, numExpected=1):
+    def check(self, patch, patchWcs, wcs, bbox, doesOverlap, numExpected=1,
+              excludeDetectors=[], dataId=None):
         config = CoaddBaseTask.ConfigClass()
         config.select.retarget(WcsSelectImagesTask)
+        config.select.excludeDetectors = excludeDetectors
         task = CoaddBaseTask(config=config, name="CoaddBase")
 
         cornerPosList = geom.Box2D(patch.getOuterBBox()).getCorners()
         coordList = [patchWcs.pixelToSky(pos) for pos in cornerPosList]
 
-        result = task.select.run([wcs], [bbox], coordList)
+        result = task.select.run([wcs], [bbox], coordList, dataIds=[dataId])
 
         numExpected = numExpected if doesOverlap else 0
         self.assertEqual(len(result), numExpected)
@@ -117,6 +119,10 @@ class WcsSelectImagesTestCase(unittest.TestCase):
 
     def testWcsNone(self):
         self.check(*createPatch(), *createImage(noWcs=True), True, numExpected=0)
+
+    def testExcludeDetectors(self):
+        self.check(*createPatch(), *createImage(), True, numExpected=0,
+                   excludeDetectors=[5], dataId={"detector": 5})
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):

@@ -159,6 +159,15 @@ class SelectStruct(pipeBase.Struct):
         super(SelectStruct, self).__init__(dataRef=dataRef, wcs=wcs, bbox=bbox)
 
 
+class WcsSelectImagesConfig(pexConfig.Config):
+    excludeDetectors = pexConfig.ListField(
+        dtype=int,
+        default=[],
+        doc="Detectors to exclude from selection.",
+        optional=True,
+    )
+
+
 class WcsSelectImagesTask(BaseSelectImagesTask):
     """Select images using their Wcs.
 
@@ -170,6 +179,9 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
     directly because the standard for the inputs to ConvexPolygon
     are pretty high and we don't want to be responsible for reaching them.
     """
+
+    ConfigClass = WcsSelectImagesConfig
+    _DefaultName = "WcsSelectImages"
 
     def run(self, wcsList, bboxList, coordList, dataIds=None, **kwargs):
         """Return indices of provided lists that meet the selection criteria.
@@ -198,7 +210,10 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
         patchPoly = lsst.sphgeom.ConvexPolygon.convexHull(patchVertices)
         result = []
         for i, (imageWcs, imageBox, dataId) in enumerate(zip(wcsList, bboxList, dataIds)):
-            if imageWcs is None:
+            if dataId and ("detector" in dataId) and (dataId["detector"] in self.config.excludeDetectors):
+                self.log.info("De-selecting exposure %s because detector %s is exluded from processing",
+                              dataId, dataId["detector"])
+            elif imageWcs is None:
                 self.log.info("De-selecting exposure %s:  Exposure has no WCS.", dataId)
             else:
                 imageCorners = self.getValidImageCorners(imageWcs, imageBox, patchPoly, dataId)
@@ -300,6 +315,12 @@ class PsfWcsSelectImagesConfig(pipeBase.PipelineTaskConfig,
         "take into consideration the spatial order used for the PSF model.  If the current "
         "band for the exposure is not included as a key in this dict, the value associated "
         "with the \"fallback\" key will be used.",
+    )
+    excludeDetectors = pexConfig.ListField(
+        dtype=int,
+        default=[],
+        doc="Detectors to exclude from selection.",
+        optional=True,
     )
 
     def validate(self):
