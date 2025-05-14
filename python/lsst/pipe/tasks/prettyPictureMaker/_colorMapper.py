@@ -166,9 +166,10 @@ def lumScale(
     if brackets is None:
         brackets = [1]
     for bracket in brackets:
-        intensities = np.arcsinh((values - floor) * stretch) / np.arcsinh(stretch)
+        intensities = values / bracket
+        intensities = np.arcsinh((intensities - floor) * stretch) / np.arcsinh(stretch)
         # Scale the values with linear manipulation for contrast
-        intensities = (intensities - shadow) / ((highlight * bracket) - shadow)
+        intensities = (intensities - shadow) / ((highlight) - shadow)
         intensities = ((midtone - 1) * intensities) / (((2 * midtone - 1) * intensities) - midtone)
         intensities = abs(intensities)
         intensities = np.clip(intensities, 0, max)
