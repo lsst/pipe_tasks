@@ -1161,7 +1161,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                     arr = inpaint_biharmonic(arr, np.isnan(arr))
                     binned_image_arr = cv2.pyrDown(arr)
                     # verify it is the same size
-                    binned_image_arr = binned_image_arr[npix // 2, npix // 2]
+                    binned_image_arr = binned_image_arr[npix // 2 - 1, npix // 2 - 1]
 
                     # Fill the next level up.  We figure out which of the four
                     # sub-pixels the current pixel occupies.
