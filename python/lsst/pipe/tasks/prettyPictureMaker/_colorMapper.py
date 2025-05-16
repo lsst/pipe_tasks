@@ -167,11 +167,11 @@ def lumScale(
         brackets = [1]
     for bracket in brackets:
         intensities = values / bracket
-        intensities = np.arcsinh((intensities - floor) * stretch) / np.arcsinh(stretch)
         # Scale the values with linear manipulation for contrast
+        intensities = abs(intensities)
+        intensities = np.arcsinh((intensities - floor) * stretch) / np.arcsinh(stretch)
         intensities = (intensities - shadow) / ((highlight) - shadow)
         intensities = ((midtone - 1) * intensities) / (((2 * midtone - 1) * intensities) - midtone)
-        intensities = abs(intensities)
         intensities = np.clip(intensities, 0, max)
 
         if equalizer_levels is not None:
@@ -459,6 +459,13 @@ def fixOutOfGamutColors(
     outOfBounds = np.bitwise_or(
         np.bitwise_or(rgb_prime[:, :, 0] > 1, rgb_prime[:, :, 1] > 1), rgb_prime[:, :, 2] > 1
     )
+    # skip really large regions
+    from scipy.ndimage import label
+
+    labels, num_features = label(outOfBounds)
+    for i in range(1, num_features + 1):
+        if np.sum(labels == i) > 2000:
+            outOfBounds[labels == i] = 0
 
     # If all pixels are in bounds, return immediately.
     if not np.any(outOfBounds):
@@ -796,6 +803,7 @@ def lsstRGB(
     Lab[:, :, 0] = tmp_lum
     exposures.append(Lab)
 
+    cieWhitePoint = (0.31272, 0.32903)
     # Fix any colors that fall outside of the RGB colour gamut.
     if doRemapGamut:
         result = fixOutOfGamutColors(Lab, cieWhitePoint, gamutMethod=gamutMethod)
