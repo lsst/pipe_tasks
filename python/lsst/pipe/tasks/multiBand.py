@@ -88,6 +88,12 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
         storageClass="ExposureF",
         dimensions=("tract", "patch", "band", "skymap")
     )
+    skyMap = cT.Input(
+        doc="Description of the skymap's tracts and patches.",
+        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
+        storageClass="SkyMap",
+        dimensions=("skymap",),
+    )
     outputBackgrounds = cT.Output(
         doc="Output Backgrounds used in detection",
         name="{outputCoaddName}Coadd_calexp_background",
@@ -107,6 +113,10 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
         dimensions=("tract", "patch", "band", "skymap")
     )
 
+    def __init__(self, *, config=None):
+        if not self.config.cropToPatchInner:
+            del self.skyMap
+
 
 class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoaddSourcesConnections):
     """Configuration parameters for the DetectCoaddSourcesTask
@@ -122,6 +132,11 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
         doc="Should be set to True if fake sources have been inserted into the input data.",
     )
     idGenerator = SkyMapIdGeneratorConfig.make_field()
+    cropToPatchInner = Field(
+        dtype=bool,
+        default=False,
+        doc="Crop to the patch inner region before processing."
+    )
 
     def setDefaults(self):
         super().setDefaults()
@@ -186,12 +201,18 @@ class DetectCoaddSourcesTask(PipelineTask):
         inputs = butlerQC.get(inputRefs)
         idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
         exposure = inputs.pop("exposure")
+        skyMap = inputs.pop("skyMap", None)
+        if skyMap is not None:
+            patchInfo = skyMap[butlerQC.quantum.dataId["tract"]][butlerQC.quantum.dataId["patch"]]
+        else:
+            patchInfo = None
         assert not inputs, "runQuantum got more inputs than expected."
         try:
             outputs = self.run(
                 exposure=exposure,
                 idFactory=idGenerator.make_table_id_factory(),
                 expId=idGenerator.catalog_id,
+                patchInfo=patchInfo,
             )
         except TooManyMaskedPixelsError as e:
             error = AnnotatedPartialOutputsError(
@@ -204,7 +225,7 @@ class DetectCoaddSourcesTask(PipelineTask):
 
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, exposure, idFactory, expId):
+    def run(self, exposure, idFactory, expId, patchInfo=None):
         """Run detection on an exposure.
 
         First scale the variance plane to match the observed variance
@@ -220,6 +241,8 @@ class DetectCoaddSourcesTask(PipelineTask):
             IdFactory to set source identifiers.
         expId : `int`
             Exposure identifier (integer) for RNG seed.
+        patchInfo : `lsst.skymap.PatchInfo`, optional
+            Description of the patch geometry.
 
         Returns
         -------
@@ -231,6 +254,8 @@ class DetectCoaddSourcesTask(PipelineTask):
             ``backgrounds``
                 List of backgrounds (`list`).
         """
+        if self.config.cropToPatchInner:
+            exposure = exposure[patchInfo.getInnerBBox()]
         if self.config.doScaleVariance:
             varScale = self.scaleVariance.run(exposure.maskedImage)
             exposure.getMetadata().add("VARIANCE_SCALE", varScale)
