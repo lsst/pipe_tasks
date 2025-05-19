@@ -116,6 +116,10 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
     def __init__(self, *, config=None):
         if not self.config.cropToPatchInner:
             del self.skyMap
+        if self.config.writeOnlyBackgrounds:
+            del self.outputExposure
+            del self.outputSources
+            del self.detectionSchema
 
 
 class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoaddSourcesConnections):
@@ -137,6 +141,7 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
         default=False,
         doc="Crop to the patch inner region before processing."
     )
+    writeOnlyBackgrounds = Field(dtype=bool, default=False, doc="If true, only save the background models.")
 
     def setDefaults(self):
         super().setDefaults()
