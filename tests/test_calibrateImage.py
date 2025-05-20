@@ -103,6 +103,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.exposure = afwImage.ExposureF(self.truth_exposure, deep=True)
         self.exposure.setWcs(self.truth_exposure.wcs)
         self.exposure.info.setVisitInfo(self.truth_exposure.visitInfo)
+        self.exposure.info.id = 12345
         # "truth" filter, to match the "truth" refcat.
         self.exposure.setFilter(lsst.afw.image.FilterLabel(physical='truth', band="truth"))
         self.exposure.metadata["LSST ISR FLAT APPLIED"] = True
@@ -225,6 +226,25 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         calibrate.astrometry.setRefObjLoader(self.ref_loader)
         calibrate.photometry.match.setRefObjLoader(self.ref_loader)
         result = calibrate.run(exposures=self.exposure)
+
+        self._check_run(calibrate, result)
+
+    def test_run_downsample(self):
+        """Test that run() runs with downsample.
+        """
+        config = copy.copy(self.config)
+        config.do_downsample_footprints = True
+        config.downsample_max_footprints = 5
+
+        calibrate = CalibrateImageTask(config=config)
+        calibrate.astrometry.setRefObjLoader(self.ref_loader)
+        calibrate.photometry.match.setRefObjLoader(self.ref_loader)
+        with self.assertLogs("lsst.calibrateImage", level="INFO") as cm:
+            result = calibrate.run(exposures=self.exposure)
+        self.assertIn(
+            "INFO:lsst.calibrateImage:Downsampling from 8 to 7 non-sky-source footprints.",
+            cm.output,
+        )
 
         self._check_run(calibrate, result)
 
