@@ -294,6 +294,16 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         target=lsst.meas.algorithms.SkyObjectsTask,
         doc="Task to generate sky sources ('empty' regions where there are no detections).",
     )
+    do_downsample_footprints = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Downsample footprints prior to deblending to optimize speed?",
+    )
+    downsample_max_footprints = pexConfig.Field(
+        dtype=int,
+        default=1000,
+        doc="Maximum number of non-sky-source footprints to use if do_downsample_footprints is True,",
+    )
     star_deblend = pexConfig.ConfigurableField(
         target=lsst.meas.deblender.SourceDeblendTask,
         doc="Split blended sources into their components."
@@ -1100,6 +1110,33 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         )
         sources = detections.sources
         self.star_sky_sources.run(exposure.mask, id_generator.catalog_id, sources)
+
+        n_sky_sources = np.sum(sources["sky_source"])
+        if (self.config.do_downsample_footprints
+           and (len(sources) - n_sky_sources) > self.config.downsample_max_footprints):
+            if exposure.info.id is None:
+                self.log.warning("Exposure does not have a proper id; using 0 seed for downsample.")
+                seed = 0
+            else:
+                seed = exposure.info.id & 0xFFFFFFFF
+
+            gen = np.random.RandomState(seed)
+
+            # Isolate the sky sources before downsampling.
+            indices = np.arange(len(sources))[~sources["sky_source"]]
+            indices = gen.choice(
+                indices,
+                size=self.config.downsample_max_footprints,
+                replace=False,
+            )
+            skyIndices, = np.where(sources["sky_source"])
+            indices = np.concatenate((indices, skyIndices))
+
+            self.log.info("Downsampling from %d to %d non-sky-source footprints.", len(sources), len(indices))
+
+            sel = np.zeros(len(sources), dtype=bool)
+            sel[indices] = True
+            sources = sources[sel]
 
         # TODO investigation: Could this deblender throw away blends of non-PSF sources?
         self.star_deblend.run(exposure=exposure, sources=sources)
