@@ -220,7 +220,7 @@ class DetectCoaddSourcesTask(PipelineTask):
                 patchInfo=patchInfo,
             )
         except TooManyMaskedPixelsError as e:
-            error = AnnotatedPartialOutputsError(
+            error = AnnotatedPartialOutputsError.annotate(
                 e,
                 self,
                 exposure,
