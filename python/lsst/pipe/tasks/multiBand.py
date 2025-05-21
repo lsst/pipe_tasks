@@ -23,6 +23,8 @@ __all__ = ["DetectCoaddSourcesConfig", "DetectCoaddSourcesTask",
            "MeasureMergedCoaddSourcesConfig", "MeasureMergedCoaddSourcesTask",
            ]
 
+import numpy as np
+
 from lsst.geom import Extent2I
 from lsst.pipe.base import (
     AnnotatedPartialOutputsError,
@@ -146,6 +148,15 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
         )
     )
     writeOnlyBackgrounds = Field(dtype=bool, default=False, doc="If true, only save the background models.")
+    writeEmptyBackgrounds = Field(
+        dtype=bool,
+        default=False,
+        doc=(
+            "If true, save a placeholder background with NaNs in all bins (but the right geometry) when "
+            "there are no pixels to compute a background from.  This can be useful if a later task combines "
+            "backgrounds from multiple patches as input."
+        )
+    )
 
     def setDefaults(self):
         super().setDefaults()
@@ -224,6 +235,8 @@ class DetectCoaddSourcesTask(PipelineTask):
                 patchInfo=patchInfo,
             )
         except TooManyMaskedPixelsError as e:
+            if self.config.writeEmptyBackgrounds:
+                butlerQC.put(self._makeEmptyBackground(exposure, patchInfo), outputRefs.outputBackgrounds)
             error = AnnotatedPartialOutputsError.annotate(
                 e,
                 self,
@@ -328,6 +341,41 @@ class DetectCoaddSourcesTask(PipelineTask):
         assert bbox.width % self.detection.background.binSizeX == 0
         assert bbox.height % self.detection.background.binSizeY == 0
         return exposure[bbox]
+
+    def _makeEmptyBackground(self, exposure, patchInfo=None):
+        """Construct an empty `lsst.afw.math.BackgroundList` with NaN values.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
+            Exposure that the background should correspond to.
+        patchInfo : `lsst.skymap.PatchInfo`, optional
+            Description of the patch geometry.  Only needed if
+            `~DetectCoaddSourceConfig.forceExactBinning` is `True`.
+
+        Returns
+        -------
+        background : `lsst.afw.math.BackgroundList`
+            A background object with a single layer and the same bin geometry
+            that a background for that exposure would have had if it had enough
+            usable pixels.  This object cannot actually be used for background
+            subtraction.
+        """
+        # BackgroundList objects are a huge pain to construct without actually
+        # measuring the background, so that's what we do - on an image with
+        # 0s everywhere and no masks.  And then we replace the background
+        # "stats image" with NaNs and NO_DATA.
+        if self.config.forceExactBinning:
+            exposure = self._cropToExactBinning(exposure, patchInfo).clone()
+        exposure.image.array[:, :] = 0.0
+        exposure.mask[:, :] = 0
+        background = self.detection.background.run(exposure).background
+        for bg, *_ in background:
+            stats = bg.getStatsImage()
+            stats.image.array[:, :] = np.nan
+            stats.mask.array[:, :] = stats.mask.getPlaneBitMask("NO_DATA")
+            stats.variance.array[:, :] = 0.0
+        return background
 
 
 class MeasureMergedCoaddSourcesConnections(
