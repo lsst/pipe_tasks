@@ -573,7 +573,6 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         self.schemaMapper = afwTable.SchemaMapper(schema)
         self.schemaMapper.addMinimalSchema(schema)
         self.schema = self.schemaMapper.getOutputSchema()
-        afwTable.CoordKey.addErrorFields(self.schema)
         self.algMetadata = PropertyList()
         self.makeSubtask("measurement", schema=self.schema, algMetadata=self.algMetadata)
         self.makeSubtask("setPrimaryFlags", schema=self.schema)
