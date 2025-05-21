@@ -290,6 +290,18 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         self._check_run(calibrate, result, expect_calibrated_pixels=False)
 
+    def test_run_no_astrom_errors(self):
+        """Test that run() returns reasonable values when
+        do_calibrate_pixels=False.
+        """
+        self.config.do_include_astrometric_errors = False
+        calibrate = CalibrateImageTask(config=self.config)
+        calibrate.astrometry.setRefObjLoader(self.ref_loader)
+        calibrate.photometry.match.setRefObjLoader(self.ref_loader)
+        result = calibrate.run(exposures=self.exposure)
+
+        self._check_run(calibrate, result)
+
     def test_compute_psf(self):
         """Test that our brightest sources are found by _compute_psf(),
         that a PSF is assigned to the expopsure.
