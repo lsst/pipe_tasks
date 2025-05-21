@@ -39,12 +39,15 @@ import colour
 import io
 import sys
 import re
+import cv2
 import warnings
 import math
 from datetime import datetime
 import hpgeom as hpg
 import healsparse as hsp
 from astropy.io import fits
+from skimage.transform import resize
+import concurrent.futures as futures
 
 try:
     from astropy.visualization.lupton_rgb import AsinhMapping
@@ -67,8 +70,9 @@ import lsst.geom as geom
 from lsst.afw.geom import makeHpxWcs
 from lsst.resources import ResourcePath
 
+from skimage.restoration import inpaint_biharmonic
 from .healSparseMapping import _is_power_of_two
-from .prettyPictureMaker import PrettyPictureTask, PrettyPictureConfig
+from .prettyPictureMaker import PrettyPictureTask, PrettyPictureConfig, ChannelRGBConfig
 
 
 class HighResolutionHipsConnections(
@@ -895,6 +899,7 @@ class GenerateHipsConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Genera
         allowed={"png": "Use the png image extension", "webp": "Use the webp image extension"},
         default="png",
     )
+    do_pool = pexConfig.Field[bool](doc='Run parallel writes', default=False)
 
     def validate(self):
         if self.parallel_highest_order:
@@ -921,6 +926,18 @@ class GenerateHipsTask(pipeBase.PipelineTask):
     color_task = False
 
     config: ConfigClass
+
+    def __init__(
+        self,
+        *,
+        config = None,
+        log = None,
+        initInputs = None,
+        **kwargs,
+    ):
+        super().__init__(config=config, log=log, initInputs=initInputs, **kwargs)
+        self.executor = None
+        self.write_message = True
 
     @timeMethod
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
@@ -949,12 +966,22 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         }
         bands = self._check_data_bands(data_bands)
 
-        self.run(
-            bands=bands,
-            max_order=order,
-            hips_exposure_handle_dict=hips_exposure_handle_dict,
-            do_color=self.color_task,
-        )
+        if self.config.do_pool:
+            with futures.ProcessPoolExecutor(max_workers=5) as executor:
+                self.executor = executor
+                self.run(
+                    bands=bands,
+                    max_order=order,
+                    hips_exposure_handle_dict=hips_exposure_handle_dict,
+                    do_color=self.color_task,
+                )
+        else:
+            self.run(
+                bands=bands,
+                max_order=order,
+                hips_exposure_handle_dict=hips_exposure_handle_dict,
+                do_color=self.color_task,
+            )
 
     def _check_data_bands(self, data_bands):
         """Check that the data has only a single band.
@@ -1096,6 +1123,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                         # Make a color png.
                         lupton_args = {}
                         lsstRGB_args = {}
+                        # print(f'starting color {time.time() - t1}')
                         match self.config.rgbStyle:
                             case "lupton":
                                 lupton_args["image_red"] = exposures[
@@ -1118,6 +1146,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                                         band_mapping[band] = value
                                 lsstRGB_args["band_mapping"] = band_mapping
 
+                        # try:
                         self._write_hips_color_png(
                             hips_base_path.join(f"color_{colorstr}", forceDirectory=True),
                             order,
@@ -1125,6 +1154,10 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                             lupton_args,
                             lsstRGB_args,
                         )
+                        # sometimes making a color image fails, just move onto the next
+                        # except Exception as exc:
+                            # breakpoint()
+                        # print(f'done color {time.time() - t1}')
 
                 log_level = self.log.INFO if order == (max_order - 3) else self.log.DEBUG
                 self.log.log(
@@ -1144,11 +1177,33 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                     continue
 
                 # Now average the images for each band.
+                # print(f'starting remap {time.time()-t1}')
                 for band in bands:
-                    arr = exposures[(band, order)].image.array.reshape(npix // 2, 2, npix // 2, 2)
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore")
-                        binned_image_arr = np.nanmean(arr, axis=(1, 3))
+                    # arr = exposures[(band, order)].image.array.reshape(npix // 2, 2, npix // 2, 2)
+                    # with warnings.catch_warnings():
+                    #     warnings.simplefilter("ignore")
+                    #     binned_image_arr = np.nanmean(arr, axis=(1, 3))
+                    #
+                    # Fix nans
+                    arr = exposures[(band, order)].image.array
+                    # print(f'starting inpaint {time.time() -t1}')
+                    # arr = inpaint_biharmonic(arr, np.isnan(arr))
+                    # arr = cv2.inpaint(arr, np.isnan(arr).astype(np.uint8), 3, cv2.INPAINT_TELEA)
+                    nan_mask = np.isnan(arr)
+                    if np.sum(nan_mask) == arr.size:
+                        arr = np.zeros_like(arr)
+                    else:
+                        arr[nan_mask] = 0
+                    # print(f'done inpaint {time.time() -t1}')
+                    # binned_image_arr = cv2.pyrDown(arr)
+                    # print(f'starting resize {time.time() -t1}')
+                    # if np.sum(arr == 0) > (0.95 * arr.size):
+                        # binned_image_arr = np.zeros((npix//2,  npix//2), dtype=float)
+                    # else:
+                    binned_image_arr = resize(arr, (npix//2, npix//2), anti_aliasing=True, anti_aliasing_sigma=order/max_order*0.5)
+                    # verify it is the same size
+                    binned_image_arr = binned_image_arr[: (npix // 2), : (npix // 2)]
+                    # print(f'done resize {time.time() -t1}')
 
                     # Fill the next level up.  We figure out which of the four
                     # sub-pixels the current pixel occupies.
@@ -1175,6 +1230,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                     # Erase the previous exposure.
                     if order < max_order:
                         exposures[(band, order)].image.array[:, :] = np.nan
+                # print(f'done remap {time.time() - t1}')
 
         if not self.config.parallel_highest_order:
             # Write the properties files and MOCs.
@@ -1303,9 +1359,10 @@ class GenerateHipsTask(pipeBase.PipelineTask):
 
                 image_array = png_mapping.make_rgb_image(arr_red, arr_green, arr_blue)
             case "lsstRGB":
-                image_array = self.rgbGenerator.run(lsstRGB_args["band_mapping"]).outputRGB
+                # image_array = self.rgbGenerator.run(lsstRGB_args["band_mapping"]).outputRGB
+                pass
 
-        im = Image.fromarray(image_array[::-1, :, :], mode="RGB")
+        # im = Image.fromarray(image_array[::-1, :, :], mode="RGB")
 
         uri = hips_dir.join(f"Npix{pixel}.{self.config.file_extension}")
 
@@ -1314,10 +1371,29 @@ class GenerateHipsTask(pipeBase.PipelineTask):
             extra_args["lossless"] = True
             extra_args["quality"] = 80
 
-        with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
-            im.save(temporary_uri.ospath, **extra_args)
+        if self.executor is not None:
+            if self.write_message:
+                print('im parallel')
+                self.write_message = False
+            self.executor.submit(self._write_impl, uri, self.rgbGenerator,lsstRGB_args["band_mapping"], extra_args)
+        else:
+            self._write_impl(uri, self.rgbGenerator,lsstRGB_args["band_mapping"], extra_args)
+        # with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
+        #     im.save(temporary_uri.ospath, **extra_args)
 
-            uri.transfer_from(temporary_uri, transfer="copy", overwrite=True)
+        #     uri.transfer_from(temporary_uri, transfer="copy", overwrite=True)
+
+    @staticmethod
+    def _write_impl(uri, function, image_input, extra_args):
+        try:
+            image_array = function.run(image_input).outputRGB
+            im = Image.fromarray(image_array[::-1, :, :], mode="RGB")
+            with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
+                im.save(temporary_uri.ospath, **extra_args)
+
+                uri.transfer_from(temporary_uri, transfer="copy", overwrite=True)
+        except Exception as exc:
+            print(exc)
 
     def _write_properties_and_moc(
         self, hips_base_path, max_order, pixels, exposure, shift_order, band, multiband
@@ -1761,20 +1837,47 @@ class GenerateColorHipsConfig(GenerateHipsConfig, pipelineConnections=GenerateCo
     def setDefaults(self):
         super().setDefaults()
         self.rgbGenerator: PrettyPictureConfig
-        self.rgbGenerator.imageRemappingConfig.absMax = 550
-        self.rgbGenerator.luminanceConfig.Q = 0.7
+        # self.rgbGenerator.imageRemappingConfig.absMax = 550
+        # self.rgbGenerator.luminanceConfig.Q = 0.7
+        # self.rgbGenerator.doPSFDeconcovlve = False
+        # self.rgbGenerator.exposureBrackets = None
+        # self.rgbGenerator.localContrastConfig.doLocalContrast = False
+        # self.rgbGenerator.luminanceConfig.stretch = 250
+        # self.rgbGenerator.luminanceConfig.max = 100
+        # self.rgbGenerator.luminanceConfig.highlight = 0.905882
+        # self.rgbGenerator.luminanceConfig.shadow = 0.12
+        # self.rgbGenerator.luminanceConfig.midtone = 0.25
+        # self.rgbGenerator.colorConfig.maxChroma = 80
+        # self.rgbGenerator.colorConfig.saturation = 0.6
+        # self.rgbGenerator.cieWhitePoint = (0.28, 0.28)
+        self.rgbGenerator.localContrastConfig.doLocalContrast = False
+        self.rgbGenerator.localContrastConfig.sigma = 30
+        self.rgbGenerator.localContrastConfig.clarity = 0.3
+        self.rgbGenerator.localContrastConfig.shadows = 0
+        self.rgbGenerator.localContrastConfig.highlights = 0
+        self.rgbGenerator.localContrastConfig.maxLevel = 2
+        self.rgbGenerator.imageRemappingConfig.absMax = 16500
+        self.rgbGenerator.luminanceConfig.max = 1
+        self.rgbGenerator.luminanceConfig.stretch = 1000
+        # self.rgbGenerator.luminanceConfig.floor = 0.03
+        self.rgbGenerator.luminanceConfig.floor = 0.00032
+        # self.rgbGenerator.luminanceConfig.floor = 0.0001
+        self.rgbGenerator.luminanceConfig.highlight = 1
+        # self.rgbGenerator.luminanceConfig.shadow = 0.1
+        self.rgbGenerator.luminanceConfig.shadow = 0.0
+        self.rgbGenerator.luminanceConfig.midtone = 0.15
+        # self.rgbGenerator.luminanceConfig.equalizer_levels = [1.1,1.2,1,]
         self.rgbGenerator.doPSFDeconcovlve = False
         self.rgbGenerator.exposureBrackets = None
-        self.rgbGenerator.localContrastConfig.doLocalContrast = False
-        self.rgbGenerator.luminanceConfig.stretch = 250
-        self.rgbGenerator.luminanceConfig.max = 100
-        self.rgbGenerator.luminanceConfig.highlight = 0.905882
-        self.rgbGenerator.luminanceConfig.shadow = 0.12
-        self.rgbGenerator.luminanceConfig.midtone = 0.25
         self.rgbGenerator.colorConfig.maxChroma = 80
-        self.rgbGenerator.colorConfig.saturation = 0.6
+        self.rgbGenerator.colorConfig.saturation = 0.7
+        self.rgbGenerator.arrayType = 'uint8'
         self.rgbGenerator.cieWhitePoint = (0.28, 0.28)
-
+        self.rgbGenerator.channelConfig = {}
+        self.rgbGenerator.channelConfig["u"] = ChannelRGBConfig(r=0.1, g=0.00, b=0.3)
+        self.rgbGenerator.channelConfig["g"] = ChannelRGBConfig(r=0, g=0, b=1)
+        self.rgbGenerator.channelConfig["r"] = ChannelRGBConfig(r=0, g=1.2, b=0)
+        self.rgbGenerator.channelConfig["i"] = ChannelRGBConfig(r=1.2, g=0, b=0)
         return
 
 

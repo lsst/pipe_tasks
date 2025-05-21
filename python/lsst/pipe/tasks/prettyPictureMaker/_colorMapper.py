@@ -1,5 +1,7 @@
+from __future__ import annotations
 __all__ = ("mapUpperBounds", "latLum", "colorConstantSat", "lsstRGB")
 
+from lsst.meas.algorithms import SubtractBackgroundTask
 import logging
 import numpy as np
 import skimage
@@ -15,10 +17,305 @@ from numpy.typing import NDArray
 from typing import Callable, Mapping, Literal
 
 import numpy as np
-from scipy.ndimage import gaussian_filter, zoom
-from scipy.interpolate import interp2d
+from scipy.ndimage import gaussian_filter, zoom, label, binary_dilation
+from scipy.interpolate import interp2d, RBFInterpolator, LinearNDInterpolator
 from scipy.stats import norm
 from . import oklab_rgb
+from lsst.afw.image import MaskedImageF, Mask, ExposureF
+
+
+from itertools import chain, combinations_with_replacement
+from typing import Iterable, Tuple
+
+import numpy as np
+
+
+class PolynomialFeatures:
+    """Generate polynomial features
+
+    For each feature vector, it generates polynomial features of degree d consisting
+    of all polynomial combinations of the features with degree less than or equal to
+    the specified degree.
+
+    For example, if an input sample is two dimensional and of the form
+    [a, b], the degree-2 polynomial features are [1, a, b, a^2, ab, b^2].
+
+    With degree 1, it simply transform to homogenous coordinates (adding a constant 1 to the features)
+
+    See PolynomialFeatures from scikit-learn for a complete documentation and implementation.
+    """
+
+    def __init__(self, degree=1):
+        self.degree = degree
+        self._fitted = False
+        self.n_input_features = 0
+        self.n_output_features = 0
+
+    @staticmethod
+    def _combinations(n_features: int, degree: int) -> Iterable[Tuple[int, ...]]:
+        return chain.from_iterable(combinations_with_replacement(range(n_features), i) for i in range(degree + 1))
+
+    @staticmethod
+    def _combinations_length(n_features: int, degree: int) -> int:
+        # TODO: Can be computed mathematically
+        return sum(1 for _ in PolynomialFeatures._combinations(n_features, degree))
+
+    def fit(self, X: np.ndarray):
+        """Compute number of output features."""
+        _, n_features = X.shape
+        self.n_input_features = n_features
+        self.n_output_features = self._combinations_length(n_features, self.degree)
+        self._fitted = True
+        return self
+
+    def transform(self, X: np.ndarray):
+        """Transform features to polynomial features
+
+        Args:
+            X (np.ndarray): Features for multiple samples
+                Shape: (n_samples, n_features)
+
+        Returns
+            np.ndarrray: Polynomial features
+                Shape: (n_samples, n_output_features)
+        """
+        assert self._fitted, "Please first fit the PolynomialFeatures"
+
+        n_samples, n_features = X.shape
+
+        if n_features != self.n_input_features:
+            raise ValueError("X shape does not match training shape")
+
+        # allocate output data
+        polynomial_features = np.empty((n_samples, self.n_output_features), dtype=X.dtype)
+
+        combinations = self._combinations(n_features, self.degree)
+        for i, c in enumerate(combinations):
+            polynomial_features[:, i] = X[:, c].prod(1)
+
+        return polynomial_features
+
+from scipy.spatial.distance import cdist  # type: ignore
+
+class ThinPlateSpline:
+    """Solve the Thin Plate Spline interpolation.
+
+    In fact, this class supports the more general multi-dimensional polyharmonic spline interpolation.
+
+    It learns a non-linear elastic mapping function f: R^d -> R given n control points (x_i, y_i)_i
+    where x_i \\in R^d and y_i \\in R.
+
+    The problem is formally stated as:
+    f = min_f E_{fit}(f) + \\alpha E_{reg}(f)      (1)
+
+    where E_{fit}(f) = \\sum_{i=1}^n (y_i - f(x_i))^2  (Least square objectif)
+    and E_{reg}(f) = \\int \\|\\nabla^{order} f \\|_2^2 dx (Regularization)
+    which penalizes the norm of the order-th derivatives of the learnt function.
+
+    When the regularization alpha is 0, then this becomes equivalent to minimizing E_{reg}
+    under the constraints f(x_i) = y_i.
+
+    NOTE: In the classical 2 dimensionnal TPS, the spline order is 2.
+
+    Using Euler-Lagrange, one can show that the function solutions are of the form:
+    f(x) = P(x) + \\sum_i w_i G(\\|x - x_i\\|_2), with P a polynom of degree = order - 1
+    and G are radial basis functions (RBF).
+
+    It can be shown that the RBF follows:
+
+    G(r) = r**(2 * order - d) log(r) for even dimension d
+    or
+    G(r) = r**(2 * order - d) for odd dimension d
+
+    For TPS, this sets G(r) = r**2 log(r)
+    As RBF, are not always defined in r = 0 (if 2 * order \\le d), we decided to use the common
+    (but incorrect) TPS kernel instead of the mathematical one.
+
+    Fitting the spline, amounts at finding the polynoms coefficients and the weights (w_i).
+
+    Vectorized solution:
+    --------------------
+
+    Let X = (x_i) \\in R^{n x d} and Y = (y_i) \\in R^{n x v} be the control points and associated values.
+    And X' = (x'_i) \\in R^{n' x d} be any set of points where we want to interpolate f.
+
+    Note that we now have several values to interpolate for each position, which simply amounts at finding
+    a mapping f_j for each value and concatenating them.
+
+    X and X' can expended as its polynomial features X_p \\in R^{n x d_p} and X'_p \\in R^{n' x d_p}.
+    For instance, TPS, the polynom is of degree one and the polynomial extension is simply the homogenous
+    coordinates: X_p = (1, X). See PolynomialFeatures for more information.
+
+    Let's call K(X') \\in R^{n' x n} the matrix of RBF values for any X'. K(X') = G(cdist(X', X)): it is the
+    RBF applied to the radial distances to the control points.
+
+    The polynoms coefficients can be vectorized into a matrix C \\in R^{d_p x v} (one polynom for each value)
+    and finally we can also vectorize the RBF weights into W \\in R^{n x v} (One weight for each control point
+    and each value).
+
+    The function f can now be vectorized as:
+    f(X') = X'_p C + K(X') W
+
+    Learning the parameters C and W is done by solving the following system with the control points X:
+            A      .   P   =   B
+                          <=>
+    |  K(X) , X_p |  | W |   |Y |
+    |             |  |   | = |  |       (2)
+    | X_p^T ,  0  |  | C |   |0 |
+
+    The first row enforces f(X) = Y and the second adds orthogonality constraints.
+    The system can be relaxed when \\alpha != 0, then one can show that same system can be solved
+    by simply replacing K(X) by K(X) + alpha I.
+
+    To transform X', one can simply apply the learned parameters P = (W, C) with
+    Y' = f(X') = X'_p C + K(X') W
+
+    In our notations, we have:
+    A \\in R^{(n + d_p) x (n + d_p)}
+    P \\in R^{(n + d_p) x v}
+    Y \\in R^{(n + d_p) x v}
+
+    Attrs:
+        alpha (float): Regularization parameter
+            Default: 0.0 (The mapping will enforce f(X) = Y)
+        order (int): Order of the spline (minimizes the squared norm of the order-th derivatives)
+            Default: 2 (Suited for TPS interpolation)
+        enforce_tps_kernel (bool): Always use the RBF G(r) = r**2 log(r).
+            This should be sub-optimal, but it yields good results in practice.
+            Default: False
+        parameters (ndarray): All the parameters P = (W, C). Shape: (n + d_p, v)
+        control_points (ndarray): Control points fitted (the last X given to fit). Shape: (n, d)
+    """
+
+    eps = 0  # Relaxed orthogonality constraints by setting it to 1e-6 ?
+
+    def __init__(self, alpha=0.0, order=2, enforce_tps_kernel=False) -> None:
+        self._fitted = False
+        self._polynomial_features = PolynomialFeatures(order - 1)
+
+        self.alpha = alpha
+        self.order = order
+        self.enforce_tps_kernel = enforce_tps_kernel
+
+        self.parameters = np.array([], dtype=np.float32)
+        self.control_points = np.array([], dtype=np.float32)
+
+    def fit(self, X: np.ndarray, Y: np.ndarray) -> ThinPlateSpline:
+        """Learn the non-linear elastic mapping f that matches Y given X
+
+        It solves equation (2) to find the spline parameters.
+
+        Args:
+            X (ndarray): Control points
+                Shape: (n, d)
+            Y (ndarray): Values for these controls points
+                Shape: (n, v)
+
+        Returns:
+            ThinPlateSpline: self
+        """
+        X = _ensure_2d(X)
+        Y = _ensure_2d(Y)
+        assert X.shape[0] == Y.shape[0]
+
+        n, _ = X.shape  # (n, d)
+        self.control_points = X
+
+        # Compute radial distances
+        phi = self._radial_distance(X)  # (n, n) (phi = K(X))
+
+        # Polynomial expansion
+        X_p = self._polynomial_features.fit(X).transform(X)  # (n, d_p)
+
+        # Assemble system A P = B
+        # A = |K + alpha I, X_p|
+        #     |     X_p.T ,  0 |
+        A = np.vstack(  # ((n + d_p), (n + d_p))
+            [
+                np.hstack([phi + self.alpha * np.eye(n, dtype=X.dtype), X_p]),  # (n, (n + d_p))
+                np.hstack([X_p.T, self.eps * np.eye(X_p.shape[1], dtype=X.dtype)]),  # (d_p, (n + d_p))
+            ]
+        )
+
+        # B = | Y |
+        #     | 0 |
+        B = np.vstack([Y, np.zeros((X_p.shape[1], Y.shape[1]), dtype=X.dtype)])  # ((n + d_p), v)
+
+        self.parameters = np.linalg.solve(A, B)  # ((n + d_p), v)
+        self._fitted = True
+
+        return self
+
+    def transform(self, X: np.ndarray) -> np.ndarray:
+        """Apply the mapping to X (interpolate)
+
+        It returns f(X)
+
+        Args:
+            X (ndarray): Set of points to interpolate
+                Shape: (n', d)
+
+        Returns:
+            ndarray: Interpolated values of the set of points
+                Shape: (n', v)
+
+        """
+        assert self._fitted, "Needs to be fitted first."
+
+        X = _ensure_2d(X)
+        assert X.shape[1] == self.control_points.shape[1], "The number of features do not match training data"
+
+        # Compute radial distances
+        phi = self._radial_distance(X)  # (n', n)
+
+        # Polynomial expansion
+        X_p = self._polynomial_features.transform(X)  # (n', d_p)
+
+        # Compute f(X)
+        X_aug = np.hstack([phi, X_p])  # (n', (n + d_p))
+        return X_aug @ self.parameters  # (n', v)
+
+    def _radial_distance(self, X: np.ndarray) -> np.ndarray:
+        """Compute the pairwise RBF values for the given points to the control points
+
+        Args:
+            X (ndarray): Points to be interpolated
+                Shape: (n', d)
+
+        Returns:
+            ndarray: The RBF evaluated for each point from a control point (K(X))
+                Shape: (n', n)
+        """
+        dist = cdist(X, self.control_points).astype(X.dtype)
+
+        power = self.order * 2 - self.control_points.shape[-1]
+
+        # As negatif power leads to ill-defined RBF at r = 0
+        # We use the TPS RBF r^2 log r, though it is not optimal
+        if power <= 0 or self.enforce_tps_kernel:
+            power = 2  # Use r^2 log r (TPS kernel)
+
+        if power % 2:  # Odd
+            return dist**power
+
+        # Even
+        dist[dist == 0] = 1  # phi(r) = r^power log(r) ->  (phi(0) = 0)
+        return dist**power * np.log(dist)
+
+
+def _ensure_2d(array: np.ndarray) -> np.ndarray:
+    """Ensure that array is a 2d array
+
+    In case of 1d array, let's expand the last dim
+    """
+    assert array.ndim in (1, 2)
+
+    # Expand last dim in order to interpret this as (n, 1) points
+    if array.ndim == 1:
+        array = array[:, None]
+
+    return array
+
 
 
 def eigf_variance_analysis_no_mask(guide, sigma):
@@ -117,7 +414,7 @@ def contrast_equalizer(image, contrast_factors):
     padY_amounts = levelPadder(image.shape[0] + support, maxLevel)
     padX_amounts = levelPadder(image.shape[1] + support, maxLevel)
     imagePadded = cv2.copyMakeBorder(
-        image, *(0, support), *(0, support), cv2.BORDER_REFLECT, None, None
+        image, *(0, support), *(0, support), cv2.BORDER_REPLICATE, None, None
     ).astype(image.dtype)
     lap = makeLapPyramid(imagePadded, padY_amounts, padX_amounts, None, None)
     for i, factor in enumerate(contrast_factors):
@@ -169,7 +466,12 @@ def lumScale(
         intensities = values / bracket
         # Scale the values with linear manipulation for contrast
         intensities = abs(intensities)
-        intensities = np.arcsinh((intensities - floor) * stretch) / np.arcsinh(stretch)
+        nj_to_lum = oklab_rgb.RGB_to_Oklab(np.array([[[floor, floor, floor]]], dtype=float), (0.28,0.28))[0,0,0]
+        top = np.arcsinh(stretch)
+        bottom = (np.arcsinh(nj_to_lum*stretch) - 0.2*top)/0.8
+        intensities = (np.arcsinh((intensities) * stretch) - bottom) / (top - bottom)
+        intensities = np.clip(intensities, 0, 1)
+        # intensities = abs(intensities)
         intensities = (intensities - shadow) / ((highlight) - shadow)
         intensities = ((midtone - 1) * intensities) / (((2 * midtone - 1) * intensities) - midtone)
         intensities = np.clip(intensities, 0, max)
@@ -331,6 +633,7 @@ def mapUpperBounds(img: NDArray, quant: float = 0.9, absMax: float | None = None
         scale = turnover * quant
 
     image = np.copy(img)
+    image += 1.5
     image /= scale
     # image[:, :, 0] = r / scale
     # image[:, :, 1] = g / scale
@@ -403,13 +706,13 @@ def colorConstantSat(
     # Calculate the square of the new chroma based on desired saturation
     sat_original_2 = chroma1_2 / div
     sat_mult = np.exp(-saturation * luminance)
-    chroma2_2 = sat_original_2 * luminance**2 / (1 - sat_original_2)
+    chroma2_2 = sat_mult*sat_original_2 * luminance**2 / (1 - sat_original_2)
     # chroma2_2 = saturation * sat_original_2 * luminance**2 / (1 - sat_original_2)
 
     # Compute new 'a' values using the square root of adjusted chroma and
     # considering hue direction.
     chroma2 = np.sqrt(chroma2_2)
-    chroma2 *= sat_mult
+    # chroma2 *= sat_mult
     # Try equalizing
     if equalizer_levels is not None:
         chroma2 = contrast_equalizer(chroma2, equalizer_levels)
@@ -611,6 +914,7 @@ def _handelLuminance(
     bracket: float = 1,
     psf: NDArray | None = None,
 ):
+    img = np.copy(img)
     # remap the bounds of the image if there is a function to do so.
     if remapBounds is not None:
         img = remapBounds(img, **(remapBoundsKwargs or {}))
@@ -625,12 +929,115 @@ def _handelLuminance(
     #     colour.RGB_to_XYZ(
     #         img,
     #         colourspace="CIE RGB",
-    #         illuminant=np.array(cieWhitePoint),
+    #         illuminant=np.array(cieWhitePoint), 
     #         chromatic_adaptation_transform="bradford",
     #     )
     # )
     Lab = oklab_rgb.RGB_to_Oklab(img, cieWhitePoint)
     lum = Lab[:, :, 0]
+
+    if False:
+        bgConfig = SubtractBackgroundTask.ConfigClass()
+        bgConfig.algorithm = "AKIMA_SPLINE"
+        bgConfig.useApprox = False
+        bgConfig.binSizeX = 32
+        bgConfig.binSizeY = 32
+        bgTask = SubtractBackgroundTask(config=bgConfig)
+        
+        hue = np.arctan2(Lab[...,2], Lab[...,1])
+        hue[hue < 0] += 2*np.pi
+        hue = np.rad2deg(hue)
+
+        mesh = np.stack([_x.flatten() for _x in np.indices(img[:,:,0].shape)]).T
+
+        faint_nJy = 7 / 16500
+        faint_lum = oklab_rgb.RGB_to_Oklab(np.array([[[faint_nJy, faint_nJy, faint_nJy]]]), cieWhitePoint)[0,0,0]
+        faint_mask = Lab[:,:,0] < faint_lum
+        blue_mask = (hue > 238) * (hue < 242)
+
+        blue_mask = binary_dilation(blue_mask, iterations=2)
+
+        masked_blue = np.ma.array(img[:,:,2], mask=~(blue_mask*faint_mask)).reshape((32,16,32,16))
+        masked_blue_avg = np.mean(masked_blue, axis=(1,3))
+        places = np.mgrid[16:512:32, 16:512:32]
+        breakpoint()
+        # blue_interp_maker = LinearNDInterpolator(list(zip(places)), masked_blue_avg.filled(0).flat)
+        # blue_interp = blue_interp_maker([u.flatten() for u in np.mgrid[0:512,0:512]])
+        tps = ThinPlateSpline(alpha=0.5)
+        tps.fit(np.array([u.flatten() for u in places]).T, masked_blue_avg.filled(0).flatten())
+        blue_interp = tps.transform(np.array([u.flatten() for u in np.mgrid[0:512, 0:512]]).T)
+        img[:,:,2] -= blue_interp.reshape(512,512)
+
+        # blue_afw_mask = Mask(*(blue_mask.shape[::-1]))
+        # blue_afw_mask.array[:,:] = (~faint_mask) * blue_afw_mask.getMaskPlaneDict()['DETECTED']
+        # blue_MI = MaskedImageF(*(blue_mask.shape[::-1]))
+        # blue_MI.image.array[:,:] = np.copy(img[:,:,2])
+        # blue_MI.image.array[~blue_mask] = 0
+        # blue_MI.mask = blue_afw_mask
+        # blue_bg = bgTask.run(ExposureF(blue_MI)).background
+        # img[:,:,2] -= blue_bg.getImage().array.astype(float)
+        
+        # if np.sum(blue_mask) > 0.2*(512*512):
+        #     blue_points = np.stack(blue_mask.nonzero()).T
+        #     blue_surface = RBFInterpolator(blue_points, img[blue_mask,2], smoothing=0.05, neighbors=10)(mesh)
+        #     img[:,:,2] -= blue_surface.reshape(img[:,:,0].shape)
+
+    
+        green_mask = (hue > 118) * (hue < 122)
+
+        green_mask = binary_dilation(green_mask, iterations=2)
+
+        masked_green = np.ma.array(img[:,:,1], mask=~(green_mask*faint_mask)).reshape((32,16,32,16))
+        masked_green_avg = np.mean(masked_green, axis=(1,3))
+        places = np.mgrid[16:512:32, 16:512:32]
+        green_interp_maker = LinearNDInterpolator(list(zip(places)), masked_green_avg.filled(0).flat)
+        green_interp = green_interp_maker([u.flatten() for u in np.mgrid[0:512,0:512]])
+        img[:,:,1] -= green_interp.reshape(512,512)
+
+        # green_afw_mask = Mask(*(green_mask.shape[::-1]))
+        # green_afw_mask.array[:,:] = (~faint_mask) * green_afw_mask.getMaskPlaneDict()['DETECTED']
+        # green_MI = MaskedImageF(*(green_mask.shape[::-1]))
+        # green_MI.image.array[:,:] = np.copy(img[:,:,1])
+        # green_MI.image.array[~green_mask] = 0
+        # green_MI.mask = green_afw_mask
+        # green_bg = bgTask.run(ExposureF(green_MI)).background
+        # img[:,:,1] -= green_bg.getImage().array.astype(float)
+
+        # if np.sum(green_mask) > 0.2*(512*512):
+        #     green_points = np.stack(green_mask.nonzero()).T
+        #     green_surface = RBFInterpolator(green_points, img[green_mask,2], smoothing=0.05, neighbors=10)(mesh)
+        #     img[:,:,1] -= green_surface.reshape(img[:,:,0].shape)
+
+        red_mask = (hue > 358) * (hue < 2)
+
+        red_mask = binary_dilation(red_mask, iterations=2)
+
+        masked_red = np.ma.array(img[:,:,0], mask=~(red_mask*faint_mask)).reshape((32,16,32,16))
+        masked_red_avg = np.mean(masked_red, axis=(1,3))
+        places = np.mgrid[16:512:32, 16:512:32]
+        red_interp_maker = LinearNDInterpolator(list(zip(places)), masked_red_avg.filled(0).flat)
+        red_interp = red_interp_maker([u.flatten() for u in np.mgrid[0:512,0:512]])
+        img[:,:,0] -= red_interp.reshape(512,512)
+
+        
+        # red_afw_mask = Mask(*(red_mask.shape[::-1]))
+        # red_afw_mask.array[:,:] = (~faint_mask) * red_afw_mask.getMaskPlaneDict()['DETECTED']
+        # red_MI = MaskedImageF(*(red_mask.shape[::-1]))
+        # red_MI.image.array[:,:] = np.copy(img[:,:,0])
+        # red_MI.image.array[~red_mask] = 0
+        # red_MI.mask = red_afw_mask
+        # red_bg = bgTask.run(ExposureF(red_MI)).background
+        # img[:,:,0] -= red_bg.getImage().array.astype(float)
+
+        
+        # if np.sum(red_mask) > 0.2*(512*512):
+        #     red_points = np.stack(red_mask.nonzero()).T
+        #     red_surface = RBFInterpolator(red_points, img[red_mask,2], smoothing=0.05, neighbors=10)(mesh)
+        #     img[:,:,0] -= red_surface.reshape(img[:,:,0].shape)
+
+        Lab = oklab_rgb.RGB_to_Oklab(img, cieWhitePoint)
+        lum = Lab[:, :, 0]
+
 
     # Scale the luminance channel if possible.
     newLum = lum
@@ -788,6 +1195,42 @@ def lsstRGB(
         bracket=brackets,
         psf=psf,
     )
+
+    # # This is a hack to fix chromatic backgrounds
+    # hue = np.arctan2(Lab[...,2], Lab[...,1])
+    # hue[hue < 0] += 2*np.pi
+    # hue = np.rad2deg(hue)
+
+    # faint_nJy = 40 / 16500
+    # faint_lum = oklab_rgb.RGB_to_Oklab(np.array([[[faint_nJy, faint_nJy, faint_nJy]]]), cieWhitePoint)[0,0,0]
+    # faint_mask = Lab[:,:,0] < faint_lum
+    # blue_mask = (hue > 235) * (hue < 245)
+
+    # # drop any large areas
+    # # labels, _ = label(faint_mask * blue_mask)
+    # # unique, lcounts = np.unique(labels, return_counts=True)
+    # # lcounts_mask = lcounts > 3
+    # # labels = np.where(np.isin(labels, lcounts[lcounts_mask]), 0, labels)
+    # # blue_mask = labels > 0
+    
+    # green_mask = (hue > 115) * (hue < 125)
+    # # labels, _ = label(faint_mask * green_mask)
+    # # unique, lcounts = np.unique(labels, return_counts=True)
+    # # lcounts_mask = lcounts > 3
+    # # labels = np.where(np.isin(labels, lcounts[lcounts_mask]), 0, labels)
+    # # green_mask = labels > 0
+
+    # red_mask = (hue > 355) * (hue < 5)
+    # # labels, _ = label(faint_mask * red_mask)
+    # # unique, lcounts = np.unique(labels, return_counts=True)
+    # # lcounts_mask = lcounts > 3
+    # # labels = np.where(np.isin(labels, lcounts[lcounts_mask]), 0, labels)
+    # # red_mask = labels > 0
+
+    # joint_mask = faint_mask * (blue_mask + green_mask + red_mask)
+
+    # tmp_lum[joint_mask] *= 0.05
+
     if scaleColor is not None:
         new_a, new_b = scaleColor(
             Lab[:, :, 0],
@@ -797,8 +1240,10 @@ def lsstRGB(
             **(scaleColorKWargs or {}),
         )
         # Replace the color information with the new scaled color information.
-        Lab[:, :, 1] = new_a
-        Lab[:, :, 2] = new_b
+        Lab[..., 1] = new_a
+        Lab[..., 2] = new_b
+        # Lab[joint_mask, 1] *= 0
+        # Lab[joint_mask, 2] *= 0
     # Replace the luminance information with the new scaled luminance information
     Lab[:, :, 0] = tmp_lum
     exposures.append(Lab)
