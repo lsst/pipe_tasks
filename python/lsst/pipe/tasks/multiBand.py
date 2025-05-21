@@ -23,6 +23,7 @@ __all__ = ["DetectCoaddSourcesConfig", "DetectCoaddSourcesTask",
            "MeasureMergedCoaddSourcesConfig", "MeasureMergedCoaddSourcesTask",
            ]
 
+from lsst.geom import Extent2I
 from lsst.pipe.base import (
     AnnotatedPartialOutputsError,
     Struct,
@@ -114,7 +115,7 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
     )
 
     def __init__(self, *, config=None):
-        if not self.config.cropToPatchInner:
+        if not self.config.forceExactBinning:
             del self.skyMap
         if self.config.writeOnlyBackgrounds:
             del self.outputExposure
@@ -136,10 +137,13 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
         doc="Should be set to True if fake sources have been inserted into the input data.",
     )
     idGenerator = SkyMapIdGeneratorConfig.make_field()
-    cropToPatchInner = Field(
+    forceExactBinning = Field(
         dtype=bool,
         default=False,
-        doc="Crop to the patch inner region before processing."
+        doc=(
+            "Check that the background bin size evenly divides the patch inner region, and "
+            "crop the outer region to an integer number of bins."
+        )
     )
     writeOnlyBackgrounds = Field(dtype=bool, default=False, doc="If true, only save the background models.")
 
@@ -247,7 +251,8 @@ class DetectCoaddSourcesTask(PipelineTask):
         expId : `int`
             Exposure identifier (integer) for RNG seed.
         patchInfo : `lsst.skymap.PatchInfo`, optional
-            Description of the patch geometry.
+            Description of the patch geometry.  Only needed if
+            `~DetectCoaddSourceConfig.forceExactBinning` is `True`.
 
         Returns
         -------
@@ -259,8 +264,8 @@ class DetectCoaddSourcesTask(PipelineTask):
             ``backgrounds``
                 List of backgrounds (`list`).
         """
-        if self.config.cropToPatchInner:
-            exposure = exposure[patchInfo.getInnerBBox()]
+        if self.config.forceExactBinning:
+            exposure = self._cropToExactBinning(exposure, patchInfo)
         if self.config.doScaleVariance:
             varScale = self.scaleVariance.run(exposure.maskedImage)
             exposure.getMetadata().add("VARIANCE_SCALE", varScale)
@@ -272,6 +277,57 @@ class DetectCoaddSourcesTask(PipelineTask):
             for bg in detections.background:
                 backgrounds.append(bg)
         return Struct(outputSources=sources, outputBackgrounds=backgrounds, outputExposure=exposure)
+
+    def _cropToExactBinning(self, exposure, patchInfo):
+        """Crop a coadd `~lsst.afw.image.Exposure` instance to ensure exact
+        background binning.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
+            Exposure to crop, assumed to cover the patch outer bounding box.
+        patchInfo : `lsst.skymap.PatchInfo`
+            Description of the patch geometry.
+
+        Returns
+        -------
+        cropped : `lsst.afw.image.Exposure`
+            View of ``exposure`` with background bins that evenly divide both
+            the full cropped image and the patch inner region.  The bounding
+            box is guaranteed to contain the patch inner bounding box and be
+            contained by the patch outer bounding box.
+
+        Raises
+        ------
+        ValueError
+            Raised if the patch inner region width or height is not a multiple
+            of the background bin size.
+        """
+        bbox = patchInfo.getInnerBBox()
+        if bbox.width % self.detection.background.binSizeX:
+            raise ValueError(
+                f"Patch inner width {bbox.width} does not evenly "
+                f"divide bin width {self.detection.background.binSizeX}."
+            )
+        if bbox.height % self.detection.background.binSizeY:
+            raise ValueError(
+                f"Patch inner height {bbox.height} does not evenly "
+                f"divide bin height {self.detection.background.binSizeY}."
+            )
+        outer_bbox = patchInfo.getOuterBBox()
+        n_bins_grow_x = (bbox.x.begin - outer_bbox.x.begin) // self.detection.background.binSizeX
+        n_bins_grow_y = (bbox.y.begin - outer_bbox.y.begin) // self.detection.background.binSizeY
+        bbox.grow(
+            Extent2I(
+                n_bins_grow_x*self.detection.background.binSizeX,
+                n_bins_grow_y*self.detection.background.binSizeY,
+            )
+        )
+        assert outer_bbox.contains(bbox)
+        assert bbox.contains(patchInfo.getInnerBBox())
+        assert bbox.width % self.detection.background.binSizeX == 0
+        assert bbox.height % self.detection.background.binSizeY == 0
+        return exposure[bbox]
 
 
 class MeasureMergedCoaddSourcesConnections(
