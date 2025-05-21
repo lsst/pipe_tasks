@@ -378,6 +378,12 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         )
     )
 
+    do_include_astrometric_errors = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="If True, include astrometric errors in the output catalog.",
+    )
+
     def setDefaults(self):
         super().setDefaults()
 
@@ -824,7 +830,11 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             self._match_psf_stars(result.psf_stars_footprints, result.stars_footprints)
 
             # Update the source cooordinates with the current wcs.
-            afwTable.updateSourceCoords(result.exposure.wcs, sourceList=result.stars_footprints)
+            afwTable.updateSourceCoords(
+                result.exposure.wcs,
+                sourceList=result.stars_footprints,
+                include_covariance=self.config.do_include_astrometric_errors
+            )
 
             summary_stat_catalog = result.stars_footprints
             result.stars = result.stars_footprints.asAstropy()
