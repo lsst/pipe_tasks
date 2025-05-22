@@ -29,7 +29,7 @@ from deprecated.sphinx import deprecated
 from lsst.pipe.base import (Struct, PipelineTask, PipelineTaskConfig, PipelineTaskConnections)
 import lsst.pipe.base.connectionTypes as cT
 
-from lsst.pex.config import ConfigurableField
+from lsst.pex.config import ConfigurableField, Field
 from lsst.meas.base import SkyMapIdGeneratorConfig
 from lsst.meas.deblender import SourceDeblendTask
 from lsst.meas.extensions.scarlet import ScarletDeblendTask
@@ -120,6 +120,20 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
         multiple=True,
         dimensions=("tract", "patch", "band", "skymap")
     )
+    coadds_cell = cT.Input(
+        doc="Exposure on which to run deblending",
+        name="{inputCoaddName}CoaddCell",
+        storageClass="MultipleCellCoadd",
+        multiple=True,
+        dimensions=("tract", "patch", "band", "skymap")
+    )
+    backgrounds = cT.Input(
+        doc="Background model to subtract from the cell-based coadd",
+        name="{inputCoaddName}Coadd_calexp_background",
+        storageClass="Background",
+        multiple=True,
+        dimensions=("tract", "patch", "band", "skymap")
+    )
     outputSchema = cT.InitOutput(
         doc="Output of the schema used in deblending task",
         name="{outputCoaddName}Coadd_deblendedFlux_schema",
@@ -161,9 +175,20 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
         del self.fluxCatalogs
         del self.templateCatalogs
 
+        if config:
+            if config.useCellCoadds:
+                del self.coadds
+            else:
+                del self.coadds_cell
+                del self.backgrounds
+
 
 class DeblendCoaddSourcesMultiConfig(PipelineTaskConfig,
                                      pipelineConnections=DeblendCoaddSourcesMultiConnections):
+    useCellCoadds = Field[bool](
+        doc="Use cell-based coadds instead of regular coadds?",
+        default=False,
+    )
     multibandDeblend = ConfigurableField(
         target=ScarletDeblendTask,
         doc="Task to deblend an images in multiple bands"
@@ -246,13 +271,28 @@ class DeblendCoaddSourcesMultiTask(PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         # Obtain the list of bands, sort them (alphabetically), then reorder
         # all input lists to match this band order.
-        bandOrder = [dRef.dataId["band"] for dRef in inputRefs.coadds]
+        coaddRefs = inputRefs.coadds_cell if self.config.useCellCoadds else inputRefs.coadds
+        bandOrder = [dRef.dataId["band"] for dRef in coaddRefs]
         bandOrder.sort()
         inputRefs = reorderRefs(inputRefs, bandOrder, dataIdKey="band")
         inputs = butlerQC.get(inputRefs)
-        inputs["idFactory"] = self.config.idGenerator.apply(butlerQC.quantum.dataId).make_table_id_factory()
-        inputs["bands"] = [dRef.dataId["band"] for dRef in inputRefs.coadds]
-        outputs = self.run(**inputs)
+        bands = [dRef.dataId["band"] for dRef in coaddRefs]
+        mergedDetections = inputs.pop("mergedDetections")
+        if self.config.useCellCoadds:
+            exposures = [mcc.stitch().asExposure() for mcc in inputs.pop("coadds_cell")]
+            backgrounds = inputs.pop("backgrounds")
+            for exposure, background in zip(exposures, backgrounds):
+                exposure.image -= background.getImage()
+            coadds = exposures
+        else:
+            coadds = inputs.pop("coadds")
+        assert not inputs, "runQuantum got extra inputs"
+        outputs = self.run(
+            coadds=coadds,
+            bands=bands,
+            mergedDetections=mergedDetections,
+            idFactory=self.config.idGenerator.apply(butlerQC.quantum.dataId).make_table_id_factory(),
+        )
         butlerQC.put(outputs, outputRefs)
 
     def run(self, coadds, bands, mergedDetections, idFactory):

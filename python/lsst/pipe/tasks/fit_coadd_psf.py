@@ -63,6 +63,18 @@ class CoaddPsfFitConnections(
         storageClass="ExposureF",
         dimensions=("tract", "patch", "band", "skymap"),
     )
+    coadd_cell = cT.Input(
+        doc="Cell-coadd image to fit a PSF model to",
+        name="{name_coadd}CoaddCell",
+        storageClass="MultipleCellCoadd",
+        dimensions=("tract", "patch", "band", "skymap"),
+    )
+    background = cT.Input(
+        doc="Background model to subtract from the coadd_cell",
+        name="{name_coadd}Coadd_calexp_background",
+        storageClass="Background",
+        dimensions=("tract", "patch", "band", "skymap"),
+    )
     cat_meas = cT.Input(
         doc="Deblended single-band source catalog",
         name="{name_coadd}Coadd_meas",
@@ -75,6 +87,17 @@ class CoaddPsfFitConnections(
         storageClass="ArrowTable",
         dimensions=("tract", "patch", "band", "skymap"),
     )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        if config is None:
+            return
+
+        if config.use_cell_coadds:
+            del self.coadd
+        else:
+            del self.coadd_cell
+            del self.background
 
 
 class CoaddPsfFitSubConfig(pexConfig.Config):
@@ -135,6 +158,11 @@ class CoaddPsfFitConfig(
 ):
     """Configure a CoaddPsfFitTask, including a configurable fitting subtask.
     """
+    use_cell_coadds = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Use cell coadd images for PSF fitting",
+    )
     fit_coadd_psf = pexConfig.ConfigurableField(
         target=CoaddPsfFitSubTask,
         doc="Task to fit PSF models for a single coadd",
@@ -162,13 +190,26 @@ class CoaddPsfFitTask(pipeBase.PipelineTask):
         inputs = butlerQC.get(inputRefs)
         id_tp = self.config.idGenerator.apply(butlerQC.quantum.dataId).catalog_id
         dataId = inputRefs.cat_meas.dataId
-        for dataRef in (inputRefs.coadd,):
+
+        if self.config.use_cell_coadds:
+            coaddDataRef = inputRefs.coadd_cell
+            multiple_cell_coadd = inputs.pop('coadd_cell')
+            background = inputs.pop('background')
+            exposure = multiple_cell_coadd.stitch().asExposure()
+            exposure.image -= background.getImage()
+        else:
+            coaddDataRef = inputRefs.coadd
+            exposure = inputs.pop('coadd')
+
+        for dataRef in (coaddDataRef,):
             if dataRef.dataId != dataId:
                 raise RuntimeError(f'{dataRef=}.dataId != {inputRefs.cat_meas.dataId=}')
 
+        catalog = inputs.pop('cat_meas')
         catexp = CatalogExposurePsf(
-            catalog=inputs['cat_meas'], exposure=inputs['coadd'], dataId=dataId, id_tract_patch=id_tp,
+            catalog=catalog, exposure=exposure, dataId=dataId, id_tract_patch=id_tp,
         )
+        assert not inputs, "runQuantum got more inputs than expected"
         outputs = self.run(catexp=catexp)
         butlerQC.put(outputs, outputRefs)
 
