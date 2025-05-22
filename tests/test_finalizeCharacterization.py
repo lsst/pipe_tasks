@@ -73,11 +73,13 @@ class MockFinalizeCharacterizationTask(FinalizeCharacterizationTask):
         exposure,
         src,
         isolated_src_table,
+        fgcm_standard_star_cat,
         use_super=False,
     ):
         """A mocked version of this method."""
         if use_super:
-            return super().compute_psf_and_ap_corr_map(visit, detector, exposure, src, isolated_src_table)
+            return super().compute_psf_and_ap_corr_map(visit, detector, exposure, src,
+                                                       isolated_src_table, fgcm_standard_star_cat)
 
         return _make_dummy_psf_and_ap_corr_map()
 
@@ -98,6 +100,7 @@ class MockFinalizeCharacterizationDetectorTask(FinalizeCharacterizationDetectorT
         exposure,
         src,
         isolated_src_table,
+        fgcm_standard_star_cat,
         use_super=False,
     ):
         """A mocked version of this method."""
@@ -125,7 +128,7 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
             config=config_det,
         )
 
-        self.isolated_star_cat_dict, self.isolated_star_source_dict = self._make_isocats()
+        self.isolated_star_cat_dict, self.isolated_star_source_dict, self.fgcm_cat = self._make_isocats()
 
     def _make_isocats(self):
         """Make test isolated star catalogs.
@@ -153,8 +156,16 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
         dtype_source = [('sourceId', 'i8'),
                         ('obj_index', 'i4')]
 
+        dtype_fgcm = [
+            ('ra', 'f8'),
+            ('dec', 'f8'),
+            ('mag_g', 'f8'),
+            ('mag_i', 'f8'),
+        ]
+
         isolated_star_cat_dict = {}
         isolated_star_source_dict = {}
+        fgcm_cat_dict = {}
 
         np.random.seed(12345)
 
@@ -212,14 +223,22 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
 
                     counter += nsource_per_band_per_star
 
+            fgcm_cat = np.zeros(nstar, dtype=dtype_fgcm)
+            fgcm_cat['ra'] = ra
+            fgcm_cat['dec'] = dec
+            fgcm_cat['mag_g'] = np.random.uniform(low=16, high=20, size=nstar)
+            fgcm_cat['mag_i'] = np.random.uniform(low=16, high=20, size=nstar)
+
             source_cat = np.concatenate(source_cats)
 
             isolated_star_cat_dict[tract] = pipeBase.InMemoryDatasetHandle(astropy.table.Table(cat),
                                                                            storageClass="ArrowAstropy")
             isolated_star_source_dict[tract] = pipeBase.InMemoryDatasetHandle(astropy.table.Table(source_cat),
                                                                               storageClass="ArrowAstropy")
+            fgcm_cat_dict[tract] = pipeBase.InMemoryDatasetHandle(astropy.table.Table(fgcm_cat),
+                                                                  storageClass="ArrowAstropy")
 
-        return isolated_star_cat_dict, isolated_star_source_dict
+        return isolated_star_cat_dict, isolated_star_source_dict, fgcm_cat_dict
 
     def test_concat_isolated_star_cats(self):
         """Test concatenation and reservation of the isolated star catalogs.
@@ -290,6 +309,7 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
         detector = 0
         exposure = None
         isolated_source_table = None
+        fgcm_cat = None
         with self.assertLogs(level=logging.WARNING) as cm:
             psf, ap_corr_map, measured_src = self.finalizeCharacterizationTask.compute_psf_and_ap_corr_map(
                 visit,
@@ -297,6 +317,7 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
                 exposure,
                 src,
                 isolated_source_table,
+                fgcm_cat,
                 use_super=True,
             )
         self.assertIn(
@@ -335,6 +356,7 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
             self.isolated_star_source_dict,
             src_dict,
             calexp_dict,
+            fgcm_standard_star_dict=self.fgcm_cat,
         )
 
         # Get the dummy values.
@@ -371,6 +393,7 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
             self.isolated_star_source_dict,
             src0,
             calexp0,
+            fgcm_standard_star_dict=self.fgcm_cat,
         )
 
         results1 = self.finalizeCharacterizationDetectorTask.run(
@@ -381,6 +404,7 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
             self.isolated_star_source_dict,
             src1,
             calexp1,
+            fgcm_standard_star_dict=self.fgcm_cat,
         )
 
         # Get the dummy values.
