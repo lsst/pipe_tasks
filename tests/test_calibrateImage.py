@@ -372,7 +372,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         calibrate = CalibrateImageTask(config=self.config)
         with self.assertRaisesRegex(AllCentroidsFlaggedError, r"source centroids \(out of 4\) flagged"):
-            calibrate._compute_psf(self.exposure, self.id_generator)
+            calibrate.run(exposures=[self.exposure], id_generator=self.id_generator)
 
     def test_measure_aperture_correction(self):
         """Test that _measure_aperture_correction() assigns an ApCorrMap to the
