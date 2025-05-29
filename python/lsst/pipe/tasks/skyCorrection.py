@@ -21,14 +21,22 @@
 
 from __future__ import annotations
 
-__all__ = ["SkyCorrectionTask", "SkyCorrectionConfig"]
+__all__ = [
+    "MakeDetectorFocalPlaneBackgroundConnections",
+    "MakeDetectorFocalPlaneBackgroundConfig",
+    "MakeDetectorFocalPlaneBackgroundTask",
+    "CombineDetectorFocalPlaneBackgroundConnections",
+    "CombineDetectorFocalPlaneBackgroundConfig",
+    "CombineDetectorFocalPlaneBackgroundTask",
+]
 
 import warnings
 
 import numpy as np
 
-from lsst.afw.image import ExposureF, makeMaskedImage
-from lsst.afw.math import BackgroundMI, binImage
+from lsst.afw.cameraGeom import Camera
+from lsst.afw.image import ExposureF, Image, ImageF, MaskedImageF, MaskX, makeMaskedImage
+from lsst.afw.math import BackgroundList, BackgroundMI, binImage
 from lsst.daf.butler import DeferredDatasetHandle
 from lsst.pex.config import Config, ConfigField, ConfigurableField, Field
 from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
@@ -40,6 +48,441 @@ from lsst.pipe.tasks.background import (
     SkyMeasurementTask,
 )
 from lsst.pipe.tasks.visualizeVisit import VisualizeMosaicExpConfig, VisualizeMosaicExpTask
+from lsst.utils.logging import LsstLogAdapter
+
+
+def _prepare_exposure(
+    exposure: ExposureF,
+    background: BackgroundList,
+    doApplyFlatBackgroundRatio: bool = False,
+    background_to_photometric_ratio: Image | None = None,
+    mask: MaskX | None = None,
+    logger: LsstLogAdapter | None = None,
+):
+    """Prepare an exposure for processing."""
+    image: MaskedImageF = exposure.maskedImage
+
+    # Convert from background-flattened to photometric-flattened images?
+    if doApplyFlatBackgroundRatio:
+        if not background_to_photometric_ratio:
+            raise ValueError(
+                "background_to_photometric_ratio must be given if doApplyFlatBackgroundRatio=True.",
+            )
+        image *= background_to_photometric_ratio
+        if logger:
+            logger.info("Converted background-flattened image to a photometric-flattened image")
+
+    # Restore original background
+    background_image: ImageF = background.getImage()
+    image += background_image
+    stats = np.nanpercentile(background_image.array, [50, 75, 25])
+    if logger:
+        logger.info(
+            "Original background restored: BG median = %.1f counts, BG IQR = %.1f counts",
+            stats[0],
+            np.subtract(*stats[1:]),
+        )
+
+    # Update the mask if provided
+    if mask is not None:
+        exposure.mask = mask
+        if logger:
+            logger.info("Mask updated with provided mask.")
+
+
+class MakeDetectorFocalPlaneBackgroundConnections(
+    PipelineTaskConnections, dimensions=("instrument", "visit", "detector")
+):
+    camera = PrerequisiteInput(
+        name="camera",
+        storageClass="Camera",
+        doc="Input camera.",
+        dimensions=["instrument"],
+        isCalibration=True,
+    )
+
+    exposure = Input(
+        name="preliminary_visit_image",
+        storageClass="ExposureF",
+        doc="Background-subtracted calibrated exposure.",
+        dimensions=["instrument", "visit", "detector"],
+    )
+    background = Input(
+        name="preliminary_visit_image_background",
+        storageClass="Background",
+        doc="Background subtracted from the input calibrated exposure.",
+        dimensions=["instrument", "visit", "detector"],
+    )
+
+    background_to_photometric_ratio = Input(
+        name="background_to_photometric_ratio",
+        storageClass="Image",
+        doc="Ratio of a background-flattened image to a photometric-flattened image. "
+        "Only used if doApplyFlatBackgroundRatio is True.",
+        dimensions=["instrument", "visit", "detector"],
+    )
+    # mask = Input(
+    #     name="preliminary_visit_image_mask_extended",
+    #     storageClass="Mask",
+    #     doc="An updated mask to replace the mask attached to the exposure.",
+    #     dimensions=["instrument", "visit", "detector"],
+    # )
+
+    detector_focal_plane_background = Output(
+        name="detector_focal_plane_background",
+        storageClass="FocalPlaneBackground",
+        doc="Background model for the detector, mapped onto the focal plane.",
+        dimensions=["instrument", "visit", "detector"],
+    )
+    mask_extended = Output(
+        name="preliminary_visit_image_mask_extended",
+        storageClass="Mask",
+        doc="Mask for the background image, extended via iteration.",
+        dimensions=["instrument", "visit", "detector"],
+    )
+
+    def __init__(self, *, config: "MakeDetectorFocalPlaneBackgroundConfig | None" = None):
+        super().__init__(config=config)
+        assert config is not None
+        if not config.doApplyFlatBackgroundRatio:
+            del self.background_to_photometric_ratio
+        if not config.doExtendMask:
+            del self.mask_extended
+
+
+class MakeDetectorFocalPlaneBackgroundConfig(
+    PipelineTaskConfig, pipelineConnections=MakeDetectorFocalPlaneBackgroundConnections
+):
+    bgModel = ConfigField(
+        doc="Full focal plane background model configuration.",
+        dtype=FocalPlaneBackgroundConfig,
+    )
+    doApplyFlatBackgroundRatio = Field(
+        doc="This should be True if the input image was processed with an illumination correction.",
+        dtype=bool,
+        default=False,
+    )
+    doExtendMask = Field(
+        doc="Iteratively mask objects to find good sky?",
+        dtype=bool,
+        default=True,
+    )
+    maskObjects = ConfigurableField(
+        doc="Mask objects task, to be used when doExtendMask=True.",
+        target=MaskObjectsTask,
+    )
+
+
+class MakeDetectorFocalPlaneBackgroundTask(PipelineTask):
+    """Make detector focal plane background objects."""
+
+    ConfigClass = MakeDetectorFocalPlaneBackgroundConfig
+    _DefaultName = "makeDetectorFocalPlaneBackground"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(**kwargs)
+        self.makeSubtask("maskObjects")
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        outputs = self.run(**inputs)
+        butlerQC.put(outputs, outputRefs)
+
+    def run(
+        self,
+        camera: Camera,
+        exposure: ExposureF,
+        background: BackgroundList,
+        background_to_photometric_ratio: Image | None = None,
+    ):
+        """Make a FocalPlaneBackground for a single detector."""
+        # Convert to bg-to-photometric-flattened data; restore the original bg
+        _prepare_exposure(
+            exposure,
+            background,
+            self.config.doApplyFlatBackgroundRatio,
+            background_to_photometric_ratio,
+            logger=self.log,
+        )
+
+        # Iteratively subtract bg, re-detect sources, and add bg back on?
+        if self.config.doExtendMask:
+            maskFrac0 = 1 - np.sum(exposure.mask.array == 0) / exposure.mask.array.size
+            self.maskObjects.findObjects(exposure)
+            maskFrac1 = 1 - np.sum(exposure.mask.array == 0) / exposure.mask.array.size
+            self.log.info(
+                "Iterative source detection and mask growth has increased masked area by %.1f%%",
+                (100 * (maskFrac1 - maskFrac0)),
+            )
+        exposure_mask_extended: MaskX = exposure.mask
+
+        # Make a background model for the image, using bgModel configs
+        detector_focal_plane_background = FocalPlaneBackground.fromCamera(self.config.bgModel, camera)
+        detector_focal_plane_background.addCcd(exposure)
+        self.log.info(
+            "Added %d unmasked pixels (%.1f%s of detector area) into focal plane background model.",
+            detector_focal_plane_background._numbers.getArray().sum(),
+            100 * detector_focal_plane_background._numbers.getArray().sum() / exposure.getBBox().getArea(),
+            "%",
+        )
+
+        return Struct(
+            detector_focal_plane_background=detector_focal_plane_background,
+            exposure_mask_extended=exposure_mask_extended,
+        )
+
+
+###############################################################################
+###############################################################################
+###############################################################################
+###############################################################################
+###############################################################################
+
+
+class CombineDetectorFocalPlaneBackgroundConnections(
+    PipelineTaskConnections, dimensions=("instrument", "visit")
+):
+    detector_focal_plane_backgrounds = Input(
+        name="detector_focal_plane_background",
+        storageClass="FocalPlaneBackground",
+        doc="Background model for the detectors, mapped onto the focal plane.",
+        multiple=True,
+        dimensions=["instrument", "visit", "detector"],
+        deferLoad=True,
+    )
+    focal_plane_background = Output(
+        name="focal_plane_background",
+        storageClass="FocalPlaneBackground",
+        doc="Background model for the full focal plane.",
+        dimensions=["instrument", "visit"],
+    )
+
+
+class CombineDetectorFocalPlaneBackgroundConfig(
+    PipelineTaskConfig, pipelineConnections=CombineDetectorFocalPlaneBackgroundConnections
+):
+    pass
+
+
+class CombineDetectorFocalPlaneBackgroundTask(PipelineTask):
+    """Combine detector focal plane background objects into a single object."""
+
+    ConfigClass = CombineDetectorFocalPlaneBackgroundConfig
+    _DefaultName = "combineDetectorFocalPlaneBackground"
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        outputs = self.run(**inputs)
+        butlerQC.put(outputs, outputRefs)
+
+    def run(self, detector_focal_plane_backgrounds: list[DeferredDatasetHandle]):
+        """Combine focal plane backgrounds from each detector together."""
+        focal_plane_background: FocalPlaneBackground = detector_focal_plane_backgrounds[0].get()
+        if len(detector_focal_plane_backgrounds) > 1:
+            for detector_focal_plane_background in detector_focal_plane_backgrounds[1:]:
+                focal_plane_background = focal_plane_background.merge(detector_focal_plane_background.get())
+
+        return Struct(focal_plane_background=focal_plane_background)
+
+
+###############################################################################
+###############################################################################
+###############################################################################
+###############################################################################
+###############################################################################
+
+
+def _sky_frame_lookup(datasetType, registry, quantumDataId, collections):
+    """Lookup function to identify sky frames.
+
+    Parameters
+    ----------
+    datasetType : `lsst.daf.butler.DatasetType`
+        Dataset to lookup.
+    registry : `lsst.daf.butler.Registry`
+        Butler registry to query.
+    quantumDataId : `lsst.daf.butler.DataCoordinate`
+        Data id to transform to find sky frames.
+        The ``detector`` entry will be stripped.
+    collections : `lsst.daf.butler.CollectionSearch`
+        Collections to search through.
+
+    Returns
+    -------
+    skyFrames : `list` [`lsst.daf.butler.DatasetRef`]
+        List of datasets that will be used as sky calibration frames.
+    """
+    newDataId = quantumDataId.subset(registry.dimensions.conform(["instrument", "visit"]))
+    skyFrames = []
+    for dataId in registry.queryDataIds(["visit", "detector"], dataId=newDataId).expanded():
+        skyFrame = registry.findDataset(
+            datasetType, dataId, collections=collections, timespan=dataId.timespan
+        )
+        skyFrames.append(skyFrame)
+    return skyFrames
+
+
+class FitSkyFrameConnections(PipelineTaskConnections, dimensions=("instrument", "visit", "detector")):
+    camera = PrerequisiteInput(
+        name="camera",
+        storageClass="Camera",
+        doc="Input camera.",
+        dimensions=["instrument"],
+        isCalibration=True,
+    )
+    sky = PrerequisiteInput(
+        name="sky",
+        storageClass="ExposureF",
+        doc="Calibration sky frames.",
+        multiple=True,
+        dimensions=["instrument", "physical_filter", "detector"],
+        isCalibration=True,
+        lookupFunction=_sky_frame_lookup,
+    )
+
+    exposure = Input(
+        name="preliminary_visit_image",
+        storageClass="ExposureF",
+        doc="Background-subtracted calibrated exposure.",
+        dimensions=["instrument", "visit", "detector"],
+    )
+    background = Input(
+        name="preliminary_visit_image_background",
+        storageClass="Background",
+        doc="Background subtracted from the input calibrated exposure.",
+        dimensions=["instrument", "visit", "detector"],
+    )
+    focal_plane_background = Input(
+        name="focal_plane_background",
+        storageClass="FocalPlaneBackground",
+        doc="Background model for the full focal plane.",
+        dimensions=["instrument", "visit"],
+    )
+
+    background_to_photometric_ratio = Input(
+        name="background_to_photometric_ratio",
+        storageClass="Image",
+        doc="Ratio of a background-flattened image to a photometric-flattened image. "
+        "Only used if doApplyFlatBackgroundRatio is True.",
+        dimensions=["instrument", "visit", "detector"],
+    )
+    mask = Input(
+        name="preliminary_visit_image_mask_extended",
+        storageClass="Mask",
+        doc="An updated mask to replace the mask attached to the exposure.",
+        dimensions=["instrument", "visit", "detector"],
+    )
+
+    mask_extended = Output(
+        name="preliminary_visit_image_mask_extended",
+        storageClass="Mask",
+        doc="Mask for the background image, extended via iteration.",
+        dimensions=["instrument", "visit", "detector"],
+    )
+
+    def __init__(self, *, config: "FitSkyFrameConfig | None" = None):
+        super().__init__(config=config)
+        assert config is not None
+        if not config.doApplyFlatBackgroundRatio:
+            del self.background_to_photometric_ratio
+        if not config.doUpdateMask:
+            del self.mask
+
+
+class FitSkyFrameConfig(PipelineTaskConfig, pipelineConnections=FitSkyFrameConnections):
+    doApplyFlatBackgroundRatio = Field(
+        doc="This should be True if the input image was processed with an illumination correction.",
+        dtype=bool,
+        default=False,
+    )
+    doUpdateMask = Field(
+        doc="Replace the mask attached to the exposure with a new mask.",
+        dtype=bool,
+        default=True,
+    )
+    sky = ConfigurableField(
+        target=SkyMeasurementTask,
+        doc="Sky frame measurement task.",
+    )
+
+
+class FitSkyFrameTask(PipelineTask):
+    """Fit sky frame."""
+
+    ConfigClass = FitSkyFrameConfig
+    _DefaultName = "fitSkyFrameConfig"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(**kwargs)
+        self.makeSubtask("sky")
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        outputs = self.run(**inputs)
+        butlerQC.put(outputs, outputRefs)
+
+    def run(
+        self,
+        camera,
+        exposure,
+        background,
+        background_to_photometric_ratio=[],
+    ):
+        """TEMP."""
+        image = exposure.maskedImage
+
+        # Convert from background-flattened to photometric-flattened images?
+        if self.config.doApplyFlatBackgroundRatio:
+            _apply_background_to_photometric_ratio(image, background_to_photometric_ratio)
+            self.log.info("Converted background-flattened image to a photometric-flattened image")
+
+        # Restore original background
+        background_image = background.getImage()
+        image += background_image
+        stats = np.nanpercentile(background_image.array, [50, 75, 25])
+        self.log.info(
+            "Original background restored: BG median = %.1f counts, BG IQR = %.1f counts",
+            stats[0],
+            np.subtract(*stats[1:]),
+        )
+
+        # Iteratively subtract bg, re-detect sources, and add bg back on?
+        if self.config.doExtendMask:
+            maskFrac0 = 1 - np.sum(exposure.mask.array == 0) / exposure.mask.array.size
+            self.maskObjects.findObjects(exposure)
+            maskFrac1 = 1 - np.sum(exposure.mask.array == 0) / exposure.mask.array.size
+            self.log.info(
+                "Iterative source detection and mask growth has increased masked area by %.1f%%",
+                (100 * (maskFrac1 - maskFrac0)),
+            )
+
+        # Make a background model for the image, using bgModel configs
+        detector_focal_plane_background = FocalPlaneBackground.fromCamera(self.config.bgModel, camera)
+        detector_focal_plane_background.addCcd(exposure)
+        self.log.info(
+            "Added %d unmasked pixels (%.1f%s of detector area) into focal plane background model.",
+            detector_focal_plane_background._numbers.getArray().sum(),
+            100 * detector_focal_plane_background._numbers.getArray().sum() / exposure.getBBox().getArea(),
+            "%",
+        )
+
+        calExp = self._getCalExp(calExpHandle, mask, skyCorr, backgroundToPhotometricRatioHandle)
+        skyFrame = self._getSkyFrame(skyFrameHandle)
+        skyBkg = self.sky.exposureToBackground(skyFrame)
+        del skyFrame  # Free up memory
+        skyBkgs.append(skyBkg)
+        # Return a tuple of gridded image and sky frame clipped means
+        samples = self.sky.measureScale(calExp.getMaskedImage(), skyBkg)
+        scales.append(samples)
+
+        return Struct(detector_focal_plane_background=detector_focal_plane_background)
+
+
+###############################################################################
+###############################################################################
+###############################################################################
+###############################################################################
+###############################################################################
 
 
 def _reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):
@@ -508,7 +951,7 @@ class SkyCorrectionTask(PipelineTask):
             skyFrame: ExposureF = skyFrameHandle
         return skyFrame
 
-    def _restoreOriginalBackgroundRefineMask(self, calExp, calBkg):
+    def _restoreOriginalBackgroundRefineMask(self, exposure, background):
         """Restore original background to a calexp and invert the related
         background model; optionally refine the mask plane.
 
@@ -530,9 +973,9 @@ class SkyCorrectionTask(PipelineTask):
 
         Parameters
         ----------
-        calExp : `lsst.afw.image.ExposureF`
+        exposure : `~lsst.afw.image.ExposureF`
             Detector level calexp image.
-        calBkg : `lsst.afw.math.BackgroundList`
+        background : `~lsst.afw.math.BackgroundList`
             Detector level background lists associated with the calexp.
 
         Returns
@@ -542,36 +985,36 @@ class SkyCorrectionTask(PipelineTask):
         skyCorrBase : `lsst.afw.math.BackgroundList`
             The inverted original background models; the genesis for skyCorr.
         """
-        image = calExp.getMaskedImage()
+        image = exposure.getMaskedImage()
 
         # Invert all elements of the existing bg model; restore in calexp
-        for calBkgElement in calBkg:
+        for calBkgElement in background:
             statsImage = calBkgElement[0].getStatsImage()
             statsImage *= -1
-        skyCorrBase = calBkg.getImage()
+        skyCorrBase = background.getImage()
         image -= skyCorrBase
 
         stats = np.nanpercentile(skyCorrBase.array, [50, 75, 25])
         self.log.info(
             "Detector %d: Original background restored (BG median = %.1f counts, BG IQR = %.1f counts)",
-            calExp.getDetector().getId(),
+            exposure.getDetector().getId(),
             -stats[0],
             np.subtract(*stats[1:]),
         )
 
         # Iteratively subtract bg, re-detect sources, and add bg back on
         if self.config.doMaskObjects:
-            maskFrac0 = 1 - np.sum(calExp.mask.array == 0) / calExp.mask.array.size
-            self.maskObjects.findObjects(calExp)
-            maskFrac1 = 1 - np.sum(calExp.mask.array == 0) / calExp.mask.array.size
+            maskFrac0 = 1 - np.sum(exposure.mask.array == 0) / exposure.mask.array.size
+            self.maskObjects.findObjects(exposure)
+            maskFrac1 = 1 - np.sum(exposure.mask.array == 0) / exposure.mask.array.size
 
             self.log.info(
                 "Detector %d: Iterative source detection and mask growth has increased masked area by %.1f%%",
-                calExp.getDetector().getId(),
+                exposure.getDetector().getId(),
                 (100 * (maskFrac1 - maskFrac0)),
             )
 
-        return calExp, skyCorrBase
+        return exposure, skyCorrBase
 
     def _validateBgModel(self, bgModelID, bgModel, config):
         """Check that the background model contains enough valid superpixels,
