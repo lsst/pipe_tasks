@@ -176,6 +176,7 @@ class HighOrderHipsTask(PipelineTask):
         quanta_range_set = RangeSet([healpix_id])
 
         for zoom, hpx_level, factor in zip((0, 2, 4, 8), (11, 10, 9, 8), (3, 2, 1, 0)):
+            self.log.info("generating tiles for hxp level %d", hpx_level)
             if zoom:
                 size = 4096 // zoom
                 binned_array = resize(output_array_hpx, (size, size))
@@ -209,7 +210,11 @@ class HighOrderHipsTask(PipelineTask):
     def _make_block(array, block):
         shape = (array.shape[0] // block[0], array.shape[1] // block[1]) + block
         strides = (block[0] * array.strides[0], block[1] * array.strides[1]) + array.strides
-        return as_strided(array, shape=shape, strides=strides)
+        try:
+            strided_view = as_strided(array, shape=shape, strides=strides)
+        except Exception:
+            breakpoint()
+        return strided_view
 
     def runQuantum(
         self,
