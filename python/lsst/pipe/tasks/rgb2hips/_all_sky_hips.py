@@ -46,9 +46,7 @@ class AllSkyHipsTaskConnections(
         storageClass="TaskMetadata",
         multiple=True,
         deferLoad=True,
-        dimensions=tuple(
-            "instrument",
-        ),
+        dimensions=("instrument",),
     )
     input_hips = Input(
         doc="Hips pixels at level 8 used to build higher orders",
