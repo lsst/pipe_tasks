@@ -1,7 +1,7 @@
 import argparse
 import sys
 import numpy as np
-import datetime
+from datetime import datetime
 
 from lsst.daf.butler import Butler
 from lsst.sphgeom import RangeSet, HealpixPixelization
