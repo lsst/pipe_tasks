@@ -45,7 +45,7 @@ class ColorChannel(Enum):
 
 
 class HighOrderHipsTaskConnections(PipelineTaskConnections, dimensions=("healpix8",)):
-    inputImages = Input(
+    input_images = Input(
         doc="Color images which are to be turned into hips tiles",
         name="rgb_picture_array",
         storageClass="NumpyArray",
@@ -114,7 +114,7 @@ class HighOrderHipsTask(PipelineTask):
             f"color_{self.config.color_ordering}", forceDirectory=True
         )
 
-    def run(self, inputImages: Iterable[tuple[DeferredDatasetHandle, SkyWcs, Box2I]], healpix_id) -> Struct:
+    def run(self, input_images: Iterable[tuple[DeferredDatasetHandle, SkyWcs, Box2I]], healpix_id) -> Struct:
         # Make the WCS for the transform, intentionally over-sampled to shift order 12.
         # This creates as 4096 x 4096 image that can be broken appart to form the higher
         # orders, binning each as needed
@@ -127,7 +127,7 @@ class HighOrderHipsTask(PipelineTask):
         output_array_hpx[:, :, :] = np.nan
 
         # Need to loop over input arrays then channel
-        for input_image, in_wcs, in_box in inputImages:
+        for input_image, in_wcs, in_box in input_images:
             tmp_image = ImageF(in_box)
             # Flip the Y axis, because things are reversed
             in_image: NDArray = input_image.get()[::-1, :, :]
@@ -221,7 +221,7 @@ class HighOrderHipsTask(PipelineTask):
 
         # Iterate over the input image refs, to get the corresponding bbox
         # and assemble into container for run
-        inputImages = []
+        input_images = []
         for inputImageRef in inputRefs.inputImages:
             tract = inputImageRef["tract"]
             patch = inputImageRef["patch"]
@@ -229,7 +229,7 @@ class HighOrderHipsTask(PipelineTask):
             box = skymap[tract][patch].getInnerBBox()
             box.dilatedBy(self.config.patchGrow)
             imageHandle = butlerQC.get(inputImageRef)
-            inputImages.append((imageHandle, imageWcs, box))
+            input_images.append((imageHandle, imageWcs, box))
 
-        outputs = self.run(inputImages, healpix_id)
+        outputs = self.run(input_images, healpix_id)
         butlerQC.put(outputs, outputRefs)
