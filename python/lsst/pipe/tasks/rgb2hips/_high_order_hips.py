@@ -228,7 +228,7 @@ class HighOrderHipsTask(PipelineTask):
             patch = input_image_ref.dataId["patch"]
             imageWcs = skymap[tract][patch].getWcs()
             box = skymap[tract][patch].getInnerBBox()
-            box.dilatedBy(self.config.patchGrow)
+            box = box.dilatedBy(self.config.patchGrow)
             imageHandle = butlerQC.get(input_image_ref)
             input_images.append((imageHandle, imageWcs, box))
 
