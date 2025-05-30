@@ -68,6 +68,7 @@ class HighOrderHipsTaskConnections(PipelineTaskConnections, dimensions=("healpix
 
 
 class HighOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=HighOrderHipsTaskConnections):
+    hips_order = 8
     warp = ConfigField[Warper.ConfigClass](
         doc="Warper configuration",
     )
