@@ -2,6 +2,7 @@ from __future__ import annotations
 
 __all__ = ("HipsPropertiesSpectralTerm", "HipsPropertiesConfig", "_write_property")
 
+import re
 from lsst.pex.config import Config, Field, ListField, ConfigDictField
 
 
