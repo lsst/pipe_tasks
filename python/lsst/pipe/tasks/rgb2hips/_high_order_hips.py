@@ -148,6 +148,7 @@ class HighOrderHipsTask(PipelineTask):
                 channel_array = in_image[..., channel.value]
                 tmp_image.array[:, :] = channel_array
                 warpped = self.warper.warpImage(target_wcs, tmp_image, in_wcs, maxBBox=exp_bbox)
+                warpped_box_slices = warpped.getBBox().slices
 
                 # determine the mask for nan values, meaning they have not been set yet
                 existing_nan_mask = np.isnan(existing)
@@ -157,12 +158,14 @@ class HighOrderHipsTask(PipelineTask):
                 are_warpped = np.isfinite(warpped.array)
 
                 # Values that are in the new warp, but not in existing can be assigned
-                new_values_mask = existing_nan_mask * are_warpped
-                existing[new_values_mask] = warpped.array[new_values_mask]
+                new_values_mask = existing_nan_mask[warpped_box_slices] * are_warpped
+                existing[warpped_box_slices][new_values_mask] = warpped.array[new_values_mask]
 
                 # Values that are set in existing and new warp should be averaged
-                both_set_mask = existing_filled_mask * are_warpped
-                existing[both_set_mask] = (existing[both_set_mask] + warpped.array[both_set_mask]) / 2.0
+                both_set_mask = existing_filled_mask[warpped_box_slices] * are_warpped
+                existing[warpped_box_slices][both_set_mask] = (
+                    existing[warpped_box_slices][both_set_mask] + warpped.array[both_set_mask]
+                ) / 2.0
             # The healpix is populated with all data available
         # Fill in nans with zeros
         output_array_hpx[np.isnan(output_array_hpx)] = 0
