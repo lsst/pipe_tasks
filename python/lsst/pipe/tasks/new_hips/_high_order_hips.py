@@ -44,7 +44,7 @@ class ColorChannel(Enum):
     BLUE = 2
 
 
-class HighOrderHipsTaskConnections(PipelineTaskConnections, dimensions=("healpix8")):
+class HighOrderHipsTaskConnections(PipelineTaskConnections, dimensions=("healpix8",)):
     inputImages = Input(
         doc="Color images which are to be turned into hips tiles",
         name="rgb_picture_array",
