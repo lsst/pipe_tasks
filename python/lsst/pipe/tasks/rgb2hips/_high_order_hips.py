@@ -154,15 +154,15 @@ class HighOrderHipsTask(PipelineTask):
                 existing_filled_mask = ~existing_nan_mask
 
                 # determine what values in the array are set
-                are_warpped = np.isfinite(warpped.image.array)
+                are_warpped = np.isfinite(warpped.array)
 
                 # Values that are in the new warp, but not in existing can be assigned
                 new_values_mask = existing_nan_mask * are_warpped
-                existing[new_values_mask] = warpped.image.array[new_values_mask]
+                existing[new_values_mask] = warpped.array[new_values_mask]
 
                 # Values that are set in existing and new warp should be averaged
                 both_set_mask = existing_filled_mask * are_warpped
-                existing[both_set_mask] = (existing[both_set_mask] + warpped.image.array[both_set_mask]) / 2.0
+                existing[both_set_mask] = (existing[both_set_mask] + warpped.array[both_set_mask]) / 2.0
             # The healpix is populated with all data available
         # Fill in nans with zeros
         output_array_hpx[np.isnan(output_array_hpx)] = 0
