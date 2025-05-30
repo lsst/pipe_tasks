@@ -78,13 +78,21 @@ class LowOrderHipsTask(PipelineTask):
 
     def run(self, hpx_container) -> Struct:
         # do level 7 specifically, because we need to load in 8 handles
-        for order in range(7, self.config.min_order - 1):
+        for order in range(7, self.config.min_order - 1, -1):
+            self.log.info("Processing order %d", order)
             hpx_next_mapping = self._create_sorted_container(hpx_container)
 
             hpx_next_container = []
             npix = 512
             # now loop over all order 9 pixels
+            size_thresh = len(hpx_next_mapping) // 10
+            size_counter = 0
+            percent_counter = 0
             for hpx_next_id, hpx_next_items in hpx_next_mapping.items():
+                if size_counter > size_thresh:
+                    percent_counter += 10
+                    self.log.info("Done %d percent", percent_counter)
+                    size_counter = 0
                 hpx_next_array = np.zeros((npix, npix), dtype=np.float32)
                 for img_prev, hpx_prev_id in hpx_next_items:
                     sub_index = hpx_prev_id - np.left_shift(hpx_next_id, 2)
@@ -108,6 +116,7 @@ class LowOrderHipsTask(PipelineTask):
                     self.config.file_extension,
                     self.config.array_type,
                 )
+                size_counter += 1
                 hpx_next_container.append((hpx_next_array, hpx_next_id))
             hpx_container = hpx_next_container
         return Struct()
