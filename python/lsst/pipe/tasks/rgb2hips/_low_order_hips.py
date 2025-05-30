@@ -93,7 +93,7 @@ class LowOrderHipsTask(PipelineTask):
                     percent_counter += 10
                     self.log.info("Done %d percent", percent_counter)
                     size_counter = 0
-                hpx_next_array = np.zeros((npix, npix), dtype=np.float32)
+                hpx_next_array = np.zeros((npix, npix, 3), dtype=np.float32)
                 for img_prev, hpx_prev_id in hpx_next_items:
                     sub_index = hpx_prev_id - np.left_shift(hpx_next_id, 2)
                     if order == 7:
