@@ -18,7 +18,8 @@ from lsst.pipe.base import (
 from lsst.pex.config import ConfigField, Field, ChoiceField
 from lsst.pipe.base.connectionTypes import Input, Output
 from lsst.skymap import BaseSkyMap
-from lsst.afw.geom import SkyWcs, Box2I, Point2I, Extent2I
+from lsst.afw.geom import SkyWcs
+from lsst.geom import Box2I, Point2I, Extent2I
 from lsst.afw.math import Warper
 from lsst.daf.butler import DeferredDatasetHandle
 from lsst.afw.image import ImageF
