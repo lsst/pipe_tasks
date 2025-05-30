@@ -503,8 +503,8 @@ class HighResolutionHipsTask(pipeBase.PipelineTask):
 
 
 class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
-    """A custom a `lsst.pipe.base.QuantumGraphBuilder` for running
-    `HighResolutionHipsTask` only.
+    """A custom a `lsst.pipe.base.QuantumGraphBuilder` for running a
+    `PipelineTask` that takes ``patch`` inputs and produces HEALPix outputs.
 
     This is a workaround for incomplete butler query support for HEALPix
     dimensions.
@@ -512,8 +512,10 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
     Parameters
     ----------
     pipeline_graph : `lsst.pipe.base.PipelineGraph`
-        Pipeline graph with exactly one task, which must be a configuration
-        of `HighResolutionHipsTask`.
+        Pipeline graph with exactly one task, which must have the same HEALPix
+        dimension for both its quanta and its output and a single ``patch``
+        input.  The input, output, and quantum dimensions may or may not
+        include ``band``, as long as they all consistently do or do not.
     butler : `lsst.daf.butler.Butler`
         Client for the butler data repository.  May be read-only.
     input_collections : `str` or `Iterable` [ `str` ], optional
@@ -650,15 +652,16 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
 
         # Iterate over the dict we just created and create preliminary quanta.
         for hpx_index, input_keys_for_hpx_index in inputs_by_hpx.items():
-            # Group inputs by band.
+            # Group inputs by everything *but* healpix ID.
             input_keys_by_band = defaultdict(list)
             for input_key in input_keys_for_hpx_index:
                 input_ref = skeleton.get_dataset_ref(input_key)
                 assert input_ref is not None, "Code above adds the same nodes to the graph with refs."
-                input_keys_by_band[input_ref.dataId["band"]].append(input_key)
+                input_keys_by_band[input_ref.dataId.get("band", None)].append(input_key)
             # Iterate over bands to make quanta.
             for band, input_keys_for_band in input_keys_by_band.items():
-                data_id = self.butler.registry.expandDataId({hpx_dimension.name: hpx_index, "band": band})
+                extra = {"band": band} if band is not None else {}
+                data_id = self.butler.registry.expandDataId({hpx_dimension.name: hpx_index, **extra})
                 quantum_key = skeleton.add_quantum_node(task_node.label, data_id)
                 # Add inputs to the skelton
                 skeleton.add_input_edges(quantum_key, input_keys_for_band)
@@ -672,7 +675,7 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
                         dataset_key = skeleton.add_dataset_node(
                             output_dataset_type_node.name,
                             self.butler.registry.expandDataId(
-                                {hpx_output_dimension: hpx_output_index, "band": band}
+                                {hpx_output_dimension: hpx_output_index, **extra}
                             ),
                         )
                         skeleton.add_output_edge(quantum_key, dataset_key)
