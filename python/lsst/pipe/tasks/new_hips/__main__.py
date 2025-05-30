@@ -105,7 +105,6 @@ if __name__ == "__main__":
     pipeline = Pipeline.from_uri(args.pipeline)
     pipeline_graph = pipeline.to_graph()
 
-    breakpoint()
     if len(pipeline_graph.tasks) != 1:
         raise RuntimeError(f"Pipeline file {args.pipeline} may only contain one task.")
 
