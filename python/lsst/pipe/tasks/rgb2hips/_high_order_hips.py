@@ -224,8 +224,8 @@ class HighOrderHipsTask(PipelineTask):
         # and assemble into container for run
         input_images = []
         for input_image_ref in inputRefs.input_images:
-            tract = input_image_ref["tract"]
-            patch = input_image_ref["patch"]
+            tract = input_image_ref.dataId["tract"]
+            patch = input_image_ref.dataId["patch"]
             imageWcs = skymap[tract][patch].getWcs()
             box = skymap[tract][patch].getInnerBBox()
             box.dilatedBy(self.config.patchGrow)
