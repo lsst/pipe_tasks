@@ -41,9 +41,9 @@ def _write_hips_image(
     # remap the image_data to the chosen output_type
     match output_type:
         case "uint8":
-            image_data = (image_data / 255.0).astype(np.uint8)
+            image_data = (image_data * 255.0).astype(np.uint8)
         case "uint16":
-            image_data = (image_data / 65535.0).astype(np.uint16)
+            image_data = (image_data * 65535.0).astype(np.uint16)
         case "half":
             image_data = image_data.astype(np.float16)
         case "float":

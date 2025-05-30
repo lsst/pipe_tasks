@@ -167,7 +167,6 @@ class HighOrderHipsTask(PipelineTask):
                 existing[warpped_box_slices][both_set_mask] = (
                     existing[warpped_box_slices][both_set_mask] + warpped.array[both_set_mask]
                 ) / 2.0
-                breakpoint()
             # The healpix is populated with all data available
         # Fill in nans with zeros
         output_array_hpx[np.isnan(output_array_hpx)] = 0
