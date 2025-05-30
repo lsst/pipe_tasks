@@ -128,6 +128,7 @@ class HighOrderHipsTask(PipelineTask):
         output_array_hpx[:, :, :] = np.nan
 
         # Need to loop over input arrays then channel
+        self.log.info("Warping input exposures and populating hpx8 super tile.")
         for input_image, in_wcs, in_box in input_images:
             tmp_image = ImageF(in_box)
             # Flip the Y axis, because things are reversed
@@ -179,17 +180,19 @@ class HighOrderHipsTask(PipelineTask):
             self.log.info("generating tiles for hxp level %d", hpx_level)
             if zoom:
                 size = 4096 // zoom
-                binned_array = resize(output_array_hpx, (size, size))
+                binned_array = resize(output_array_hpx, (size, size, 3))
             else:
                 binned_array = output_array_hpx
             # always create blocks of 512x512 as that is native size
-            view = self._make_block(binned_array, (512, 512))
+            # view = self._make_block(binned_array, (512, 512, 3))
             hpx_start, hpx_stop = quanta_range_set.scaled(4**factor).ranges()[0]
-            hpx_id_array = np.arange(hpx_start, hpx_stop).reshape(view.shape[:2])
-            for i in range(view.shape[0]):
-                for j in range(view.shape[1]):
+            hpx_id_array = np.arange(hpx_start, hpx_stop).reshape(
+                binned_array.shape[0] // 512, binned_array.shape[1] // 512
+            )
+            for i in range(binned_array.shape[0] // 512):
+                for j in range(binned_array.shape[1] // 512):
                     pixel_id = hpx_id_array[i, j]
-                    sub_pixel = view[i, j]
+                    sub_pixel = binned_array[i * 512 : i * 512 + 512, j * 512 : j * 512 + 512, :]
                     _write_hips_image(
                         sub_pixel,
                         pixel_id,
@@ -202,14 +205,20 @@ class HighOrderHipsTask(PipelineTask):
         # Finally, zoom the level 8 hpx to 256x256 to save to the buter.
         # This makes smaller arrays to load, and save the binning
         # operation in the joint phase.
-        zoomed = resize(output_array_hpx, (256, 256))
+        zoomed = resize(output_array_hpx, (256, 256, 3))
 
         return Struct(output_hpx=zoomed)
 
     @staticmethod
     def _make_block(array, block):
-        shape = (array.shape[0] // block[0], array.shape[1] // block[1]) + block
-        strides = (block[0] * array.strides[0], block[1] * array.strides[1]) + array.strides
+        shape = (array.shape[0] // block[0], array.shape[1] // block[1], array.shape[2] // block[2]) + block
+        print(shape)
+        strides = (
+            block[0] * array.strides[0],
+            block[1] * array.strides[1],
+            block[2] * array.strides[2],
+        ) + array.strides
+        print(strides)
         try:
             strided_view = as_strided(array, shape=shape, strides=strides)
         except Exception:
