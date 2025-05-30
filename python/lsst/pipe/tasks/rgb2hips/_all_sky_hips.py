@@ -38,11 +38,11 @@ from ..healSparseMapping import _is_power_of_two
 class AllSkyHipsTaskConnections(
     PipelineTaskConnections,
     dimensions=("instrument",),
-    defaultTemplates={"task_label": "lowOrderHipsTask"},
+    defaultTemplates={"input_task_label": "lowOrderHipsTask"},
 ):
     low_order_metadata = Input(
         doc="Metadata produced by the LowOrderHipsTask",
-        name="{task_label}_metadata",
+        name="{input_task_label}_metadata",
         storageClass="TaskMetadata",
         multiple=True,
         deferLoad=True,
