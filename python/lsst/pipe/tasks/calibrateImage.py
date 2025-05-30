@@ -808,6 +808,20 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 background_to_photometric_ratio=result.background_to_photometric_ratio,
             )
             have_fit_psf = True
+
+            # Check if all centroids have been flagged. This should happen
+            # after the PSF is fit and recorded because even a junky PSF
+            # model is informative.
+            if result.psf_stars_footprints["slot_Centroid_flag"].all():
+                psf_shape = result.exposure.psf.computeShape(result.exposure.psf.getAveragePosition())
+                raise AllCentroidsFlaggedError(
+                    n_sources=len(result.psf_stars_footprints),
+                    psf_shape_ixx=psf_shape.getIxx(),
+                    psf_shape_iyy=psf_shape.getIyy(),
+                    psf_shape_ixy=psf_shape.getIxy(),
+                    psf_size=psf_shape.getDeterminantRadius(),
+                )
+
             self._measure_aperture_correction(result.exposure, result.psf_stars_footprints)
             result.psf_stars = result.psf_stars_footprints.asAstropy()
             # Run astrometry using PSF candidate stars
@@ -1041,15 +1055,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.psf_repair.run(exposure=exposure)
         # Final measurement with the CRs removed.
         self.psf_source_measurement.run(detections.sources, exposure)
-
-        if detections.sources["slot_Centroid_flag"].all():
-            psf_shape = exposure.psf.computeShape(exposure.psf.getAveragePosition())
-            raise AllCentroidsFlaggedError(n_sources=len(detections.sources),
-                                           psf_shape_ixx=psf_shape.getIxx(),
-                                           psf_shape_iyy=psf_shape.getIyy(),
-                                           psf_shape_ixy=psf_shape.getIxy(),
-                                           psf_size=psf_shape.getDeterminantRadius()
-                                           )
 
         # PSF is set on exposure; candidates are returned to use for
         # calibration flux normalization and aperture corrections.
