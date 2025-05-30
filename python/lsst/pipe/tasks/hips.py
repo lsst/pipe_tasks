@@ -564,8 +564,17 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
         (task_node,) = subgraph.tasks.values()
 
         # Since we know this is the only task in the pipeline, we know there
-        # is only one overall input and one regular output.
-        (input_dataset_type_node,) = subgraph.inputs_of(task_node.label).values()
+        # are only two overall inputs and one regular output.
+        if len(subgraph.inputs_of(task_node.label)) > 1:
+            (input_dataset_type_node, skymap_dataset_type_node) = subgraph.inputs_of(task_node.label).values()
+            if "patch" not in input_dataset_type_node.dimensions:
+                input_dataset_type_node, skymap_dataset_type_node = (
+                    skymap_dataset_type_node,
+                    input_dataset_type_node,
+                )
+        else:
+            (input_dataset_type_node,) = subgraph.inputs_of(task_node.label).values()
+            skymap_dataset_type_node = None
         assert input_dataset_type_node is not None, "PipelineGraph should be resolved by base class."
         (output_edge,) = task_node.outputs.values()
         output_dataset_type_node = subgraph.dataset_types[output_edge.parent_dataset_type_name]
@@ -640,6 +649,21 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
                 message_body = "\n".join(input_refs.explain_no_results())
                 raise RuntimeError(f"No inputs found:\n{message_body}")
 
+        if skymap_dataset_type_node is not None:
+            with self.butler.query() as query:
+                skymap_refs = (
+                    query.datasets(skymap_dataset_type_node.dataset_type, collections=self.input_collections)
+                    .where(
+                        self.where,
+                    )
+                    .with_dimension_records()
+                )
+                for skymap_ref in skymap_refs:
+                    skymap_dataset_key = skeleton.add_dataset_node(
+                        skymap_ref.datasetType.name, skymap_ref.dataId
+                    )
+                    skeleton.set_dataset_ref(skymap_ref, skymap_dataset_key)
+
         # Iterate over patches and compute the set of output healpix pixels
         # that overlap each one.  Use that to associate inputs with output
         # pixels, but only for the output pixels we've already identified.
@@ -665,6 +689,8 @@ class HighResolutionHipsQuantumGraphBuilder(QuantumGraphBuilder):
                 quantum_key = skeleton.add_quantum_node(task_node.label, data_id)
                 # Add inputs to the skelton
                 skeleton.add_input_edges(quantum_key, input_keys_for_band)
+                if skymap_dataset_type_node is not None:
+                    skeleton.add_input_edge(quantum_key, skymap_dataset_key)
                 # Add the regular outputs.
                 hpx_pixel_ranges = RangeSet(hpx_index)
                 hpx_output_ranges = hpx_pixel_ranges.scaled(
