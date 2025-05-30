@@ -223,13 +223,13 @@ class HighOrderHipsTask(PipelineTask):
         # Iterate over the input image refs, to get the corresponding bbox
         # and assemble into container for run
         input_images = []
-        for inputImageRef in inputRefs.inputImages:
-            tract = inputImageRef["tract"]
-            patch = inputImageRef["patch"]
+        for input_image_ref in inputRefs.input_images:
+            tract = input_image_ref["tract"]
+            patch = input_image_ref["patch"]
             imageWcs = skymap[tract][patch].getWcs()
             box = skymap[tract][patch].getInnerBBox()
             box.dilatedBy(self.config.patchGrow)
-            imageHandle = butlerQC.get(inputImageRef)
+            imageHandle = butlerQC.get(input_image_ref)
             input_images.append((imageHandle, imageWcs, box))
 
         outputs = self.run(input_images, healpix_id)
