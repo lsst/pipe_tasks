@@ -1,6 +1,10 @@
 from lsst.afw.geom._hpxUtils import _ZOrderCurve2DInt
 import numpy as np
 
+from lsst.daf.base import PropertySet
+
+from lsst.afw.geom import makeSkyWcs
+
 
 def makeHpxWcs(hips_order, pixel, shift_order=9):
     """
