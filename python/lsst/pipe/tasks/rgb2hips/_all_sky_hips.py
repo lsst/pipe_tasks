@@ -166,6 +166,7 @@ class AllSkyHipsTask(PipelineTask):
         self._write_properties_and_moc(
             self.config.max_order, hpx11_pixels, self.config.shift_order, self.config.color_ordering
         )
+        self._write_allsky_file(self.config.min_order)
         return Struct()
 
     def _write_properties_and_moc(self, max_order, pixels, shift_order, band):
