@@ -9,7 +9,7 @@ import re
 import hpgeom as hpg
 import numpy as np
 import healsparse as hsp
-import datetime
+from datetime import datetime
 from collections.abc import Iterable
 from astropy.io import fits
 
