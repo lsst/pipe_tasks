@@ -155,7 +155,7 @@ class AllSkyHipsTask(PipelineTask):
         hpx11_pixels = set()
         for begin, end in hpx11_rangeset:
             hpx11_pixels.update(range(begin, end))
-        hpx11_pixels = np.array(hpx11_pixels)
+        hpx11_pixels = np.array([s for s in hpx11_pixels])
 
         low_order_metadata = butlerQC.get(inputRefs.low_order_metadata)
 
