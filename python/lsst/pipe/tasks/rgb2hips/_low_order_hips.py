@@ -3,6 +3,7 @@ from lsst.daf.butler import DeferredDatasetHandle
 __all__ = ("LowOrderHipsTaskConnections", "LowOrderHipsTaskConfig", "LowOrderHipsTask")
 
 import numpy as np
+from skimage.transform import resize
 
 from lsst.pipe.base import (
     PipelineTask,
@@ -117,7 +118,7 @@ class LowOrderHipsTask(PipelineTask):
                     self.config.array_type,
                 )
                 size_counter += 1
-                hpx_next_container.append((hpx_next_array, hpx_next_id))
+                hpx_next_container.append((resize(hpx_next_array, (256, 256, 3)), hpx_next_id))
             hpx_container = hpx_next_container
         return Struct()
 
