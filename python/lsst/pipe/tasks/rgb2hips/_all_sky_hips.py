@@ -37,9 +37,7 @@ from ..healSparseMapping import _is_power_of_two
 
 class AllSkyHipsTaskConnections(
     PipelineTaskConnections,
-    dimensions=tuple(
-        "instrument",
-    ),
+    dimensions=("instrument",),
     defaultTemplates={"task_label": "lowOrderHipsTask"},
 ):
     low_order_metadata = Input(
