@@ -115,7 +115,7 @@ if __name__ == "__main__":
     if args.subparser_name == "segment":
         # Do the segmentation
         hpix_pixelization = HealpixPixelization(level=args.hpix_build_order)
-        dataset = task_node.inputs["coadd_exposure_handles"].dataset_type_name
+        dataset = task_node.inputs["input_images"].dataset_type_name
         with butler.query() as q:
             data_ids = list(q.join_dataset_search(dataset).data_ids("tract").with_dimension_records())
         region_pixels = []
