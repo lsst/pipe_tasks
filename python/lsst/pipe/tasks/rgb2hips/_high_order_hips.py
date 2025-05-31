@@ -132,7 +132,7 @@ class HighOrderHipsTask(PipelineTask):
         for input_image, in_wcs, in_box in input_images:
             tmp_image = ImageF(in_box)
             # Flip the Y axis, because things are reversed
-            in_image: NDArray = input_image.get()[::-1, :, :]
+            in_image: NDArray = input_image.get()
             # Need to cast images if they are saved in various formats
             match in_image.dtype:
                 case np.uint8:
