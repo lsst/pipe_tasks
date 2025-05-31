@@ -57,7 +57,8 @@ def _write_hips_image(
     uri = hips_dir.join(f"Npix{pixel_id}.{file_extension}")
 
     # Finally, need to turn the array into an image
-    im = Image.fromarray(image_data, mode="RGB")
+    # clip in case any of the warping caused values over 1
+    im = Image.fromarray(np.clip(image_data, 0, 1), mode="RGB")
 
     extra_args = {}
     if file_extension == "webp":
