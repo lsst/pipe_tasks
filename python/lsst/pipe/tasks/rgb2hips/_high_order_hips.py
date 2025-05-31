@@ -132,7 +132,7 @@ class HighOrderHipsTask(PipelineTask):
         for input_image, in_wcs, in_box in input_images:
             tmp_image = ImageF(in_box)
             # Flip the Y axis, because things are reversed
-            in_image: NDArray = input_image.get()[::-1, :, :]
+            in_image: NDArray = input_image.get()
             # Need to cast images if they are saved in various formats
             match in_image.dtype:
                 case np.uint8:
@@ -189,7 +189,7 @@ class HighOrderHipsTask(PipelineTask):
             hpx_start, hpx_stop = quanta_range_set.scaled(4**factor).ranges()[0]
             hpx_id_array = np.arange(hpx_start, hpx_stop).reshape(
                 binned_array.shape[0] // 512, binned_array.shape[1] // 512
-            )
+            )[::-1, ::-1]
             for i in range(binned_array.shape[0] // 512):
                 for j in range(binned_array.shape[1] // 512):
                     pixel_id = hpx_id_array[i, j]
