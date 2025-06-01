@@ -29,7 +29,7 @@ from collections.abc import Iterable
 from numpy.lib.stride_tricks import as_strided
 from lsst.sphgeom import RangeSet
 
-from skimage.transform import resize
+from skimage.transform import resize, downscale_local_mean
 from PIL import Image
 
 from ._hipsWcsMaker import makeHpxWcs
@@ -177,23 +177,40 @@ class HighOrderHipsTask(PipelineTask):
         # Construct a basic RangeSet for the pixel for this quanta
         quanta_range_set = RangeSet([healpix_id])
 
+        output_array_hpx = output_array_hpx[::-1,:,:]
+
         for zoom, hpx_level, factor in zip((0, 2, 4, 8), (11, 10, 9, 8), (3, 2, 1, 0)):
             self.log.info("generating tiles for hxp level %d", hpx_level)
             if zoom:
                 size = 4096 // zoom
-                binned_array = resize(output_array_hpx, (size, size, 3))
+                # binned_array = resize(output_array_hpx, (size, size, 3), anti_aliasing=False)
+                binned_array = downscale_local_mean(output_array_hpx, (zoom, zoom, 1))
             else:
                 binned_array = output_array_hpx
             # always create blocks of 512x512 as that is native size
             # view = self._make_block(binned_array, (512, 512, 3))
-            hpx_start, hpx_stop = quanta_range_set.scaled(4**factor).ranges()[0]
-            hpx_id_array = np.arange(hpx_start, hpx_stop).reshape(
-                binned_array.shape[0] // 512, binned_array.shape[1] // 512
-            )[::-1, ::-1]
+            #
+            # Check doing this iteratively
+            tmp_pixels = np.array([[healpix_id]])
+            for _ in range(factor):
+                tmp_array = np.zeros(np.array(tmp_pixels.shape)*2)
+                for ii in range(tmp_pixels.shape[0]):
+                    for jj in range(tmp_pixels.shape[1]):
+                        tmp_array_view = tmp_array[ii*2:ii*2+2, jj*2:jj*2+2]
+                        tmp_range_set = RangeSet(int(tmp_pixels[ii,jj]))
+                        tmp_array_view[:,:] = (np.array([x for x in range(*tmp_range_set.scaled(4)[0])],dtype=int)[[0,2,1,3]]).reshape(2,2)
+                tmp_pixels = tmp_array         
+                
+            # hpx_start, hpx_stop = quanta_range_set.scaled(4**factor).ranges()[0]
+            # hpx_id_array = (np.arange(hpx_start, hpx_stop).reshape(
+            #     binned_array.shape[0] // 512, binned_array.shape[1] // 512
+            # ).T)
+            hpx_id_array = tmp_pixels
             for i in range(binned_array.shape[0] // 512):
                 for j in range(binned_array.shape[1] // 512):
-                    pixel_id = hpx_id_array[i, j]
+                    pixel_id = int(hpx_id_array[i, j])
                     sub_pixel = binned_array[i * 512 : i * 512 + 512, j * 512 : j * 512 + 512, :]
+                    self.log.info(f"writing sub_pixel {pixel_id}")
                     _write_hips_image(
                         sub_pixel,
                         pixel_id,
@@ -212,12 +229,11 @@ class HighOrderHipsTask(PipelineTask):
 
     @staticmethod
     def _make_block(array, block):
-        shape = (array.shape[0] // block[0], array.shape[1] // block[1], array.shape[2] // block[2]) + block
+        shape = (array.shape[0] // block[0], array.shape[1] // block[1]) + block
         print(shape)
         strides = (
             block[0] * array.strides[0],
             block[1] * array.strides[1],
-            block[2] * array.strides[2],
         ) + array.strides
         print(strides)
         try:
