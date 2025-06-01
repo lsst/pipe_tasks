@@ -3,7 +3,7 @@ from lsst.daf.butler import DeferredDatasetHandle
 __all__ = ("LowOrderHipsTaskConnections", "LowOrderHipsTaskConfig", "LowOrderHipsTask")
 
 import numpy as np
-from skimage.transform import resize
+from skimage.transform import resize, downscale_local_mean
 
 from lsst.pipe.base import (
     PipelineTask,
@@ -102,13 +102,13 @@ class LowOrderHipsTask(PipelineTask):
                         img_prev: NDArray = img_prev.get()
                     match sub_index:
                         case 0:
-                            hpx_next_array[npix // 2 :, 0 : npix // 2] = img_prev
-                        case 1:
                             hpx_next_array[0 : npix // 2 :, 0 : npix // 2] = img_prev
+                        case 1:
+                            hpx_next_array[npix // 2 :, 0 : npix // 2] = img_prev
                         case 2:
-                            hpx_next_array[npix // 2 :, npix // 2 :] = img_prev
-                        case 3:
                             hpx_next_array[0 : npix // 2, npix // 2 :] = img_prev
+                        case 3:
+                            hpx_next_array[npix // 2 :, npix // 2 :] = img_prev
                 _write_hips_image(
                     hpx_next_array,
                     hpx_next_id,
@@ -118,7 +118,8 @@ class LowOrderHipsTask(PipelineTask):
                     self.config.array_type,
                 )
                 size_counter += 1
-                hpx_next_container.append((resize(hpx_next_array, (256, 256, 3)), hpx_next_id))
+                # hpx_next_container.append((resize(hpx_next_array, (256, 256, 3), anti_aliasing=False), hpx_next_id))
+                hpx_next_container.append((downscale_local_mean(hpx_next_array, (2, 2, 1)), hpx_next_id))
             hpx_container = hpx_next_container
         return Struct()
 
