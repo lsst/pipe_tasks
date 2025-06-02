@@ -28,6 +28,8 @@ __all__ = [
     "SkyMeasurementConfig",
     "SkyMeasurementTask",
     "SkyStatsConfig",
+    "TractBackground",
+    "TractBackgroundConfig",
 ]
 
 import importlib
@@ -368,16 +370,10 @@ class SkyMeasurementTask(Task):
         skySamples = numpy.array(skySamples)
 
         def solve(mask):
-<<<<<<< HEAD
             # Make sure we return a float, not an array.
             return afwMath.LeastSquares.fromDesignMatrix(skySamples[mask].reshape(mask.sum(), 1),
                                                          imageSamples[mask],
                                                          afwMath.LeastSquares.DIRECT_SVD).getSolution()[0]
-=======
-            return afwMath.LeastSquares.fromDesignMatrix(
-                skySamples[mask].reshape(mask.sum(), 1), imageSamples[mask], afwMath.LeastSquares.DIRECT_SVD
-            ).getSolution()
->>>>>>> 8cf1e691 (Add full tract background functionality.)
 
         mask = numpy.isfinite(imageSamples) & numpy.isfinite(skySamples)
         for ii in range(self.config.skyIter):
@@ -860,14 +856,13 @@ class TractBackgroundConfig(Config):
     )
     doSmooth = Field(dtype=bool, default=False, doc="Do smoothing?")
     smoothScale = Field(dtype=float, default=2.0, doc="Smoothing scale, as a multiple of the bin size")
-    binning = Field(dtype=int, default=200, doc="Binning to use for warp background model (pixels)")
+    binning = Field(dtype=int, default=64, doc="Binning to use for warp background model (pixels)")
 
 
 class TractBackground:
     """
     As FocalPlaneBackground, but works in warped tract coordinates
     """
-
     @classmethod
     def fromSimilar(cls, other):
         """Construct from an object that has the same interface.
@@ -883,9 +878,9 @@ class TractBackground:
         background : `TractBackground`
             Something guaranteed to be a `TractBackground`.
         """
-        return cls(other.config, other.dims, other.transform, other._values, other._numbers)
+        return cls(other.config, other.tract, other.dims, other.transform, other._values, other._numbers)
 
-    def __init__(self, config, values=None, numbers=None):
+    def __init__(self, config, skymap, tract, values=None, numbers=None):
         """Constructor
 
         Developers should note that changes to the signature of this method
@@ -895,14 +890,24 @@ class TractBackground:
         ----------
         config : `TractBackgroundConfig`
             Configuration for measuring tract backgrounds.
+        skymap : `lsst.skymap.ringsSkyMap.RingsSkyMap`
+            Skymap object
+        tract : `int`
+            Placeholder Tract ID
+        transform : `lsst.afw.geom.TransformPoint2ToPoint2`
+            Transformation from tract coordinates to warp coordinates.
         values : `lsst.afw.image.ImageF`
             Measured background values.
         numbers : `lsst.afw.image.ImageF`
             Number of pixels in each background measurement.
         """
         self.config = config
-        # TODO: dynamic tract dimensions?
-        self.dims = geom.Extent2I(36000 / self.config.xBin, 36000 / self.config.yBin)
+        self.skymap = skymap
+        self.tract = tract
+        self.tractInfo = self.skymap.generateTract(tract)
+        tractDimX, tractDimY = self.tractInfo.getBBox().getDimensions()
+        self.dims = geom.Extent2I(tractDimX / self.config.xBin,
+                                  tractDimY / self.config.yBin)
 
         if values is None:
             values = afwImage.ImageF(self.dims)
@@ -920,10 +925,10 @@ class TractBackground:
         self._numbers = numbers
 
     def __reduce__(self):
-        return self.__class__, (self.config, self._values, self._numbers)
+        return self.__class__, (self.config, self.skymap, self.tract, self._values, self._numbers)
 
     def clone(self):
-        return self.__class__(self.config, self._values, self._numbers)
+        return self.__class__(self.config, self.skymap, self.tract, self._values, self._numbers)
 
     def addWarp(self, warp):
         """
@@ -1039,10 +1044,21 @@ class TractBackground:
 
         # Transform from binned tract plane to tract plane
         # Start at the patch corner, not the warp corner overlap region
+        wcs = self.tractInfo.getWcs()
+        coo = wcs.pixelToSky(1, 1)
+        ptch = self.tractInfo.findPatch(coo)
+        ptchDimX, ptchDimY = ptch.getInnerBBox().getDimensions()
+        if ptchDimX != ptchDimY:
+            raise ValueError(
+                "Patch dimensions %d,%d are unequal: cannot proceed as written."
+                % (ptchDimX, ptchDimY)
+            )
+        ptchOutDimX, _ = ptch.getOuterBBox().getDimensions()
+        overlap = ptchDimX - ptchOutDimX
         corner = warp.getBBox().getMin()
-        if corner[0] % 4000 != 0:  # TODO: hard-coded patch dimensions are bad
-            corner[0] += 100
-            corner[1] += 100
+        if corner[0] % ptchDimX != 0:
+            corner[0] += overlap
+            corner[1] += overlap
         offset = geom.Extent2D(corner[0], corner[1])
         tractTransform = (
             geom.AffineTransform.makeTranslation(geom.Extent2D(-0.5, -0.5))
@@ -1064,6 +1080,7 @@ class TractBackground:
         image = afwImage.ImageF(bbox.getDimensions() // self.config.binning)
         norm = afwImage.ImageF(image.getBBox())
 
+        # Warps full tract model to warp image scale
         ctrl = afwMath.WarpingControl("bilinear")
         afwMath.warpImage(image, tractPlane, toSample.inverted(), ctrl)
         afwMath.warpImage(norm, tpNorm, toSample.inverted(), ctrl)
@@ -1071,6 +1088,7 @@ class TractBackground:
         # Convert back to counts so the model can be subtracted w/o conversion
         image /= warp.getPhotoCalib().instFluxToNanojansky(1)
 
+        # Only sky background model, so include only null values in mask plane
         mask = afwImage.Mask(image.getBBox())
         isBad = numpy.isnan(image.getArray())
         mask.getArray()[isBad] = mask.getPlaneBitMask("BAD")
@@ -1095,18 +1113,12 @@ class TractBackground:
         """
         values = self._values.clone()
         values /= self._numbers
-        # TODO: this logic smoothes over bad parts of the image, including NaN
-        # values.  But it doesn't work here because NaN pixels are always found
-        # at the image edges.  Could ignore it, or devise an alternative.
-        # tract have no overlap with the visit?
-        # thresh = self.config.minFrac * (self.config.xBin) * (self.config.yBin)
-        # isBad = self._numbers.getArray() < thresh
-        # if self.config.doSmooth:
-        #     array = values.getArray()
-        #     array[:] = smoothArray(array, isBad, self.config.smoothScale)
-        #     isBad = numpy.isnan(values.array)
-        # if numpy.any(isBad):
-        #     interpolateBadPixels(values.getArray(), isBad, self.config.interpolation)
+        # TODO: filling in bad pixels.  Currently BAD mask plane includes both
+        # chip gaps and regions outside FP, so interpolating across chip gaps
+        # also includes extrapolating flux outside the FP, which is
+        # undesirable.  But interpolation and extrapolation aren't currently
+        # separable, so for now this step is just not done.
+
         return values
 
 
