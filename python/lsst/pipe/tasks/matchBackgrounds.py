@@ -22,15 +22,28 @@
 __all__ = ["MatchBackgroundsConnections", "MatchBackgroundsConfig", "MatchBackgroundsTask"]
 
 import numpy as np
-from lsst.afw.image import LOCAL, ImageF, Mask, MaskedImageF
-from lsst.afw.math import (MEANCLIP, MEANSQUARE, NPOINT, STDEV, VARIANCE, ApproximateControl,
-                           BackgroundControl, BackgroundList, BackgroundMI, StatisticsControl, makeBackground,
-                           makeStatistics, stringToInterpStyle, stringToStatisticsProperty,
-                           stringToUndersampleStyle)
-from lsst.pex.config import ChoiceField, ConfigField, Field, ListField, RangeField
+
+from lsst.afw.image import ImageF, MaskedImageF
+from lsst.afw.math import (
+    MEANSQUARE,
+    NPOINT,
+    STDEV,
+    VARIANCE,
+    ApproximateControl,
+    BackgroundControl,
+    BackgroundMI,
+    StatisticsControl,
+    makeBackground,
+    makeStatistics,
+    stringToInterpStyle,
+    stringToStatisticsProperty,
+    stringToUndersampleStyle,
+)
+from lsst.pex.config import ChoiceField, ConfigField, Field, RangeField
 from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct, TaskError
 from lsst.pipe.base.connectionTypes import Input, Output
 from lsst.pipe.tasks.background import TractBackground, TractBackgroundConfig
+from lsst.skymap import BaseSkyMap
 from lsst.utils.timer import timeMethod
 
 
@@ -40,7 +53,7 @@ class MatchBackgroundsConnections(
     defaultTemplates={
         "inputCoaddName": "deep",
         "outputCoaddName": "deep",
-        "warpType": "psfMatched",
+        "warpType": "direct",
         "warpTypeSuffix": "",
     },
 ):
@@ -53,9 +66,15 @@ class MatchBackgroundsConnections(
         deferLoad=True,
         multiple=True,
     )
+    skyMap = Input(
+        doc="Input definition of geometry/bbox and projection/wcs for warped exposures",
+        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
+        storageClass="SkyMap",
+        dimensions=("skymap",),
+    )
     backgroundInfoList = Output(
         doc="List of differential backgrounds, with goodness of fit params.",
-        name="psfMatchedWarpBackground_diff",  # TODO: come up with better name
+        name="{warpType}WarpBackground_diff",  # TODO: settle on appropriate name
         dimensions=("skymap", "tract", "visit", "patch"),
         storageClass="Background",
         multiple=True,
@@ -64,25 +83,24 @@ class MatchBackgroundsConnections(
         doc="List of background-matched warps.",
         name="{inputCoaddName}Coadd_{warpType}Warp_bgMatched",
         storageClass="ExposureF",
-        # dimensions=("skymap", "tract", "patch", "visit"),
         dimensions=("skymap", "tract", "visit", "patch"),
         multiple=True,
     )
-    # TODO: should we also output the full tract background images?
+    # TODO: binned full-tract images as outputs, for visualization?
 
 
 class MatchBackgroundsConfig(PipelineTaskConfig, pipelineConnections=MatchBackgroundsConnections):
 
     # Reference warp selection
     refWarpVisit = Field[int](
-        doc="Visit ID of the reference warp. If None, the best warp is chosen from the list of warps.",
+        doc="Reference visit ID. If None, the best visit is chosen using the list of warps.",
         optional=True,
     )
     bestRefWeightChi2 = RangeField(
         dtype=float,
         doc="Mean background goodness of fit statistic weight when calculating the best reference exposure. "
         "Higher weights prefer exposures with flatter backgrounds. Ignored when ref visit supplied.",
-        default=0.2,
+        default=0.3,
         min=0.0,
         max=1.0,
     )
@@ -90,16 +108,15 @@ class MatchBackgroundsConfig(PipelineTaskConfig, pipelineConnections=MatchBackgr
         dtype=float,
         doc="Image variance weight when calculating the best reference exposure. "
         "Higher weights prefers exposures with low image variances. Ignored when ref visit supplied",
-        default=0.2,
+        default=0.3,
         min=0.0,
         max=1.0,
     )
-    # TODO: removed edge coverage, so rename this?
     bestRefWeightGlobalCoverage = RangeField(
         dtype=float,
         doc="Global coverage weight (total number of valid pixels) when calculating the best reference "
         "exposure. Higher weights prefer exposures with high coverage. Ignored when a ref visit supplied.",
-        default=0.2,
+        default=0.4,
         min=0.0,
         max=1.0,
     )
@@ -112,26 +129,11 @@ class MatchBackgroundsConfig(PipelineTaskConfig, pipelineConnections=MatchBackgr
     usePolynomial = Field[bool](
         doc="Fit background difference with a Chebychev polynomial interpolation? "
         "If False, fit with spline interpolation instead.",
-        default=False,
+        default=True,
     )
     order = Field[int](
         doc="Order of Chebyshev polynomial background model. Ignored if ``usePolynomial=False``.",
         default=1,
-    )
-    # TODO: because the binning has moved to TractBackground, the mask planes
-    # are also now defined there.  I think only NaNSafe is necessary now.
-    badMaskPlanes = ListField[str](
-        doc="Names of mask planes to ignore while estimating the background.",
-        default=[
-            "NO_DATA",
-            "DETECTED",
-            "DETECTED_NEGATIVE",
-            "SAT",
-            "BAD",
-            "INTRP",
-            "CR",
-        ],
-        itemCheck=lambda x: x in Mask().getMaskPlaneDict(),
     )
     gridStatistic = ChoiceField(
         dtype=str,
@@ -139,26 +141,16 @@ class MatchBackgroundsConfig(PipelineTaskConfig, pipelineConnections=MatchBackgr
         default="MEANCLIP",
         allowed={"MEAN": "mean", "MEDIAN": "median", "MEANCLIP": "clipped mean"},
     )
+    # TODO: binning is done apart from fitting now, making INCREASE_NXNYSAMPLE
+    # option unusable here.  Unsure if this will cause problems.
     undersampleStyle = ChoiceField(
         dtype=str,
-        doc="Behaviour if there are too few points in the grid for requested interpolation style. "
-        "Note: choice ``INCREASE_NXNYSAMPLE`` only allowed for ``usePolynomial=True``.",
+        doc="Behaviour if there are too few points in the grid for requested interpolation style. ",
         default="REDUCE_INTERP_ORDER",
         allowed={
             "THROW_EXCEPTION": "throw an exception if there are too few points.",
             "REDUCE_INTERP_ORDER": "use an interpolation style with a lower order.",
-            "INCREASE_NXNYSAMPLE": "Increase the number of samples used to make the interpolation grid.",
         },
-    )
-    # TODO: bin sizes have been moved to background.py TractBackground configs
-    # so both of these have no purpose anymore.
-    binSize = Field[int](
-        doc="Bin size for gridding the difference image and fitting a spatial model.",
-        default=256,
-    )
-    chi2BinSize = Field[int](
-        doc="Bin size for gridding images when choosing best reference exposure.",
-        default=1024,
     )
     interpStyle = ChoiceField(
         dtype=str,
@@ -182,7 +174,6 @@ class MatchBackgroundsConfig(PipelineTaskConfig, pipelineConnections=MatchBackgr
         default=3,
     )
 
-    # TODO: this might have been made redundant due to how binning proceeds now
     approxWeighting = Field[bool](
         doc="Use inverse-variance weighting when approximating the background offset model? This will fail "
         "when the background offset is constant (usually only the case in testing with artificial images)."
@@ -228,9 +219,9 @@ class MatchBackgroundsTask(PipelineTask):
 
     def __init__(self, *args, **kwargs):
         super().__init__(**kwargs)
+        # Fits on binned images only; masking controlled in background.py
         self.statsFlag = stringToStatisticsProperty(self.config.gridStatistic)
         self.statsCtrl = StatisticsControl()
-        self.statsCtrl.setAndMask(Mask.getPlaneBitMask(self.config.badMaskPlanes))
         self.statsCtrl.setNanSafe(True)
         self.statsCtrl.setNumSigmaClip(self.config.numSigmaClip)
         self.statsCtrl.setNumIter(self.config.numIter)
@@ -243,7 +234,7 @@ class MatchBackgroundsTask(PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     @timeMethod
-    def run(self, warps):
+    def run(self, warps, skyMap):
         """Match the backgrounds of a list of warped exposures to the same
         patches in a reference visit.
 
@@ -253,52 +244,61 @@ class MatchBackgroundsTask(PipelineTask):
         ----------
         warps : `list`[`~lsst.afw.image.Exposure`]
             List of warped science exposures to be background-matched.
+        skyMap : `lsst.skyMap.SkyMap`
+           SkyMap for deriving the patch/tract dimensions
 
         Returns
         -------
         result : `~lsst.afw.math.BackgroundList`, `~lsst.afw.image.Exposure`
-            Differential background model and associated background-matched
-            image.
+            Differential background models and associated background-matched
+            images.
 
         Raises
         ------
         RuntimeError
             Raised if an exposure does not exist on disk.
         """
+        # TODO: matching currently done in fluence, not surface brightness,
+        # units.  Current solution for filling in non-overlapping regions
+        # between ref and other images is fitting a plane, but this fails as
+        # plane is typically buried beneath warping Jacobian pattern.  Unsure
+        # how to resolve this issue, but it's critical to resolve for BG-
+        # matching to be viable.
         if (numExp := len(warps)) < 1:
             raise TaskError("No exposures to match")
 
         if self.config.refWarpVisit is None:
-            # First, build FFP BG models of each visit
-            # Dictionary of background models (in nJy) accessed by visit ID
-            visitTractBgs = self._makeTractBackgrounds(warps)
-
+            # Build FFP BG models of each visit
+            visitTractBgs = self._makeTractBackgrounds(warps, skyMap)
+            # Choose a reference visit using those
             refVisId = self._defineWarps(visitTractBgs)
         else:
-            self.log.info("Using user-supplied reference visit %d",
-                          self.config.refWarpVisit)
+            self.log.info("Using user-supplied reference visit %d", self.config.refWarpVisit)
             refVisId = self.config.refWarpVisit
 
         self.log.info("Matching %d Exposures", numExp)
 
-        backgroundInfoList, matchedImageList = self.matchBackgrounds(warps, refVisId)
+        backgroundInfoList, matchedImageList = self.matchBackgrounds(warps, skyMap, refVisId)
 
-        # TODO: should we include an optional check on the differential BG
-        # models reconstructed at the warp resolution from the full tract BG?
+        # TODO: costly, but consider a post-hoc check on the match quality?
 
         return Struct(backgroundInfoList=backgroundInfoList, matchedImageList=matchedImageList)
 
     @timeMethod
-    def _makeTractBackgrounds(self, warps, refVisitId=None):
-        """Create full tract models of the backgrounds of all visits.  If a
-        reference visit ID is supplied, create full tract models of difference
-        image backgrounds of all visits.
+    def _makeTractBackgrounds(self, warps, skyMap, refVisitId=None):
+        """If no reference visit ID is supplied, create full tract models of
+        the backgrounds of all visits.
+        If a reference visit ID is supplied, create full tract models of the
+        difference image backgrounds between all visits and the reference
+        visit.
 
         Parameters
         ----------
         warps : `list`[`~lsst.daf.butler.DeferredDatasetHandle`]
             List of warped exposures (of type `~lsst.afw.image.ExposureF`).
             This is ordered by patch ID, then by visit ID
+        skyMap : `lsst.skyMap.SkyMap`
+           SkyMap for deriving the patch/tract dimensions
 
         refVisitId : `int` optional
             Chosen reference visit ID to match to, if supplied
@@ -306,8 +306,8 @@ class MatchBackgroundsTask(PipelineTask):
         Returns
         -------
         visitTractBackrounds : `dict`{`TractBackground`}
-            Models of full tract backgrounds for all visits, in nanojanskies.
-            Accessed by visit ID.
+            Models of full tract backgrounds (or difference image backgrounds)
+            for all visits, in nanojanskies.  Accessed by visit ID.
 
         Notes
         -----
@@ -322,7 +322,9 @@ class MatchBackgroundsTask(PipelineTask):
         for i in range(len(visits)):
             visitWarpDDFs = [j for j in warps if j.dataId["visit"] == visits[i]]
             # Set up empty full tract background model object
-            bgModelBase = TractBackground(self.config.tractBgModel)
+            bgModelBase = TractBackground(
+                config=self.config.tractBgModel, skymap=skyMap, tract=warps[0].dataId["tract"]
+            )
 
             bgModels = []
             for warp in visitWarpDDFs:
@@ -335,8 +337,8 @@ class MatchBackgroundsTask(PipelineTask):
                 if refVisitId is not None:
                     msg = "Doing difference imaging: reference warp visit ID: %d"
                     self.log.debug(msg, refVisitId)
-                visitWarp = warp.get()
-                self._fluxScale(visitWarp)
+                workingWarp = warp.get()
+                self._fluxScale(workingWarp)
 
                 # If a reference visit is supplied, makes model of difference
                 # image backgrounds
@@ -344,37 +346,38 @@ class MatchBackgroundsTask(PipelineTask):
                     patchId = warp.dataId["patch"]
                     refWarpDDFs = [j for j in warps if j.dataId["visit"] == refVisitId]
                     refPatches = [j.dataId["patch"] for j in refWarpDDFs]
+                    # On no overlap between working warp and reference visit,
+                    # set the image to all NaN
                     try:
                         idx = refPatches.index(patchId)
                         refWarp = refWarpDDFs[idx].get()
                     except ValueError:
-                        refWarp = visitWarp.clone()
+                        refWarp = workingWarp.clone()
                         refWarp.image += np.nan
                     self._fluxScale(refWarp)
-                    visitWarp.image.array = refWarp.image.array - visitWarp.image.array
+                    workingWarp.image.array = refWarp.image.array - workingWarp.image.array
                 bgModel = bgModelBase.clone()
-                bgModel.addWarp(visitWarp)
+                bgModel.addWarp(workingWarp)
                 bgModels.append(bgModel)
 
             # Merge warp models to make a single full tract background model
             for bgModel, warp in zip(bgModels, visitWarpDDFs):
                 msg = (
-                    "Patch %d: Merging %d unmasked pixels (%.1f%s of detector area) into tract plane BG "
-                    "model"
+                    "Patch %d: Merging %d unmasked pixels (%.1f%s of detector area) into full tract "
+                    "background model"
                 )
                 self.log.debug(
                     msg,
                     warp.dataId["patch"],
                     bgModel._numbers.getArray().sum(),
-                    100 * bgModel._numbers.getArray().sum() / visitWarp.getBBox().getArea(),
+                    100 * bgModel._numbers.getArray().sum() / workingWarp.getBBox().getArea(),
                     "%",
                 )
                 bgModelBase.merge(bgModel)
 
+            # When working with diff images, fit full tract background to
+            # extrapolate a model into where visit and ref have no overlap
             if refVisitId is not None and visits[i] != refVisitId:
-                # If using a diff image, fit that to extrapolate into regions
-                # of no overlap between visit and reference visit
-
                 # Some config and input checks if config.usePolynomial:
                 # 1) Check that order/bin size make sense
                 # 2) Change order if underconstrained
@@ -397,14 +400,11 @@ class MatchBackgroundsTask(PipelineTask):
                         elif self.config.undersampleStyle == "REDUCE_INTERP_ORDER":
                             self.log.warning("Reducing order to %d", (minNumberGridPoints - 1))
                             order = minNumberGridPoints - 1
-                        # TODO: INCREASE_NXNYSAMPLE, i.e. change bin size, is
-                        # harder to pull off now as it involves remaking the
-                        # full-tract background models from scratch.  Remove
-                        # that config option?
 
-                    # TODO: see below, but using binSize=1 results in all 0s in
-                    # the output variance image, meaning no inverse variance
-                    # weighting is possible.  Remove related config?
+                    # TODO: we fit the full tract image, which has already been
+                    # binned, so we set binSize=1 when fitting.  But this
+                    # results in an all 0s variance image, meaning can't weight
+                    # by inverse variance when doing the fit.
                     weightByInverseVariance = False
 
                 bkgd, _ = self._makeBackground(bgModelImage, binSize=1)  # Already binned
@@ -422,22 +422,21 @@ class MatchBackgroundsTask(PipelineTask):
                     raise RuntimeError(
                         "Background/Approximation failed to interp image %s: %s" % (warp.dataId, e)
                     )
-                # Calculate RMS of fit and log here, too
+                # Calculate RMS and MSE of fit and print as log
                 resids = ImageF(bgModelImage.array - bkgdImage.array)
-                rms = np.sqrt(np.nanmean(resids.array ** 2))
+                rms = np.sqrt(np.nanmean(resids.array**2))
                 mse = makeStatistics(resids, MEANSQUARE, self.statsCtrl).getValue()
 
-                # TODO: because there's no variance image, there's no mean
-                # variance parameter to measure and report here.
                 self.log.info(
                     "Visit %d; difference BG fit RMS=%.2f nJy, matched MSE=%.2f nJy",
                     visits[i],
                     rms,
                     mse,
                 )
-                # Replace statsImage w/model fit
+                # Replace binned difference image w/best-fit model; this is our
+                # offset image
                 bgModelBase._numbers /= bgModelBase._numbers
-                bgModelBase._numbers.array[np.isnan(bgModelBase._numbers.array)] = 1.
+                bgModelBase._numbers.array[np.isnan(bgModelBase._numbers.array)] = 1.0
                 bgModelBase._values = bkgdImage
 
             visitTractBackgrounds[visits[i]] = bgModelBase
@@ -445,12 +444,12 @@ class MatchBackgroundsTask(PipelineTask):
 
     @timeMethod
     def _defineWarps(self, visitTractBackgrounds):
-        """Define the reference visit and list of comparison visits.
+        """Define the reference visit.
 
-        This method calculates an appropriate reference exposure from the
-        supplied list of visit backgrounds by minimizing a cost function that
-        penalizes high background complexity (divergence from a plane), high
-        variance, and low global coverage.
+        This method calculates an appropriate reference visit from the
+        supplied full tract visit backgrounds by minimizing a cost function
+        that penalizes high background complexity (divergence from a plane),
+        high variance, and low global coverage.
 
         Parameters
         ----------
@@ -461,22 +460,22 @@ class MatchBackgroundsTask(PipelineTask):
         Returns
         -------
         refVisId : `int`
-            Index of the reference visit removed from the dictionary.
+            ID of the reference visit.
         """
-        # TODO: note that supplying a refID here is pointless, because the only
-        # thing visitTractBackgrounds is used for is to choose one.
-
-        # Extract mean/var/npoints for each warp
+        # Extract mean/var/npoints for each visit background model
         fitChi2s = []  # Background goodness of fit
         fitVars = []  # Variance
         fitNPointsGlobal = []  # Global coverage
         visits = []  # To ensure dictionary key order is correct
         for vis in visitTractBackgrounds:
             visits.append(vis)
-            # Fit a model to the FFP
+            # Fit a polynomial model to the full tract plane
             tractBg = visitTractBackgrounds[vis].getStatsImage()
             fitBg, _ = self._makeBackground(tractBg, binSize=1)
-            # Use the input image as the variance image
+            # TODO: as stated above, fitting a pre-binned image results in a
+            # null variance image.  But we want to add variance into the cost
+            # function.  How best to do that?  Below is a bad temporary
+            # solution, just assuming variance = mean
             fitBg.getStatsImage().variance = ImageF(tractBg.array)
 
             # Return an approximation to the background
@@ -538,9 +537,10 @@ class MatchBackgroundsTask(PipelineTask):
         bgCtrl: `~lsst.afw.math.BackgroundControl`
             Background control object.
         """
-        # TODO: the only thing this is used for now is to model the
-        # TractBackground statsImage(), which has no mask and is already
-        # binned.  Simplify this?
+        # TODO: leaving as-is for now, but currently this only fits the pre-
+        # binned images, meaning binSize is always 1.  But we need a solution
+        # to the 0 variance image issue, which might mean we need a variable
+        # binSize still.
         nx = warp.getWidth() // binSize
         ny = warp.getHeight() // binSize
 
@@ -568,7 +568,7 @@ class MatchBackgroundsTask(PipelineTask):
         return fluxZp
 
     @timeMethod
-    def matchBackgrounds(self, warps, refVisitId):
+    def matchBackgrounds(self, warps, skyMap, refVisitId):
         """Match science exposures' background level to that of reference
         exposure.
 
@@ -580,9 +580,10 @@ class MatchBackgroundsTask(PipelineTask):
         sources will bias the difference image background estimation.
 
         The TractBackground objects representing the difference image
-        backgrounds are then used to generate 'background' models for each warp
+        backgrounds are then used to generate 'offset' images for each warp
         comprising the full science exposure visit, which are then added to
-        each warp.
+        each warp to match the background to that of the reference visit at the
+        warp's location within the tract.
 
         Fit diagnostics are also calculated and returned.
 
@@ -591,6 +592,8 @@ class MatchBackgroundsTask(PipelineTask):
         warps : `list`[`~lsst.daf.butler.DeferredDatasetHandle`]
             List of warped exposures (of type `~lsst.afw.image.ExposureF`).
             This is ordered by patch ID, then by visit ID
+        skyMap : `lsst.skyMap.SkyMap`
+           SkyMap for deriving the patch/tract dimensions
         refVisitId : `int`
             Chosen reference visit ID to match to
 
@@ -607,9 +610,9 @@ class MatchBackgroundsTask(PipelineTask):
 
         backgroundInfoList = []
         matchedImageList = []
-        diffTractBackgrounds = self._makeTractBackgrounds(warps, refVisitId)
+        diffTractBackgrounds = self._makeTractBackgrounds(warps, skyMap, refVisitId)
 
-        # Blank ref warp background as reference backgrounds
+        # Reference visit doesn't need an offset image, so use all 0's
         im = warps[0].get()  # Use arbitrary image as base
         bkgd = diffTractBackgrounds[refVisitId].toWarpBackground(im)
         blank = bkgd.getImage()
@@ -618,7 +621,7 @@ class MatchBackgroundsTask(PipelineTask):
         for warp in warps:
             visId = warp.dataId["visit"]
             if visId == refVisitId:
-                backgroundInfoList.append(bkgd)
+                backgroundInfoList.append(bkgd)  # Just append a 0 image
                 matchedImageList.append(warp.get())
                 continue
             self.log.info(
@@ -642,158 +645,3 @@ class MatchBackgroundsTask(PipelineTask):
             matchedImageList.append(im)
 
         return backgroundInfoList, matchedImageList
-
-    @timeMethod
-    def matchBackgroundsWarps(self, refExposure, sciExposure):
-        """
-        DEPRECATED, CURRENTLY ONLY HERE AS A QUICK REFERENCE
-
-        Match science exposure's background level to that of reference
-        exposure.
-
-        Process creates a difference image of the reference exposure minus the
-        science exposure, and then generates an afw.math.Background object. It
-        assumes (but does not require/check) that the mask plane already has
-        detections set. If detections have not been set/masked, sources will
-        bias the background estimation.
-
-        The 'background' of the difference image is smoothed by spline
-        interpolation (by the Background class) or by polynomial interpolation
-        by the Approximate class. This model of difference image is added to
-        the science exposure in memory.
-
-        Fit diagnostics are also calculated and returned.
-
-        Parameters
-        ----------
-        refExposure : `lsst.afw.image.Exposure`
-            Reference exposure.
-        sciExposure : `lsst.afw.image.Exposure`
-            Science exposure; ultimately modified by changing the background
-            level to match that of the reference exposure.
-
-        Returns
-        -------
-        model : `~lsst.afw.math.BackgroundMI`
-            Background model of difference image, reference - science
-        """
-        if self.config.usePolynomial:
-            x, y = sciExposure.getDimensions()
-            shortSideLength = min(x, y)
-            if shortSideLength < self.config.binSize:
-                raise ValueError(
-                    "%d = config.binSize > shorter dimension = %d" % (self.config.binSize, shortSideLength)
-                )
-            npoints = shortSideLength // self.config.binSize
-            if shortSideLength % self.config.binSize != 0:
-                npoints += 1
-
-            # If order of polynomial to be fit > number of bins to fit, error
-            if self.config.order > npoints - 1:
-                raise ValueError("%d = config.order > npoints - 1 = %d" % (self.config.order, npoints - 1))
-
-        if sciExposure.getDimensions() != refExposure.getDimensions():
-            wSci, hSci = sciExposure.getDimensions()
-            wRef, hRef = refExposure.getDimensions()
-            raise RuntimeError(
-                "Exposures are different dimensions. sci:(%i, %i) vs. ref:(%i, %i)" % (wSci, hSci, wRef, hRef)
-            )
-
-        im = refExposure.getMaskedImage()
-        diffMI = im.clone()
-        diffMI -= sciExposure.getMaskedImage()
-
-        bkgd, bctrl = self._makeBackground(diffMI, binSize=self.config.binSize)
-
-        # Some config and input checks if config.usePolynomial:
-        # 1) Check that order/bin size make sense:
-        # 2) Change binsize or order if underconstrained.
-        if self.config.usePolynomial:
-            order = self.config.order
-            bgX, bgY, bgZ, bgdZ = self._gridImage(diffMI, self.config.binSize, self.statsFlag)
-            minNumberGridPoints = min(len(set(bgX)), len(set(bgY)))
-            if len(bgZ) == 0:
-                raise ValueError("No overlap with reference. Nothing to match")
-            elif minNumberGridPoints <= self.config.order:
-                # must lower order or raise number of bins, or throw exception
-                if self.config.undersampleStyle == "THROW_EXCEPTION":
-                    raise ValueError("Image does not cover enough of ref image for order and binsize")
-                elif self.config.undersampleStyle == "REDUCE_INTERP_ORDER":
-                    self.log.warning("Reducing order to %d", (minNumberGridPoints - 1))
-                    order = minNumberGridPoints - 1
-                elif self.config.undersampleStyle == "INCREASE_NXNYSAMPLE":
-                    newBinSize = (minNumberGridPoints * self.config.binSize) // (self.config.order + 1)
-                    bctrl.setNxSample(newBinSize)
-                    bctrl.setNySample(newBinSize)
-                    bkgd = makeBackground(diffMI, bctrl)  # do over
-                    self.log.warning("Decreasing binsize to %d", newBinSize)
-
-            # If there is no variance in any image pixels,
-            # do not weight bins by inverse variance
-            isUniformImageDiff = not np.any(bgdZ > self.config.gridStdevEpsilon)
-            weightByInverseVariance = False if isUniformImageDiff else self.config.approxWeighting
-
-        # Add offset to sciExposure
-        try:
-            if self.config.usePolynomial:
-                actrl = ApproximateControl(
-                    ApproximateControl.CHEBYSHEV, order, order, weightByInverseVariance
-                )
-                undersampleStyle = stringToUndersampleStyle(self.config.undersampleStyle)
-                approx = bkgd.getApproximate(actrl, undersampleStyle)
-                bkgdImage = approx.getImage()
-            else:
-                bkgdImage = bkgd.getImageF(self.config.interpStyle, self.config.undersampleStyle)
-        except Exception as e:
-            raise RuntimeError(
-                "Background/Approximation failed to interp image %s: %s" % (sciExposure.dataId, e)
-            )
-
-        instFluxToNanojansky = sciExposure.getPhotoCalib().instFluxToNanojansky(1)
-        sciMI = sciExposure.getMaskedImage()
-        sciMI += bkgdImage
-        del sciMI  # sciExposure is now a BG-matched image
-
-        # Need RMS from fit: 2895 will replace this:
-        rms = 0.0
-        bgX, bgY, bgZ, bgdZ = self._gridImage(diffMI, self.config.binSize, self.statsFlag)
-        x0, y0 = diffMI.getXY0()
-        modelValueArr = np.empty(len(bgZ))
-        for i in range(len(bgX)):
-            modelValueArr[i] = bkgdImage[int(bgX[i] - x0), int(bgY[i] - y0), LOCAL]
-        resids = bgZ - modelValueArr
-        rms = np.sqrt(np.mean(resids[~np.isnan(resids)] ** 2))
-
-        meanVar = makeStatistics(diffMI.getVariance(), diffMI.getMask(), MEANCLIP, self.statsCtrl).getValue()
-
-        diffIm = diffMI.getImage()
-        diffIm -= bkgdImage  # diffMI should now have a mean ~ 0
-        del diffIm
-        mse = makeStatistics(diffMI, MEANSQUARE, self.statsCtrl).getValue()
-
-        outBkgd = approx if self.config.usePolynomial else bkgd
-        # Convert this back into counts
-        statsIm = outBkgd.getStatsImage()
-        statsIm /= instFluxToNanojansky
-        bkgdIm = outBkgd.getImageF()
-        bkgdIm /= instFluxToNanojansky
-
-        self.log.info(
-            "Visit %d; difference BG fit RMS=%.1f cts, matched MSE=%.1f cts, mean variance=%.1f cts",
-            sciExposure.getInfo().getVisitInfo().id,
-            rms,
-            mse,
-            meanVar,
-        )
-
-        return BackgroundList(
-            (
-                outBkgd,
-                stringToInterpStyle(self.config.interpStyle),
-                stringToUndersampleStyle(self.config.undersampleStyle),
-                ApproximateControl.UNKNOWN,
-                0,
-                0,
-                False,
-            )
-        )
