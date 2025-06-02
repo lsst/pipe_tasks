@@ -115,6 +115,15 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
         storageClass="ExposureF",
         dimensions=("tract", "patch", "band", "skymap")
     )
+    outputBackgroundVariance = cT.Output(
+        doc=(
+            "A smoothed version of the variance plane that tries to ignore contributions from objects, "
+            "by fitting a background-subtraction model to the variance plane."
+        ),
+        name="{outputCoaddName}_background_variance",
+        storageClass="Background",
+        dimensions=("tract", "patch", "band", "skymap"),
+    )
 
     def __init__(self, *, config=None):
         if not self.config.forceExactBinning:
@@ -123,6 +132,8 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
             del self.outputExposure
             del self.outputSources
             del self.detectionSchema
+        if not self.config.writeBackgroundVariance:
+            del self.outputBackgroundVariance
 
 
 class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoaddSourcesConnections):
@@ -156,6 +167,11 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
             "there are no pixels to compute a background from.  This can be useful if a later task combines "
             "backgrounds from multiple patches as input."
         )
+    )
+    writeBackgroundVariance = Field(
+        dtype=bool,
+        default=False,
+        doc="If true, save an estimate of the variance due to the background as a background model.",
     )
 
     def setDefaults(self):
@@ -236,7 +252,10 @@ class DetectCoaddSourcesTask(PipelineTask):
             )
         except TooManyMaskedPixelsError as e:
             if self.config.writeEmptyBackgrounds:
-                butlerQC.put(self._makeEmptyBackground(exposure, patchInfo), outputRefs.outputBackgrounds)
+                empty = self._makeEmptyBackground(exposure, patchInfo)
+                butlerQC.put(empty, outputRefs.outputBackgrounds)
+                if self.config.writeBackgroundVariance:
+                    butlerQC.put(empty, outputRefs.outputBackgroundVariance)
             error = AnnotatedPartialOutputsError.annotate(
                 e,
                 self,
@@ -286,10 +305,16 @@ class DetectCoaddSourcesTask(PipelineTask):
         table = afwTable.SourceTable.make(self.schema, idFactory)
         detections = self.detection.run(table, exposure, expId=expId)
         sources = detections.sources
+        backgroundVariance = None
         if hasattr(detections, "background") and detections.background:
             for bg in detections.background:
                 backgrounds.append(bg)
-        return Struct(outputSources=sources, outputBackgrounds=backgrounds, outputExposure=exposure)
+            if self.config.writeBackgroundVariance:
+                variance = exposure.clone()
+                variance.image.array[:, :] = variance.variance.array[:, :]
+                backgroundVariance = self.detection.background.run(variance).background
+        return Struct(outputSources=sources, outputBackgrounds=backgrounds, outputExposure=exposure,
+                      backgroundVariance=backgroundVariance)
 
     def _cropExposure(self, exposure, patchInfo):
         """Crop a coadd `~lsst.afw.image.Exposure` instance to ensure exact
