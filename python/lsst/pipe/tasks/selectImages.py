@@ -34,6 +34,38 @@ from lsst.daf.base import DateTime
 from lsst.utils.timer import timeMethod
 
 
+def _meetsVisitSummaryMinValues(visit, visitSummary, visitSummaryMinValues, logger=None):
+    """Check if the visitSummary meets minimum values in visitSummaryMinValues.
+
+    Parameters
+    ----------
+    visit : `int`
+        Visit number.
+    visitSummary : `lsst.afw.table.ExposureCatalog`
+        Exposure catalog with per-detector summary information.
+    visitSummaryMinValues : `dict`
+        Dictionary with column names as keys and minimum allowed values as values.
+    logger : `lsst.log.Logger`
+        Logger to log debug and warning messages.
+
+    Returns
+    -------
+    result : `bool`
+        True if all columns in visitSummary meet the minimum values specified
+        in visitSummaryMinValues, False otherwise.
+    """
+    for columnName, minThreshold in visitSummaryMinValues.items():
+        # Get values for this column across all detectors with a valid WCS
+        values = np.asarray([vs[columnName] for vs in visitSummary if vs.getWcs()])
+        meanValue = np.nanmean(values)
+        if meanValue < minThreshold:
+            if logger is not None:
+                logger.info(f'Rejecting visit {visit}: mean {columnName} ({meanValue:.3f}) '
+                            f'is below the minimum threshold ({minThreshold:.3f}).')
+            return False
+    return True
+
+
 class DatabaseSelectImagesConfig(pexConfig.Config):
     """Base configuration for subclasses of BaseSelectImagesTask that use a
     database.
@@ -536,6 +568,14 @@ class BestSeeingSelectVisitsConfig(pipeBase.PipelineTaskConfig,
         default=None,
         optional=True
     )
+    visitSummaryMinValues = pexConfig.DictField(
+        keytype=str,
+        itemtype=float,
+        doc=("Optional thresholds for visit selection. Keys are visit_summary column names"
+             "(e.g. 'effTimeZeroPointScale'), and values are minimum allowed values."),
+        default=None,
+        optional=True
+    )
 
 
 class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
@@ -609,6 +649,10 @@ class BestSeeingSelectVisitsTask(pipeBase.PipelineTask):
                 self.log.debug('MJD %f later than %.2f;  rejecting', mjd, self.config.maxMJD)
                 continue
             if self.config.doConfirmOverlap and not self.doesIntersectPolygon(visitSummary, patchPolygon):
+                continue
+            if (self.config.visitSummaryMinValues
+                and not _meetsVisitSummaryMinValues(visit, visitSummary, self.config.visitSummaryMinValues,
+                                                    self.log)):
                 continue
 
             fwhmSizes.append(fwhm)
@@ -733,6 +777,14 @@ class BestSeeingQuantileSelectVisitsConfig(pipeBase.PipelineTaskConfig,
         default=None,
         optional=True
     )
+    visitSummaryMinValues = pexConfig.DictField(
+        keytype=str,
+        itemtype=float,
+        doc=("Optional thresholds for visit selection. Keys are visit_summary column names"
+             "(e.g. 'effTimeZeroPointScale'), and values are minimum allowed values."),
+        default=None,
+        optional=True
+    )
 
 
 class BestSeeingQuantileSelectVisitsTask(BestSeeingSelectVisitsTask):
@@ -768,6 +820,10 @@ class BestSeeingQuantileSelectVisitsTask(BestSeeingSelectVisitsTask):
                 aboveMin = mjd > self.config.minMJD if self.config.minMJD else True
                 belowMax = mjd < self.config.maxMJD if self.config.maxMJD else True
                 intersects[i] = intersects[i] and aboveMin and belowMax
+            if (self.config.visitSummaryMinValues
+                and not _meetsVisitSummaryMinValues(visits[i], visitSummary,
+                                                    self.config.visitSummaryMinValues, self.log)):
+                intersects[i] = False
 
         sortedVisits = [v for rad, v in sorted(zip(radius[intersects], visits[intersects]))]
         lowerBound = min(int(np.round(self.config.qMin*len(visits[intersects]))),
