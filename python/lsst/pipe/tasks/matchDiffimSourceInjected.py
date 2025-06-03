@@ -31,10 +31,9 @@ from scipy.spatial import cKDTree
 from lsst.afw import table as afwTable
 from lsst import geom as lsstGeom
 import lsst.pex.config as pexConfig
-from lsst.pipe.base import PipelineTask, PipelineTaskConnections, Struct
+from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
 import lsst.pipe.base.connectionTypes as connTypes
 from lsst.meas.base import ForcedMeasurementTask, ForcedMeasurementConfig
-from lsst.source.injection import VisitInjectConfig
 
 
 class MatchInjectedToDiaSourceConnections(
@@ -73,7 +72,7 @@ class MatchInjectedToDiaSourceConnections(
 
 
 class MatchInjectedToDiaSourceConfig(
-        VisitInjectConfig,
+        PipelineTaskConfig,
         pipelineConnections=MatchInjectedToDiaSourceConnections):
     """Config for MatchFakesTask.
     """
@@ -123,8 +122,6 @@ class MatchInjectedToDiaSourceTask(PipelineTask):
             Difference image where ``diaSources`` were detected.
         diaSources : `afw.table.SourceCatalog`
             Catalog of difference image sources detected in ``diffIm``.
-        assocDiaSources : `pandas.DataFrame`
-            Catalog of associated difference image sources detected in ``diffIm``.
         Returns
         -------
         result : `lsst.pipe.base.Struct`
@@ -388,7 +385,7 @@ class MatchInjectedToAssocDiaSourceConnections(
 
 
 class MatchInjectedToAssocDiaSourceConfig(
-        VisitInjectConfig,
+        PipelineTaskConfig,
         pipelineConnections=MatchInjectedToAssocDiaSourceConnections):
     """Config for MatchFakesTask.
     """
