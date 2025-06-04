@@ -23,6 +23,9 @@ __all__ = ["DetectCoaddSourcesConfig", "DetectCoaddSourcesTask",
            "MeasureMergedCoaddSourcesConfig", "MeasureMergedCoaddSourcesTask",
            ]
 
+import numpy as np
+
+from lsst.geom import Extent2I
 from lsst.pipe.base import (
     AnnotatedPartialOutputsError,
     Struct,
@@ -88,6 +91,12 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
         storageClass="ExposureF",
         dimensions=("tract", "patch", "band", "skymap")
     )
+    skyMap = cT.Input(
+        doc="Description of the skymap's tracts and patches.",
+        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
+        storageClass="SkyMap",
+        dimensions=("skymap",),
+    )
     outputBackgrounds = cT.Output(
         doc="Output Backgrounds used in detection",
         name="{outputCoaddName}Coadd_calexp_background",
@@ -107,6 +116,14 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
         dimensions=("tract", "patch", "band", "skymap")
     )
 
+    def __init__(self, *, config=None):
+        if not self.config.forceExactBinning:
+            del self.skyMap
+        if self.config.writeOnlyBackgrounds:
+            del self.outputExposure
+            del self.outputSources
+            del self.detectionSchema
+
 
 class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoaddSourcesConnections):
     """Configuration parameters for the DetectCoaddSourcesTask
@@ -122,6 +139,24 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
         doc="Should be set to True if fake sources have been inserted into the input data.",
     )
     idGenerator = SkyMapIdGeneratorConfig.make_field()
+    forceExactBinning = Field(
+        dtype=bool,
+        default=False,
+        doc=(
+            "Check that the background bin size evenly divides the patch inner region, and "
+            "crop the outer region to an integer number of bins."
+        )
+    )
+    writeOnlyBackgrounds = Field(dtype=bool, default=False, doc="If true, only save the background models.")
+    writeEmptyBackgrounds = Field(
+        dtype=bool,
+        default=False,
+        doc=(
+            "If true, save a placeholder background with NaNs in all bins (but the right geometry) when "
+            "there are no pixels to compute a background from.  This can be useful if a later task combines "
+            "backgrounds from multiple patches as input."
+        )
+    )
 
     def setDefaults(self):
         super().setDefaults()
@@ -186,15 +221,23 @@ class DetectCoaddSourcesTask(PipelineTask):
         inputs = butlerQC.get(inputRefs)
         idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
         exposure = inputs.pop("exposure")
+        skyMap = inputs.pop("skyMap", None)
+        if skyMap is not None:
+            patchInfo = skyMap[butlerQC.quantum.dataId["tract"]][butlerQC.quantum.dataId["patch"]]
+        else:
+            patchInfo = None
         assert not inputs, "runQuantum got more inputs than expected."
         try:
             outputs = self.run(
                 exposure=exposure,
                 idFactory=idGenerator.make_table_id_factory(),
                 expId=idGenerator.catalog_id,
+                patchInfo=patchInfo,
             )
         except TooManyMaskedPixelsError as e:
-            error = AnnotatedPartialOutputsError(
+            if self.config.writeEmptyBackgrounds:
+                butlerQC.put(self._makeEmptyBackground(exposure, patchInfo), outputRefs.outputBackgrounds)
+            error = AnnotatedPartialOutputsError.annotate(
                 e,
                 self,
                 exposure,
@@ -204,7 +247,7 @@ class DetectCoaddSourcesTask(PipelineTask):
 
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, exposure, idFactory, expId):
+    def run(self, exposure, idFactory, expId, patchInfo=None):
         """Run detection on an exposure.
 
         First scale the variance plane to match the observed variance
@@ -220,6 +263,9 @@ class DetectCoaddSourcesTask(PipelineTask):
             IdFactory to set source identifiers.
         expId : `int`
             Exposure identifier (integer) for RNG seed.
+        patchInfo : `lsst.skymap.PatchInfo`, optional
+            Description of the patch geometry.  Only needed if
+            `~DetectCoaddSourceConfig.forceExactBinning` is `True`.
 
         Returns
         -------
@@ -231,6 +277,8 @@ class DetectCoaddSourcesTask(PipelineTask):
             ``backgrounds``
                 List of backgrounds (`list`).
         """
+        if self.config.forceExactBinning:
+            exposure = self._cropToExactBinning(exposure, patchInfo)
         if self.config.doScaleVariance:
             varScale = self.scaleVariance.run(exposure.maskedImage)
             exposure.getMetadata().add("VARIANCE_SCALE", varScale)
@@ -242,6 +290,92 @@ class DetectCoaddSourcesTask(PipelineTask):
             for bg in detections.background:
                 backgrounds.append(bg)
         return Struct(outputSources=sources, outputBackgrounds=backgrounds, outputExposure=exposure)
+
+    def _cropToExactBinning(self, exposure, patchInfo):
+        """Crop a coadd `~lsst.afw.image.Exposure` instance to ensure exact
+        background binning.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
+            Exposure to crop, assumed to cover the patch outer bounding box.
+        patchInfo : `lsst.skymap.PatchInfo`
+            Description of the patch geometry.
+
+        Returns
+        -------
+        cropped : `lsst.afw.image.Exposure`
+            View of ``exposure`` with background bins that evenly divide both
+            the full cropped image and the patch inner region.  The bounding
+            box is guaranteed to contain the patch inner bounding box and be
+            contained by the patch outer bounding box.
+
+        Raises
+        ------
+        ValueError
+            Raised if the patch inner region width or height is not a multiple
+            of the background bin size.
+        """
+        bbox = patchInfo.getInnerBBox()
+        if bbox.width % self.detection.background.binSizeX:
+            raise ValueError(
+                f"Patch inner width {bbox.width} does not evenly "
+                f"divide bin width {self.detection.background.binSizeX}."
+            )
+        if bbox.height % self.detection.background.binSizeY:
+            raise ValueError(
+                f"Patch inner height {bbox.height} does not evenly "
+                f"divide bin height {self.detection.background.binSizeY}."
+            )
+        outer_bbox = patchInfo.getOuterBBox()
+        n_bins_grow_x = (bbox.x.begin - outer_bbox.x.begin) // self.detection.background.binSizeX
+        n_bins_grow_y = (bbox.y.begin - outer_bbox.y.begin) // self.detection.background.binSizeY
+        bbox.grow(
+            Extent2I(
+                n_bins_grow_x*self.detection.background.binSizeX,
+                n_bins_grow_y*self.detection.background.binSizeY,
+            )
+        )
+        assert outer_bbox.contains(bbox)
+        assert bbox.contains(patchInfo.getInnerBBox())
+        assert bbox.width % self.detection.background.binSizeX == 0
+        assert bbox.height % self.detection.background.binSizeY == 0
+        return exposure[bbox]
+
+    def _makeEmptyBackground(self, exposure, patchInfo=None):
+        """Construct an empty `lsst.afw.math.BackgroundList` with NaN values.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
+            Exposure that the background should correspond to.
+        patchInfo : `lsst.skymap.PatchInfo`, optional
+            Description of the patch geometry.  Only needed if
+            `~DetectCoaddSourceConfig.forceExactBinning` is `True`.
+
+        Returns
+        -------
+        background : `lsst.afw.math.BackgroundList`
+            A background object with a single layer and the same bin geometry
+            that a background for that exposure would have had if it had enough
+            usable pixels.  This object cannot actually be used for background
+            subtraction.
+        """
+        # BackgroundList objects are a huge pain to construct without actually
+        # measuring the background, so that's what we do - on an image with
+        # 0s everywhere and no masks.  And then we replace the background
+        # "stats image" with NaNs and NO_DATA.
+        if self.config.forceExactBinning:
+            exposure = self._cropToExactBinning(exposure, patchInfo).clone()
+        exposure.image.array[:, :] = 0.0
+        exposure.mask[:, :] = 0
+        background = self.detection.background.run(exposure).background
+        for bg, *_ in background:
+            stats = bg.getStatsImage()
+            stats.image.array[:, :] = np.nan
+            stats.mask.array[:, :] = stats.mask.getPlaneBitMask("NO_DATA")
+            stats.variance.array[:, :] = 0.0
+        return background
 
 
 class MeasureMergedCoaddSourcesConnections(
