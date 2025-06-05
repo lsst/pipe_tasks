@@ -169,6 +169,7 @@ flags:
    - deblend_hasStrayFlux
    - deblend_masked
    - deblend_nChild
+   - deblend_depth
    - deblend_parentTooBig
    - deblend_patchedTemplate
    - deblend_rampedTemplate
@@ -189,4 +190,3 @@ flag_rename_rules:
     - ['ext_shapeHSM_Hsm', 'hsm']
     - ['base_', '']
     - ['slot_', '']
-
