@@ -24,17 +24,21 @@ __all__ = [
     "SingleBandMeasurementDriverTask",
     "MultiBandMeasurementDriverConfig",
     "MultiBandMeasurementDriverTask",
+    "ForcedMeasurementDriverConfig",
+    "ForcedMeasurementDriverTask",
 ]
 
 import copy
 import logging
 from abc import ABCMeta, abstractmethod
 
+import astropy
 import lsst.afw.detection as afwDetection
 import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
+import lsst.geom
 import lsst.meas.algorithms as measAlgorithms
 import lsst.meas.base as measBase
 import lsst.meas.deblender as measDeblender
@@ -172,7 +176,7 @@ class MeasurementDriverBaseTask(pipeBase.Task, metaclass=ABCMeta):
         self.scaleVariance: measAlgorithms.ScaleVarianceTask
         self.detection: measAlgorithms.SourceDetectionTask
         self.deblend: measDeblender.SourceDeblendTask | scarlet.ScarletDeblendTask
-        self.measurement: measBase.SingleFrameMeasurementTask
+        self.measurement: measBase.SingleFrameMeasurementTask | measBase.ForcedMeasurementTask
         self.applyApCorr: measBase.ApplyApCorrTask
         self.catalogCalculation: measBase.CatalogCalculationTask
 
@@ -270,6 +274,12 @@ class MeasurementDriverBaseTask(pipeBase.Task, metaclass=ABCMeta):
             # Schema to be used for constructing the subtasks.
             self.schema = self.mapper.getOutputSchema()
 
+        if isinstance(self, ForcedMeasurementDriverTask):
+            # A trick also used in https://github.com/lsst/ap_pipe/blob/
+            # a221d4e43e2abac44b1cbed0533b9e220c5a67f4/python/lsst/ap/pipe/
+            # matchSourceInjected.py#L161
+            self.schema.addField("deblend_nChild", "I", "Needed for minimal forced photometry schema")
+
     def _addCoordErrorFieldsIfMissing(self, schema: afwTable.Schema):
         """Add coordinate error fields to the schema in-place if they are not
         already present.
@@ -298,14 +308,18 @@ class MeasurementDriverBaseTask(pipeBase.Task, metaclass=ABCMeta):
         if self.config.doScaleVariance:
             self.makeSubtask("scaleVariance")
 
-        if self.config.doDetect:
-            self.makeSubtask("detection", schema=self.schema)
+        if isinstance(self, ForcedMeasurementDriverTask):
+            if self.config.doMeasure:  # Always True for forced measurement.
+                self.makeSubtask("measurement", refSchema=self.schema)
+        else:
+            if self.config.doDetect:
+                self.makeSubtask("detection", schema=self.schema)
 
-        if self.config.doDeblend:
-            self.makeSubtask("deblend", schema=self.schema, peakSchema=self.peakSchema)
+            if self.config.doDeblend:
+                self.makeSubtask("deblend", schema=self.schema, peakSchema=self.peakSchema)
 
-        if self.config.doMeasure:
-            self.makeSubtask("measurement", schema=self.schema)
+            if self.config.doMeasure:
+                self.makeSubtask("measurement", schema=self.schema)
 
         if self.config.doApCorr:
             self.makeSubtask("applyApCorr", schema=self.schema)
@@ -464,6 +478,7 @@ class MeasurementDriverBaseTask(pipeBase.Task, metaclass=ABCMeta):
         exposure: afwImage.Exposure,
         catalog: afwTable.SourceCatalog,
         idGenerator: measBase.IdGenerator,
+        refCat: afwTable.SourceCatalog | None = None,
     ):
         """Run the measurement subtask to compute properties of sources.
 
@@ -475,8 +490,26 @@ class MeasurementDriverBaseTask(pipeBase.Task, metaclass=ABCMeta):
             Catalog containing sources on which to run the measurement subtask.
         idGenerator :
             Generator for unique source IDs.
+        refCat :
+            Reference catalog to be used for forced measurements, if any.
+            If not provided, the measurement will be run on the sources in the
+            catalog in a standard manner without reference.
         """
-        self.measurement.run(measCat=catalog, exposure=exposure, exposureId=idGenerator.catalog_id)
+        if refCat:
+            # Note that refCat does not have a WCS, so we need to
+            # extract the WCS from the exposure.
+            refWcs = exposure.getWcs()
+            # Run forced measurement since a reference catalog is provided.
+            self.measurement.run(
+                measCat=catalog,
+                exposure=exposure,
+                refCat=refCat,
+                refWcs=refWcs,
+                exposureId=idGenerator.catalog_id,
+            )
+        else:
+            # Run standard measurement if no reference catalog is provided.
+            self.measurement.run(measCat=catalog, exposure=exposure, exposureId=idGenerator.catalog_id)
 
     def _applyApCorr(
         self, exposure: afwImage.Exposure, catalog: afwTable.SourceCatalog, idGenerator: measBase.IdGenerator
@@ -518,6 +551,7 @@ class MeasurementDriverBaseTask(pipeBase.Task, metaclass=ABCMeta):
         catalog: afwTable.SourceCatalog,
         idGenerator: measBase.IdGenerator,
         band: str = "a single",
+        refCat: afwTable.SourceCatalog | None = None,
     ) -> afwTable.SourceCatalog:
         """Process a catalog through measurement, aperture correction, and
         catalog calculation subtasks.
@@ -532,6 +566,15 @@ class MeasurementDriverBaseTask(pipeBase.Task, metaclass=ABCMeta):
             Generator for unique source IDs.
         band :
             Band associated with the exposure and catalog. Used for logging.
+        refCat :
+            Reference catalog for forced measurements. If not provided, the
+            measurement will be run on the sources in the catalog in a standard
+            manner without reference.
+
+        Returns
+        -------
+        catalog :
+            Catalog after processing through the configured subtasks.
         """
         # Set the PSF cache capacity to cache repeated PSF evaluations at the
         # same point coming from different measurement plugins.
@@ -549,8 +592,11 @@ class MeasurementDriverBaseTask(pipeBase.Task, metaclass=ABCMeta):
 
         # Measure properties of sources in the catalog.
         if self.config.doMeasure:
-            self.log.info(f"Measuring {len(catalog)} sources in {band} band")
-            self._measureSources(exposure, catalog, idGenerator)
+            self.log.info(
+                f"Measuring {len(catalog)} sources in {band} band "
+                f"using '{self.measurement.__class__.__name__}'"
+            )
+            self._measureSources(exposure, catalog, idGenerator, refCat=refCat)
 
         # Ensure contiguity again.
         catalog = self._toContiguous(catalog)
@@ -638,6 +684,7 @@ class SingleBandMeasurementDriverTask(MeasurementDriverBaseTask):
         super().__init__(*args, **kwargs)
 
         self.deblend: measDeblender.SourceDeblendTask
+        self.measurement: measBase.SingleFrameMeasurementTask
 
     def run(
         self,
@@ -660,7 +707,7 @@ class SingleBandMeasurementDriverTask(MeasurementDriverBaseTask):
 
         Returns
         -------
-        result : `lsst.pipe.base.Struct`
+        result :
             Results as a struct with attributes:
 
             ``catalog``
@@ -744,7 +791,7 @@ class SingleBandMeasurementDriverTask(MeasurementDriverBaseTask):
 
         Returns
         -------
-        result : `lsst.pipe.base.Struct`
+        result :
             Results as a struct with attributes:
 
             ``catalog``
@@ -797,6 +844,12 @@ class SingleBandMeasurementDriverTask(MeasurementDriverBaseTask):
             Exposure on which to run the deblending algorithm.
         catalog :
             Catalog containing sources to be deblended.
+
+        Returns
+        -------
+        catalog :
+            Catalog after deblending, with sources separated into their
+            individual components if they were deblended.
         """
         self.log.info(f"Deblending using '{self._Deblender}' on {len(catalog)} detection footprints")
         self.deblend.run(exposure=exposure, sources=catalog)
@@ -944,7 +997,7 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
 
         Returns
         -------
-        result : `lsst.pipe.base.Struct`
+        result :
             Results as a struct with attributes:
 
             ``catalogs``
@@ -1204,3 +1257,295 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
             mExposure[band].setWcs(exposure.getWcs())
 
         return mExposure
+
+
+class ForcedMeasurementDriverConfig(SingleBandMeasurementDriverConfig):
+    """Configuration for the forced measurement driver task."""
+
+    measurement = ConfigurableField(
+        target=measBase.ForcedMeasurementTask,
+        doc="Measurement task for forced measurements. This should be a "
+        "measurement task that does not perform detection.",
+    )
+
+    def setDefaults(self):
+        """Set default values for the configuration.
+
+        This method overrides the base class method to ensure that `doDetect`
+        is set to `False` by default, as this task is intended for forced
+        measurements where detection is not performed.
+        """
+        super().setDefaults()
+        self.doDetect = False
+        self.doDeblend = False
+
+    def _validate(self):
+        """Validate the configuration.
+
+        This method overrides the base class validation to ensure that
+        `doDetect` is set to `False`, as this task is intended for forced
+        measurements where detection is not performed.
+        """
+        super()._validate()
+        if self.doDetect or self.doDeblend:
+            raise ValueError(
+                "ForcedMeasurementDriverTask should not perform detection; "
+                "set doDetect=False and doDeblend=False"
+            )
+
+
+class ForcedMeasurementDriverTask(SingleBandMeasurementDriverTask):
+    """Forced measurement driver task for single-band data.
+
+    This task is the 'forced' version of the `SingleBandMeasurementDriverTask`,
+    intended as a convenience function for performing forced photometry on an
+    input image given a set of IDs and RA/Dec coordinates. It is designed as a
+    public-facing interface, allowing users to measure sources without
+    explicitly instantiating and running pipeline tasks.
+
+    Examples
+    --------
+    Here is an example of how to use this class to run forced measurements on
+    an exposure using an Astropy table containing source IDs and RA/Dec
+    coordinates:
+
+    >>> from lsst.pipe.tasks.measurementDriver import (
+    ...     ForcedMeasurementDriverConfig,
+    ...     ForcedMeasurementDriverTask,
+    ... )
+    >>> import astropy.table
+    >>> import lsst.afw.image as afwImage
+    >>> config = ForcedMeasurementDriverConfig()
+    >>> config.doScaleVariance = True
+    >>> config.measurement.plugins.names = [
+    ...     "base_PixelFlags",
+    ...     "base_TransformedCentroidFromCoord",
+    ...     "base_PsfFlux",
+    ... ]
+    >>> config.measurement.slots.psfFlux = "base_PsfFlux"
+    >>> config.measurement.slots.centroid = "base_TransformedCentroidFromCoord"
+    >>> config.measurement.slots.shape = None
+    >>> config.measurement.doReplaceWithNoise = False
+    >>> calexp = butler.get("deepCoadd_calexp", dataId=...)
+    >>> objtable = butler.get(
+    ...     "objectTable", dataId=..., storageClass="ArrowAstropy"
+    ... )
+    >>> table = objtable[:5].copy()["objectId", "coord_ra", "coord_dec"]
+    >>> driver = ForcedMeasurementDriverTask(config=config)
+    >>> results = driver.runFromAstropy(
+    ...     table,
+    ...     calexp,
+    ...     id_column_name="objectId",
+    ...     ra_column_name="coord_ra",
+    ...     dec_column_name="coord_dec",
+    ...     psf_footprint_scaling=3.0,
+    ... )
+    >>> results.writeFits("forced_meas_catalog.fits")
+    """
+
+    ConfigClass = ForcedMeasurementDriverConfig
+    _DefaultName = "forcedMeasurementDriver"
+
+    def __init__(self, *args, **kwargs):
+        """Initialize the forced measurement driver task."""
+        super().__init__(*args, **kwargs)
+
+        self.measurement: measBase.ForcedMeasurementTask  # To be created!
+
+    def runFromAstropy(
+        self,
+        table: astropy.table.Table,
+        exposure: afwImage.Exposure,
+        *,
+        id_column_name: str = "objectId",
+        ra_column_name: str = "coord_ra",
+        dec_column_name: str = "coord_dec",
+        psf_footprint_scaling: float = 3.0,
+        idGenerator: measBase.IdGenerator | None = None,
+    ) -> astropy.table.Table:
+        """Run forced measurements on an exposure using an Astropy table.
+
+        Parameters
+        ----------
+        table :
+            Astropy table containing source IDs and RA/Dec coordinates.
+            Must contain columns with names specified by `id_column_name`,
+            `ra_column_name`, and `dec_column_name`.
+        exposure :
+            Exposure on which to run the forced measurements.
+        id_column_name :
+            Name of the column containing source IDs in the table.
+        ra_column_name :
+            Name of the column containing RA coordinates in the table.
+        dec_column_name :
+            Name of the column containing Dec coordinates in the table.
+        psf_footprint_scaling :
+            Scaling factor to apply to the PSF second-moments ellipse in order
+            to determine the footprint boundary.
+        idGenerator :
+            Object that generates source IDs and provides random seeds.
+            If not provided, a new `IdGenerator` will be created.
+
+        Returns
+        -------
+        result :
+            Astropy table containing the measured sources with columns
+            corresponding to the source IDs, RA, Dec, from the input table, and
+            additional measurement columns defined in the configuration.
+        """
+        # Validate inputs before proceeding.
+        self._ensureValidInputs(table, exposure, id_column_name, ra_column_name, dec_column_name)
+
+        # Generate catalog IDs consistently across subtasks.
+        if idGenerator is None:
+            idGenerator = measBase.IdGenerator()
+
+        # Get the WCS from the exposure asnd use it as the reference WCS.
+        refWcs = exposure.getWcs()
+
+        # Prepare the Schema and subtasks for processing. No catalog is
+        # provided here, as we will generate it from the reference catalog.
+        self._prepareSchemaAndSubtasks(catalog=None)
+
+        # Convert the Astropy table to a minimal source catalog.
+        # This must be done *after* `_prepareSchemaAndSubtasks`, or the schema
+        # won't be set up correctly.
+        refCat = self._makeMinimalSourceCatalogFromAstropy(
+            table, columns=[id_column_name, ra_column_name, dec_column_name]
+        )
+
+        # Check whether coords are within the image.
+        bbox = exposure.getBBox()
+        for record in refCat:
+            localPoint = refWcs.skyToPixel(record.getCoord())
+            localIntPoint = lsst.geom.Point2I(localPoint)
+            assert bbox.contains(localIntPoint), (
+                f"Center for record {record.getId()} is not in exposure; this should be guaranteed by "
+                "generateMeasCat."
+            )
+
+        # Scale the variance plane.
+        if self.config.doScaleVariance:
+            self._scaleVariance(exposure)
+
+        # Generate the measurement catalog from the reference catalog.
+        # The `wcs` argument will not actually be used by the call below, but
+        # we need to pass it to satisfy the interface.
+        catalog = self.measurement.generateMeasCat(
+            exposure, refCat, refWcs, idFactory=idGenerator.make_table_id_factory()
+        )
+
+        # Forced measurement uses a provided catalog, so detection was skipped
+        # and no footprints exist. We therefore resort to approximate
+        # footprints by scaling the PSF's second-moments ellipse.
+        self.measurement.attachPsfShapeFootprints(catalog, exposure, scaling=psf_footprint_scaling)
+
+        # Process catalog through measurement, aperture correction, and catalog
+        # calculation subtasks.
+        catalog = self._processCatalog(exposure, catalog, idGenerator, refCat=refCat)
+
+        # Convert the catalog back to an Astropy table.
+        result = catalog.asAstropy()
+
+        # Clean up: 'id' may confuse users since 'objectId' is the expected
+        # identifier.
+        del result["id"]
+
+        return result
+
+    def run(self, *args, **kwargs):
+        raise NotImplementedError(
+            "The run method is not implemented for `ForcedMeasurementDriverTask`. "
+            "Use `runFromAstropy` instead."
+        )
+
+    def runFromImage(self, *args, **kwargs):
+        raise NotImplementedError(
+            "The `runFromImage` method is not implemented for `ForcedMeasurementDriverTask`. "
+            "Use `runFromAstropy` instead."
+        )
+
+    def _ensureValidInputs(
+        self,
+        table: astropy.table.Table,
+        exposure: afwImage.Exposure,
+        id_column_name: str,
+        ra_column_name: str,
+        dec_column_name: str,
+    ) -> None:
+        """Validate the inputs for the forced measurement task.
+
+        Parameters
+        ----------
+        table :
+            Astropy table containing source IDs and RA/Dec coordinates.
+        exposure :
+            Exposure on which to run the forced measurements.
+        id_column_name :
+            Name of the column containing source IDs in the table.
+        ra_column_name :
+            Name of the column containing RA coordinates in the table.
+        dec_column_name :
+            Name of the column containing Dec coordinates in the table.
+        """
+        if not isinstance(table, astropy.table.Table):
+            raise TypeError(f"Expected 'table' to be an astropy Table, got {type(table)}")
+
+        if not isinstance(exposure, afwImage.Exposure):
+            raise TypeError(f"Expected 'exposure' to be an Exposure, got {type(exposure)}")
+
+        for col in [id_column_name, ra_column_name, dec_column_name]:
+            if col not in table.colnames:
+                raise ValueError(f"Column '{col}' not found in the input table")
+
+    def _makeMinimalSourceCatalogFromAstropy(
+        self, table: astropy.table.Table, columns: list[str] = ["id", "ra", "dec"]
+    ):
+        """Convert an Astropy Table to a minimal LSST SourceCatalog.
+
+        This is intended for use with the forced measurement subtask, which
+        expects a `SourceCatalog` input with a minimal schema containing `id`,
+        `ra`, and `dec`.
+
+        Parameters
+        ----------
+        table :
+            Astropy Table containing source IDs and sky coordinates.
+        columns :
+            Names of the columns in the order [id, ra, dec], where `ra` and
+            `dec` are in degrees.
+
+        Returns
+        -------
+        outputCatalog : `lsst.afw.table.SourceCatalog`
+            A SourceCatalog with minimal schema populated from the input table.
+
+        Raises
+        ------
+        ValueError
+            If `columns` does not contain exactly 3 items.
+        KeyError
+            If any of the specified columns are missing from the input table.
+        """
+        # TODO: Open a meas_base ticket to make this function pay attention to
+        # the configs, and move this from being a Task method to a free
+        # function that takes column names as args.
+
+        if len(columns) != 3:
+            raise ValueError("`columns` must contain exactly three elements for [id, ra, dec]")
+
+        idCol, raCol, decCol = columns
+
+        for col in columns:
+            if col not in table.colnames:
+                raise KeyError(f"Missing required column: '{col}'")
+
+        outputCatalog = lsst.afw.table.SourceCatalog(self.schema)
+        outputCatalog.reserve(len(table))
+
+        for row in table:
+            outputRecord = outputCatalog.addNew()
+            outputRecord.setId(row[idCol])
+            outputRecord.setCoord(lsst.geom.SpherePoint(row[raCol], row[decCol], lsst.geom.degrees))
+
+        return outputCatalog
