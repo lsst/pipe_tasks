@@ -610,6 +610,11 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.makeSubtask("psf_repair")
         self.makeSubtask("psf_subtract_background")
         self.psf_schema = afwTable.SourceTable.makeMinimalSchema()
+        self.psf_schema.addField(
+            'psf_max_value',
+            type=np.float32,
+            doc="PSF max value.",
+        )
         afwTable.CoordKey.addErrorFields(self.psf_schema)
         self.makeSubtask("psf_detection", schema=self.psf_schema)
         self.makeSubtask("psf_source_measurement", schema=self.psf_schema)
@@ -629,14 +634,18 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                            "calib_astrometry_used",
                            # TODO DM-39203: these can be removed once apcorr is gone.
                            "apcorr_slot_CalibFlux_used", "apcorr_base_GaussianFlux_used",
-                           "apcorr_base_PsfFlux_used")
+                           "apcorr_base_PsfFlux_used",)
         for field in self.psf_fields:
             item = self.psf_schema.find(field)
             initial_stars_schema.addField(item.getField())
         id_type = self.psf_schema["id"].asField().getTypeString()
+        psf_max_value_type = self.psf_schema['psf_max_value'].asField().getTypeString()
         initial_stars_schema.addField("psf_id",
                                       type=id_type,
                                       doc="id of this source in psf_stars; 0 if there is no match.")
+        initial_stars_schema.addField("psf_max_value",
+                                      type=psf_max_value_type,
+                                      doc="Maximum value in the star image used to train PSF.")
 
         afwTable.CoordKey.addErrorFields(initial_stars_schema)
         self.makeSubtask("star_detection", schema=initial_stars_schema)
@@ -1275,6 +1284,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             result[idx_stars] = psf_stars[field][idx_psf_stars]
             stars[field] = result
         stars['psf_id'][idx_stars] = psf_stars['id'][idx_psf_stars]
+        stars['psf_max_value'][idx_stars] = psf_stars['psf_max_value'][idx_psf_stars]
 
     def _fit_astrometry(self, exposure, stars):
         """Fit an astrometric model to the data and return the reference
