@@ -31,7 +31,6 @@ from lsst.pipe.tasks.diff_matched_tract_catalog import (
 
 from astropy.table import Table
 import numpy as np
-import pytest
 
 
 def _error_format(column):
@@ -150,19 +149,6 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             catalog_match_target=self.catalog_match_target,
             wcs=self.wcs,
         )
-        # TODO: Remove pandas support in DM-46523
-        with pytest.warns(FutureWarning):
-            result_pd = task.run(
-                catalog_ref=self.catalog_ref.to_pandas(),
-                catalog_target=self.catalog_target.to_pandas(),
-                catalog_match_ref=self.catalog_match_ref.to_pandas(),
-                catalog_match_target=self.catalog_match_target.to_pandas(),
-                wcs=self.wcs,
-            )
-            self.assertListEqual(list(result.cat_matched.columns), list(result_pd.cat_matched.columns))
-            for column in result.cat_matched.columns:
-                self.assertListEqual(list(result.cat_matched[column]), list(result_pd.cat_matched[column]))
-
         columns_result = list(result.cat_matched.columns)
         columns_expect = list(columns_target) + ["match_distance", "match_distanceErr"]
         prefix = DiffMatchedTractCatalogConfig.column_matched_prefix_ref.default

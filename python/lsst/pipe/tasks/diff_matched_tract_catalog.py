@@ -35,10 +35,8 @@ from lsst.daf.butler import DatasetProvenance
 import astropy.table
 import astropy.units as u
 import numpy as np
-import pandas as pd
 from smatch.matcher import sphdist
 from typing import Sequence
-import warnings
 
 
 def is_sequence_set(x: Sequence):
@@ -300,10 +298,10 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
 
     def run(
         self,
-        catalog_ref: pd.DataFrame | astropy.table.Table,
-        catalog_target: pd.DataFrame | astropy.table.Table,
-        catalog_match_ref: pd.DataFrame | astropy.table.Table,
-        catalog_match_target: pd.DataFrame | astropy.table.Table,
+        catalog_ref: astropy.table.Table,
+        catalog_target: astropy.table.Table,
+        catalog_match_ref: astropy.table.Table,
+        catalog_match_target: astropy.table.Table,
         wcs: afwGeom.SkyWcs = None,
     ) -> pipeBase.Struct:
         """Load matched reference and target (measured) catalogs, measure summary statistics, and output
@@ -311,14 +309,14 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
 
         Parameters
         ----------
-        catalog_ref : `pandas.DataFrame` | `astropy.table.Table`
+        catalog_ref : `astropy.table.Table`
             A reference catalog to diff objects/sources from.
-        catalog_target : `pandas.DataFrame` | `astropy.table.Table`
+        catalog_target : `astropy.table.Table`
             A target catalog to diff reference objects/sources to.
-        catalog_match_ref : `pandas.DataFrame` | `astropy.table.Table`
+        catalog_match_ref : `astropy.table.Table`
             A catalog with match indices of target sources and selection flags
             for each reference source.
-        catalog_match_target : `pandas.DataFrame` | `astropy.table.Table`
+        catalog_match_target : `astropy.table.Table`
             A catalog with selection flags for each target source.
         wcs : `lsst.afw.image.SkyWcs`
             A coordinate system to convert catalog positions to sky coordinates,
@@ -333,19 +331,6 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         # Would be nice if this could refer directly to ConfigClass
         config: DiffMatchedTractCatalogConfig = self.config
 
-        is_ref_pd = isinstance(catalog_ref, pd.DataFrame)
-        is_target_pd = isinstance(catalog_target, pd.DataFrame)
-        is_match_ref_pd = isinstance(catalog_match_ref, pd.DataFrame)
-        is_match_target_pd = isinstance(catalog_match_target, pd.DataFrame)
-        if is_ref_pd:
-            catalog_ref = astropy.table.Table.from_pandas(catalog_ref)
-        if is_target_pd:
-            catalog_target = astropy.table.Table.from_pandas(catalog_target)
-        if is_match_ref_pd:
-            catalog_match_ref = astropy.table.Table.from_pandas(catalog_match_ref)
-        if is_match_target_pd:
-            catalog_match_target = astropy.table.Table.from_pandas(catalog_match_target)
-
         # Strip any provenance from tables before merging to prevent
         # warnings from conflicts being issued by astropy.utils.merge during
         # vstack or hstack calls.
@@ -353,11 +338,6 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         DatasetProvenance.strip_provenance_from_flat_dict(catalog_target.meta)
         DatasetProvenance.strip_provenance_from_flat_dict(catalog_match_ref.meta)
         DatasetProvenance.strip_provenance_from_flat_dict(catalog_match_target.meta)
-
-        # TODO: Remove pandas support in DM-46523
-        if is_ref_pd or is_target_pd or is_match_ref_pd or is_match_target_pd:
-            warnings.warn("pandas usage in MatchProbabilisticTask is deprecated; it will be removed "
-                          " in favour of astropy.table after release 28.0.0", category=FutureWarning)
 
         select_ref = catalog_match_ref['match_candidate']
         # Add additional selection criteria for target sources beyond those for matching
