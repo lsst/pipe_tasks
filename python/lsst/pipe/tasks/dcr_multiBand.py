@@ -235,8 +235,7 @@ class DcrMeasureMergedCoaddSourcesConnections(
     inputSchema = cT.InitInput(
         doc="Input schema for measure merged task produced by a deblender or detection task",
         name="deepCoadd_deblendedFlux_schema",
-        storageClass="SourceCatalog",
-        dimensions=("tract", "patch", "band", "skymap")
+        storageClass="SourceCatalog"
     )
     outputSchema = cT.InitOutput(
         doc="Output schema after all new fields are added by task",
