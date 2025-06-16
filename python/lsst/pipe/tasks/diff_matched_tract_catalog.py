@@ -149,6 +149,18 @@ class DiffMatchedTractCatalogConfig(
     pipeBase.PipelineTaskConfig,
     pipelineConnections=DiffMatchedTractCatalogConnections,
 ):
+    column_match_candidate_ref = pexConfig.Field[str](
+        default='match_candidate',
+        doc='The column name for the boolean field identifying reference objects'
+            ' that were used for matching',
+        optional=True,
+    )
+    column_match_candidate_target = pexConfig.Field[str](
+        default='match_candidate',
+        doc='The column name for the boolean field identifying target objects'
+            ' that were used for matching',
+        optional=True,
+    )
     column_matched_prefix_ref = pexConfig.Field[str](
         default='refcat_',
         doc='The prefix for matched columns copied from the reference catalog',
@@ -160,6 +172,12 @@ class DiffMatchedTractCatalogConfig(
     include_unmatched = pexConfig.Field[bool](
         default=False,
         doc='Whether to include unmatched rows in the matched table',
+    )
+    filter_on_match_candidate = pexConfig.Field[bool](
+        default=False,
+        doc='Whether to use provided column_match_candidate_[ref/target] to'
+            ' exclude rows from the output table. If False, any provided'
+            ' columns will be copied instead.'
     )
     prefix_best_coord = pexConfig.Field[str](
         default=None,
@@ -283,19 +301,21 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         inputs = butlerQC.get(inputRefs)
         skymap = inputs.pop("skymap")
 
+        columns_match_ref = ['match_row']
+        if (column := self.config.column_match_candidate_ref) is not None:
+            columns_match_ref.append(column)
+
         columns_match_target = ['match_row']
-        if 'match_candidate' in inputs['columns_match_target']:
-            columns_match_target.append('match_candidate')
+        if (column := self.config.column_match_candidate_target) is not None and (
+            column in inputs['columns_match_target']
+        ):
+            columns_match_target.append(column)
 
         outputs = self.run(
             catalog_ref=inputs['cat_ref'].get(parameters={'columns': self.config.columns_in_ref}),
             catalog_target=inputs['cat_target'].get(parameters={'columns': self.config.columns_in_target}),
-            catalog_match_ref=inputs['cat_match_ref'].get(
-                parameters={'columns': ['match_candidate', 'match_row']},
-            ),
-            catalog_match_target=inputs['cat_match_target'].get(
-                parameters={'columns': columns_match_target},
-            ),
+            catalog_match_ref=inputs['cat_match_ref'].get(parameters={'columns': columns_match_ref}),
+            catalog_match_target=inputs['cat_match_target'].get(parameters={'columns': columns_match_target}),
             wcs=skymap[butlerQC.quantum.dataId["tract"]].wcs,
         )
         butlerQC.put(outputs, outputRefs)
@@ -346,9 +366,13 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         select_ref = catalog_match_ref['match_candidate']
         # Add additional selection criteria for target sources beyond those for matching
         # (not recommended, but can be done anyway)
-        select_target = (catalog_match_target['match_candidate']
-                         if 'match_candidate' in catalog_match_target.columns
-                         else np.ones(len(catalog_match_target), dtype=bool))
+        # It would be nice to make this a Selector but those are
+        # only available in analysis_tools for now
+        select_target = (
+            catalog_match_target['match_candidate']
+            if 'match_candidate' in catalog_match_target.columns
+            else np.ones(len(catalog_match_target), dtype=bool)
+        )
         for column in config.columns_target_select_true:
             select_target &= catalog_target[column]
         for column in config.columns_target_select_false:
@@ -362,9 +386,13 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         cat_target = target.catalog
         n_target = len(cat_target)
 
-        if config.include_unmatched:
-            for cat_add, cat_match in ((cat_ref, catalog_match_ref), (cat_target, catalog_match_target)):
-                cat_add['match_candidate'] = cat_match['match_candidate']
+        if not config.filter_on_match_candidate:
+            for cat_add, cat_match, column in (
+                (cat_ref, catalog_match_ref, config.column_match_candidate_ref),
+                (cat_target, catalog_match_target, config.column_match_candidate_target),
+            ):
+                if column is not None:
+                    cat_add[column] = cat_match[column]
 
         match_row = catalog_match_ref['match_row']
         matched_ref = match_row >= 0
