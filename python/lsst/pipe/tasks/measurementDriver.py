@@ -309,8 +309,26 @@ class MeasurementDriverBaseTask(pipeBase.Task, metaclass=ABCMeta):
             self.makeSubtask("scaleVariance")
 
         if isinstance(self, ForcedMeasurementDriverTask):
-            if self.config.doMeasure:  # Always True for forced measurement.
+            # Always True for forced measurement.
+            if self.config.doMeasure:
                 self.makeSubtask("measurement", refSchema=self.schema)
+
+            # In forced measurement, where the measurement catalog is built
+            # internally, we need to initialize applyApCorr with the full
+            # schema after measurement plugins have added their fields;
+            # otherwise, it won’t see them and will silently skip applying
+            # aperture corrections.
+            # A related example can be found in this reference:
+            # https://github.com/lsst/drp_tasks/blob/
+            # b565995b995cd5f0e40196f8d3c89cafb89aa515/python/lsst/drp/tasks/
+            # forcedPhotCoadd.py#L203
+            if self.config.doApCorr:
+                self.makeSubtask("applyApCorr", schema=self.measurement.schema)
+
+            # Same reference as above uses `measurement.schema` to make the
+            # catalogCalculation subtask, so we do the same here.
+            if self.config.doRunCatalogCalculation:
+                self.makeSubtask("catalogCalculation", schema=self.measurement.schema)
         else:
             if self.config.doDetect:
                 self.makeSubtask("detection", schema=self.schema)
@@ -321,11 +339,11 @@ class MeasurementDriverBaseTask(pipeBase.Task, metaclass=ABCMeta):
             if self.config.doMeasure:
                 self.makeSubtask("measurement", schema=self.schema)
 
-        if self.config.doApCorr:
-            self.makeSubtask("applyApCorr", schema=self.schema)
+            if self.config.doApCorr:
+                self.makeSubtask("applyApCorr", schema=self.measurement.schema)
 
-        if self.config.doRunCatalogCalculation:
-            self.makeSubtask("catalogCalculation", schema=self.schema)
+            if self.config.doRunCatalogCalculation:
+                self.makeSubtask("catalogCalculation", schema=self.schema)
 
     def _prepareSchemaAndSubtasks(
         self, catalog: afwTable.SourceCatalog | None
@@ -1273,7 +1291,8 @@ class ForcedMeasurementDriverConfig(SingleBandMeasurementDriverConfig):
 
         This method overrides the base class method to ensure that `doDetect`
         is set to `False` by default, as this task is intended for forced
-        measurements where detection is not performed.
+        measurements where detection is not performed. Also, it sets some
+        default measurement plugins by default.
         """
         super().setDefaults()
         self.doDetect = False
@@ -1429,8 +1448,8 @@ class ForcedMeasurementDriverTask(SingleBandMeasurementDriverTask):
             self._scaleVariance(exposure)
 
         # Generate the measurement catalog from the reference catalog.
-        # The `wcs` argument will not actually be used by the call below, but
-        # we need to pass it to satisfy the interface.
+        # The `exposure` and `wcs` arguments will not actually be used by the
+        # call below, but we need to pass it to satisfy the interface.
         catalog = self.measurement.generateMeasCat(
             exposure, refCat, refWcs, idFactory=idGenerator.make_table_id_factory()
         )
