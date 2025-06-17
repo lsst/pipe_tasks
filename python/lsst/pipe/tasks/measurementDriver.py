@@ -1297,6 +1297,13 @@ class ForcedMeasurementDriverConfig(SingleBandMeasurementDriverConfig):
         super().setDefaults()
         self.doDetect = False
         self.doDeblend = False
+        self.doMeasure = True
+        self.measurement.plugins.names = [
+            "base_PixelFlags",
+            "base_TransformedCentroidFromCoord",
+            "base_PsfFlux",
+            "base_CircularApertureFlux",
+        ]
 
     def _validate(self):
         """Validate the configuration.
@@ -1308,8 +1315,13 @@ class ForcedMeasurementDriverConfig(SingleBandMeasurementDriverConfig):
         super()._validate()
         if self.doDetect or self.doDeblend:
             raise ValueError(
-                "ForcedMeasurementDriverTask should not perform detection; "
-                "set doDetect=False and doDeblend=False"
+                "ForcedMeasurementDriverTask should not perform detection or "
+                "deblending; set doDetect=False and doDeblend=False"
+            )
+        if not self.doMeasure:
+            raise ValueError(
+                "ForcedMeasurementDriverTask must perform measurements; "
+                "set doMeasure=True"
             )
 
 
@@ -1336,10 +1348,13 @@ class ForcedMeasurementDriverTask(SingleBandMeasurementDriverTask):
     >>> import lsst.afw.image as afwImage
     >>> config = ForcedMeasurementDriverConfig()
     >>> config.doScaleVariance = True
+    >>> config.scaleVariance.background.binSize = 32
+    >>> config.doApCorr = True
     >>> config.measurement.plugins.names = [
     ...     "base_PixelFlags",
     ...     "base_TransformedCentroidFromCoord",
     ...     "base_PsfFlux",
+    ...     "base_CircularApertureFlux",
     ... ]
     >>> config.measurement.slots.psfFlux = "base_PsfFlux"
     >>> config.measurement.slots.centroid = "base_TransformedCentroidFromCoord"
