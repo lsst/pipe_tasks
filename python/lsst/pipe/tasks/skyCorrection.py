@@ -255,10 +255,22 @@ class SkyCorrectionTask(PipelineTask):
         self.makeSubtask("maskObjects")
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        # Sort the calExps, calBkgs and skyFrames inputRefs and the
-        # skyCorr outputRef by detector ID to ensure reproducibility.
-        detectorOrder = [ref.dataId["detector"] for ref in inputRefs.calExps]
-        detectorOrder.sort()
+        # Sort input/output connections by detector ID, padding where
+        # necessary, to ensure that all detectors are processed consistently.
+        # Detector IDs are defined from the intersection of calExps, calBkgs,
+        # and optionally skyFrames and backgroundToPhotometricRatioHandles.
+        # This resolves potential missing data issues when processing a visit
+        # that contains only partial inputs.
+        calExpOrder = {ref.dataId["detector"] for ref in inputRefs.calExps}
+        calBkgOrder = {ref.dataId["detector"] for ref in inputRefs.calBkgs}
+        detectorOrder = calExpOrder & calBkgOrder
+        if self.config.doApplyFlatBackgroundRatio:
+            ratioOrder = {ref.dataId["detector"] for ref in inputRefs.backgroundToPhotometricRatioHandles}
+            detectorOrder &= ratioOrder
+        if self.config.doSky:
+            skyFrameOrder = {ref.dataId["detector"] for ref in inputRefs.skyFrames}
+            detectorOrder &= skyFrameOrder
+        detectorOrder = sorted(detectorOrder)
         inputRefs.calExps = _reorderAndPadList(
             inputRefs.calExps, [ref.dataId["detector"] for ref in inputRefs.calExps], detectorOrder
         )
