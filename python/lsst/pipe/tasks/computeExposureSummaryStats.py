@@ -522,7 +522,11 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         Parameters
         ----------
         summary : `lsst.afw.image.ExposureSummaryStats`
-            Summary object to update in-place.
+            Summary object to update in-place. This method adds/updates the
+            following fields:
+            - `skyBg`: Median sky background value across background models.
+            - `skyBgNormRange`: Normalized range (max - min / median) of the
+            combined sky background, used to quantify spatial variation.
         background : `lsst.afw.math.BackgroundList` or `None`
             Background model.  If `None`, all fields that depend on the
             background will be reset (generally to NaN).
@@ -535,11 +539,32 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         as well.
         """
         if background is not None:
-            bgStats = (bg[0].getStatsImage().getImage().array
-                       for bg in background)
-            summary.skyBg = float(sum(np.median(bg[np.isfinite(bg)]) for bg in bgStats))
+            bgStats = []
+            for bg in background:
+                statsImageF = bg[0].getStatsImage().getImage()
+                bgArray = statsImageF.array
+                bgArray[~np.isfinite(bgArray)] = np.nan
+                bgStats.append(bgArray)
+            summary.skyBg = float(sum(np.nanmedian(bg) for bg in bgStats))
+            shapes = [arr.shape for arr in bgStats]
+            if len(set(shapes)) != 1:
+                raise RuntimeError(
+                    f"BackgroundList images from background models have different shapes: {shapes}"
+                    f"bgStats: {bgStats}"
+                )
+            skyBgSumImage = np.sum(np.stack(bgStats), axis=0)
+
+            median = np.nanmedian(skyBgSumImage)
+            if median != 0 and np.isfinite(median):
+                summary.skyBgNormRange = float(
+                    (np.nanmax(skyBgSumImage) - np.nanmin(skyBgSumImage)) / median
+                )
+            else:
+                summary.skyBgNormRange = float("nan")
         else:
             summary.skyBg = float("nan")
+            summary.skyBgNormRange = float("nan")
+        breakpoint()
 
     def update_masked_image_stats(self, summary, masked_image):
         """Compute summary-statistic fields that depend on the masked image
