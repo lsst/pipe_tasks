@@ -213,7 +213,7 @@ class CoaddMultibandFitInputConnections(
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
-        assert isinstance(config, CoaddMultibandFitInputConnections)
+        assert isinstance(config, CoaddMultibandFitBaseConfig)
 
         if config.drop_psf_connection:
             del self.models_psf
