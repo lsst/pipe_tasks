@@ -139,7 +139,6 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
             del self.detectionSchema
 
 
-
 class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoaddSourcesConnections):
     """Configuration parameters for the DetectCoaddSourcesTask
     """
