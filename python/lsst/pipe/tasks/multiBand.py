@@ -86,10 +86,16 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
         storageClass="SourceCatalog",
     )
     exposure = cT.Input(
-        doc="Exposure on which detections are to be performed",
+        doc="Exposure on which detections are to be performed. ",
         name="{inputCoaddName}Coadd",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "band", "skymap")
+    )
+    exposure_cells = cT.Input(
+        doc="Exposure on which detections are to be performed. ",
+        name="{inputCoaddName}CoaddCell",
+        storageClass="MultipleCellCoadd",
+        dimensions=("tract", "patch", "band", "skymap"),
     )
     skyMap = cT.Input(
         doc="Description of the skymap's tracts and patches.",
@@ -117,6 +123,14 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
     )
 
     def __init__(self, *, config=None):
+        super().__init__(config=config)
+        assert isinstance(config, DetectCoaddSourcesConfig)
+
+        if config.useCellCoadds:
+            del self.exposure
+        else:
+            del self.exposure_cells
+
         if not self.config.forceExactBinning:
             del self.skyMap
         if self.config.writeOnlyBackgrounds:
@@ -133,6 +147,7 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
     scaleVariance = ConfigurableField(target=ScaleVarianceTask, doc="Variance rescaling")
     detection = ConfigurableField(target=DynamicDetectionTask, doc="Source detection")
     coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
+    useCellCoadds = Field(dtype=bool, default=False, doc="Whether to use cell coadds?")
     hasFakes = Field(
         dtype=bool,
         default=False,
@@ -220,12 +235,19 @@ class DetectCoaddSourcesTask(PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
-        exposure = inputs.pop("exposure")
+
+        if self.config.useCellCoadds:
+            multiple_cell_coadd = inputs.pop("exposure_cells")
+            exposure = multiple_cell_coadd.stitch().asExposure()
+        else:
+            exposure = inputs.pop("exposure")
+
         skyMap = inputs.pop("skyMap", None)
         if skyMap is not None:
             patchInfo = skyMap[butlerQC.quantum.dataId["tract"]][butlerQC.quantum.dataId["patch"]]
         else:
             patchInfo = None
+
         assert not inputs, "runQuantum got more inputs than expected."
         try:
             outputs = self.run(
@@ -412,9 +434,21 @@ class MeasureMergedCoaddSourcesConnections(
         deprecated="Reference matching in measureCoaddSources will be removed after v29.",
     )
     exposure = cT.Input(
-        doc="Input coadd image",
+        doc="Input non-cell-based coadd image",
         name="{inputCoaddName}Coadd_calexp",
         storageClass="ExposureF",
+        dimensions=("tract", "patch", "band", "skymap")
+    )
+    exposure_cells = cT.Input(
+        doc="Input cell-based coadd image",
+        name="{inputCoaddName}CoaddCell",
+        storageClass="MultipleCellCoadd",
+        dimensions=("tract", "patch", "band", "skymap"),
+    )
+    background = cT.Input(
+        doc="Background to subtract from cell-based coadd image",
+        name="{inputCoaddName}Coadd_calexp_background",
+        storageClass="Background",
         dimensions=("tract", "patch", "band", "skymap")
     )
     skyMap = cT.Input(
@@ -537,6 +571,12 @@ class MeasureMergedCoaddSourcesConnections(
         if not config.doWriteMatchesDenormalized:
             del self.denormMatches
 
+        if config.useCellCoadds:
+            del self.exposure
+        else:
+            del self.exposure_cells
+            del self.background
+
 
 class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
                                       pipelineConnections=MeasureMergedCoaddSourcesConnections):
@@ -567,6 +607,7 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
                               doc="Whether to strip footprints from the output catalog before "
                                   "saving to disk. "
                                   "This is usually done when using scarlet models to save disk space.")
+    useCellCoadds = Field(dtype=bool, default=False, doc="Whether to use cell coadds?")
     measurement = ConfigurableField(target=SingleFrameMeasurementTask, doc="Source measurement")
     setPrimaryFlags = ConfigurableField(target=SetPrimaryFlagsTask, doc="Set flags for primary tract/patch")
     doPropagateFlags = Field(
@@ -735,13 +776,25 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
                                                  log=self.log)
             self.match.setRefObjLoader(refObjLoader)
 
-        # Set psfcache
-        # move this to run after gen2 deprecation
-        exposure = inputs.pop("exposure")
-        exposure.getPsf().setCacheCapacity(self.config.psfCache)
+        if self.config.useCellCoadds:
+            multiple_cell_coadd = inputs.pop("exposure_cells")
+            stitched_coadd = multiple_cell_coadd.stitch()
+            exposure = stitched_coadd.asExposure()
+            background = inputs.pop("background")
+            exposure.image -= background.getImage()
 
-        ccdInputs = exposure.getInfo().getCoaddInputs().ccds
-        apCorrMap = exposure.getInfo().getApCorrMap()
+            ccdInputs = stitched_coadd.ccds
+            apCorrMap = stitched_coadd.ap_corr_map
+            band = inputRefs.exposure_cells.dataId["band"]
+        else:
+            exposure = inputs.pop("exposure")
+            # Set psfcache
+            # move this to run after gen2 deprecation
+            exposure.getPsf().setCacheCapacity(self.config.psfCache)
+
+            ccdInputs = exposure.getInfo().getCoaddInputs().ccds
+            apCorrMap = exposure.getInfo().getApCorrMap()
+            band = inputRefs.exposure.dataId["band"]
 
         # Get unique integer ID for IdFactory and RNG seeds; only the latter
         # should really be used as the IDs all come from the input catalog.
@@ -769,7 +822,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             updateCatalogFootprints(
                 modelData=modelData,
                 catalog=sources,
-                band=inputRefs.exposure.dataId["band"],
+                band=band,
                 imageForRedistribution=imageForRedistribution,
                 removeScarletData=True,
                 updateFluxColumns=True,
@@ -866,6 +919,14 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             reference catalog in the matchResults attribute, and denormalized
             matches in the denormMatches attribute.
         """
+        if self.config.doPropagateFlags:
+            # These mask planes may not be defined on the coadds always.
+            # We add the mask planes, which is a no-op if already defined.
+            for maskPlane in self.config.measurement.plugins["base_PixelFlags"].masksFpAnywhere:
+                exposure.mask.addMaskPlane(maskPlane)
+            for maskPlane in self.config.measurement.plugins["base_PixelFlags"].masksFpCenter:
+                exposure.mask.addMaskPlane(maskPlane)
+
         self.measurement.run(sources, exposure, exposureId=exposureId)
 
         if self.config.doApCorr:

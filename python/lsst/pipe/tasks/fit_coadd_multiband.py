@@ -79,6 +79,20 @@ class CoaddMultibandFitInputConnections(
         dimensions=("tract", "patch", "band", "skymap"),
         multiple=True,
     )
+    coadds_cell = cT.Input(
+        doc="Cell-coadd exposures on which to run fits",
+        name="{name_coadd}CoaddCell",
+        storageClass="MultipleCellCoadd",
+        dimensions=("tract", "patch", "band", "skymap"),
+        multiple=True,
+    )
+    backgrounds = cT.Input(
+        doc="Background models to subtract from the coadds_cell",
+        name="{name_coadd}Coadd_calexp_background",
+        storageClass="Background",
+        dimensions=("tract", "patch", "band", "skymap"),
+        multiple=True,
+    )
     models_psf = cT.Input(
         doc="Input PSF model parameter catalog",
         # Consider allowing independent psf fit method
@@ -198,8 +212,17 @@ class CoaddMultibandFitInputConnections(
         return adjusted_inputs, {}
 
     def __init__(self, *, config=None):
+        super().__init__(config=config)
+        assert isinstance(config, CoaddMultibandFitBaseConfig)
+
         if config.drop_psf_connection:
             del self.models_psf
+
+        if config.use_cell_coadds:
+            del self.coadds
+        else:
+            del self.coadds_cell
+            del self.backgrounds
 
 
 class CoaddMultibandFitConnections(CoaddMultibandFitInputConnections):
@@ -295,6 +318,10 @@ class CoaddMultibandFitBaseConfig(
         target=CoaddMultibandFitSubTask,
         doc="Task to fit sources using multiple bands",
     )
+    use_cell_coadds = pexConfig.Field[bool](
+        doc="Use cell coadd images for object fitting?",
+        default=False,
+    )
     idGenerator = SkyMapIdGeneratorConfig.make_field()
 
     def get_band_sets(self):
@@ -332,18 +359,30 @@ class CoaddMultibandFitBase:
     def build_catexps(self, butlerQC, inputRefs, inputs) -> list[CatalogExposureInputs]:
         id_tp = self.config.idGenerator.apply(butlerQC.quantum.dataId).catalog_id
         # This is a roundabout way of ensuring all inputs get sorted and matched
-        keys = ["cats_meas", "coadds"]
+        if self.config.use_cell_coadds:
+            keys = ["cats_meas", "coadds_cell", "backgrounds"]
+        else:
+            keys = ["cats_meas", "coadds"]
         has_psf_models = "models_psf" in inputs
         if has_psf_models:
             keys.append("models_psf")
-        input_refs_objs = ((getattr(inputRefs, key), inputs[key]) for key in keys)
-        inputs_sorted = tuple(
-            {dRef.dataId: obj for dRef, obj in zip(refs, objs)}
-            for refs, objs in input_refs_objs
-        )
-        cats = inputs_sorted[0]
-        exps = inputs_sorted[1]
-        models_psf = inputs_sorted[2] if has_psf_models else None
+        input_refs_objs = {key: (getattr(inputRefs, key), inputs[key]) for key in keys}
+        inputs_sorted = {
+            key: {dRef.dataId: obj for dRef, obj in zip(refs, objs, strict=True)}
+            for key, (refs, objs) in input_refs_objs.items()
+        }
+        cats = inputs_sorted["cats_meas"]
+        if self.config.use_cell_coadds:
+            exps = {}
+            for data_id, background in inputs_sorted["backgrounds"].items():
+                mcc = inputs_sorted["coadds_cell"][data_id]
+                stitched_coadd = mcc.stitch()
+                exposure = stitched_coadd.asExposure()
+                exposure.image -= background.getImage()
+                exps[data_id] = exposure
+        else:
+            exps = inputs_sorted["coadds"]
+        models_psf = inputs_sorted["models_psf"] if has_psf_models else None
         dataIds = set(cats).union(set(exps))
         models_scarlet = inputs["models_scarlet"]
         catexp_dict = {}
