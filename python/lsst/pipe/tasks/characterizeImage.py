@@ -559,7 +559,11 @@ class CharacterizeImageTask(pipeBase.PipelineTask):
 
         if background is None:
             background = BackgroundList()
-
+        self.schema.addField(
+            'psf_max_value',
+            type=np.float32,
+            doc="PSF max value."
+        )
         sourceIdFactory = idGenerator.make_table_id_factory()
         table = SourceTable.make(self.schema, sourceIdFactory)
         table.setMetadata(self.algMetadata)

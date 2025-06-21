@@ -433,6 +433,11 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             size=10,
             doc="Color used in PSF fit."
         )
+        output_schema.addField(
+            'psf_max_value',
+            type=np.float32,
+            doc="PSF max value."
+        )
 
         alias_map = input_schema.getAliasMap()
         alias_map_output = afwTable.AliasMap()
@@ -476,6 +481,11 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             type=str,
             size=10,
             doc="Color used in PSF fit."
+        )
+        selection_schema.addField(
+            'psf_max_value',
+            type=np.float32,
+            doc="PSF max value."
         )
 
         return mapper, selection_schema
@@ -700,6 +710,7 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         # Select the psf candidates from the selection catalog
         try:
             psf_selection_result = self.make_psf_candidates.run(selected_src, exposure=exposure)
+            _ = self.make_psf_candidates.run(measured_src, exposure=exposure)
         except Exception as e:
             self.log.exception('Failed to make PSF candidates for visit %d, detector %d: %s',
                                visit, detector, e)
