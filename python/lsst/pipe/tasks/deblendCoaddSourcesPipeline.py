@@ -176,6 +176,12 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
         storageClass="ScarletModelData",
         dimensions=("tract", "patch", "skymap"),
     )
+    objectParents = cT.Output(
+        doc="Parents of the deblended objects",
+        name="object_parents",
+        storageClass="SourceCatalog",
+        dimensions=("tract", "patch", "skymap"),
+    )
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
@@ -322,8 +328,7 @@ class DeblendCoaddSourcesMultiTask(PipelineTask):
         multiExposure = afwImage.MultibandExposure.fromExposures(bands, coadds)
         mDeconvolved = afwImage.MultibandExposure.fromExposures(bands, deconvolvedCoadds)
         result = self.multibandDeblend.run(multiExposure, mDeconvolved, sources)
-        retStruct = Struct(deblendedCatalog=result.catalog, scarletModelData=result.modelData)
-        return retStruct
+        return result
 
     def _makeSourceCatalog(self, mergedDetections, idFactory):
         # There may be gaps in the mergeDet catalog, which will cause the
