@@ -23,6 +23,9 @@ __all__ = ["CalibrateImageTask", "CalibrateImageConfig", "NoPsfStarsToStarsMatch
            "AllCentroidsFlaggedError"]
 
 import numpy as np
+from astropy.time import Time
+import requests
+import os
 
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
@@ -382,6 +385,35 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         dtype=bool,
         default=True,
         doc="If True, include astrometric errors in the output catalog.",
+    )
+
+    run_sattle = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="If True, sattle service will populate catalog for use in "
+            "ip_diffim.detectAndMeasure alert verification."
+    )
+
+    sattle_historical = sattle_host = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="If re-running a pipeline that requires sattle, this should be set"
+            "to True. This will population sattles cache with the historic data"
+            "closest in time to the exposure.",
+    )
+
+    sattle_host = pexConfig.Field(
+        dtype=str,
+        default=os.getenv("SATTLE_HOST"),
+        doc="The host name for the sattle API.",
+        optional=True,
+    )
+
+    sattle_port = pexConfig.Field(
+        dtype=int,
+        default=os.getenv("SATTLE_PORT"),
+        doc="Port for the sattle API.",
+        optional=True,
     )
 
     def setDefaults(self):
@@ -901,6 +933,34 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             result.applied_photo_calib = photo_calib
         else:
             result.applied_photo_calib = None
+
+        if self.config.run_sattle:
+            if not self.config.sattle_host or not self.config.sattle_port:
+                raise RuntimeError("Sattle filtering is on but service endpoints not set.")
+
+            visit_id = result.exposure.getInfo().getVisitInfo().id
+            visit_date = Time(result.exposure.getInfo().getVisitInfo().getDate().toPython()).jd
+            exposure_time_days = result.exposure.getInfo().getVisitInfo().getExposureTime() / 86400.0
+            exposure_end_jd = visit_date + exposure_time_days / 2.0
+            exposure_start_jd = visit_date - exposure_time_days / 2.0
+            boresight_ra = result.exposure.getInfo().getVisitInfo().boresightRaDec[
+                0].asDegrees()
+            boresight_dec = result.exposure.getInfo().getVisitInfo().boresightRaDec[
+                1].asDegrees()
+
+            r = requests.put(f'{self.config.sattle_host}:{self.config.sattle_port}'
+                             f'/visit_cache', json={"visit_id": visit_id,
+                                                    "exposure_start_mjd": exposure_start_jd,
+                                                    "exposure_end_mjd": exposure_end_jd,
+                                                    "boresight_ra": boresight_ra,
+                                                    "boresight_dec": boresight_dec,
+                                                    "historical": self.config.sattle_historical})
+
+            if r.status_code != 200:
+                self.log.warning(f'Sattle cache returned {r.status_code}: {r.text}')
+            else:
+                self.log.info('Successfully loaded sattle visit cache')
+
         return result
 
     def _apply_illumination_correction(self, exposure, background_flat, illumination_correction):

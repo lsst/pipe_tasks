@@ -22,6 +22,7 @@
 import unittest
 from unittest import mock
 import tempfile
+import json as json_package
 
 import astropy.units as u
 from astropy.coordinates import SkyCoord
@@ -120,6 +121,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # We don't have many test points, so can't match on complicated shapes.
         self.config.astrometry.sourceSelector["science"].flags.good = []
         self.config.astrometry.matcher.numPointsForShape = 3
+        self.config.run_sattle = False
         # ApFlux has more noise than PsfFlux (the latter unrealistically small
         # in this test data), so we need to do magnitude rejection at higher
         # sigma, otherwise we can lose otherwise good sources.
@@ -583,6 +585,65 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         key = "LSST CALIB ILLUMCORR APPLIED"
         self.assertIn(key, result.exposure.metadata)
         self.assertEqual(result.exposure.metadata[key], True)
+
+    @staticmethod
+    def _mocked_requests_put(url, json=None):
+        data = json
+
+        class MockResponse:
+            def __init__(self, json_data, status_code, text):
+                self.content = json_package.dumps(json_data)
+                self.status_code = status_code
+                self.text = text
+
+            def json(self):
+                return self.json_data
+
+        # sattle returns an error code
+        if data['visit_id'] == 42:
+            return MockResponse(None, 500, "general error")
+        elif data['visit_id'] == 99:
+            return MockResponse(None, 200,
+                                "Success")
+
+        return MockResponse(None, 404, "Nothing here")
+
+    def test_fail_on_sattle_miconfiguration(self):
+        """Test for failure if sattle is requested without appropriate configurations.
+        """
+        self.config.run_sattle = True
+        calibrate = CalibrateImageTask(config=self.config)
+        calibrate.astrometry.setRefObjLoader(self.ref_loader)
+        calibrate.photometry.match.setRefObjLoader(self.ref_loader)
+        with self.assertRaises(RuntimeError):
+            calibrate.run(exposures=self.exposure)
+
+    @mock.patch('lsst.pipe.tasks.calibrateImage.requests.put', side_effect=_mocked_requests_put)
+    def test_warn_on_sattle_failure(self, mock_put):
+        """Test for a warning when sattle returns status codes other than 200.
+        """
+        self.config.run_sattle = True
+        self.config.sattle_port = 9999
+        self.config.sattle_host = 'fake_host'
+        self.exposure.info.id = 42
+        calibrate = CalibrateImageTask(config=self.config)
+        calibrate.astrometry.setRefObjLoader(self.ref_loader)
+        calibrate.photometry.match.setRefObjLoader(self.ref_loader)
+        with self.assertWarns(Warning):
+            calibrate.run(exposures=self.exposure)
+
+    @mock.patch('lsst.pipe.tasks.calibrateImage.requests.put', side_effect=_mocked_requests_put)
+    def test_sattle(self, mock_put):
+        """Test that run() returns reasonable values to be butler put.
+        """
+        self.config.run_sattle = True
+        self.config.sattle_port = 9999
+        self.config.sattle_host = 'fake_host'
+        self.exposure.info.id = 99
+        calibrate = CalibrateImageTask(config=self.config)
+        calibrate.astrometry.setRefObjLoader(self.ref_loader)
+        calibrate.photometry.match.setRefObjLoader(self.ref_loader)
+        calibrate.run(exposures=self.exposure)
 
 
 class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
