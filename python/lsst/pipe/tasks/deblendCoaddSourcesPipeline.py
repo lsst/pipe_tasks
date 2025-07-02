@@ -302,12 +302,9 @@ class DeblendCoaddSourcesMultiTask(PipelineTask):
 
         # Ensure that the coadd bands and deconvolved coadd bands match
         deconvBands = [dRef.dataId["band"] for dRef in inputRefs.deconvolvedCoadds]
-        if len(bands) != len(deconvBands):
+        if bands != deconvBands:
+            self.log.error("Coadd bands %s != deconvolved coadd bands %s", bands, deconvBands)
             raise RuntimeError("Number of coadd bands and deconvolved coadd bands do not match")
-
-        for band, deconvBand in zip(bands, deconvBands):
-            if band != deconvBand:
-                raise RuntimeError(f"Bands {band} and {deconvBand} do not match")
 
         deconvolvedCoadds = inputs.pop("deconvolvedCoadds")
 
