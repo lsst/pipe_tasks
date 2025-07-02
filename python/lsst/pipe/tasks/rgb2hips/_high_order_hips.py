@@ -26,16 +26,13 @@ from lsst.afw.image import ImageF
 from lsst.resources import ResourcePath
 
 from collections.abc import Iterable
-from numpy.lib.stride_tricks import as_strided
 from lsst.sphgeom import RangeSet
 
-from skimage.transform import resize, downscale_local_mean
-from PIL import Image
+import cv2
 
 from ._hipsWcsMaker import makeHpxWcs
 from ._utils import _write_hips_image
 
-Image.MAX_IMAGE_PIXELS = None
 
 
 class ColorChannel(Enum):
@@ -115,7 +112,7 @@ class HighOrderHipsTask(PipelineTask):
             f"color_{self.config.color_ordering}", forceDirectory=True
         )
 
-    def run(self, input_images: Iterable[tuple[DeferredDatasetHandle, SkyWcs, Box2I]], healpix_id) -> Struct:
+    def run(self, input_images: Iterable[tuple[NDArray, SkyWcs, Box2I]], healpix_id) -> Struct:
         # Make the WCS for the transform, intentionally over-sampled to shift order 12.
         # This creates as 4096 x 4096 image that can be broken appart to form the higher
         # orders, binning each as needed
@@ -131,8 +128,7 @@ class HighOrderHipsTask(PipelineTask):
         self.log.info("Warping input exposures and populating hpx8 super tile.")
         for input_image, in_wcs, in_box in input_images:
             tmp_image = ImageF(in_box)
-            # Flip the Y axis, because things are reversed
-            in_image: NDArray = input_image.get()
+            in_image: NDArray = input_image
             # Need to cast images if they are saved in various formats
             match in_image.dtype:
                 case np.uint8:
@@ -151,46 +147,37 @@ class HighOrderHipsTask(PipelineTask):
                 warpped = self.warper.warpImage(target_wcs, tmp_image, in_wcs, maxBBox=exp_bbox)
                 warpped_box_slices = warpped.getBBox().slices
 
-                # determine the mask for nan values, meaning they have not been set yet
-                # existing_nan_mask = np.isnan(existing)
-                # existing_filled_mask = ~existing_nan_mask
-
                 # determine what values in the array are set
                 are_warpped = np.isfinite(warpped.array)
                 existing[warpped_box_slices][are_warpped] = warpped.array[are_warpped]
 
-                # Values that are in the new warp, but not in existing can be assigned
-                # new_values_mask = existing_nan_mask[warpped_box_slices] * are_warpped
-                # existing[warpped_box_slices][new_values_mask] = warpped.array[new_values_mask]
-
-                # Values that are set in existing and new warp should be averaged
-                # both_set_mask = existing_filled_mask[warpped_box_slices] * are_warpped
-                # existing[warpped_box_slices][both_set_mask] = (
-                #     existing[warpped_box_slices][both_set_mask] + warpped.array[both_set_mask]
-                # ) / 2.0
             # The healpix is populated with all data available
         # Fill in nans with zeros
         output_array_hpx[np.isnan(output_array_hpx)] = 0
 
         # now it is time to start making the tiles for higher orders
         #
-        # Construct a basic RangeSet for the pixel for this quanta
-        quanta_range_set = RangeSet([healpix_id])
-
+        # Flip the y array because indexing is lower left in hips maps
         output_array_hpx = output_array_hpx[::-1,:,:]
 
+        # use lanczos resampling when resizing the arrays vs strait binning. This properly handels
+        # how intensities should change as the hips level changes
         for zoom, hpx_level, factor in zip((0, 2, 4, 8), (11, 10, 9, 8), (3, 2, 1, 0)):
             self.log.info("generating tiles for hxp level %d", hpx_level)
             if zoom:
                 size = 4096 // zoom
-                # binned_array = resize(output_array_hpx, (size, size, 3), anti_aliasing=False)
-                binned_array = downscale_local_mean(output_array_hpx, (zoom, zoom, 1))
+                binned_array = cv2.resize(output_array_hpx, (size,size), interpolation=cv2.INTER_LANCZOS4)
             else:
                 binned_array = output_array_hpx
             # always create blocks of 512x512 as that is native size
-            # view = self._make_block(binned_array, (512, 512, 3))
             #
-            # Check doing this iteratively
+            # Figure out the hips pixel ids at this hips order. This is complicated because each hipx pixel
+            # turns into 4 at a higher level, but must be in a specific order to correspond to how the data
+            # is layed out in an y,x grid. So if a hips order 8 pixel A turns into for pixels b,c,d,e, they
+            # must be layed out like [[b,d], [c,e]]. This is true for every pixel as you go up in order. So
+            # if you start at order 8 with one pixel, you need to do order 9 and calculate the layout. Then
+            # for each order 9 pixel, do the same to get the layout in order 10, etc. This leaves a grid
+            # of pixels that are the ids of the corresponding 512,512 sub grid pixel in the input image.
             tmp_pixels = np.array([[healpix_id]])
             for _ in range(factor):
                 tmp_array = np.zeros(np.array(tmp_pixels.shape)*2)
@@ -200,11 +187,8 @@ class HighOrderHipsTask(PipelineTask):
                         tmp_range_set = RangeSet(int(tmp_pixels[ii,jj]))
                         tmp_array_view[:,:] = (np.array([x for x in range(*tmp_range_set.scaled(4)[0])],dtype=int)[[0,2,1,3]]).reshape(2,2)
                 tmp_pixels = tmp_array         
-                
-            # hpx_start, hpx_stop = quanta_range_set.scaled(4**factor).ranges()[0]
-            # hpx_id_array = (np.arange(hpx_start, hpx_stop).reshape(
-            #     binned_array.shape[0] // 512, binned_array.shape[1] // 512
-            # ).T)
+
+            # now for each 512x512 sub pixel region write the hips image with the corresponding healpix id
             hpx_id_array = tmp_pixels
             for i in range(binned_array.shape[0] // 512):
                 for j in range(binned_array.shape[1] // 512):
@@ -220,27 +204,90 @@ class HighOrderHipsTask(PipelineTask):
                         self.config.array_type,
                     )
 
-        # Finally, zoom the level 8 hpx to 256x256 to save to the buter.
-        # This makes smaller arrays to load, and save the binning
-        # operation in the joint phase.
-        zoomed = resize(output_array_hpx, (256, 256, 3))
+        # Finally, bin the level 8 hpx to 256x256 (1/4 order 7) to save to the buter.
+        # This makes smaller arrays to load, and saves the binning operation in the joint phase.
+        zoomed = cv2.resize(output_array_hpx, (256,256), interpolation=cv2.INTER_LANCZOS4)
+
 
         return Struct(output_hpx=zoomed)
 
-    @staticmethod
-    def _make_block(array, block):
-        shape = (array.shape[0] // block[0], array.shape[1] // block[1]) + block
-        print(shape)
-        strides = (
-            block[0] * array.strides[0],
-            block[1] * array.strides[1],
-        ) + array.strides
-        print(strides)
-        try:
-            strided_view = as_strided(array, shape=shape, strides=strides)
-        except Exception:
-            breakpoint()
-        return strided_view
+    def _make_box_mask(self, image) -> NDArray:
+        """Create a feathered box to use as an averager.
+
+        This is used when mixing patches together into a larger contiguous region
+        such that overlaps will be blended by a ramp function. This will be 50%
+        for each area at exactly halfway through the overlap, and 1/0 at the
+        extremes.
+            
+        """
+        yind, xind = np.mgrid[:self.config.patchGrow*4,:self.config.patchGrow*4]
+        dis = ((yind-2*self.config.patchGrow)**2 + (xind-2*self.config.patchGrow)**2)**0.5
+        radial = 1-np.clip(dis/(2*self.config.patchGrow), 0, 1)
+
+        ramp = np.linspace(0, 1, self.config.patchGrow * 2)
+        tmpImg = np.zeros(image.shape[:2])
+        tmpImg[: self.config.patchGrow * 2, :] = np.repeat(
+            np.expand_dims(ramp, 1), tmpImg.shape[1], axis=1
+        )
+
+        tmpImg[-1 * self.config.patchGrow * 2 :, :] = np.repeat(  # noqa: E203
+            np.expand_dims(1 - ramp, 1), tmpImg.shape[1], axis=1
+        )
+        tmpImg[:, : self.config.patchGrow * 2] = np.repeat(
+            np.expand_dims(ramp, 0), tmpImg.shape[0], axis=0
+        )
+
+        tmpImg[:, -1 * self.config.patchGrow * 2 :] = np.repeat(  # noqa: E203
+            np.expand_dims(1 - ramp, 0), tmpImg.shape[0], axis=0
+        )
+        # fix the corners
+        tmpImg[:2*self.config.patchGrow, :2*self.config.patchGrow] = radial[:2*self.config.patchGrow, :2*self.config.patchGrow]
+        tmpImg[:2*self.config.patchGrow, -2*self.config.patchGrow:] = radial[:2*self.config.patchGrow, -2*self.config.patchGrow:]
+        tmpImg[-2*self.config.patchGrow:, :2*self.config.patchGrow] = radial[-2*self.config.patchGrow:, :2*self.config.patchGrow]
+        tmpImg[-2*self.config.patchGrow:, -2*self.config.patchGrow:] = radial[-2*self.config.patchGrow:, -2*self.config.patchGrow:]
+        tmpImg = np.repeat(np.expand_dims(tmpImg, 2), 3, axis=2)
+        return tmpImg
+
+    def _assemble_sub_region(
+            self, tract_patch: dict[int, Iterable[tuple[DeferredDatasetHandle, SkyWcs, Box2I]]]
+        ) -> list[tuple[NDArray, SkyWcs, Box2I]]:
+            tmpImg = None
+
+            boxes = []
+            for _, iterable in tract_patch.items():
+                new_box = Box2I()
+                for _, _, bbox in iterable:
+                    new_box.include(bbox)
+                # allocate tmp array
+                new_array = np.zeros((new_box.getHeight(), new_box.getWidth(), 3), dtype=np.float32)
+                for handle, skyWcs, box in iterable:
+                    localOrigin = box.getBegin() - new_box.getBegin()
+                    localOrigin = Point2I(
+                        x=int(np.floor(localOrigin.x)),
+                        y=int(np.floor(localOrigin.y)),
+                    )
+
+                    localExtent = Extent2I(
+                        x=int(np.floor(box.getWidth())),
+                        y=int(np.floor(box.getHeight())),
+                    )
+                    tmpBox = Box2I(localOrigin, localExtent)
+
+                    image = handle.get()
+                    if tmpImg is None:
+                        tmpImg = self._make_box_mask(image)
+                    existing = ~np.all(new_array[*tmpBox.slices] == 0, axis=2)
+
+                    try:
+                        new_array[*tmpBox.slices][~existing, :] = image[~existing, :]
+                    except Exception:
+                        breakpoint()
+                    new_array[*tmpBox.slices][existing, :] = (
+                        tmpImg[existing] * image[existing]
+                        + (1 - tmpImg[existing]) * new_array[*tmpBox.slices][existing, :]
+                    )
+                    boxes.append((new_array, skyWcs, new_box))
+            return boxes    
 
     def runQuantum(
         self,
@@ -256,7 +303,7 @@ class HighOrderHipsTask(PipelineTask):
 
         # Iterate over the input image refs, to get the corresponding bbox
         # and assemble into container for run
-        input_images = []
+        inputs_by_tract = {}
         for input_image_ref in inputRefs.input_images:
             tract = input_image_ref.dataId["tract"]
             patch = input_image_ref.dataId["patch"]
@@ -264,7 +311,10 @@ class HighOrderHipsTask(PipelineTask):
             box = skymap[tract][patch].getInnerBBox()
             box = box.dilatedBy(self.config.patchGrow)
             imageHandle = butlerQC.get(input_image_ref)
-            input_images.append((imageHandle, imageWcs, box))
+            container = inputs_by_tract.setdefault(tract, list())
+            container.append((imageHandle, imageWcs, box))
+
+        input_images = self._assemble_sub_region(inputs_by_tract)
 
         outputs = self.run(input_images, healpix_id)
         butlerQC.put(outputs, outputRefs)

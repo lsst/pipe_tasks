@@ -1,10 +1,10 @@
-from lsst.daf.butler import DeferredDatasetHandle
-
+from __future__  import annotations
 __all__ = ("LowOrderHipsTaskConnections", "LowOrderHipsTaskConfig", "LowOrderHipsTask")
 
 import numpy as np
-from skimage.transform import resize, downscale_local_mean
+import cv2
 
+from lsst.daf.butler import DeferredDatasetHandle
 from lsst.pipe.base import (
     PipelineTask,
     PipelineTaskConfig,
@@ -77,29 +77,40 @@ class LowOrderHipsTask(PipelineTask):
             f"color_{self.config.color_ordering}", forceDirectory=True
         )
 
-    def run(self, hpx_container) -> Struct:
-        # do level 7 specifically, because we need to load in 8 handles
+    def run(self, hpx_container: Iterable[tuple[DeferredDatasetHandle, int]]) -> Struct:
+        """Produce Hips images with hips order 8 inputs to the configure min_order.
+        """
+        # loop over each order, assembling the previous order tiles into
+        # an array, and writing the image. Resample each image smaller,
+        # and continue downward in order.
         for order in range(7, self.config.min_order - 1, -1):
             self.log.info("Processing order %d", order)
+            # sort the previous order's pixels into a mapping with keys of
+            # this order's pixel to the corresponding previous orders pixels
+            # that are contained within that key.
             hpx_next_mapping = self._create_sorted_container(hpx_container)
 
             hpx_next_container = []
             npix = 512
-            # now loop over all order 9 pixels
             size_thresh = len(hpx_next_mapping) // 10
             size_counter = 0
             percent_counter = 0
             for hpx_next_id, hpx_next_items in hpx_next_mapping.items():
+                # Print out a log message every so often for a liveness
+                # check
                 if size_counter > size_thresh:
                     percent_counter += 10
                     self.log.info("Done %d percent", percent_counter)
                     size_counter = 0
+                # allocate a container for the pixel being assembled
                 hpx_next_array = np.zeros((npix, npix, 3), dtype=np.float32)
                 for img_prev, hpx_prev_id in hpx_next_items:
-                    sub_index = hpx_prev_id - np.left_shift(hpx_next_id, 2)
                     if order == 7:
                         # These are saved out in float32 from the previous task
                         img_prev: NDArray = img_prev.get()
+                    # determine which sub pixel quadrant this belongs to in the next orders
+                    # pixel and assign.
+                    sub_index = hpx_prev_id - np.left_shift(hpx_next_id, 2)
                     match sub_index:
                         case 0:
                             hpx_next_array[0 : npix // 2 :, 0 : npix // 2] = img_prev
@@ -109,6 +120,7 @@ class LowOrderHipsTask(PipelineTask):
                             hpx_next_array[0 : npix // 2, npix // 2 :] = img_prev
                         case 3:
                             hpx_next_array[npix // 2 :, npix // 2 :] = img_prev
+                # Write out the hips image
                 _write_hips_image(
                     hpx_next_array,
                     hpx_next_id,
@@ -118,8 +130,11 @@ class LowOrderHipsTask(PipelineTask):
                     self.config.array_type,
                 )
                 size_counter += 1
-                # hpx_next_container.append((resize(hpx_next_array, (256, 256, 3), anti_aliasing=False), hpx_next_id))
-                hpx_next_container.append((downscale_local_mean(hpx_next_array, (2, 2, 1)), hpx_next_id))
+
+                # resample the image to a smaller grid and store it for the next order
+                zoomed = cv2.resize(hpx_next_array, (256,256), interpolation=cv2.INTER_LANCZOS4)
+
+                hpx_next_container.append((zoomed, hpx_next_id))
             hpx_container = hpx_next_container
         return Struct()
 
@@ -127,7 +142,8 @@ class LowOrderHipsTask(PipelineTask):
         self,
         hpx_container: Iterable[tuple[NDArray | DeferredDatasetHandle, int]],
     ) -> dict[int, Iterable[tuple[NDArray | DeferredDatasetHandle, int]]]:
-        # do level 7 specifically, because we need to load in 8 handles
+        """Sort a list of [images (or handels), hpx_id] into corresponding pixels at a higher order.
+        """
         hpx_output_mapping = {}
         for pair in hpx_container:
             hpx_output_id = np.right_shift(pair[1], 2)

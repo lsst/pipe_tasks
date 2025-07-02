@@ -154,7 +154,7 @@ if __name__ == "__main__":
         builder = HighResolutionHipsQuantumGraphBuilder(
             pipeline_graph,
             butler,
-            input_collections=args.input,
+            input_collections=args.input[0].split(','),
             output_run=args.output_run,
             constraint_order=args.hpix_build_order,
             constraint_ranges=build_ranges,
