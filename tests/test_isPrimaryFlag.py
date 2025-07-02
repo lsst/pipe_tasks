@@ -258,8 +258,8 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         coadds.variance.array[:] = 2e-1
         mDeconvolved.variance.array[:] = 2e-1
         result = deblendTask.run(coadds, mDeconvolved, catalog)
-        modelData = result.modelData
-        catalog = result.catalog
+        modelData = result.scarletModelData
+        catalog = result.deblendedCatalog
         # Attach footprints to the catalog
         mes.io.updateCatalogFootprints(
             modelData=modelData,
