@@ -33,6 +33,7 @@ from lsst.pipe.tasks.calibrate import CalibrateTask, CalibrateConfig
 from lsst.meas.algorithms import SourceDetectionTask, SkyObjectsTask, SetPrimaryFlagsTask
 import lsst.meas.extensions.scarlet as mes
 from lsst.meas.extensions.scarlet.scarletDeblendTask import ScarletDeblendTask
+from lsst.meas.extensions.scarlet.deconvolveExposureTask import DeconvolveExposureTask
 from lsst.meas.base import SingleFrameMeasurementTask
 from lsst.afw.table import SourceCatalog
 
@@ -214,6 +215,10 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         skySourcesTask = SkyObjectsTask(name="skySources", config=skyConfig)
         schema.addField("merge_peak_sky", type="Flag")
 
+        # Initialize the deconvolution task
+        deconvolveConfig = DeconvolveExposureTask.ConfigClass()
+        deconvolveTask = DeconvolveExposureTask(config=deconvolveConfig)
+
         # Initialize the deblender task
         scarletConfig = ScarletDeblendTask.ConfigClass()
         scarletConfig.maxIter = 20
@@ -243,8 +248,18 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
             src = catalog.addNew()
             src.setFootprint(foot)
             src.set("merge_peak_sky", True)
+        # deconvolve the images
+        deconvolved = deconvolveTask.run(coadds["test"], catalog).deconvolved
+        mDeconvolved = afwImage.MultibandExposure.fromExposures(["test"], [deconvolved])
         # deblend
-        catalog, modelData = deblendTask.run(coadds, catalog)
+        # This is a hack because the variance is not calibrated properly
+        # (it is 3 orders of magnitude too high), which causes the deblender
+        # to improperly deblend most sources due to the sparsity constraint.
+        coadds.variance.array[:] = 2e-1
+        mDeconvolved.variance.array[:] = 2e-1
+        result = deblendTask.run(coadds, mDeconvolved, catalog)
+        modelData = result.scarletModelData
+        catalog = result.deblendedCatalog
         # Attach footprints to the catalog
         mes.io.updateCatalogFootprints(
             modelData=modelData,
@@ -254,6 +269,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
             removeScarletData=True,
             updateFluxColumns=True,
         )
+
         # measure
         measureTask.run(catalog, self.exposure)
         outputCat = catalog
