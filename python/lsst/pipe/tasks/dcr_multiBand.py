@@ -335,6 +335,12 @@ class DcrMeasureMergedCoaddSourcesConfig(MeasureMergedCoaddSourcesConfig,
     """
     coaddName = Field(dtype=str, default="dcr", doc="Name of coadd")
 
+    doAddFootprints = Field(dtype=bool,
+                            default=True,
+                            doc="Whether or not to add footprints to the input catalog from scarlet models. "
+                                "This should be true whenever using the multi-band deblender, "
+                                "otherwise this should be False.")
+
     @property
     def refObjLoader(self):
         return self.match.refObjLoader
