@@ -341,6 +341,11 @@ class DcrMeasureMergedCoaddSourcesConfig(MeasureMergedCoaddSourcesConfig,
                                 "This should be true whenever using the multi-band deblender, "
                                 "otherwise this should be False.")
 
+    doPropagateFlags = Field(
+        dtype=bool, default=True,
+        doc="Whether to match sources to CCD catalogs to propagate flags (to e.g. identify PSF stars)"
+    )
+
     @property
     def refObjLoader(self):
         return self.match.refObjLoader
