@@ -36,15 +36,6 @@ import lsst.afw.table as afwTable
 import lsst.afw.math as afwMath
 from lsst.daf.base import PropertyList
 
-# NOTE: these imports are a convenience so multiband users only have to import this file.
-from .mergeDetections import MergeDetectionsConfig, MergeDetectionsTask  # noqa: F401
-from .mergeMeasurements import MergeMeasurementsConfig, MergeMeasurementsTask  # noqa: F401
-from .multiBandUtils import CullPeaksConfig  # noqa: F401
-from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesSingleConfig  # noqa: F401
-from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesSingleTask  # noqa: F401
-from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesMultiConfig  # noqa: F401
-from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesMultiTask  # noqa: F401
-
 
 """
 New set types:
