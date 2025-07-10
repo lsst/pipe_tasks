@@ -1,3 +1,24 @@
+# This file is part of pipe_tasks.
+#
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 from __future__ import annotations
 
 __all__ = ("_write_hips_image",)
@@ -38,6 +59,32 @@ def _write_hips_image(
     file_extension: str,
     output_type: str,
 ) -> None:
+    """Write a processed image to disk in the HealPix tile format.
+
+    This function takes processed image data, converts it to the specified output
+    type, and saves it into the appropriate directory structure based on the HealPix
+    pixel ID and order level.
+
+    Parameters
+    ----------
+    image_data : `NDArray`
+        The RGB image data array to be written as a HealPix tile.
+    pixel_id : `int`
+        The unique HealPix ID corresponding to the output tile.
+    hpx_level : `int`
+        The HealPix order level of the output tile.
+    hips_base_path : `ResourcePath`
+        Base directory path where the HealPix tiles will be stored.
+    file_extension : `str`
+        File extension (format) for saving the image ('png' or 'webp').
+    output_type : `str`
+        Data type of the output array, which can be:
+            - "uint8": 8-bit unsigned integers (0-255)
+            - "uint16": 16-bit unsigned integers (0-65535)
+            - "half": 16-bit floating-point numbers
+            - "float": 32-bit floating-point numbers
+
+    """
     # clip in case any of the warping caused values over 1
     image_data = np.clip(image_data, 0, 1)
     # remap the image_data to the chosen output_type
@@ -56,16 +103,20 @@ def _write_hips_image(
     hips_dir = hips_base_path.join(f"Norder{hpx_level}", forceDirectory=True).join(
         f"Dir{dir_number}", forceDirectory=True
     )
+
+    # Create the file URI for saving
     uri = hips_dir.join(f"Npix{pixel_id}.{file_extension}")
 
-    # Finally, need to turn the array into an image
+    # Convert numpy array to PIL Image and save with appropriate arguments
     im = Image.fromarray(image_data, mode="RGB")
 
     extra_args = {}
     if file_extension == "webp":
+        # Set WebP-specific parameters for lossless compression
         extra_args["lossless"] = True
         extra_args["quality"] = 80
+
+    # Save the image to a temporary file and transfer to final location
     with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
         im.save(temporary_uri.ospath, **extra_args)
-
         uri.transfer_from(temporary_uri, transfer="copy", overwrite=True)

@@ -1,3 +1,23 @@
+# This file is part of pipe_tasks.
+#
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 
 __all__ = ("AllSkyHipsTaskConnections", "AllSkyHipsTaskConfig", "AllSkyHipsTask")
@@ -9,6 +29,7 @@ import re
 import hpgeom as hpg
 import numpy as np
 import healsparse as hsp
+from dataclasses import replace
 from datetime import datetime
 from collections.abc import Iterable
 from astropy.io import fits
@@ -37,7 +58,7 @@ from ..healSparseMapping import _is_power_of_two
 
 class AllSkyHipsTaskConnections(
     PipelineTaskConnections,
-    dimensions=("instrument",),
+    dimensions=tuple(),
     defaultTemplates={"input_task_label": "lowOrderHipsTask"},
 ):
     low_order_metadata = Input(
@@ -46,7 +67,7 @@ class AllSkyHipsTaskConnections(
         storageClass="TaskMetadata",
         multiple=True,
         deferLoad=True,
-        dimensions=("instrument",),
+        dimensions=tuple(),
     )
     input_hips = Input(
         doc="Hips pixels at level 8 used to build higher orders",
@@ -56,6 +77,13 @@ class AllSkyHipsTaskConnections(
         deferLoad=True,
         dimensions=("healpix8",),
     )
+
+    def __init__(self, *, config: LowOrderHipsTaskConfig):
+        # Set the input dimensions to whatever the minimum order healpix
+        # to produce is.
+        self.low_order_metadata = replace(
+            self.low_order_metadata, dimensions=set((f"healpix{config.min_order}",))
+        )
 
 
 class AllSkyHipsTaskConfig(PipelineTaskConfig, pipelineConnections=AllSkyHipsTaskConnections):
@@ -127,6 +155,8 @@ class AllSkyHipsTaskConfig(PipelineTaskConfig, pipelineConnections=AllSkyHipsTas
 
 
 class AllSkyHipsTask(PipelineTask):
+    """Pipeline task for generating all-sky HealPix (HiPS) tiles and associated metadata."""
+
     _DefaultName = "_allSkyHipsTask"
     ConfigClass = AllSkyHipsTaskConfig
     config: ConfigClass
@@ -144,12 +174,12 @@ class AllSkyHipsTask(PipelineTask):
         inputRefs: InputQuantizedConnection,
         outputRefs: OutputQuantizedConnection,
     ) -> None:
-        # get the healpix8 pixel ids
+        # Extract the healpix8 pixel ids.
         hpx8_pixels = []
         for ref in inputRefs.input_hips:
             hpx8_pixels.append((ref.dataId["healpix8"]))
 
-        # turn that into the hpx11 pixels that were produced
+        # Scale pixel IDS to higher order (hpx11) that were already produced
         hpx8_rangeset = RangeSet(hpx8_pixels)
         hpx11_rangeset = hpx8_rangeset.scaled(4**3)
         hpx11_pixels = set()
@@ -163,6 +193,20 @@ class AllSkyHipsTask(PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     def run(self, low_order_metadata: Iterable[TaskMetadata], hpx11_pixels) -> Struct:
+        """Generate all-sky HealPix tiles and metadata.
+
+        Parameters
+        ----------
+        low_order_metadata : Iterable[TaskMetadata]
+            Low-order metadata from previous processing steps.
+        hpx11_pixels : array-like
+            Array of HPX11 pixel IDs to process.
+
+        Returns
+        -------
+        Struct
+            This task produces no outputs so an empty strct is returned
+        """
         self._write_properties_and_moc(
             self.config.max_order, hpx11_pixels, self.config.shift_order, self.config.color_ordering
         )
@@ -446,17 +490,17 @@ class AllSkyHipsTask(PipelineTask):
         else:
             raise RuntimeError("Unknown file extension")
 
-        png_uris = list(
+        image_uris = list(
             ResourcePath.findFileResources(
                 candidates=[allsky_order_uri],
                 file_filter=pixel_regex,
             )
         )
 
-        for png_uri in png_uris:
-            matches = re.match(pixel_regex, png_uri.basename())
+        for image_uri in image_uris:
+            matches = re.match(pixel_regex, image_uri.basename())
             pix_num = int(matches.group(1))
-            tile_image = Image.open(io.BytesIO(png_uri.read()))
+            tile_image = Image.open(io.BytesIO(image_uri.read()))
             row = math.floor(pix_num // n_tiles_wide)
             column = pix_num % n_tiles_wide
             box = (column * tile_size, row * tile_size, (column + 1) * tile_size, (row + 1) * tile_size)

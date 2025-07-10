@@ -1,4 +1,25 @@
-from __future__  import annotations
+# This file is part of pipe_tasks.
+#
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+from __future__ import annotations
+
 __all__ = ("LowOrderHipsTaskConnections", "LowOrderHipsTaskConfig", "LowOrderHipsTask")
 
 import numpy as np
@@ -26,7 +47,7 @@ from numpy.typing import NDArray
 from ._utils import _write_hips_image
 
 
-class LowOrderHipsTaskConnections(PipelineTaskConnections, dimensions=("instrument",)):
+class LowOrderHipsTaskConnections(PipelineTaskConnections, dimensions=tuple()):
     input_hips = Input(
         doc="Hips pixels at level 8 used to build higher orders",
         name="rgb_picture_hips8",
@@ -35,6 +56,13 @@ class LowOrderHipsTaskConnections(PipelineTaskConnections, dimensions=("instrume
         deferLoad=True,
         dimensions=("healpix8",),
     )
+
+    def __init__(self, *, config: LowOrderHipsTaskConfig):
+        # Set the quantum dimensions to whatever the minimum order healpix
+        # to produce is.
+        self.dimensions = set(
+            (f"healpix{config.min_order}",),
+        )
 
 
 class LowOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=LowOrderHipsTaskConnections):
@@ -63,8 +91,21 @@ class LowOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=LowOrderHip
         },
     )
 
+    def validate(self):
+        if self.min_order >= 8:
+            raise ValueError("The minimum order must be less than 8.")
+
 
 class LowOrderHipsTask(PipelineTask):
+    """`PipelineTask` to create low order hips tiles.
+
+    This task reads in healpix 8 tiles, which have already been down sampled,
+    and assembles them into progressively lower hips order tiles.
+
+    This task has special permission to write to locations outside the butler.
+    Don't emulate this in other tasks.
+    """
+
     _DefaultName = "lowOrderHipsTask"
     ConfigClass = LowOrderHipsTaskConfig
 
@@ -78,7 +119,19 @@ class LowOrderHipsTask(PipelineTask):
         )
 
     def run(self, hpx_container: Iterable[tuple[DeferredDatasetHandle, int]]) -> Struct:
-        """Produce Hips images with hips order 8 inputs to the configure min_order.
+        """Produce Hips images with hips order 8 inputs to the configured min_order.
+
+        Parameters
+        ----------
+        hpx_container : `Iterable` of `tuple` of `DeferredDatasetHanle`, `int`
+            This is an iterable of handles to already down-sampled hpx order 8
+            arrays and their corresponding order 8 pixel id.
+
+        Returns
+        -------
+        result : `Struct`
+            This tasks does not produce an output, so will return an empty `Struct`
+
         """
         # loop over each order, assembling the previous order tiles into
         # an array, and writing the image. Resample each image smaller,
@@ -132,7 +185,7 @@ class LowOrderHipsTask(PipelineTask):
                 size_counter += 1
 
                 # resample the image to a smaller grid and store it for the next order
-                zoomed = cv2.resize(hpx_next_array, (256,256), interpolation=cv2.INTER_LANCZOS4)
+                zoomed = cv2.resize(hpx_next_array, (256, 256), interpolation=cv2.INTER_LANCZOS4)
 
                 hpx_next_container.append((zoomed, hpx_next_id))
             hpx_container = hpx_next_container
@@ -142,8 +195,7 @@ class LowOrderHipsTask(PipelineTask):
         self,
         hpx_container: Iterable[tuple[NDArray | DeferredDatasetHandle, int]],
     ) -> dict[int, Iterable[tuple[NDArray | DeferredDatasetHandle, int]]]:
-        """Sort a list of [images (or handels), hpx_id] into corresponding pixels at a higher order.
-        """
+        """Sort a list of [images (or handels), hpx_id] into corresponding pixels at a higher order."""
         hpx_output_mapping = {}
         for pair in hpx_container:
             hpx_output_id = np.right_shift(pair[1], 2)
