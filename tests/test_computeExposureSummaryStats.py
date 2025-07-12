@@ -106,12 +106,20 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
 
         # Compute the background image
         bgGridSize = 10
-        bctrl = afwMath.BackgroundControl(afwMath.Interpolate.NATURAL_SPLINE)
-        bctrl.setNxSample(int(exposure.getMaskedImage().getWidth()/bgGridSize) + 1)
-        bctrl.setNySample(int(exposure.getMaskedImage().getHeight()/bgGridSize) + 1)
+        nx = int(exposure.getMaskedImage().getWidth()/bgGridSize) + 1
+        ny = int(exposure.getMaskedImage().getHeight()/bgGridSize) + 1
+        bctrl = afwMath.BackgroundControl(nx, ny)
+        interpStyle = afwMath.Interpolate.AKIMA_SPLINE
+        undersampleStyle = afwMath.REDUCE_INTERP_ORDER
+        approxStyle = afwMath.ApproximateControl.UNKNOWN
+        approxOrderX = 0
+        approxOrderY = 0
+        approxWeighting = False
         backobj = afwMath.makeBackground(exposure.getMaskedImage().getImage(), bctrl)
         background = afwMath.BackgroundList()
-        background.append(backobj)
+        background.append(
+            (backobj, interpStyle, undersampleStyle, approxStyle, approxOrderX, approxOrderY, approxWeighting)
+        )
 
         # Configure and run the task
         expSummaryTask = ComputeExposureSummaryStatsTask()
@@ -156,6 +164,7 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         self.assertFloatsAlmostEqual(summary.skyBg, skyMean, rtol=1e-3)
         self.assertFloatsAlmostEqual(summary.meanVar, skySigma**2.)
 
+        self.assertFloatsAlmostEqual(summary.skyLumpiness, 0.47303, atol=1e-5)
         self.assertFloatsAlmostEqual(summary.zenithDistance, 30.57112, atol=1e-5)
 
         # Effective exposure time and depth
