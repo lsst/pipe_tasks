@@ -389,7 +389,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
 
     run_sattle = pexConfig.Field(
         dtype=bool,
-        default=True,
+        default=False,
         doc="If True, sattle service will populate catalog for use in "
             "ip_diffim.detectAndMeasure alert verification."
     )
