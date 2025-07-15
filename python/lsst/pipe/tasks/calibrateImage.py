@@ -939,10 +939,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 raise RuntimeError("Sattle filtering is on but service endpoints not set.")
 
             visit_id = result.exposure.getInfo().getVisitInfo().id
-            visit_date = Time(result.exposure.getInfo().getVisitInfo().getDate().toPython()).jd
+            visit_mjd = Time(result.exposure.getInfo().getVisitInfo().getDate().toPython()).mjd
             exposure_time_days = result.exposure.getInfo().getVisitInfo().getExposureTime() / 86400.0
-            exposure_end_jd = visit_date + exposure_time_days / 2.0
-            exposure_start_jd = visit_date - exposure_time_days / 2.0
+            exposure_end_mjd = visit_mjd + exposure_time_days / 2.0
+            exposure_start_mjd = visit_mjd - exposure_time_days / 2.0
             boresight_ra = result.exposure.getInfo().getVisitInfo().boresightRaDec[
                 0].asDegrees()
             boresight_dec = result.exposure.getInfo().getVisitInfo().boresightRaDec[
@@ -950,8 +950,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
             r = requests.put(f'{self.config.sattle_host}:{self.config.sattle_port}'
                              f'/visit_cache', json={"visit_id": visit_id,
-                                                    "exposure_start_mjd": exposure_start_jd,
-                                                    "exposure_end_mjd": exposure_end_jd,
+                                                    "exposure_start_mjd": exposure_start_mjd,
+                                                    "exposure_end_mjd": exposure_end_mjd,
                                                     "boresight_ra": boresight_ra,
                                                     "boresight_dec": boresight_dec,
                                                     "historical": self.config.sattle_historical})
