@@ -623,7 +623,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         """Test for a warning when sattle returns status codes other than 200.
         """
         self.config.run_sattle = True
-        self.config.sattle_port = 9999
+        self.config.sattle_port = '9999'
         self.config.sattle_host = 'fake_host'
         self.exposure.info.id = 42
         calibrate = CalibrateImageTask(config=self.config)
@@ -637,7 +637,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         """Test that run() returns reasonable values to be butler put.
         """
         self.config.run_sattle = True
-        self.config.sattle_port = 9999
+        self.config.sattle_port = '9999'
         self.config.sattle_host = 'fake_host'
         self.exposure.info.id = 99
         calibrate = CalibrateImageTask(config=self.config)

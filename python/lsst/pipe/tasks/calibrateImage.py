@@ -410,7 +410,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     )
 
     sattle_port = pexConfig.Field(
-        dtype=int,
+        dtype=str,
         default=os.getenv("SATTLE_PORT"),
         doc="Port for the sattle API.",
         optional=True,
