@@ -52,12 +52,13 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         exposure.setFilter(afwImage.FilterLabel(band=band, physical=physical_filter))
 
         readNoise = 5.0
+        gain = 1.0
         detector = DetectorWrapper(numAmps=1).detector
         metadata = PropertyList()
-        metadata.add("LSST ISR UNIT", "electron")
+        metadata.add("LSST ISR UNITS", "electron")
         for amp in detector.getAmplifiers():
             metadata.add(f"LSST ISR READNOISE {amp.getName()}", readNoise)
-            metadata.add(f"LSST ISR GAIN {amp.getName()}", 1.0)
+            metadata.add(f"LSST ISR GAIN {amp.getName()}", gain)
         exposure.setDetector(detector)
         exposure.setMetadata(metadata)
 
