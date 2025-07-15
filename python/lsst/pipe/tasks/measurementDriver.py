@@ -46,6 +46,7 @@ import lsst.meas.extensions.scarlet as scarlet
 import lsst.pipe.base as pipeBase
 import lsst.scarlet.lite as scl
 import numpy as np
+from lsst.meas.extensions.scarlet.deconvolveExposureTask import DeconvolveExposureTask
 from lsst.pex.config import Config, ConfigurableField, Field
 
 logging.basicConfig(level=logging.INFO)
@@ -125,6 +126,12 @@ class MeasurementDriverBaseConfig(Config):
 
         if not any(getattr(self, opt) for opt in self.doOptions):
             raise ValueError(f"At least one of these options must be enabled: {self.doOptions}")
+
+        if self.doApCorr and not self.doMeasure:
+            raise ValueError("Aperture correction requires measurement to be enabled.")
+
+        if self.doRunCatalogCalculation and not self.doMeasure:
+            raise ValueError("Catalog calculation requires measurement to be enabled.")
 
 
 class MeasurementDriverBaseTask(pipeBase.Task, metaclass=ABCMeta):
@@ -260,12 +267,15 @@ class MeasurementDriverBaseTask(pipeBase.Task, metaclass=ABCMeta):
             # Since a catalog is provided, use its Schema as the base.
             catalogSchema = catalog.schema
 
-            # Ensure that the Schema has coordinate error fields.
-            self._addCoordErrorFieldsIfMissing(catalogSchema)
-
             # Create a SchemaMapper that maps from catalogSchema to a new one
             # it will create.
             self.mapper = afwTable.SchemaMapper(catalogSchema)
+
+            # Ensure coordinate error fields exist in the schema.
+            # This must be done after initializing the SchemaMapper to avoid
+            # unequal schemas between input record and mapper during the
+            # _updateCatalogSchema call.
+            self._addCoordErrorFieldsIfMissing(catalogSchema)
 
             # Add everything from catalogSchema to output Schema.
             self.mapper.addMinimalSchema(catalogSchema, True)
@@ -978,6 +988,7 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
     def run(
         self,
         mExposure: afwImage.MultibandExposure | list[afwImage.Exposure] | afwImage.Exposure,
+        mDeconvolved: afwImage.MultibandExposure | list[afwImage.Exposure] | afwImage.Exposure | None = None,
         refBand: str | None = None,
         bands: list[str] | None = None,
         catalog: afwTable.SourceCatalog = None,
@@ -989,11 +1000,18 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
         Parameters
         ----------
         mExposure :
-            Multi-band data. May be a `MultibandExposure`, a single-band
-            exposure (i.e., `Exposure`), or a list of single-band exposures
-            associated with different bands in which case ``bands`` must be
-            provided. If a single-band exposure is given, it will be treated as
-            a `MultibandExposure` that contains only that one band.
+            Multi-band data containing images of the same shape and region of
+            the sky. May be a `MultibandExposure`, a single-band exposure
+            (i.e., `Exposure`), or a list of single-band exposures associated
+            with different bands in which case ``bands`` must be provided. If a
+            single-band exposure is given, it will be treated as a
+            `MultibandExposure` that contains only that one band whose name may
+            be "unknown" unless either ``bands`` or ``refBand`` is provided.
+        mDeconvolved :
+            Multi-band deconvolved images of the same shape and region of the
+            sky. Follows the same type conventions as ``mExposure``. If not
+            provided, the deblender will run the deconvolution internally
+            using the provided ``mExposure``.
         refBand :
             Reference band to use for detection. Not required for single-band
             exposures. If `measureOnlyInRefBand` is enabled while detection is
@@ -1034,7 +1052,9 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
         """
 
         # Validate inputs and adjust them as necessary.
-        mExposure, refBand, bands = self._ensureValidInputs(mExposure, refBand, bands, catalog)
+        mExposure, mDeconvolved, refBand, bands = self._ensureValidInputs(
+            mExposure, mDeconvolved, refBand, bands, catalog
+        )
 
         # Prepare the Schema and subtasks for processing.
         catalog = self._prepareSchemaAndSubtasks(catalog)
@@ -1059,7 +1079,7 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
 
         # Deblend detected sources and update the catalog(s).
         if self.config.doDeblend:
-            catalogs, self.modelData = self._deblendSources(mExposure, catalog, refBand=refBand)
+            catalogs, self.modelData = self._deblendSources(mExposure, mDeconvolved, catalog, refBand=refBand)
         else:
             self.log.warning(
                 "Skipping deblending; proceeding with the provided catalog in the reference band"
@@ -1078,10 +1098,11 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
     def _ensureValidInputs(
         self,
         mExposure: afwImage.MultibandExposure | list[afwImage.Exposure] | afwImage.Exposure,
+        mDeconvolved: afwImage.MultibandExposure | list[afwImage.Exposure] | afwImage.Exposure | None,
         refBand: str | None,
         bands: list[str] | None,
         catalog: afwTable.SourceCatalog | None = None,
-    ) -> tuple[afwImage.MultibandExposure, str, list[str] | None]:
+    ) -> tuple[afwImage.MultibandExposure, afwImage.MultibandExposure, str, list[str] | None]:
         """Perform validation and adjustments of inputs without heavy
         computation.
 
@@ -1089,8 +1110,10 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
         ----------
         mExposure :
             Multi-band data to be processed by the driver task.
+        mDeconvolved :
+            Multi-band deconvolved data to be processed by the driver task.
         refBand :
-            Reference band to use for detection or measurements.
+            Reference band to use for detection.
         bands :
             List of bands associated with the exposures in ``mExposure``.
         catalog :
@@ -1099,25 +1122,52 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
         Returns
         -------
         mExposure :
-            Multi-band exposure to be processed by the driver task.
+            Multi-band exposure to be processed by the driver task. If the
+            input was not already a `MultibandExposure` (optionally with the
+            relevant ``bands``), it is converted into one and returned
+            here; otherwise, the original input is returned unchanged.
+        mDeconvolved :
+            Multi-band deconvolved exposure to be processed by the driver task.
+            Same adjustments apply as for ``mExposure`` except that it is
+            optional and may be returned as None if not provided as input.
         refBand :
-            Reference band to use for detection or measurements.
+            Reference band to use for detection after potential adjustments.
+            If not provided in the input, and only one band is set to be
+            processed, ``refBand`` will be chosen to be the only existing band
+            in the ``bands`` list, or `mExposure.bands`, and if neither is
+            provided, it will be set to "unknown" for single-band exposures
+            processed by this multi-band driver.
         bands :
-            List of bands associated with the exposures in ``mExposure``.
+            List of bands associated with the exposures in ``mExposure`` after
+            potential adjustments. If not provided in the input, it will be set
+            to a list containing only the provided (or inferred as "unknown")
+            ``refBand`` value.
         """
 
         # Perform basic checks that are shared with all driver tasks.
         super()._ensureValidInputs(catalog)
 
         # Multi-band-specific validation and adjustments.
+
+        if bands is not None:
+            if not isinstance(bands, list):
+                raise TypeError(f"Expected 'bands' to be a list, got {type(bands)}")
+            if not all(isinstance(b, str) for b in bands):
+                raise TypeError(f"All elements in 'bands' must be strings, got {[type(b) for b in bands]}")
+
+        if refBand is not None:
+            if not isinstance(refBand, str):
+                raise TypeError(f"Reference band must be a string, got {type(refBand)}")
+
+        # Validate mExposure.
         if isinstance(mExposure, afwImage.MultibandExposure):
             if bands is not None:
                 if any(b not in mExposure.bands for b in bands):
                     raise ValueError(
-                        "Some bands in the 'bands' list are not present in the input multi-band exposure"
+                        f"Some of the provided {bands=} are not present in {mExposure.bands=}"
                     )
                 self.log.info(
-                    f"Using bands {bands} out of the available {mExposure.bands} in the multi-band exposure"
+                    f"Using {bands=} out of the available {mExposure.bands=} in the multi-band exposures"
                 )
         elif isinstance(mExposure, list):
             if bands is None:
@@ -1125,10 +1175,43 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
             if len(bands) != len(mExposure):
                 raise ValueError("Number of bands and exposures must match")
         elif isinstance(mExposure, afwImage.Exposure):
+            if bands is not None:
+                if len(bands) != 1:
+                    raise ValueError(
+                        f"{bands=}, if provided, must only contain a single band "
+                        "if 'mExposure' is a single-band exposure"
+                    )
+        else:
+            raise TypeError(f"Unsupported 'mExposure' type: {type(mExposure)}")
+
+        # Validate mDeconvolved.
+        if mDeconvolved:
+            if isinstance(mDeconvolved, afwImage.MultibandExposure):
+                if bands is not None:
+                    if any(b not in mDeconvolved.bands for b in bands):
+                        raise ValueError(
+                            f"Some of the provided {bands=} are not present in {mDeconvolved.bands=}"
+                        )
+            elif isinstance(mDeconvolved, list):
+                if bands is None:
+                    raise ValueError("The 'bands' list must be provided if 'mDeconvolved' is a list")
+                if len(bands) != len(mDeconvolved):
+                    raise ValueError("Number of bands and deconvolved exposures must match")
+            elif isinstance(mDeconvolved, afwImage.Exposure):
+                if bands is not None:
+                    if len(bands) != 1:
+                        raise ValueError(
+                            f"{bands=}, if provided, must only contain a single band "
+                            "if 'mDeconvolved' is a single-band exposure"
+                        )
+            else:
+                raise TypeError(f"Unsupported {type(mDeconvolved)=}")
+
+        if isinstance(mExposure, afwImage.Exposure) or isinstance(mDeconvolved, afwImage.Exposure):
             if bands is not None and len(bands) != 1:
                 raise ValueError(
-                    "The 'bands' list, if provided, must only contain a single band "
-                    "if a single-band exposure is given"
+                    f"{bands=}, if provided, must only contain a single band "
+                    "if one of 'mExposure' or 'mDeconvolved' is a single-band exposure"
                 )
             if bands is None and refBand is None:
                 refBand = "unknown"  # Placeholder for single-band deblending
@@ -1137,12 +1220,18 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
                 bands = [refBand]
             elif bands is not None and refBand is None:
                 refBand = bands[0]
-        else:
-            raise TypeError(f"Unsupported 'mExposure' type: {type(mExposure)}")
 
-        # Convert mExposure to a MultibandExposure object with the bands
-        # provided.
+        # Convert or subset the exposures to a MultibandExposure with the
+        # bands of interest.
         mExposure = self._buildMultibandExposure(mExposure, bands)
+
+        if mDeconvolved:
+            mDeconvolved = self._buildMultibandExposure(mDeconvolved, bands)
+            if mExposure.bands != mDeconvolved.bands:
+                raise ValueError(
+                    "The bands in 'mExposure' and 'mDeconvolved' must match; "
+                    f"got {mExposure.bands} and {mDeconvolved.bands}"
+                )
 
         if len(mExposure.bands) == 1:
             # N.B. Scarlet is designed to leverage multi-band information to
@@ -1172,15 +1261,19 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
             raise ValueError("Reference band must be provided for multi-band data")
 
         if refBand not in mExposure.bands:
-            raise ValueError(f"Requested band '{refBand}' is not present in the multi-band exposure")
+            raise ValueError(f"Requested {refBand=} is not in {mExposure.bands=}")
 
         if bands is not None and refBand not in bands:
-            raise ValueError(f"Reference band '{refBand}' is not in the list of 'bands' provided: {bands}")
+            raise ValueError(f"Reference {refBand=} is not in {bands=}")
 
-        return mExposure, refBand, bands
+        return mExposure, mDeconvolved, refBand, bands
 
     def _deblendSources(
-        self, mExposure: afwImage.MultibandExposure, catalog: afwTable.SourceCatalog, refBand: str
+        self,
+        mExposure: afwImage.MultibandExposure,
+        mDeconvolved: afwImage.MultibandExposure | None,
+        catalog: afwTable.SourceCatalog,
+        refBand: str,
     ) -> tuple[dict[str, afwTable.SourceCatalog], scl.io.ScarletModelData]:
         """Run multi-band deblending given a multi-band exposure and a catalog.
 
@@ -1188,6 +1281,10 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
         ----------
         mExposure :
             Multi-band exposure on which to run the deblending algorithm.
+        mDeconvolved :
+            Multi-band deconvolved exposure to use for deblending. If None,
+            the deblender will create it internally using the provided
+            ``mExposure``.
         catalog :
             Catalog containing sources to be deblended.
         refBand :
@@ -1206,8 +1303,19 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
         """
         self.log.info(f"Deblending using '{self._Deblender}' on {len(catalog)} detection footprints")
 
+        if mDeconvolved is None:
+            # Make a deconvolved version of the multi-band exposure.
+            deconvolvedCoadds = []
+            deconvolveTask = DeconvolveExposureTask()
+            for coadd in mExposure:
+                deconvolvedCoadd = deconvolveTask.run(coadd, catalog).deconvolved
+                deconvolvedCoadds.append(deconvolvedCoadd)
+            mDeconvolved = afwImage.MultibandExposure.fromExposures(mExposure.bands, deconvolvedCoadds)
+
         # Run the deblender on the multi-band exposure.
-        catalog, modelData = self.deblend.run(mExposure, catalog)
+        result = self.deblend.run(mExposure, mDeconvolved, catalog)
+        catalog = result.deblendedCatalog
+        modelData = result.scarletModelData
 
         # Determine which bands to process post-deblending.
         bands = [refBand] if self.config.measureOnlyInRefBand else mExposure.bands
@@ -1319,10 +1427,7 @@ class ForcedMeasurementDriverConfig(SingleBandMeasurementDriverConfig):
                 "deblending; set doDetect=False and doDeblend=False"
             )
         if not self.doMeasure:
-            raise ValueError(
-                "ForcedMeasurementDriverTask must perform measurements; "
-                "set doMeasure=True"
-            )
+            raise ValueError("ForcedMeasurementDriverTask must perform measurements; set doMeasure=True")
 
 
 class ForcedMeasurementDriverTask(SingleBandMeasurementDriverTask):
@@ -1428,7 +1533,7 @@ class ForcedMeasurementDriverTask(SingleBandMeasurementDriverTask):
             additional measurement columns defined in the configuration.
         """
         # Validate inputs before proceeding.
-        self._ensureValidInputs(table, exposure, id_column_name, ra_column_name, dec_column_name)
+        coord_unit = self._ensureValidInputs(table, exposure, id_column_name, ra_column_name, dec_column_name)
 
         # Generate catalog IDs consistently across subtasks.
         if idGenerator is None:
@@ -1445,7 +1550,7 @@ class ForcedMeasurementDriverTask(SingleBandMeasurementDriverTask):
         # This must be done *after* `_prepareSchemaAndSubtasks`, or the schema
         # won't be set up correctly.
         refCat = self._makeMinimalSourceCatalogFromAstropy(
-            table, columns=[id_column_name, ra_column_name, dec_column_name]
+            table, columns=[id_column_name, ra_column_name, dec_column_name], coord_unit=coord_unit
         )
 
         # Check whether coords are within the image.
@@ -1521,9 +1626,25 @@ class ForcedMeasurementDriverTask(SingleBandMeasurementDriverTask):
             Name of the column containing RA coordinates in the table.
         dec_column_name :
             Name of the column containing Dec coordinates in the table.
+
+        Returns
+        -------
+        coord_unit : `str`
+            Unit of the sky coordinates extracted from the table.
         """
         if not isinstance(table, astropy.table.Table):
             raise TypeError(f"Expected 'table' to be an astropy Table, got {type(table)}")
+
+        if table[ra_column_name].unit == table[dec_column_name].unit:
+            if table[ra_column_name].unit == astropy.units.deg:
+                coord_unit = "degrees"
+            elif table[ra_column_name].unit == astropy.units.rad:
+                coord_unit = "radians"
+            else:
+                # Fallback if it's something else.
+                coord_unit = str(table[ra_column_name].unit)
+        else:
+            raise ValueError("RA and Dec columns must have the same unit")
 
         if not isinstance(exposure, afwImage.Exposure):
             raise TypeError(f"Expected 'exposure' to be an Exposure, got {type(exposure)}")
@@ -1532,8 +1653,13 @@ class ForcedMeasurementDriverTask(SingleBandMeasurementDriverTask):
             if col not in table.colnames:
                 raise ValueError(f"Column '{col}' not found in the input table")
 
+        return coord_unit
+
     def _makeMinimalSourceCatalogFromAstropy(
-        self, table: astropy.table.Table, columns: list[str] = ["id", "ra", "dec"]
+        self,
+        table: astropy.table.Table,
+        columns: list[str] = ["id", "ra", "dec"],
+        coord_unit: str = "degrees",
     ):
         """Convert an Astropy Table to a minimal LSST SourceCatalog.
 
@@ -1547,7 +1673,10 @@ class ForcedMeasurementDriverTask(SingleBandMeasurementDriverTask):
             Astropy Table containing source IDs and sky coordinates.
         columns :
             Names of the columns in the order [id, ra, dec], where `ra` and
-            `dec` are in degrees.
+            `dec` are in degrees by default. If the coordinates are in radians,
+            set `coord_unit` to "radians".
+        coord_unit : `str`
+            Unit of the sky coordinates. Can be either "degrees" or "radians".
 
         Returns
         -------
@@ -1557,6 +1686,7 @@ class ForcedMeasurementDriverTask(SingleBandMeasurementDriverTask):
         Raises
         ------
         ValueError
+            If `coord_unit` is not "degrees" or "radians".
             If `columns` does not contain exactly 3 items.
         KeyError
             If any of the specified columns are missing from the input table.
@@ -1564,6 +1694,9 @@ class ForcedMeasurementDriverTask(SingleBandMeasurementDriverTask):
         # TODO: Open a meas_base ticket to make this function pay attention to
         # the configs, and move this from being a Task method to a free
         # function that takes column names as args.
+
+        if coord_unit not in ["degrees", "radians"]:
+            raise ValueError(f"Invalid coordinate unit '{coord_unit}'; must be 'degrees' or 'radians'")
 
         if len(columns) != 3:
             raise ValueError("`columns` must contain exactly three elements for [id, ra, dec]")
@@ -1580,6 +1713,8 @@ class ForcedMeasurementDriverTask(SingleBandMeasurementDriverTask):
         for row in table:
             outputRecord = outputCatalog.addNew()
             outputRecord.setId(row[idCol])
-            outputRecord.setCoord(lsst.geom.SpherePoint(row[raCol], row[decCol], lsst.geom.degrees))
+            outputRecord.setCoord(
+                lsst.geom.SpherePoint(row[raCol], row[decCol], getattr(lsst.geom, coord_unit))
+            )
 
         return outputCatalog
