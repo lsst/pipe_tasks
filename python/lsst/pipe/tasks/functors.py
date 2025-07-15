@@ -1158,8 +1158,8 @@ class E1(Functor):
         return [self.colXX, self.colXY, self.colYY]
 
     def _func(self, df):
-        return (df[self.colXX] - df[self.colYY] / (df[self.colXX]
-                                                   + df[self.colYY])).astype(np.float32)
+        return ((df[self.colXX] - df[self.colYY]) / (
+            df[self.colXX] + df[self.colYY])).astype(np.float32)
 
 
 class E2(Functor):
