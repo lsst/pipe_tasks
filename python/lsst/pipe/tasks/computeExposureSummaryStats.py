@@ -711,7 +711,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
         # Get the image units (default to 'adu' if metadata key absent)
         md = exposure.getMetadata()
-        if md.get("LSST ISR UNIT", "adu") == "electron":
+        if md.get("LSST ISR UNITS", "adu") == "electron":
             gain = 1.0
 
         # Convert readNoise to image units
