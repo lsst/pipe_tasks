@@ -39,6 +39,7 @@ from lsst.pipe.base import InMemoryDatasetHandle
 from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, RAColumn,
                                       DecColumn, Mag, MagDiff, Color,
                                       DeconvolvedMoments, SdssTraceSize, PsfSdssTraceSizeDiff,
+                                      E1, E2, RadiusFromQuadrupole,
                                       HsmTraceSize, PsfHsmTraceSizeDiff, HsmFwhm,
                                       LocalPhotometry, LocalNanojansky, LocalNanojanskyErr,
                                       LocalDipoleMeanFlux, LocalDipoleMeanFluxErr,
@@ -270,6 +271,38 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
         # Test that the pixel scale and pix->arcsec calculations perform as
         # expected.
         pass
+
+    def testShape(self):
+        data = {
+            "x": np.array([-0.3, 0.4, 0.7, -0.9, 1.4, -5.3]),
+            "y": np.array([1.5, -0.7, -1.9, 2.8, -1.4, 0.01]),
+            "rho": np.array([-0.9, 0.4, -0.7, 0., 0.3, -0.99]),
+        }
+        data["xx"] = data["x"]**2
+        data["yy"] = data["y"]**2
+        data["xy"] = data["x"]*data["y"]*data["rho"]
+
+        args = ("xx", "xy", "yy")
+        functor_e1, functor_e2, functor_quadrupole = E1(*args), E2(*args), RadiusFromQuadrupole(*args)
+
+        xx_plus_yy = data["xx"] + data["yy"]
+        data = pd.DataFrame(data)
+
+        np.testing.assert_allclose(
+            functor_e1(data),
+            ((data["xx"] - data["yy"])/xx_plus_yy).astype(np.float32),
+            rtol=1e-12, atol=1e-12,
+        )
+        np.testing.assert_allclose(
+            functor_e2(data),
+            (2.0*data["xy"]/xx_plus_yy).astype(np.float32),
+            rtol=1e-12, atol=1e-12,
+        )
+        np.testing.assert_allclose(
+            functor_quadrupole(data),
+            ((data["xx"]*data["yy"] - data["xy"]**2)**0.25).astype(np.float32),
+            rtol=1e-12, atol=1e-12,
+        )
 
     def testOther(self):
         self.columns.extend(["ext_shapeHSM_HsmSourceMoments_xx", "ext_shapeHSM_HsmSourceMoments_yy",
