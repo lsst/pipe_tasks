@@ -23,10 +23,13 @@ __all__ = ["CalibrateImageTask", "CalibrateImageConfig", "NoPsfStarsToStarsMatch
            "AllCentroidsFlaggedError"]
 
 import numpy as np
+from astropy.time import Time
+import requests
+import os
 
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
-from lsst.ip.diffim.utils import evaluateMaskFraction
+from lsst.ip.diffim.utils import evaluateMaskFraction, populate_sattle_visit_cache
 import lsst.meas.algorithms
 import lsst.meas.algorithms.installGaussianPsf
 import lsst.meas.algorithms.measureApCorr
@@ -384,6 +387,21 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         doc="If True, include astrometric errors in the output catalog.",
     )
 
+    run_sattle = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="If True, the sattle service will populate a cache for later use "
+            "in ip_diffim.detectAndMeasure alert verification."
+    )
+
+    sattle_historical = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="If re-running a pipeline that requires sattle, this should be set"
+            "to True. This will populate sattle's cache with the historic data"
+            "closest in time to the exposure.",
+    )
+
     def setDefaults(self):
         super().setDefaults()
 
@@ -564,6 +582,12 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
                         "CalibrateImageTask.star_detection background must be configured with "
                         "doApplyFlatBackgroundRatio=True if do_illumination_correction=True."
                     )
+
+        if self.config.run_sattle:
+            self.sattle_uri = os.getenv("SATTLE_URI")
+            if not self.sattle_uri:
+                raise ValueError("Sattle uri environment variable not set.")
+
 
 
 class CalibrateImageTask(pipeBase.PipelineTask):
@@ -901,6 +925,18 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             result.applied_photo_calib = photo_calib
         else:
             result.applied_photo_calib = None
+
+        if self.config.run_sattle:
+            # send boresight and timing information to sattle so the cache
+            # is populated by the time we reach ip_diffim detectAndMeasure.
+            try:
+                populate_sattle_visit_cache(result.exposure.getInfo().getVisitInfo(), 
+                                            historical=self.config.sattle_historical)
+                self.log.info('Successfully loaded sattle visit cache')
+            except Exception as e:
+                # log but do not stop processing if sattle caching fails
+                self.log.error(e)
+
         return result
 
     def _apply_illumination_correction(self, exposure, background_flat, illumination_correction):
