@@ -29,7 +29,7 @@ import os
 
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
-from lsst.ip.diffim.utils import evaluateMaskFraction
+from lsst.ip.diffim.utils import evaluateMaskFraction, populate_sattle_visit_cache
 import lsst.meas.algorithms
 import lsst.meas.algorithms.installGaussianPsf
 import lsst.meas.algorithms.measureApCorr
@@ -390,30 +390,16 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     run_sattle = pexConfig.Field(
         dtype=bool,
         default=False,
-        doc="If True, sattle service will populate catalog for use in "
-            "ip_diffim.detectAndMeasure alert verification."
+        doc="If True, the sattle service will populate a cache for later use "
+            "in ip_diffim.detectAndMeasure alert verification."
     )
 
-    sattle_historical = sattle_host = pexConfig.Field(
+    sattle_historical = pexConfig.Field(
         dtype=bool,
         default=False,
         doc="If re-running a pipeline that requires sattle, this should be set"
-            "to True. This will population sattles cache with the historic data"
+            "to True. This will populate sattle's cache with the historic data"
             "closest in time to the exposure.",
-    )
-
-    sattle_host = pexConfig.Field(
-        dtype=str,
-        default=os.getenv("SATTLE_HOST"),
-        doc="The host name for the sattle API.",
-        optional=True,
-    )
-
-    sattle_port = pexConfig.Field(
-        dtype=str,
-        default=os.getenv("SATTLE_PORT"),
-        doc="Port for the sattle API.",
-        optional=True,
     )
 
     def setDefaults(self):
@@ -596,6 +582,12 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
                         "CalibrateImageTask.star_detection background must be configured with "
                         "doApplyFlatBackgroundRatio=True if do_illumination_correction=True."
                     )
+
+        if self.config.run_sattle:
+            self.sattle_uri = os.getenv("SATTLE_URI")
+            if not self.sattle_uri:
+                raise ValueError("Sattle uri environment variable not set.")
+
 
 
 class CalibrateImageTask(pipeBase.PipelineTask):
@@ -935,31 +927,15 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             result.applied_photo_calib = None
 
         if self.config.run_sattle:
-            if not self.config.sattle_host or not self.config.sattle_port:
-                raise RuntimeError("Sattle filtering is on but service endpoints not set.")
-
-            visit_id = result.exposure.getInfo().getVisitInfo().id
-            visit_mjd = Time(result.exposure.getInfo().getVisitInfo().getDate().toPython()).mjd
-            exposure_time_days = result.exposure.getInfo().getVisitInfo().getExposureTime() / 86400.0
-            exposure_end_mjd = visit_mjd + exposure_time_days / 2.0
-            exposure_start_mjd = visit_mjd - exposure_time_days / 2.0
-            boresight_ra = result.exposure.getInfo().getVisitInfo().boresightRaDec[
-                0].asDegrees()
-            boresight_dec = result.exposure.getInfo().getVisitInfo().boresightRaDec[
-                1].asDegrees()
-
-            r = requests.put(f'{self.config.sattle_host}:{self.config.sattle_port}'
-                             f'/visit_cache', json={"visit_id": visit_id,
-                                                    "exposure_start_mjd": exposure_start_mjd,
-                                                    "exposure_end_mjd": exposure_end_mjd,
-                                                    "boresight_ra": boresight_ra,
-                                                    "boresight_dec": boresight_dec,
-                                                    "historical": self.config.sattle_historical})
-
-            if r.status_code != 200:
-                self.log.warning(f'Sattle cache returned {r.status_code}: {r.text}')
-            else:
+            # send boresight and timing information to sattle so the cache
+            # is populated by the time we reach ip_diffim detectAndMeasure.
+            try:
+                populate_sattle_visit_cache(result.exposure.getInfo().getVisitInfo(), 
+                                            historical=self.config.sattle_historical)
                 self.log.info('Successfully loaded sattle visit cache')
+            except Exception as e:
+                # log but do not stop processing if sattle caching fails
+                self.log.error(e)
 
         return result
 
