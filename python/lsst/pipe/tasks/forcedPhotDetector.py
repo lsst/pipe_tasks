@@ -21,6 +21,8 @@
 
 import astropy.table
 
+import lsst.afw.geom
+import lsst.afw.image
 import lsst.pex.config
 from lsst.meas.base.simple_forced_measurement import SimpleForcedMeasurementTask
 from lsst.meas.base.applyApCorr import ApplyApCorrTask
@@ -64,6 +66,7 @@ class ForcedPhotDetectorConnections(PipelineTaskConnections,
 
 class ForcedPhotDetectorConfig(pipeBase.PipelineTaskConfig,
                                pipelineConnections=ForcedPhotDetectorConnections):
+    """Configuration for the ForcedPhotDetectorTask."""
     measurement = lsst.pex.config.ConfigurableField(
         target=SimpleForcedMeasurementTask,
         doc="subtask to do forced measurement"
@@ -104,7 +107,7 @@ class ForcedPhotDetectorConfig(pipeBase.PipelineTaskConfig,
 
 
 class ForcedPhotDetectorTask(pipeBase.PipelineTask):
-
+    """A pipeline task for performing forced photometry on CCD images."""
     ConfigClass = ForcedPhotDetectorConfig
     _DefaultName = "forcedPhotDetector"
 
@@ -124,7 +127,7 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
         if inputs["exposure"].getWcs() is None:
             raise NoWorkFound("Exposure has no WCS.")
         self.log.info("Filtering ref cats: %s", ','.join([str(i.dataId) for i in inputs['refCat']]))
-        table = self.filterRefCat(
+        table = self._filterRefCat(
             inputs['refCat'],
             inputs['exposure'].getBBox(),
             inputs['exposure'].getWcs(),
@@ -132,7 +135,32 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
         outputs = self.run(table, exposure, refWcs)
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, table, exposure, refWcs):
+    def run(
+        self,
+        table: astropy.table.Table,
+        exposure: lsst.afw.image.Exposure,
+        refWcs: lsst.afw.geom.SkyWcs
+    ) -> pipeBase.Struct:
+        """Perform forced measurement on a single exposure.
+
+        Parameters
+        ----------
+        table : `astropy.table.Table`
+            Astropy table containing the reference catalog data, with columns
+            for the object ID, right ascension, and declination.
+        exposure : `lsst.afw.image.exposure.Exposure`
+            Input exposure to adjust calibrations.
+        refWcs : `lsst.afw.geom.SkyWcs`
+            Defines the X,Y coordinate system of ``refCat``.
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            A struct containing the measurement results, including the
+            measured table. The struct has the following attributes:
+            - `measTable`: `astropy.table.Table`
+                containing the forced photometry results
+        """
         outputs = self.measurement.run(table, exposure, refWcs)
         if self.config.doApCorr:
             apCorrMap = exposure.getInfo().getApCorrMap()
@@ -145,7 +173,7 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
                 )
         return outputs
 
-    def filterRefCat(self, refCatHandles, exposureBBox, exposureWcs):
+    def _filterRefCat(self, refCatHandles, exposureBBox, exposureWcs):
         """Prepare a merged, filtered reference catalog from ArrowAstropy
         inputs.
 
