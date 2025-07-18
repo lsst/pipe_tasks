@@ -34,6 +34,7 @@ from lsst.afw.coord import Observatory
 from lsst.afw.geom import makeCdMatrix, makeSkyWcs
 from lsst.afw.cameraGeom.testUtils import DetectorWrapper
 from lsst.pipe.tasks.computeExposureSummaryStats import ComputeExposureSummaryStatsTask
+from lsst.pipe.tasks.computeExposureSummaryStats import ComputeExposureSummaryStatsConfig
 from lsst.pipe.tasks.computeExposureSummaryStats import compute_magnitude_limit
 
 
@@ -176,14 +177,16 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         # Assumed values from SMTN-002
         snr = 5
         gain = 1.0
+        exposure_time = 30
+        pixel_scale = 0.2
         # Output magnitude limit from syseng_throughputs notebook
         m5_fid = {'g': 24.90, 'r': 24.48, 'i': 24.10}
 
         for band in ['g', 'r', 'i']:
             # Translate into DM quantities
-            psfArea = 2.266 * (fwhm_eff_fid[band] / 0.2)**2
+            psfArea = 2.266 * (fwhm_eff_fid[band] / pixel_scale)**2
             skyBg = skycounts_fid[band]
-            zeroPoint = zeropoint_fid[band] + 2.5*np.log10(30)
+            zeroPoint = zeropoint_fid[band] + 2.5*np.log10(exposure_time)
             readNoise = readnoise_fid[band]
 
             # Calculate the M5 values
@@ -200,6 +203,48 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         self.assertFloatsAlmostEqual(m5, nan, ignoreNaNs=True)
         m5 = compute_magnitude_limit(psfArea, skyBg, zeroPoint, nan, gain, snr)
         self.assertFloatsAlmostEqual(m5, nan, ignoreNaNs=True)
+
+    def testComputeFiducialMagnitudeLimit(self):
+        """Test the magnitude limit calculation using fiducials from SMTN-002
+        and syseng_throughputs."""
+
+        # Setup the config
+        config = ComputeExposureSummaryStatsConfig()
+        # Configure fiducial values.
+        # These come from obs_lsst/config/lsstCam
+        config.fiducialZeroPoint = {
+            "u": 26.52, "g": 28.51, "r": 28.36, "i": 28.17, "z": 27.78, "y": 26.82,
+        }
+        config.fiducialPsfSigma = {
+            "u": 1.72, "g": 1.63, "r": 1.56, "i": 1.51, "z": 1.47, "y": 1.44,
+        }
+        config.fiducialSkyBackground = {
+            "u": 1.51, "g": 15.45, "r": 32.95, "i": 52.94, "z": 79.40, "y": 90.57,
+        }
+        config.fiducialReadNoise = {
+            "u": 9.0, "g": 9.0, "r": 9.0, "i": 9.0, "z": 9.0, "y": 9.0,
+        }
+        # Other properties
+        exposureTime = 30  # second
+        pixelScale = 0.2  # arcsec/pix
+        gain = 1.0  # [e-/ADU]
+
+        # Fiducial m5 from SMTN-002
+        fiducialMagLim = {
+            "u": 23.70, "g": 24.97, "r": 24.52, "i": 24.13, "z": 23.56, "y": 22.55
+        }
+
+        # Compare fiducial m5 calculated from config to SMTN-002 values
+        for band in fiducialMagLim.keys():
+            print(f"\n{band}")
+            m5fid = config.fiducialMagnitudeLimit(band, exposureTime, pixelScale, gain)
+            print(f"{fiducialMagLim[band]:.2f} {m5fid:.3f}")
+            self.assertFloatsAlmostEqual(m5fid, fiducialMagLim[band], atol=1e-2)
+
+        # Check that passing an unknown band outputs NaN
+        nan = float('nan')
+        m5fid = config.fiducialMagnitudeLimit("block", exposureTime, pixelScale, gain)
+        self.assertFloatsAlmostEqual(m5fid, nan, ignoreNaNs=True)
 
 
 class MyMemoryTestCase(lsst.utils.tests.MemoryTestCase):
