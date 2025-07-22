@@ -932,6 +932,18 @@ funcs:
             - z_Flux
             - z
         dataset: Sersic_multiprofit
+    N540_sersicFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N540_Flux
+            - N540
+        dataset: Sersic_multiprofit
+    N708_sersicFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N708_Flux
+            - N708
+        dataset: Sersic_multiprofit
     sersic_index:
         functor: SinglePrecisionFloatColumn
         args: sersic_index
@@ -999,6 +1011,18 @@ funcs:
         args:
             - z_FluxErr
             - z
+        dataset: Sersic_multiprofit
+    N540_sersicFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N540_FluxErr
+            - N540
+        dataset: Sersic_multiprofit
+    N708_sersicFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N708_FluxErr
+            - N708
         dataset: Sersic_multiprofit
     sersic_indexErr:
         functor: SinglePrecisionFloatColumn
@@ -1071,6 +1095,18 @@ funcs:
         args:
             - z_epoch
             - z
+        dataset: epoch
+    N540_epoch:
+        functor: MultibandColumn
+        args:
+            - N540_epoch
+            - N540
+        dataset: epoch
+    N708_epoch:
+        functor: MultibandColumn
+        args:
+            - N708_epoch
+            - N708
         dataset: epoch
     # DM-22247: Add Star/Galaxy sep columns
     #     - Morphological Star Galaxy Classifier (Names? float 0-1)]
