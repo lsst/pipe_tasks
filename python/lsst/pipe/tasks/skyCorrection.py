@@ -232,7 +232,7 @@ class SkyCorrectionConfig(PipelineTaskConfig, pipelineConnections=SkyCorrectionC
     def setDefaults(self):
         Config.setDefaults(self)
         self.bgModel2.doSmooth = True
-        self.bgModel2.minFrac = 0.5
+        self.bgModel2.minFrac = 0.3
         self.bgModel2.xSize = 256
         self.bgModel2.ySize = 256
         self.bgModel2.smoothScale = 1.0
