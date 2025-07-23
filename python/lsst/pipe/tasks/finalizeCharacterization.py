@@ -38,6 +38,7 @@ import astropy.table
 import astropy.units as u
 import numpy as np
 import esutil
+import galsim
 from smatch.matcher import Matcher
 
 
@@ -50,7 +51,10 @@ import lsst.meas.extensions.piff.piffPsfDeterminer  # noqa: F401
 from lsst.meas.algorithms import MeasureApCorrTask
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask
 from lsst.meas.algorithms.sourceSelector import sourceSelectorRegistry
+from lsst.afw.cameraGeom import PIXELS, FOCAL_PLANE
+from lsst.geom import Point2D
 
+from .lsstCamFocalPlaneHeight import make_metrology_table, get_height_interpolator
 from .reserveIsolatedStars import ReserveIsolatedStarsTask
 from .postprocess import TableVStack
 
@@ -433,6 +437,11 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             size=10,
             doc="Color used in PSF fit."
         )
+        output_schema.addField(
+            'sensor_height',
+            type=np.float32,
+            doc="sensor height in PSF fit."
+        )
 
         alias_map = input_schema.getAliasMap()
         alias_map_output = afwTable.AliasMap()
@@ -477,7 +486,11 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             size=10,
             doc="Color used in PSF fit."
         )
-
+        selection_schema.addField(
+            'sensor_height',
+            type=np.float32,
+            doc="Color used in PSF fit."
+        )
         return mapper, selection_schema
 
     def concat_isolated_star_cats(self, band, isolated_star_cat_dict, isolated_star_source_dict):
@@ -608,6 +621,27 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             for idSrc, idColor in zip(idxSrcCat, idxColorCat):
                 srcCat[idSrc]['psf_color_value'] = colors[idColor]
                 srcCat[idSrc]['psf_color_type'] = f"{magStr1}-{magStr2}"
+    
+    def add_src_itl_height(self, srcCat, exposure):
+
+        #'slot_Centroid_x', 'slot_Centroid_y',
+        #'sensor_height'
+
+        metrology_table = make_metrology_table()
+        height_interpolator = get_height_interpolator(metrology_table)
+
+        for i in range(len(srcCat)):
+            x = srcCat[i]['slot_Centroid_x']
+            y = srcCat[i]['slot_Centroid_y']
+
+            detector = exposure.getDetector()
+
+            image_pos = Point2D(x, y) #galsim.PositionD(x, y) # In CCD pixel coordinates
+            focal_pos = detector.transform(image_pos, PIXELS, FOCAL_PLANE)
+            dz = height_interpolator(focal_pos.getX(), focal_pos.getY())
+            srcCat[i]['psf_color_value'] = dz
+            srcCat[i]['psf_color_type'] = 'dz'     
+
 
     def compute_psf_and_ap_corr_map(self, visit, detector, exposure, src,
                                     isolated_source_table, fgcm_standard_star_cat):
@@ -696,6 +730,9 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             band = None
         self.add_src_colors(selected_src, fgcm_standard_star_cat, band)
         self.add_src_colors(measured_src, fgcm_standard_star_cat, band)
+
+        self.add_src_itl_height(selected_src, exposure)
+        self.add_src_itl_height(measured_src, exposure)
 
         # Select the psf candidates from the selection catalog
         try:
