@@ -28,6 +28,8 @@ from astropy.coordinates import SkyCoord
 import copy
 import numpy as np
 import esutil
+import os
+import requests
 
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
@@ -44,6 +46,7 @@ import lsst.meas.base.tests
 import lsst.pipe.base.testUtils
 from lsst.pipe.tasks.calibrateImage import CalibrateImageTask, \
     NoPsfStarsToStarsMatchError, AllCentroidsFlaggedError
+import lsst.pex.config as pexConfig
 import lsst.utils.tests
 
 
@@ -120,6 +123,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # We don't have many test points, so can't match on complicated shapes.
         self.config.astrometry.sourceSelector["science"].flags.good = []
         self.config.astrometry.matcher.numPointsForShape = 3
+        self.config.run_sattle = False
         # ApFlux has more noise than PsfFlux (the latter unrealistically small
         # in this test data), so we need to do magnitude rejection at higher
         # sigma, otherwise we can lose otherwise good sources.
@@ -584,6 +588,42 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.assertIn(key, result.exposure.metadata)
         self.assertEqual(result.exposure.metadata[key], True)
 
+    @mock.patch.dict(os.environ, {"SATTLE_URI_BASE": ""})
+    def test_fail_on_sattle_miconfiguration(self):
+        """Test for failure if sattle is requested without appropriate configurations.
+        """
+        self.config.run_sattle = True
+        with self.assertRaises(pexConfig.FieldValidationError):
+            CalibrateImageTask(config=self.config)
+
+    @mock.patch.dict(os.environ, {"SATTLE_URI_BASE": "fake_host:1234"})
+    def test_continue_on_sattle_failure(self):
+        """Processing should continue when sattle returns status codes other than 200.
+        """
+        response = MockResponse({}, 500, "internal sattle error")
+
+        self.config.run_sattle = True
+        calibrate = CalibrateImageTask(config=self.config)
+        calibrate.astrometry.setRefObjLoader(self.ref_loader)
+        calibrate.photometry.match.setRefObjLoader(self.ref_loader)
+        with mock.patch('requests.put', return_value=response) as mock_put:
+            calibrate.run(exposures=self.exposure)
+            mock_put.assert_called_once()
+
+    @mock.patch.dict(os.environ, {"SATTLE_URI_BASE": "fake_host:1234"})
+    def test_sattle(self):
+        """Test for successful completion when sattle call returns successfully.
+        """
+        response = MockResponse({}, 200, "success")
+
+        self.config.run_sattle = True
+        calibrate = CalibrateImageTask(config=self.config)
+        calibrate.astrometry.setRefObjLoader(self.ref_loader)
+        calibrate.photometry.match.setRefObjLoader(self.ref_loader)
+        with mock.patch('requests.put', return_value=response) as mock_put:
+            calibrate.run(exposures=self.exposure)
+            mock_put.assert_called_once()
+
 
 class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
     """Tests of ``CalibrateImageTask.runQuantum``, which need a test butler,
@@ -953,6 +993,21 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         # ... but not the un-produced outputs.
         with self.assertRaises(FileNotFoundError):
             self.butler.get("initial_stars_footprints_detector", self.visit_id)
+
+
+class MockResponse:
+    """Provide a mock for requests.put calls"""
+    def __init__(self, json_data, status_code, text):
+        self.json_data = json_data
+        self.status_code = status_code
+        self.text = text
+
+    def json(self):
+        return self.json_data
+
+    def raise_for_status(self):
+        if self.status_code != 200:
+            raise requests.exceptions.HTTPError
 
 
 def setup_module(module):
