@@ -50,6 +50,28 @@ class TableVStack:
         self.result = None
 
     @classmethod
+    def set_extra_values(
+        cls, table: astropy.table.Table, name: str, values, capacity: int, slicer = None,
+        validate: bool = True,
+    ):
+        if name in table.colnames:
+            column = table[name]
+            if validate and not np.all((table[name] if (slicer is None) else table[name][slicer]) == values):
+                raise RuntimeError(
+                    f"table already contains {column=} with {name=} but values differ from {values=}"
+                )
+        else:
+            if slicer is None:
+                table[name] = values
+            else:
+                try:
+                    dtype = values.dtype
+                except AttributeError:
+                    dtype = np.dtype(type(values))
+                table[name] = np.empty(capacity, dtype=dtype)
+                table[name][slicer] = values
+
+    @classmethod
     def from_handles(cls, handles):
         """Construct from an iterable of
         `lsst.daf.butler.DeferredDatasetHandle`.
@@ -70,7 +92,7 @@ class TableVStack:
         capacity = sum(handle.get(component="rowcount") for handle in handles)
         return cls(capacity=capacity)
 
-    def extend(self, table):
+    def extend(self, table, extra_values: dict | None = None):
         """Add a single table to the stack.
 
         Parameters
@@ -78,28 +100,36 @@ class TableVStack:
         table : `astropy.table.Table`
             An astropy table instance.
         """
+        if extra_values is None:
+            extra_values = {}
         if self.result is None:
             self.result = astropy.table.Table()
+            slicer = slice(None, len(table))
             for name in table.colnames:
                 column = table[name]
                 column_cls = type(column)
                 self.result[name] = column_cls.info.new_like([column], self.capacity, name=name)
                 self.result[name][:len(table)] = column
+            for name, values in extra_values.items():
+                self.set_extra_values(
+                    table=self.result, name=name, values=values, capacity=self.capacity, slicer=slicer,
+                )
             self.index = len(table)
             self.result.meta = table.meta.copy()
         else:
             next_index = self.index + len(table)
-            if set(self.result.colnames) != set(table.colnames):
-                raise TypeError(
-                    "Inconsistent columns in concatentation: "
-                    f"{set(self.result.colnames).symmetric_difference(table.colnames)}"
-                )
+            slicer = slice(self.index, next_index)
             for name in table.colnames:
                 out_col = self.result[name]
                 in_col = table[name]
                 if out_col.dtype != in_col.dtype:
                     raise TypeError(f"Type mismatch on column {name!r}: {out_col.dtype} != {in_col.dtype}.")
-                self.result[name][self.index:next_index] = table[name]
+                self.result[name][slicer] = table[name]
+            for name, values in extra_values.items():
+                self.set_extra_values(
+                    table=self.result, name=name, values=values, capacity=self.capacity, slicer=slicer,
+                    validate=False,
+                )
             self.index = next_index
             # Butler provenance should be stripped on merge. It will be
             # added by butler on write. No attempt is made here to combine
@@ -108,7 +138,7 @@ class TableVStack:
             strip_provenance_from_fits_header(self.result.meta)
 
     @classmethod
-    def vstack_handles(cls, handles):
+    def vstack_handles(cls, handles, extra_values: dict | None = None):
         """Vertically stack tables represented by deferred dataset handles.
 
         Parameters
@@ -124,12 +154,14 @@ class TableVStack:
             Concatenated table with the same columns as each input table and
             the rows of all of them.
         """
+        if extra_values is None:
+            extra_values = {}
         handles = tuple(handles)  # guard against single-pass iterators
         # Ensure that zero length catalogs are not included
-        rowcount = tuple(handle.get(component="rowcount") for handle in handles)
-        handles = tuple(handle for handle, count in zip(handles, rowcount) if count > 0)
+        rowcounts = tuple(handle.get(component="rowcount") for handle in handles)
+        handles = tuple(handle for handle, count in zip(handles, rowcounts) if count > 0)
 
-        vstack = cls.from_handles(handles)
+        vstack = cls(capacity=np.sum(rowcounts))
         for handle in handles:
-            vstack.extend(handle.get())
+            vstack.extend(handle.get(), extra_values=extra_values.get(handle))
         return vstack.result
