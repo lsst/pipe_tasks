@@ -24,17 +24,19 @@ __all__ = [
     'MatchTractCatalogConfig', 'MatchTractCatalogTask'
 ]
 
+from abc import ABC, abstractmethod
+from typing import Tuple, Set
+
+import astropy.table
+import pandas as pd
+
 import lsst.afw.geom as afwGeom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
 from lsst.skymap import BaseSkyMap
 
-from abc import ABC, abstractmethod
-
-import astropy.table
-import pandas as pd
-from typing import Tuple, Set
+from .table_vstack import TableVStack
 
 
 MatchTractCatalogBaseTemplates = {
@@ -82,6 +84,30 @@ class MatchTractCatalogConnections(
     )
 
     def __init__(self, *, config=None):
+        if config.match_multiple_target:
+            if config.refcat_sharding_type != "tract":
+                raise ValueError(
+                    f"{config.match_multiple_target} only supported for refcat_sharding_type=tract,"
+                    f" not {config.refcat_sharding_type=}"
+                )
+            connections = {
+                name: getattr(self, name) for name in ("cat_ref", "cat_output_ref", "cat_output_target")
+            }
+            del self.cat_ref, self.cat_output_ref, self.cat_output_target
+            for name, connection in connections.items():
+                kwargs = {"deferLoad": connection.deferLoad} if hasattr(connection, "deferLoad") else {}
+                setattr(
+                    self,
+                    name,
+                    cT.Input(
+                        doc=connection.doc,
+                        name=connection.name,
+                        storageClass=connection.storageClass,
+                        dimensions=connection.dimensions,
+                        multiple=True,
+                        **kwargs
+                    ),
+                )
         if config.refcat_sharding_type != "tract":
             if config.refcat_sharding_type == "none":
                 old = self.cat_ref
@@ -93,6 +119,8 @@ class MatchTractCatalogConnections(
                     dimensions=(),
                     deferLoad=old.deferLoad,
                 )
+            else:
+                raise NotImplementedError(f"Unimplemented {config.refcat_sharding_type=}")
 
 
 class MatchTractCatalogSubConfig(pexConfig.Config):
@@ -158,6 +186,10 @@ class MatchTractCatalogConfig(
 ):
     """Configure a MatchTractCatalogTask, including a configurable matching subtask.
     """
+    match_multiple_target = pexConfig.Field[bool](
+        doc="Whether to match multiple target tract catalogs",
+        default=False,
+    )
     match_tract_catalog = pexConfig.ConfigurableField(
         target=MatchTractCatalogSubTask,
         doc="Task to match sources in a reference tract catalog with a target catalog",
@@ -201,12 +233,43 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
         inputs = butlerQC.get(inputRefs)
         columns_ref, columns_target = self.config.get_columns_in()
         skymap = inputs.pop("skymap")
+        is_refcat_per_tract = self.config.refcat_sharding_type == 'tract'
+
+        if self.config.match_multiple_target:
+            names = ['cat_target']
+            if is_refcat_per_tract:
+                names.append('cat_ref')
+            catalogs = {}
+            for name in names:
+                handles = []
+                extra_values = {}
+                for tract, handle in sorted(
+                    (inputRef["tract"], inputHandle)
+                    for inputRef, inputHandle in zip(inputRefs[name], inputs[name], strict=True)
+                ):
+                    handles.append(handle)
+                    extra_values[handle] = {"tract": tract}
+                catalogs[name] = TableVStack.vstack_handles(handles, extra_values=extra_values)
+            catalog_ref, catalog_target = catalogs['cat_ref'], catalogs['cat_target']
+        else:
+            catalog_ref, catalog_target = (
+                inputs[name].get(parameters={'columns': columns})
+                for (name, columns) in (('cat_ref', columns_ref), ('cat_target', columns_target))
+            )
 
         outputs = self.run(
-            catalog_ref=inputs['cat_ref'].get(parameters={'columns': columns_ref}),
-            catalog_target=inputs['cat_target'].get(parameters={'columns': columns_target}),
+            catalog_ref=catalog_ref,
+            catalog_target=catalog_target,
             wcs=skymap[butlerQC.quantum.dataId["tract"]].wcs,
         )
+        if self.config.match_multiple_target:
+            catalogs_output_target = []
+            catalogs_output_ref = []
+            for outputRef in outputRefs:
+                tract = outputRef["tract"]
+                catalogs_output_target.append(outputs.cat_output_target[catalog_target["tract"] == tract])
+                catalogs_output_ref.append(outputs.cat_output_target[catalog_target["tract"] == tract])
+
         butlerQC.put(outputs, outputRefs)
 
     def run(
