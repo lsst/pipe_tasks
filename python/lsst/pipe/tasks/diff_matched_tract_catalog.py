@@ -454,6 +454,10 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
             )
             match_row_target = catalog_match_target['match_row']
             cat_left = cat_target[~(match_row_target >= 0) & select_target]
+            cat_left.rename_columns(
+                cat_left.colnames,
+                [f"{config.column_matched_prefix_target}{col}" for col in cat_left.colnames],
+            )
             # This may be slower than pandas but will, for example, create
             # masked columns for booleans, which pandas does not support.
             # See https://github.com/pandas-dev/pandas/issues/46662
@@ -488,22 +492,23 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
                     )
                 )
                 for column_coord_best, column_coord_ref, column_coord_target in zip(
-                        columns_coord_best,
-                        (config.coord_format.column_ref_coord1, config.coord_format.column_ref_coord2),
-                        (config.coord_format.column_target_coord1, config.coord_format.column_target_coord2),
+                    columns_coord_best,
+                    (config.coord_format.column_ref_coord1, config.coord_format.column_ref_coord2),
+                    (config.coord_format.column_target_coord1, config.coord_format.column_target_coord2),
                 ):
                     column_full_ref = f'{config.column_matched_prefix_ref}{column_coord_ref}'
+                    column_full_target = f'{config.column_matched_prefix_target}{column_coord_target}'
                     values = cat_matched[column_full_ref]
                     unit = values.unit
                     values_bad = np.ma.masked_invalid(values).mask
                     # Cast to an unmasked array - there will be no bad values
                     values = np.array(values)
-                    values[values_bad] = cat_matched[column_coord_target][values_bad]
+                    values[values_bad] = cat_matched[column_full_target][values_bad]
                     cat_matched[column_coord_best] = values
                     cat_matched[column_coord_best].unit = unit
                     cat_matched[column_coord_best].description = (
                         f"Best {columns_coord_best} value from {column_full_ref} if available"
-                        f" else {column_coord_target}"
+                        f" else {column_full_target}"
                     )
 
         retStruct = pipeBase.Struct(cat_matched=cat_matched)
