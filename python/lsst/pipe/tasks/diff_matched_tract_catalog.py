@@ -363,16 +363,17 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         DatasetProvenance.strip_provenance_from_flat_dict(catalog_match_ref.meta)
         DatasetProvenance.strip_provenance_from_flat_dict(catalog_match_target.meta)
 
-        select_ref = catalog_match_ref['match_candidate']
-        # Add additional selection criteria for target sources beyond those for matching
-        # (not recommended, but can be done anyway)
         # It would be nice to make this a Selector but those are
         # only available in analysis_tools for now
-        select_target = (
-            catalog_match_target['match_candidate']
-            if 'match_candidate' in catalog_match_target.columns
-            else np.ones(len(catalog_match_target), dtype=bool)
+        select_ref, select_target = (
+            (catalog[column] if column else np.ones(len(catalog), dtype=bool))
+            for catalog, column in (
+                (catalog_match_ref, self.config.column_match_candidate_ref),
+                (catalog_match_target, self.config.column_match_candidate_target),
+            )
         )
+        # Add additional selection criteria for target sources beyond those for matching
+        # (not recommended, but can be done anyway)
         for column in config.columns_target_select_true:
             select_target &= catalog_target[column]
         for column in config.columns_target_select_false:
