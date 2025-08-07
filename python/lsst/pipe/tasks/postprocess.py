@@ -37,6 +37,7 @@ __all__ = ["WriteObjectTableConfig", "WriteObjectTableTask",
 
 from collections import defaultdict
 import dataclasses
+from deprecated.sphinx import deprecated
 import functools
 import logging
 import numbers
@@ -1677,6 +1678,9 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
         return pipeBase.Struct(outputCatalog=outputCatalog)
 
 
+@deprecated(reason="This task is replaced by lsst.pipe.tasks.ForcedPhotCcdTask. "
+                   "This task will be removed after v30.",
+            version="v29.0", category=FutureWarning)
 class WriteForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
                                         dimensions=("instrument", "visit", "detector", "skymap", "tract")):
 
@@ -1702,6 +1706,9 @@ class WriteForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
     )
 
 
+@deprecated(reason="This task is replaced by lsst.pipe.tasks.ForcedPhotCcdTask. "
+                   "This task will be removed after v30.",
+            version="v29.0", category=FutureWarning)
 class WriteForcedSourceTableConfig(pipeBase.PipelineTaskConfig,
                                    pipelineConnections=WriteForcedSourceTableConnections):
     key = lsst.pex.config.Field(
@@ -1711,6 +1718,9 @@ class WriteForcedSourceTableConfig(pipeBase.PipelineTaskConfig,
     )
 
 
+@deprecated(reason="This task is replaced by lsst.pipe.tasks.ForcedPhotCcdTask. "
+                   "This task will be removed after v30.",
+            version="v29.0", category=FutureWarning)
 class WriteForcedSourceTableTask(pipeBase.PipelineTask):
     """Merge and convert per-detector forced source catalogs to DataFrame Parquet format.
 
