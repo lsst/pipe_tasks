@@ -270,6 +270,16 @@ class DiffMatchedTractCatalogBaseConfig(pexConfig.Config):
     coord_format = pexConfig.ConfigField[ConvertCatalogCoordinatesConfig](
         doc="Configuration for coordinate conversion",
     )
+    refcat_sharding_type = pexConfig.ChoiceField[str](
+        doc="The type of sharding (spatial splitting) for the reference catalog",
+        allowed={"tract": "Tract-based shards", "none": "No sharding at all"},
+        default="tract",
+    )
+    target_sharding_type = pexConfig.ChoiceField[str](
+        doc="The type of sharding (spatial splitting) for the target catalog",
+        allowed={"tract": "Tract-based shards", "none": "No sharding at all"},
+        default="tract",
+    )
 
     def validate(self):
         super().validate()
