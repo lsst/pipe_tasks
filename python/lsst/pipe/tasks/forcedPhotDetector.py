@@ -19,7 +19,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import functools
+
 import astropy.table
+import numpy as np
+import pandas as pd
 
 import lsst.afw.geom
 import lsst.afw.image
@@ -38,7 +42,13 @@ class ForcedPhotDetectorConnections(PipelineTaskConnections,
                                     dimensions=("visit", "detector", "tract")):
     exposure = cT.Input(
         doc="Input exposure to perform photometry on.",
-        name="calexp",
+        name="visit_image",
+        storageClass="ExposureF",
+        dimensions=["visit", "detector"],
+    )
+    diaExposure = cT.Input(
+        doc="Input difference image to perform photometry on.",
+        name="difference_image",
         storageClass="ExposureF",
         dimensions=["visit", "detector"],
     )
@@ -56,11 +66,11 @@ class ForcedPhotDetectorConnections(PipelineTaskConnections,
         storageClass="SkyMap",
         dimensions=["skymap"],
     )
-    measTable = cT.Output(
+    outputCatalog = cT.Output(
         doc="Output forced photometry catalog.",
-        name="object_forced_source_direct_unstandardized",
-        storageClass="ArrowAstropy",
-        dimensions=["instrument", "visit", "detector", "skymap", "tract"],
+        name="mergedForcedSource",
+        storageClass="DataFrame",
+        dimensions=("instrument", "visit", "detector", "skymap", "tract")
     )
 
 
@@ -80,29 +90,10 @@ class ForcedPhotDetectorConfig(pipeBase.PipelineTaskConfig,
         target=ApplyApCorrTask,
         doc="Subtask to apply aperture corrections"
     )
-    refCatIdColumn = lsst.pex.config.Field(
+    key = lsst.pex.config.Field(
+        doc="Column on which to join the two input tables on and make the primary key of the output",
         dtype=str,
-        default="diaObjectId",
-        doc=(
-            "Name of the column that provides the object ID from the refCat connection. "
-            "measurement.copyColumns['id'] must be set to this value as well."
-        )
-    )
-    refCatRaColumn = lsst.pex.config.Field(
-        dtype=str,
-        default="ra",
-        doc=(
-            "Name of the column that provides the right ascension (in floating-point degrees) from the "
-            "refCat connection. "
-        )
-    )
-    refCatDecColumn = lsst.pex.config.Field(
-        dtype=str,
-        default="dec",
-        doc=(
-            "Name of the column that provides the declination (in floating-point degrees) from the "
-            "refCat connection. "
-        )
+        default="objectId",
     )
 
 
@@ -120,27 +111,71 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
 
+        if inputs["exposure"].getWcs() is None:
+            raise NoWorkFound("Exposure has no WCS.")
+        if inputs['diaExposure'].getWcs() is None:
+            raise NoWorkFound("Difference image has no WCS.")
+
         tract = butlerQC.quantum.dataId['tract']
         skyMap = inputs.pop('skyMap')
         refWcs = skyMap[tract].getWcs()
-        exposure = inputs['exposure']
-        if inputs["exposure"].getWcs() is None:
-            raise NoWorkFound("Exposure has no WCS.")
+
         self.log.info("Filtering ref cats: %s", ','.join([str(i.dataId) for i in inputs['refCat']]))
+
         table = self._filterRefCat(
             inputs['refCat'],
             inputs['exposure'].getBBox(),
             inputs['exposure'].getWcs(),
         )
-        outputs = self.run(table, exposure, refWcs)
+
+        outputs = self.run(
+            table=table,
+            exposure=inputs['exposure'],
+            diaExposure=inputs['diaExposure'],
+            visit=butlerQC.quantum.dataId['visit'],
+            detector=butlerQC.quantum.dataId['detector'],
+            refWcs=refWcs,
+        )
+
         butlerQC.put(outputs, outputRefs)
 
     def run(
         self,
         table: astropy.table.Table,
         exposure: lsst.afw.image.Exposure,
+        diaExposure: lsst.afw.image.Exposure,
+        visit: int,
+        detector: int,
         refWcs: lsst.afw.geom.SkyWcs
     ) -> pipeBase.Struct:
+        self.log.info("Running forced measurement on %s objects", len(table))
+        catalog: astropy.table.Table = self._runForcedPhotometry(table, exposure, refWcs)
+
+        self.log.info("Running forced measurement on %s objects on difference image", len(table))
+        catalog_diff: astropy.table.Table = self._runForcedPhotometry(table, diaExposure, refWcs)
+
+        # Convert the astropy tables to pandas DataFrames and reindex them
+        dfs = []
+        for table, dataset, in zip((catalog, catalog_diff), ("calexp", "diff")):
+            df = table.to_pandas().set_index(self.config.key, drop=False)
+            df = df.reindex(sorted(df.columns), axis=1)
+            df["visit"] = visit
+            # int16 instead of uint8 because databases don't like unsigned bytes.
+            df["detector"] = np.int16(detector)
+            df.columns = pd.MultiIndex.from_tuples([(dataset, c) for c in df.columns],
+                                                   names=("dataset", "column"))
+            dfs.append(df)
+
+        # Join the DataFrames on the index (which is the object ID)
+        outputCatalog = functools.reduce(lambda d1, d2: d1.join(d2), dfs)
+        return pipeBase.Struct(outputCatalog=outputCatalog)
+
+    def _runForcedPhotometry(
+        self,
+        table: astropy.table.Table,
+        exposure: lsst.afw.image.Exposure,
+        refWcs: lsst.afw.geom.SkyWcs
+    ) -> astropy.table.Table:
         """Perform forced measurement on a single exposure.
 
         Parameters
@@ -171,7 +206,7 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
                     catalog=outputs.measTable,
                     apCorrMap=apCorrMap,
                 )
-        return outputs
+        return outputs.measTable
 
     def _filterRefCat(self, refCatHandles, exposureBBox, exposureWcs):
         """Prepare a merged, filtered reference catalog from ArrowAstropy
@@ -197,9 +232,9 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
             i.get(
                 parameters={
                     "columns": [
-                        self.config.refCatIdColumn,
-                        self.config.refCatRaColumn,
-                        self.config.refCatDecColumn,
+                        self.config.measurement.refCatIdColumn,
+                        self.config.measurement.refCatRaColumn,
+                        self.config.measurement.refCatDecColumn,
                     ]
                 }
             )
@@ -209,8 +244,8 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
         # translate ra/dec coords in table to detector pixel coords
         # to down-select rows that overlap the detector bbox
         x, y = exposureWcs.skyToPixelArray(
-            full_table[self.config.refCatRaColumn],
-            full_table[self.config.refCatDecColumn],
+            full_table[self.config.measurement.refCatRaColumn],
+            full_table[self.config.measurement.refCatDecColumn],
             degrees=True,
         )
         inBBox = lsst.geom.Box2D(exposureBBox).contains(x, y)

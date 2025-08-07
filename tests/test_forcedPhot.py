@@ -100,22 +100,40 @@ class ForcedPhotometryTests:
         dataset.addSource(instFlux=1000, centroid=lsst.geom.Point2D(30, 30))
         dataset.addSource(instFlux=10000, centroid=lsst.geom.Point2D(60, 70))
 
+        diaDataset = lsst.meas.base.tests.TestDataset(bbox, crval=skyCenter)
+        diaDataset.addSource(instFlux=500, centroid=lsst.geom.Point2D(30, 30))
+        diaDataset.addSource(instFlux=12000, centroid=lsst.geom.Point2D(60, 70))
+
         schema = dataset.makeMinimalSchema()
         self.exposure, self.refCat = dataset.realize(noise=10, schema=schema)
+        self.diaExposure, self.diaRefCat = diaDataset.realize(noise=10, schema=schema)
         # Simple aperture correction map in case the task needs it.
         apCorrMap = lsst.afw.image.ApCorrMap()
         apCorrMap["base_PsfFlux_instFlux"] = ChebyshevBoundedField(bbox, np.array([[2.0]]))
         apCorrMap["base_PsfFlux_instFluxErr"] = ChebyshevBoundedField(bbox, np.array([[3.0]]))
         self.exposure.info.setApCorrMap(apCorrMap)
-        table = self.refCat.asAstropy(copy=True)
-        table.rename_column("id", "diaObjectId")
-        table.rename_column("coord_ra", "ra")
-        table.rename_column("coord_dec", "dec")
-        table.rename_column("slot_Centroid_x", "x")
-        table.rename_column("slot_Centroid_y", "y")
-        table["ra"] = table["ra"].to("deg")
-        table["dec"] = table["dec"].to("deg")
-        self.table = table
+
+        # Convert the reference catalog to an astropy table.
+        refTable = self.refCat.asAstropy(copy=True)
+        refTable.rename_column("id", "objectId")
+        refTable.rename_column("coord_ra", "ra")
+        refTable.rename_column("coord_dec", "dec")
+        refTable.rename_column("slot_Centroid_x", "x")
+        refTable.rename_column("slot_Centroid_y", "y")
+        refTable["ra"] = refTable["ra"].to("deg")
+        refTable["dec"] = refTable["dec"].to("deg")
+        self.refTable = refTable
+
+        # Convert the dia reference catalog to an astropy table.
+        diaRefTable = self.diaRefCat.asAstropy(copy=True)
+        diaRefTable.rename_column("id", "objectId")
+        diaRefTable.rename_column("coord_ra", "ra")
+        diaRefTable.rename_column("coord_dec", "dec")
+        diaRefTable.rename_column("slot_Centroid_x", "x")
+        diaRefTable.rename_column("slot_Centroid_y", "y")
+        diaRefTable["ra"] = diaRefTable["ra"].to("deg")
+        diaRefTable["dec"] = diaRefTable["dec"].to("deg")
+        self.diaRefTable = diaRefTable
 
         # Offset WCS so that the forced coordinates don't match the truth.
         self.offsetWcs = dataset.makePerturbedWcs(self.exposure.wcs)
@@ -130,64 +148,50 @@ class ForcedPhotometryTests:
         )
         self.inputs = {
             "exposure": self.exposure,
+            "diaExposure": self.diaExposure,
             "skyMap": _MockSkyMap(self.offsetWcs),
         }
 
 
 class ForcedPhotDetectorTaskTestCase(ForcedPhotometryTests, lsst.utils.tests.TestCase):
-    def testRun(self):
-        """Test ForcedPhotDetectorTask.run."""
-        config = ForcedPhotDetectorTask.ConfigClass()
-        task = ForcedPhotDetectorTask(config=config)
-        table = self.table
-        result = task.run(table, self.exposure, self.offsetWcs)
-        measTable = result.measTable
-
+    def _check_results(self, measTable, refCat):
         # Check that something was measured.
         self.assertTrue(np.isfinite(measTable["base_TransformedCentroidFromCoord_x"]).all())
         self.assertTrue(np.isfinite(measTable["base_TransformedCentroidFromCoord_y"]).all())
         self.assertTrue(np.isfinite(measTable["base_PsfFlux_instFlux"]).all())
         # We use an offset WCS, so the transformed centroids should not exactly
         # match the original positions.
-        self.assertFloatsNotEqual(measTable["base_TransformedCentroidFromCoord_x"], self.refCat['truth_x'])
-        self.assertFloatsNotEqual(measTable["base_TransformedCentroidFromCoord_y"], self.refCat['truth_y'])
+        self.assertFloatsNotEqual(measTable["base_TransformedCentroidFromCoord_x"], refCat['truth_x'])
+        self.assertFloatsNotEqual(measTable["base_TransformedCentroidFromCoord_y"], refCat['truth_y'])
+
+    def testRun(self):
+        """Test ForcedPhotDetectorTask.run."""
+        config = ForcedPhotDetectorTask.ConfigClass()
+        task = ForcedPhotDetectorTask(config=config)
+        refTable = self.refTable
+        diaRefTable = self.diaRefTable
+        visit = self.data_id['visit']
+        detector = self.data_id['detector']
+        result = task.run(refTable, self.exposure, self.diaExposure, visit, detector, self.offsetWcs)
+        catalog = result.outputCatalog
+        self._check_results(catalog['calexp'], refTable)
+        self._check_results(catalog['diff'], diaRefTable)
 
     def testRunQuantum(self):
         """Test ForcedPhotDetectorTask.runQuantum."""
         config = ForcedPhotDetectorTask.ConfigClass()
-        print("columns before", self.table.columns)
-        self.checkRunQuantum(
-            config,
-            None,
-            InMemoryDatasetHandle(self.table, storageClass="ArrowAstropy"),
-            "base_TransformedCentroidFromCoord",
-        )
 
-    def checkRunQuantum(self, config, get_init_input, ref_cat_input, centroid_name,
-                        task_class=ForcedPhotDetectorTask):
-        """Run tests on a runQuantum method.
-
-        Parameters
-        ----------
-        config : `lsst.meas.base.ForcedPhotDetectorConfig`
-            Configuration for the task.
-        get_init_input : callable or `None`
-            Callable that takes a single ignored argument and returns the
-            init-input object expected by the task at construction.
-        ref_cat_input : `lsst.pipe.base.InMemoryDatasetHandle`
-            Handle holding the input reference catalog.
-        centroid_name : `str`
-            Base name of the centroid plugin.
-        task_class : `type`, optional
-            Subclass of `ForcedPhotDetectorTask` to use.
-        """
         pipeline_graph = PipelineGraph(universe=self.universe)
-        pipeline_graph.add_task("ForcedPhotDetector", task_class, config)
+        pipeline_graph.add_task("ForcedPhotDetector", ForcedPhotDetectorTask, config)
         pipeline_graph.resolve(dimensions=self.universe)
         init_outputs = []
-        (task,) = pipeline_graph.instantiate_tasks(get_init_input=get_init_input, init_outputs=init_outputs)
-        self.inputs["refCat"] = [ref_cat_input]
-        exposure_dataset_type = pipeline_graph.dataset_types["calexp"].dataset_type
+        (task,) = pipeline_graph.instantiate_tasks(
+            get_init_input=None,
+            init_outputs=init_outputs,
+        )
+        self.inputs["refCat"] = [InMemoryDatasetHandle(self.refTable, storageClass="ArrowAstropy")]
+        exposure_dataset_type = pipeline_graph.dataset_types["visit_image"].dataset_type
+        dia_exposure_dataset_type = pipeline_graph.dataset_types["difference_image"].dataset_type
         input_refs = _MockRefsStruct(
             self.inputs,
             {
@@ -197,20 +201,31 @@ class ForcedPhotDetectorTaskTestCase(ForcedPhotometryTests, lsst.utils.tests.Tes
                     exposure_dataset_type,
                     self.quantum_context.quantum.dataId.subset(exposure_dataset_type.dimensions),
                     run="arbitrary",
-                )
+                ),
+                "diaExposure": DatasetRef(
+                    dia_exposure_dataset_type,
+                    self.quantum_context.quantum.dataId.subset(exposure_dataset_type.dimensions),
+                    run="arbitrary",
+                ),
             }
         )
         output_refs = _MockRefsStruct({}, {})
         task.runQuantum(self.quantum_context, input_refs, output_refs)
-        table = output_refs._datasets["measTable"]
-        # Check that something was measured.
-        self.assertTrue(np.isfinite(table[f"{centroid_name}_x"]).all())
-        self.assertTrue(np.isfinite(table[f"{centroid_name}_y"]).all())
-        self.assertTrue(np.isfinite(table["base_PsfFlux_instFlux"]).all())
-        # We use an offset WCS, so the transformed centroids should not exactly
-        # match the original positions.
-        self.assertFloatsNotEqual(table[f"{centroid_name}_x"], self.refCat['truth_x'])
-        self.assertFloatsNotEqual(table[f"{centroid_name}_y"], self.refCat['truth_y'])
+        catalog = output_refs._datasets["outputCatalog"]
+
+        for table, refCat in zip(
+            (catalog["calexp"], catalog["diff"]),
+            (self.refTable, self.diaRefTable),
+        ):
+            centroid_name = "base_TransformedCentroidFromCoord"
+            # Check that something was measured.
+            self.assertTrue(np.isfinite(table[f"{centroid_name}_x"]).all())
+            self.assertTrue(np.isfinite(table[f"{centroid_name}_y"]).all())
+            self.assertTrue(np.isfinite(table["base_PsfFlux_instFlux"]).all())
+            # We use an offset WCS, so the transformed centroids should not exactly
+            # match the original positions.
+            self.assertFloatsNotEqual(table[f"{centroid_name}_x"], refCat['truth_x'])
+            self.assertFloatsNotEqual(table[f"{centroid_name}_y"], refCat['truth_y'])
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
