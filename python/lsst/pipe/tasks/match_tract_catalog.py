@@ -85,7 +85,6 @@ class MatchTractCatalogConnections(
         if config.refcat_sharding_type != "tract":
             if config.refcat_sharding_type == "none":
                 old = self.cat_ref
-                del self.cat_ref
                 self.cat_ref = cT.Input(
                     doc=old.doc,
                     name=old.name,
@@ -93,6 +92,20 @@ class MatchTractCatalogConnections(
                     dimensions=(),
                     deferLoad=old.deferLoad,
                 )
+            else:
+                raise NotImplementedError(f"{config.refcat_sharding_type=} not implemented")
+        if config.target_sharding_type != "tract":
+            if config.target_sharding_type == "none":
+                old = self.cat_target
+                self.cat_target = cT.Input(
+                    doc=old.doc,
+                    name=old.name,
+                    storageClass=old.storageClass,
+                    dimensions=(),
+                    deferLoad=old.deferLoad,
+                )
+            else:
+                raise NotImplementedError(f"{config.target_sharding_type=} not implemented")
 
 
 class MatchTractCatalogSubConfig(pexConfig.Config):
@@ -164,6 +177,11 @@ class MatchTractCatalogConfig(
     )
     refcat_sharding_type = pexConfig.ChoiceField[str](
         doc="The type of sharding (spatial splitting) for the reference catalog",
+        allowed={"tract": "Tract-based shards", "none": "No sharding at all"},
+        default="tract",
+    )
+    target_sharding_type = pexConfig.ChoiceField[str](
+        doc="The type of sharding (spatial splitting) for the target catalog",
         allowed={"tract": "Tract-based shards", "none": "No sharding at all"},
         default="tract",
     )
