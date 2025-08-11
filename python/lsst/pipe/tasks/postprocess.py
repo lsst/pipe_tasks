@@ -1767,7 +1767,7 @@ class TransformForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
     inputCatalogs = connectionTypes.Input(
         doc="DataFrames of merged ForcedSources produced by WriteForcedSourceTableTask",
         name="mergedForcedSource",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument", "visit", "detector", "skymap", "tract"),
         multiple=True,
         deferLoad=True

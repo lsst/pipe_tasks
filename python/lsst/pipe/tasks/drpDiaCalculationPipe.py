@@ -55,7 +55,7 @@ class DrpDiaCalculationPipeConnections(pipeBase.PipelineTaskConnections,
         doc="Catalog of DiaObjects created from spatially associating "
             "DiaSources.",
         name="{fakesType}{coaddName}Diff_fullDiaObjTable",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("tract", "patch"),
     )
 

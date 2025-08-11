@@ -68,7 +68,7 @@ class ForcedPhotDetectorConnections(PipelineTaskConnections,
     )
     outputCatalog = cT.Output(
         doc="Output forced photometry catalog.",
-        name="mergedForcedSource",
+        name="object_forced_source_unstandardized",
         storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector", "skymap", "tract")
     )
