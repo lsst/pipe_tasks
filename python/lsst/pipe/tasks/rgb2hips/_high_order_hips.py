@@ -26,6 +26,7 @@ import numpy as np
 from enum import Enum
 from numpy.typing import NDArray
 
+from lsst.afw.geom import makeHpxWcs
 from lsst.pipe.base import (
     PipelineTask,
     PipelineTaskConfig,
@@ -50,7 +51,6 @@ from lsst.sphgeom import RangeSet
 
 import cv2
 
-from ._hipsWcsMaker import makeHpxWcs
 from ._utils import _write_hips_image
 
 
@@ -182,7 +182,7 @@ class HighOrderHipsTask(PipelineTask):
         # Make the WCS for the transform, intentionally over-sampled to shift order 12.
         # This creates as 4096 x 4096 image that can be broken apart to form the higher
         # orders, binning each as needed
-        target_wcs = makeHpxWcs(8, healpix_id, 12)
+        target_wcs = makeHpxWcs(8, healpix_id, 12, False)
 
         # construct a bounding box that holds the warping results for each channel
         exp_bbox = Box2I(corner=Point2I(0, 0), dimensions=Extent2I(2**12, 2**12))
