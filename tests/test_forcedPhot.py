@@ -172,7 +172,7 @@ class ForcedPhotDetectorTaskTestCase(ForcedPhotometryTests, lsst.utils.tests.Tes
         diaRefTable = self.diaRefTable
         visit = self.data_id['visit']
         detector = self.data_id['detector']
-        result = task.run(refTable, self.exposure, self.diaExposure, visit, detector, self.offsetWcs)
+        result = task.run(refTable, visit, detector, self.offsetWcs, self.exposure, self.diaExposure)
         catalog = result.outputCatalog
         self._check_results(catalog['calexp'], refTable)
         self._check_results(catalog['diff'], diaRefTable)
