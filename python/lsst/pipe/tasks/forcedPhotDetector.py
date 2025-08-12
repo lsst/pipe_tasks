@@ -73,6 +73,15 @@ class ForcedPhotDetectorConnections(PipelineTaskConnections,
         dimensions=("instrument", "visit", "detector", "skymap", "tract")
     )
 
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        assert isinstance(config, ForcedPhotDetectorConfig)
+
+        if not config.doDirectPhotometry:
+            del self.exposure
+        if not config.doDifferencePhotometry:
+            del self.diaExposure
+
 
 class ForcedPhotDetectorConfig(pipeBase.PipelineTaskConfig,
                                pipelineConnections=ForcedPhotDetectorConnections):
@@ -94,6 +103,16 @@ class ForcedPhotDetectorConfig(pipeBase.PipelineTaskConfig,
         doc="Column on which to join the two input tables on and make the primary key of the output",
         dtype=str,
         default="objectId",
+    )
+    doDirectPhotometry = lsst.pex.config.Field(
+        doc="Perform direct photometry on the input exposure.",
+        dtype=bool,
+        default=True,
+    )
+    doDifferencePhotometry = lsst.pex.config.Field(
+        doc="Perform photometry on the difference image.",
+        dtype=bool,
+        default=True,
     )
 
 
@@ -142,21 +161,28 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
     def run(
         self,
         table: astropy.table.Table,
-        exposure: lsst.afw.image.Exposure,
-        diaExposure: lsst.afw.image.Exposure,
         visit: int,
         detector: int,
-        refWcs: lsst.afw.geom.SkyWcs
+        refWcs: lsst.afw.geom.SkyWcs,
+        exposure: lsst.afw.image.Exposure | None = None,
+        diaExposure: lsst.afw.image.Exposure | None = None,
     ) -> pipeBase.Struct:
-        self.log.info("Running forced measurement on %s objects", len(table))
-        catalog: astropy.table.Table = self._runForcedPhotometry(table, exposure, refWcs)
+        results: dict[str, astropy.table.Table] = {}
+        if self.config.doDirectPhotometry:
+            if exposure is None:
+                raise ValueError("`exposure` must be provided for direct photometry.")
+            self.log.info("Running forced measurement on %s objects", len(table))
+            results['calexp'] = self._runForcedPhotometry(table, exposure, refWcs)
 
-        self.log.info("Running forced measurement on %s objects on difference image", len(table))
-        catalog_diff: astropy.table.Table = self._runForcedPhotometry(table, diaExposure, refWcs)
+        if self.config.doDifferencePhotometry:
+            if diaExposure is None:
+                raise ValueError("`diaExposure` must be provided for difference photometry.")
+            self.log.info("Running forced measurement on %s objects on difference image", len(table))
+            results['diff'] = self._runForcedPhotometry(table, diaExposure, refWcs)
 
         # Convert the astropy tables to pandas DataFrames and reindex them
         dfs = []
-        for table, dataset, in zip((catalog, catalog_diff), ("calexp", "diff")):
+        for dataset, table in results.items():
             df = table.to_pandas().set_index(self.config.key, drop=False)
             df = df.reindex(sorted(df.columns), axis=1)
             df["visit"] = visit
