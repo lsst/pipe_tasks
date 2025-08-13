@@ -99,11 +99,6 @@ class ForcedPhotDetectorConfig(pipeBase.PipelineTaskConfig,
         target=ApplyApCorrTask,
         doc="Subtask to apply aperture corrections"
     )
-    key = lsst.pex.config.Field(
-        doc="Column on which to join the two input tables on and make the primary key of the output",
-        dtype=str,
-        default="objectId",
-    )
     doDirectPhotometry = lsst.pex.config.Field(
         doc="Perform direct photometry on the input exposure.",
         dtype=bool,
@@ -130,10 +125,13 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
 
-        if inputs["exposure"].getWcs() is None:
-            raise NoWorkFound("Exposure has no WCS.")
-        if inputs['diaExposure'].getWcs() is None:
-            raise NoWorkFound("Difference image has no WCS.")
+        if (
+            "exposure" not in inputs or
+            "diaExposure" not in inputs or
+            inputs["exposure"].getWcs() is None or
+            inputs['diaExposure'].getWcs() is None
+        ):
+            raise NoWorkFound("Missing required inputs: 'exposure' or 'diaExposure' with valid WCS.")
 
         tract = butlerQC.quantum.dataId['tract']
         skyMap = inputs.pop('skyMap')
@@ -183,7 +181,7 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
         # Convert the astropy tables to pandas DataFrames and reindex them
         dfs = []
         for dataset, table in results.items():
-            df = table.to_pandas().set_index(self.config.key, drop=False)
+            df = table.to_pandas().set_index(self.config.measurement.refCatIdColumn, drop=False)
             df = df.reindex(sorted(df.columns), axis=1)
             df["visit"] = visit
             # int16 instead of uint8 because databases don't like unsigned bytes.
