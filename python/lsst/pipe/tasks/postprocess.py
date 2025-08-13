@@ -1849,7 +1849,7 @@ class TransformForcedSourceTableTask(TransformCatalogBaseTask):
         dfs = []
         refColumns = list(self.config.referenceColumns)
         refColumns.append(self.config.keyRef)
-        ref = referenceCatalog.to_pandas().get(parameters={"columns": refColumns})
+        ref = referenceCatalog.get(parameters={"columns": refColumns}).to_pandas()
         if ref.index.name != self.config.keyRef:
             # If the DataFrame we loaded was originally written as some other
             # Parquet type, it probably doesn't have the index set.  If it was
