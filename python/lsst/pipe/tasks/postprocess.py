@@ -1767,7 +1767,7 @@ class TransformForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
     inputCatalogs = connectionTypes.Input(
         doc="DataFrames of merged ForcedSources produced by WriteForcedSourceTableTask",
         name="mergedForcedSource",
-        storageClass="ArrowAstropy",
+        storageClass="DataFrame",
         dimensions=("instrument", "visit", "detector", "skymap", "tract"),
         multiple=True,
         deferLoad=True
@@ -1777,7 +1777,7 @@ class TransformForcedSourceTableConnections(pipeBase.PipelineTaskConnections,
             "objectId, detect_isPrimary, detect_isTractInner, detect_isPatchInner "
             "are expected.",
         name="objectTable",
-        storageClass="ArrowAstropy",
+        storageClass="DataFrame",
         dimensions=("tract", "patch", "skymap"),
         deferLoad=True
     )
@@ -1849,7 +1849,7 @@ class TransformForcedSourceTableTask(TransformCatalogBaseTask):
         dfs = []
         refColumns = list(self.config.referenceColumns)
         refColumns.append(self.config.keyRef)
-        ref = referenceCatalog.get(parameters={"columns": refColumns}).to_pandas()
+        ref = referenceCatalog.get(parameters={"columns": refColumns})
         if ref.index.name != self.config.keyRef:
             # If the DataFrame we loaded was originally written as some other
             # Parquet type, it probably doesn't have the index set.  If it was
