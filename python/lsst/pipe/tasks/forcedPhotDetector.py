@@ -126,10 +126,10 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
         inputs = butlerQC.get(inputRefs)
 
         if (
-            "exposure" not in inputs or
-            "diaExposure" not in inputs or
-            inputs["exposure"].getWcs() is None or
-            inputs['diaExposure'].getWcs() is None
+            "exposure" not in inputs
+            or "diaExposure" not in inputs
+            or inputs["exposure"].getWcs() is None
+            or inputs['diaExposure'].getWcs() is None
         ):
             raise NoWorkFound("Missing required inputs: 'exposure' or 'diaExposure' with valid WCS.")
 
