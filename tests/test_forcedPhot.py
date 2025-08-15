@@ -177,18 +177,6 @@ class ForcedPhotDetectorTaskTestCase(ForcedPhotometryTests, lsst.utils.tests.Tes
         self._check_results(catalog['calexp'], refTable)
         self._check_results(catalog['diff'], diaRefTable)
 
-    def testTransform(self):
-        config = ForcedPhotDetectorTask.ConfigClass()
-        task = ForcedPhotDetectorTask(config=config)
-        refTable = self.refTable
-        diaRefTable = self.diaRefTable
-        visit = self.data_id['visit']
-        detector = self.data_id['detector']
-        result = task.run(refTable, visit, detector, self.offsetWcs, self.exposure, self.diaExposure)
-        catalog = result.outputCatalog
-
-
-
     def testRunQuantum(self):
         """Test ForcedPhotDetectorTask.runQuantum."""
         config = ForcedPhotDetectorTask.ConfigClass()
