@@ -125,13 +125,27 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
 
-        if (
-            "exposure" not in inputs
-            or "diaExposure" not in inputs
-            or inputs["exposure"].getWcs() is None
-            or inputs['diaExposure'].getWcs() is None
-        ):
-            raise NoWorkFound("Missing required inputs: 'exposure' or 'diaExposure' with valid WCS.")
+        if "exposure" in inputs:
+            exposure = inputs['exposure']
+            bbox = exposure.getBBox()
+            wcs = exposure.getWcs()
+            if wcs is None:
+                raise NoWorkFound("Exposure has no valid WCS.")
+        else:
+            exposure = None
+
+        if "diaExposure" in inputs:
+            diaExposure = inputs['diaExposure']
+            if exposure is None:
+                bbox = diaExposure.getBBox()
+                wcs = diaExposure.getWcs()
+                if wcs is None:
+                    raise NoWorkFound("Difference exposure has no valid WCS.")
+        else:
+            if exposure is None:
+                # If neither exposure nor diaExposure is provided, we cannot proceed.
+                raise NoWorkFound("No valid exposure or difference exposure provided.")
+            diaExposure = None
 
         tract = butlerQC.quantum.dataId['tract']
         skyMap = inputs.pop('skyMap')
@@ -141,17 +155,18 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
 
         table = self._filterRefCat(
             inputs['refCat'],
-            inputs['exposure'].getBBox(),
-            inputs['exposure'].getWcs(),
+            bbox,
+            wcs,
         )
 
         outputs = self.run(
             table=table,
-            exposure=inputs['exposure'],
-            diaExposure=inputs['diaExposure'],
+            exposure=exposure,
+            diaExposure=diaExposure,
             visit=butlerQC.quantum.dataId['visit'],
             detector=butlerQC.quantum.dataId['detector'],
             refWcs=refWcs,
+            band=butlerQC.quantum.dataId["band"],
         )
 
         butlerQC.put(outputs, outputRefs)
@@ -164,6 +179,7 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
         refWcs: lsst.afw.geom.SkyWcs,
         exposure: lsst.afw.image.Exposure | None = None,
         diaExposure: lsst.afw.image.Exposure | None = None,
+        band: str | None = None,
     ) -> pipeBase.Struct:
         results: dict[str, astropy.table.Table] = {}
         if self.config.doDirectPhotometry:
@@ -186,6 +202,7 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
             df["visit"] = visit
             # int16 instead of uint8 because databases don't like unsigned bytes.
             df["detector"] = np.int16(detector)
+            df["band"] = band if band else pd.NA
             df.columns = pd.MultiIndex.from_tuples([(dataset, c) for c in df.columns],
                                                    names=("dataset", "column"))
             dfs.append(df)

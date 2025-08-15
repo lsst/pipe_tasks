@@ -116,12 +116,10 @@ class ForcedPhotometryTests:
         # Convert the reference catalog to an astropy table.
         refTable = self.refCat.asAstropy(copy=True)
         refTable.rename_column("id", "objectId")
-        refTable.rename_column("coord_ra", "ra")
-        refTable.rename_column("coord_dec", "dec")
         refTable.rename_column("slot_Centroid_x", "x")
         refTable.rename_column("slot_Centroid_y", "y")
-        refTable["ra"] = refTable["ra"].to("deg")
-        refTable["dec"] = refTable["dec"].to("deg")
+        refTable["coord_ra"] = refTable["coord_ra"].to("deg")
+        refTable["coord_dec"] = refTable["coord_dec"].to("deg")
         self.refTable = refTable
 
         # Convert the dia reference catalog to an astropy table.
@@ -141,6 +139,7 @@ class ForcedPhotometryTests:
         self.universe = DimensionUniverse()
         self.data_id = DataCoordinate.standardize(
             instrument="cam", skymap="map", tract=0, visit=1, detector=2, universe=self.universe,
+            band="i", physical_filter="LsstCam-i", day_obs=20250814,
         )
         self.quantum_context = _MockQuantumContext(
             quantum=_MockQuantum(dataId=self.data_id),
@@ -172,10 +171,23 @@ class ForcedPhotDetectorTaskTestCase(ForcedPhotometryTests, lsst.utils.tests.Tes
         diaRefTable = self.diaRefTable
         visit = self.data_id['visit']
         detector = self.data_id['detector']
-        result = task.run(refTable, visit, detector, self.offsetWcs, self.exposure, self.diaExposure)
+        band = self.data_id['band']
+        result = task.run(refTable, visit, detector, self.offsetWcs, self.exposure, self.diaExposure, band)
         catalog = result.outputCatalog
         self._check_results(catalog['calexp'], refTable)
         self._check_results(catalog['diff'], diaRefTable)
+
+    def testTransform(self):
+        config = ForcedPhotDetectorTask.ConfigClass()
+        task = ForcedPhotDetectorTask(config=config)
+        refTable = self.refTable
+        diaRefTable = self.diaRefTable
+        visit = self.data_id['visit']
+        detector = self.data_id['detector']
+        result = task.run(refTable, visit, detector, self.offsetWcs, self.exposure, self.diaExposure)
+        catalog = result.outputCatalog
+
+
 
     def testRunQuantum(self):
         """Test ForcedPhotDetectorTask.runQuantum."""
