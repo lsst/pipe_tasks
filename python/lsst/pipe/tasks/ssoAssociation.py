@@ -100,6 +100,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
               that were associated with DiaSources. (`int`)
             - ``ssSourceData`` : ssSource table data. (`Astropy.table.Table`)
         """
+
         nSolarSystemObjects = len(solarSystemObjects)
         if nSolarSystemObjects <= 0:
             return self._return_empty(diaSourceCatalog, solarSystemObjects)
@@ -166,6 +167,8 @@ class SolarSystemAssociationTask(pipeBase.Task):
                               'heliocentricVY', 'heliocentricVZ', 'topocentricX', 'topocentricY',
                               'topocentricZ', 'topocentricVX', 'topocentricVY', 'topocentricVZ']
 
+        mpcorbColumns = [col for col in solarSystemObjects.columns if col[:7] == 'MPCORB_']
+
         maskedObjects = self._maskToCcdRegion(
             solarSystemObjects,
             bbox,
@@ -204,8 +207,9 @@ class SolarSystemAssociationTask(pipeBase.Task):
                 nFound += 1
                 diaSourceCatalog[idx[0]]["ssObjectId"] = ssObject["ssObjectId"]
                 ssObjectIds.append(ssObject["ssObjectId"])
-                ssSourceData.append(list(ssObject[["phaseAngle", "heliocentricDist",
-                                                   "topocentricDist"] + stateVectorColumns].values()))
+                all_cols = ["phaseAngle", "heliocentricDist",
+                            "topocentricDist"] + stateVectorColumns + mpcorbColumns
+                ssSourceData.append(list(ssObject[all_cols].values()))
                 dia_ra = diaSourceCatalog[idx[0]]["ra"]
                 dia_dec = diaSourceCatalog[idx[0]]["dec"]
                 dia_id = diaSourceCatalog[idx[0]][source_column]
@@ -227,7 +231,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
         ssSourceData = Table(ssSourceData,
                              names=[
                                  "phaseAngle", "heliocentricDist", "topocentricDist"
-                             ] + stateVectorColumns)
+                             ] + stateVectorColumns + mpcorbColumns)
         ssSourceData['ssObjectId'] = Column(data=ssObjectIds, dtype=int)
         ssSourceData["ra"] = ras
         ssSourceData["dec"] = decs
