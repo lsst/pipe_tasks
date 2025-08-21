@@ -197,6 +197,9 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
         # Convert the astropy tables to pandas DataFrames and reindex them
         dfs = []
         for dataset, table in results.items():
+            if self.config.measurement.refCatRaColumn != "coord_ra":
+                table.rename_column(self.config.measurement.refCatRaColumn, "coord_ra")
+                table.rename_column(self.config.measurement.refCatDecColumn, "coord_dec")
             df = table.to_pandas().set_index(self.config.measurement.refCatIdColumn, drop=False)
             df = df.reindex(sorted(df.columns), axis=1)
             df["visit"] = visit
