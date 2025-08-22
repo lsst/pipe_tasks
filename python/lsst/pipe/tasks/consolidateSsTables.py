@@ -27,7 +27,7 @@ import warnings
 
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
-from lsst.pipe.tasks.postprocess import TableVStack
+from lsst.obs.base.utils import TableVStack
 from lsst.utils.timer import timeMethod
 
 warnings.filterwarnings('ignore')
