@@ -173,10 +173,19 @@ class MatchedCatalogFluxesConfig(pexConfig.Config):
         return columns
 
 
-class DiffMatchedTractCatalogConfig(
-    pipeBase.PipelineTaskConfig,
-    pipelineConnections=DiffMatchedTractCatalogConnections,
-):
+class DiffMatchedTractCatalogBaseConfig(pexConfig.Config):
+    column_match_candidate_ref = pexConfig.Field[str](
+        default='match_candidate',
+        doc='The column name for the boolean field identifying reference objects'
+            ' that were used for matching',
+        optional=True,
+    )
+    column_match_candidate_target = pexConfig.Field[str](
+        default='match_candidate',
+        doc='The column name for the boolean field identifying target objects'
+            ' that were used for matching',
+        optional=True,
+    )
     column_matched_prefix_ref = pexConfig.Field[str](
         default='refcat_',
         doc='The prefix for matched columns copied from the reference catalog',
@@ -284,55 +293,6 @@ class DiffMatchedTractCatalogConfig(
     coord_format = pexConfig.ConfigField[ConvertCatalogCoordinatesConfig](
         doc="Configuration for coordinate conversion",
     )
-    extendedness_cut = pexConfig.Field[float](
-        deprecated="This field is no longer being used and will be removed after v28.",
-        default=0.5,
-        doc='Minimum extendedness for a measured source to be considered extended',
-    )
-    mag_num_bins = pexConfig.Field[int](
-        deprecated="This field is no longer being used and will be removed after v28.",
-        doc='Number of magnitude bins',
-        default=15,
-    )
-    mag_brightest_ref = pexConfig.Field[float](
-        deprecated="This field is no longer being used and will be removed after v28.",
-        doc='Brightest magnitude cutoff for binning',
-        default=15,
-    )
-    mag_ceiling_target = pexConfig.Field[float](
-        deprecated="This field is no longer being used and will be removed after v28.",
-        doc='Ceiling (maximum/faint) magnitude for target sources',
-        default=None,
-        optional=True,
-    )
-    mag_faintest_ref = pexConfig.Field[float](
-        deprecated="This field is no longer being used and will be removed after v28.",
-        doc='Faintest magnitude cutoff for binning',
-        default=30,
-    )
-    mag_zeropoint_ref = pexConfig.Field[float](
-        deprecated="This field is no longer being used and will be removed after v28.",
-        doc='Magnitude zeropoint for reference sources',
-        default=31.4,
-    )
-    mag_zeropoint_target = pexConfig.Field[float](
-        deprecated="This field is no longer being used and will be removed after v28.",
-        doc='Magnitude zeropoint for target sources',
-        default=31.4,
-    )
-    percentiles = pexConfig.ListField[str](
-        deprecated="This field is no longer being used and will be removed after v28.",
-        doc='Percentiles to compute for diff/chi values',
-        # -2, -1, +1, +2 sigma percentiles for normal distribution
-        default=('2.275', '15.866', '84.134', '97.725'),
-        itemCheck=lambda x: 0 <= Decimal(x) <= 100,
-        listCheck=is_sequence_set,
-    )
-    refcat_sharding_type = pexConfig.ChoiceField[str](
-        doc="The type of sharding (spatial splitting) for the reference catalog",
-        allowed={"tract": "Tract-based shards", "none": "No sharding at all"},
-        default="tract",
-    )
 
     def validate(self):
         super().validate()
@@ -359,334 +319,27 @@ class DiffMatchedTractCatalogConfig(
             raise ValueError("\n".join(errors))
 
 
-@deprecated(reason="This class is no longer being used and will be removed after v28.",
-            version="v28.0", category=FutureWarning)
-@dataclass(frozen=True)
-class MeasurementTypeInfo:
-    doc: str
-    name: str
-
-
-@deprecated(reason="This class is no longer being used and will be removed after v28.",
-            version="v28.0", category=FutureWarning)
-class MeasurementType(Enum):
-    DIFF = SimpleNamespace(
-        doc="difference (measured - reference)",
-        name="diff",
+class DiffMatchedTractCatalogConfig(
+    DiffMatchedTractCatalogBaseConfig,
+    pipeBase.PipelineTaskConfig,
+    pipelineConnections=DiffMatchedTractCatalogConnections,
+):
+    refcat_sharding_type = pexConfig.ChoiceField[str](
+        doc="The type of sharding (spatial splitting) for the reference catalog",
+        allowed={"tract": "Tract-based shards", "none": "No sharding at all"},
+        default="tract",
     )
-    CHI = SimpleNamespace(
-        doc="scaled difference (measured - reference)/error",
-        name="chi",
+    target_sharding_type = pexConfig.ChoiceField[str](
+        doc="The type of sharding (spatial splitting) for the target catalog",
+        allowed={"tract": "Tract-based shards", "none": "No sharding at all"},
+        default="tract",
     )
 
 
-@deprecated(reason="This class is no longer being used and will be removed after v28.",
-            version="v28.0", category=FutureWarning)
-class Statistic(metaclass=ABCMeta):
-    """A statistic that can be applied to a set of values.
-    """
-    @abstractmethod
-    def doc(self) -> str:
-        """A description of the statistic"""
-        raise NotImplementedError('Subclasses must implement this method')
-
-    @abstractmethod
-    def name_short(self) -> str:
-        """A short name for the statistic, e.g. for a table column name"""
-        raise NotImplementedError('Subclasses must implement this method')
-
-    @abstractmethod
-    def value(self, values):
-        """The value of the statistic for a set of input values.
-
-        Parameters
-        ----------
-        values : `Collection` [`float`]
-            A set of values to compute the statistic for.
-
-        Returns
-        -------
-        statistic : `float`
-            The value of the statistic.
-        """
-        raise NotImplementedError('Subclasses must implement this method')
-
-
-@deprecated(reason="This class is no longer being used and will be removed after v28.",
-            version="v28.0", category=FutureWarning)
-class Median(Statistic):
-    """The median of a set of values."""
-    @classmethod
-    def doc(cls) -> str:
-        return "Median"
-
-    @classmethod
-    def name_short(cls) -> str:
-        return "median"
-
-    def value(self, values):
-        return np.median(values)
-
-
-@deprecated(reason="This class is no longer being used and will be removed after v28.",
-            version="v28.0", category=FutureWarning)
-class SigmaIQR(Statistic):
-    """The re-scaled interquartile range (sigma equivalent)."""
-    @classmethod
-    def doc(cls) -> str:
-        return "Interquartile range divided by ~1.349 (sigma-equivalent)"
-
-    @classmethod
-    def name_short(cls) -> str:
-        return "sig_iqr"
-
-    def value(self, values):
-        return iqr(values, scale='normal')
-
-
-@deprecated(reason="This class is no longer being used and will be removed after v28.",
-            version="v28.0", category=FutureWarning)
-class SigmaMAD(Statistic):
-    """The re-scaled median absolute deviation (sigma equivalent)."""
-    @classmethod
-    def doc(cls) -> str:
-        return "Median absolute deviation multiplied by ~1.4826 (sigma-equivalent)"
-
-    @classmethod
-    def name_short(cls) -> str:
-        return "sig_mad"
-
-    def value(self, values):
-        return mad_std(values)
-
-
-@deprecated(reason="This class is no longer being used and will be removed after v28.",
-            version="v28.0", category=FutureWarning)
-@dataclass(frozen=True)
-class Percentile(Statistic):
-    """An arbitrary percentile.
-
-    Parameters
-    ----------
-    percentile : `float`
-        A valid percentile (0 <= p <= 100).
-    """
-    percentile: float
-
-    def doc(self) -> str:
-        return "Median absolute deviation multiplied by ~1.4826 (sigma-equivalent)"
-
-    def name_short(self) -> str:
-        return f"pctl{f'{self.percentile/100:.5f}'[2:]}"
-
-    def value(self, values):
-        return np.percentile(values, self.percentile)
-
-    def __post_init__(self):
-        if not ((self.percentile >= 0) and (self.percentile <= 100)):
-            raise ValueError(f'percentile={self.percentile} not >=0 and <= 100')
-
-
-@deprecated(reason="This method is no longer being used and will be removed after v28.",
-            version="v28.0", category=FutureWarning)
-def _get_stat_name(*args):
-    return '_'.join(args)
-
-
-@deprecated(reason="This method is no longer being used and will be removed after v28.",
-            version="v28.0", category=FutureWarning)
-def _get_column_name(band, *args):
-    return f"{band}_{_get_stat_name(*args)}"
-
-
-@deprecated(reason="This method is no longer being used and will be removed after v28.",
-            version="v28.0", category=FutureWarning)
-def compute_stats(values_ref, values_target, errors_target, row, stats, suffixes, prefix, skip_diff=False):
-    """Compute statistics on differences and store results in a row.
-
-    Parameters
-    ----------
-    values_ref : `numpy.ndarray`, (N,)
-        Reference values.
-    values_target : `numpy.ndarray`, (N,)
-        Measured values.
-    errors_target : `numpy.ndarray`, (N,)
-        Errors (standard deviations) on `values_target`.
-    row : `numpy.ndarray`, (1, C)
-        A numpy array with pre-assigned column names.
-    stats : `Dict` [`str`, `Statistic`]
-        A dict of `Statistic` values to measure, keyed by their column suffix.
-    suffixes : `Dict` [`MeasurementType`, `str`]
-        A dict of measurement type column suffixes, keyed by the measurement type.
-    prefix : `str`
-        A prefix for all column names (e.g. band).
-    skip_diff : `bool`
-        Whether to skip computing statistics on differences. Note that
-        differences will still be computed for chi statistics.
-
-    Returns
-    -------
-    row_with_stats : `numpy.ndarray`, (1, C)
-        The original `row` with statistic values assigned.
-    """
-    n_ref = len(values_ref)
-    if n_ref > 0:
-        n_target = len(values_target)
-        n_target_err = len(errors_target) if errors_target is not None else n_ref
-        if (n_target != n_ref) or (n_target_err != n_ref):
-            raise ValueError(f'lengths of values_ref={n_ref}, values_target={n_target}'
-                             f', error_target={n_target_err} must match')
-
-        do_chi = errors_target is not None
-        diff = values_target - values_ref
-        chi = diff/errors_target if do_chi else diff
-        # Could make this configurable, but non-finite values/errors are not really usable
-        valid = np.isfinite(chi)
-        values_type = {} if skip_diff else {MeasurementType.DIFF: diff[valid]}
-        if do_chi:
-            values_type[MeasurementType.CHI] = chi[valid]
-
-        for suffix_type, suffix in suffixes.items():
-            values = values_type.get(suffix_type)
-            if values is not None and len(values) > 0:
-                for stat_name, stat in stats.items():
-                    row[_get_stat_name(prefix, suffix, stat_name)] = stat.value(values)
-    return row
-
-
-@deprecated(reason="This class is no longer being used and will be removed after v28.",
-            version="v28.0", category=FutureWarning)
-@dataclass(frozen=True)
-class SourceTypeInfo:
-    is_extended: bool | None
-    label: str
-
-
-@deprecated(reason="This class is no longer being used and will be removed after v28.",
-            version="v28.0", category=FutureWarning)
-class SourceType(Enum):
-    ALL = SimpleNamespace(is_extended=None, label='all')
-    RESOLVED = SimpleNamespace(is_extended=True, label='resolved')
-    UNRESOLVED = SimpleNamespace(is_extended=False, label='unresolved')
-
-
-@deprecated(reason="This class is no longer being used and will be removed after v28.",
-            version="v28.0", category=FutureWarning)
-class MatchType(Enum):
-    ALL = 'all'
-    MATCH_RIGHT = 'match_right'
-    MATCH_WRONG = 'match_wrong'
-
-
-@deprecated(reason="This method is no longer being used and will be removed after v28.",
-            version="v28.0", category=FutureWarning)
-def _get_columns(bands_columns: dict, suffixes: dict, suffixes_flux: dict, suffixes_mag: dict,
-                 stats: dict, target: ComparableCatalog, column_dist: str):
-    """Get column names for a table of difference statistics.
-
-    Parameters
-    ----------
-    bands_columns : `Dict` [`str`,`MatchedCatalogFluxesConfig`]
-        Dict keyed by band of flux column configuration.
-    suffixes, suffixes_flux, suffixes_mag : `Dict` [`MeasurementType`, `str`]
-        Dict of suffixes for each `MeasurementType` type, for general columns (e.g.
-        coordinates), fluxes and magnitudes, respectively.
-    stats : `Dict` [`str`, `Statistic`]
-        Dict of suffixes for each `Statistic` type.
-    target : `ComparableCatalog`
-        A target catalog with coordinate column names.
-    column_dist : `str`
-        The name of the distance column.
-
-    Returns
-    -------
-    columns : `Dict` [`str`, `type`]
-        Dictionary of column types keyed by name.
-    n_models : `int`
-        The number of models measurements will be made for.
-
-    Notes
-    -----
-    Presently, models must be identical for each band.
-    """
-    # Initial columns
-    columns = {
-        "bin": int,
-        "mag_min": float,
-        "mag_max": float,
-    }
-
-    # pre-assign all of the columns with appropriate types
-    n_models = 0
-
-    bands = list(bands_columns.keys())
-    n_bands = len(bands)
-
-    for idx, (band, config_flux) in enumerate(bands_columns.items()):
-        columns_suffix = [
-            ('flux', suffixes_flux),
-            ('mag', suffixes_mag),
-        ]
-        if idx == 0:
-            n_models = len(config_flux.columns_target_flux)
-        if (idx > 0) or (n_bands > 2):
-            columns_suffix.append((f'color_{bands[idx - 1]}_m_{band}', suffixes))
-        n_models_flux = len(config_flux.columns_target_flux)
-        n_models_err = len(config_flux.columns_target_flux_err)
-
-        # TODO: Do equivalent validation earlier, in the config
-        if (n_models_flux != n_models) or (n_models_err != n_models):
-            raise RuntimeError(f'{config_flux} len(columns_target_flux)={n_models_flux} and'
-                               f' len(columns_target_flux_err)={n_models_err} must equal {n_models}')
-
-        for sourcetype in SourceType:
-            label = sourcetype.value.label
-            # Totals would be redundant
-            if sourcetype != SourceType.ALL:
-                for item in (f'n_{itype}_{mtype.value}' for itype in ('ref', 'target')
-                             for mtype in MatchType):
-                    columns[_get_column_name(band, label, item)] = int
-
-            for item in (target.column_coord1, target.column_coord2, column_dist):
-                for suffix in suffixes.values():
-                    for stat in stats.keys():
-                        columns[_get_column_name(band, label, item, suffix, stat)] = float
-
-            for item in config_flux.columns_target_flux:
-                for prefix_item, suffixes_col in columns_suffix:
-                    for suffix in suffixes_col.values():
-                        for stat in stats.keys():
-                            columns[_get_column_name(band, label, prefix_item, item, suffix, stat)] = float
-
-    return columns, n_models
-
-
-class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
+class DiffMatchedTractCatalogTaskBase(pipeBase.Task):
     """Load subsets of matched catalogs and output a merged catalog of matched sources.
     """
-    ConfigClass = DiffMatchedTractCatalogConfig
-    _DefaultName = "DiffMatchedTractCatalog"
-
-    def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        inputs = butlerQC.get(inputRefs)
-        skymap = inputs.pop("skymap")
-
-        columns_match_target = ['match_row']
-        if 'match_candidate' in inputs['columns_match_target']:
-            columns_match_target.append('match_candidate')
-
-        outputs = self.run(
-            catalog_ref=inputs['cat_ref'].get(parameters={'columns': self.config.columns_in_ref}),
-            catalog_target=inputs['cat_target'].get(parameters={'columns': self.config.columns_in_target}),
-            catalog_match_ref=inputs['cat_match_ref'].get(
-                parameters={'columns': ['match_candidate', 'match_row']},
-            ),
-            catalog_match_target=inputs['cat_match_target'].get(
-                parameters={'columns': columns_match_target},
-            ),
-            wcs=skymap[butlerQC.quantum.dataId["tract"]].wcs,
-        )
-        butlerQC.put(outputs, outputRefs)
+    ConfigClass = DiffMatchedTractCatalogBaseConfig
 
     def run(
         self,
@@ -1107,3 +760,32 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         if do_stats:
             retStruct.diff_matched = astropy.table.Table(data)
         return retStruct
+
+
+class DiffMatchedTractCatalogTask(DiffMatchedTractCatalogTaskBase, pipeBase.PipelineTask):
+    """PipelineTask version of DiffMatchedTractCatalogTaskBase."""
+    ConfigClass = DiffMatchedTractCatalogConfig
+    _DefaultName = "DiffMatchedTractCatalog"
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        skymap = inputs.pop("skymap")
+
+        columns_match_ref = ['match_row']
+        if (column := self.config.column_match_candidate_ref) is not None:
+            columns_match_ref.append(column)
+
+        columns_match_target = ['match_row']
+        if (column := self.config.column_match_candidate_target) is not None and (
+            column in inputs['columns_match_target']
+        ):
+            columns_match_target.append(column)
+
+        outputs = self.run(
+            catalog_ref=inputs['cat_ref'].get(parameters={'columns': self.config.columns_in_ref}),
+            catalog_target=inputs['cat_target'].get(parameters={'columns': self.config.columns_in_target}),
+            catalog_match_ref=inputs['cat_match_ref'].get(parameters={'columns': columns_match_ref}),
+            catalog_match_target=inputs['cat_match_target'].get(parameters={'columns': columns_match_target}),
+            wcs=skymap[butlerQC.quantum.dataId["tract"]].wcs,
+        )
+        butlerQC.put(outputs, outputRefs)
