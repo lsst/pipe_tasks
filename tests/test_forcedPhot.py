@@ -172,7 +172,21 @@ class ForcedPhotDetectorTaskTestCase(ForcedPhotometryTests, lsst.utils.tests.Tes
         visit = self.data_id['visit']
         detector = self.data_id['detector']
         band = self.data_id['band']
-        result = task.run(refTable, visit, detector, self.offsetWcs, self.exposure, self.diaExposure, band)
+        refCat = task._makeMinimalSourceCatalogFromAstropy(refTable)
+        directCat = task._generateMeasCat(refCat)
+        diffCat = task._generateMeasCat(refCat)
+        result = task.run(
+            refCat,
+            np.arange((len(refTable)), dtype=np.int64),
+            visit,
+            detector,
+            self.offsetWcs,
+            directCat,
+            diffCat,
+            self.exposure,
+            self.diaExposure,
+            band,
+        )
         catalog = result.outputCatalog
         self._check_results(catalog['calexp'], refTable)
         self._check_results(catalog['diff'], diaRefTable)
@@ -180,6 +194,9 @@ class ForcedPhotDetectorTaskTestCase(ForcedPhotometryTests, lsst.utils.tests.Tes
     def testRunQuantum(self):
         """Test ForcedPhotDetectorTask.runQuantum."""
         config = ForcedPhotDetectorTask.ConfigClass()
+        config.idGenerator.packer.name = "observation"
+        config.idGenerator.packer["observation"].n_detectors = 5
+        config.idGenerator.packer["observation"].n_observations = 10
 
         pipeline_graph = PipelineGraph(universe=self.universe)
         pipeline_graph.add_task("ForcedPhotDetector", ForcedPhotDetectorTask, config)

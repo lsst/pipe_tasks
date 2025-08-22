@@ -27,7 +27,9 @@ import pandas as pd
 
 import lsst.afw.geom
 import lsst.afw.image
+import lsst.daf.butler
 import lsst.pex.config
+from lsst.meas.base import DetectorVisitIdGeneratorConfig
 from lsst.meas.base.simple_forced_measurement import SimpleForcedMeasurementTask
 from lsst.meas.base.applyApCorr import ApplyApCorrTask
 import lsst.pipe.base as pipeBase
@@ -109,6 +111,34 @@ class ForcedPhotDetectorConfig(pipeBase.PipelineTaskConfig,
         dtype=bool,
         default=True,
     )
+    refCatIdColumn = lsst.pex.config.Field(
+        dtype=str,
+        default="objectId",
+        doc=(
+            "Name of the column that provides the object ID from the refCat connection. "
+            "measurement.copyColumns['id'] must be set to this value as well."
+            "Ignored if refCatStorageClass='SourceCatalog'."
+        )
+    )
+    refCatRaColumn = lsst.pex.config.Field(
+        dtype=str,
+        default="coord_ra",
+        doc=(
+            "Name of the column that provides the right ascension (in floating-point degrees) from the "
+            "refCat connection. "
+            "Ignored if refCatStorageClass='SourceCatalog'."
+        )
+    )
+    refCatDecColumn = lsst.pex.config.Field(
+        dtype=str,
+        default="coord_dec",
+        doc=(
+            "Name of the column that provides the declination (in floating-point degrees) from the "
+            "refCat connection. "
+            "Ignored if refCatStorageClass='SourceCatalog'."
+        )
+    )
+    idGenerator = DetectorVisitIdGeneratorConfig.make_field()
 
 
 class ForcedPhotDetectorTask(pipeBase.PipelineTask):
@@ -153,19 +183,38 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
 
         self.log.info("Filtering ref cats: %s", ','.join([str(i.dataId) for i in inputs['refCat']]))
 
-        table = self._filterRefCat(
+        refTable = self._filterRefTable(
             inputs['refCat'],
             bbox,
             wcs,
         )
+        # Convert the table into a SourceCatalog.
+        # This is necessary because the forced measurement subtask expects a
+        # SourceCatalog as input.
+        refCat = self._makeMinimalSourceCatalogFromAstropy(refTable)
+
+        # Create the catalogs to hold measurements
+        if self.config.doDirectPhotometry:
+            id_generator = self.config.idGenerator.apply(inputRefs.exposure.dataId)
+            directCat = self._generateMeasCat(refCat, idFactory=id_generator.make_table_id_factory())
+        else:
+            directCat = None
+        if self.config.doDifferencePhotometry:
+            id_generator = self.config.idGenerator.apply(inputRefs.diaExposure.dataId)
+            diffCat = self._generateMeasCat(refCat, idFactory=id_generator.make_table_id_factory())
+        else:
+            diffCat = None
 
         outputs = self.run(
-            table=table,
-            exposure=exposure,
-            diaExposure=diaExposure,
+            refCat=refCat,
+            objectIds=refTable[self.config.refCatIdColumn],
             visit=butlerQC.quantum.dataId['visit'],
             detector=butlerQC.quantum.dataId['detector'],
             refWcs=refWcs,
+            directCat=directCat,
+            diffCat=diffCat,
+            exposure=exposure,
+            diaExposure=diaExposure,
             band=butlerQC.quantum.dataId["band"],
         )
 
@@ -173,34 +222,75 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
 
     def run(
         self,
-        table: astropy.table.Table,
+        refCat: lsst.afw.table.SourceCatalog,
+        objectIds: np.ndarray,
         visit: int,
         detector: int,
         refWcs: lsst.afw.geom.SkyWcs,
+        directCat: lsst.afw.table.SourceCatalog | None = None,
+        diffCat: lsst.afw.table.SourceCatalog | None = None,
         exposure: lsst.afw.image.Exposure | None = None,
         diaExposure: lsst.afw.image.Exposure | None = None,
         band: str | None = None,
     ) -> pipeBase.Struct:
-        results: dict[str, astropy.table.Table] = {}
+        """Run forced photometry on a single detector.
+
+        There is a lot of prep work in the `runQuantum` method and it is
+        expected that this taks is usually run as a pipeline task, not
+        executed as a stand alone function.
+
+        Parameters
+        ----------
+        refCat :
+            Reference catalog for forced photometry.
+        objectIds :
+            Array of object IDs corresponding to the reference catalog.
+        visit :
+            Visit ID for the observation.
+        detector :
+            Detector ID for the observation.
+        refWcs :
+            Reference WCS for the observation.
+        directCat :
+            Catalog for direct photometry.
+            Only required when `config.doDirectPhotometry` is True.
+        diffCat :
+            Catalog for difference photometry.
+            Only required when `config.doDifferencePhotometry` is True.
+        exposure :
+            Exposure for direct photometry.
+            Only required when `config.doDirectPhotometry` is True.
+        diaExposure :
+            Exposure for difference photometry.
+            Only required when `config.doDifferencePhotometry` is True.
+        band :
+            Band for the observation.
+        """
+        results: dict[str, lsst.afw.table.SourceCatalog] = {}
         if self.config.doDirectPhotometry:
             if exposure is None:
                 raise ValueError("`exposure` must be provided for direct photometry.")
-            self.log.info("Running forced measurement on %s objects", len(table))
-            results['calexp'] = self._runForcedPhotometry(table, exposure, refWcs)
+            if directCat is None:
+                raise ValueError("`directCat` must be provided for direct photometry.")
+            self.log.info("Running forced measurement on %s objects", len(refCat))
+            self._runForcedPhotometry(refCat, directCat, exposure, refWcs)
+            results['calexp'] = directCat
 
         if self.config.doDifferencePhotometry:
             if diaExposure is None:
                 raise ValueError("`diaExposure` must be provided for difference photometry.")
-            self.log.info("Running forced measurement on %s objects on difference image", len(table))
-            results['diff'] = self._runForcedPhotometry(table, diaExposure, refWcs)
+            if diffCat is None:
+                raise ValueError("`diffCat` must be provided for difference photometry.")
+            self.log.info("Running forced measurement on %s objects on difference image", len(refCat))
+            self._runForcedPhotometry(refCat, diffCat, diaExposure, refWcs)
+            results['diff'] = diffCat
 
         # Convert the astropy tables to pandas DataFrames and reindex them
         dfs = []
-        for dataset, table in results.items():
-            if self.config.measurement.refCatRaColumn != "coord_ra":
-                table.rename_column(self.config.measurement.refCatRaColumn, "coord_ra")
-                table.rename_column(self.config.measurement.refCatDecColumn, "coord_dec")
-            df = table.to_pandas().set_index(self.config.measurement.refCatIdColumn, drop=False)
+        for dataset, catalog in results.items():
+            measTbl = catalog.asAstropy()
+            measTbl[self.config.refCatIdColumn] = objectIds
+            df = measTbl.to_pandas().set_index(self.config.refCatIdColumn, drop=False)
             df = df.reindex(sorted(df.columns), axis=1)
             df["visit"] = visit
             # int16 instead of uint8 because databases don't like unsigned bytes.
@@ -216,49 +306,77 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
 
     def _runForcedPhotometry(
         self,
-        table: astropy.table.Table,
+        refCat: lsst.afw.table.SourceCatalog,
+        measCat: lsst.afw.table.SourceCatalog,
         exposure: lsst.afw.image.Exposure,
-        refWcs: lsst.afw.geom.SkyWcs
-    ) -> astropy.table.Table:
+        refWcs: lsst.afw.geom.SkyWcs,
+    ) -> None:
         """Perform forced measurement on a single exposure.
 
         Parameters
         ----------
-        table : `astropy.table.Table`
-            Astropy table containing the reference catalog data, with columns
+        refCat : `lsst.afw.table.SourceCatalog`
+            Catalog containing the reference catalog data, with columns
             for the object ID, right ascension, and declination.
+        measCat : `lsst.afw.table.SourceCatalog`
+            Catalog containing the measurement data, with columns for the
+            object ID and measured quantities.
+            This catalog is updated in-place.
         exposure : `lsst.afw.image.exposure.Exposure`
             Input exposure to adjust calibrations.
         refWcs : `lsst.afw.geom.SkyWcs`
             Defines the X,Y coordinate system of ``refCat``.
-
-        Returns
-        -------
-        result : `lsst.pipe.base.Struct`
-            A struct containing the measurement results, including the
-            measured table. The struct has the following attributes:
-            - `measTable`: `astropy.table.Table`
-                containing the forced photometry results
         """
-        outputs = self.measurement.run(table, exposure, refWcs)
+        self.measurement.run(
+            refCat=refCat,
+            measCat=measCat,
+            exposure=exposure,
+            refWcs=refWcs,
+        )
         if self.config.doApCorr:
             apCorrMap = exposure.getInfo().getApCorrMap()
             if apCorrMap is None:
                 self.log.warning("Forced exposure image does not have valid aperture correction; skipping.")
             else:
                 self.applyApCorr.run(
-                    catalog=outputs.measTable,
+                    catalog=measCat,
                     apCorrMap=apCorrMap,
                 )
-        return outputs.measTable
 
-    def _filterRefCat(self, refCatHandles, exposureBBox, exposureWcs):
+    def _makeMinimalSourceCatalogFromAstropy(self, table):
+        """Create minimal schema SourceCatalog from an Astropy Table.
+
+        The forced measurement subtask expects this as input.
+
+        Parameters
+        ----------
+        table : `astropy.table.Table`
+            Table with locations and ids.
+
+        Returns
+        -------
+        outputCatalog : `lsst.afw.table.SourceTable`
+            Output catalog with minimal schema.
+        """
+        schema = lsst.afw.table.SourceTable.makeMinimalSchema()
+        outputCatalog = lsst.afw.table.SourceCatalog(schema)
+        outputCatalog.reserve(len(table))
+        for row in table:
+            objectId = row[self.config.refCatIdColumn]
+            ra = row[self.config.refCatRaColumn]
+            dec = row[self.config.refCatDecColumn]
+            outputRecord = outputCatalog.addNew()
+            outputRecord.setId(objectId)
+            outputRecord.setCoord(lsst.geom.SpherePoint(ra, dec, lsst.geom.degrees))
+        return outputCatalog
+
+    def _filterRefTable(self, refTableHandles, exposureBBox, exposureWcs):
         """Prepare a merged, filtered reference catalog from ArrowAstropy
         inputs.
 
         Parameters
         ----------
-        refCatHandles : sequence of `lsst.daf.butler.DeferredDatasetHandle`
+        refTableHandles : sequence of `lsst.daf.butler.DeferredDatasetHandle`
             Handles for catalogs of shapes and positions at which to force
             photometry.
         exposureBBox :   `lsst.geom.Box2I`
@@ -269,28 +387,67 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
 
         Returns
         -------
-        refCat : `lsst.afw.table.SourceTable`
-            Source Catalog with minimal schema that overlaps exposureBBox
+        refTable : `astropy.table.Table`
+            Astropy Table with only rows from the reference
+            catalogs that overlap the exposure bounding box.
         """
         table_list = [
             i.get(
                 parameters={
                     "columns": [
-                        self.config.measurement.refCatIdColumn,
-                        self.config.measurement.refCatRaColumn,
-                        self.config.measurement.refCatDecColumn,
+                        self.config.refCatIdColumn,
+                        self.config.refCatRaColumn,
+                        self.config.refCatDecColumn,
                     ]
                 }
             )
-            for i in refCatHandles
+            for i in refTableHandles
         ]
         full_table = astropy.table.vstack(table_list)
         # translate ra/dec coords in table to detector pixel coords
         # to down-select rows that overlap the detector bbox
         x, y = exposureWcs.skyToPixelArray(
-            full_table[self.config.measurement.refCatRaColumn],
-            full_table[self.config.measurement.refCatDecColumn],
+            full_table[self.config.refCatRaColumn],
+            full_table[self.config.refCatDecColumn],
             degrees=True,
         )
         inBBox = lsst.geom.Box2D(exposureBBox).contains(x, y)
         return full_table[inBBox]
+
+    def _generateMeasCat(
+        self,
+        refCat: lsst.afw.table.SourceCatalog,
+        idFactory: lsst.afw.table.IdFactory | None = None,
+    ) -> lsst.afw.table.SourceCatalog:
+        r"""Initialize an output catalog from the reference catalog.
+
+        Parameters
+        ----------
+        refCat : `lsst.afw.table.SourceCatalog,`
+            Catalog of reference sources.
+        idFactory : `lsst.afw.table.IdFactory`, optional
+            Factory for creating IDs for sources.
+
+        Returns
+        -------
+        meascat : `lsst.afw.table.SourceCatalog`
+            Source catalog ready for measurement.
+
+        Notes
+        -----
+        This generates a new blank `~lsst.afw.table.SourceRecord` for each
+        record in ``refCat``. Note that this method does not attach any
+        `~lsst.afw.detection.Footprint`\ s, which is done in
+        ``config.measure``.
+        """
+        if idFactory is None:
+            idFactory = lsst.afw.table.IdFactory.makeSimple()
+        table = lsst.afw.table.SourceTable.make(self.measurement.schema, idFactory)
+        measCat = lsst.afw.table.SourceCatalog(table)
+        table = measCat.table
+        table.setMetadata(self.measurement.algMetadata)
+        table.preallocate(len(refCat))
+        for ref in refCat:
+            newSource = measCat.addNew()
+            newSource.assign(ref, self.measurement.mapper)
+        return measCat
