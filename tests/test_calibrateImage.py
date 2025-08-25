@@ -121,9 +121,15 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # Use PCA psf fitter, as psfex fails if there are only 4 stars.
         self.config.psf_measure_psf.psfDeterminer = 'pca'
         # We don't have many test points, so can't match on complicated shapes.
-        self.config.astrometry.sourceSelector["science"].flags.good = []
+        self.config.astrometry.sourceSelector["science"].flags.good = ["calib_psf_candidate"]
+        self.config.astrometry.sourceSelector["science"].flags.bad = []
         self.config.astrometry.matcher.numPointsForShape = 3
         self.config.run_sattle = False
+        # Maintain original configs values...
+        self.config.do_dynamic_detection = False
+        self.config.psf_detection.reEstimateBackground = True
+        self.config.astrometry.sourceSelector["science"].flags.good = ["calib_psf_candidate"]
+        self.config.star_detection.reEstimateBackground = True
         # ApFlux has more noise than PsfFlux (the latter unrealistically small
         # in this test data), so we need to do magnitude rejection at higher
         # sigma, otherwise we can lose otherwise good sources.
@@ -311,14 +317,14 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         that a PSF is assigned to the expopsure.
         """
         calibrate = CalibrateImageTask(config=self.config)
-        psf_stars, background, candidates = calibrate._compute_psf(self.exposure, self.id_generator)
+        psf_stars, background, candidates, _ = calibrate._compute_psf(self.exposure, self.id_generator)
 
         # Catalog ids should be very large from this id generator.
         self.assertTrue(all(psf_stars['id'] > 1000000000))
 
         # Background should have 3 elements: initial subtraction, and two from
         # re-estimation during the two detection passes.
-        self.assertEqual(len(background), 3)
+        self.assertEqual(len(background), 4)
 
         # Only the point-sources with S/N > 50 should be in this output.
         self.assertEqual(psf_stars["calib_psf_used"].sum(), 3)
@@ -383,7 +389,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         exposure.
         """
         calibrate = CalibrateImageTask(config=self.config)
-        psf_stars, background, candidates = calibrate._compute_psf(self.exposure, self.id_generator)
+        psf_stars, background, candidates, _ = calibrate._compute_psf(self.exposure, self.id_generator)
 
         # First check that the exposure doesn't have an ApCorrMap.
         self.assertIsNone(self.exposure.apCorrMap)
@@ -398,7 +404,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         in the image and returns them in the output catalog.
         """
         calibrate = CalibrateImageTask(config=self.config)
-        psf_stars, background, candidates = calibrate._compute_psf(self.exposure, self.id_generator)
+        psf_stars, background, candidates, _ = calibrate._compute_psf(self.exposure, self.id_generator)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
 
         stars = calibrate._find_stars(self.exposure, background, self.id_generator)
@@ -408,7 +414,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         # Background should have 4 elements: 3 from compute_psf and one from
         # re-estimation during source detection.
-        self.assertEqual(len(background), 1)
+        self.assertEqual(len(background), 3)
 
         # Only 5 psf-like sources with S/N>10 should be in the output catalog,
         # plus two sky sources.
@@ -426,7 +432,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         """
         calibrate = CalibrateImageTask(config=self.config)
         calibrate.astrometry.setRefObjLoader(self.ref_loader)
-        psf_stars, background, candidates = calibrate._compute_psf(self.exposure, self.id_generator)
+        psf_stars, background, candidates, _ = calibrate._compute_psf(self.exposure, self.id_generator)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
         stars = calibrate._find_stars(self.exposure, background, self.id_generator)
 
@@ -446,7 +452,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         calibrate = CalibrateImageTask(config=self.config)
         calibrate.astrometry.setRefObjLoader(self.ref_loader)
         calibrate.photometry.match.setRefObjLoader(self.ref_loader)
-        psf_stars, background, candidates = calibrate._compute_psf(self.exposure, self.id_generator)
+        psf_stars, background, candidates, _ = calibrate._compute_psf(self.exposure, self.id_generator)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
         stars = calibrate._find_stars(self.exposure, background, self.id_generator)
         calibrate._fit_astrometry(self.exposure, stars)
@@ -487,7 +493,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         and candidates.
         """
         calibrate = CalibrateImageTask(config=self.config)
-        psf_stars, background, candidates = calibrate._compute_psf(self.exposure, self.id_generator)
+        psf_stars, background, candidates, _ = calibrate._compute_psf(self.exposure, self.id_generator)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
         stars = calibrate._find_stars(self.exposure, background, self.id_generator)
 
