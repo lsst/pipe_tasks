@@ -26,8 +26,10 @@ import numpy as np
 import requests
 import os
 
+from lsst.afw.geom import SpanSet
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
+import lsst.afw.math as afwMath
 from lsst.ip.diffim.utils import evaluateMaskFraction, populate_sattle_visit_cache
 import lsst.meas.algorithms
 import lsst.meas.algorithms.installGaussianPsf
@@ -286,6 +288,15 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         target=lsst.meas.algorithms.SourceDetectionTask,
         doc="Task to detect sources for PSF determination."
     )
+    do_adaptive_threshold_detection = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Implement the adaptive detection thresholding approach?",
+    )
+    psf_adaptive_threshold_detection = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.AdaptiveThresholdDetectionTask,
+        doc="Task to adaptively detect sources for PSF determination.",
+    )
     psf_source_measurement = pexConfig.ConfigurableField(
         target=lsst.meas.base.SingleFrameMeasurementTask,
         doc="Task to measure sources to be used for psf estimation."
@@ -308,6 +319,10 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     )
 
     # subtasks used during star measurement
+    star_background = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.SubtractBackgroundTask,
+        doc="Task to perform final background subtraction, just before photoCal.",
+    )
     star_detection = pexConfig.ConfigurableField(
         target=lsst.meas.algorithms.SourceDetectionTask,
         doc="Task to detect stars to return in the output catalog."
@@ -462,8 +477,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         # tweaking the background spatial scale, to make it small enough to
         # prevent extra peaks in the wings of bright objects.
         self.psf_detection.doTempLocalBackground = False
-        # NOTE: we do want reEstimateBackground=True in psf_detection, so that
-        # each measurement step is done with the best background available.
+        self.psf_detection.reEstimateBackground = False
 
         # Minimal measurement plugins for PSF determination.
         # TODO DM-39203: We can drop GaussianFlux and PsfFlux, if we use
@@ -494,6 +508,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
 
         # Detection for good S/N for astrometry/photometry and other
         # downstream tasks; detection mask to S/N>=5, but S/N>=10 peaks.
+        self.star_detection.reEstimateBackground = False
         self.star_detection.thresholdValue = 5.0
         self.star_detection.includeThresholdMultiplier = 2.0
         self.star_measurement.plugins = ["base_PixelFlags",
@@ -536,8 +551,8 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
 
         # Only reject sky sources; we already selected good stars.
         self.astrometry.sourceSelector["science"].doFlags = True
-        self.astrometry.sourceSelector["science"].flags.good = ["calib_psf_candidate"]
-        self.astrometry.sourceSelector["science"].flags.bad = []
+        self.astrometry.sourceSelector["science"].flags.good = []  # ["calib_psf_candidate"]
+        # self.astrometry.sourceSelector["science"].flags.bad = []
         self.astrometry.sourceSelector["science"].doUnresolved = False
         self.astrometry.sourceSelector["science"].doIsolated = False
         self.astrometry.sourceSelector["science"].doRequirePrimary = False
@@ -628,6 +643,26 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
                 raise pexConfig.FieldValidationError(CalibrateImageConfig.run_sattle, self,
                                                      "Sattle requested but URI environment variable not set.")
 
+        if not self.do_adaptive_threshold_detection:
+            if not self.psf_detection.reEstimateBackground:
+                raise pexConfig.FieldValidationError(
+                    CalibrateImageConfig.psf_detection,
+                    self,
+                    "If not using the adaptive threshold detection implementation (i.e. "
+                    "config.do_adaptive_threshold_detection = False), CalibrateImageTask.psf_detection "
+                    "background must be configured with "
+                    "reEstimateBackground = True to maintain original behavior."
+                )
+            if not self.star_detection.reEstimateBackground:
+                raise pexConfig.FieldValidationError(
+                    CalibrateImageConfig.psf_detection,
+                    self,
+                    "If not using the adaptive threshold detection implementation "
+                    "(i.e. config.do_adaptive_threshold_detection = False), "
+                    "CalibrateImageTask.star_detection background must be configured "
+                    "with reEstimateBackground = True to maintain original behavior."
+                )
+
 
 class CalibrateImageTask(pipeBase.PipelineTask):
     """Compute the PSF, aperture corrections, astrometric and photometric
@@ -659,6 +694,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         afwTable.CoordKey.addErrorFields(self.psf_schema)
         self.makeSubtask("psf_detection", schema=self.psf_schema)
         self.makeSubtask("psf_source_measurement", schema=self.psf_schema)
+        self.makeSubtask("psf_adaptive_threshold_detection")
         self.makeSubtask("psf_measure_psf", schema=self.psf_schema)
         self.makeSubtask("psf_normalized_calibration_flux", schema=self.psf_schema)
 
@@ -689,6 +725,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                       doc="Maximum value in the star image used to train PSF.")
 
         afwTable.CoordKey.addErrorFields(initial_stars_schema)
+        self.makeSubtask("star_background")
         self.makeSubtask("star_detection", schema=initial_stars_schema)
         self.makeSubtask("star_sky_sources", schema=initial_stars_schema)
         self.makeSubtask("star_deblend", schema=initial_stars_schema)
@@ -906,7 +943,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 illumination_correction,
             )
 
-            result.psf_stars_footprints, result.background, _ = self._compute_psf(
+            result.psf_stars_footprints, result.background, _, adaptiveDetResStruct = self._compute_psf(
                 result.exposure,
                 id_generator,
                 background_to_photometric_ratio=result.background_to_photometric_ratio,
@@ -926,17 +963,30 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                     psf_size=psf_shape.getDeterminantRadius(),
                 )
 
+            if result.background is None:
+                result.background = afwMath.BackgroundList()
+
             self._measure_aperture_correction(result.exposure, result.psf_stars_footprints)
             result.psf_stars = result.psf_stars_footprints.asAstropy()
-            # Run astrometry using PSF candidate stars
+            # Run astrometry using PSF candidate stars.
+            # Update "the psf_stars" source cooordinates with the current wcs.
+            afwTable.updateSourceCoords(
+                result.exposure.wcs,
+                sourceList=result.psf_stars_footprints,
+                include_covariance=self.config.do_include_astrometric_errors,
+            )
             astrometry_matches, astrometry_meta = self._fit_astrometry(
                 result.exposure, result.psf_stars_footprints
             )
-            self.metadata["astrometry_matches_count"] = len(astrometry_matches)
+            num_astrometry_matches = len(astrometry_matches)
+            self.metadata["astrometry_matches_count"] = num_astrometry_matches
             if "astrometry_matches" in self.config.optional_outputs:
                 result.astrometry_matches = lsst.meas.astrom.denormalizeMatches(astrometry_matches,
                                                                                 astrometry_meta)
             result.psf_stars = result.psf_stars_footprints.asAstropy()
+
+            if self.config.do_adaptive_threshold_detection:
+                self._remeasure_star_background(result)
 
             # Run the stars_detection subtask for the photometric calibration.
             result.stars_footprints = self._find_stars(
@@ -944,14 +994,19 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 result.background,
                 id_generator,
                 background_to_photometric_ratio=result.background_to_photometric_ratio,
+                adaptiveDetResStruct=adaptiveDetResStruct,
+                num_astrometry_matches=num_astrometry_matches,
             )
-            self._match_psf_stars(result.psf_stars_footprints, result.stars_footprints)
+            psf = result.exposure.getPsf()
+            psfSigma = psf.computeShape(result.exposure.getBBox().getCenter()).getDeterminantRadius()
+            self._match_psf_stars(result.psf_stars_footprints, result.stars_footprints,
+                                  psfSigma=psfSigma)
 
-            # Update the source cooordinates with the current wcs.
+            # Update the "stars" source cooordinates with the current wcs.
             afwTable.updateSourceCoords(
                 result.exposure.wcs,
                 sourceList=result.stars_footprints,
-                include_covariance=self.config.do_include_astrometric_errors
+                include_covariance=self.config.do_include_astrometric_errors,
             )
 
             summary_stat_catalog = result.stars_footprints
@@ -1108,7 +1163,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             position = exposure.psf.getAveragePosition()
             sigma = exposure.psf.computeShape(position).getDeterminantRadius()
             dimensions = exposure.psf.computeImage(position).getDimensions()
-            median_background = np.median(background.getImage().array)
+            if background is not None:
+                median_background = np.median(background.getImage().array)
+            else:
+                median_background = float("nan")
             self.log.info("%s sigma=%0.4f, dimensions=%s; median background=%0.2f",
                           msg, sigma, dimensions, median_background)
             if addToMetadata:
@@ -1126,48 +1184,65 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.psf_repair.run(exposure=exposure, keepCRs=True)
 
         table = afwTable.SourceTable.make(self.psf_schema, id_generator.make_table_id_factory())
-        # Re-estimate the background during this detection step, so that
-        # measurement uses the most accurate background-subtraction.
-        detections = self.psf_detection.run(
-            table=table,
-            exposure=exposure,
-            background=background,
-            backgroundToPhotometricRatio=background_to_photometric_ratio,
-        )
+        if not self.config.do_adaptive_threshold_detection:
+            adaptiveDetResStruct = None
+            # Re-estimate the background during this detection step, so that
+            # measurement uses the most accurate background-subtraction.
+            detections = self.psf_detection.run(
+                table=table,
+                exposure=exposure,
+                background=background,
+                backgroundToPhotometricRatio=background_to_photometric_ratio,
+            )
+        else:
+            initialThreshold = self.config.psf_detection.thresholdValue
+            initialThresholdMultiplier = self.config.psf_detection.includeThresholdMultiplier
+            adaptiveDetResStruct = self.psf_adaptive_threshold_detection.run(
+                table, exposure,
+                initialThreshold=initialThreshold,
+                initialThresholdMultiplier=initialThresholdMultiplier,
+                doReEstimageBackgroud=False,
+            )
+            detections = adaptiveDetResStruct.detections
+
         self.metadata["initial_psf_positive_footprint_count"] = detections.numPos
         self.metadata["initial_psf_negative_footprint_count"] = detections.numNeg
         self.metadata["initial_psf_positive_peak_count"] = detections.numPosPeaks
         self.metadata["initial_psf_negative_peak_count"] = detections.numNegPeaks
         self.psf_source_measurement.run(detections.sources, exposure)
         psf_result = self.psf_measure_psf.run(exposure=exposure, sources=detections.sources)
-        # Replace the initial PSF with something simpler for the second
-        # repair/detect/measure/measure_psf step: this can help it converge.
-        self.install_simple_psf.run(exposure=exposure)
 
-        log_psf("Rerunning with simple PSF:")
-        # TODO investigation: Should we only re-run repair here, to use the
-        # new PSF? Maybe we *do* need to re-run measurement with PsfFlux, to
-        # use the fitted PSF?
-        # TODO investigation: do we need a separate measurement task here
-        # for the post-psf_measure_psf step, since we only want to do PsfFlux
-        # and GaussianFlux *after* we have a PSF? Maybe that's not relevant
-        # once DM-39203 is merged?
-        self.psf_repair.run(exposure=exposure, keepCRs=True)
-        # Re-estimate the background during this detection step, so that
-        # measurement uses the most accurate background-subtraction.
-        detections = self.psf_detection.run(
-            table=table,
-            exposure=exposure,
-            background=background,
-            backgroundToPhotometricRatio=background_to_photometric_ratio,
-        )
+        # DO WE REALLY NEED THE 2nd ROUND OF PSF FITTING??
+        if not self.config.do_adaptive_threshold_detection:
+            # Replace the initial PSF with something simpler for the second
+            # repair/detect/measure/measure_psf step: this can help it
+            # converge.
+            self.install_simple_psf.run(exposure=exposure)
+
+            log_psf("Rerunning with simple PSF:")
+            # TODO investigation: Should we only re-run repair here, to use the
+            # new PSF? Maybe we *do* need to re-run measurement with PsfFlux,
+            # to use the fitted PSF?
+            # TODO investigation: do we need a separate measurement task here
+            # for the post-psf_measure_psf step, since we only want to do
+            # PsfFlux and GaussianFlux *after* we have a PSF? Maybe that's not
+            # relevant once DM-39203 is merged?
+            self.psf_repair.run(exposure=exposure, keepCRs=True)
+            # Re-estimate the background during this detection step, so that
+            # measurement uses the most accurate background-subtraction.
+            detections = self.psf_detection.run(
+                table=table,
+                exposure=exposure,
+                background=background,
+                backgroundToPhotometricRatio=background_to_photometric_ratio,
+            )
+            self.psf_source_measurement.run(detections.sources, exposure)
+            psf_result = self.psf_measure_psf.run(exposure=exposure, sources=detections.sources)
+
         self.metadata["simple_psf_positive_footprint_count"] = detections.numPos
         self.metadata["simple_psf_negative_footprint_count"] = detections.numNeg
         self.metadata["simple_psf_positive_peak_count"] = detections.numPosPeaks
         self.metadata["simple_psf_negative_peak_count"] = detections.numNegPeaks
-        self.psf_source_measurement.run(detections.sources, exposure)
-        psf_result = self.psf_measure_psf.run(exposure=exposure, sources=detections.sources)
-
         log_psf("Final PSF:", addToMetadata=True)
 
         # Final repair with final PSF, removing cosmic rays this time.
@@ -1177,7 +1252,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         # PSF is set on exposure; candidates are returned to use for
         # calibration flux normalization and aperture corrections.
-        return detections.sources, background, psf_result.cellSet
+        return detections.sources, background, psf_result.cellSet, adaptiveDetResStruct
 
     def _measure_aperture_correction(self, exposure, bright_sources):
         """Measure and set the ApCorrMap on the Exposure, using
@@ -1209,7 +1284,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         exposure.info.setApCorrMap(ap_corr_map)
 
-    def _find_stars(self, exposure, background, id_generator, background_to_photometric_ratio=None):
+    def _find_stars(self, exposure, background, id_generator, background_to_photometric_ratio=None,
+                    adaptiveDetResStruct=None, num_astrometry_matches=None):
         """Detect stars on an exposure that has a PSF model, and measure their
         PSF, circular aperture, compensated gaussian fluxes.
 
@@ -1234,14 +1310,68 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         """
         table = afwTable.SourceTable.make(self.initial_stars_schema.schema,
                                           id_generator.make_table_id_factory())
-        # Re-estimate the background during this detection step, so that
-        # measurement uses the most accurate background-subtraction.
-        detections = self.star_detection.run(
-            table=table,
-            exposure=exposure,
-            background=background,
-            backgroundToPhotometricRatio=background_to_photometric_ratio,
-        )
+
+        inAdaptiveDet = True
+        maxAdaptiveDetIter = 8
+        adaptiveDetIter = 0
+        threshFactor = 0.2
+        if adaptiveDetResStruct is not None:
+            while inAdaptiveDet and adaptiveDetIter < maxAdaptiveDetIter:
+                inAdaptiveDet = False
+                adaptiveDetectionConfig = lsst.meas.algorithms.SourceDetectionConfig()
+                adaptiveDetectionConfig.reEstimateBackground = False
+                adaptiveDetectionConfig.includeThresholdMultiplier = 2.0
+                psfThreshold = (
+                    adaptiveDetResStruct.thresholdValue*adaptiveDetResStruct.includeThresholdMultiplier
+                )
+                adaptiveDetectionConfig.thresholdValue = max(
+                    self.config.star_detection.thresholdValue,
+                    threshFactor*psfThreshold/adaptiveDetectionConfig.includeThresholdMultiplier
+                )
+                self.log.info("Using adaptive threshold detection (nIter = %d) with "
+                              "thresholdValue = %.2f and multiplier = %.1f",
+                              adaptiveDetIter, adaptiveDetectionConfig.thresholdValue,
+                              adaptiveDetectionConfig.includeThresholdMultiplier)
+                adaptiveDetectionTask = lsst.meas.algorithms.SourceDetectionTask(
+                    config=adaptiveDetectionConfig
+                )
+                detections = adaptiveDetectionTask.run(
+                    table=table,
+                    exposure=exposure,
+                    background=background,
+                    backgroundToPhotometricRatio=background_to_photometric_ratio,
+                )
+                nFootprint = len(detections.sources)
+                nPeak = 0
+                nIsolated = 0
+                for src in detections.sources:
+                    nPeakSrc = len(src.getFootprint().getPeaks())
+                    if nPeakSrc == 1:
+                        nIsolated += 1
+                    nPeak += nPeakSrc
+                minIsolated = min(400, max(3, 0.005*nPeak, 0.6*num_astrometry_matches))
+                if nFootprint > 0:
+                    self.log.info("Adaptive threshold detection _find_stars nIter: %d; "
+                                  "nPeak/nFootprint = %.2f (max is 800); nIsolated = %d (min is %.1f).",
+                                  adaptiveDetIter, nPeak/nFootprint, nIsolated, minIsolated)
+                    if nPeak/nFootprint > 800 or nIsolated < minIsolated:
+                        threshFactor = max(0.01, 1.5*threshFactor)
+                        inAdaptiveDet = True
+                        self.log.warning("nPeak/nFootprint = %.2f (max is 800); nIsolated = %d "
+                                         "(min is %.1f).", nPeak/nFootprint, nIsolated, minIsolated)
+                else:
+                    self.log.warning("No footprints detected on image and rerunning...")
+                    inAdaptiveDet = True
+                adaptiveDetIter += 1
+        else:
+            # Re-estimate the background during this detection step, so that
+            # measurement uses the most accurate background-subtraction.
+            detections = self.star_detection.run(
+                table=table,
+                exposure=exposure,
+                background=background,
+                backgroundToPhotometricRatio=background_to_photometric_ratio,
+            )
         sources = detections.sources
         self.star_sky_sources.run(exposure.mask, id_generator.catalog_id, sources)
 
@@ -1300,7 +1430,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         else:
             return result.sourceCat
 
-    def _match_psf_stars(self, psf_stars, stars):
+    def _match_psf_stars(self, psf_stars, stars, psfSigma=None):
         """Match calibration stars to psf stars, to identify which were psf
         candidates, and which were used or reserved during psf measurement
         and the astrometric fit.
@@ -1320,9 +1450,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         This code was adapted from CalibrateTask.copyIcSourceFields().
         """
         control = afwTable.MatchControl()
+        matchRadius = 3.0 if psfSigma is None else max(3.0, psfSigma)  # in pixels
         # Return all matched objects, to separate blends.
         control.findOnlyClosest = False
-        matches = afwTable.matchXy(psf_stars, stars, 3.0, control)
+        matches = afwTable.matchXy(psf_stars, stars, matchRadius, control)
         deblend_key = stars.schema["deblend_nChild"].asKey()
         matches = [m for m in matches if m[1].get(deblend_key) == 0]
 
@@ -1501,3 +1632,253 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         detector = cameraModel[exposure.detector.getId()]
         newWcs = createInitialSkyWcs(exposure.visitInfo, detector)
         exposure.setWcs(newWcs)
+
+    def _compute_mask_fraction(self, mask, mask_planes, bad_mask_planes):
+        """Evaluate the fraction of masked pixels in a (set of) mask plane(s).
+
+        Parameters
+        ----------
+        mask : `lsst.afw.image.Mask`
+            The mask on which to evaluate the fraction.
+        mask_planes : `list`, `str`
+            The mask planes for which to evaluate the fraction.
+        bad_mask_planes : `list`, `str`
+            The mask planes to exclude from the computation.
+
+        Returns
+        -------
+        detected_fraction : `float`
+            The calculated fraction of masked pixels
+        """
+        bad_pixel_mask = afwImage.Mask.getPlaneBitMask(bad_mask_planes)
+        n_good_pix = np.sum(mask.array & bad_pixel_mask == 0)
+        if n_good_pix == 0:
+            detected_fraction = float("nan")
+            return detected_fraction
+        detected_pixel_mask = afwImage.Mask.getPlaneBitMask(mask_planes)
+        n_detected_pix = np.sum((mask.array & detected_pixel_mask != 0)
+                                & (mask.array & bad_pixel_mask == 0))
+        detected_fraction = n_detected_pix/n_good_pix
+        return detected_fraction
+
+    def _compute_per_amp_fraction(self, exposure, detected_fraction, mask_planes, bad_mask_planes):
+        """Evaluate the maximum per-amplifier fraction of masked pixels.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.ExposureF`
+            The exposure on which to compute the per-amp masked fraction.
+        detected_fraction : `float`
+            The current detected_fraction of the ``mask_planes`` for the
+            full detector.
+        mask_planes : `list`, `str`
+            The mask planes for which to evaluate the fraction.
+        bad_mask_planes : `list`, `str`
+            The mask planes to exclude from the computation.
+
+        Returns
+        -------
+        n_above_max_per_amp : `int`
+            The number of amplifiers with masked fractions above a maximum
+            value (set by the current full-detector ``detected_fraction``).
+        highest_detected_fraction_per_amp : `float`
+            The highest value of the per-amplifier fraction of masked pixels.
+        no_zero_det_amps : `bool`
+            A boolean representing whether any of the amplifiers has zero
+            masked pixels.
+        """
+        highest_detected_fraction_per_amp = -9.99
+        n_above_max_per_amp = 0
+        n_no_zero_det_amps = 0
+        no_zero_det_amps = True
+        amps = exposure.detector.getAmplifiers()
+        if amps is not None:
+            for ia, amp in enumerate(amps):
+                amp_bbox = amp.getBBox()
+                exp_bbox = exposure.getBBox()
+                if not exp_bbox.contains(amp_bbox):
+                    self.log.info("Bounding box of amplifier (%s) does not fit in exposure's "
+                                  "bounding box (%s).  Skipping...", amp_bbox, exp_bbox)
+                    continue
+                sub_image = exposure.subset(amp.getBBox())
+                detected_fraction_amp = self._compute_mask_fraction(sub_image.mask,
+                                                                    mask_planes,
+                                                                    bad_mask_planes)
+                self.log.debug("Current detected fraction for amplifier %s = %.3f",
+                               amp.getName(), detected_fraction_amp)
+                if detected_fraction_amp < 0.002:
+                    n_no_zero_det_amps += 1
+                    if n_no_zero_det_amps > 2:
+                        no_zero_det_amps = False
+                        break
+                highest_detected_fraction_per_amp = max(detected_fraction_amp,
+                                                        highest_detected_fraction_per_amp)
+                if highest_detected_fraction_per_amp > min(0.998, max(0.8, 3.0*detected_fraction)):
+                    n_above_max_per_amp += 1
+                    if n_above_max_per_amp > 2:
+                        break
+        else:
+            self.log.info("No amplifier object for detector %d, so skipping per-amp "
+                          "detection fraction checks.", exposure.detector.getId())
+        return n_above_max_per_amp, highest_detected_fraction_per_amp, no_zero_det_amps
+
+    def _remeasure_star_background(self, result):
+        """Remeasure the exposure's background with iterative adaptive
+        threshold detection.
+
+        Parameters
+        ----------
+        result : `lsst.pipe.base.Struct`
+            The current state of the result Strut from the run method of
+            CalibrateImageTask.  Will be modified in place.
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            The modified result Struct with the new background subtracted.
+        """
+        # Restore the previously measured backgroud and remeasure it
+        # using an adaptive threshold detection iteration to ensure a
+        # "Goldilocks Zone" for the fraction of detected pixels.
+        backgroundOrig = result.background.clone()
+        median_background = np.median(backgroundOrig.getImage().array)
+        self.log.warning("Original median_background = %.2f", median_background)
+        result.exposure.image.array += result.background.getImage().array
+        result.background = afwMath.BackgroundList()
+
+        origMask = result.exposure.mask.clone()
+        bad_mask_planes = ["BAD", "EDGE", "NO_DATA"]
+        detected_mask_planes = ["DETECTED", "DETECTED_NEGATIVE"]
+        nPixToDilate = 10
+        detected_fraction_orig = self._compute_mask_fraction(result.exposure.mask,
+                                                             detected_mask_planes,
+                                                             bad_mask_planes)
+        minDetFracForFinalBg = 0.02
+        maxDetFracForFinalBg = 0.93
+        doDilatedOrigDetectionMask = True
+        if doDilatedOrigDetectionMask:
+            # Dilate the current detected mask planes and don't clear
+            # them in the detection step.
+            inDilating = True
+            while inDilating:
+                dilatedMask = origMask.clone()
+                for maskName in detected_mask_planes:
+                    # Compute the grown detection mask plane using SpanSet
+                    detectedMaskBit = dilatedMask.getPlaneBitMask(maskName)
+                    detectedMaskSpanSet = SpanSet.fromMask(dilatedMask, detectedMaskBit)
+                    detectedMaskSpanSet = detectedMaskSpanSet.dilated(nPixToDilate)
+                    detectedMaskSpanSet = detectedMaskSpanSet.clippedTo(dilatedMask.getBBox())
+                    # Clear the detected mask plane
+                    detectedMask = dilatedMask.getMaskPlane(maskName)
+                    dilatedMask.clearMaskPlane(detectedMask)
+                    # Set the mask plane to the dilated one
+                    detectedMaskSpanSet.setMask(dilatedMask, detectedMaskBit)
+
+                detected_fraction_dilated = self._compute_mask_fraction(dilatedMask,
+                                                                        detected_mask_planes,
+                                                                        bad_mask_planes)
+                if detected_fraction_dilated < maxDetFracForFinalBg or nPixToDilate == 1:
+                    inDilating = False
+                else:
+                    nPixToDilate -= 1
+            result.exposure.mask = dilatedMask
+            self.log.warning("detected_fraction_orig = %.3f  detected_fraction_dilated = %.3f",
+                             detected_fraction_orig, detected_fraction_dilated)
+            n_above_max_per_amp = -99
+            highest_detected_fraction_per_amp = float("nan")
+            doCheckPerAmpDetFraction = True
+            if doCheckPerAmpDetFraction:  # detected_fraction < maxDetFracForFinalBg:
+                n_above_max_per_amp, highest_detected_fraction_per_amp, no_zero_det_amps = \
+                    self._compute_per_amp_fraction(result.exposure, detected_fraction_dilated,
+                                                   detected_mask_planes, bad_mask_planes)
+                self.log.warning("Dilated mask: n_above_max_per_amp = %d, "
+                                 "highest_detected_fraction_per_amp = %.3f",
+                                 n_above_max_per_amp, highest_detected_fraction_per_amp)
+
+        detected_fraction = 1.0
+        inBackgroundDet = True
+        detected_fraction = 1.0 if inBackgroundDet else detected_fraction_dilated
+        maxIter = 40
+        nIter = 0
+        nFootprintTemp = 1e12
+        starBackgroundDetectionConfig = lsst.meas.algorithms.SourceDetectionConfig()
+        starBackgroundDetectionConfig.doTempLocalBackground = False
+        starBackgroundDetectionConfig.nSigmaToGrow = 70.0
+        starBackgroundDetectionConfig.reEstimateBackground = False
+        starBackgroundDetectionConfig.includeThresholdMultiplier = 1.0
+        starBackgroundDetectionConfig.thresholdValue = max(2.0, 0.2*median_background)
+        starBackgroundDetectionConfig.thresholdType = "pixel_stdev"  # "stdev"
+
+        n_above_max_per_amp = -99
+        highest_detected_fraction_per_amp = float("nan")
+        doCheckPerAmpDetFraction = True
+
+        while inBackgroundDet:
+            currentThresh = starBackgroundDetectionConfig.thresholdValue
+            if detected_fraction > maxDetFracForFinalBg:
+                starBackgroundDetectionConfig.thresholdValue = 1.07*currentThresh
+                if nFootprintTemp < 3 and detected_fraction > 0.9*maxDetFracForFinalBg:
+                    starBackgroundDetectionConfig.thresholdValue = 1.2*currentThresh
+            if n_above_max_per_amp > 1:
+                starBackgroundDetectionConfig.thresholdValue = 1.1*currentThresh
+            if detected_fraction < minDetFracForFinalBg:
+                starBackgroundDetectionConfig.thresholdValue = 0.8*currentThresh
+            starBackgroundDetectionTask = lsst.meas.algorithms.SourceDetectionTask(
+                config=starBackgroundDetectionConfig)
+            table = afwTable.SourceTable.make(self.initial_stars_schema.schema)
+            tempDetections = starBackgroundDetectionTask.run(
+                table=table, exposure=result.exposure, clearMask=True)
+            result.exposure.mask |= dilatedMask
+            nFootprintTemp = len(tempDetections.sources)
+            detected_fraction = self._compute_mask_fraction(result.exposure.mask, detected_mask_planes,
+                                                            bad_mask_planes)
+            self.log.info("nIter = %d, thresh = %.2f: Fraction of pixels marked as DETECTED or "
+                          "DETECTED_NEGATIVE in star_background_detection = %.3f "
+                          "(max is %.3f; min is %.3f)",
+                          nIter, starBackgroundDetectionConfig.thresholdValue,
+                          detected_fraction, maxDetFracForFinalBg, minDetFracForFinalBg)
+
+            n_amp = len(result.exposure.detector.getAmplifiers())
+            if doCheckPerAmpDetFraction:  # detected_fraction < maxDetFracForFinalBg:
+                n_above_max_per_amp, highest_detected_fraction_per_amp, no_zero_det_amps = \
+                    self._compute_per_amp_fraction(result.exposure, detected_fraction,
+                                                   detected_mask_planes, bad_mask_planes)
+
+            if not no_zero_det_amps:
+                starBackgroundDetectionConfig.thresholdValue = 0.95*currentThresh
+            nIter += 1
+            if nIter > maxIter:
+                inBackgroundDet = False
+
+            if (detected_fraction < maxDetFracForFinalBg and detected_fraction > minDetFracForFinalBg
+                    and n_above_max_per_amp < int(0.75*n_amp)
+                    and no_zero_det_amps):
+                if (n_above_max_per_amp < max(1, int(0.15*n_amp))
+                        or detected_fraction < 0.85*maxDetFracForFinalBg):
+                    inBackgroundDet = False
+                else:
+                    self.log.warning("Making small tweak....")
+                    starBackgroundDetectionConfig.thresholdValue = 1.05*currentThresh
+            self.log.warning("n_above_max_per_amp = %d (abs max is %d)", n_above_max_per_amp, int(0.75*n_amp))
+
+        self.log.info("Fraction of pixels marked as DETECTED or DETECTED_NEGATIVE is now %.5f "
+                      "(highest per amp section = %.5f)",
+                      detected_fraction, highest_detected_fraction_per_amp)
+
+        if detected_fraction > maxDetFracForFinalBg:
+            result.exposure.mask = dilatedMask
+            self.log.warning("Final fraction of pixels marked as DETECTED or DETECTED_NEGATIVE "
+                             "was too large in star_background_detection = %.3f (max = %.3f). "
+                             "Reverting to dilated mask from PSF detection...",
+                             detected_fraction, maxDetFracForFinalBg)
+        star_background = self.star_background.run(exposure=result.exposure).background
+        result.background.append(star_background[0])
+
+        # Clear detected mask plane before final round of detection
+        mask = result.exposure.mask
+        for mp in detected_mask_planes:
+            if mp not in mask.getMaskPlaneDict():
+                mask.addMaskPlane(mp)
+            mask &= ~mask.getPlaneBitMask(detected_mask_planes)
+
+        return result
