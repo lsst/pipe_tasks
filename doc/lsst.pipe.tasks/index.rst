@@ -162,9 +162,6 @@ Python API reference
 .. automodapi:: lsst.pipe.tasks.matchBackgrounds
    :no-inheritance-diagram:
 
-.. automodapi:: lsst.pipe.tasks.matchFakes
-   :no-inheritance-diagram:
-
 .. automodapi:: lsst.pipe.tasks.match_tract_catalog
    :no-inheritance-diagram:
 
