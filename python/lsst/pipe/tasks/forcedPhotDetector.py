@@ -72,7 +72,7 @@ class ForcedPhotDetectorConnections(PipelineTaskConnections,
         doc="Output forced photometry catalog.",
         name="object_forced_source_unstandardized",
         storageClass="DataFrame",
-        dimensions=("instrument", "visit", "detector", "skymap", "tract")
+        dimensions=("visit", "detector", "skymap", "tract")
     )
 
     def __init__(self, *, config=None):
@@ -148,7 +148,10 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
 
     def __init__(self, initInputs=None, **kwargs):
         super().__init__(**kwargs)
-        self.makeSubtask("measurement")
+
+        refSchema = lsst.afw.table.SourceTable.makeMinimalSchema()
+
+        self.makeSubtask("measurement", refSchema=refSchema)
         if self.config.doApCorr:
             self.makeSubtask("applyApCorr", schema=self.measurement.schema)
 
