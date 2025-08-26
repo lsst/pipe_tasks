@@ -32,6 +32,7 @@ import numpy as np
 import pandas as pd
 
 import lsst.afw.geom as afwGeom
+import lsst.geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
@@ -207,6 +208,12 @@ class MatchTractCatalogConfig(
 ):
     """Configure a MatchTractCatalogTask, including a configurable matching subtask.
     """
+    coord_unit = pexConfig.Field[str](
+        doc="lsst.geom unit of the coordinate columns. Only used to determine"
+            " the tract for rows in non-tract-sharded catalogs "
+            " without a tract column.",
+        optional=True,
+    )
     diff_matched_catalog = pexConfig.ConfigurableField(
         target=DiffMatchedTractCatalogTaskBase,
         doc="Task to make a matched catalog out of the match index tables",
@@ -269,31 +276,42 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
         self.makeSubtask("match_tract_catalog")
         self.makeSubtask("diff_matched_catalog")
 
+    _astropy_u_to_lsst_geom = {
+        "arcmin": "arcminutes",
+        "deg": "degrees",
+        "rad": "radians",
+    }
+
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         columns_ref, columns_target = self.config.get_columns_in()
         skymap = inputs.pop("skymap")
         is_refcat_per_tract = self.config.refcat_sharding_type == 'tract'
+        is_target_per_tract = self.config.target_sharding_type == 'tract'
 
         if self.config.match_multiple_target:
-            names_columns = [("cat_target", columns_target)]
-            if is_refcat_per_tract:
-                names_columns.append(("cat_ref", columns_ref))
+            if is_target_per_tract:
+                names_columns = [("cat_target", columns_target)]
                 catalogs = {}
             else:
-                catalogs = {
-                    "cat_ref": inputs["cat_ref"].get(parameters={'columns': columns_ref})
-                }
+                catalogs = {"cat_target": inputs["cat_target"].get(parameters={'columns': columns_target})}
+                names_columns = []
+            if is_refcat_per_tract:
+                names_columns.append(("cat_ref", columns_ref))
+            else:
+                catalogs["cat_ref"] = inputs["cat_ref"].get(parameters={'columns': columns_ref})
 
             for name, columns in names_columns:
                 handles = []
                 extra_values = {}
-                for tract, handle in sorted(
-                    (inputRef.dataId["tract"], inputHandle)
-                    for inputRef, inputHandle in zip(getattr(inputRefs, name), inputs[name], strict=True)
+                for tract, handle, idx_h in sorted(
+                    (inputRef.dataId["tract"], inputHandle, idx)
+                    for idx, (inputRef, inputHandle) in enumerate(
+                        zip(getattr(inputRefs, name), inputs[name], strict=True)
+                    )
                 ):
                     handles.append(handle)
-                    extra_values[handle] = {"tract": tract}
+                    extra_values[idx_h] = {"tract": tract}
                 catalogs[name] = TableVStack.vstack_handles(
                     handles,
                     extra_values=extra_values,
@@ -305,6 +323,7 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
                 inputs[name].get(parameters={'columns': columns})
                 for name, columns in (('cat_ref', columns_ref), ('cat_target', columns_target))
             )
+        self._add_tract_column_to_catalogs(catalog_ref, catalog_target, skymap)
 
         outputs = self.run(
             catalog_ref=catalog_ref,
@@ -321,6 +340,7 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
             outputs = pipeBase.Struct(**outputs.getDict(), cat_output_matched=outputs_new.cat_matched)
         if self.config.match_multiple_target:
             outputs_new = {}
+
             for name, catalog_in in (("cat_output_ref", catalog_ref), ("cat_output_target", catalog_target)):
                 catalogs_out = []
                 for outputRef in getattr(outputRefs, name):
@@ -331,11 +351,14 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
             if self.config.output_matched_catalog:
                 cat_matched = outputs.cat_output_matched
                 catalogs_out = []
-                tract_target = cat_matched["tract"]
-                masked_target = cat_matched["tract"].mask == True
+                tract_target = cat_matched[
+                    f"{self.config.diff_matched_catalog.value.column_matched_prefix_target}tract"
+                ]
+                masked_target = tract_target.mask == True  # noqa: E712
 
-                column_tract_ref = f"{self.config.diff_matched_catalog.value.column_matched_prefix_ref}tract"
-                tract_ref = cat_matched[column_tract_ref]
+                tract_ref = cat_matched[
+                    f"{self.config.diff_matched_catalog.value.column_matched_prefix_ref}tract"
+                ]
 
                 for outputRef in outputRefs.cat_output_matched:
                     tract = outputRef.dataId["tract"]
@@ -381,3 +404,44 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
         retStruct = pipeBase.Struct(cat_output_ref=output.cat_output_ref,
                                     cat_output_target=output.cat_output_target)
         return retStruct
+
+    def _add_tract_column_to_catalogs(self, catalog_ref, catalog_target, skymap):
+        errors = []
+        if compute_tract_target := ("tract" not in catalog_target.colnames):
+            if self.config.target_sharding_type != "none":
+                errors.append(
+                    f"Target catalog has no tract column with {self.config.target_sharding_type} != 'none'"
+                )
+        if compute_tract_ref := ("tract" not in catalog_ref.colnames):
+            if self.config.refcat_sharding_type != "none":
+                errors.append(
+                    f"Ref catalog has no tract column with {self.config.refcat_sharding_type} != 'none'"
+                )
+        if errors:
+            raise RuntimeError("; ".join(errors))
+        unit_dict = self._astropy_u_to_lsst_geom.copy()
+        if compute_tract_target or compute_tract_ref:
+            if not self.config.diff_matched_catalog.coord_format.coords_spherical:
+                raise RuntimeError(
+                    f"Can't compute tract columns with unless"
+                    f" {self.config.diff_matched_catalog.coord_format.coords_spherical} == True"
+                )
+            ref_c, target_c = self.config.diff_matched_catalog.coord_format.format_catalogs(
+                catalog_ref=catalog_ref, catalog_target=catalog_target,
+            )
+            SpherePoint = lsst.geom.SpherePoint
+            cats_add = []
+            if compute_tract_target:
+                cats_add.append((target_c, catalog_target, "target"))
+            if compute_tract_ref:
+                cats_add.append((ref_c, catalog_ref, "ref"))
+            for cat_c, catalog_add, name_c in cats_add:
+                unit = getattr(catalog_add[cat_c.column_coord1], "unit", self.config.coord_unit)
+                if unit is None:
+                    raise RuntimeError(
+                        f"Must specify coord_unit since {name_c} column={cat_c.column_coord1}"
+                        f" has no units"
+                    )
+                unit = getattr(lsst.geom, unit_dict[str(unit)])
+                coords = [SpherePoint(ra, dec, unit) for ra, dec in zip(cat_c.coord1, cat_c.coord2)]
+                catalog_add["tract"] = np.array([skymap.findTract(coord).getId() for coord in coords])
