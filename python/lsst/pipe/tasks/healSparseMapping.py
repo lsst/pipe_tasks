@@ -265,9 +265,11 @@ class HealSparseInputMapTask(pipeBase.Task):
             return
 
         # Bad pixels come from warps which use the overall wcs.
-        bad_ra, bad_dec = self._wcs.pixelToSkyArray(bad_pixels[1].astype(np.float64),
-                                                    bad_pixels[0].astype(np.float64),
-                                                    degrees=True)
+        bad_ra, bad_dec = self._wcs.pixelToSkyArray(
+            bad_pixels[1].astype(np.float64) + bbox.getMinX(),
+            bad_pixels[0].astype(np.float64) + bbox.getMinY(),
+            degrees=True,
+        )
         bad_hpix = hpg.angle_to_pixel(self.config.nside, bad_ra, bad_dec)
 
         # Check if any of these "bad" pixels are in the valid footprint.
