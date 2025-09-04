@@ -25,7 +25,6 @@ __all__ = ['TableColumnSummaryConnections',
 
 import numpy as np
 import pandas as pd
-
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 
@@ -74,7 +73,7 @@ class TableColumnSummaryConnections(pipeBase.PipelineTaskConnections,
                                          defaultTemplates={}):
     source_table_visit = pipeBase.connectionTypes.Input(
         doc='source table in parquet format, per visit',
-        name='sourceTable_visit',
+        name='recalibrated_star',
         storageClass='DataFrame',
         dimensions=('instrument', 'visit'),
         deferLoad=True,
@@ -84,7 +83,7 @@ class TableColumnSummaryConnections(pipeBase.PipelineTaskConnections,
         doc='Summary of columns in source table',
         name='sourceTable_summary_metrics',
         storageClass='MetricMeasurementBundle',
-        #dimensions=('instrument', 'visit'),
+        dimensions=('instrument', 'visit'),
     )
 
 
@@ -126,9 +125,12 @@ class TableColumnSummaryTask(pipeBase.PipelineTask):
 
         visit = butlerQC.quantum.dataId['visit']
         
-        source_table_refs = input_ref_dict['source_table_visit']
+        #source_table_refs = input_ref_dict['source_table_visit']
+        source_table_refs = input_ref_dict['recalibrated_star']
 
-        self.log.info('Running with %d source_table_visit dataRefs',
+        #self.log.info('Running with %d source_table_visit dataRefs',
+        #              len(source_table_refs))
+        self.log.info('Running with %d recalibrated_star dataRefs',
                       len(source_table_refs))
 
         source_table_ref_dict_temp = {source_table_ref.dataId['visit']: source_table_ref for
@@ -168,9 +170,14 @@ class TableColumnSummaryTask(pipeBase.PipelineTask):
                                'display.width', None):
             print(df_summary)
 
+        df_summary_temp=df_summary.copy()
+        df_summary_temp['colname'] = df_summary.index
+        outputFileName = """sourceSummary.%d.csv""" % (visit)
+        df_summary_temp.to_csv(outputFileName, index=True)
+
         # change variable from index_list, column_list to something less confusing:
-        index_list = df_summary.index.tolist()
-        column_list = df_summary.columns.tolist()
+        summary_column_list = df_summary.index.tolist()
+        summary_stats_list = df_summary.columns.tolist()
 
         ###########################################
         # Resolve dimensions
@@ -178,11 +185,11 @@ class TableColumnSummaryTask(pipeBase.PipelineTask):
         ###########################################
         
         metricsList = []
-        for index_name in index_list:
-            for column_name in column_list:
-                metric_name = f"{index_name}.{column_name}"
-                metric_value = df_summary.loc[index_name, column_name]
-                # Add dimensions!  Probably need to switch from pandas to Astropy...
+        for summary_column_name in summary_column_list:
+            for summary_stats_name in summary_stats_list:
+                metric_name = f"{summary_column_name}_{summary_stats_name}"
+                metric_value = df_summary.loc[summary_column_name, summary_stats_name]
+                # Eventually want to add dimensions, once dimensions are included the butlerQC parquet files...
                 metric = Measurement(metric_name, metric_value*u.dimensionless_unscaled)
                 metricsList.append(metric)
         
@@ -192,7 +199,10 @@ class TableColumnSummaryTask(pipeBase.PipelineTask):
                 timestamp_version=self.config.timestamp_version,
         )        
         
-        bundle['sourceTable'] = metricsList
+        #bundle['sourceTable'] = metricsList
+        bundle['recalibrated_star'] = metricsList
+        
+        print(bundle)
 
         return bundle
 
@@ -221,6 +231,11 @@ class TableColumnSummaryTask(pipeBase.PipelineTask):
         for visit in source_table_ref_dict:
             source_table_ref = source_table_ref_dict[visit]
             df = source_table_ref.get()
+            # Only consider entries for which detect_isPrimary is True...
+            try:
+                df = df[(df['detect_isPrimary']==True)]
+            except Exception:
+                print('detect_isPrimary is not an avaiable column.  Ignoring and moving on.')
             dfs.append(df)
         df = pd.concat(dfs, ignore_index=True)
         df.reset_index(inplace=True)
@@ -230,9 +245,9 @@ class TableColumnSummaryTask(pipeBase.PipelineTask):
         
         # Create summary statistics
         summary_stats = {
-            '01_percent': df[numeric_cols].quantile(0.01),
-            '50_percent': df[numeric_cols].quantile(0.50),
-            '99_percent': df[numeric_cols].quantile(0.99),
+            'percent_01': df[numeric_cols].quantile(0.01),
+            'percent_50': df[numeric_cols].quantile(0.50),
+            'percent_99': df[numeric_cols].quantile(0.99),
             'total_rows': df[numeric_cols].count() + df[numeric_cols].isna().sum(),
             'nan_count': df[numeric_cols].isna().sum(),
             'nan_fraction': df[numeric_cols].isna().sum() / (df[numeric_cols].count() + df[numeric_cols].isna().sum())
@@ -240,13 +255,6 @@ class TableColumnSummaryTask(pipeBase.PipelineTask):
         
         # Create summary DataFrame
         df_summary = pd.DataFrame(summary_stats).round(3)
-
-        print('####################################')
-        with pd.option_context('display.max_rows', None, 
-                               'display.max_columns', None, 
-                               'display.width', None):
-            print(df_summary)
-        print('####################################')
         
         # Return summary DataFrame
         return df_summary
