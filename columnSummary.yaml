@@ -1,5 +1,0 @@
-description: DRP specialized for LATISS surveys
-instrument: lsst.obs.lsst.LsstComCam
-tasks:
-  columnSummary: lsst.pipe.tasks.tableColumnSummary.TableColumnSummaryTask
-  
