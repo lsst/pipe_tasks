@@ -56,8 +56,6 @@ from lsst.skymap import BaseSkyMap
 from .mergeDetections import MergeDetectionsConfig, MergeDetectionsTask  # noqa: F401
 from .mergeMeasurements import MergeMeasurementsConfig, MergeMeasurementsTask  # noqa: F401
 from .multiBandUtils import CullPeaksConfig  # noqa: F401
-from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesSingleConfig  # noqa: F401
-from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesSingleTask  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesMultiConfig  # noqa: F401
 from .deblendCoaddSourcesPipeline import DeblendCoaddSourcesMultiTask  # noqa: F401
 
