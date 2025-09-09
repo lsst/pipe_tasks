@@ -150,9 +150,10 @@ class DiffMatchedTractCatalogTaskTestCase(lsst.utils.tests.TestCase):
             wcs=self.wcs,
         )
         columns_result = list(result.cat_matched.columns)
-        columns_expect = list(columns_target) + ["match_distance", "match_distanceErr"]
-        prefix = DiffMatchedTractCatalogConfig.column_matched_prefix_ref.default
-        columns_expect.extend((f'{prefix}{col}' for col in columns_ref))
+        columns_expect = list(columns_target) + ["match_candidate", "match_distance", "match_distanceErr"]
+        prefix = task.config.column_matched_prefix_ref
+        columns_expect.extend((f"{prefix}{col}" for col in columns_ref))
+        columns_expect.append(f"{prefix}match_candidate")
         self.assertListEqual(columns_expect, columns_result)
 
     def test_spherical(self):

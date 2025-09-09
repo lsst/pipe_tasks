@@ -106,7 +106,6 @@ class DiffMatchedTractCatalogConnections(
         if config.refcat_sharding_type != "tract":
             if config.refcat_sharding_type == "none":
                 old = self.cat_ref
-                del self.cat_ref
                 self.cat_ref = cT.Input(
                     doc=old.doc,
                     name=old.name,
@@ -114,6 +113,20 @@ class DiffMatchedTractCatalogConnections(
                     dimensions=(),
                     deferLoad=old.deferLoad,
                 )
+            else:
+                raise NotImplementedError(f"{config.refcat_sharding_type=} not implemented")
+        if config.target_sharding_type != "tract":
+            if config.target_sharding_type == "none":
+                old = self.cat_target
+                self.cat_target = cT.Input(
+                    doc=old.doc,
+                    name=old.name,
+                    storageClass=old.storageClass,
+                    dimensions=(),
+                    deferLoad=old.deferLoad,
+                )
+            else:
+                raise NotImplementedError(f"{config.target_sharding_type=} not implemented")
 
 
 class MatchedCatalogFluxesConfig(pexConfig.Config):
@@ -149,13 +162,35 @@ class DiffMatchedTractCatalogConfig(
     pipeBase.PipelineTaskConfig,
     pipelineConnections=DiffMatchedTractCatalogConnections,
 ):
+    column_match_candidate_ref = pexConfig.Field[str](
+        default='match_candidate',
+        doc='The column name for the boolean field identifying reference objects'
+            ' that were used for matching',
+        optional=True,
+    )
+    column_match_candidate_target = pexConfig.Field[str](
+        default='match_candidate',
+        doc='The column name for the boolean field identifying target objects'
+            ' that were used for matching',
+        optional=True,
+    )
     column_matched_prefix_ref = pexConfig.Field[str](
         default='refcat_',
         doc='The prefix for matched columns copied from the reference catalog',
     )
+    column_matched_prefix_target = pexConfig.Field[str](
+        default='',
+        doc='The prefix for matched columns copied from the target catalog',
+    )
     include_unmatched = pexConfig.Field[bool](
         default=False,
         doc='Whether to include unmatched rows in the matched table',
+    )
+    filter_on_match_candidate = pexConfig.Field[bool](
+        default=False,
+        doc='Whether to use provided column_match_candidate_[ref/target] to'
+            ' exclude rows from the output table. If False, any provided'
+            ' columns will be copied instead.'
     )
     prefix_best_coord = pexConfig.Field[str](
         default=None,
@@ -243,6 +278,11 @@ class DiffMatchedTractCatalogConfig(
         allowed={"tract": "Tract-based shards", "none": "No sharding at all"},
         default="tract",
     )
+    target_sharding_type = pexConfig.ChoiceField[str](
+        doc="The type of sharding (spatial splitting) for the target catalog",
+        allowed={"tract": "Tract-based shards", "none": "No sharding at all"},
+        default="tract",
+    )
 
     def validate(self):
         super().validate()
@@ -279,19 +319,21 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         inputs = butlerQC.get(inputRefs)
         skymap = inputs.pop("skymap")
 
+        columns_match_ref = ['match_row']
+        if (column := self.config.column_match_candidate_ref) is not None:
+            columns_match_ref.append(column)
+
         columns_match_target = ['match_row']
-        if 'match_candidate' in inputs['columns_match_target']:
-            columns_match_target.append('match_candidate')
+        if (column := self.config.column_match_candidate_target) is not None and (
+            column in inputs['columns_match_target']
+        ):
+            columns_match_target.append(column)
 
         outputs = self.run(
             catalog_ref=inputs['cat_ref'].get(parameters={'columns': self.config.columns_in_ref}),
             catalog_target=inputs['cat_target'].get(parameters={'columns': self.config.columns_in_target}),
-            catalog_match_ref=inputs['cat_match_ref'].get(
-                parameters={'columns': ['match_candidate', 'match_row']},
-            ),
-            catalog_match_target=inputs['cat_match_target'].get(
-                parameters={'columns': columns_match_target},
-            ),
+            catalog_match_ref=inputs['cat_match_ref'].get(parameters={'columns': columns_match_ref}),
+            catalog_match_target=inputs['cat_match_target'].get(parameters={'columns': columns_match_target}),
             wcs=skymap[butlerQC.quantum.dataId["tract"]].wcs,
         )
         butlerQC.put(outputs, outputRefs)
@@ -339,12 +381,17 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         DatasetProvenance.strip_provenance_from_flat_dict(catalog_match_ref.meta)
         DatasetProvenance.strip_provenance_from_flat_dict(catalog_match_target.meta)
 
-        select_ref = catalog_match_ref['match_candidate']
+        # It would be nice to make this a Selector but those are
+        # only available in analysis_tools for now
+        select_ref, select_target = (
+            (catalog[column] if column else np.ones(len(catalog), dtype=bool))
+            for catalog, column in (
+                (catalog_match_ref, self.config.column_match_candidate_ref),
+                (catalog_match_target, self.config.column_match_candidate_target),
+            )
+        )
         # Add additional selection criteria for target sources beyond those for matching
         # (not recommended, but can be done anyway)
-        select_target = (catalog_match_target['match_candidate']
-                         if 'match_candidate' in catalog_match_target.columns
-                         else np.ones(len(catalog_match_target), dtype=bool))
         for column in config.columns_target_select_true:
             select_target &= catalog_target[column]
         for column in config.columns_target_select_false:
@@ -358,9 +405,13 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         cat_target = target.catalog
         n_target = len(cat_target)
 
-        if config.include_unmatched:
-            for cat_add, cat_match in ((cat_ref, catalog_match_ref), (cat_target, catalog_match_target)):
-                cat_add['match_candidate'] = cat_match['match_candidate']
+        if not config.filter_on_match_candidate:
+            for cat_add, cat_match, column in (
+                (cat_ref, catalog_match_ref, config.column_match_candidate_ref),
+                (cat_target, catalog_match_target, config.column_match_candidate_target),
+            ):
+                if column is not None:
+                    cat_add[column] = cat_match[column]
 
         match_row = catalog_match_ref['match_row']
         matched_ref = match_row >= 0
@@ -397,10 +448,16 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         # Create a matched table, preserving the target catalog's named index (if it has one)
         cat_left = cat_target[matched_row]
         cat_right = cat_ref[matched_ref]
-        cat_right.rename_columns(
-            list(cat_right.columns),
-            new_names=[f'{config.column_matched_prefix_ref}{col}' for col in cat_right.columns],
-        )
+        if config.column_matched_prefix_target:
+            cat_left.rename_columns(
+                list(cat_left.columns),
+                new_names=[f'{config.column_matched_prefix_target}{col}' for col in cat_left.columns],
+            )
+        if config.column_matched_prefix_ref:
+            cat_right.rename_columns(
+                list(cat_right.columns),
+                new_names=[f'{config.column_matched_prefix_ref}{col}' for col in cat_right.columns],
+            )
         cat_matched = astropy.table.hstack((cat_left, cat_right))
 
         if config.include_unmatched:
@@ -416,6 +473,10 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
             )
             match_row_target = catalog_match_target['match_row']
             cat_left = cat_target[~(match_row_target >= 0) & select_target]
+            cat_left.rename_columns(
+                cat_left.colnames,
+                [f"{config.column_matched_prefix_target}{col}" for col in cat_left.colnames],
+            )
             # This may be slower than pandas but will, for example, create
             # masked columns for booleans, which pandas does not support.
             # See https://github.com/pandas-dev/pandas/issues/46662
@@ -450,22 +511,23 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
                     )
                 )
                 for column_coord_best, column_coord_ref, column_coord_target in zip(
-                        columns_coord_best,
-                        (config.coord_format.column_ref_coord1, config.coord_format.column_ref_coord2),
-                        (config.coord_format.column_target_coord1, config.coord_format.column_target_coord2),
+                    columns_coord_best,
+                    (config.coord_format.column_ref_coord1, config.coord_format.column_ref_coord2),
+                    (config.coord_format.column_target_coord1, config.coord_format.column_target_coord2),
                 ):
                     column_full_ref = f'{config.column_matched_prefix_ref}{column_coord_ref}'
+                    column_full_target = f'{config.column_matched_prefix_target}{column_coord_target}'
                     values = cat_matched[column_full_ref]
                     unit = values.unit
                     values_bad = np.ma.masked_invalid(values).mask
                     # Cast to an unmasked array - there will be no bad values
                     values = np.array(values)
-                    values[values_bad] = cat_matched[column_coord_target][values_bad]
+                    values[values_bad] = cat_matched[column_full_target][values_bad]
                     cat_matched[column_coord_best] = values
                     cat_matched[column_coord_best].unit = unit
                     cat_matched[column_coord_best].description = (
                         f"Best {columns_coord_best} value from {column_full_ref} if available"
-                        f" else {column_coord_target}"
+                        f" else {column_full_target}"
                     )
 
         retStruct = pipeBase.Struct(cat_matched=cat_matched)
