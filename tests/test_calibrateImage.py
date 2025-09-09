@@ -754,7 +754,13 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         # Check that the proper kwargs are passed to run().
         self.assertEqual(
             mock_run.call_args.kwargs.keys(),
-            {"exposures", "result", "id_generator", "background_flat", "illumination_correction"},
+            {"exposures",
+             "result",
+             "id_generator",
+             "background_flat",
+             "illumination_correction",
+             "camera_model"
+             },
         )
 
     def test_runQuantum_illumination_correction(self):
@@ -794,7 +800,13 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         # Check that the proper kwargs are passed to run().
         self.assertEqual(
             mock_run.call_args.kwargs.keys(),
-            {"exposures", "result", "id_generator", "background_flat", "illumination_correction"},
+            {"exposures",
+             "result",
+             "id_generator",
+             "background_flat",
+             "illumination_correction",
+             "camera_model"
+             },
         )
 
     def test_runQuantum_2_snaps(self):
@@ -828,7 +840,13 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         # Check that the proper kwargs are passed to run().
         self.assertEqual(
             mock_run.call_args.kwargs.keys(),
-            {"exposures", "result", "id_generator", "background_flat", "illumination_correction"},
+            {"exposures",
+             "result",
+             "id_generator",
+             "background_flat",
+             "illumination_correction",
+             "camera_model"
+             },
         )
 
     def test_runQuantum_no_optional_outputs(self):
@@ -904,7 +922,13 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         # Check that the proper kwargs are passed to run().
         self.assertEqual(
             mock_run.call_args.kwargs.keys(),
-            {"exposures", "result", "id_generator", "background_flat", "illumination_correction"},
+            {"exposures",
+             "result",
+             "id_generator",
+             "background_flat",
+             "illumination_correction",
+             "camera_model"
+             },
         )
 
     def test_lintConnections(self):
@@ -956,6 +980,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
             id_generator=None,
             background_flat=None,
             illumination_correction=None,
+            camera_model=None,
         ):
             """Mock success through compute_psf, but failure after.
             """
