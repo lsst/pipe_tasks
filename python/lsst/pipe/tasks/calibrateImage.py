@@ -311,8 +311,8 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
             "for the bright stars used for psf estimation.",
     )
 
-    # TODO DM-39203: we can remove aperture correction from this task once we are
-    # using the shape-based star/galaxy code.
+    # TODO DM-39203: we can remove aperture correction from this task once we
+    # are using the shape-based star/galaxy code.
     measure_aperture_correction = pexConfig.ConfigurableField(
         target=lsst.meas.algorithms.measureApCorr.MeasureApCorrTask,
         doc="Task to compute the aperture correction from the bright stars."
@@ -466,8 +466,8 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         self.install_simple_psf.fwhm = 4
 
         # S/N>=50 sources for PSF determination, but detection to S/N=10.
-        # The thresholdValue sets the minimum flux in a pixel to be included in the
-        # footprint, while peaks are only detected when they are above
+        # The thresholdValue sets the minimum flux in a pixel to be included
+        # in the footprint, while peaks are only detected when they are above
         # thresholdValue * includeThresholdMultiplier. The low thresholdValue
         # ensures that the footprints are large enough for the noise replacer
         # to mask out faint undetected neighbors that are not to be measured.
@@ -482,8 +482,8 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         # Minimal measurement plugins for PSF determination.
         # TODO DM-39203: We can drop GaussianFlux and PsfFlux, if we use
         # shapeHSM/moments for star/galaxy separation.
-        # TODO DM-39203: we can remove aperture correction from this task once
-        # we are using the shape-based star/galaxy code.
+        # TODO DM-39203: we can remove aperture correction from this task
+        # once we are using the shape-based star/galaxy code.
         self.psf_source_measurement.plugins = ["base_PixelFlags",
                                                "base_SdssCentroid",
                                                "ext_shapeHSM_HsmSourceMoments",
@@ -527,9 +527,9 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         self.star_measurement.plugins["base_CircularApertureFlux"].radii = [12.0]
         self.star_measurement.plugins["base_CompensatedTophatFlux"].apertures = [12]
 
-        # We measure and apply the normalization aperture correction with the
-        # psf_normalized_calibration_flux task, and we only apply the normalization
-        # aperture correction for the full list of stars.
+        # We measure and apply the normalization aperture correction with
+        # the psf_normalized_calibration_flux task, and we only apply the
+        # normalization aperture correction for the full list of stars.
         self.star_normalized_calibration_flux.do_measure_ap_corr = False
 
         # Select stars with reliable measurements and no bad flags.
@@ -709,7 +709,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # astrometric fitting, and aperture correction calculations.
         self.psf_fields = ("calib_psf_candidate", "calib_psf_used", "calib_psf_reserved",
                            "calib_astrometry_used",
-                           # TODO DM-39203: these can be removed once apcorr is gone.
+                           # TODO DM-39203:
+                           # these can be removed once apcorr is gone.
                            "apcorr_slot_CalibFlux_used", "apcorr_base_GaussianFlux_used",
                            "apcorr_base_PsfFlux_used",)
         for field in self.psf_fields:
@@ -843,7 +844,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         Parameters
         ----------
-        exposures : `lsst.afw.image.Exposure` or `list` [`lsst.afw.image.Exposure`]
+        exposures : `lsst.afw.image.Exposure` or \
+                    `list` [`lsst.afw.image.Exposure`]
             Post-ISR exposure(s), with an initial WCS, VisitInfo, and Filter.
             Modified in-place during processing if only one is passed.
             If two exposures are passed, treat them as snaps and combine
@@ -891,10 +893,12 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 This is `None` if ``config.do_calibrate_pixels`` is `False`.
             ``astrometry_matches``
                 Reference catalog stars matches used in the astrometric fit.
-                (`list` [`lsst.afw.table.ReferenceMatch`] or `lsst.afw.table.BaseCatalog`)
+                (`list` [`lsst.afw.table.ReferenceMatch`] or
+                `lsst.afw.table.BaseCatalog`).
             ``photometry_matches``
                 Reference catalog stars matches used in the photometric fit.
-                (`list` [`lsst.afw.table.ReferenceMatch`] or `lsst.afw.table.BaseCatalog`)
+                (`list` [`lsst.afw.table.ReferenceMatch`] or
+                `lsst.afw.table.BaseCatalog`).
             ``mask``
                 Copy of the mask plane of `exposure`.
                 (`lsst.afw.image.Mask`)
@@ -1024,7 +1028,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 photometry_meta, photo_calib = self._fit_photometry(result.exposure, result.stars_footprints)
             have_fit_photometry = True
             self.metadata["photometry_matches_count"] = len(photometry_matches)
-            # fit_photometry returns a new catalog, so we need a new astropy table view.
+            # fit_photometry returns a new catalog, so we need a new astropy
+            # table view.
             result.stars = result.stars_footprints.asAstropy()
             # summary stats don't make use of the calibrated fluxes, but we
             # might as well use the best catalog we've got in case that
@@ -1044,12 +1049,12 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 result.exposure.setWcs(None)
             if not have_fit_photometry:
                 result.exposure.setPhotoCalib(None)
-            # Summary stat calculations can handle missing components gracefully,
-            # but we want to run them as late as possible (but still before we
-            # calibrate pixels, if we do that at all).
-            # So we run them after we succeed or if we get an AlgorithmError.  We
-            # intentionally don't use 'finally' here because we don't want to run
-            # them if we get some other kind of error.
+            # Summary stat calculations can handle missing components
+            # gracefully, but we want to run them as late as possible (but
+            #  still before wecalibrate pixels, if we do that at all).
+            # So we run them after we succeed or if we get an AlgorithmError.
+            # We intentionally don't use 'finally' here because we don't
+            # want to run them if we get some other kind of error.
             self._summarize(result.exposure, summary_stat_catalog, result.background)
             raise
         else:
@@ -1087,7 +1092,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         background_flat : `lsst.afw.image.Exposure`
             Flat image that had previously been applied to exposure.
         illumination_correction : `lsst.afw.image.Exposure`
-            Illumination correction image to convert to photometric-flattened image.
+            Illumination correction image to convert to photometric-flattened
+            image.
 
         Returns
         -------
@@ -1157,8 +1163,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 msg : `str`
                     Message to prepend the log info with.
                 addToMetadata : `bool`, optional
-                    Whether to add the final psf sigma value to the task metadata
-                    (the default is False).
+                    Whether to add the final psf sigma value to the task
+                    metadata (the default is False).
             """
             position = exposure.psf.getAveragePosition()
             sigma = exposure.psf.computeShape(position).getDeterminantRadius()
@@ -1268,8 +1274,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             Exposure to set the ApCorrMap on.
         bright_sources : `lsst.afw.table.SourceCatalog`
             Catalog of detected bright sources; modified to include columns
-            necessary for point source determination for the aperture correction
-            calculation.
+            necessary for point source determination for the aperture
+            correction calculation.
         """
         norm_ap_corr_map = self.psf_normalized_calibration_flux.run(
             exposure=exposure,
@@ -1402,7 +1408,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             sel[indices] = True
             sources = sources[sel]
 
-        # TODO investigation: Could this deblender throw away blends of non-PSF sources?
+        # TODO investigation: Could this deblender throw away blends of
+        # non-PSF sources?
         self.star_deblend.run(exposure=exposure, sources=sources)
         # The deblender may not produce a contiguous catalog; ensure
         # contiguity for subsequent tasks.
@@ -1576,7 +1583,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             "Background calibration assumes a constant PhotoCalib; PhotoCalTask should always return that."
 
         for bg in background:
-            # The statsImage is a view, but we can't assign to a function call in python.
+            # The statsImage is a view, but we can't assign to a function call
+            # in python.
             binned_image = bg[0].getStatsImage()
             binned_image *= photo_calib.getCalibrationMean()
 
