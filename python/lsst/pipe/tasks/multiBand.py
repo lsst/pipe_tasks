@@ -872,7 +872,10 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             apCorrMap=apCorrMap,
         )
         # Strip HeavyFootprints to save space on disk
-        sources = outputs.outputSources
+        if self.config.doStripFootprints:
+            sources = outputs.outputSources
+            for source in sources[sources["parent"] != 0]:
+                source.setFootprint(None)
         butlerQC.put(outputs, outputRefs)
 
     def run(self, exposure, sources, skyInfo, exposureId, ccdInputs=None,
