@@ -52,7 +52,7 @@ from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask
 from lsst.meas.algorithms.sourceSelector import sourceSelectorRegistry
 
 from .reserveIsolatedStars import ReserveIsolatedStarsTask
-from .postprocess import TableVStack
+from lsst.obs.base.utils import TableVStack
 
 
 class FinalizeCharacterizationConnectionsBase(
