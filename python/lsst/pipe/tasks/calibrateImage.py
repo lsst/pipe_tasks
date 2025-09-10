@@ -932,6 +932,24 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                     psf_shape_ixy=psf_shape.getIxy(),
                     psf_size=psf_shape.getDeterminantRadius(),
                 )
+            psf_shape = result.exposure.psf.computeShape(result.exposure.psf.getAveragePosition())
+            psf_e1 = (psf_shape.getIxx() - psf_shape.getIyy())/(psf_shape.getIxx() + psf_shape.getIyy())
+            psf_e2 = 2.0*psf_shape.getIxy()/(psf_shape.getIxx() + psf_shape.getIyy())
+            psf_e = np.sqrt(psf_e1**2.0 + psf_e2**2.0)
+            psf_unnorm_e = np.hypot(psf_shape.getIxx() - psf_shape.getIyy(), 2.0*psf_shape.getIxy())
+            self.log.warning("PSF e = %.3f [>0.4 is HIGH];  "
+                             "PSF hypot(Ixx - Iyy, 2*Ixy) = %.3f [>4 is HIGH]",
+                             psf_e, psf_unnorm_e)
+            centroid_flags = result.psf_stars_footprints["slot_Centroid_flag"]
+            self.log.info("result.psf_stars_footprints[slot_Centroid_flag] = %d/%d (%.1f percent) flagged.",
+                          sum(centroid_flags), len(centroid_flags),
+                          100*(sum(centroid_flags)/len(centroid_flags)))
+            self.log.warning("Mean error on centroids: ({:.3f}, {:.3f}) (pixels)".format(
+                np.nanmean(result.psf_stars_footprints["slot_Centroid_xErr"]),
+                np.nanmean(result.psf_stars_footprints["slot_Centroid_yErr"])))
+            self.log.warning("Maximum error on centroids: ({:.3f}, {:.3f}) (pixels)".format(
+                np.nanmax(result.psf_stars_footprints["slot_Centroid_xErr"]),
+                np.nanmax(result.psf_stars_footprints["slot_Centroid_yErr"])))
 
             if result.background is None:
                 result.background = afwMath.BackgroundList()
