@@ -95,11 +95,6 @@ class MatchTractCatalogConnections(
         if not config.output_matched_catalog:
             del self.cat_output_matched
         if config.match_multiple_target:
-            if config.refcat_sharding_type != "tract":
-                raise ValueError(
-                    f"{config.match_multiple_target} only supported for refcat_sharding_type=tract,"
-                    f" not {config.refcat_sharding_type=}"
-                )
             # allConnections will change during iteration
             for name, connection in tuple(self.allConnections.items()):
                 if connection.storageClass == "SkyMap":
@@ -118,7 +113,7 @@ class MatchTractCatalogConnections(
                         **kwargs
                     ),
                 )
-            self.dimensions = ("skymap",)
+            self.dimensions = {"skymap"}
         if config.refcat_sharding_type != "tract":
             if config.refcat_sharding_type == "none":
                 old = self.cat_ref
@@ -302,16 +297,14 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
                 catalogs["cat_ref"] = inputs["cat_ref"].get(parameters={'columns': columns_ref})
 
             for name, columns in names_columns:
-                handles = []
                 extra_values = {}
-                for tract, handle, idx_h in sorted(
-                    (inputRef.dataId["tract"], inputHandle, idx)
-                    for idx, (inputRef, inputHandle) in enumerate(
-                        zip(getattr(inputRefs, name), inputs[name], strict=True)
-                    )
-                ):
+                handles = []
+                for idx, (tract, handle) in enumerate(sorted(
+                    (inputRef.dataId["tract"], inputHandle)
+                    for inputRef, inputHandle in zip(getattr(inputRefs, name), inputs[name], strict=True)
+                )):
                     handles.append(handle)
-                    extra_values[idx_h] = {"tract": tract}
+                    extra_values[idx] = {"tract": tract}
                 catalogs[name] = TableVStack.vstack_handles(
                     handles,
                     extra_values=extra_values,
@@ -323,7 +316,8 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
                 inputs[name].get(parameters={'columns': columns})
                 for name, columns in (('cat_ref', columns_ref), ('cat_target', columns_target))
             )
-        self._add_tract_column_to_catalogs(catalog_ref, catalog_target, skymap)
+        if self.config.match_multiple_target:
+            self._add_tract_column_to_catalogs(catalog_ref, catalog_target, skymap)
 
         outputs = self.run(
             catalog_ref=catalog_ref,
@@ -410,12 +404,12 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
         if compute_tract_target := ("tract" not in catalog_target.colnames):
             if self.config.target_sharding_type != "none":
                 errors.append(
-                    f"Target catalog has no tract column with {self.config.target_sharding_type} != 'none'"
+                    f"Target catalog has no tract column with {self.config.target_sharding_type=} != 'none'"
                 )
         if compute_tract_ref := ("tract" not in catalog_ref.colnames):
             if self.config.refcat_sharding_type != "none":
                 errors.append(
-                    f"Ref catalog has no tract column with {self.config.refcat_sharding_type} != 'none'"
+                    f"Ref catalog has no tract column with {self.config.refcat_sharding_type=} != 'none'"
                 )
         if errors:
             raise RuntimeError("; ".join(errors))
