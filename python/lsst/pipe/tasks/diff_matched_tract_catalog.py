@@ -246,6 +246,7 @@ class DiffMatchedTractCatalogBaseConfig(pexConfig.Config):
     )
     columns_target_coord_err = pexConfig.ListField[str](
         doc='Target table coordinate columns with standard errors (sigma)',
+        default=["coord_raErr", "coord_decErr"],
         listCheck=lambda x: (len(x) == 2) and (x[0] != x[1]),
     )
     columns_target_copy = pexConfig.ListField[str](
