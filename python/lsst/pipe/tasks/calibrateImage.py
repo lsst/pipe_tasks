@@ -37,6 +37,7 @@ import lsst.meas.base
 import lsst.meas.astrom
 import lsst.meas.deblender
 import lsst.meas.extensions.shapeHSM
+from lsst.obs.base import createInitialSkyWcs
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.base import connectionTypes
@@ -108,7 +109,14 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
         deferLoad=True,
         multiple=True
     )
-
+    camera_model = connectionTypes.PrerequisiteInput(
+        doc="Camera distortion model to use for astrometric calibration.",
+        name="astrometry_camera",
+        storageClass="Camera",
+        dimensions=("instrument", "physical_filter"),
+        isCalibration=True,
+        minimum=0,  # Can fall back on WCS already attached to exposure.
+    )
     exposures = connectionTypes.Input(
         doc="Exposure (or two snaps) to be calibrated, and detected and measured on.",
         name="postISRCCD",
@@ -228,6 +236,8 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
             del self.background_flat
             del self.illumination_correction
             del self.background_to_photometric_ratio
+        if not config.useButlerCamera:
+            del self.camera_model
 
 
 class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=CalibrateImageConnections):
@@ -399,6 +409,16 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         doc="If re-running a pipeline that requires sattle, this should be set "
             "to True. This will populate sattle's cache with the historic data "
             "closest in time to the exposure.",
+    )
+
+    useButlerCamera = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="If True, use a camera distortion model generated elsewhere in "
+            "the pipeline combined with the telescope boresight as a starting "
+            "point for fitting the WCS, instead of using the WCS attached to "
+            "the exposure, which is generated from the boresight and the "
+            "camera model from the obs_* package."
     )
 
     def setDefaults(self):
@@ -700,6 +720,15 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             background_flat = None
             illumination_correction = None
 
+        camera_model = None
+        if self.config.useButlerCamera:
+            if "camera_model" in inputs:
+                camera_model = inputs.pop("camera_model")
+            else:
+                self.log.warning("useButlerCamera=True, but camera is not available for filter %s. The "
+                                 "astrometry fit will use the WCS already attached to the exposure.",
+                                 exposures[0].filter.bandLabel)
+
         # This should not happen with a properly configured execution context.
         assert not inputs, "runQuantum got more inputs than expected"
 
@@ -718,6 +747,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 id_generator=id_generator,
                 background_flat=background_flat,
                 illumination_correction=illumination_correction,
+                camera_model=camera_model,
             )
         except pipeBase.AlgorithmError as e:
             error = pipeBase.AnnotatedPartialOutputsError.annotate(
@@ -742,6 +772,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         result=None,
         background_flat=None,
         illumination_correction=None,
+        camera_model=None,
     ):
         """Find stars and perform psf measurement, then do a deeper detection
         and measurement and calibrate astrometry and photometry from that.
@@ -763,6 +794,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             Background flat-field image.
         illumination_correction : `lsst.afw.image.Exposure`, optional
             Illumination correction image.
+        camera_model : `lsst.afw.cameraGeom.Camera`, optional
+            Camera to be used if constructing updated WCS.
 
         Returns
         -------
@@ -816,6 +849,16 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 raise pipeBase.InvalidQuantumError(
                     "Cannot use do_illumination_correction with an image that has not had a flat applied",
                 )
+
+        if camera_model:
+            if camera_model.get(result.exposure.detector.getId()):
+                self.log.info("Updating WCS with the provided camera model.")
+                self._update_wcs_with_camera_model(result.exposure, camera_model)
+            else:
+                self.log.warning(
+                    "useButlerCamera=True, but detector %s is not available in the provided camera. The "
+                    "astrometry fit will use the WCS already attached to the exposure.",
+                    result.exposure.detector.getId())
 
         result.background = None
         summary_stat_catalog = None
@@ -1409,3 +1452,18 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             self.metadata[f"{maskPlane.lower()}_mask_fraction"] = (
                 evaluateMaskFraction(mask, maskPlane)
             )
+
+    def _update_wcs_with_camera_model(self, exposure, cameraModel):
+        """Replace the existing WCS with one generated using the pointing
+        and the input camera model.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.ExposureF`
+            The exposure whose WCS will be updated.
+        cameraModel : `lsst.afw.cameraGeom.Camera`
+            Camera to be used when constructing updated WCS.
+        """
+        detector = cameraModel[exposure.detector.getId()]
+        newWcs = createInitialSkyWcs(exposure.visitInfo, detector)
+        exposure.setWcs(newWcs)
