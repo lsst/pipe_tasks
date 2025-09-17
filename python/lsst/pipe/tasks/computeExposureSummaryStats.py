@@ -335,10 +335,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.psfIxy = shape.getIxy()
         im = psf.computeKernelImage(bbox.getCenter())
         # The calculation of effective psf area is taken from
-        # meas_base/src/PsfFlux.cc#L112. See
-        # https://github.com/lsst/meas_base/blob/
-        # 750bffe6620e565bda731add1509507f5c40c8bb/src/PsfFlux.cc#L112
-        summary.psfArea = float(np.sum(im.array)/np.sum(im.array**2.))
+        # ls.st/srd Equation 1.
+        summary.psfArea = float(np.sum(im.array)**2./np.sum(im.array**2.))
 
         if image_mask is not None:
             psfApRadius = max(self.config.minPsfApRadiusPix, 3.0*summary.psfSigma)
