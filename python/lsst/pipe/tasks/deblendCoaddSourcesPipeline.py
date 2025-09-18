@@ -171,12 +171,15 @@ class DeblendCoaddSourcesMultiTask(PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         # Obtain the list of bands, sort them (alphabetically), then reorder
         # all input lists to match this band order.
-        coaddRefs = inputRefs.coadds_cell if self.config.useCellCoadds else inputRefs.coadds
-        bandOrder = [dRef.dataId["band"] for dRef in coaddRefs]
+        # Note: sometimes deconvolution fails. If this happens then
+        # the dataIds missing from deconvolvedRefs will be removed
+        # during the process.
+        deconvolvedRefs = inputRefs.deconvolvedCoadds
+        bandOrder = [dRef.dataId["band"] for dRef in deconvolvedRefs]
         bandOrder.sort()
         inputRefs = reorderRefs(inputRefs, bandOrder, dataIdKey="band")
         inputs = butlerQC.get(inputRefs)
-        bands = [dRef.dataId["band"] for dRef in coaddRefs]
+        bands = [dRef.dataId["band"] for dRef in deconvolvedRefs]
         mergedDetections = inputs.pop("mergedDetections")
         if self.config.useCellCoadds:
             exposures = [mcc.stitch().asExposure() for mcc in inputs.pop("coadds_cell")]
@@ -188,10 +191,14 @@ class DeblendCoaddSourcesMultiTask(PipelineTask):
             coadds = inputs.pop("coadds")
 
         # Ensure that the coadd bands and deconvolved coadd bands match
-        deconvBands = [dRef.dataId["band"] for dRef in inputRefs.deconvolvedCoadds]
-        if bands != deconvBands:
-            self.log.error("Coadd bands %s != deconvolved coadd bands %s", bands, deconvBands)
-            raise RuntimeError("Number of coadd bands and deconvolved coadd bands do not match")
+        coaddRefs = inputRefs.coadds_cell if self.config.useCellCoadds else inputRefs.coadds
+        coaddBands = [dRef.dataId["band"] for dRef in coaddRefs]
+        if bands != coaddBands:
+            self.log.error("Coadd bands %s != deconvolved coadd bands %s", bands, coaddBands)
+            raise RuntimeError(
+                "Number of coadd bands and deconvolved coadd bands do not match. "
+                "This should never happen and indicates a bug in reorderRefs."
+            )
 
         deconvolvedCoadds = inputs.pop("deconvolvedCoadds")
 
