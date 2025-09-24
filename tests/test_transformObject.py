@@ -49,6 +49,7 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         n_rows = len(df)
         tab_epoch = astropy.table.Table({df.index.name: df.index, "r_epoch": [0.]*n_rows})
         tab_ref = astropy.table.Table({df.index.name: df.index, "refBand": ["r"]*n_rows})
+        tab_exp = astropy.table.Table({df.index.name: df.index, "exp_n_iter": [0] * n_rows})
         tab_sersic = astropy.table.Table({df.index.name: df.index, "sersic_n_iter": [0] * n_rows})
         self.kwargs_task = {
             "handle_epoch": InMemoryDatasetHandle(
@@ -57,6 +58,9 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
             "handle_ref": InMemoryDatasetHandle(
                 tab_ref, storageClass="ArrowAstropy", dataId=self.dataId,
             ),
+            "handle_Exp_multiprofit": InMemoryDatasetHandle(
+                tab_exp, storageClass="ArrowAstropy", dataId=self.dataId,
+            ),
             "handle_Sersic_multiprofit": InMemoryDatasetHandle(
                 tab_sersic, storageClass="ArrowAstropy", dataId=self.dataId,
             ),
@@ -64,6 +68,7 @@ class TransformObjectCatalogTestCase(unittest.TestCase):
         self.funcs_multi = {
             "epoch": Column("r_epoch", dataset="epoch"),
             "refBand": Column("refBand", dataset="ref"),
+            "exp_n_iter": Column("exp_n_iter", dataset="Exp_multiprofit"),
             "sersic_n_iter": Column("sersic_n_iter", dataset="Sersic_multiprofit"),
         }
 

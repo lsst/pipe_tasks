@@ -805,8 +805,15 @@ class TransformObjectCatalogConnections(pipeBase.PipelineTaskConnections,
         name="{coaddName}Coadd_ref",
         deferLoad=True,
     )
+    inputCatalogExpMultiprofit = connectionTypes.Input(
+        doc="Catalog of multiband Exponential fits.",
+        dimensions=("tract", "patch", "skymap"),
+        storageClass="ArrowAstropy",
+        name="{coaddName}Coadd_Exp_multiprofit",
+        deferLoad=True,
+    )
     inputCatalogSersicMultiprofit = connectionTypes.Input(
-        doc="Catalog of source measurements on the deepCoadd.",
+        doc="Catalog of multiband Sersic fits.",
         dimensions=("tract", "patch", "skymap"),
         storageClass="ArrowAstropy",
         name="{coaddName}Coadd_Sersic_multiprofit",
@@ -906,7 +913,7 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
     _DefaultName = "transformObjectCatalog"
     ConfigClass = TransformObjectCatalogConfig
 
-    datasets_multiband = ("epoch", "ref", "Sersic_multiprofit")
+    datasets_multiband = ("epoch", "ref", "Exp_multiprofit", "Sersic_multiprofit")
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -917,6 +924,7 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
                           dataId=dict(outputRefs.outputCatalog.dataId.mapping),
                           handle_epoch=inputs["inputCatalogEpoch"],
                           handle_ref=inputs["inputCatalogRef"],
+                          handle_Exp_multiprofit=inputs["inputCatalogExpMultiprofit"],
                           handle_Sersic_multiprofit=inputs["inputCatalogSersicMultiprofit"],
                           )
         butlerQC.put(result, outputRefs)

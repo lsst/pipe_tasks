@@ -867,6 +867,179 @@ funcs:
         functor: Column
         args: TwoGaussianPsf_no_inputs_flag
         dataset: psfs_multiprofit
+    # MultiProFit multiband single exponential object model fit parameters
+    exponential_x:
+        functor: Column
+        args: cen_x
+        dataset: Exp_multiprofit
+    exponential_y:
+        functor: Column
+        args: cen_y
+        dataset: Exp_multiprofit
+    exponential_ra:
+        functor: Column
+        args: cen_ra
+        dataset: Exp_multiprofit
+    exponential_dec:
+        functor: Column
+        args: cen_dec
+        dataset: Exp_multiprofit
+    exponential_reff_x:
+        functor: SinglePrecisionFloatColumn
+        args: reff_x
+        dataset: Exp_multiprofit
+    exponential_reff_y:
+        functor: SinglePrecisionFloatColumn
+        args: reff_y
+        dataset: Exp_multiprofit
+    exponential_rho:
+        functor: SinglePrecisionFloatColumn
+        args: rho
+        dataset: Exp_multiprofit
+    g_exponentialFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - g_Flux
+            - g
+        dataset: Exp_multiprofit
+    i_exponentialFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - i_Flux
+            - i
+        dataset: Exp_multiprofit
+    r_exponentialFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - r_Flux
+            - r
+        dataset: Exp_multiprofit
+    u_exponentialFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - u_Flux
+            - u
+        dataset: Exp_multiprofit
+    y_exponentialFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - y_Flux
+            - y
+        dataset: Exp_multiprofit
+    z_exponentialFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - z_Flux
+            - z
+        dataset: Exp_multiprofit
+    N540_exponentialFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N540_Flux
+            - N540
+        dataset: Exp_multiprofit
+    N708_exponentialFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N708_Flux
+            - N708
+        dataset: Exp_multiprofit
+    exponential_xErr:
+        functor: SinglePrecisionFloatColumn
+        args: cen_xErr
+        dataset: Exp_multiprofit
+    exponential_yErr:
+        functor: SinglePrecisionFloatColumn
+        args: cen_yErr
+        dataset: Exp_multiprofit
+    exponential_raErr:
+        functor: SinglePrecisionFloatColumn
+        args: cen_raErr
+        dataset: Exp_multiprofit
+    exponential_decErr:
+        functor: SinglePrecisionFloatColumn
+        args: cen_decErr
+        dataset: Exp_multiprofit
+    exponential_reff_xErr:
+        functor: SinglePrecisionFloatColumn
+        args: reff_xErr
+        dataset: Exp_multiprofit
+    exponential_reff_yErr:
+        functor: SinglePrecisionFloatColumn
+        args: reff_yErr
+        dataset: Exp_multiprofit
+    exponential_rhoErr:
+        functor: SinglePrecisionFloatColumn
+        args: rhoErr
+        dataset: Exp_multiprofit
+    g_exponentialFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - g_FluxErr
+            - g
+        dataset: Exp_multiprofit
+    i_exponentialFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - i_FluxErr
+            - i
+        dataset: Exp_multiprofit
+    r_exponentialFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - r_FluxErr
+            - r
+        dataset: Exp_multiprofit
+    u_exponentialFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - u_FluxErr
+            - u
+        dataset: Exp_multiprofit
+    y_exponentialFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - y_FluxErr
+            - y
+        dataset: Exp_multiprofit
+    z_exponentialFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - z_FluxErr
+            - z
+        dataset: Exp_multiprofit
+    N540_exponentialFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N540_FluxErr
+            - N540
+        dataset: Exp_multiprofit
+    N708_exponentialFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N708_FluxErr
+            - N708
+        dataset: Exp_multiprofit
+    exponential_n_eval_jac:
+        functor: Column
+        args: n_eval_jac
+        dataset: Exp_multiprofit
+    exponential_n_iter:
+        functor: Column
+        args: n_iter
+        dataset: Exp_multiprofit
+    exponential_chisq_reduced:
+        functor: SinglePrecisionFloatColumn
+        args: chisq_reduced
+        dataset: Exp_multiprofit
+    exponential_unknown_flag:
+        functor: Column
+        args: unknown_flag
+        dataset: Exp_multiprofit
+    exponential_no_data_flag:
+        functor: Column
+        args: no_data_flag
+        dataset: Exp_multiprofit
     # MultiProFit multiband single Sersic object model fit parameters
     sersic_x:
         functor: Column
