@@ -32,7 +32,8 @@ import os
 import pandas as pd
 import numpy as np
 import pyarrow as pa
-import requests
+from importlib import resources
+from time import sleep
 
 #new packages to add from jake's code
 import sqlite3
@@ -54,6 +55,7 @@ import os
 #end of jake's code imports
 from lsst.geom import SpherePoint, degrees
 import lsst.pex.config as pexConfig
+import lsst.pipe.tasks
 from lsst.pipe.tasks.associationUtils import obj_id_to_ss_object_id
 from lsst.sphgeom import ConvexPolygon
 from lsst.utils.timer import timeMethod
@@ -63,27 +65,27 @@ from lsst.pipe.base import connectionTypes, NoWorkFound, PipelineTask, \
 
 
 class SorchaEphemerisQueryDRPConnections(PipelineTaskConnections,
-                                        dimensions=("instrument"
+                                        dimensions=("instrument",
                                                 )):
-    finalVisitSummary = connectionTypes.Input(
+    visitInfo = connectionTypes.Input(
         doc="Summary of visit information including ra, dec, and time",
-        name="finalVisitSummary",
-        storageClass="ExposureCatalog",
+        name="preliminary_visit_image.visitInfo",
+        storageClass="VisitInfo",
         dimensions={"instrument", "visit"},
         multiple = True
     )
 
-    mpcorb = connectionTypes.Input(
-        doc="mpcorb input file",
+    inputOrbits = connectionTypes.Input(
+        doc="Minor Planet Center orbit table used for association",
         name="mpcorb",
-        storageClass="ArrowAstropy",
+        storageClass="DataFrame",
         dimensions={},
     )
 
     ssObjects = connectionTypes.Output(
         doc="Sorcha-provided Solar System objects observable in this detector-visit",
-        name="preloaded_DRP_SsObjects",
-        storageClass="DataFrame",
+        name="preloaded_ss_object_visit",
+        storageClass="ArrowAstropy",
         dimensions=("instrument", "visit"),
     )
 
@@ -150,7 +152,7 @@ class SorchaEphemerisQueryDRPTask(PipelineTask):
             
 
     @timeMethod
-    def run(self, finalVisitSummary):
+    def run(self, visitInfo, inputOrbits):
         """Parse the information on the current visit and retrieve the
         observable solar system objects from Sorcha.
 
@@ -176,83 +178,45 @@ class SorchaEphemerisQueryDRPTask(PipelineTask):
                     DEC in decimal degrees (`float`)
                 
         """
-        ra_list = []
-        dec_list = []
-        mjd_list = []
-        for visit in finalVisitSummary:
-            ra  = float(visit["ra"][0])
-            dec = float(visit["dec"][0])
-            mjd = float(visit["MJD"][0])
+        fieldRA = np.array([vi.getBoresightRaDec().getRa().asDegrees() for vi in visitInfo])
+        fieldDec = np.array([vi.getBoresightRaDec().getDec().asDegrees() for vi in visitInfo])
+        epochMJD = np.array([vi.date.toAstropy().tai.mjd for vi in visitInfo])
 
-            ra_list.append(ra)
-            dec_list.append(dec)
-            mjd_list.append(mjd)
-
-        ras = np.array(ra_list)
-        decs = np.array(dec_list)
-        mjds = np.array(mjd_list)
-        
         queryRadius = self.config.queryBufferRadiusDegrees
-        SorchaSsObjects = self._SorchaConeSearch(
-        fieldRA=ras,
-        fieldDec=decs,
-        epochMJD=mjds,
-        queryRadius=queryRadius,
-    )
-        return Struct(ssObjects=SorchaSsObjects)
-    def _SorchaConeSearch(self, fieldRA, fieldDec, epochMJD, queryRadius): 
-        """Run's Sorcha for a single visit which is centered at RA, Dec (renamed from fieldRA, fieldDec) and MJD (renamed from epochMJD).
-           Return's Sorcha's eph.csv as a pandas.DataFrame 
-    
-
-        Parameters
-        ----------
-        fieldRA : `float`
-        Center of search cone — right ascension in degrees (ICRS).
-        the RA is provided directly by Sorcha (right???).)
-        fieldDec : `float`
-        Center of search cone — declination in degrees (ICRS).
-        epochMJD : `float`
-        Epoch of cone search (MJD in UTC), typically the visit midpoint.
-        queryRadius : `float`
-        Radius of the cone search in degrees. Retained for API compatibility;
-        **not used** in Sorcha mode (Sorcha computes ephemerides for all input orbits).
-        compatibility; ignored in Sorcha mode, should probably be removed but eh let's see if this works first.
-
-        Returns
-        -------
-        SorchaSsObjects : `pandas.DataFrame`
-            Sorcha ephemerides loaded directly from `eph.csv` for this visit, in
-            Sorcha's own schema (aka I put jake's code in and hope it doesn't break)
-        """
-        #inputOrbits = pd.read_csv('/sdf/home/j/jkurla/mpcorb_short.csv') 
-        inputOrbits = mpcorb
 
         # Confused about seconds/days units here
-        visitTime = 30.0  # seconds
+        n = len(epochMJD)
+        visitTime = np.ones(n) * 30.0  # seconds
         inputVisits = pd.DataFrame({
-            "observationMidpointMJD": [float(epochMJD)],
-            "fieldRA": [float(fieldRA)],
-            "fieldDec": [float(fieldDec)],
-            "observationId": [0],
-            "visitTime" : [visitTime],
-            "observationStartMJD": [float(epochMJD - (visitTime / 2) / 86400.0)],
-            "visitExposureTime": [visitTime],
-            "filter": ["r"],
-            "seeingFwhmGeom": [-1],
-            "seeingFwhmEff": [-1],
-            "fiveSigmaDepth": [-1],
-            "rotSkyPos": [-1],
-                })
+            "observationMidpointMJD": epochMJD,
+            "fieldRA": fieldRA,
+            "fieldDec": fieldDec,
+            "observationId": np.arange(n),
+            "visitTime" : np.ones(n) * visitTime,
+            "observationStartMJD": epochMJD - (visitTime / 2) / 86400.0,
+            "visitExposureTime": visitTime,
+            "filter": ["r"] * n,
+            "seeingFwhmGeom": [-1] * n,
+            "seeingFwhmEff": [-1] * n,
+            "fiveSigmaDepth": [-1] * n,
+            "rotSkyPos": [-1] * n,
+        })
+
         # Colors exactly like jake's prep_input_colors
         inputColors = inputOrbits[["ObjID"]].copy()
         inputColors["H_r"] = 0
         inputColors["GS"] = 0.15
-        eph_str = open('/home/d/devanshi/eph.ini').read()
-        pck_str = open('/home/d/devanshi/pck00010.pck').read()
+        eph_str = resources.files(lsst.pipe.tasks).parents[3].joinpath("data/eph.ini").read_text()
+        pck_str = resources.files(lsst.pipe.tasks).parents[3].joinpath('data/pck00010.pck').read_text()
         # same as code
         with tempfile.TemporaryDirectory() as tmpdirname:
+            print('temp dir:', tmpdirname)
+            inputOrbits = inputOrbits.iloc[:10]
+            inputColors = inputColors.iloc[:10]
             # Orbits
+            print(inputOrbits)
+            print(inputColors)
+
             inputOrbits.to_csv(f'{tmpdirname}/orbits.csv', index=False)
             # Observations SQLite
             conn = sqlite3.connect(f'{tmpdirname}/pointings.db')
@@ -264,6 +228,7 @@ class SorchaEphemerisQueryDRPTask(PipelineTask):
             inputColors.to_csv(f'{tmpdirname}/colors.csv', index=False)
 
             # Kernels/cache exactly like the code
+            print('making', f'{tmpdirname}/sorcha_cache')
             os.mkdir(f'{tmpdirname}/sorcha_cache')
             os.system(f'cp {de441_n16} {tmpdirname}/sorcha_cache')
             os.system(f'cp {mpc_obscodes} {tmpdirname}/sorcha_cache')
@@ -273,8 +238,11 @@ class SorchaEphemerisQueryDRPTask(PipelineTask):
             os.system(f'cp {eop_predict} {tmpdirname}/sorcha_cache')
             os.system(f'cp {leapseconds} {tmpdirname}/sorcha_cache')
             open(f'{tmpdirname}/pck00010.pck', 'w').write(pck_str)
+            print('copied everything to', tmpdirname, 'sleeping.')
+            sleep(60)
 
             import subprocess
+            print('sorcha running')
 
             result = subprocess.run(
                 [
@@ -286,7 +254,7 @@ class SorchaEphemerisQueryDRPTask(PipelineTask):
                     "-p", f"{tmpdirname}/colors.csv",
                     "--pd", f"{tmpdirname}/pointings.db",
                     "--ew", f"{tmpdirname}/eph.csv",
-                    "--ar", f"{tmpdirname}/sorcha_cache/"
+                    "--ar", f"{tmpdirname}/sorcha_cache"
                 ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -305,7 +273,8 @@ class SorchaEphemerisQueryDRPTask(PipelineTask):
 
             # Return Sorcha output directly
             SorchaSsObjects = pd.read_csv(eph_path)
-            return SorchaSsObjects
+
+        return Struct(ssObjects=SorchaSsObjects)
 
 
     
