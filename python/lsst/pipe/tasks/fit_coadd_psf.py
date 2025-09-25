@@ -25,6 +25,7 @@ __all__ = [
 ]
 
 from .fit_multiband import CatalogExposure, CatalogExposureConfig
+from lsst.geom import Point2D
 from lsst.meas.base import SkyMapIdGeneratorConfig
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -41,8 +42,7 @@ class CatalogExposurePsf(CatalogExposure):
 
     def get_psf_image(self, source):
         """Return the PSF image for this object."""
-        bbox = source.getFootprint().getBBox()
-        center = bbox.getCenter()
+        center = Point2D(round(source.getX()), round(source.getY()))
         return self.exposure.getPsf().computeKernelImage(center).array
 
 
