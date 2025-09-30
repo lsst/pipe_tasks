@@ -283,6 +283,15 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         default=True,
         doc="Implement the adaptive detection thresholding approach?",
     )
+    do_dynamic_detection = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="DEPRECATED...just including for config reading of prev runs...",
+    )
+    psf_dynamic_detection = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.AdaptiveThresholdDetectionTask,
+        doc="DEPRECATED...just including for config reading of prev runs...",
+    )
     psf_adaptive_threshold_detection = pexConfig.ConfigurableField(
         target=lsst.meas.algorithms.AdaptiveThresholdDetectionTask,
         doc="Task to adaptively detect sources for PSF determination.",
