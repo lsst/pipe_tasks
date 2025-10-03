@@ -114,8 +114,10 @@ class MatchTractCatalogConnections(
                     ),
                 )
             self.dimensions = {"skymap"}
+        is_refcat_sharding_none = False
         if config.refcat_sharding_type != "tract":
             if config.refcat_sharding_type == "none":
+                is_refcat_sharding_none = True
                 old = self.cat_ref
                 self.cat_ref = cT.Input(
                     doc=old.doc,
@@ -128,6 +130,10 @@ class MatchTractCatalogConnections(
                 raise NotImplementedError(f"{config.refcat_sharding_type=} not implemented")
         if config.target_sharding_type != "tract":
             if config.target_sharding_type == "none":
+                if config.match_multiple_target:
+                    raise ValueError(
+                        f"Incompatible {config.match_multiple_target=} with {config.target_sharding_type=}"
+                    )
                 old = self.cat_target
                 self.cat_target = cT.Input(
                     doc=old.doc,
@@ -136,6 +142,22 @@ class MatchTractCatalogConnections(
                     dimensions=(),
                     deferLoad=old.deferLoad,
                 )
+                if is_refcat_sharding_none:
+                    for suffix_old in ("matched", "ref", "target"):
+                        name_old = f"cat_output_{suffix_old}"
+                        old = getattr(self, name_old)
+                        setattr(
+                            self,
+                            name_old,
+                            cT.Output(
+                                doc=old.doc,
+                                name=old.name,
+                                storageClass=old.storageClass,
+                                dimensions=(),
+                            ),
+                        )
+                    del self.skymap
+                    self.dimensions = set()
             else:
                 raise NotImplementedError(f"{config.target_sharding_type=} not implemented")
 
@@ -280,7 +302,8 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
         columns_ref, columns_target = self.config.get_columns_in()
-        skymap = inputs.pop("skymap")
+        skymap = inputs.pop("skymap") if (self.config.refcat_sharding_type != 'none') or (
+            self.config.target_sharding_type != 'none') else None
         is_refcat_per_tract = self.config.refcat_sharding_type == 'tract'
         is_target_per_tract = self.config.target_sharding_type == 'tract'
 
@@ -322,8 +345,23 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
         outputs = self.run(
             catalog_ref=catalog_ref,
             catalog_target=catalog_target,
-            wcs=None if self.config.match_multiple_target else skymap[butlerQC.quantum.dataId["tract"]].wcs,
+            wcs=None if (self.config.match_multiple_target or (skymap is None)) else (
+                skymap[butlerQC.quantum.dataId["tract"]].wcs),
         )
+
+        if self.config.match_multiple_target:
+            name_tract_ref_in = "tract"
+            diff_prefix_ref = self.config.diff_matched_catalog.value.column_matched_prefix_ref
+            diff_prefix_target = self.config.diff_matched_catalog.value.column_matched_prefix_target
+            name_tract_ref = f"{diff_prefix_ref}tract"
+            name_tract_target = f"{diff_prefix_target}tract"
+            # Avoid collisions if, for example, both prefixes are ''
+            if name_tract_ref == name_tract_target:
+                name_new = f"{'ref' if diff_prefix_ref != 'ref' else 'refcat'}_tract"
+                catalog_ref.rename_column(name_tract_ref, name_new)
+                name_tract_ref = name_new
+                name_tract_ref_in = name_new
+
         if self.config.output_matched_catalog:
             outputs_new = self.diff_matched_catalog.run(
                 catalog_ref=catalog_ref,
@@ -332,33 +370,36 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
                 catalog_match_target=outputs.cat_output_target,
             )
             outputs = pipeBase.Struct(**outputs.getDict(), cat_output_matched=outputs_new.cat_matched)
+
         if self.config.match_multiple_target:
             outputs_new = {}
 
-            for name, catalog_in in (("cat_output_ref", catalog_ref), ("cat_output_target", catalog_target)):
+            for name, catalog_in, name_tract in (
+                ("cat_output_ref", catalog_ref, name_tract_ref_in),
+                ("cat_output_target", catalog_target, "tract"),
+            ):
                 catalogs_out = []
                 for outputRef in getattr(outputRefs, name):
                     tract = outputRef.dataId["tract"]
                     catalog_out = getattr(outputs, name)
-                    catalogs_out.append(catalog_out[catalog_in["tract"] == tract])
+                    catalogs_out.append(catalog_out[catalog_in[name_tract] == tract])
                 outputs_new[name] = catalogs_out
+
             if self.config.output_matched_catalog:
                 cat_matched = outputs.cat_output_matched
                 catalogs_out = []
-                tract_target = cat_matched[
-                    f"{self.config.diff_matched_catalog.value.column_matched_prefix_target}tract"
-                ]
+                tract_target = cat_matched[name_tract_target]
                 masked_target = tract_target.mask == True  # noqa: E712
 
-                tract_ref = cat_matched[
-                    f"{self.config.diff_matched_catalog.value.column_matched_prefix_ref}tract"
-                ]
+                tract_ref = cat_matched[name_tract_ref]
+                tract_out = np.array(tract_target)
+                tract_out[masked_target] = tract_ref[masked_target]
+                cat_matched["tract"] = tract_out
+                cat_matched["tract"].description = f"{name_tract_target} if available else {name_tract_ref}"
 
                 for outputRef in outputRefs.cat_output_matched:
                     tract = outputRef.dataId["tract"]
-                    within = np.array(tract_target == tract)
-                    within |= (masked_target & np.array(tract_ref == tract))
-                    catalogs_out.append(cat_matched[within])
+                    catalogs_out.append(cat_matched[tract_out == tract])
                 outputs_new["cat_output_matched"] = catalogs_out
 
             outputs = pipeBase.Struct(

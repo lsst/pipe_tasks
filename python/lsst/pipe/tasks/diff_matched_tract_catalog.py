@@ -517,7 +517,7 @@ class DiffMatchedTractCatalogTaskBase(pipeBase.Task):
                     cat_matched[column_coord_best] = values
                     cat_matched[column_coord_best].unit = unit
                     cat_matched[column_coord_best].description = (
-                        f"Best {columns_coord_best} value from {column_full_ref} if available"
+                        f"Best {column_coord_best} value from {column_full_ref} if available"
                         f" else {column_full_target}"
                     )
 
