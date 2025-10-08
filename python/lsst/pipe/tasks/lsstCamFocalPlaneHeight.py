@@ -15,7 +15,7 @@ from astropy.io import fits
 from astropy.table import Table
 
 
-def make_metrology_table(file='/sdf/home/l/laliotis/rubin-user/lsst_dev/meas_extensions_piff/python/lsst/meas/extensions/piff/metrology/LSST_FP_cold_b_measurement_4col_bysurface.fits', rsid=None, write=False):
+def make_metrology_table(file="/sdf/home/l/laliotis/rubin-user/lsst_dev/meas_extensions_piff/python/lsst/meas/extensions/piff/LSST_FP_cold_b_measurement_4col_bysurface.fits", rsid=None, write=False):
     """
     Make an astropy table of the height measurement data. 
     Inputs: 
