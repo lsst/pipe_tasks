@@ -43,7 +43,7 @@ import lsst.pipe.base as pipeBase
 from lsst.pipe.base import connectionTypes
 from lsst.utils.timer import timeMethod
 
-from . import measurePsf, repair, photoCal, computeExposureSummaryStats, snapCombine
+from . import measurePsf, repair, photoCal, computeExposureSummaryStats, snapCombine, diffractionSpikeMask
 
 
 class AllCentroidsFlaggedError(pipeBase.AlgorithmError):
@@ -364,6 +364,17 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         dtype=lsst.meas.algorithms.LoadReferenceObjectsConfig,
         doc="Configuration of reference object loader for photometric fit.",
     )
+    doMaskDiffractionSpikes = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="If True, load the photometric reference catalog again but select "
+        "only bright stars. Use the bright star catalog to set the SPIKE "
+        "mask for regions likely contaminated by diffraction spikes.",
+    )
+    diffractionSpikeMask = pexConfig.ConfigurableField(
+        target=diffractionSpikeMask.DiffractionSpikeMaskTask,
+        doc="Task to identify and mask the diffraction spikes of bright stars.",
+    )
 
     compute_summary_stats = pexConfig.ConfigurableField(
         target=computeExposureSummaryStats.ComputeExposureSummaryStatsTask,
@@ -679,6 +690,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.makeSubtask("star_set_primary_flags", schema=initial_stars_schema, isSingleFrame=True)
         self.makeSubtask("star_selector")
         self.makeSubtask("photometry", schema=initial_stars_schema)
+        if self.config.doMaskDiffractionSpikes:
+            self.makeSubtask("diffractionSpikeMask")
         self.makeSubtask("compute_summary_stats")
 
         # The final catalog will have calibrated flux columns, which we add to
@@ -712,6 +725,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             name=self.config.connections.photometry_ref_cat,
             config=self.config.photometry_ref_loader, log=self.log)
         self.photometry.match.setRefObjLoader(photometry_loader)
+
+        if self.config.doMaskDiffractionSpikes:
+            # Use the same photometry reference catalog for the bright star mask
+            self.diffractionSpikeMask.setRefObjLoader(photometry_loader)
 
         if self.config.do_illumination_correction:
             background_flat = inputs.pop("background_flat")
@@ -948,6 +965,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             if "photometry_matches" in self.config.optional_outputs:
                 result.photometry_matches = lsst.meas.astrom.denormalizeMatches(photometry_matches,
                                                                                 photometry_meta)
+            if self.config.doMaskDiffractionSpikes:
+                self.diffractionSpikeMask.run(result.exposure)
         except pipeBase.AlgorithmError:
             if not have_fit_psf:
                 result.exposure.setPsf(None)
