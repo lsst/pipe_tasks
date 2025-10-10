@@ -54,7 +54,7 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
                                       CorrelationIuuSky, CorrelationIvvSky, CorrelationIuvSky,
                                       SemimajorAxisFromCorrelation, SemiminorAxisFromCorrelation,
                                       PositionAngleFromCorrelation
-                                      )
+                                      PositionAngleFromMoments, ConvertDetectorAngleErrToPositionAngleErr)
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
@@ -762,6 +762,70 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
                         coord_diff.append(diff)
 
                     np.testing.assert_allclose(coord_diff, 0, rtol=0, atol=5e-6)
+
+    # Test position angle error propogation
+    def testConvertDetectorAngleErrToPositionAngleErr(self):
+        """Test conversion of position angle err in detector degrees to
+        position angle erron sky
+        """
+        dipoleSep = 10
+        ixx = 10
+        testPixelDeltas = np.random.uniform(-100, 100, size=(self.nRecords, 2))
+        # testConvertPixelToArcSecond uses a meas_base LocalWcsPlugin
+        # but we're using a simple WCS as our example, so this doesn't really matter
+        # and we'll just use the WCS directly
+        for dec in np.linspace(-90, 90, 10):
+            for theta in (-45, 0, 90):
+                for x, y in zip(np.random.uniform(2 * 1109.99981456774, size=10),
+                                np.random.uniform(2 * 560.018167811613, size=10)):
+                    wcs = self._makeWcs(dec=dec, theta=theta)
+                    cd_matrix = wcs.getCdMatrix()
+
+                    self.dataDict["dipoleSep"] = np.full(self.nRecords, dipoleSep)
+                    self.dataDict["ixx"] = np.full(self.nRecords, ixx)
+                    self.dataDict["slot_Centroid_x"] = np.full(self.nRecords, x)
+                    self.dataDict["slot_Centroid_y"] = np.full(self.nRecords, y)
+                    self.dataDict["someCentroid_x"] = x + testPixelDeltas[:, 0]
+                    self.dataDict["someCentroid_y"] = y + testPixelDeltas[:, 1]
+                    self.dataDict["orientation"] = np.arctan2(
+                        self.dataDict["someCentroid_y"] - self.dataDict["slot_Centroid_y"],
+                        self.dataDict["someCentroid_x"] - self.dataDict["slot_Centroid_x"],
+                    )
+                    self.dataDict["orientation_err"] = np.arctan2(
+                        self.dataDict["someCentroid_y"] - self.dataDict[ "slot_Centroid_y"],
+                        self.dataDict["someCentroid_x"] - self.dataDict["slot_Centroid_x"],
+                    )*.001
+
+                    self.dataDict["base_LocalWcs_CDMatrix_1_1"] = np.full(self.nRecords,
+                                                                          cd_matrix[0, 0])
+                    self.dataDict["base_LocalWcs_CDMatrix_1_2"] = np.full(self.nRecords,
+                                                                          cd_matrix[0, 1])
+                    self.dataDict["base_LocalWcs_CDMatrix_2_1"] = np.full(self.nRecords,
+                                                                          cd_matrix[1, 0])
+                    self.dataDict["base_LocalWcs_CDMatrix_2_2"] = np.full(self.nRecords,
+                                                                          cd_matrix[1, 1])
+                    df = self.getMultiIndexDataFrame(self.dataDict)
+
+                    # Test detector angle to position angle conversion
+                    func = ConvertDetectorAngleErrToPositionAngleErr(
+                        "orientation",
+                        "orientation_err",
+                        "base_LocalWcs_CDMatrix_1_1",
+                        "base_LocalWcs_CDMatrix_1_2",
+                        "base_LocalWcs_CDMatrix_2_1",
+                        "base_LocalWcs_CDMatrix_2_2"
+                    )
+
+                    func_pa = ConvertDetectorAngleToPositionAngle(
+                        "orientation",
+                        "base_LocalWcs_CDMatrix_1_1",
+                        "base_LocalWcs_CDMatrix_1_2",
+                        "base_LocalWcs_CDMatrix_2_1",
+                        "base_LocalWcs_CDMatrix_2_2"
+                    )
+                    val = self._funcVal(func, df)
+                    val_pa = self._funcVal(func_pa, df)
+
 
     def testConvertPixelToArcseconds(self):
         """Test calculations of the pixel scale, conversions of pixel to
