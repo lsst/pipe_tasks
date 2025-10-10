@@ -1549,6 +1549,49 @@ class ConvertDetectorAngleToPositionAngle(LocalWcs):
         )
 
 
+class ConvertDetectorAngleErrToPositionAngleErr(LocalWcs):
+    """Compute a position angle error from a detector angle error and the
+    stored CDMatrix.
+
+    Returns
+    -------
+    position angle error : degrees
+    """
+
+    name = "PositionAngleErr"
+
+    def __init__(
+        self,
+        theta_err_col,
+        colCD_1_1,
+        colCD_1_2,
+        colCD_2_1,
+        colCD_2_2,
+        **kwargs
+    ):
+        self.theta_err_col = theta_err_col
+        super().__init__(colCD_1_1, colCD_1_2, colCD_2_1, colCD_2_2, **kwargs)
+
+    @property
+    def columns(self):
+        return [
+            self.theta_err_col,
+            self.colCD_1_1,
+            self.colCD_1_2,
+            self.colCD_2_1,
+            self.colCD_2_2
+        ]
+
+    def _func(self, df):
+        return self.getPositionAngleErrFromDetectorAngleErr(
+            df[self.theta_err_col],
+            df[self.colCD_1_1],
+            df[self.colCD_1_2],
+            df[self.colCD_2_1],
+            df[self.colCD_2_2]
+        )
+
+
 class ReferenceBand(Functor):
     """Return the band used to seed multiband forced photometry.
 
