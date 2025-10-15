@@ -192,42 +192,6 @@ funcs:
         functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_1_0_instFluxErr
-    # 1.5 arcsec sigma GAaP flux
-    gaap1p5Flux:
-        functor: SinglePrecisionFloatColumn
-        dataset: forced_src
-        args: ext_gaap_GaapFlux_1_15x_1_5_instFlux
-    gaap1p5FluxErr:
-        functor: SinglePrecisionFloatColumn
-        dataset: forced_src
-        args: ext_gaap_GaapFlux_1_15x_1_5_instFluxErr
-    # 2.5 arcsec sigma GAaP flux
-    gaap2p5Flux:
-        functor: SinglePrecisionFloatColumn
-        dataset: forced_src
-        args: ext_gaap_GaapFlux_1_15x_2_5_instFlux
-    gaap2p5FluxErr:
-        functor: SinglePrecisionFloatColumn
-        dataset: forced_src
-        args: ext_gaap_GaapFlux_1_15x_2_5_instFluxErr
-    # 3.0 arcsec sigma GAaP flux
-    gaap3p0Flux:
-        functor: SinglePrecisionFloatColumn
-        dataset: forced_src
-        args: ext_gaap_GaapFlux_1_15x_3_0_instFlux
-    gaap3p0FluxErr:
-        functor: SinglePrecisionFloatColumn
-        dataset: forced_src
-        args: ext_gaap_GaapFlux_1_15x_3_0_instFluxErr
-    #  Optimal GAaP flux
-    gaapOptimalFlux:
-        functor: SinglePrecisionFloatColumn
-        dataset: forced_src
-        args: ext_gaap_GaapFlux_1_15x_Optimal_instFlux
-    gaapOptimalFluxErr:
-        functor: SinglePrecisionFloatColumn
-        dataset: forced_src
-        args: ext_gaap_GaapFlux_1_15x_Optimal_instFluxErr
     # Taking Shape from meas
     # These pixel-coordinate versions are deprecated following RFC-1081.
     ixx:
@@ -1389,13 +1353,6 @@ forcedFlags:
     - modelfit_CModel_flag_apCorr
     - ext_gaap_GaapFlux_flag
     - ext_gaap_GaapFlux_flag_edge
-    - ext_gaap_GaapFlux_1_15x_flag_gaussianization
-    - ext_gaap_GaapFlux_1_15x_Optimal_flag_bigPsf
-    - ext_gaap_GaapFlux_1_15x_0_7_flag_bigPsf
-    - ext_gaap_GaapFlux_1_15x_1_0_flag_bigPsf
-    - ext_gaap_GaapFlux_1_15x_1_5_flag_bigPsf
-    - ext_gaap_GaapFlux_1_15x_2_5_flag_bigPsf
-    - ext_gaap_GaapFlux_1_15x_3_0_flag_bigPsf
 flag_rename_rules:
     # Taken from db-meas-forced
     - ['modelfit_C', 'c']
@@ -1404,10 +1361,6 @@ flag_rename_rules:
     - ['ext_convolved_', '']
     - ['ext_gaap_GaapFlux_1_15x_0_7', 'gaap0p7Flux']
     - ['ext_gaap_GaapFlux_1_15x_1_0', 'gaap1p0Flux']
-    - ['ext_gaap_GaapFlux_1_15x_1_5', 'gaap1p5Flux']
-    - ['ext_gaap_GaapFlux_1_15x_2_5', 'gaap2p5Flux']
-    - ['ext_gaap_GaapFlux_1_15x_3_0', 'gaap3p0Flux']
-    - ['ext_gaap_GaapFlux_1_15x_Optimal', 'gaapOptimalFlux']
     - ['ext_gaap_GaapFlux_1_15x', 'gaapFlux']
     - ['ext_gaap_GaapFlux', 'gaapFlux']
     - ['undeblended_base', 'undeblended']
