@@ -232,22 +232,6 @@ funcs:
         functor: Column
         args: slot_PsfShape_flag
         dataset: meas
-    ixxRound:
-        functor: SinglePrecisionFloatColumn
-        args: slot_ShapeRound_xx
-        dataset: meas
-    iyyRound:
-        functor: SinglePrecisionFloatColumn
-        args: slot_ShapeRound_yy
-        dataset: meas
-    ixyRound:
-        functor: SinglePrecisionFloatColumn
-        args: slot_ShapeRound_xy
-        dataset: meas
-    iRound_flag:
-        functor: Column
-        args: slot_ShapeRound_flag
-        dataset: meas
     ixxDebiasedPSF:
         functor: SinglePrecisionFloatColumn
         args: ext_shapeHSM_HsmPsfMomentsDebiased_xx
