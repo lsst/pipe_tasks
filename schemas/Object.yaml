@@ -461,15 +461,6 @@ funcs:
     # kronRad50Err: Need to compute DM-16313
     # kronRad90: Need to compute DM-16313
     # kronRad90Err: Need to compute DM-16313
-    # apFlux renamed to calibFlux because it is not guaranteed to be an apFlux
-    calibFlux:
-        functor: SinglePrecisionFloatColumn
-        dataset: meas
-        args: slot_CalibFlux_instFlux
-    calibFluxErr:
-        functor: SinglePrecisionFloatColumn
-        dataset: meas
-        args: slot_CalibFlux_instFluxErr
     # Not in DPDD. Used for QA
     ap03Flux:
         functor: SinglePrecisionFloatColumn
@@ -1305,9 +1296,6 @@ flags:
     - slot_ApFlux_flag
     - slot_ApFlux_flag_apertureTruncated
     - slot_ApFlux_flag_sincCoeffsTruncated
-    - slot_CalibFlux_flag
-    - slot_CalibFlux_flag_apertureTruncated
-    - slot_CalibFlux_flag_sincCoeffsTruncated
     - slot_Centroid_flag
     - ext_photometryKron_KronFlux_flag
     - ext_photometryKron_KronFlux_flag_bad_radius
@@ -1346,7 +1334,6 @@ flag_rename_rules:
     - ['undeblended_ext_photometryKron', 'undeblended']
     - ['ext_photometryKron_KronFlux', 'kronFlux']
     - ['slot_Centroid', 'centroid']
-    - ['slot_Calib', 'calib']
     - ['slot_Psf', 'psf']
     - ['slot_Shape', 'shape']
     - ['slot_ApFlux', 'apFlux']
