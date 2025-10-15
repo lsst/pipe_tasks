@@ -114,11 +114,11 @@ class DiffractionSpikeMaskConfig(Config):
         doc="Default magnitude to use for sources in the reference catalog"
             " with missing magnitudes that land in regions of saturated pixels.",
     )
-    anyFilterMapsToThis = Field(
+    fallbackFluxField = Field(
         dtype=str,
         default="phot_g_mean",
         doc="Fallback flux field in the reference catalog to use for sources"
-        " that don't have measurements in the science image's band.",
+            " that don't have measurements in the science image's band.",
     )
     spikeMask = Field(
         dtype=str,
@@ -359,10 +359,17 @@ class DiffractionSpikeMaskTask(Task):
         # check for bright sources and to set the size of the mask.
         badMagnitudes = np.isnan(refMagArr)
         if np.count_nonzero(badMagnitudes):
-            fallbackFluxKey = refSchema.find(f"{self.config.anyFilterMapsToThis}_flux").key
-            fallbackFluxArr = np.array(refCat.get(fallbackFluxKey))
-            fallbackMagArr = u.Quantity(fallbackFluxArr[badMagnitudes], u.nJy).to_value(u.ABmag)
-            refMagArr[badMagnitudes] = fallbackMagArr
+            fluxName = f"{self.config.fallbackFluxField}_flux"
+            # If the configured fallback flux field is missing, skip it.
+            try:
+                fallbackFluxKey = refSchema.find(fluxName).key
+            except KeyError:
+                self.log.warning(f"Field {fluxName} not found in photometric reference catalog."
+                                 " Not masking bright stars with missing magnitudes.")
+            else:
+                fallbackFluxArr = np.array(refCat.get(fallbackFluxKey))
+                fallbackMagArr = u.Quantity(fallbackFluxArr[badMagnitudes], u.nJy).to_value(u.ABmag)
+                refMagArr[badMagnitudes] = fallbackMagArr
 
         return Struct(
             refMag=refMagArr,
