@@ -30,6 +30,10 @@ funcs:
         # covariance in reference position for merged "ref" cat.
         functor: RADecCovColumn
         dataset: ref
+    coord_flag:
+        functor: Column
+        args: slot_Centroid_flag
+        dataset: ref
     ra:
         functor: CoordColumn
         args: coord_ra
@@ -600,27 +604,6 @@ funcs:
     # lcNonPeriodic:  # Not computed. Need without multi-epoch forced phot S19
     # photoZ:  # Not computed yet
 
-    # COLUMNS ADDED (not in the DPDD)
-    x:
-        functor: Column
-        args: slot_Centroid_x
-        dataset: ref
-    y:
-        functor: Column
-        args: slot_Centroid_y
-        dataset: ref
-    xErr:
-        functor: Column
-        args: slot_Centroid_xErr
-        dataset: ref
-    yErr:
-        functor: Column
-        args: slot_Centroid_yErr
-        dataset: ref
-    xy_flag:
-        functor: Column
-        args: slot_Centroid_flag
-        dataset: ref
     # Not in DPDD
     blendedness:
         functor: SinglePrecisionFloatColumn
