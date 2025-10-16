@@ -1394,6 +1394,34 @@ class LocalWcs(Functor):
         # Position angle of vector from (RA1, Dec1) to (RA2, Dec2)
         return np.rad2deg(self.computePositionAngle(ra1, dec1, ra2, dec2))
 
+    def getPositionAngleErrFromDetectorAngleErr(self, theta, theta_err, cd11, cd12, cd21, cd22):
+        """Compute position angle error (E of N) from detector angle error.
+        
+        Parameters
+        ----------
+            
+        Returns
+        -------
+        float
+            Position angle error in degrees
+        """
+        dx = np.cos(theta)
+        dy = np.sin(theta)
+
+        u = dx * cd11 + dy * cd12
+        v = dx * cd21 + dy * cd22
+        ratio = u / v
+
+        # Derivatives
+        du_dtheta = -np.sin(theta) * cd11 + np.cos(theta) * cd12
+        dv_dtheta = -np.sin(theta) * cd21 + np.cos(theta) * cd22
+
+        d_ratio_dtheta = (v * du_dtheta - u * dv_dtheta) / v ** 2
+        dPA_dtheta = (1 / (1 + ratio ** 2)) * d_ratio_dtheta
+
+        pa_err = np.rad2deg(np.abs(dPA_dtheta) * theta_err)
+
+        return pa_err
 
 class ComputePixelScale(LocalWcs):
     """Compute the local pixel scale from the stored CDMatrix.
