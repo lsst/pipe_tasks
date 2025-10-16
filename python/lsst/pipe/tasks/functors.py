@@ -1595,6 +1595,7 @@ class ConvertDetectorAngleErrToPositionAngleErr(LocalWcs):
 
     def __init__(
         self,
+        theta_col,
         theta_err_col,
         colCD_1_1,
         colCD_1_2,
@@ -1602,12 +1603,14 @@ class ConvertDetectorAngleErrToPositionAngleErr(LocalWcs):
         colCD_2_2,
         **kwargs
     ):
+        self.theta_col = theta_col
         self.theta_err_col = theta_err_col
         super().__init__(colCD_1_1, colCD_1_2, colCD_2_1, colCD_2_2, **kwargs)
 
     @property
     def columns(self):
         return [
+            self.theta_col,
             self.theta_err_col,
             self.colCD_1_1,
             self.colCD_1_2,
@@ -1617,6 +1620,7 @@ class ConvertDetectorAngleErrToPositionAngleErr(LocalWcs):
 
     def _func(self, df):
         return self.getPositionAngleErrFromDetectorAngleErr(
+            df[self.theta_col],
             df[self.theta_err_col],
             df[self.colCD_1_1],
             df[self.colCD_1_2],
