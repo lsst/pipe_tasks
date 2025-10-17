@@ -49,6 +49,8 @@ from lsst.pipe.tasks.calibrateImage import CalibrateImageTask, \
 import lsst.pex.config as pexConfig
 import lsst.utils.tests
 
+from utils import makeTestVisitInfo
+
 
 class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
@@ -587,6 +589,35 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         key = "LSST CALIB ILLUMCORR APPLIED"
         self.assertIn(key, result.exposure.metadata)
         self.assertEqual(result.exposure.metadata[key], True)
+
+    def test_run_with_diffraction_spike_mask(self):
+        """Test that the diffraction spike mask subtask runs.
+        """
+        config = self.config
+        config.doMaskDiffractionSpikes = True
+        config.diffractionSpikeMask.magnitudeThreshold = 19
+        # Define a fake SATURATED mask plane for use by the diffraction spike
+        # task, so that it does not affect the rest of calibrate
+        config.diffractionSpikeMask.saturatedMaskPlane = "FAKESATURATED"
+        calibrate = CalibrateImageTask(config=config)
+        calibrate.astrometry.setRefObjLoader(self.ref_loader)
+        calibrate.photometry.match.setRefObjLoader(self.ref_loader)
+        calibrate.diffractionSpikeMask.setRefObjLoader(self.ref_loader)
+
+        exposure = self.exposure.clone()
+
+        exposure.info.setVisitInfo(makeTestVisitInfo())
+        exposure.mask.addMaskPlane(config.diffractionSpikeMask.saturatedMaskPlane)
+
+        # Set the saturated mask plane in half of the image
+        saturatedMaskBit = exposure.mask.getPlaneBitMask(config.diffractionSpikeMask.saturatedMaskPlane)
+        bbox = exposure.getBBox()
+        bbox.grow(-lsst.geom.Extent2I(0, bbox.height//4))
+        exposure[bbox].mask.array |= saturatedMaskBit
+
+        result = calibrate.run(exposures=exposure)
+
+        self._check_run(calibrate, result)
 
     @mock.patch.dict(os.environ, {"SATTLE_URI_BASE": ""})
     def test_fail_on_sattle_miconfiguration(self):
