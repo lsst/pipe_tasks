@@ -1391,13 +1391,24 @@ class LocalWcs(Functor):
 
     def getPositionAngleErrFromDetectorAngleErr(self, theta, theta_err, cd11, cd12, cd21, cd22):
         """Compute position angle error (E of N) from detector angle error.
-        
+
         Parameters
         ----------
-            
+        theta : `float`
+            detector angle [radian]
+        theta_err : `float`
+            detector angle err [radian]
+        cd11 : `float`
+            [1, 1] element of the local Wcs affine transform.
+        cd12 : `float`
+            [1, 2] element of the local Wcs affine transform.
+        cd21 : `float`
+            [2, 1] element of the local Wcs affine transform.
+        cd22 : `float`
+            [2, 2] element of the local Wcs affine transform.
         Returns
         -------
-        float
+        Position Angle Error: `~pandas.Series`
             Position angle error in degrees
         """
         dx = np.cos(theta)
@@ -1417,6 +1428,7 @@ class LocalWcs(Functor):
         pa_err = np.rad2deg(np.abs(dPA_dtheta) * theta_err)
 
         return pa_err
+
 
 class ComputePixelScale(LocalWcs):
     """Compute the local pixel scale from the stored CDMatrix.
