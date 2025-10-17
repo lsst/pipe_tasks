@@ -44,7 +44,6 @@ import lsst.meas.base as measBase
 import lsst.meas.deblender as measDeblender
 import lsst.meas.extensions.scarlet as scarlet
 import lsst.pipe.base as pipeBase
-import lsst.scarlet.lite as scl
 import numpy as np
 from lsst.meas.extensions.scarlet.deconvolveExposureTask import DeconvolveExposureTask
 from lsst.pex.config import Config, ConfigurableField, Field
@@ -983,7 +982,7 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
 
         # Placeholder for the model data produced by the deblender. Caching
         # this data has proven be useful for debugging.
-        self.modelData: scl.io.ScarletModelData
+        self.modelData: scarlet.io.LsstScarletModelData
 
     def run(
         self,
@@ -1047,7 +1046,7 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
                 be None if detection is disabled.
             ``modelData``
                 Multiband scarlet models produced during deblending
-                (`~lsst.scarlet.lite.io.ScarletModelData`). Will be None if
+                (`~scarlet.io.LsstScarletModelData`). Will be None if
                 deblending is disabled.
         """
 
@@ -1274,7 +1273,7 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
         mDeconvolved: afwImage.MultibandExposure | None,
         catalog: afwTable.SourceCatalog,
         refBand: str,
-    ) -> tuple[dict[str, afwTable.SourceCatalog], scl.io.ScarletModelData]:
+    ) -> tuple[dict[str, afwTable.SourceCatalog], scarlet.io.LsstScarletModelData]:
         """Run multi-band deblending given a multi-band exposure and a catalog.
 
         Parameters

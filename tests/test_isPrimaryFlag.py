@@ -223,6 +223,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         scarletConfig = ScarletDeblendTask.ConfigClass()
         scarletConfig.maxIter = 20
         scarletConfig.columnInheritance["merge_peak_sky"] = "merge_peak_sky"
+        scarletConfig.processSingles = True
         deblendTask = ScarletDeblendTask(schema=schema, config=scarletConfig)
 
         # We'll customize the configuration of measurement to just run the

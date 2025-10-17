@@ -104,7 +104,7 @@ class CoaddMultibandFitInputConnections(
     models_scarlet = pipeBase.connectionTypes.Input(
         doc="Multiband scarlet models produced by the deblender",
         name="{name_coadd}Coadd_scarletModelData",
-        storageClass="ScarletModelData",
+        storageClass="LsstScarletModelData",
         dimensions=("tract", "patch", "skymap"),
     )
 
