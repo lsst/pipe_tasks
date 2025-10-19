@@ -29,7 +29,7 @@ Contributing
 ============
 
 ``lsst.pipe.tasks`` is developed at https://github.com/lsst/pipe_tasks.
-You can find Jira issues for this module under the `pipe_tasks <https://jira.lsstcorp.org/issues/?jql=project%20%3D%20DM%20AND%20component%20%3D%20pipe_tasks>`_ component.
+You can find Jira issues for this module under the `pipe_tasks <https://rubinobs.atlassian.net/issues/?jql=project%20%3D%20%22DM%22%20AND%20component%20%3D%20%22pipe_tasks%22>`_ component.
 
 .. If there are topics related to developing this module (rather than using it), link to this from a toctree placed here.
 
