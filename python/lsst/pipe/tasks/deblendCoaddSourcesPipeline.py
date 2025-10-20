@@ -118,7 +118,7 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
     scarletModelData = cT.Output(
         doc="Multiband scarlet models produced by the deblender",
         name="{outputCoaddName}Coadd_scarletModelData",
-        storageClass="ScarletModelData",
+        storageClass="LsstScarletModelData",
         dimensions=("tract", "patch", "skymap"),
     )
     objectParents = cT.Output(

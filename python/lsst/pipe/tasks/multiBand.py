@@ -513,7 +513,7 @@ class MeasureMergedCoaddSourcesConnections(
     scarletModels = cT.Input(
         doc="Multiband scarlet models produced by the deblender",
         name="{inputCoaddName}Coadd_scarletModelData",
-        storageClass="ScarletModelData",
+        storageClass="LsstScarletModelData",
         dimensions=("tract", "patch", "skymap"),
     )
     outputSources = cT.Output(
