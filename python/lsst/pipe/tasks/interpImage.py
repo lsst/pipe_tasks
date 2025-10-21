@@ -186,9 +186,9 @@ class InterpImageTask(pipeBase.Task):
             psf = image.getPsf()
             self.log.trace("Setting psf for interpolation from image")
         except AttributeError:
-            self.log.info("Creating psf model for interpolation from fwhm(pixels) = %s",
-                          str(fwhmPixels) if fwhmPixels is not None else
-                          (str(self.config.modelPsf.defaultFwhm)) + " [default]")
+            self.log.debug("Creating psf model for interpolation from fwhm(pixels) = %s",
+                           str(fwhmPixels) if fwhmPixels is not None else
+                           (str(self.config.modelPsf.defaultFwhm)) + " [default]")
             psf = self.config.modelPsf.apply(fwhm=fwhmPixels)
 
         fallbackValue = 0.0  # interpolateOverDefects needs this to be a float, regardless if it is used
