@@ -53,8 +53,9 @@ from lsst.meas.base import (
 from lsst.meas.extensions.scarlet.io import updateCatalogFootprints
 from lsst.meas.astrom import DirectMatchTask, denormalizeMatches
 from lsst.pipe.tasks.propagateSourceFlags import PropagateSourceFlagsTask
-import lsst.afw.table as afwTable
+import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
+import lsst.afw.table as afwTable
 from lsst.daf.base import PropertyList
 from lsst.skymap import BaseSkyMap
 
@@ -315,6 +316,17 @@ class DetectCoaddSourcesTask(PipelineTask):
         if hasattr(detections, "background") and detections.background:
             for bg in detections.background:
                 backgrounds.append(bg)
+        if len(backgrounds) == 0:
+            # Persist a constant background with value of 0.0 to get around
+            # inability to persist empty BackgroundList.
+            bgLevel = 0.0
+            bgStats = afwImage.MaskedImageF(1, 1)
+            bgStats.set(bgLevel, 0, bgLevel)
+            bg = afwMath.BackgroundMI(exposure.getBBox(), bgStats)
+            bgData = (bg, afwMath.Interpolate.LINEAR, afwMath.REDUCE_INTERP_ORDER,
+                      afwMath.ApproximateControl.UNKNOWN, 0, 0, False)
+            backgrounds.append(bgData)
+
         return Struct(outputSources=sources, outputBackgrounds=backgrounds, outputExposure=exposure)
 
     def _cropToExactBinning(self, exposure, patchInfo):
