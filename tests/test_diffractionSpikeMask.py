@@ -83,6 +83,11 @@ class DiffractionSpikeMaskTest(lsst.utils.tests.TestCase):
         config = DiffractionSpikeMaskConfig(magnitudeThreshold=16)
         task = DiffractionSpikeMaskTask(self.refObjLoader, config=config)
         exposure = self.exposure.clone()
+        # Set the saturated mask plane in half of the image
+        saturatedMaskBit = exposure.mask.getPlaneBitMask(config.saturatedMaskPlane)
+        bbox = exposure.getBBox()
+        bbox.grow(-lsst.geom.Extent2I(0, bbox.height//4))
+        exposure[bbox].mask.array |= saturatedMaskBit
         brightCat = task.run(exposure=exposure)
         self.assertGreater(len(brightCat), 0)
         # Verify that the new mask plane has been added

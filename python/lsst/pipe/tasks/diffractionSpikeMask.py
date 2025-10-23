@@ -29,6 +29,7 @@ import astropy.units as u
 
 import lsst.afw.geom as afwGeom
 from lsst.afw.image import abMagErrFromFluxErr
+import lsst.afw.table as afwTable
 import lsst.geom
 from lsst.pex.config import Config, ConfigField, Field
 from lsst.pipe.base import Struct, Task
@@ -126,6 +127,11 @@ class DiffractionSpikeMaskConfig(Config):
         doc="Name of the mask plane indicating likely contamination from"
             " a diffraction spike.",
     )
+    saturatedMaskPlane = Field(
+        dtype=str,
+        default="SAT",
+        doc="Name of the mask plane indicating a saturated pixel.",
+    )
 
 
 class DiffractionSpikeMaskTask(Task):
@@ -185,7 +191,7 @@ class DiffractionSpikeMaskTask(Task):
         # spikes that extend onto the image.
         magnitudes = self.extractMagnitudes(refCat, filterLabel).refMag
         radii = self.calculateReferenceRadius(magnitudes)
-        bright = (magnitudes < self.config.magnitudeThreshold) & (radii > 1)
+        bright = (magnitudes < self.config.magnitudeThreshold)
 
         nBright = np.count_nonzero(bright)
 
@@ -194,13 +200,50 @@ class DiffractionSpikeMaskTask(Task):
         if nBright > 0:
             xvals, yvals = exposure.wcs.skyToPixelArray(refCat[bright][self.config.raKey],
                                                         refCat[bright][self.config.decKey])
-            self.log.info("Calculating mask for %d stars brighter than magnitude %f", nBright,
+            spikeCandidates = self.selectSources(xvals, yvals, mask)
+            nSpike = len(spikeCandidates)
+        else:
+            nSpike = 0
+        if nSpike > 0:
+            self.log.info("Calculating mask for %d stars brighter than magnitude %f", nSpike,
                           self.config.magnitudeThreshold)
-            self.maskSources(xvals, yvals, radii[bright], mask)
+            self.maskSources(xvals[spikeCandidates],
+                             yvals[spikeCandidates],
+                             radii[bright][spikeCandidates],
+                             mask)
         else:
             self.log.info("No bright stars found in the reference catalog; not masking diffraction spikes.")
+            return afwTable.SourceCatalog(refCat.schema)
 
-        return refCat[bright].copy(deep=True)
+        return refCat[bright][spikeCandidates].copy(deep=True)
+
+    def selectSources(self, xvals, yvals, mask):
+        """Select saturated sources, and bright sources that are off the image.
+
+        Parameters
+        ----------
+        xvals, yvals : `numpy.ndarray`
+            Array of x- and y-values of bright sources to mask.
+        mask : `lsst.afw.image.Mask`
+            The mask plane of the image to set the BRIGHT mask plane.
+
+        Returns
+        -------
+        candidates : `numpy.ndarray`
+            Array of boolean flags indicating whether the given coordinates
+            should have a diffraction spike mask calculated.
+        """
+        candidates = np.zeros(len(xvals), dtype=bool)
+        saturatedBitMask = mask.getPlaneBitMask(self.config.saturatedMaskPlane)
+        bbox = mask.getBBox()
+
+        for i, (x, y) in enumerate(zip(xvals, yvals)):
+            srcBox = lsst.geom.Box2I.makeCenteredBox(lsst.geom.Point2D(x, y), lsst.geom.Extent2I(3, 3))
+            if bbox.contains(srcBox):
+                candidates[i] = np.all((mask[srcBox].array & saturatedBitMask) > 0)
+            else:
+                candidates[i] = True
+        return candidates
 
     def maskSources(self, xvals, yvals, radii, mask):
         """Apply the SPIKE mask for a given set of coordinates. The mask plane
