@@ -1032,6 +1032,14 @@ funcs:
         functor: SinglePrecisionFloatColumn
         args: chisq_reduced
         dataset: Exp_multiprofit
+    exponential_delta_lnL_fit_linear:
+        functor: SinglePrecisionFloatColumn
+        args: delta_lnL_fit_linear
+        dataset: Exp_multiprofit
+    exponential_delta_lnL_fit_ps:
+        functor: SinglePrecisionFloatColumn
+        args: delta_lnL_fit_ps
+        dataset: Exp_multiprofit
     exponential_unknown_flag:
         functor: Column
         args: unknown_flag
