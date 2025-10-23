@@ -106,7 +106,9 @@ class CoaddBaseTask(pipeBase.PipelineTask):
     def getBadPixelMask(self):
         """Convenience method to provide the bitmask from the mask plane names
         """
-        return afwImage.Mask.getPlaneBitMask(self.config.badMaskPlanes)
+        badMaskPlanes = [mp for mp in self.config.badMaskPlanes
+                         if mp in afwImage.Mask().getMaskPlaneDict().keys()]
+        return afwImage.Mask.getPlaneBitMask(badMaskPlanes)
 
 
 def makeSkyInfo(skyMap, tractId, patchId):
