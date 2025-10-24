@@ -1416,17 +1416,23 @@ class LocalWcs(Functor):
         Position Angle Error: `~pandas.Series`
             Position angle error in degrees
         """
+        # Need to compute abs(dPA/dtheta)*theta_Err to get propogated errors
+
+        # Get unit direction
         dx = np.cos(theta)
         dy = np.sin(theta)
 
+        # Transform it using WCS?
         u = dx * cd11 + dy * cd12
         v = dx * cd21 + dy * cd22
+        # Now we are computing the tangent
         ratio = u / v
 
-        # Derivatives
+        # Get derivative of theta
         du_dtheta = -np.sin(theta) * cd11 + np.cos(theta) * cd12
         dv_dtheta = -np.sin(theta) * cd21 + np.cos(theta) * cd22
 
+        # Get derivative of tangent
         d_ratio_dtheta = (v * du_dtheta - u * dv_dtheta) / v ** 2
         dPA_dtheta = (1 / (1 + ratio ** 2)) * d_ratio_dtheta
 
