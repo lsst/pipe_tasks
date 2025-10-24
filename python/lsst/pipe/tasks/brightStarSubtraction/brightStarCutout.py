@@ -23,13 +23,15 @@
 
 __all__ = ["BrightStarCutoutConnections", "BrightStarCutoutConfig", "BrightStarCutoutTask"]
 
+import math
+from copy import deepcopy
 from typing import Any, Iterable, cast
 
 import astropy.units as u
 import numpy as np
 from astropy.coordinates import SkyCoord
 from astropy.table import Table
-from lsst.afw.cameraGeom import FIELD_ANGLE, PIXELS
+from lsst.afw.cameraGeom import FIELD_ANGLE, FOCAL_PLANE, PIXELS
 from lsst.afw.detection import Footprint, FootprintSet, Threshold
 from lsst.afw.geom import SkyWcs, SpanSet, makeModifiedWcs
 from lsst.afw.geom.transformFactory import makeTransform
@@ -38,6 +40,7 @@ from lsst.afw.math import BackgroundList, FixedKernel, WarpingControl, warpImage
 from lsst.daf.butler import DataCoordinate
 from lsst.geom import (
     AffineTransform,
+    Angle,
     Box2I,
     Extent2D,
     Extent2I,
@@ -148,8 +151,6 @@ class BrightStarCutoutConfig(
             NEIGHBOR_MASK_PLANE,
         ],
     )
-
-    # Cutout geometry
     stampSize = ListField[int](
         doc="Size of the stamps to be extracted, in pixels.",
         default=(251, 251),
@@ -178,6 +179,10 @@ class BrightStarCutoutConfig(
             "lanczos5": "Lanczos kernel of order 5",
         },
     )
+    scalePsfModel = Field[bool](
+        doc="If True, uses a scale factor to bring the PSF model data to the same level as the star data.",
+        default=True,
+    )
 
     # PSF Fitting
     useExtendedPsf = Field[bool](
@@ -195,6 +200,14 @@ class BrightStarCutoutConfig(
     psfMaskedFluxFracThreshold = Field[float](
         doc="Maximum allowed fraction of masked PSF flux for PSF fitting to occur.",
         default=0.97,
+    )
+    fitIterations = Field[int](
+        doc="Number of iterations over pedestal-gradient and scaling fit.",
+        default=5,
+    )
+    offFrameMagLim = Field[float](
+        doc="Stars fainter than this limit are only included if they appear within the frame boundaries.",
+        default=15.0,
     )
 
     # Misc
@@ -232,6 +245,7 @@ class BrightStarCutoutTask(PipelineTask):
         self.paddedStampBBox = Box2I(corner=Point2I(0, 0), dimensions=Extent2I(1, 1)).dilatedBy(
             self.paddedStampRadius
         )
+        self.modelScale = 1
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -311,15 +325,18 @@ class BrightStarCutoutTask(PipelineTask):
         # Loop over each bright star
         stamps, goodFracs, stamps_fitPsfResults = [], [], []
         for starIndex, (obj, pixCoord) in enumerate(zip(refCatBright, pixCoords)):  # type: ignore
+            # Excluding faint stars that are not within the frame.
+            if obj["mag"] > self.config.offFrameMagLim and not self.star_in_frame(pixCoord, bbox):
+                continue
             footprintIndex = associations.get(starIndex, None)
             stampMI = MaskedImageF(self.paddedStampBBox)
 
             # Set NEIGHBOR footprints in the mask plane
             if footprintIndex:
                 neighborFootprints = [fp for i, fp in enumerate(allFootprints) if i != footprintIndex]
-                self._setFootprints(inputExposure, neighborFootprints, NEIGHBOR_MASK_PLANE)
+                self._setFootprints(inputMI, neighborFootprints, NEIGHBOR_MASK_PLANE)
             else:
-                self._setFootprints(inputExposure, allFootprints, NEIGHBOR_MASK_PLANE)
+                self._setFootprints(inputMI, allFootprints, NEIGHBOR_MASK_PLANE)
 
             # Define linear shifting to recenter stamps
             coordFocalPlaneTan = pixToFocalPlaneTan.applyForward(pixCoord)  # center of warped star
@@ -329,7 +346,7 @@ class BrightStarCutoutTask(PipelineTask):
             pixToPolar = pixToFocalPlaneTan.then(shift).then(rotation)
 
             # Apply the warp to the star stamp (in-place)
-            warpImage(stampMI, inputExposure.maskedImage, pixToPolar, warpingControl)
+            warpImage(stampMI, inputMI, pixToPolar, warpingControl)
 
             # Trim to the base stamp size, check mask coverage, update metadata
             stampMI = stampMI[self.stampBBox]
@@ -343,38 +360,61 @@ class BrightStarCutoutTask(PipelineTask):
             psf = WarpedPsf(inputExposure.getPsf(), pixToPolar, warpingControl)
             constantPsf = KernelPsf(FixedKernel(psf.computeKernelImage(Point2D(0, 0))))
             if self.config.useExtendedPsf:
-                psfImage = extendedPsf  # Assumed to be warped, center at [0,0]
+                psfImage = deepcopy(extendedPsf)  # Assumed to be warped, center at [0,0]
             else:
                 psfImage = constantPsf.computeKernelImage(constantPsf.getAveragePosition())
+                # TODO: maybe we want to generate a smaller psf in case the following happens?
+                # The following could happen for when the user chooses small stampSize ~(50, 50)
+                if (
+                    psfImage.array.shape[0] > stampMI.image.array.shape[0]
+                    or psfImage.array.shape[1] > stampMI.image.array.shape[1]
+                ):
+                    continue
+            # Computing an scale factor that brings the model to the similar level of the star.
+            self.computeModelScale(stampMI, psfImage)
+            psfImage.array *= self.modelScale  # ####### model scale correction ########
+
             fitPsfResults = {}
+
             if self.config.doFitPsf:
                 fitPsfResults = self._fitPsf(stampMI, psfImage)
             stamps_fitPsfResults.append(fitPsfResults)
 
             # Save the stamp if the PSF fit was successful or no fit requested
             if fitPsfResults or not self.config.doFitPsf:
+                distance_mm, theta_angle = self.star_location_on_focal(pixCoord, detector)
+
                 stamp = BrightStarStamp(
-                    maskedImage=stampMI,
-                    # TODO: what to do about this PSF?
+                    stamp_im=stampMI,
                     psf=constantPsf,
                     wcs=makeModifiedWcs(pixToPolar, wcs, False),
                     visit=cast(int, dataId["visit"]),
                     detector=cast(int, dataId["detector"]),
-                    refId=obj["id"],
-                    refMag=obj["mag"],
+                    ref_id=obj["id"],
+                    ref_mag=obj["mag"],
                     position=pixCoord,
+                    focal_plane_radius=distance_mm,
+                    focal_plane_angle=theta_angle,  # TODO: add the lsst.geom.Angle here
                     scale=fitPsfResults.get("scale", None),
-                    scaleErr=fitPsfResults.get("scaleErr", None),
+                    scale_err=fitPsfResults.get("scaleErr", None),
                     pedestal=fitPsfResults.get("pedestal", None),
-                    pedestalErr=fitPsfResults.get("pedestalErr", None),
-                    pedestalScaleCov=fitPsfResults.get("pedestalScaleCov", None),
-                    xGradient=fitPsfResults.get("xGradient", None),
-                    yGradient=fitPsfResults.get("yGradient", None),
-                    globalReducedChiSquared=fitPsfResults.get("globalReducedChiSquared", None),
-                    globalDegreesOfFreedom=fitPsfResults.get("globalDegreesOfFreedom", None),
-                    psfReducedChiSquared=fitPsfResults.get("psfReducedChiSquared", None),
-                    psfDegreesOfFreedom=fitPsfResults.get("psfDegreesOfFreedom", None),
-                    psfMaskedFluxFrac=fitPsfResults.get("psfMaskedFluxFrac", None),
+                    pedestal_err=fitPsfResults.get("pedestalErr", None),
+                    pedestal_scale_cov=fitPsfResults.get("pedestalScaleCov", None),
+                    gradient_x=fitPsfResults.get("xGradient", None),
+                    gradient_y=fitPsfResults.get("yGradient", None),
+                    global_reduced_chi_squared=fitPsfResults.get("globalReducedChiSquared", None),
+                    global_degrees_of_freedom=fitPsfResults.get("globalDegreesOfFreedom", None),
+                    psf_reduced_chi_squared=fitPsfResults.get("psfReducedChiSquared", None),
+                    psf_degrees_of_freedom=fitPsfResults.get("psfDegreesOfFreedom", None),
+                    psf_masked_flux_fraction=fitPsfResults.get("psfMaskedFluxFrac", None),
+                )
+                print(
+                    obj["mag"],
+                    fitPsfResults.get("globalReducedChiSquared", None),
+                    fitPsfResults.get("globalDegreesOfFreedom", None),
+                    fitPsfResults.get("psfReducedChiSquared", None),
+                    fitPsfResults.get("psfDegreesOfFreedom", None),
+                    fitPsfResults.get("psfMaskedFluxFrac", None),
                 )
                 stamps.append(stamp)
 
@@ -394,6 +434,25 @@ class BrightStarCutoutTask(PipelineTask):
         )
         brightStarStamps = BrightStarStamps(stamps)
         return Struct(brightStarStamps=brightStarStamps)
+
+    def star_location_on_focal(self, pixCoord, detector):
+        star_focal_plane_coords = detector.transform(pixCoord, PIXELS, FOCAL_PLANE)
+        star_x_fp = star_focal_plane_coords.getX()
+        star_y_fp = star_focal_plane_coords.getY()
+        distance_mm = np.sqrt(star_x_fp**2 + star_y_fp**2)
+        theta_rad = math.atan2(star_y_fp, star_x_fp)
+        theta_angle = Angle(theta_rad, radians)
+        return distance_mm, theta_angle
+
+    def star_in_frame(self, pixCoord, inputExposureBBox):
+        if (
+            pixCoord[0] < 0
+            or pixCoord[1] < 0
+            or pixCoord[0] > inputExposureBBox.getDimensions()[0]
+            or pixCoord[1] > inputExposureBBox.getDimensions()[1]
+        ):
+            return False
+        return True
 
     def _getRefCatBright(self, refObjLoader: ReferenceObjectLoader, wcs: SkyWcs, bbox: Box2I) -> Table:
         """Get a bright star subset of the reference catalog.
@@ -578,73 +637,109 @@ class BrightStarCutoutTask(PipelineTask):
         # Calculate the fraction of the PSF image flux masked by bad pixels
         psfMaskedPixels = ImageF(psfImage.getBBox())
         psfMaskedPixels.array[:, :] = (stampMI.mask[psfImage.getBBox()].array & badMaskBitMask).astype(bool)
-        # TODO: This is np.float64, else FITS metadata serialization fails
-        psfMaskedFluxFrac = np.dot(psfImage.array.flat, psfMaskedPixels.array.flat).astype(np.float64)
+        psfMaskedFluxFrac = (
+            np.dot(psfImage.array.flat, psfMaskedPixels.array.flat).astype(np.float64) / psfImage.array.sum()
+        )
         if psfMaskedFluxFrac > self.config.psfMaskedFluxFracThreshold:
             return {}  # Handle cases where the PSF image is mostly masked
 
-        # Create a padded version of the input constant PSF image
-        paddedPsfImage = ImageF(stampMI.getBBox())
-        paddedPsfImage[psfImage.getBBox()] = psfImage.convertF()
-
-        # Create consistently masked data
-        badSpans = SpanSet.fromMask(stampMI.mask, badMaskBitMask)
-        goodSpans = SpanSet(stampMI.getBBox()).intersectNot(badSpans)
-        varianceData = goodSpans.flatten(stampMI.variance.array, stampMI.getXY0())
+        # Generating good spans for gradient-pedestal fitting (including the star DETECTED mask).
+        gradientGoodSpans = self.generate_gradient_spans(stampMI, badMaskBitMask)
+        varianceData = gradientGoodSpans.flatten(stampMI.variance.array, stampMI.getXY0())
         if self.config.useMedianVariance:
             varianceData = np.median(varianceData)
         sigmaData = np.sqrt(varianceData)
-        imageData = goodSpans.flatten(stampMI.image.array, stampMI.getXY0())  # B
-        imageData /= sigmaData
-        psfData = goodSpans.flatten(paddedPsfImage.array, paddedPsfImage.getXY0())
-        psfData /= sigmaData
 
-        # Fit the PSF scale factor and global pedestal
+        for i in range(self.config.fitIterations):
+            # Gradient-pedestal fitting:
+            if i:
+                # if i > 0, there should be scale factor from the previous fit iteration. Therefore, we can
+                # remove the star using the scale factor.
+                stamp = self.remove_star(stampMI, scale, paddedPsfImage)  # noqa: F821
+            else:
+                stamp = deepcopy(stampMI.image.array)
+
+            imageDataGr = gradientGoodSpans.flatten(stamp, stampMI.getXY0()) / sigmaData  # B
+            nData = len(imageDataGr)
+            coefficientMatrix = np.ones((nData, 3), dtype=float)  # A
+            coefficientMatrix[:, 0] /= sigmaData
+            coefficientMatrix[:, 1:] = gradientGoodSpans.indices().T
+            coefficientMatrix[:, 1] /= sigmaData
+            coefficientMatrix[:, 2] /= sigmaData
+
+            try:
+                grSolutions, grSumSquaredResiduals, *_ = np.linalg.lstsq(
+                    coefficientMatrix, imageDataGr, rcond=None
+                )
+                covarianceMatrix = np.linalg.inv(
+                    np.dot(coefficientMatrix.transpose(), coefficientMatrix)
+                )  # C
+            except np.linalg.LinAlgError:
+                return {}  # Handle singular matrix errors
+            if grSumSquaredResiduals.size == 0:
+                return {}  # Handle cases where sum of the squared residuals are empty
+
+            pedestal = grSolutions[0]
+            pedestalErr = np.sqrt(covarianceMatrix[0, 0])
+            scalePedestalCov = None
+            xGradient = grSolutions[2]
+            yGradient = grSolutions[1]
+
+            # Scale fitting:
+            updatedStampMI = deepcopy(stampMI)
+            self._removePedestalAndGradient(updatedStampMI, pedestal, xGradient, yGradient)
+
+            # Create a padded version of the input constant PSF image
+            paddedPsfImage = ImageF(updatedStampMI.getBBox())
+            paddedPsfImage[psfImage.getBBox()] = psfImage.convertF()
+
+            # Generating a mask plane while considering bad pixels in the psf model.
+            mask = self.add_psf_mask(paddedPsfImage, updatedStampMI)
+            # Create consistently masked data
+            scaleGoodSpans = self.generate_good_spans(mask, updatedStampMI.getBBox(), badMaskBitMask)
+
+            imageData = scaleGoodSpans.flatten(updatedStampMI.image.array, updatedStampMI.getXY0())
+            psfData = scaleGoodSpans.flatten(paddedPsfImage.array, paddedPsfImage.getXY0())
+            scaleCoefficientMatrix = psfData.reshape(psfData.shape[0], 1)
+
+            try:
+                scaleSolution, scaleSumSquaredResiduals, *_ = np.linalg.lstsq(
+                    scaleCoefficientMatrix, imageData, rcond=None
+                )
+            except np.linalg.LinAlgError:
+                return {}  # Handle singular matrix errors
+            if scaleSumSquaredResiduals.size == 0:
+                return {}  # Handle cases where sum of the squared residuals are empty
+            scale = scaleSolution[0]
+            if scale <= 0:
+                return {}  # Handle cases where the PSF scale fit has failed
+            # TODO: calculate scale error and store it.
+            scaleErr = None
+
+        scale *= self.modelScale  # ####### model scale correction ########
         nData = len(imageData)
-        coefficientMatrix = np.ones((nData, 4), dtype=float)  # A
-        coefficientMatrix[:, 0] = psfData
-        coefficientMatrix[:, 1] /= sigmaData
-        coefficientMatrix[:, 2:] = goodSpans.indices().T
-        coefficientMatrix[:, 2] /= sigmaData
-        coefficientMatrix[:, 3] /= sigmaData
-        try:
-            solutions, sumSquaredResiduals, *_ = np.linalg.lstsq(coefficientMatrix, imageData, rcond=None)
-            covarianceMatrix = np.linalg.inv(np.dot(coefficientMatrix.transpose(), coefficientMatrix))  # C
-        except np.linalg.LinAlgError:
-            return {}  # Handle singular matrix errors
-        if sumSquaredResiduals.size == 0:
-            return {}  # Handle cases where sum of the squared residuals are empty
-        scale = solutions[0]
-        if scale <= 0:
-            return {}  # Handle cases where the PSF scale fit has failed
-        scaleErr = np.sqrt(covarianceMatrix[0, 0])
-        pedestal = solutions[1]
-        pedestalErr = np.sqrt(covarianceMatrix[1, 1])
-        scalePedestalCov = covarianceMatrix[0, 1]
-        xGradient = solutions[3]
-        yGradient = solutions[2]
 
-        # Calculate global (whole image) reduced chi-squared
-        globalChiSquared = np.sum(sumSquaredResiduals)
-        globalDegreesOfFreedom = nData - 4
-        globalReducedChiSquared = globalChiSquared / globalDegreesOfFreedom
+        # Calculate global (whole image) reduced chi-squared (scaling fit is assumed as the main fitting
+        # process here.)
+        globalChiSquared = np.sum(scaleSumSquaredResiduals)
+        globalDegreesOfFreedom = nData - 1
+        globalReducedChiSquared = np.float64(globalChiSquared / globalDegreesOfFreedom)
 
         # Calculate PSF BBox reduced chi-squared
-        psfBBoxGoodSpans = goodSpans.clippedTo(psfImage.getBBox())
-        psfBBoxGoodSpansX, psfBBoxGoodSpansY = psfBBoxGoodSpans.indices()
-        psfBBoxData = psfBBoxGoodSpans.flatten(stampMI.image.array, stampMI.getXY0())
+        psfBBoxscaleGoodSpans = scaleGoodSpans.clippedTo(psfImage.getBBox())
+        psfBBoxscaleGoodSpansX, psfBBoxscaleGoodSpansY = psfBBoxscaleGoodSpans.indices()
+        psfBBoxData = psfBBoxscaleGoodSpans.flatten(stampMI.image.array, stampMI.getXY0())
+        paddedPsfImage.array /= self.modelScale  # ####### model scale correction ########
         psfBBoxModel = (
-            psfBBoxGoodSpans.flatten(paddedPsfImage.array, stampMI.getXY0()) * scale
+            psfBBoxscaleGoodSpans.flatten(paddedPsfImage.array, stampMI.getXY0()) * scale
             + pedestal
-            + psfBBoxGoodSpansX * xGradient
-            + psfBBoxGoodSpansY * yGradient
+            + psfBBoxscaleGoodSpansX * xGradient
+            + psfBBoxscaleGoodSpansY * yGradient
         )
-        psfBBoxVariance = psfBBoxGoodSpans.flatten(stampMI.variance.array, stampMI.getXY0())
-        psfBBoxResiduals = (psfBBoxData - psfBBoxModel) ** 2 / psfBBoxVariance
+        psfBBoxResiduals = (psfBBoxData - psfBBoxModel) ** 2  # / psfBBoxVariance
         psfBBoxChiSquared = np.sum(psfBBoxResiduals)
-        psfBBoxDegreesOfFreedom = len(psfBBoxData) - 4
+        psfBBoxDegreesOfFreedom = len(psfBBoxData) - 1
         psfBBoxReducedChiSquared = psfBBoxChiSquared / psfBBoxDegreesOfFreedom
-
         return dict(
             scale=scale,
             scaleErr=scaleErr,
@@ -659,3 +754,123 @@ class BrightStarCutoutTask(PipelineTask):
             psfDegreesOfFreedom=psfBBoxDegreesOfFreedom,
             psfMaskedFluxFrac=psfMaskedFluxFrac,
         )
+
+    def add_psf_mask(self, psfImage, stampMI, maskZeros=True):
+        """
+        Creates a new mask by adding PSF bad pixels to an existing stamp mask.
+
+        This method identifies "bad" pixels in the PSF image (NaNs and
+        optionally zeros/non-positives) and adds them to a deep copy
+        of the input stamp's mask.
+
+        Args:
+            psfImage : `~lsst.afw.image.ImageD` | `~lsst.afw.image.ImageF`
+                The PSF image object.
+            stampMI: `~lsst.afw.image.MaskedImageF`
+                The masked image of the bright star cutout.
+            maskZeros (bool, optional): If True (default), mask pixels
+                where the PSF is <= 0. If False, only mask pixels < 0.
+
+        Returns:
+            Any: A new mask object (deep copy) with the PSF mask planes added.
+        """
+        cond = np.isnan(psfImage.array)
+        if maskZeros:
+            cond |= psfImage.array <= 0
+        else:
+            cond |= psfImage.array < 0
+        mask = deepcopy(stampMI.mask)
+        mask.array[cond] = np.bitwise_or(mask.array[cond], 1)
+        return mask
+
+    def _removePedestalAndGradient(self, stampMI, pedestal, xGradient, yGradient):
+        """Apply fitted pedestal and gradients to a single bright star stamp."""
+        stampBBox = stampMI.getBBox()
+        xGrid, yGrid = np.meshgrid(stampBBox.getX().arange(), stampBBox.getY().arange())
+        xPlane = ImageF((xGrid * xGradient).astype(np.float32), xy0=stampMI.getXY0())
+        yPlane = ImageF((yGrid * yGradient).astype(np.float32), xy0=stampMI.getXY0())
+        stampMI -= pedestal
+        stampMI -= xPlane
+        stampMI -= yPlane
+
+    def remove_star(self, stampMI, scale, psfImage):
+        """
+        Subtracts a scaled PSF model from a star image.
+
+        This performs a simple subtraction: `image - (psf * scale)`.
+
+        Args:
+            stampMI: `~lsst.afw.image.MaskedImageF`
+                The masked image of the bright star cutout.
+            scale (float): The scaling factor to apply to the PSF.
+            psfImage: `~lsst.afw.image.ImageD` | `~lsst.afw.image.ImageF`
+                The PSF image object.
+
+        Returns:
+            np.ndarray: A new 2D numpy array containing the star-subtracted
+            image.
+        """
+        star_removed_cutout = stampMI.image.array - psfImage.array * scale
+        return star_removed_cutout
+
+    def computeModelScale(self, stampMI, psfImage):
+        """
+        Computes the scaling factor of the given model against a star.
+
+        Args:
+            stampMI : `~lsst.afw.image.MaskedImageF`
+                The masked image of the bright star cutout.
+            psfImage : `~lsst.afw.image.ImageD` | `~lsst.afw.image.ImageF`
+                The given PSF model.
+        """
+        cond = stampMI.mask.array == 0
+        self.starMedianValue = np.median(stampMI.image.array[cond]).astype(np.float64)
+
+        psfPos = psfImage.array > 0
+
+        imageArray = stampMI.image.array - self.starMedianValue
+        imageArrayPos = imageArray > 0
+        self.modelScale = np.nanmean(imageArray[imageArrayPos]) / np.nanmean(psfImage.array[psfPos])
+
+    def generate_gradient_spans(self, stampMI, badMaskBitMask):
+        """
+        Generates spans of "good" pixels for gradient fitting.
+
+        This method creates a combined bitmask by OR-ing the provided
+        `badMaskBitMask` with the "DETECTED" plane from the stamp's mask.
+        It then calls `self.generate_good_spans` to find all pixel spans
+        not covered by this combined mask.
+
+        Args:
+            stampMI: `~lsst.afw.image.MaskedImageF`
+                The masked image of the bright star cutout.
+            badMaskBitMask (int): A bitmask representing planes to be
+                considered "bad" for gradient fitting.
+
+        Returns:
+            gradientGoodSpans: A SpanSet object containing the "good" spans.
+        """
+        detectedMaskBitMask = stampMI.mask.getPlaneBitMask("DETECTED")
+        gradientBitMask = np.bitwise_or(badMaskBitMask, detectedMaskBitMask)
+
+        gradientGoodSpans = self.generate_good_spans(stampMI.mask, stampMI.getBBox(), gradientBitMask)
+        return gradientGoodSpans
+
+    def generate_good_spans(self, mask, bBox, badBitMask):
+        """
+        Generates a SpanSet of "good" pixels from a mask.
+
+        This method identifies all spans within a given bounding box (`bBox`)
+        that are *not* flagged by the `badBitMask` in the provided `mask`.
+
+        Args:
+            mask (lsst.afw.image.MaskedImageF.mask): The mask object (e.g., `stampMI.mask`).
+            bBox (lsst.geom.Box2I): The bounding box of the image (e.g., `stampMI.getBBox()`).
+            badBitMask (int): The combined bitmask of planes to exclude.
+
+        Returns:
+            goodSpans: A SpanSet object representing all "good" spans.
+        """
+        badSpans = SpanSet.fromMask(mask, badBitMask)
+        goodSpans = SpanSet(bBox).intersectNot(badSpans)
+        return goodSpans
