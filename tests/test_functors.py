@@ -766,10 +766,6 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
         """Test conversion of position angle err in detector degrees to
         position angle erron sky
         """
-        import pydevd_pycharm
-        pydevd_pycharm.settrace('localhost', port=8888, stdoutToServer=True,
-                                stderrToServer=True)
-
         dipoleSep = 10
         ixx = 10
         testPixelDeltas = np.random.uniform(-100, 100, size=(self.nRecords, 2))
