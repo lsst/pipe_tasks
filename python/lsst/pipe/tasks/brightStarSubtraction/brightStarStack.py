@@ -178,8 +178,6 @@ class BrightStarStackTask(PipelineTask):
             stamps = stampsDDH.get()
             all_stars += len(stamps)
             for stamp in stamps:
-                # print("globalReducedChiSquared: stamp ", stamp.globalReducedChiSquared, "config ", self.config.globalReducedChiSquaredThreshold)
-                # print("psfReducedChiSquared: stamp ", stamp.psfReducedChiSquared, "config ", self.config.psfReducedChiSquaredThreshold)
                 if (
                     stamp.globalReducedChiSquared > self.config.globalReducedChiSquaredThreshold
                     or stamp.psfReducedChiSquared > self.config.psfReducedChiSquaredThreshold
