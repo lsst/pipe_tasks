@@ -1433,6 +1433,9 @@ class LocalWcs(Functor):
 
         pa_err = np.rad2deg(np.abs(dPA_dtheta) * theta_err)
 
+        logging.info("PA Error: %s" % pa_err)
+        logging.info("theta_err: %s" % theta_err)
+
         return pa_err
 
 
