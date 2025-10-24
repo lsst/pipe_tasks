@@ -51,7 +51,8 @@ class BrightStarCutoutTestCase(lsst.utils.tests.TestCase):
         psfArray = np.exp(-dist_from_center / 5)
         psfArray /= np.sum(psfArray)
         fixedKernel = FixedKernel(ImageD(psfArray))
-        self.psf = KernelPsf(fixedKernel)
+        psf = KernelPsf(fixedKernel)
+        self.psf = psf.computeKernelImage(psf.getAveragePosition())
 
         # Bring everything together to construct a stamp masked image
         stampArray = psfArray * self.scale + pedestal + xPlane * self.xGradient + yPlane * self.yGradient
@@ -83,10 +84,10 @@ class BrightStarCutoutTestCase(lsst.utils.tests.TestCase):
             self.stampMI,
             self.psf,
         )
-        self.assertAlmostEqual(fitPsfResults["scale"], self.scale, delta=1e-3)
-        self.assertAlmostEqual(fitPsfResults["pedestal"], self.pedestal, delta=1e-5)
-        self.assertAlmostEqual(fitPsfResults["xGradient"], self.xGradient, delta=1e-7)
-        self.assertAlmostEqual(fitPsfResults["yGradient"], self.yGradient, delta=1e-7)
+        assert abs(fitPsfResults["scale"] - self.scale) / self.scale < 1e-6
+        assert abs(fitPsfResults["pedestal"] - self.pedestal) / self.pedestal < 1e-6
+        assert abs(fitPsfResults["xGradient"] - self.xGradient) / self.xGradient < 1e-6
+        assert abs(fitPsfResults["yGradient"] - self.yGradient) / self.yGradient < 1e-6
 
 
 def setup_module(module):
