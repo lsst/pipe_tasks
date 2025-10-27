@@ -194,6 +194,14 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
     )
 
     # Optional outputs
+    mask = connectionTypes.Output(
+        doc="The mask plane of the calibrated exposure, written as a separate "
+            "output so that it can be passed to downstream tasks even if the "
+            "exposure is removed to save storage.",
+        name="preliminary_visit_mask",
+        storageClass="Mask",
+        dimensions=("instrument", "visit", "detector"),
+    )
     psf_stars_footprints = connectionTypes.Output(
         doc="Catalog of bright unresolved sources detected on the exposure used for PSF determination; "
             "includes source footprints.",
@@ -230,6 +238,8 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
             del self.astrometry_matches
         if "photometry_matches" not in config.optional_outputs:
             del self.photometry_matches
+        if "mask" not in config.optional_outputs:
+            del self.mask
         if not config.do_calibrate_pixels:
             del self.applied_photo_calib
         if not config.do_illumination_correction:
@@ -246,7 +256,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         dtype=str,
         # TODO: note somewhere to disable this for benchmarking, but should
         # we always have it on for production runs?
-        default=["psf_stars", "psf_stars_footprints", "astrometry_matches", "photometry_matches"],
+        default=["psf_stars", "psf_stars_footprints", "astrometry_matches", "photometry_matches", "mask"],
         optional=False
     )
 
@@ -848,6 +858,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             ``photometry_matches``
                 Reference catalog stars matches used in the photometric fit.
                 (`list` [`lsst.afw.table.ReferenceMatch`] or `lsst.afw.table.BaseCatalog`)
+            ``mask``
+                Copy of the mask plane of `exposure`.
+                (`lsst.afw.image.Mask`)
         """
         if result is None:
             result = pipeBase.Struct()
@@ -967,6 +980,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                                                                 photometry_meta)
             if self.config.doMaskDiffractionSpikes:
                 self.diffractionSpikeMask.run(result.exposure)
+            if "mask" in self.config.optional_outputs:
+                result.mask = result.exposure.mask.clone()
         except pipeBase.AlgorithmError:
             if not have_fit_psf:
                 result.exposure.setPsf(None)
