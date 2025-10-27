@@ -148,11 +148,16 @@ class GenerateEphemeridesConnections(PipelineTaskConnections,
 class GenerateEphemeridesConfig(
         PipelineTaskConfig,
         pipelineConnections=GenerateEphemeridesConnections):
-    observerCode = pexConfig.Field(
+    observatoryCode = pexConfig.Field(
         dtype=str,
         doc="IAU Minor Planet Center observer code for queries "
             "(default is X05 for Rubin Obs./LSST)",
         default='X05'
+    )
+    observatoryFOVRadius = pexConfig.Field(
+        dtype=float,
+        doc="The field of view of the observatory (degrees)",
+        default=2.06,
     )
 
 
@@ -264,8 +269,11 @@ class GenerateEphemeridesTask(PipelineTask):
         inputColors = inputOrbits[["ObjID"]].copy()
         inputColors["H_r"] = mpcorb['h']
         inputColors["GS"] = 0.15 # Traditional
+
         eph_str = resources.files(lsst.pipe.tasks).parents[3].joinpath("data/eph.ini").read_text()
-        # same as code
+        eph_str = eph_str.replace("{OBSCODE}", self.config.observatoryCode)
+        eph_str = eph_str.replace("{FOV}", str(self.config.observatoryFOVRadius))
+
         with tempfile.TemporaryDirectory() as tmpdirname:
             self.log.info(f'temp dir: {tmpdirname}')
             
