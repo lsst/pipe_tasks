@@ -73,7 +73,7 @@ class BrightStarCutoutConnections(
 ):
     """Connections for BrightStarCutoutTask."""
 
-    refCat = PrerequisiteInput(
+    ref_cat = PrerequisiteInput(
         name="gaia_dr3_20230707",
         storageClass="SimpleCatalog",
         doc="Reference catalog that contains bright star positions.",
@@ -81,26 +81,26 @@ class BrightStarCutoutConnections(
         multiple=True,
         deferLoad=True,
     )
-    inputExposure = Input(
-        name="calexp",
+    input_image = Input(
+        name="preliminary_visit_image",
         storageClass="ExposureF",
         doc="Background-subtracted input exposure from which to extract bright star stamp cutouts.",
         dimensions=("visit", "detector"),
     )
-    inputBackground = Input(
-        name="calexpBackground",
+    input_background = Input(
+        name="preliminary_visit_image_background",
         storageClass="Background",
         doc="Background model for the input exposure, to be added back on during processing.",
         dimensions=("visit", "detector"),
     )
-    extendedPsf = Input(
-        name="extendedPsf2",
+    extended_psf = Input(
+        name="extended_psf",
         storageClass="ImageF",
         doc="Extended PSF model, built from stacking bright star cutouts.",
         dimensions=("band",),
     )
-    brightStarStamps = Output(
-        name="brightStarStamps",
+    bright_star_stamps = Output(
+        name="bright_star_stamps",
         storageClass="BrightStarStamps",
         doc="Set of preprocessed postage stamp cutouts, each centered on a single bright star.",
         dimensions=("visit", "detector"),
@@ -110,7 +110,7 @@ class BrightStarCutoutConnections(
         super().__init__(config=config)
         assert config is not None
         if not config.useExtendedPsf:
-            self.inputs.remove("extendedPsf")
+            self.inputs.remove("extended_psf")
 
 
 class BrightStarCutoutConfig(
@@ -124,18 +124,22 @@ class BrightStarCutoutConfig(
         doc="Magnitude range in Gaia G. Cutouts will be made for all stars in this range.",
         default=[0, 18],
     )
-    excludeArcsecRadius = Field[float](
-        doc="Stars with a star in the range ``excludeMagRange`` mag in ``excludeArcsecRadius`` are not used.",
+    excludeRadiusArcsec = Field[float](
+        doc="Stars with a star in the range ``excludeMagRange`` mag in ``excludeRadiusArcsec`` are not used.",
         default=5,
     )
     excludeMagRange = ListField[float](
-        doc="Stars with a star in the range ``excludeMagRange`` mag in ``excludeArcsecRadius`` are not used.",
+        doc="Stars with a star in the range ``excludeMagRange`` mag in ``excludeRadiusArcsec`` are not used.",
         default=[0, 20],
     )
     minAreaFraction = Field[float](
         doc="Minimum fraction of the stamp area, post-masking, that must remain for a cutout to be retained.",
         default=0.1,
     )
+    # offFrameMagLim = Field[float](
+    #     doc="Stars fainter than this limit are only included if they appear within the frame boundaries.",
+    #     default=15.0,
+    # )
     badMaskPlanes = ListField[str](
         doc="Mask planes that identify excluded pixels for the calculation of ``minAreaFraction`` and, "
         "optionally, fitting of the PSF.",
@@ -151,6 +155,8 @@ class BrightStarCutoutConfig(
             NEIGHBOR_MASK_PLANE,
         ],
     )
+
+    # Stamp configuration
     stampSize = ListField[int](
         doc="Size of the stamps to be extracted, in pixels.",
         default=(251, 251),
@@ -179,18 +185,18 @@ class BrightStarCutoutConfig(
             "lanczos5": "Lanczos kernel of order 5",
         },
     )
-    scalePsfModel = Field[bool](
-        doc="If True, uses a scale factor to bring the PSF model data to the same level as the star data.",
-        default=True,
-    )
+    # scalePsfModel = Field[bool](
+    #     doc="If True, uses a scale factor to bring the PSF model data to the same level as the star data.",
+    #     default=True,
+    # )
 
     # PSF Fitting
     useExtendedPsf = Field[bool](
-        doc="Use the extended PSF model to normalize bright star cutouts.",
+        doc="Use the extended PSF model to estimate the bright star cutout normalization factor.",
         default=False,
     )
     doFitPsf = Field[bool](
-        doc="Fit a scaled PSF and a pedestal to each bright star cutout.",
+        doc="Fit a scaled PSF and a simple background to each bright star cutout.",
         default=True,
     )
     useMedianVariance = Field[bool](
@@ -202,12 +208,8 @@ class BrightStarCutoutConfig(
         default=0.97,
     )
     fitIterations = Field[int](
-        doc="Number of iterations over pedestal-gradient and scaling fit.",
+        doc="Number of iterations to constrain PSF fitting.",
         default=5,
-    )
-    offFrameMagLim = Field[float](
-        doc="Stars fainter than this limit are only included if they appear within the frame boundaries.",
-        default=15.0,
     )
 
     # Misc
@@ -226,7 +228,7 @@ class BrightStarCutoutTask(PipelineTask):
     catalog and extracts a stamp around each.
     Second, it shifts and warps each stamp to remove optical distortions and
     sample all stars on the same pixel grid.
-    Finally, it optionally fits a PSF plus plane flux model to the cutout.
+    Finally, it optionally fits a PSF and a simple background model.
     This final fitting procedure may be used to normalize each bright star
     stamp prior to stacking when producing extended PSF models.
     """
@@ -237,39 +239,39 @@ class BrightStarCutoutTask(PipelineTask):
 
     def __init__(self, initInputs=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        stampSize = Extent2D(*self.config.stampSize.list())
-        stampRadius = floor(stampSize / 2)
-        self.stampBBox = Box2I(corner=Point2I(0, 0), dimensions=Extent2I(1, 1)).dilatedBy(stampRadius)
-        paddedStampSize = stampSize * self.config.stampSizePadding
-        self.paddedStampRadius = floor(paddedStampSize / 2)
-        self.paddedStampBBox = Box2I(corner=Point2I(0, 0), dimensions=Extent2I(1, 1)).dilatedBy(
-            self.paddedStampRadius
+        stamp_size = Extent2D(*self.config.stampSize.list())
+        stamp_radius = floor(stamp_size / 2)
+        self.stamp_bbox = Box2I(corner=Point2I(0, 0), dimensions=Extent2I(1, 1)).dilatedBy(stamp_radius)
+        padded_stamp_size = stamp_size * self.config.stampSizePadding
+        self.padded_stamp_radius = floor(padded_stamp_size / 2)
+        self.padded_stamp_bbox = Box2I(corner=Point2I(0, 0), dimensions=Extent2I(1, 1)).dilatedBy(
+            self.padded_stamp_radius
         )
-        self.modelScale = 1
+        # self.modelScale = 1
 
-    def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        inputs = butlerQC.get(inputRefs)
-        inputs["dataId"] = butlerQC.quantum.dataId
-        refObjLoader = ReferenceObjectLoader(
-            dataIds=[ref.datasetRef.dataId for ref in inputRefs.refCat],
-            refCats=inputs.pop("refCat"),
-            name=self.config.connections.refCat,
+    def runQuantum(self, butlerQC, input_refs, output_refs):
+        inputs = butlerQC.get(input_refs)
+        inputs["data_id"] = butlerQC.quantum.dataId
+        ref_obj_loader = ReferenceObjectLoader(
+            dataIds=[ref.datasetRef.dataId for ref in input_refs.ref_cat],
+            refCats=inputs.pop("ref_cat"),
+            name=self.config.connections.ref_cat,
             config=self.config.loadReferenceObjectsConfig,
         )
-        extendedPsf = inputs.pop("extendedPsf", None)
-        output = self.run(**inputs, extendedPsf=extendedPsf, refObjLoader=refObjLoader)
+        extended_psf = inputs.pop("extended_psf", None)
+        output = self.run(**inputs, extended_psf=extended_psf, ref_obj_loader=ref_obj_loader)
         # Only ingest Stamp if it exists; prevents ingesting an empty FITS file
         if output:
-            butlerQC.put(output, outputRefs)
+            butlerQC.put(output, output_refs)
 
     @timeMethod
     def run(
         self,
-        inputExposure: ExposureF,
-        inputBackground: BackgroundList,
-        extendedPsf: ImageF | None,
-        refObjLoader: ReferenceObjectLoader,
-        dataId: dict[str, Any] | DataCoordinate,
+        input_image: ExposureF,
+        input_background: BackgroundList,
+        extended_psf: ImageF | None,
+        ref_obj_loader: ReferenceObjectLoader,
+        data_id: dict[str, Any] | DataCoordinate,
     ):
         """Identify bright stars within an exposure using a reference catalog,
         extract stamps around each, warp/shift stamps onto a common frame and
@@ -277,29 +279,32 @@ class BrightStarCutoutTask(PipelineTask):
 
         Parameters
         ----------
-        inputExposure : `~lsst.afw.image.ExposureF`
-            The background-subtracted image to extract bright star stamps.
-        inputBackground : `~lsst.afw.math.BackgroundList`
+        input_image : `~lsst.afw.image.ExposureF`
+            The background-subtracted image to extract bright star stamps from.
+        input_background : `~lsst.afw.math.BackgroundList`
             The background model associated with the input exposure.
-        refObjLoader : `~lsst.meas.algorithms.ReferenceObjectLoader`, optional
+        extended_psf : `~lsst.afw.image.ImageF` | `None`
+            The extended PSF model, built from stacking bright star cutouts.
+        ref_obj_loader :
+                `~lsst.meas.algorithms.ReferenceObjectLoader`, optional
             Loader to find objects within a reference catalog.
-        dataId : `dict` or `~lsst.daf.butler.DataCoordinate`
-            The dataId of the exposure that bright stars are extracted from.
+        data_id : `dict` or `~lsst.daf.butler.DataCoordinate`
+            The data ID of the detector that bright stars are extracted from.
             Both 'visit' and 'detector' will be persisted in the output data.
 
         Returns
         -------
-        brightStarResults : `~lsst.pipe.base.Struct`
+        bright_star_stamps_results : `~lsst.pipe.base.Struct`
             Results as a struct with attributes:
 
-            ``brightStarStamps``
+            ``bright_star_stamps``
                 (`~lsst.meas.algorithms.brightStarStamps.BrightStarStamps`)
         """
-        wcs = inputExposure.getWcs()
-        bbox = inputExposure.getBBox()
-        warpingControl = WarpingControl(self.config.warpingKernelName, self.config.maskWarpingKernelName)
+        wcs = input_image.getWcs()
+        bbox = input_image.getBBox()
 
-        refCatBright = self._getRefCatBright(refObjLoader, wcs, bbox)
+        # Get reference catalog stars
+        ref_cat = self._get_ref_cat(ref_obj_loader, wcs, bbox)
         zipRaDec = zip(refCatBright["coord_ra"] * radians, refCatBright["coord_dec"] * radians)
         spherePoints = [SpherePoint(ra, dec) for ra, dec in zipRaDec]
         pixCoords = wcs.skyToPixel(spherePoints)
@@ -323,6 +328,7 @@ class BrightStarCutoutTask(PipelineTask):
         )
 
         # Loop over each bright star
+        warpingControl = WarpingControl(self.config.warpingKernelName, self.config.maskWarpingKernelName)
         stamps, goodFracs, stamps_fitPsfResults = [], [], []
         for starIndex, (obj, pixCoord) in enumerate(zip(refCatBright, pixCoords)):  # type: ignore
             # Excluding faint stars that are not within the frame.
@@ -454,8 +460,8 @@ class BrightStarCutoutTask(PipelineTask):
             return False
         return True
 
-    def _getRefCatBright(self, refObjLoader: ReferenceObjectLoader, wcs: SkyWcs, bbox: Box2I) -> Table:
-        """Get a bright star subset of the reference catalog.
+    def _get_ref_cat(self, ref_obj_loader: ReferenceObjectLoader, wcs: SkyWcs, bbox: Box2I) -> Table:
+        """Get a subset of the reference catalog.
 
         Trim the reference catalog to only those objects within the exposure
         bounding box dilated by half the bright star stamp size.
@@ -463,48 +469,51 @@ class BrightStarCutoutTask(PipelineTask):
 
         Parameters
         ----------
-        refObjLoader : `~lsst.meas.algorithms.ReferenceObjectLoader`
+        ref_obj_loader : `~lsst.meas.algorithms.ReferenceObjectLoader`
             Loader to find objects within a reference catalog.
         wcs : `~lsst.afw.geom.SkyWcs`
             World coordinate system.
         bbox : `~lsst.geom.Box2I`
-            Bounding box of the exposure.
+            Bounding box of the image.
 
         Returns
         -------
-        refCatBright : `~astropy.table.Table`
-            Bright star subset of the reference catalog.
+        ref_cat : `~astropy.table.Table`
+            Subset of the reference catalog.
         """
-        dilatedBBox = bbox.dilatedBy(self.paddedStampRadius)
-        withinExposure = refObjLoader.loadPixelBox(dilatedBBox, wcs, filterName="phot_g_mean")
-        refCatFull = withinExposure.refCat
-        fluxField: str = withinExposure.fluxField
+        # Get all stars within a dilated bbox
+        dilated_bbox = bbox.dilatedBy(self.padded_stamp_radius)
+        within_dilated_bbox = ref_obj_loader.loadPixelBox(dilated_bbox, wcs, filterName="phot_g_mean")
+        ref_cat_full = within_dilated_bbox.refCat
+        flux_field: str = within_dilated_bbox.fluxField
 
-        proxFluxRange = sorted(((self.config.excludeMagRange * u.ABmag).to(u.nJy)).to_value())
-        brightFluxRange = sorted(((self.config.magRange * u.ABmag).to(u.nJy)).to_value())
-
-        subsetStars = (refCatFull[fluxField] > np.min((proxFluxRange[0], brightFluxRange[0]))) & (
-            refCatFull[fluxField] < np.max((proxFluxRange[1], brightFluxRange[1]))
+        # Trim to stars within the desired magnitude range
+        flux_range_nearby = sorted(((self.config.excludeMagRange * u.ABmag).to(u.nJy)).to_value())
+        flux_range_bright = sorted(((self.config.magRange * u.ABmag).to(u.nJy)).to_value())
+        stars_magnitude_limited = (
+            ref_cat_full[flux_field] > np.min((flux_range_nearby[0], flux_range_bright[0]))
+        ) & (ref_cat_full[flux_field] < np.max((flux_range_nearby[1], flux_range_bright[1])))
+        ref_cat_subset = Table(
+            ref_cat_full.extract("id", "coord_ra", "coord_dec", flux_field, where=stars_magnitude_limited)
         )
-        refCatSubset = Table(refCatFull.extract("id", "coord_ra", "coord_dec", fluxField, where=subsetStars))
-
-        proxStars = (refCatSubset[fluxField] >= proxFluxRange[0]) & (
-            refCatSubset[fluxField] <= proxFluxRange[1]
+        stars_nearby = (ref_cat_subset[flux_field] >= flux_range_nearby[0]) & (
+            ref_cat_subset[flux_field] <= flux_range_nearby[1]
         )
-        brightStars = (refCatSubset[fluxField] >= brightFluxRange[0]) & (
-            refCatSubset[fluxField] <= brightFluxRange[1]
+        stars_bright = (ref_cat_subset[flux_field] >= flux_range_bright[0]) & (
+            ref_cat_subset[flux_field] <= flux_range_bright[1]
         )
 
-        coords = SkyCoord(refCatSubset["coord_ra"], refCatSubset["coord_dec"], unit="rad")
-        excludeArcsecRadius = self.config.excludeArcsecRadius * u.arcsec  # type: ignore
-        refCatBrightIsolated = []
-        for coord in cast(Iterable[SkyCoord], coords[brightStars]):
-            neighbors = coords[proxStars]
-            seps = coord.separation(neighbors).to(u.arcsec)
-            tooClose = (seps > 0) & (seps <= excludeArcsecRadius)  # not self matched
-            refCatBrightIsolated.append(not tooClose.any())
-
-        refCatBright = cast(Table, refCatSubset[brightStars][refCatBrightIsolated])
+        # Exclude stars with bright enough neighbors in a specified radius
+        coords = SkyCoord(ref_cat_subset["coord_ra"], ref_cat_subset["coord_dec"], unit="rad")
+        exclude_radius_arcsec = self.config.excludeRadiusArcsec * u.arcsec
+        ref_cat_bright_isolated = []
+        for coord in cast(Iterable[SkyCoord], coords[stars_bright]):
+            neighbors = coords[stars_nearby]
+            separations = coord.separation(neighbors).to(u.arcsec)
+            too_close = (separations > 0) & (separations <= exclude_radius_arcsec)  # ensure not self matched
+            ref_cat_bright_isolated.append(not too_close.any())
+        ref_cat_bright = cast(Table, ref_cat_subset[stars_bright][ref_cat_bright_isolated])
+        breakpoint()
 
         fluxNanojansky = refCatBright[fluxField][:] * u.nJy  # type: ignore
         refCatBright["mag"] = fluxNanojansky.to(u.ABmag).to_value()  # AB magnitudes
@@ -652,7 +661,7 @@ class BrightStarCutoutTask(PipelineTask):
 
         for i in range(self.config.fitIterations):
             # Gradient-pedestal fitting:
-            if i:
+            if i > 0:
                 # if i > 0, there should be scale factor from the previous fit iteration. Therefore, we can
                 # remove the star using the scale factor.
                 stamp = self.remove_star(stampMI, scale, paddedPsfImage)  # noqa: F821
