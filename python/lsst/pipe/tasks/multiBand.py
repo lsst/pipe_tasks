@@ -35,9 +35,15 @@ from lsst.pipe.base import (
 )
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.config import Field, ConfigurableField, ChoiceField
-from lsst.meas.algorithms import DynamicDetectionTask, ReferenceObjectLoader, ScaleVarianceTask, \
-    SetPrimaryFlagsTask
-from lsst.meas.algorithms.subtractBackground import TooManyMaskedPixelsError
+from lsst.meas.algorithms import (
+    DynamicDetectionTask,
+    ExceedsMaxVarianceScaleError,
+    InsufficientSourcesError,
+    ReferenceObjectLoader,
+    ScaleVarianceTask,
+    SetPrimaryFlagsTask,
+    TooManyMaskedPixelsError,
+)
 from lsst.meas.base import (
     SingleFrameMeasurementTask,
     ApplyApCorrTask,
@@ -254,7 +260,7 @@ class DetectCoaddSourcesTask(PipelineTask):
                 expId=idGenerator.catalog_id,
                 patchInfo=patchInfo,
             )
-        except TooManyMaskedPixelsError as e:
+        except (TooManyMaskedPixelsError, ExceedsMaxVarianceScaleError, InsufficientSourcesError) as e:
             if self.config.writeEmptyBackgrounds:
                 butlerQC.put(self._makeEmptyBackground(exposure, patchInfo), outputRefs.outputBackgrounds)
             error = AnnotatedPartialOutputsError.annotate(
