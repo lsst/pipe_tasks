@@ -32,12 +32,12 @@ providing it with all required input files and reading the Sorcha-generated
 ephemerides from a csv. While awkward and un-pipetask-like, it works and takes
 advantage of Sorcha's as-designed speed.
 
-Eventually, this should be replaced with adam_core's ephemeris generation 
+Eventually, this should be replaced with adam_core's ephemeris generation
 tools which propagate forward orbital uncertainty into on-sky ellipses.
 Doing so will require re-implementing the healpix binning method described
 in https://arxiv.org/abs/2506.02140. Doing so will not only improve this code
 but also allow on-sky uncertainties to be used during association. When this is
-done, mpsky should be modified to do the same. 
+done, mpsky should be modified to do the same.
 """
 
 __all__ = ["GenerateEphemeridesConfig", "GenerateEphemeridesTask"]
@@ -52,25 +52,22 @@ import subprocess
 import tempfile
 
 
-import lsst.daf.butler as dafButler
-from lsst.geom import SpherePoint, degrees
 import lsst.pex.config as pexConfig
 from lsst.pipe.base import connectionTypes, NoWorkFound, PipelineTask, \
     PipelineTaskConfig, PipelineTaskConnections, Struct
 import lsst.pipe.tasks
-from lsst.pipe.tasks.associationUtils import obj_id_to_ss_object_id
-from lsst.sphgeom import ConvexPolygon
 from lsst.utils.timer import timeMethod
 
+
 class GenerateEphemeridesConnections(PipelineTaskConnections,
-                                        dimensions=("instrument",)):
+                                     dimensions=("instrument",)):
 
     visitSummaries = connectionTypes.Input(
         doc="Summary of visit information including ra, dec, and time",
         name="preliminary_visit_summary",
         storageClass="ExposureCatalog",
         dimensions={"instrument", "visit"},
-        multiple = True
+        multiple=True
     )
     mpcorb = connectionTypes.Input(
         doc="Minor Planet Center orbit table used for association",
@@ -142,7 +139,6 @@ class GenerateEphemeridesConnections(PipelineTaskConnections,
         dimensions=("instrument", "visit"),
         multiple=True,
     )
-    
 
 
 class GenerateEphemeridesConfig(
@@ -202,7 +198,6 @@ class GenerateEphemeridesTask(PipelineTask):
             ephemeris_visit = outputs.ssObjects[dataId['visit']]
             butlerQC.put(ephemeris_visit, ref)
 
-
     @timeMethod
     def run(self, visitSummaries, mpcorb, de440s, sb441_n16, obsCodes, linux_p1550p2650, pck00010,
             earth_latest_high_prec, earth_620120_250826, earth_2025_250826_2125_predict, naif0012):
@@ -229,7 +224,7 @@ class GenerateEphemeridesTask(PipelineTask):
                     RA in decimal degrees (`float`)
                 ``dec``
                     DEC in decimal degrees (`float`)
-                
+
         """
         if len(visitSummaries) == 0:
             raise NoWorkFound("No visits input!")
@@ -247,7 +242,7 @@ class GenerateEphemeridesTask(PipelineTask):
             "fieldRA": fieldRA,
             "fieldDec": fieldDec,
             "observationId": visits,
-            "visitTime" : np.ones(n) * visitTime,
+            "visitTime": np.ones(n) * visitTime,
             "observationStartMJD": epochMJD - (visitTime / 2) / 86400.0,
             "visitExposureTime": visitTime,
 
@@ -258,17 +253,18 @@ class GenerateEphemeridesTask(PipelineTask):
             "fiveSigmaDepth": [-1] * n,
             "rotSkyPos": [-1] * n,
         })
-        mpcorb = mpcorb.iloc[:10_000] # TODO: remove
+        mpcorb = mpcorb.iloc[:10_000]  # TODO: remove
 
         inputOrbits = mpcorb[
-            ['packed_primary_provisional_designation', 'q', 'e', 'i', 'node','argperi','peri_time','epoch_mjd']
+            ['packed_primary_provisional_designation', 'q', 'e', 'i',
+             'node', 'argperi', 'peri_time', 'epoch_mjd']
         ].rename(columns={'packed_primary_provisional_designation': 'ObjID', 'epoch_mjd': 'epochMJD_TDB',
                           'i': 'inc', 'argperi': 'argPeri', 'peri_time': 't_p_MJD_TDB'})
         inputOrbits['FORMAT'] = 'COM'
         # Colors exactly like jake's prep_input_colors
         inputColors = inputOrbits[["ObjID"]].copy()
         inputColors["H_r"] = mpcorb['h']
-        inputColors["GS"] = 0.15 # Traditional
+        inputColors["GS"] = 0.15  # Traditional
 
         eph_str = resources.files(lsst.pipe.tasks).parents[3].joinpath("data/eph.ini").read_text()
         eph_str = eph_str.replace("{OBSCODE}", self.config.observatoryCode)
@@ -276,7 +272,7 @@ class GenerateEphemeridesTask(PipelineTask):
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             self.log.info(f'temp dir: {tmpdirname}')
-            
+
             # Orbits
             inputOrbits.to_csv(f'{tmpdirname}/orbits.csv', index=False)
             # Observations SQLite
@@ -287,9 +283,8 @@ class GenerateEphemeridesTask(PipelineTask):
             open(f'{tmpdirname}/eph.ini', 'w').write(eph_str)
             inputColors.to_csv(f'{tmpdirname}/colors.csv', index=False)
 
-            
             cache = f'{tmpdirname}/sorcha_cache/'
-            self.log.info(f'making cache')
+            self.log.info('making cache')
             os.mkdir(cache)
             # DONE
             for filename, fileref in [
@@ -344,11 +339,12 @@ KERNELS_TO_LOAD=(
 
             self.log.info(f"Sorcha STDOUT:\n {result.stdout}")
             self.log.info(f"Sorcha STDERR:\n {result.stderr}")
-            
+
             eph_path = f'{tmpdirname}/ephemeris.csv'
             if not os.path.exists(eph_path):
                 raise FileNotFoundError(
-                    f" Sorcha did not create ephemeris. Check STDOUT/STDERR above. Directory contents:\n{os.listdir(tmpdirname)}"
+                    " Sorcha did not create ephemeris. Check STDOUT/STDERR above. "
+                    f"Directory contents:\n{os.listdir(tmpdirname)}"
                 )
 
             # Return Sorcha output directly
@@ -358,7 +354,3 @@ KERNELS_TO_LOAD=(
             if v not in perVisitSsObjects:
                 perVisitSsObjects[v] = ephemeris.iloc[:0]
         return Struct(ssObjects=perVisitSsObjects)
-
-
-    
-

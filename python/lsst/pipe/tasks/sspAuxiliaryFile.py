@@ -11,8 +11,10 @@ class SSPAuxiliaryFile():
     solar system object ephemeris calculations.
     """
     fileContents = None
+
     def __init__(self, fileContents):
         self.fileContents = fileContents
+
 
 class SSPAuxiliaryFileFormatter(FormatterV2):
     """Formatter for SSP Auxiliary Files.
