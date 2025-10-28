@@ -270,7 +270,6 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                                                    innerTractSkyRegion,
                                                    skyInfo.wcs)
                 associatedSsSources = associatedSsSources[ssInTractPatch]
-                print('masked', len(ssInTractPatch), 'ssSources to', sum(ssInTractPatch), 'in tract-patch')
                 assocDiaSrcIds = set(associatedSsSources['diaSourceId'])
                 diaSrcMask = [diaId in assocDiaSrcIds for diaId in associatedSsDiaSources['diaSourceId']]
                 associatedSsDiaSources = associatedSsDiaSources[np.array(diaSrcMask)]
