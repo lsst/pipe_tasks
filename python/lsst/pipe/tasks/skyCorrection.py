@@ -42,36 +42,6 @@ from lsst.pipe.tasks.background import (
 from lsst.pipe.tasks.visualizeVisit import VisualizeMosaicExpConfig, VisualizeMosaicExpTask
 
 
-def _skyFrameLookup(datasetType, registry, quantumDataId, collections):
-    """Lookup function to identify sky frames.
-
-    Parameters
-    ----------
-    datasetType : `lsst.daf.butler.DatasetType`
-        Dataset to lookup.
-    registry : `lsst.daf.butler.Registry`
-        Butler registry to query.
-    quantumDataId : `lsst.daf.butler.DataCoordinate`
-        Data id to transform to find sky frames.
-        The ``detector`` entry will be stripped.
-    collections : `lsst.daf.butler.CollectionSearch`
-        Collections to search through.
-
-    Returns
-    -------
-    results : `list` [`lsst.daf.butler.DatasetRef`]
-        List of datasets that will be used as sky calibration frames.
-    """
-    newDataId = quantumDataId.subset(registry.dimensions.conform(["instrument", "visit"]))
-    skyFrames = []
-    for dataId in registry.queryDataIds(["visit", "detector"], dataId=newDataId).expanded():
-        skyFrame = registry.findDataset(
-            datasetType, dataId, collections=collections, timespan=dataId.timespan
-        )
-        skyFrames.append(skyFrame)
-    return skyFrames
-
-
 def _reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):
     """Match the order of one list to another, padding if necessary.
 
@@ -103,14 +73,6 @@ def _reorderAndPadList(inputList, inputKeys, outputKeys, padWith=None):
 
 
 class SkyCorrectionConnections(PipelineTaskConnections, dimensions=("instrument", "visit")):
-    rawLinker = Input(
-        doc="Raw data to provide exp-visit linkage to connect calExp inputs to camera/sky calibs.",
-        name="raw",
-        multiple=True,
-        deferLoad=True,
-        storageClass="Exposure",
-        dimensions=["instrument", "exposure", "detector"],
-    )
     calExps = Input(
         doc="Background-subtracted calibrated exposures.",
         name="calexp",
@@ -143,7 +105,6 @@ class SkyCorrectionConnections(PipelineTaskConnections, dimensions=("instrument"
         storageClass="ExposureF",
         dimensions=["instrument", "physical_filter", "detector"],
         isCalibration=True,
-        lookupFunction=_skyFrameLookup,
     )
     camera = PrerequisiteInput(
         doc="Input camera.",
@@ -297,7 +258,6 @@ class SkyCorrectionTask(PipelineTask):
             outputRefs.skyCorr, [ref.dataId["detector"] for ref in outputRefs.skyCorr], detectorOrder
         )
         inputs = butlerQC.get(inputRefs)
-        inputs.pop("rawLinker", None)
         outputs = self.run(**inputs)
         butlerQC.put(outputs, outputRefs)
 
