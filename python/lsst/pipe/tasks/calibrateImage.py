@@ -26,10 +26,12 @@ import numpy as np
 import requests
 import os
 
-from lsst.afw.geom import SpanSet
+from lsst.afw.detection import FootprintSet
+from lsst.afw.geom import makeCdMatrix, makeSkyWcs, SpanSet
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
+import lsst.geom as geom
 from lsst.ip.diffim.utils import evaluateMaskFraction, populate_sattle_visit_cache
 import lsst.meas.algorithms
 import lsst.meas.algorithms.installGaussianPsf
@@ -322,6 +324,10 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         target=lsst.meas.algorithms.SubtractBackgroundTask,
         doc="Task to perform final background subtraction, just before photoCal.",
     )
+    star_background_sky_sources = pexConfig.ConfigurableField(
+        target=lsst.meas.algorithms.SkyObjectsTask,
+        doc="Task to generate sky sources ('empty' regions where there are no detections).",
+    )
     star_detection = pexConfig.ConfigurableField(
         target=lsst.meas.algorithms.SourceDetectionTask,
         doc="Task to detect stars to return in the output catalog."
@@ -329,6 +335,13 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     star_sky_sources = pexConfig.ConfigurableField(
         target=lsst.meas.algorithms.SkyObjectsTask,
         doc="Task to generate sky sources ('empty' regions where there are no detections).",
+    )
+    allowMaskErode = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Crowded/large fill-factor fields make it difficult to find suitable locations "
+            "to lay down sky sources. To allow for best effort sky source placement, if "
+            "True, this allows for a slight erosion of the detection masks."
     )
     do_downsample_footprints = pexConfig.Field(
         dtype=bool,
@@ -726,6 +739,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         afwTable.CoordKey.addErrorFields(initial_stars_schema)
         self.makeSubtask("star_background")
+        self.makeSubtask("star_background_sky_sources", schema=initial_stars_schema)
         self.makeSubtask("star_detection", schema=initial_stars_schema)
         self.makeSubtask("star_sky_sources", schema=initial_stars_schema)
         self.makeSubtask("star_deblend", schema=initial_stars_schema)
@@ -752,6 +766,18 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.initial_stars_schema = dummy_photo_calib.calibrateCatalog(
             afwTable.SourceCatalog(initial_stars_schema)
         )
+
+        # Set up forced measurement.
+        forcedConfig = lsst.meas.base.ForcedMeasurementTask.ConfigClass()
+        forcedConfig.plugins.names = ["base_TransformedCentroid", "base_PsfFlux", "base_CircularApertureFlux"]
+
+        # We only need the "centroid" and "psfFlux" slots
+        for slot in ("shape", "psfShape", "apFlux", "modelFlux", "gaussianFlux", "calibFlux"):
+            setattr(forcedConfig.slots, slot, None)
+        forcedConfig.copyColumns = {}
+        self.skySchema = afwTable.SourceTable.makeMinimalSchema()
+        self.skyMeasurement = lsst.meas.base.ForcedMeasurementTask(
+            config=forcedConfig, name="skyMeasurement", parentTask=self, refSchema=self.skySchema)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -1876,6 +1902,11 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         star_background = self.star_background.run(exposure=result.exposure).background
         result.background.append(star_background[0])
 
+        # See what skySources have to say...
+        seed = result.exposure.info.getId()
+        bgLevelFromSkySources = self._calculateBgFromSkySources(result.exposure, seed)
+        self._tweakBackground(result.exposure, bgLevelFromSkySources, bgList=result.background)
+
         # Clear detected mask plane before final round of detection
         mask = result.exposure.mask
         for mp in detected_mask_planes:
@@ -1884,3 +1915,162 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             mask &= ~mask.getPlaneBitMask(detected_mask_planes)
 
         return result
+
+    def _calculateBgFromSkySources(self, exposure, seed, minFractionSources=0.05, nPixMaskErode=None,
+                                   maxMaskErodeIter=10):
+        """Calculate current background level via sky sources.
+
+        We identify sky objects and perform forced PSF photometry on
+        them. Using those PSF flux measurements, the background is
+        computed as the median of psfFlux/psfArea.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
+            Exposure on which we're detecting sources.
+        seed : `int`
+            RNG seed to use for finding sky objects.
+        minFractionSources : `float`
+            Minimum fraction of requested number of sources required to be
+            considered to provide a reliable background measurement.
+        nPixMaskErode : `int`, optional
+            Number of pixels by which to erode the detection masks on each
+            iteration of best-effort sky object placement. Will be set
+            automatically if None.
+        maxMaskErodeIter : `int`, optional
+            Maximum number of iterations for the detection mask erosion.
+
+        Returns
+        -------
+        bgLevel : `flaot`
+            The computed background level.
+
+        Raises
+        ------
+        NoWorkFound
+            Raised if the number of good sky sources found is less than the
+            minimum fraction in ``minFractionSources`` of the number requested
+            (``self.skyObjects.config.nSources``).
+        """
+        wcsIsNone = exposure.getWcs() is None
+        if wcsIsNone:  # create a dummy WCS as needed by ForcedMeasurementTask
+            self.log.info("WCS for exposure is None.  Setting a dummy WCS for dynamic detection.")
+            exposure.setWcs(makeSkyWcs(crpix=geom.Point2D(0, 0),
+                                       crval=geom.SpherePoint(0, 0, geom.degrees),
+                                       cdMatrix=makeCdMatrix(scale=1e-5*geom.degrees)))
+        minNumSources = int(0.05*self.star_background_sky_sources.config.nSources)
+        # Reduce the number of sky sources required if requested, but ensure
+        # a minumum of 3.
+        if minFractionSources != 1.0:
+            minNumSources = max(3, int(minNumSources*minFractionSources))
+        fp = self.star_background_sky_sources.run(exposure.maskedImage.mask, seed)
+
+        if self.config.allowMaskErode:
+            detectedMaskPlanes = ["DETECTED", "DETECTED_NEGATIVE"]
+            mask = exposure.maskedImage.mask
+            for nIter in range(maxMaskErodeIter):
+                if nIter > 0:
+                    fp = self.star_background_sky_sources.run(mask, seed)
+                if len(fp) < int(2*minNumSources):  # Allow for measurement failures
+                    self.log.info("Current number of sky sources is below 2*minimum required "
+                                  "(%d < %d, allowing for some subsequent measurement failures). "
+                                  "Allowing erosion of detected mask planes for sky placement "
+                                  "nIter: %d [of %d max]",
+                                  len(fp), 2*minNumSources, nIter, maxMaskErodeIter)
+                    if nPixMaskErode is None:
+                        if len(fp) == 0:
+                            nPixMaskErode = 4
+                        elif len(fp) < int(0.75*minNumSources):
+                            nPixMaskErode = 2
+                        else:
+                            nPixMaskErode = 1
+                    for maskName in detectedMaskPlanes:
+                        # Compute the eroded detection mask plane using SpanSet
+                        detectedMaskBit = mask.getPlaneBitMask(maskName)
+                        detectedMaskSpanSet = SpanSet.fromMask(mask, detectedMaskBit)
+                        detectedMaskSpanSet = detectedMaskSpanSet.eroded(nPixMaskErode)
+                        # Clear the detected mask plane
+                        detectedMask = mask.getMaskPlane(maskName)
+                        mask.clearMaskPlane(detectedMask)
+                        # Set the mask plane to the eroded one
+                        detectedMaskSpanSet.setMask(mask, detectedMaskBit)
+                else:
+                    break
+
+        skyFootprints = FootprintSet(exposure.getBBox())
+        skyFootprints.setFootprints(fp)
+        table = afwTable.SourceTable.make(self.skyMeasurement.schema)
+        catalog = afwTable.SourceCatalog(table)
+        catalog.reserve(len(skyFootprints.getFootprints()))
+        skyFootprints.makeSources(catalog)
+        key = catalog.getCentroidSlot().getMeasKey()
+        for source in catalog:
+            peaks = source.getFootprint().getPeaks()
+            assert len(peaks) == 1
+            source.set(key, peaks[0].getF())
+            # Coordinate covariance is not used, so don't bother calulating it.
+            source.updateCoord(exposure.getWcs(), include_covariance=False)
+
+        # Perform forced photometry on sky objects.
+        self.skyMeasurement.run(catalog, exposure, catalog, exposure.getWcs())
+
+        # Calculate new threshold
+        fluxes = catalog["base_PsfFlux_instFlux"]
+        area = catalog["base_PsfFlux_area"]
+        good = (~catalog["base_PsfFlux_flag"] & np.isfinite(fluxes))
+
+        if good.sum() < minNumSources:
+            msg = (f"Insufficient good sky source flux measurements ({good.sum()} < "
+                   f"{minNumSources}) for background tweak calculation.")
+
+            nPix = exposure.mask.array.size
+            badPixelMask = afwImage.Mask.getPlaneBitMask(["NO_DATA", "BAD"])
+            nGoodPix = np.sum(exposure.mask.array & badPixelMask == 0)
+            if nGoodPix/nPix > 0.2:
+                detectedPixelMask = afwImage.Mask.getPlaneBitMask(["DETECTED", "DETECTED_NEGATIVE"])
+                nDetectedPix = np.sum(exposure.mask.array & detectedPixelMask != 0)
+                msg += (f" However, {nGoodPix}/{nPix} pixels are not marked NO_DATA or BAD, "
+                        "so there should be sufficient area to locate suitable sky sources. "
+                        f"Note that {nDetectedPix} of {nGoodPix} \"good\" pixels were marked "
+                        "as DETECTED or DETECTED_NEGATIVE.")
+                # raise RuntimeError(msg)
+            raise RuntimeError(msg)
+            # raise pipeBase.NoWorkFound(msg)
+
+        self.log.info("Number of good sky sources used for sky source background measurement: "
+                      "%d (of %d requested).",
+                      good.sum(), self.star_background_sky_sources.config.nSources)
+
+        bgLevel = np.median((fluxes/area)[good])
+        if wcsIsNone:
+            exposure.setWcs(None)
+        return bgLevel
+
+    def _tweakBackground(self, exposure, bgLevel, bgList=None):
+        """Modify the background by a constant value
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
+            Exposure for which to tweak background.
+        bgLevel : `float`
+            Background level to remove
+        bgList : `lsst.afw.math.BackgroundList`, optional
+            List of backgrounds to append to.
+
+        Returns
+        -------
+        bg : `lsst.afw.math.BackgroundMI`
+            Constant background model.
+        """
+        if bgLevel != 0.0:
+            self.log.info("Tweaking background by %f to match sky photometry", bgLevel)
+        exposure.image -= bgLevel
+        bgStats = afwImage.MaskedImageF(1, 1)
+        bgStats.set(bgLevel, 0, bgLevel)
+        bg = afwMath.BackgroundMI(exposure.getBBox(), bgStats)
+        bgData = (bg, afwMath.Interpolate.LINEAR, afwMath.REDUCE_INTERP_ORDER,
+                  afwMath.ApproximateControl.UNKNOWN, 0, 0, False)
+        if bgList is not None:
+            bgList.append(bgData)
+        return bg
