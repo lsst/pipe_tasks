@@ -730,6 +730,10 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
                                    "initial_photometry_match_detector",
                                    {"instrument", "visit", "detector"},
                                    "Catalog")
+        butlerTests.addDatasetType(self.repo,
+                                   "preliminary_visit_mask",
+                                   {"instrument", "visit", "detector"},
+                                   "Mask")
 
         # dataIds
         self.exposure0_id = self.repo.registry.expandDataId(
@@ -776,6 +780,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              "initial_pvi_background": self.visit_id,
              "astrometry_matches": self.visit_id,
              "photometry_matches": self.visit_id,
+             "mask": self.visit_id,
              })
         mock_run = lsst.pipe.base.testUtils.runTestQuantum(task, self.butler, quantum)
 
@@ -822,6 +827,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              "initial_pvi_background": self.visit_id,
              "astrometry_matches": self.visit_id,
              "photometry_matches": self.visit_id,
+             "mask": self.visit_id,
              })
         mock_run = lsst.pipe.base.testUtils.runTestQuantum(task, self.butler, quantum)
 
@@ -862,6 +868,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              "initial_pvi_background": self.visit_id,
              "astrometry_matches": self.visit_id,
              "photometry_matches": self.visit_id,
+             "mask": self.visit_id,
              })
         mock_run = lsst.pipe.base.testUtils.runTestQuantum(task, self.butler, quantum)
 
@@ -899,10 +906,12 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
                        "initial_pvi_background": self.visit_id,
                        "astrometry_matches": self.visit_id,
                        "photometry_matches": self.visit_id,
+                       "mask": self.visit_id,
                        }
 
         # Check that we can turn off one output at a time.
-        for optional in ["psf_stars", "psf_stars_footprints", "astrometry_matches", "photometry_matches"]:
+        for optional in ["psf_stars", "psf_stars_footprints", "astrometry_matches", "photometry_matches",
+                         "mask"]:
             config = CalibrateImageTask.ConfigClass()
             config.optional_outputs.remove(optional)
             task = CalibrateImageTask(config=config)
@@ -944,6 +953,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              "initial_pvi_background": self.visit_id,
              "astrometry_matches": self.visit_id,
              "photometry_matches": self.visit_id,
+             "mask": self.visit_id,
              })
         mock_run = lsst.pipe.base.testUtils.runTestQuantum(task, self.butler, quantum)
 
@@ -992,6 +1002,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              "initial_pvi_background": self.visit_id,
              "astrometry_matches": self.visit_id,
              "photometry_matches": self.visit_id,
+             "mask": self.visit_id,
              })
 
         # A generic exception should raise directly.
