@@ -415,8 +415,8 @@ class DiffMatchedTractCatalogTaskBase(pipeBase.Task):
         column_dist, column_dist_err = 'match_distance', 'match_distanceErr'
         dist = np.full(n_target, np.nan)
 
-        target_match_c1, target_match_c2 = (coord[matched_row] for coord in (target.coord1, target.coord2))
-        target_ref_c1, target_ref_c2 = (coord[matched_ref] for coord in (ref.coord1, ref.coord2))
+        target_match_c1, target_match_c2 = (np.array(coord[matched_row]) for coord in (target.coord1, target.coord2))
+        target_ref_c1, target_ref_c2 = (np.array(coord[matched_ref]) for coord in (ref.coord1, ref.coord2))
 
         dist_err = np.full(n_target, np.nan)
         dist[matched_row] = sphdist(
