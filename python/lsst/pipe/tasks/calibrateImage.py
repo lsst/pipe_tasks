@@ -35,6 +35,7 @@ import lsst.meas.algorithms
 import lsst.meas.algorithms.installGaussianPsf
 import lsst.meas.algorithms.measureApCorr
 import lsst.meas.algorithms.setPrimaryFlags
+from lsst.meas.algorithms.adaptive_thresholds import AdaptiveThresholdDetectionTask
 import lsst.meas.base
 import lsst.meas.astrom
 import lsst.meas.deblender
@@ -294,7 +295,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         doc="Implement the adaptive detection thresholding approach?",
     )
     psf_adaptive_threshold_detection = pexConfig.ConfigurableField(
-        target=lsst.meas.algorithms.AdaptiveThresholdDetectionTask,
+        target=AdaptiveThresholdDetectionTask,
         doc="Task to adaptively detect sources for PSF determination.",
     )
     psf_source_measurement = pexConfig.ConfigurableField(
