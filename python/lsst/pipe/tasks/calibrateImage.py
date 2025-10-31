@@ -1208,7 +1208,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 table, exposure,
                 initialThreshold=initialThreshold,
                 initialThresholdMultiplier=initialThresholdMultiplier,
-                doReEstimageBackgroud=False,
             )
             detections = adaptiveDetResStruct.detections
 
