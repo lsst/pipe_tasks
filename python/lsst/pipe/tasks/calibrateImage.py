@@ -1161,11 +1161,11 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
             Parameters
             ----------
-                msg : `str`
-                    Message to prepend the log info with.
-                addToMetadata : `bool`, optional
-                    Whether to add the final psf sigma value to the task
-                    metadata (the default is False).
+            msg : `str`
+                Message to prepend the log info with.
+            addToMetadata : `bool`, optional
+                Whether to add the final psf sigma value to the task
+                metadata (the default is False).
             """
             position = exposure.psf.getAveragePosition()
             sigma = exposure.psf.computeShape(position).getDeterminantRadius()
