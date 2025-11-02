@@ -458,13 +458,11 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         calibrate.astrometry.setRefObjLoader(self.ref_loader)
         psf_stars, background, candidates, _ = calibrate._compute_psf(self.exposure, self.id_generator)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
-        stars = calibrate._find_stars(self.exposure, background, self.id_generator)
-
-        calibrate._fit_astrometry(self.exposure, stars)
+        calibrate._fit_astrometry(self.exposure, psf_stars)
 
         # Check that we got reliable matches with the truth coordinates.
-        sky = stars["sky_source"]
-        fitted = SkyCoord(stars[~sky]['coord_ra'], stars[~sky]['coord_dec'], unit="radian")
+        sky = psf_stars["sky_source"]
+        fitted = SkyCoord(psf_stars[~sky]['coord_ra'], psf_stars[~sky]['coord_dec'], unit="radian")
         truth = SkyCoord(self.truth_cat['coord_ra'], self.truth_cat['coord_dec'], unit="radian")
         idx, d2d, _ = fitted.match_to_catalog_sky(truth)
         np.testing.assert_array_less(d2d.to_value(u.milliarcsecond), 35.0)
