@@ -286,17 +286,13 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         doc="Task to perform intial background subtraction, before first detection pass.",
     )
     psf_detection = pexConfig.ConfigurableField(
-        target=lsst.meas.algorithms.SourceDetectionTask,
+        target=AdaptiveThresholdDetectionTask,
         doc="Task to detect sources for PSF determination."
     )
     do_adaptive_threshold_detection = pexConfig.Field(
         dtype=bool,
         default=True,
         doc="Implement the adaptive detection thresholding approach?",
-    )
-    psf_adaptive_threshold_detection = pexConfig.ConfigurableField(
-        target=AdaptiveThresholdDetectionTask,
-        doc="Task to adaptively detect sources for PSF determination.",
     )
     psf_source_measurement = pexConfig.ConfigurableField(
         target=lsst.meas.base.SingleFrameMeasurementTask,
@@ -472,13 +468,8 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         # thresholdValue * includeThresholdMultiplier. The low thresholdValue
         # ensures that the footprints are large enough for the noise replacer
         # to mask out faint undetected neighbors that are not to be measured.
-        self.psf_detection.thresholdValue = 10.0
-        self.psf_detection.includeThresholdMultiplier = 5.0
-        # TODO investigation: Probably want False here, but that may require
-        # tweaking the background spatial scale, to make it small enough to
-        # prevent extra peaks in the wings of bright objects.
-        self.psf_detection.doTempLocalBackground = False
-        self.psf_detection.reEstimateBackground = False
+        self.psf_detection.baseline.thresholdValue = 10.0
+        self.psf_detection.baseline.includeThresholdMultiplier = 5.0
 
         # Minimal measurement plugins for PSF determination.
         # TODO DM-39203: We can drop GaussianFlux and PsfFlux, if we use
@@ -622,7 +613,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
                     "CalibrateImageTask.psf_subtract_background must be configured with "
                     "doApplyFlatBackgroundRatio=True if do_illumination_correction=True."
                 )
-            if self.psf_detection.reEstimateBackground:
+            if getattr(self.psf_detection, "reEstimateBackground", False):
                 if not self.psf_detection.doApplyFlatBackgroundRatio:
                     raise pexConfig.FieldValidationError(
                         CalibrateImageConfig.psf_detection,
@@ -630,7 +621,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
                         "CalibrateImageTask.psf_detection background must be configured with "
                         "doApplyFlatBackgroundRatio=True if do_illumination_correction=True."
                     )
-            if self.star_detection.reEstimateBackground:
+            if getattr(self.star_detection, "reEstimateBackground", False):
                 if not self.star_detection.doApplyFlatBackgroundRatio:
                     raise pexConfig.FieldValidationError(
                         CalibrateImageConfig.star_detection,
@@ -643,17 +634,17 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
             if not os.getenv("SATTLE_URI_BASE"):
                 raise pexConfig.FieldValidationError(CalibrateImageConfig.run_sattle, self,
                                                      "Sattle requested but URI environment variable not set.")
+        if (
+            issubclass(self.psf_detection.target, AdaptiveThresholdDetectionTask)
+            != self.do_adaptive_threshold_detection
+        ):
+            raise pexConfig.FieldValidationError(
+                CalibrateImageConfig.psf_detection, self,
+                "AdaptiveThresholdDetectionTask must be used for the psf_detection subtask "
+                "if and only if do_adaptive_threshold_detection is True."
+            )
 
         if not self.do_adaptive_threshold_detection:
-            if not self.psf_detection.reEstimateBackground:
-                raise pexConfig.FieldValidationError(
-                    CalibrateImageConfig.psf_detection,
-                    self,
-                    "If not using the adaptive threshold detection implementation (i.e. "
-                    "config.do_adaptive_threshold_detection = False), CalibrateImageTask.psf_detection "
-                    "background must be configured with "
-                    "reEstimateBackground = True to maintain original behavior."
-                )
             if not self.star_detection.reEstimateBackground:
                 raise pexConfig.FieldValidationError(
                     CalibrateImageConfig.psf_detection,
@@ -695,7 +686,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         afwTable.CoordKey.addErrorFields(self.psf_schema)
         self.makeSubtask("psf_detection", schema=self.psf_schema)
         self.makeSubtask("psf_source_measurement", schema=self.psf_schema)
-        self.makeSubtask("psf_adaptive_threshold_detection")
         self.makeSubtask("psf_measure_psf", schema=self.psf_schema)
         self.makeSubtask("psf_normalized_calibration_flux", schema=self.psf_schema)
 
@@ -948,11 +938,12 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 illumination_correction,
             )
 
-            result.psf_stars_footprints, result.background, _, adaptiveDetResStruct = self._compute_psf(
+            psf_detections, result.background, _ = self._compute_psf(
                 result.exposure,
                 id_generator,
                 background_to_photometric_ratio=result.background_to_photometric_ratio,
             )
+            result.psf_stars_footprints = psf_detections.sources
             have_fit_psf = True
 
             # Check if all centroids have been flagged. This should happen
@@ -999,7 +990,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 result.background,
                 id_generator,
                 background_to_photometric_ratio=result.background_to_photometric_ratio,
-                adaptiveDetResStruct=adaptiveDetResStruct,
+                psf_detections=psf_detections,
                 num_astrometry_matches=num_astrometry_matches,
             )
             psf = result.exposure.getPsf()
@@ -1147,8 +1138,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         Returns
         -------
-        sources : `lsst.afw.table.SourceCatalog`
-            Catalog of detected bright sources.
+        detections : `lsst.pipe.base.Struct`
+            Struct returned by the ``psf_detection`` subtask, with its
+            ``sources`` attribute further updated by measurement and PSF
+            modeling.
         background : `lsst.afw.math.BackgroundList`
             Background that was fit to the exposure during detection.
         cell_set : `lsst.afw.math.SpatialCellSet`
@@ -1191,25 +1184,12 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.psf_repair.run(exposure=exposure, keepCRs=True)
 
         table = afwTable.SourceTable.make(self.psf_schema, id_generator.make_table_id_factory())
-        if not self.config.do_adaptive_threshold_detection:
-            adaptiveDetResStruct = None
-            # Re-estimate the background during this detection step, so that
-            # measurement uses the most accurate background-subtraction.
-            detections = self.psf_detection.run(
-                table=table,
-                exposure=exposure,
-                background=background,
-                backgroundToPhotometricRatio=background_to_photometric_ratio,
-            )
-        else:
-            initialThreshold = self.config.psf_detection.thresholdValue
-            initialThresholdMultiplier = self.config.psf_detection.includeThresholdMultiplier
-            adaptiveDetResStruct = self.psf_adaptive_threshold_detection.run(
-                table, exposure,
-                initialThreshold=initialThreshold,
-                initialThresholdMultiplier=initialThresholdMultiplier,
-            )
-            detections = adaptiveDetResStruct.detections
+        detections = self.psf_detection.run(
+            table=table,
+            exposure=exposure,
+            background=background,
+            backgroundToPhotometricRatio=background_to_photometric_ratio,
+        )
 
         self.metadata["initial_psf_positive_footprint_count"] = detections.numPos
         self.metadata["initial_psf_negative_footprint_count"] = detections.numNeg
@@ -1258,7 +1238,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         # PSF is set on exposure; candidates are returned to use for
         # calibration flux normalization and aperture corrections.
-        return detections.sources, background, psf_result.cellSet, adaptiveDetResStruct
+        return detections, background, psf_result.cellSet
 
     def _measure_aperture_correction(self, exposure, bright_sources):
         """Measure and set the ApCorrMap on the Exposure, using
@@ -1290,8 +1270,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         exposure.info.setApCorrMap(ap_corr_map)
 
-    def _find_stars(self, exposure, background, id_generator, background_to_photometric_ratio=None,
-                    adaptiveDetResStruct=None, num_astrometry_matches=None):
+    def _find_stars(self, exposure, background, id_generator, background_to_photometric_ratio=None, *,
+                    psf_detections, num_astrometry_matches):
         """Detect stars on an exposure that has a PSF model, and measure their
         PSF, circular aperture, compensated gaussian fluxes.
 
@@ -1307,6 +1287,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         background_to_photometric_ratio : `lsst.afw.image.Image`, optional
             Image to convert photometric-flattened image to
             background-flattened image.
+        psf_detections : `lsst.pipe.base.Struct`
+            Struct returned from the ``psf_detection`` subtask.
+        num_astrometry_matches : `int`
+            Number of astrometry matches.
 
         Returns
         -------
@@ -1321,14 +1305,14 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         maxAdaptiveDetIter = 8
         adaptiveDetIter = 0
         threshFactor = 0.2
-        if adaptiveDetResStruct is not None:
+        if self.config.do_adaptive_threshold_detection:
             while inAdaptiveDet and adaptiveDetIter < maxAdaptiveDetIter:
                 inAdaptiveDet = False
                 adaptiveDetectionConfig = lsst.meas.algorithms.SourceDetectionConfig()
                 adaptiveDetectionConfig.reEstimateBackground = False
                 adaptiveDetectionConfig.includeThresholdMultiplier = 2.0
                 psfThreshold = (
-                    adaptiveDetResStruct.thresholdValue*adaptiveDetResStruct.includeThresholdMultiplier
+                    psf_detections.thresholdValue*psf_detections.includeThresholdMultiplier
                 )
                 adaptiveDetectionConfig.thresholdValue = max(
                     self.config.star_detection.thresholdValue,
