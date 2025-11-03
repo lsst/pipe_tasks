@@ -35,7 +35,10 @@ import lsst.meas.algorithms
 import lsst.meas.algorithms.installGaussianPsf
 import lsst.meas.algorithms.measureApCorr
 import lsst.meas.algorithms.setPrimaryFlags
-from lsst.meas.algorithms.adaptive_thresholds import AdaptiveThresholdDetectionTask
+from lsst.meas.algorithms.adaptive_thresholds import (
+    AdaptiveThresholdDetectionTask,
+    AdaptiveThresholdBackgroundTask,
+)
 import lsst.meas.base
 import lsst.meas.astrom
 import lsst.meas.deblender
@@ -317,7 +320,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
 
     # subtasks used during star measurement
     star_background = pexConfig.ConfigurableField(
-        target=lsst.meas.algorithms.SubtractBackgroundTask,
+        target=AdaptiveThresholdBackgroundTask,
         doc="Task to perform final background subtraction, just before photoCal.",
     )
     star_detection = pexConfig.ConfigurableField(
@@ -1625,95 +1628,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         newWcs = createInitialSkyWcs(exposure.visitInfo, detector)
         exposure.setWcs(newWcs)
 
-    def _compute_mask_fraction(self, mask, mask_planes, bad_mask_planes):
-        """Evaluate the fraction of masked pixels in a (set of) mask plane(s).
-
-        Parameters
-        ----------
-        mask : `lsst.afw.image.Mask`
-            The mask on which to evaluate the fraction.
-        mask_planes : `list`, `str`
-            The mask planes for which to evaluate the fraction.
-        bad_mask_planes : `list`, `str`
-            The mask planes to exclude from the computation.
-
-        Returns
-        -------
-        detected_fraction : `float`
-            The calculated fraction of masked pixels
-        """
-        bad_pixel_mask = afwImage.Mask.getPlaneBitMask(bad_mask_planes)
-        n_good_pix = np.sum(mask.array & bad_pixel_mask == 0)
-        if n_good_pix == 0:
-            detected_fraction = float("nan")
-            return detected_fraction
-        detected_pixel_mask = afwImage.Mask.getPlaneBitMask(mask_planes)
-        n_detected_pix = np.sum((mask.array & detected_pixel_mask != 0)
-                                & (mask.array & bad_pixel_mask == 0))
-        detected_fraction = n_detected_pix/n_good_pix
-        return detected_fraction
-
-    def _compute_per_amp_fraction(self, exposure, detected_fraction, mask_planes, bad_mask_planes):
-        """Evaluate the maximum per-amplifier fraction of masked pixels.
-
-        Parameters
-        ----------
-        exposure : `lsst.afw.image.ExposureF`
-            The exposure on which to compute the per-amp masked fraction.
-        detected_fraction : `float`
-            The current detected_fraction of the ``mask_planes`` for the
-            full detector.
-        mask_planes : `list`, `str`
-            The mask planes for which to evaluate the fraction.
-        bad_mask_planes : `list`, `str`
-            The mask planes to exclude from the computation.
-
-        Returns
-        -------
-        n_above_max_per_amp : `int`
-            The number of amplifiers with masked fractions above a maximum
-            value (set by the current full-detector ``detected_fraction``).
-        highest_detected_fraction_per_amp : `float`
-            The highest value of the per-amplifier fraction of masked pixels.
-        no_zero_det_amps : `bool`
-            A boolean representing whether any of the amplifiers has zero
-            masked pixels.
-        """
-        highest_detected_fraction_per_amp = -9.99
-        n_above_max_per_amp = 0
-        n_no_zero_det_amps = 0
-        no_zero_det_amps = True
-        amps = exposure.detector.getAmplifiers()
-        if amps is not None:
-            for ia, amp in enumerate(amps):
-                amp_bbox = amp.getBBox()
-                exp_bbox = exposure.getBBox()
-                if not exp_bbox.contains(amp_bbox):
-                    self.log.info("Bounding box of amplifier (%s) does not fit in exposure's "
-                                  "bounding box (%s).  Skipping...", amp_bbox, exp_bbox)
-                    continue
-                sub_image = exposure.subset(amp.getBBox())
-                detected_fraction_amp = self._compute_mask_fraction(sub_image.mask,
-                                                                    mask_planes,
-                                                                    bad_mask_planes)
-                self.log.debug("Current detected fraction for amplifier %s = %.3f",
-                               amp.getName(), detected_fraction_amp)
-                if detected_fraction_amp < 0.002:
-                    n_no_zero_det_amps += 1
-                    if n_no_zero_det_amps > 2:
-                        no_zero_det_amps = False
-                        break
-                highest_detected_fraction_per_amp = max(detected_fraction_amp,
-                                                        highest_detected_fraction_per_amp)
-                if highest_detected_fraction_per_amp > min(0.998, max(0.8, 3.0*detected_fraction)):
-                    n_above_max_per_amp += 1
-                    if n_above_max_per_amp > 2:
-                        break
-        else:
-            self.log.info("No amplifier object for detector %d, so skipping per-amp "
-                          "detection fraction checks.", exposure.detector.getId())
-        return n_above_max_per_amp, highest_detected_fraction_per_amp, no_zero_det_amps
-
     def _remeasure_star_background(self, result):
         """Remeasure the exposure's background with iterative adaptive
         threshold detection.
@@ -1729,142 +1643,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         result : `lsst.pipe.base.Struct`
             The modified result Struct with the new background subtracted.
         """
-        # Restore the previously measured backgroud and remeasure it
-        # using an adaptive threshold detection iteration to ensure a
-        # "Goldilocks Zone" for the fraction of detected pixels.
-        backgroundOrig = result.background.clone()
-        median_background = np.median(backgroundOrig.getImage().array)
-        self.log.warning("Original median_background = %.2f", median_background)
-        result.exposure.image.array += result.background.getImage().array
-        result.background = afwMath.BackgroundList()
-
-        origMask = result.exposure.mask.clone()
-        bad_mask_planes = ["BAD", "EDGE", "NO_DATA"]
-        detected_mask_planes = ["DETECTED", "DETECTED_NEGATIVE"]
-        nPixToDilate = 10
-        detected_fraction_orig = self._compute_mask_fraction(result.exposure.mask,
-                                                             detected_mask_planes,
-                                                             bad_mask_planes)
-        minDetFracForFinalBg = 0.02
-        maxDetFracForFinalBg = 0.93
-        doDilatedOrigDetectionMask = True
-        if doDilatedOrigDetectionMask:
-            # Dilate the current detected mask planes and don't clear
-            # them in the detection step.
-            inDilating = True
-            while inDilating:
-                dilatedMask = origMask.clone()
-                for maskName in detected_mask_planes:
-                    # Compute the grown detection mask plane using SpanSet
-                    detectedMaskBit = dilatedMask.getPlaneBitMask(maskName)
-                    detectedMaskSpanSet = SpanSet.fromMask(dilatedMask, detectedMaskBit)
-                    detectedMaskSpanSet = detectedMaskSpanSet.dilated(nPixToDilate)
-                    detectedMaskSpanSet = detectedMaskSpanSet.clippedTo(dilatedMask.getBBox())
-                    # Clear the detected mask plane
-                    detectedMask = dilatedMask.getMaskPlane(maskName)
-                    dilatedMask.clearMaskPlane(detectedMask)
-                    # Set the mask plane to the dilated one
-                    detectedMaskSpanSet.setMask(dilatedMask, detectedMaskBit)
-
-                detected_fraction_dilated = self._compute_mask_fraction(dilatedMask,
-                                                                        detected_mask_planes,
-                                                                        bad_mask_planes)
-                if detected_fraction_dilated < maxDetFracForFinalBg or nPixToDilate == 1:
-                    inDilating = False
-                else:
-                    nPixToDilate -= 1
-            result.exposure.mask = dilatedMask
-            self.log.warning("detected_fraction_orig = %.3f  detected_fraction_dilated = %.3f",
-                             detected_fraction_orig, detected_fraction_dilated)
-            n_above_max_per_amp = -99
-            highest_detected_fraction_per_amp = float("nan")
-            doCheckPerAmpDetFraction = True
-            if doCheckPerAmpDetFraction:  # detected_fraction < maxDetFracForFinalBg:
-                n_above_max_per_amp, highest_detected_fraction_per_amp, no_zero_det_amps = \
-                    self._compute_per_amp_fraction(result.exposure, detected_fraction_dilated,
-                                                   detected_mask_planes, bad_mask_planes)
-                self.log.warning("Dilated mask: n_above_max_per_amp = %d, "
-                                 "highest_detected_fraction_per_amp = %.3f",
-                                 n_above_max_per_amp, highest_detected_fraction_per_amp)
-
-        detected_fraction = 1.0
-        inBackgroundDet = True
-        detected_fraction = 1.0 if inBackgroundDet else detected_fraction_dilated
-        maxIter = 40
-        nIter = 0
-        nFootprintTemp = 1e12
-        starBackgroundDetectionConfig = lsst.meas.algorithms.SourceDetectionConfig()
-        starBackgroundDetectionConfig.doTempLocalBackground = False
-        starBackgroundDetectionConfig.nSigmaToGrow = 70.0
-        starBackgroundDetectionConfig.reEstimateBackground = False
-        starBackgroundDetectionConfig.includeThresholdMultiplier = 1.0
-        starBackgroundDetectionConfig.thresholdValue = max(2.0, 0.2*median_background)
-        starBackgroundDetectionConfig.thresholdType = "pixel_stdev"  # "stdev"
-
-        n_above_max_per_amp = -99
-        highest_detected_fraction_per_amp = float("nan")
-        doCheckPerAmpDetFraction = True
-
-        while inBackgroundDet:
-            currentThresh = starBackgroundDetectionConfig.thresholdValue
-            if detected_fraction > maxDetFracForFinalBg:
-                starBackgroundDetectionConfig.thresholdValue = 1.07*currentThresh
-                if nFootprintTemp < 3 and detected_fraction > 0.9*maxDetFracForFinalBg:
-                    starBackgroundDetectionConfig.thresholdValue = 1.2*currentThresh
-            if n_above_max_per_amp > 1:
-                starBackgroundDetectionConfig.thresholdValue = 1.1*currentThresh
-            if detected_fraction < minDetFracForFinalBg:
-                starBackgroundDetectionConfig.thresholdValue = 0.8*currentThresh
-            starBackgroundDetectionTask = lsst.meas.algorithms.SourceDetectionTask(
-                config=starBackgroundDetectionConfig)
-            table = afwTable.SourceTable.make(self.initial_stars_schema.schema)
-            tempDetections = starBackgroundDetectionTask.run(
-                table=table, exposure=result.exposure, clearMask=True)
-            result.exposure.mask |= dilatedMask
-            nFootprintTemp = len(tempDetections.sources)
-            detected_fraction = self._compute_mask_fraction(result.exposure.mask, detected_mask_planes,
-                                                            bad_mask_planes)
-            self.log.info("nIter = %d, thresh = %.2f: Fraction of pixels marked as DETECTED or "
-                          "DETECTED_NEGATIVE in star_background_detection = %.3f "
-                          "(max is %.3f; min is %.3f)",
-                          nIter, starBackgroundDetectionConfig.thresholdValue,
-                          detected_fraction, maxDetFracForFinalBg, minDetFracForFinalBg)
-
-            n_amp = len(result.exposure.detector.getAmplifiers())
-            if doCheckPerAmpDetFraction:  # detected_fraction < maxDetFracForFinalBg:
-                n_above_max_per_amp, highest_detected_fraction_per_amp, no_zero_det_amps = \
-                    self._compute_per_amp_fraction(result.exposure, detected_fraction,
-                                                   detected_mask_planes, bad_mask_planes)
-
-            if not no_zero_det_amps:
-                starBackgroundDetectionConfig.thresholdValue = 0.95*currentThresh
-            nIter += 1
-            if nIter > maxIter:
-                inBackgroundDet = False
-
-            if (detected_fraction < maxDetFracForFinalBg and detected_fraction > minDetFracForFinalBg
-                    and n_above_max_per_amp < int(0.75*n_amp)
-                    and no_zero_det_amps):
-                if (n_above_max_per_amp < max(1, int(0.15*n_amp))
-                        or detected_fraction < 0.85*maxDetFracForFinalBg):
-                    inBackgroundDet = False
-                else:
-                    self.log.warning("Making small tweak....")
-                    starBackgroundDetectionConfig.thresholdValue = 1.05*currentThresh
-            self.log.warning("n_above_max_per_amp = %d (abs max is %d)", n_above_max_per_amp, int(0.75*n_amp))
-
-        self.log.info("Fraction of pixels marked as DETECTED or DETECTED_NEGATIVE is now %.5f "
-                      "(highest per amp section = %.5f)",
-                      detected_fraction, highest_detected_fraction_per_amp)
-
-        if detected_fraction > maxDetFracForFinalBg:
-            result.exposure.mask = dilatedMask
-            self.log.warning("Final fraction of pixels marked as DETECTED or DETECTED_NEGATIVE "
-                             "was too large in star_background_detection = %.3f (max = %.3f). "
-                             "Reverting to dilated mask from PSF detection...",
-                             detected_fraction, maxDetFracForFinalBg)
-        star_background = self.star_background.run(exposure=result.exposure).background
-        result.background.append(star_background[0])
+        result.background = self.star_background.run(result.exposure, background=result.background).background
 
         # Perform one more round of background subtraction that is just an
         # overall pedestal (order = 0).  This is intended to account for
@@ -1905,12 +1684,5 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         pedestalBackground.append(pedestalBackgroundList[1])
         pedestalBackgroundLevel = pedestalBackground.getImage().array[0, 0]
         self.log.warning("Subtracted pedestalBackgroundLevel = %.4f", pedestalBackgroundLevel)
-
-        # Clear detected mask plane before final round of detection
-        mask = result.exposure.mask
-        for mp in detected_mask_planes:
-            if mp not in mask.getMaskPlaneDict():
-                mask.addMaskPlane(mp)
-            mask &= ~mask.getPlaneBitMask(detected_mask_planes)
 
         return result
