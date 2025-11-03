@@ -1882,6 +1882,46 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         star_background = self.star_background.run(exposure=result.exposure).background
         result.background.append(star_background[0])
 
+        # Perform one more round of background subtraction that is just an
+        # overall pedestal (order = 0).  This is intended to account for
+        # any potential gross oversubtraction imposed by the higher-order
+        # subtraction.
+        # Dilate DETECTED mask a bit more if it's below 50% detected.
+        nPixToDilate = 2
+        if detected_fraction < 0.5:
+            dilatedMask = result.exposure.mask.clone()
+            for maskName in detected_mask_planes:
+                # Compute the grown detection mask plane using SpanSet
+                detectedMaskBit = dilatedMask.getPlaneBitMask(maskName)
+                detectedMaskSpanSet = SpanSet.fromMask(dilatedMask, detectedMaskBit)
+                detectedMaskSpanSet = detectedMaskSpanSet.dilated(nPixToDilate)
+                detectedMaskSpanSet = detectedMaskSpanSet.clippedTo(dilatedMask.getBBox())
+                # Clear the detected mask plane
+                detectedMask = dilatedMask.getMaskPlane(maskName)
+                dilatedMask.clearMaskPlane(detectedMask)
+                # Set the mask plane to the dilated one
+                detectedMaskSpanSet.setMask(dilatedMask, detectedMaskBit)
+
+            detected_fraction_dilated = self._compute_mask_fraction(dilatedMask,
+                                                                    detected_mask_planes,
+                                                                    bad_mask_planes)
+            result.exposure.mask = dilatedMask
+            self.log.debug("detected_fraction_orig = %.3f  detected_fraction_dilated = %.3f",
+                           detected_fraction_orig, detected_fraction_dilated)
+
+        pedestalBackgroundConfig = lsst.meas.algorithms.SubtractBackgroundConfig()
+        pedestalBackgroundConfig.statisticsProperty = "MEDIAN"
+        pedestalBackgroundConfig.approxOrderX = 0
+        pedestalBackgroundConfig.binSize = 64
+        pedestalBackgroundTask = lsst.meas.algorithms.SubtractBackgroundTask(config=pedestalBackgroundConfig)
+        pedestalBackgroundList = pedestalBackgroundTask.run(
+            exposure=result.exposure, background=result.background).background
+        # Isolate the final pedestal background to log the computed value
+        pedestalBackground = afwMath.BackgroundList()
+        pedestalBackground.append(pedestalBackgroundList[1])
+        pedestalBackgroundLevel = pedestalBackground.getImage().array[0, 0]
+        self.log.warning("Subtracted pedestalBackgroundLevel = %.4f", pedestalBackgroundLevel)
+
         # Clear detected mask plane before final round of detection
         mask = result.exposure.mask
         for mp in detected_mask_planes:

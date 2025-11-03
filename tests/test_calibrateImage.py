@@ -261,7 +261,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         subString = "Using adaptive threshold detection "
         self.assertTrue(any(subString in s for s in cm.output))
 
-        self._check_run(calibrate, result, expect_n_background=1)
+        self._check_run(calibrate, result, expect_n_background=2)
 
     def test_run_downsample(self):
         """Test that run() runs with downsample.
