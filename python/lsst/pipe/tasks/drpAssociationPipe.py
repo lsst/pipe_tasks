@@ -192,11 +192,11 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         ----------
         diaSourceTables : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             Set of DiaSource catalogs potentially covering this patch/tract.
-        ssObjectTableRefs: `list` of `lsst.daf.butler.DeferredDatasetHandle`
+        ssObjectTableRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             Set of known SSO ephemerides potentially covering this patch/tract.
         skyMap : `lsst.skymap.BaseSkyMap`
             SkyMap defining the patch/tract
-        visitInfoRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
+        finalVisitSummaryRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             Reference to finalVisitSummary of each exposure potentially
             covering this patch/tract, which contain visitInfo, bbox, and wcs
         tractId : `int`
@@ -389,7 +389,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             Region defining the inner non-overlapping part of a tract.
 
         Returns
-        ------
+        -------
         isInPatch : `numpy.ndarray`, (N,)
             Booleans representing if the DiaSources are contained within the
             current patch and tract.
