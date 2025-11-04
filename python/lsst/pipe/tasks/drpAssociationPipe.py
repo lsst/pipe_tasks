@@ -225,6 +225,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
 
         # Get the patch bounding box.
         innerPatchBox = geom.Box2D(skyInfo.patchInfo.getInnerBBox())
+        outerPatchBox = geom.Box2D(skyInfo.patchInfo.getOuterBBox())
         innerTractSkyRegion = skyInfo.tractInfo.getInnerSkyRegion()
 
         # Keep track of our diaCats, ssObject cats, and finalVisitSummaries by their (visit, detector) IDs
@@ -259,8 +260,8 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 associatedSsDiaSources = ssoAssocResult.ssoAssocDiaSources
                 ssInTractPatch = self._trimToPatch(associatedSsSources.to_pandas(),
                                                    innerPatchBox,
-                                                   innerTractSkyRegion,
-                                                   skyInfo.wcs)
+                                                   skyInfo.wcs,
+                                                   innerTractSkyRegion=innerTractSkyRegion)
                 associatedSsSources = associatedSsSources[ssInTractPatch]
                 assocDiaSrcIds = set(associatedSsSources['diaSourceId'])
                 diaSrcMask = [diaId in assocDiaSrcIds for diaId in associatedSsDiaSources['diaSourceId']]
@@ -269,8 +270,8 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 unassociatedSsObjects = ssoAssocResult.unassociatedSsObjects
                 ssObjInTractPatch = self._trimToPatch(unassociatedSsObjects.to_pandas(),
                                                       innerPatchBox,
-                                                      innerTractSkyRegion,
-                                                      skyInfo.wcs)
+                                                      skyInfo.wcs,
+                                                      innerTractSkyRegion=innerTractSkyRegion)
                 unassociatedSsObjects = unassociatedSsObjects[ssObjInTractPatch]
                 nSsSrc = ssInTractPatch.sum()
                 nSsObj = ssObjInTractPatch.sum()
@@ -279,9 +280,12 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 else:
                     diaCat = pd.DataFrame(columns=ssoAssocResult.unAssocDiaSources.columns)
 
+            # Only trim diaSources to the outer bbox of the patch, so that
+            # diaSources near the patch boundary can be associated.
+            # DiaObjects will be trimmed to the inner patch bbox, and any
+            # diaSources associated with dropped diaObjects will also be dropped
             diaInTractPatch = self._trimToPatch(diaCat,
-                                                innerPatchBox,
-                                                innerTractSkyRegion,
+                                                outerPatchBox,
                                                 skyInfo.wcs)
             diaCat = diaCat[diaInTractPatch]
 
@@ -336,16 +340,28 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
 
         assocResult = self.associator.run(diaSourceHistoryCat, idGenerator=idGenerator)
 
-        self.log.info("Associated DiaSources into %i DiaObjects",
-                      len(assocResult.diaObjects))
+        # Drop any diaObjects that were created outside the inner region of the
+        # patch. These will be associated in the overlapping patch instead.
+        objectsInTractPatch = self._trimToPatch(assocResult.diaObjects,
+                                                innerPatchBox,
+                                                skyInfo.wcs,
+                                                innerTractSkyRegion=innerTractSkyRegion)
+        diaObjects = assocResult.diaObjects[objectsInTractPatch]
+        # Instead of dropping diaSources based on their patch, assign them to a
+        # patch based on whether their diaObject was inside. This means that
+        # some diaSources in the patch catalog will actually have coordinates
+        # just outside the patch.
+        assocDiaSources = self.dropDiaSourceByDiaObjectId(assocResult.diaObjects[~objectsInTractPatch].index,
+                                                          assocResult.assocDiaSources)
+
+        self.log.info("Associated DiaSources into %i DiaObjects", len(diaObjects))
 
         if self.config.doAddDiaObjectCoords:
-            assocResult.assocDiaSources = self._addDiaObjectCoords(assocResult.diaObjects,
-                                                                   assocResult.assocDiaSources)
+            assocDiaSources = self._addDiaObjectCoords(diaObjects, assocDiaSources)
 
         return pipeBase.Struct(
-            diaObjectTable=assocResult.diaObjects,
-            assocDiaSourceTable=assocResult.assocDiaSources,
+            diaObjectTable=diaObjects,
+            assocDiaSourceTable=assocDiaSources,
             associatedSsSources=ssSourceHistoryCat,
             unassociatedSsObjects=unassociatedSsObjectHistoryCat,
         )
@@ -356,7 +372,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                       how='inner').set_index('diaSourceId')
         return df
 
-    def _trimToPatch(self, cat, innerPatchBox, innerTractSkyRegion, wcs):
+    def _trimToPatch(self, cat, patchBox, wcs, innerTractSkyRegion=None):
         """Create generator testing if a set of DiaSources are in the
         patch/tract.
 
@@ -364,10 +380,12 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         ----------
         cat : `pandas.DataFrame`
             Catalog of DiaSources to test within patch/tract.
-        innerPatchBox : `lsst.geom.Box2D`
+        patchBox : `lsst.geom.Box2D`
             Bounding box of the patch.
         wcs : `lsst.geom.SkyWcs`
             Wcs of the tract.
+        innerTractSkyRegion : `lsst.sphgeom.Box`, optional
+            Region defining the inner non-overlapping part of a tract.
 
         Returns
         ------
@@ -377,15 +395,38 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         """
         isInPatch = np.zeros(len(cat), dtype=bool)
 
-        for idx, row in cat.iterrows():
+        for idx, row in cat.reset_index().iterrows():
             spPoint = geom.SpherePoint(row["ra"], row["dec"], geom.degrees)
             pxCoord = wcs.skyToPixel(spPoint)
             ra_rad = np.deg2rad(row["ra"])
             dec_rad = np.deg2rad(row["dec"])
+            isInPatch[idx] = patchBox.contains(pxCoord)
 
-            isInPatch[idx] = innerPatchBox.contains(pxCoord) and innerTractSkyRegion.contains(ra_rad, dec_rad)
+            if innerTractSkyRegion is not None:
+                isInPatch[idx] &= innerTractSkyRegion.contains(ra_rad, dec_rad)
 
         return isInPatch
+
+    def dropDiaSourceByDiaObjectId(self, droppedDiaObjectIds, diaSources):
+        """Drop diaSources with diaObject IDs in the supplied list.
+
+        Parameters
+        ----------
+        droppedDiaObjectIds : `pandas.DataFrame`
+            DiaObjectIds to match and drop from the list of diaSources.
+        diaSources : `pandas.DataFrame`
+            Catalog of diaSources to check and filter.
+
+        Returns
+        -------
+        filteredDiaSources : `pandas.DataFrame`
+            The input diaSources with any rows matching the listed diaObjectIds
+            removed.
+        """
+        toDrop = diaSources['diaObjectId'].isin(droppedDiaObjectIds)
+
+        # Keep only rows that do NOT match
+        return diaSources.loc[~toDrop].copy()
 
 
 def prepareCatalogDict(dataRefList, useVisitDetector=True):
