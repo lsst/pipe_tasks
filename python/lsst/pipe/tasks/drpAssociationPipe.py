@@ -239,6 +239,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             diaCat = diaCatRef.get()
             associatedSsSources, unassociatedSsObjects = None, None
             nSsSrc, nSsObj = 0, 0
+            nDiaSrcIn = len(diaCat)
             # Always false if ! self.config.doSolarSystemAssociation
             if (visit in ssObjectIdDict) and (visit in finalVisitSummaryIdDict):
                 # Get the ssCat and finalVisitSummary
@@ -295,7 +296,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 "Read DiaSource catalog of length %i from visit %i, "
                 "detector %i. Found %i sources within the patch/tract "
                 "footprint, including %i associated with SSOs.",
-                len(diaCat), diaCatRef.dataId["visit"],
+                nDiaSrcIn, diaCatRef.dataId["visit"],
                 diaCatRef.dataId["detector"], nDiaSrc + nSsSrc, nSsSrc)
 
             if nDiaSrc > 0:
