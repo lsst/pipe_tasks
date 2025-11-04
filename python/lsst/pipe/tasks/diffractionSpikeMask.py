@@ -34,6 +34,7 @@ import lsst.geom
 from lsst.pex.config import Config, ConfigField, Field
 from lsst.pipe.base import Struct, Task
 from lsst.meas.algorithms import getRefFluxField, LoadReferenceObjectsConfig
+from lsst.utils.timer import timeMethod
 import lsst.sphgeom
 from .colorterms import ColortermLibrary
 
@@ -162,6 +163,7 @@ class DiffractionSpikeMaskTask(Task):
         """
         self.refObjLoader = refObjLoader
 
+    @timeMethod
     def run(self, exposure):
         """Load reference objects and mask bright stars on an exposure.
 
