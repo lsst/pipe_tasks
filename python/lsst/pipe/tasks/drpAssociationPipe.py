@@ -50,7 +50,7 @@ class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
     diaSourceTables = pipeBase.connectionTypes.Input(
         doc="Set of catalogs of calibrated DiaSources.",
         name="{fakesType}{coaddName}Diff_diaSrcTable",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument", "visit", "detector"),
         deferLoad=True,
         multiple=True
@@ -237,7 +237,6 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         for visit, detector in diaIdDict:
             diaCatRef = diaIdDict[(visit, detector)]
             diaCat = diaCatRef.get()
-            associatedSsSources, unassociatedSsObjects = None, None
             nDiaSrcIn = len(diaCat)
             # Always false if ! self.config.doSolarSystemAssociation
             if (visit in ssObjectIdDict) and (visit in finalVisitSummaryIdDict):
@@ -257,7 +256,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 # If diaSources were associated with Solar System objects,
                 # remove them from the catalog so they won't create new
                 # diaObjects or be associated with other diaObjects.
-                diaCat = ssoAssocResult.unassociatedDiaSources.to_pandas()
+                diaCat = ssoAssocResult.unassociatedDiaSources
             else:
                 nSsSrc, nSsObj = 0, 0
 
@@ -265,7 +264,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             # diaSources near the patch boundary can be associated.
             # DiaObjects will be trimmed to the inner patch bbox, and any
             # diaSources associated with dropped diaObjects will also be dropped
-            diaInPatch = self._trimToPatch(diaCat, outerPatchBox, skyInfo.wcs)
+            diaInPatch = self._trimToPatch(diaCat.to_pandas(), outerPatchBox, skyInfo.wcs)
 
             nDiaSrc = diaInPatch.sum()
 
@@ -283,25 +282,16 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             if nSsObj > 0:
                 unassociatedSsObjectHistory.append(ssoAssocResult.unassociatedSsObjects)
 
-        if diaSourceHistory:
-            diaSourceHistoryCat = pd.concat(diaSourceHistory)
-        else:
-            diaSourceHistoryCat = diaCat.drop(diaCat.index)
+        # After looping over all of the detector-level catalogs that overlap the
+        # patch, combine them into patch-level catalogs
+        diaSourceHistoryCat = self._stackCatalogs(diaSourceHistory)
         if self.config.doSolarSystemAssociation:
-            nSsSrc, nSsObj = 0, 0
-            if ssSourceHistory:
-                ssSourceHistoryCat = tb.vstack(ssSourceHistory)
-                ssSourceHistoryCat.remove_columns(['ra', 'dec'])
-                nSsSrc = len(ssSourceHistoryCat)
-            else:
-                ssSourceHistoryCat = associatedSsSources  # Empty table?
-            if unassociatedSsObjectHistory:
-                unassociatedSsObjectHistoryCat = tb.vstack(unassociatedSsObjectHistory)
-                nSsObj = len(unassociatedSsObjectHistoryCat)
-            else:
-                unassociatedSsObjectHistoryCat = unassociatedSsObjects  # Empty table?
+            ssSourceHistoryCat = self._stackCatalogs(ssSourceHistory, remove_columns=['ra', 'dec'])
+            nSsSrcTotal = len(ssSourceHistoryCat) if ssSourceHistoryCat else 0
+            unassociatedSsObjectHistoryCat = self._stackCatalogs(unassociatedSsObjectHistory)
+            nSsObjTotal = len(unassociatedSsObjectHistoryCat) if unassociatedSsObjectHistoryCat else 0
             self.log.info("Found %i ssSources and %i missing ssObjects in patch %i, tract %i",
-                          nSsSrc, nSsObj, patchId, tractId)
+                          nSsSrcTotal, nSsObjTotal, patchId, tractId)
         else:
             ssSourceHistoryCat = None
             unassociatedSsObjectHistoryCat = None
@@ -313,7 +303,10 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         self.log.info("Found %i DiaSources overlapping patch %i, tract %i",
                       len(diaSourceHistoryCat), patchId, tractId)
 
-        assocResult = self.associator.run(diaSourceHistoryCat, idGenerator=idGenerator)
+        diaSourceTable = diaSourceHistoryCat.to_pandas()
+        diaSourceTable.set_index("diaSourceId", drop=False)
+        # Now run diaObject association on the stacked remaining diaSources
+        assocResult = self.associator.run(diaSourceTable, idGenerator=idGenerator)
 
         # Drop any diaObjects that were created outside the inner region of the
         # patch. These will be associated in the overlapping patch instead.
@@ -340,6 +333,29 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             associatedSsSources=ssSourceHistoryCat,
             unassociatedSsObjects=unassociatedSsObjectHistoryCat,
         )
+
+    def _stackCatalogs(self, catalogs, remove_columns=None, empty=None):
+        """Stack a list of catalogs.
+
+        Parameters
+        ----------
+        catalogs : `list` of `astropy.table.Table`
+            Input catalogs with the same columns to be combined.
+        remove_columns : `list` of `str` or None, optional
+            List of column names to drop from the tables before stacking.
+
+        Returns
+        -------
+        `astropy.table.Table`
+            The combined catalog.
+        """
+        if catalogs:
+            sourceHistory = tb.vstack(catalogs)
+            if remove_columns is not None:
+                sourceHistory.remove_columns(remove_columns)
+            return sourceHistory
+        else:
+            return empty
 
     def runSolarSystemAssociation(self, diaCat, ssCat,
                                   visitSummary,
@@ -390,7 +406,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         """
         # Get the exposure metadata from the detector's row in the visitSummary table.
         ssoAssocResult = self.solarSystemAssociator.run(
-            tb.Table.from_pandas(diaCat),
+            diaCat,
             ssCat,
             visitInfo=visitSummary.find(detector).visitInfo,
             bbox=visitSummary.find(detector).getBBox(),
