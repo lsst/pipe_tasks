@@ -227,18 +227,10 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         innerPatchBox = geom.Box2D(skyInfo.patchInfo.getInnerBBox())
         innerTractSkyRegion = skyInfo.tractInfo.getInnerSkyRegion()
 
-        def visitDetectorPair(dataRef):
-            return (dataRef.dataId["visit"], dataRef.dataId["detector"])
-
         # Keep track of our diaCats, ssObject cats, and finalVisitSummaries by their (visit, detector) IDs
-        diaIdDict, ssObjectIdDict, finalVisitSummaryIdDict = {}, {}, {}
-        for diaCatRef in diaSourceTables:
-            diaIdDict[visitDetectorPair(diaCatRef)] = diaCatRef
-        if self.config.doSolarSystemAssociation:
-            for ssCatRef in ssObjectTableRefs:
-                ssObjectIdDict[ssCatRef.dataId["visit"]] = ssCatRef
-            for finalVisitSummaryRef in finalVisitSummaryRefs:
-                finalVisitSummaryIdDict[finalVisitSummaryRef.dataId["visit"]] = finalVisitSummaryRef
+        diaIdDict = prepareCatalogDict(diaSourceTables, useVisitDetector=True)
+        ssObjectIdDict = prepareCatalogDict(ssObjectTableRefs, useVisitDetector=False)
+        finalVisitSummaryIdDict = prepareCatalogDict(finalVisitSummaryRefs, useVisitDetector=False)
 
         diaSourceHistory, ssSourceHistory, unassociatedSsObjectHistory = [], [], []
         for visit, detector in diaIdDict:
@@ -394,3 +386,29 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             isInPatch[idx] = innerPatchBox.contains(pxCoord) and innerTractSkyRegion.contains(ra_rad, dec_rad)
 
         return isInPatch
+
+
+def prepareCatalogDict(dataRefList, useVisitDetector=True):
+    """Prepare lookup tables of the data references.
+
+    Parameters
+    ----------
+    dataRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle`
+        The data references to make a lookup table for.
+    useVisitDetector : `bool`, optional
+        Use both visit and detector in the dict key? If False, use only visit.
+
+    Returns
+    -------
+    `dict` of `lsst.daf.butler.DeferredDatasetHandle`
+        Lookup table of the data references by visit (and optionally detector)
+    """
+    dataDict = {}
+
+    if useVisitDetector:
+        for dataRef in dataRefList:
+            dataDict[(dataRef.dataId["visit"], dataRef.dataId["detector"])] = dataRef
+    else:
+        for dataRef in dataRefList:
+            dataDict[dataRef.dataId["visit"]] = dataRef
+    return dataDict
