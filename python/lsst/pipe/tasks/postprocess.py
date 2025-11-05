@@ -33,7 +33,9 @@ __all__ = ["WriteObjectTableConfig", "WriteObjectTableTask",
            "MakeVisitTableConfig", "MakeVisitTableTask",
            "WriteForcedSourceTableConfig", "WriteForcedSourceTableTask",
            "TransformForcedSourceTableConfig", "TransformForcedSourceTableTask",
-           "ConsolidateTractConfig", "ConsolidateTractTask"]
+           "ConsolidateTractConfig", "ConsolidateTractTask",
+           "TableAddColumnsAction", "ExtendednessColumnAction",
+           ]
 
 from collections import defaultdict
 import dataclasses
@@ -42,16 +44,19 @@ import functools
 import logging
 import numbers
 import os
+from typing import Iterable, Any
 
 import numpy as np
 import pandas as pd
 import astropy.table
+from numpy.typing import NDArray
 
 import lsst.geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 from lsst.daf.butler.formatters.parquet import pandas_to_astropy
+from lsst.pex.config.configurableActions import ConfigurableAction, ConfigurableActionStructField
 from lsst.pipe.base import NoWorkFound, UpstreamFailureNoWorkFound, connectionTypes
 import lsst.afw.table as afwTable
 from lsst.afw.image import ExposureSummaryStats, ExposureF
@@ -1088,6 +1093,182 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
         return pipeBase.Struct(outputCatalog=tbl)
 
 
+class TableAddColumnsAction(ConfigurableAction):
+    def getInputSchema(self) -> dict[str, type[NDArray]]:
+        raise NotImplementedError("This method must be overloaded in subclasses")
+
+    def __call__(self, table: astropy.table.Table) -> Iterable[Any]:
+        """This method must return an iterable of columns added to the table,
+           and must not otherwise modify the table.
+        """
+        raise NotImplementedError("This method must be overloaded in subclasses")
+
+
+class ExtendednessColumnAction(TableAddColumnsAction):
+    bands = pexConfig.ListField[str](
+        doc="The bands to average over to compute the signal-to-noise ratio",
+        default=["g", "r", "i", "z"]
+    )
+    chi_diff_scale = pexConfig.Field[float](
+        doc="The value of the error-scaled flux difference that "
+            " sets the point source probability at 0.5 (unsigned). Unused if None.",
+        default=5,
+        optional=True,
+    )
+    lnlike_ps_diff_column = pexConfig.Field[str](
+        doc="The name of the column containing the difference between the"
+            " galaxy model ln likelihood and a point source model. Unused if None.",
+        default="exponential_delta_lnL_fit_ps",
+        optional=True,
+    )
+    lnlike_ps_diff_scale = pexConfig.Field[float](
+        doc="The value of the point source log likelihood difference that"
+            " sets the point source probability at 0.5 (unsigned)",
+        default=0.5,
+    )
+    max_reff_compact = pexConfig.Field[float](
+        doc="The maximum effective radius in pixels below which an object is"
+            " classified as not extended, regardless of other parameter values.",
+        default=0.25,
+    )
+    max_reff_maybe_compact = pexConfig.Field[float](
+        doc="The maximum effective radius in pixels below which an object can"
+            " be classified as not extended, depending on other values.",
+        default=0.4,
+    )
+    max_reff_maybe_sn_slope = pexConfig.Field[float](
+        doc="The slope in the maximum allowed size (dex) per S/N dex for"
+            " an object to conditionally be classified as compact."
+            " Should be negative.",
+        default=-0.1,
+    )
+    min_sn_size_class = pexConfig.Field[float](
+        doc="The minimum signal-to-noise ratio required for an object to be"
+            " classified based on size alone",
+        default=30,
+    )
+    min_sn_class = pexConfig.Field[float](
+        doc="The minimum signal-to-noise ratio required for an object to be"
+            " classified compact. Anything below thie S/N will be classified "
+            " as extended.",
+        default=10,
+    )
+    model_column_flux = pexConfig.Field[str](
+        doc="The model flux column to use for computing the difference to"
+            " to the S/N flux. Must contain the {band} and {model} templates.",
+        default="{band}_{model}Flux",
+    )
+    model_column_flux_err = pexConfig.Field[str](
+        doc="The model flux error column to use for computing the difference"
+            " to the S/N flux. Must contain the {band} and {model} templates.",
+        default="{band}_{model}FluxErr",
+    )
+    output_column = pexConfig.Field[str](
+        doc="Name of the output column",
+        default="extendedness",
+    )
+    reff_model = pexConfig.Field[str](
+        doc="The model to use for applying size cuts",
+        default="exponential",
+    )
+    sn_column_flux = pexConfig.Field[str](
+        doc="The name of the flux column to use for computing"
+            " signal-to-noise. Must contain the {band} template.",
+        default="{band}_psfFlux",
+    )
+    sn_column_flux_err = pexConfig.Field[str](
+        doc="The name of the error column to use for computing"
+            " signal-to-noise. Must contain the {band} template.",
+        default="{band}_psfFluxErr",
+    )
+
+    def getInputSchema(self) -> Iterable[tuple[str, type[NDArray]]]:
+        schema = [
+            (f"{self.reff_model}_reff_x", NDArray[float]),
+            (f"{self.reff_model}_reff_y", NDArray[float]),
+            (f"{self.reff_model}_reff_rho", NDArray[float]),
+            (self.lnlike_ps_diff_column, NDArray[float]),
+        ]
+        for column, kwargs in (
+            (self.model_column_flux, {"model": self.reff_model}),
+            (self.sn_column_flux, {"model": self.reff_model}),
+            (self.model_column_flux_err, {}),
+            (self.sn_column_flux_err, {}),
+        ):
+            schema.extend([column.format(band=band, **kwargs) for band in self.bands])
+
+        return schema
+
+    def __call__(self, table: astropy.table.Table) -> Iterable[Any]:
+        prefix_size = f"{self.reff_model}_reff_"
+        log_size_exp = np.log10(
+            np.sqrt(0.5*(table[f"{prefix_size}x"]**2 + table[f"{prefix_size}y"]**2))
+        )
+        flux = None
+        flux_diff = None
+        flux_err_sq = None
+        sum_err_sq = None
+        for band in self.bands:
+            column_flux, column_flux_err = (
+                column.format(band=band)
+                for column in (self.sn_column_flux, self.sn_column_flux_err)
+            )
+            flux_in = column_flux in table.colnames
+            err_in = column_flux_err in table.colnames
+            n_exist = flux_in + err_in
+            if n_exist == 0:
+                continue
+            elif n_exist == 2:
+                flux_band = table[column_flux]
+                fluxerr_band = table[column_flux_err]
+                if flux is None:
+                    flux, flux_diff, flux_err_sq, sum_err_sq = (
+                        np.zeros(len(flux_band), dtype=float) for _ in range(4)
+                    )
+                good = np.isfinite(flux_band) & np.isfinite(fluxerr_band)
+                flux[good] += flux_band[good]
+                flux_err_sq[good] += fluxerr_band[good]**2
+                flux_model, flux_err_model = (
+                    table[column.format(band=band, model=self.reff_model)]
+                    for column in (self.model_column_flux, self.model_column_flux_err)
+                )
+                good &= np.isfinite(flux_model) & np.isfinite(flux_err_model)
+                flux_diff[good] += flux[good] - flux_model[good]
+                sum_err_sq[good] += fluxerr_band[good]**2 + flux_err_model[good]**2
+            else:
+                raise KeyError(
+                    f"{self.sn_column_flux if flux_in else self.sn_column_flux_err} found in"
+                    f" table columns for {band=} but not"
+                    f" {self.sn_column_flux if err_in else self.sn_column_flux_err}; both required."
+                )
+        sn = flux/np.sqrt(flux_err_sq)
+        small = (log_size_exp < np.log10(self.max_reff_compact))
+        extendedness = 1.0 - ((sn >= self.min_sn_size_class) & small)
+        has_chi_diff = self.chi_diff_scale is not None
+        has_lnL_diff = self.lnlike_ps_diff_column is not None
+        if has_chi_diff or has_lnL_diff:
+            size_max = np.log10(self.max_reff_maybe_compact) + self.max_reff_maybe_sn_slope*np.log10(
+                sn/self.min_sn_size_class)
+            ambiguous = (sn >= self.min_sn_class) & (log_size_exp < size_max) & (extendedness != 0)
+
+            ps_diff = None
+            if has_chi_diff:
+                ps_diff = flux_diff[ambiguous]/(self.chi_diff_scale*np.sqrt(sum_err_sq[ambiguous]))
+            if has_lnL_diff:
+                lnL_diff = table[self.lnlike_ps_diff_column][ambiguous]/self.lnlike_ps_diff_scale
+                if ps_diff is None:
+                    ps_diff = lnL_diff
+                else:
+                    ps_diff = np.sqrt(ps_diff**2 + lnL_diff**2)
+            ps_diff = np.array(ps_diff)
+            good = np.isfinite(ps_diff)
+            ps_diff[~good] = np.inf
+
+            extendedness[ambiguous] = 1.0 - 1.0/(1 + ps_diff)
+        table[self.output_column] = extendedness
+        return [self.output_column]
+
+
 class ConsolidateObjectTableConnections(pipeBase.PipelineTaskConnections,
                                         dimensions=("tract", "skymap")):
     inputCatalogs = connectionTypes.Input(
@@ -1108,11 +1289,17 @@ class ConsolidateObjectTableConnections(pipeBase.PipelineTaskConnections,
 
 class ConsolidateObjectTableConfig(pipeBase.PipelineTaskConfig,
                                    pipelineConnections=ConsolidateObjectTableConnections):
-    coaddName = pexConfig.Field(
-        dtype=str,
+    actions = ConfigurableActionStructField[TableAddColumnsAction](
+        doc="Actions to add columns to the final object table",
+    )
+    coaddName = pexConfig.Field[str](
         default="deep",
         doc="Name of coadd"
     )
+
+    def setDefaults(self):
+        super().setDefaults()
+        self.actions.extendedness = ExtendednessColumnAction()
 
 
 class ConsolidateObjectTableTask(pipeBase.PipelineTask):
@@ -1131,6 +1318,8 @@ class ConsolidateObjectTableTask(pipeBase.PipelineTask):
         self.log.info("Concatenating %s per-patch Object Tables",
                       len(inputs["inputCatalogs"]))
         table = TableVStack.vstack_handles(inputs["inputCatalogs"])
+        for action in self.config.actions:
+            action(table)
         butlerQC.put(pipeBase.Struct(outputCatalog=table), outputRefs)
 
 
