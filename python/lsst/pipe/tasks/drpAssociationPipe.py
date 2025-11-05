@@ -234,53 +234,57 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         finalVisitSummaryIdDict = prepareCatalogDict(finalVisitSummaryRefs, useVisitDetector=False)
 
         diaSourceHistory, ssSourceHistory, unassociatedSsObjectHistory = [], [], []
-        for visit, detector in diaIdDict:
-            diaCatRef = diaIdDict[(visit, detector)]
-            diaCat = diaCatRef.get()
-            nDiaSrcIn = len(diaCat)
-            # Always false if ! self.config.doSolarSystemAssociation
-            if (visit in ssObjectIdDict) and (visit in finalVisitSummaryIdDict):
-                visitSummary = finalVisitSummaryIdDict[visit].get()
-                ssoAssocResult = self.runSolarSystemAssociation(diaCat,
-                                                                ssObjectIdDict[visit].get(),
-                                                                visitSummary=visitSummary,
-                                                                patchBbox=innerPatchBox,
-                                                                patchWcs=skyInfo.wcs,
-                                                                innerTractSkyRegion=innerTractSkyRegion,
-                                                                detector=detector,
-                                                                visit=visit,
-                                                                )
+        nSsSrc, nSsObj = 0, 0
+        visits = set([v for v, _ in diaIdDict.keys()])
+        for visit in visits:
+            # visit summaries and Solar System catalogs are per-visit, so only
+            # load them once for all detectors with that visit
+            visitSummary = finalVisitSummaryIdDict[visit].get() if visit in finalVisitSummaryIdDict else None
+            ssCat = ssObjectIdDict[visit].get() if visit in ssObjectIdDict else None
+            detectors = [det for (v, det) in diaIdDict.keys() if v == visit]
+            for detector in detectors:
+                diaCat = diaIdDict[(visit, detector)].get()
+                nDiaSrcIn = len(diaCat)
+                if (ssCat is not None) and (visitSummary is not None):
+                    ssoAssocResult = self.runSolarSystemAssociation(diaCat,
+                                                                    ssCat,
+                                                                    visitSummary=visitSummary,
+                                                                    patchBbox=innerPatchBox,
+                                                                    patchWcs=skyInfo.wcs,
+                                                                    innerTractSkyRegion=innerTractSkyRegion,
+                                                                    detector=detector,
+                                                                    visit=visit,
+                                                                    )
 
-                nSsSrc = len(ssoAssocResult.associatedSsSources)
-                nSsObj = len(ssoAssocResult.unassociatedSsObjects)
-                # If diaSources were associated with Solar System objects,
-                # remove them from the catalog so they won't create new
-                # diaObjects or be associated with other diaObjects.
-                diaCat = ssoAssocResult.unassociatedDiaSources
-            else:
-                nSsSrc, nSsObj = 0, 0
+                    nSsSrc = len(ssoAssocResult.associatedSsSources)
+                    nSsObj = len(ssoAssocResult.unassociatedSsObjects)
+                    # If diaSources were associated with Solar System objects,
+                    # remove them from the catalog so they won't create new
+                    # diaObjects or be associated with other diaObjects.
+                    diaCat = ssoAssocResult.unassociatedDiaSources
+                else:
+                    nSsSrc, nSsObj = 0, 0
 
-            # Only trim diaSources to the outer bbox of the patch, so that
-            # diaSources near the patch boundary can be associated.
-            # DiaObjects will be trimmed to the inner patch bbox, and any
-            # diaSources associated with dropped diaObjects will also be dropped
-            diaInPatch = self._trimToPatch(diaCat.to_pandas(), outerPatchBox, skyInfo.wcs)
+                # Only trim diaSources to the outer bbox of the patch, so that
+                # diaSources near the patch boundary can be associated.
+                # DiaObjects will be trimmed to the inner patch bbox, and any
+                # diaSources associated with dropped diaObjects will also be dropped
+                diaInPatch = self._trimToPatch(diaCat.to_pandas(), outerPatchBox, skyInfo.wcs)
 
-            nDiaSrc = diaInPatch.sum()
+                nDiaSrc = diaInPatch.sum()
 
-            self.log.info(
-                "Read DiaSource catalog of length %i from visit %i, "
-                "detector %i. Found %i sources within the patch/tract "
-                "footprint, including %i associated with SSOs.",
-                nDiaSrcIn, diaCatRef.dataId["visit"],
-                diaCatRef.dataId["detector"], nDiaSrc + nSsSrc, nSsSrc)
+                self.log.info(
+                    "Read DiaSource catalog of length %i from visit %i, "
+                    "detector %i. Found %i sources within the patch/tract "
+                    "footprint, including %i associated with SSOs.",
+                    nDiaSrcIn, visit, detector, nDiaSrc + nSsSrc, nSsSrc)
 
-            if nDiaSrc > 0:
-                diaSourceHistory.append(diaCat[diaInPatch])
-            if nSsSrc > 0:
-                ssSourceHistory.append(ssoAssocResult.associatedSsSources)
-            if nSsObj > 0:
-                unassociatedSsObjectHistory.append(ssoAssocResult.unassociatedSsObjects)
+                if nDiaSrc > 0:
+                    diaSourceHistory.append(diaCat[diaInPatch])
+                if nSsSrc > 0:
+                    ssSourceHistory.append(ssoAssocResult.associatedSsSources)
+                if nSsObj > 0:
+                    unassociatedSsObjectHistory.append(ssoAssocResult.unassociatedSsObjects)
 
         # After looping over all of the detector-level catalogs that overlap the
         # patch, combine them into patch-level catalogs
@@ -296,7 +300,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             ssSourceHistoryCat = None
             unassociatedSsObjectHistoryCat = None
 
-        if (not diaSourceHistory) and not (self.config.doSolarSystemAssociation and ssSourceHistory):
+        if (not diaSourceHistory) and (not ssSourceHistory):
             if not self.config.doWriteEmptyTables:
                 raise pipeBase.NoWorkFound("Found no overlapping DIASources to associate.")
 
