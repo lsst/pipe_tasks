@@ -50,7 +50,7 @@ class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
     diaSourceTables = pipeBase.connectionTypes.Input(
         doc="Set of catalogs of calibrated DiaSources.",
         name="{fakesType}{coaddName}Diff_diaSrcTable",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("instrument", "visit", "detector"),
         deferLoad=True,
         multiple=True
@@ -192,11 +192,11 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         ----------
         diaSourceTables : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             Set of DiaSource catalogs potentially covering this patch/tract.
-        ssObjectTableRefs: `list` of `lsst.daf.butler.DeferredDatasetHandle`
+        ssObjectTableRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             Set of known SSO ephemerides potentially covering this patch/tract.
         skyMap : `lsst.skymap.BaseSkyMap`
             SkyMap defining the patch/tract
-        visitInfoRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
+        finalVisitSummaryRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             Reference to finalVisitSummary of each exposure potentially
             covering this patch/tract, which contain visitInfo, bbox, and wcs
         tractId : `int`
@@ -225,137 +225,227 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
 
         # Get the patch bounding box.
         innerPatchBox = geom.Box2D(skyInfo.patchInfo.getInnerBBox())
+        outerPatchBox = geom.Box2D(skyInfo.patchInfo.getOuterBBox())
         innerTractSkyRegion = skyInfo.tractInfo.getInnerSkyRegion()
 
-        def visitDetectorPair(dataRef):
-            return (dataRef.dataId["visit"], dataRef.dataId["detector"])
-
         # Keep track of our diaCats, ssObject cats, and finalVisitSummaries by their (visit, detector) IDs
-        diaIdDict, ssObjectIdDict, finalVisitSummaryIdDict = {}, {}, {}
-        for diaCatRef in diaSourceTables:
-            diaIdDict[visitDetectorPair(diaCatRef)] = diaCatRef
-        if self.config.doSolarSystemAssociation:
-            for ssCatRef in ssObjectTableRefs:
-                ssObjectIdDict[ssCatRef.dataId["visit"]] = ssCatRef
-            for finalVisitSummaryRef in finalVisitSummaryRefs:
-                finalVisitSummaryIdDict[finalVisitSummaryRef.dataId["visit"]] = finalVisitSummaryRef
+        diaIdDict = prepareCatalogDict(diaSourceTables, useVisitDetector=True)
+        ssObjectIdDict = prepareCatalogDict(ssObjectTableRefs, useVisitDetector=False)
+        finalVisitSummaryIdDict = prepareCatalogDict(finalVisitSummaryRefs, useVisitDetector=False)
 
         diaSourceHistory, ssSourceHistory, unassociatedSsObjectHistory = [], [], []
-        for visit, detector in diaIdDict:
-            diaCatRef = diaIdDict[(visit, detector)]
-            diaCat = diaCatRef.get()
-            associatedSsSources, unassociatedSsObjects = None, None
-            nSsSrc, nSsObj = 0, 0
-            # Always false if ! self.config.doSolarSystemAssociation
-            if (visit in ssObjectIdDict) and (visit in finalVisitSummaryIdDict):
-                # Get the ssCat and finalVisitSummary
-                ssCat = ssObjectIdDict[visit].get()
-                finalVisitSummary = finalVisitSummaryIdDict[visit].get()
-                # Get the exposure metadata from the detector's row in the finalVisitSummary table.
-                visitInfo = finalVisitSummary.find(detector).visitInfo
-                bbox = finalVisitSummary.find(detector).getBBox()
-                wcs = finalVisitSummary.find(detector).wcs
-                ssoAssocResult = self.solarSystemAssociator.run(
-                    tb.Table.from_pandas(diaCat),
-                    ssCat,
-                    visitInfo,
-                    bbox,
-                    wcs,
-                )
+        nSsSrc, nSsObj = 0, 0
+        visits = set([v for v, _ in diaIdDict.keys()])
+        for visit in visits:
+            # visit summaries and Solar System catalogs are per-visit, so only
+            # load them once for all detectors with that visit
+            visitSummary = finalVisitSummaryIdDict[visit].get() if visit in finalVisitSummaryIdDict else None
+            ssCat = ssObjectIdDict[visit].get() if visit in ssObjectIdDict else None
+            detectors = [det for (v, det) in diaIdDict.keys() if v == visit]
+            for detector in detectors:
+                diaCat = diaIdDict[(visit, detector)].get()
+                nDiaSrcIn = len(diaCat)
+                if (ssCat is not None) and (visitSummary is not None):
+                    ssoAssocResult = self.runSolarSystemAssociation(diaCat,
+                                                                    ssCat,
+                                                                    visitSummary=visitSummary,
+                                                                    patchBbox=innerPatchBox,
+                                                                    patchWcs=skyInfo.wcs,
+                                                                    innerTractSkyRegion=innerTractSkyRegion,
+                                                                    detector=detector,
+                                                                    visit=visit,
+                                                                    )
 
-                associatedSsSources = ssoAssocResult.associatedSsSources
-                associatedSsDiaSources = ssoAssocResult.ssoAssocDiaSources
-                ssInTractPatch = self._trimToPatch(associatedSsSources.to_pandas(),
-                                                   innerPatchBox,
-                                                   innerTractSkyRegion,
-                                                   skyInfo.wcs)
-                associatedSsSources = associatedSsSources[ssInTractPatch]
-                assocDiaSrcIds = set(associatedSsSources['diaSourceId'])
-                diaSrcMask = [diaId in assocDiaSrcIds for diaId in associatedSsDiaSources['diaSourceId']]
-                associatedSsDiaSources = associatedSsDiaSources[np.array(diaSrcMask)]
-
-                unassociatedSsObjects = ssoAssocResult.unassociatedSsObjects
-                ssObjInTractPatch = self._trimToPatch(unassociatedSsObjects.to_pandas(),
-                                                      innerPatchBox,
-                                                      innerTractSkyRegion,
-                                                      skyInfo.wcs)
-                unassociatedSsObjects = unassociatedSsObjects[ssObjInTractPatch]
-                nSsSrc = ssInTractPatch.sum()
-                nSsObj = ssObjInTractPatch.sum()
-                if len(ssoAssocResult.unAssocDiaSources) > 0:
-                    diaCat = ssoAssocResult.unAssocDiaSources.to_pandas()
+                    nSsSrc = len(ssoAssocResult.associatedSsSources)
+                    nSsObj = len(ssoAssocResult.unassociatedSsObjects)
+                    # If diaSources were associated with Solar System objects,
+                    # remove them from the catalog so they won't create new
+                    # diaObjects or be associated with other diaObjects.
+                    diaCat = ssoAssocResult.unassociatedDiaSources
                 else:
-                    diaCat = pd.DataFrame(columns=ssoAssocResult.unAssocDiaSources.columns)
+                    nSsSrc, nSsObj = 0, 0
 
-            diaInTractPatch = self._trimToPatch(diaCat,
-                                                innerPatchBox,
-                                                innerTractSkyRegion,
-                                                skyInfo.wcs)
-            diaCat = diaCat[diaInTractPatch]
+                # Only trim diaSources to the outer bbox of the patch, so that
+                # diaSources near the patch boundary can be associated.
+                # DiaObjects will be trimmed to the inner patch bbox, and any
+                # diaSources associated with dropped diaObjects will also be dropped
+                diaInPatch = self._trimToPatch(diaCat.to_pandas(), outerPatchBox, skyInfo.wcs)
 
-            nDiaSrc = diaInTractPatch.sum()
+                nDiaSrc = diaInPatch.sum()
 
-            self.log.info(
-                "Read DiaSource catalog of length %i from visit %i, "
-                "detector %i. Found %i sources within the patch/tract "
-                "footprint, including %i associated with SSOs.",
-                len(diaCat), diaCatRef.dataId["visit"],
-                diaCatRef.dataId["detector"], nDiaSrc + nSsSrc, nSsSrc)
+                self.log.info(
+                    "Read DiaSource catalog of length %i from visit %i, "
+                    "detector %i. Found %i sources within the patch/tract "
+                    "footprint, including %i associated with SSOs.",
+                    nDiaSrcIn, visit, detector, nDiaSrc + nSsSrc, nSsSrc)
 
-            if nDiaSrc > 0:
-                diaSourceHistory.append(diaCat)
-            if nSsSrc > 0:
-                ssSourceHistory.append(associatedSsSources)
-                diaSourceHistory.append(associatedSsDiaSources.to_pandas())
-            if nSsObj > 0:
-                unassociatedSsObjects['visit'] = visit
-                unassociatedSsObjects['detector'] = detector
-                unassociatedSsObjectHistory.append(unassociatedSsObjects)
+                if nDiaSrc > 0:
+                    diaSourceHistory.append(diaCat[diaInPatch])
+                if nSsSrc > 0:
+                    ssSourceHistory.append(ssoAssocResult.associatedSsSources)
+                if nSsObj > 0:
+                    unassociatedSsObjectHistory.append(ssoAssocResult.unassociatedSsObjects)
 
-        if diaSourceHistory:
-            diaSourceHistoryCat = pd.concat(diaSourceHistory)
-        else:
-            diaSourceHistoryCat = diaCat.drop(diaCat.index)
+        # After looping over all of the detector-level catalogs that overlap the
+        # patch, combine them into patch-level catalogs
+        diaSourceHistoryCat = self._stackCatalogs(diaSourceHistory)
         if self.config.doSolarSystemAssociation:
-            nSsSrc, nSsObj = 0, 0
-            if ssSourceHistory:
-                ssSourceHistoryCat = tb.vstack(ssSourceHistory)
-                ssSourceHistoryCat.remove_columns(['ra', 'dec'])
-                nSsSrc = len(ssSourceHistoryCat)
-            else:
-                ssSourceHistoryCat = associatedSsSources  # Empty table?
-            if unassociatedSsObjectHistory:
-                unassociatedSsObjectHistoryCat = tb.vstack(unassociatedSsObjectHistory)
-                nSsObj = len(unassociatedSsObjectHistoryCat)
-            else:
-                unassociatedSsObjectHistoryCat = unassociatedSsObjects  # Empty table?
+            ssSourceHistoryCat = self._stackCatalogs(ssSourceHistory, remove_columns=['ra', 'dec'])
+            nSsSrcTotal = len(ssSourceHistoryCat) if ssSourceHistoryCat else 0
+            unassociatedSsObjectHistoryCat = self._stackCatalogs(unassociatedSsObjectHistory)
+            nSsObjTotal = len(unassociatedSsObjectHistoryCat) if unassociatedSsObjectHistoryCat else 0
             self.log.info("Found %i ssSources and %i missing ssObjects in patch %i, tract %i",
-                          nSsSrc, nSsObj, patchId, tractId)
+                          nSsSrcTotal, nSsObjTotal, patchId, tractId)
         else:
             ssSourceHistoryCat = None
             unassociatedSsObjectHistoryCat = None
 
-        if (not diaSourceHistory) and not (self.config.doSolarSystemAssociation and ssSourceHistory):
+        if (not diaSourceHistory) and (not ssSourceHistory):
             if not self.config.doWriteEmptyTables:
                 raise pipeBase.NoWorkFound("Found no overlapping DIASources to associate.")
 
         self.log.info("Found %i DiaSources overlapping patch %i, tract %i",
                       len(diaSourceHistoryCat), patchId, tractId)
 
-        assocResult = self.associator.run(diaSourceHistoryCat, idGenerator=idGenerator)
+        diaSourceTable = diaSourceHistoryCat.to_pandas()
+        diaSourceTable.set_index("diaSourceId", drop=False)
+        # Now run diaObject association on the stacked remaining diaSources
+        assocResult = self.associator.run(diaSourceTable, idGenerator=idGenerator)
 
-        self.log.info("Associated DiaSources into %i DiaObjects",
-                      len(assocResult.diaObjects))
+        # Drop any diaObjects that were created outside the inner region of the
+        # patch. These will be associated in the overlapping patch instead.
+        objectsInTractPatch = self._trimToPatch(assocResult.diaObjects,
+                                                innerPatchBox,
+                                                skyInfo.wcs,
+                                                innerTractSkyRegion=innerTractSkyRegion)
+        diaObjects = assocResult.diaObjects[objectsInTractPatch]
+        # Instead of dropping diaSources based on their patch, assign them to a
+        # patch based on whether their diaObject was inside. This means that
+        # some diaSources in the patch catalog will actually have coordinates
+        # just outside the patch.
+        assocDiaSources = self.dropDiaSourceByDiaObjectId(assocResult.diaObjects[~objectsInTractPatch].index,
+                                                          assocResult.assocDiaSources)
+
+        self.log.info("Associated DiaSources into %i DiaObjects", len(diaObjects))
 
         if self.config.doAddDiaObjectCoords:
-            assocResult.assocDiaSources = self._addDiaObjectCoords(assocResult.diaObjects,
-                                                                   assocResult.assocDiaSources)
+            assocDiaSources = self._addDiaObjectCoords(diaObjects, assocDiaSources)
 
         return pipeBase.Struct(
-            diaObjectTable=assocResult.diaObjects,
-            assocDiaSourceTable=assocResult.assocDiaSources,
+            diaObjectTable=diaObjects,
+            assocDiaSourceTable=assocDiaSources,
             associatedSsSources=ssSourceHistoryCat,
             unassociatedSsObjects=unassociatedSsObjectHistoryCat,
+        )
+
+    def _stackCatalogs(self, catalogs, remove_columns=None, empty=None):
+        """Stack a list of catalogs.
+
+        Parameters
+        ----------
+        catalogs : `list` of `astropy.table.Table`
+            Input catalogs with the same columns to be combined.
+        remove_columns : `list` of `str` or None, optional
+            List of column names to drop from the tables before stacking.
+
+        Returns
+        -------
+        `astropy.table.Table`
+            The combined catalog.
+        """
+        if catalogs:
+            sourceHistory = tb.vstack(catalogs)
+            if remove_columns is not None:
+                sourceHistory.remove_columns(remove_columns)
+            return sourceHistory
+        else:
+            return empty
+
+    def runSolarSystemAssociation(self, diaCat, ssCat,
+                                  visitSummary,
+                                  patchBbox,
+                                  patchWcs,
+                                  innerTractSkyRegion,
+                                  detector,
+                                  visit,
+                                  ):
+        """Run Solar System object association and filter the results.
+
+        Parameters
+        ----------
+        diaCat : `pandas.DataFrame`
+            Catalog of detected diaSources on the image difference.
+        ssCat : `astropy.table.Table`
+            Catalog of predicted coordinates of known Solar System objects.
+        visitSummary : `lsst.afw.table.ExposureCatalog`
+            Table of calibration and metadata for all detectors in a visit.
+        patchBbox : `lsst.geom.Box2D`
+            Bounding box of the patch.
+        patchWcs : `lsst.geom.SkyWcs`
+            Wcs of the tract containing the patch.
+        innerTractSkyRegion : `lsst.sphgeom.Box`
+            Region defining the inner non-overlapping part of a tract.
+        detector : `int`
+            Detector number of the science exposure.
+        visit : `int`
+            Visit number of the science exposure.
+
+        Returns
+        -------
+        ssoAssocResult : `lsst.pipe.base.Struct`
+            Results struct with attributes:
+
+            ``associatedSsSources``
+                Table of DiaSources associated with Solar System objects.
+                (`astropy.table.Table`)
+            ``associatedSsDiaSources``
+                Table of Solar System objects associated with DiaSources.
+                (`astropy.table.Table`).
+            ``unassociatedSsObjects``
+                Table of Solar System objects in the patch not associated with
+                any DiaSource (`astropy.table.Table`).
+            ``unassociatedDiaSources``
+                Table of DiaSources not associated with any Solar System object
+                (`astropy.table.Table`).
+        """
+        # Get the exposure metadata from the detector's row in the visitSummary table.
+        ssoAssocResult = self.solarSystemAssociator.run(
+            diaCat,
+            ssCat,
+            visitInfo=visitSummary.find(detector).visitInfo,
+            bbox=visitSummary.find(detector).getBBox(),
+            wcs=visitSummary.find(detector).wcs,
+        )
+
+        ssInTractPatch = self._trimToPatch(ssoAssocResult.associatedSsSources.to_pandas(),
+                                           patchBbox,
+                                           patchWcs,
+                                           innerTractSkyRegion=innerTractSkyRegion)
+        associatedSsSources = ssoAssocResult.associatedSsSources[ssInTractPatch].copy()
+        assocDiaSrcIds = set(associatedSsSources['diaSourceId'])
+        diaSrcMask = [diaId in assocDiaSrcIds for diaId in ssoAssocResult.ssoAssocDiaSources['diaSourceId']]
+        associatedSsDiaSources = ssoAssocResult.ssoAssocDiaSources[np.array(diaSrcMask)]
+
+        ssObjInTractPatch = self._trimToPatch(ssoAssocResult.unassociatedSsObjects.to_pandas(),
+                                              patchBbox,
+                                              patchWcs,
+                                              innerTractSkyRegion=innerTractSkyRegion)
+        unassociatedSsObjects = ssoAssocResult.unassociatedSsObjects[ssObjInTractPatch].copy()
+        # Update the table of Solar System objects that were not found with the
+        # visit and detector where they were predicted.
+        if len(unassociatedSsObjects) > 0:
+            unassociatedSsObjects['visit'] = visit
+            unassociatedSsObjects['detector'] = detector
+
+        if len(ssoAssocResult.unAssocDiaSources) > 0:
+            unassociatedDiaSources = ssoAssocResult.unAssocDiaSources
+        else:
+            unassociatedDiaSources = pd.DataFrame(columns=ssoAssocResult.unAssocDiaSources.columns)
+        return pipeBase.Struct(
+            associatedSsSources=associatedSsSources,
+            associatedSsDiaSources=associatedSsDiaSources,
+            unassociatedSsObjects=unassociatedSsObjects,
+            unassociatedDiaSources=unassociatedDiaSources
         )
 
     def _addDiaObjectCoords(self, objects, sources):
@@ -364,7 +454,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                       how='inner').set_index('diaSourceId')
         return df
 
-    def _trimToPatch(self, cat, innerPatchBox, innerTractSkyRegion, wcs):
+    def _trimToPatch(self, cat, patchBox, wcs, innerTractSkyRegion=None):
         """Create generator testing if a set of DiaSources are in the
         patch/tract.
 
@@ -372,25 +462,76 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         ----------
         cat : `pandas.DataFrame`
             Catalog of DiaSources to test within patch/tract.
-        innerPatchBox : `lsst.geom.Box2D`
+        patchBox : `lsst.geom.Box2D`
             Bounding box of the patch.
         wcs : `lsst.geom.SkyWcs`
             Wcs of the tract.
+        innerTractSkyRegion : `lsst.sphgeom.Box`, optional
+            Region defining the inner non-overlapping part of a tract.
 
         Returns
-        ------
+        -------
         isInPatch : `numpy.ndarray`, (N,)
             Booleans representing if the DiaSources are contained within the
             current patch and tract.
         """
         isInPatch = np.zeros(len(cat), dtype=bool)
 
-        for idx, row in cat.iterrows():
+        for idx, row in cat.reset_index().iterrows():
             spPoint = geom.SpherePoint(row["ra"], row["dec"], geom.degrees)
             pxCoord = wcs.skyToPixel(spPoint)
             ra_rad = np.deg2rad(row["ra"])
             dec_rad = np.deg2rad(row["dec"])
+            isInPatch[idx] = patchBox.contains(pxCoord)
 
-            isInPatch[idx] = innerPatchBox.contains(pxCoord) and innerTractSkyRegion.contains(ra_rad, dec_rad)
+            if innerTractSkyRegion is not None:
+                isInPatch[idx] &= innerTractSkyRegion.contains(ra_rad, dec_rad)
 
         return isInPatch
+
+    def dropDiaSourceByDiaObjectId(self, droppedDiaObjectIds, diaSources):
+        """Drop diaSources with diaObject IDs in the supplied list.
+
+        Parameters
+        ----------
+        droppedDiaObjectIds : `pandas.DataFrame`
+            DiaObjectIds to match and drop from the list of diaSources.
+        diaSources : `pandas.DataFrame`
+            Catalog of diaSources to check and filter.
+
+        Returns
+        -------
+        filteredDiaSources : `pandas.DataFrame`
+            The input diaSources with any rows matching the listed diaObjectIds
+            removed.
+        """
+        toDrop = diaSources['diaObjectId'].isin(droppedDiaObjectIds)
+
+        # Keep only rows that do NOT match
+        return diaSources.loc[~toDrop].copy()
+
+
+def prepareCatalogDict(dataRefList, useVisitDetector=True):
+    """Prepare lookup tables of the data references.
+
+    Parameters
+    ----------
+    dataRefList : `list` of `lsst.daf.butler.DeferredDatasetHandle`
+        The data references to make a lookup table for.
+    useVisitDetector : `bool`, optional
+        Use both visit and detector in the dict key? If False, use only visit.
+
+    Returns
+    -------
+    `dict` of `lsst.daf.butler.DeferredDatasetHandle`
+        Lookup table of the data references by visit (and optionally detector)
+    """
+    dataDict = {}
+
+    if useVisitDetector:
+        for dataRef in dataRefList:
+            dataDict[(dataRef.dataId["visit"], dataRef.dataId["detector"])] = dataRef
+    else:
+        for dataRef in dataRefList:
+            dataDict[dataRef.dataId["visit"]] = dataRef
+    return dataDict

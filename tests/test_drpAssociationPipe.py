@@ -82,15 +82,15 @@ class TestDrpAssociationPipe(lsst.utils.tests.TestCase):
         self.assertEqual(
             np.sum(dpaTask._trimToPatch(self.diaSrcCatIn,
                                         self.innerPatchBox,
-                                        self.innerTractSkyRegion,
-                                        self.skyInfo.wcs)),
+                                        self.skyInfo.wcs,
+                                        innerTractSkyRegion=self.innerTractSkyRegion)),
             self.nSources)
 
         self.assertEqual(
             np.sum(dpaTask._trimToPatch(self.diaSrcCatOut,
                                         self.innerPatchBox,
-                                        self.innerTractSkyRegion,
-                                        self.skyInfo.wcs)),
+                                        self.skyInfo.wcs,
+                                        innerTractSkyRegion=self.innerTractSkyRegion)),
             0)
 
 
