@@ -58,9 +58,9 @@ class DrpAssociationPipeConnections(pipeBase.PipelineTaskConnections,
     ssObjectTableRefs = pipeBase.connectionTypes.Input(
         doc="Reference to catalogs of SolarSolarSystem objects expected to be "
             "observable in each (visit, detector).",
-        name="preloaded_DRP_SsObjects",
+        name="preloaded_ss_object_visit",
         storageClass="ArrowAstropy",
-        dimensions=("instrument", "visit", "detector"),
+        dimensions=("instrument", "visit"),
         minimum=0,
         deferLoad=True,
         multiple=True
@@ -236,7 +236,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             diaIdDict[visitDetectorPair(diaCatRef)] = diaCatRef
         if self.config.doSolarSystemAssociation:
             for ssCatRef in ssObjectTableRefs:
-                ssObjectIdDict[visitDetectorPair(ssCatRef)] = ssCatRef
+                ssObjectIdDict[ssCatRef.dataId["visit"]] = ssCatRef
             for finalVisitSummaryRef in finalVisitSummaryRefs:
                 finalVisitSummaryIdDict[finalVisitSummaryRef.dataId["visit"]] = finalVisitSummaryRef
 
@@ -247,9 +247,9 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             associatedSsSources, unassociatedSsObjects = None, None
             nSsSrc, nSsObj = 0, 0
             # Always false if ! self.config.doSolarSystemAssociation
-            if all([(visit, detector) in ssObjectIdDict and visit in finalVisitSummaryIdDict]):
+            if (visit in ssObjectIdDict) and (visit in finalVisitSummaryIdDict):
                 # Get the ssCat and finalVisitSummary
-                ssCat = ssObjectIdDict[(visit, detector)].get()
+                ssCat = ssObjectIdDict[visit].get()
                 finalVisitSummary = finalVisitSummaryIdDict[visit].get()
                 # Get the exposure metadata from the detector's row in the finalVisitSummary table.
                 visitInfo = finalVisitSummary.find(detector).visitInfo
