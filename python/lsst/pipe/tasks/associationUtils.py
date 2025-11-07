@@ -195,7 +195,7 @@ def query_disc(nside, ra, dec, max_rad, min_rad=0):
     return pixels
 
 
-def obj_id_to_ss_object_id(objID, flags=0):
+def obj_id_to_ss_object_id(objID):
     """Convert from Minor Planet Center packed provisional object ID to
     Rubin ssObjectID.
 
@@ -204,10 +204,6 @@ def obj_id_to_ss_object_id(objID, flags=0):
     objID : `str`
         Minor Planet Center packed provisional designation for a small solar
         system object. Must be fewer than eight characters.
-    flags : `int`, optional
-        Eight free bits to enable future decoupling between Minor Planet Center
-        and Rubin. Zero by default, should not be changed unless we need to
-        move away from a 1:1 mapping with the MPC. Must be within [0, 255].
 
     Returns
     -------
@@ -217,20 +213,18 @@ def obj_id_to_ss_object_id(objID, flags=0):
     Raises
     ------
     ValueError
-        Raised if either objID is longer than 7 characters or flags is greater
-        than 255 or less than 0.
+        Raised if either objID is shorter than 7 or longer than 8 characters or contains
+        illegal objID characters
     """
-    if len(objID) > 7:
-        raise ValueError(f'objID longer than 7 characters: "{objID}"')
+    if len(objID) > 8:
+        raise ValueError(f'objID longer than 8 characters: "{objID}"')
     if len(objID) < 7:
         raise ValueError(f'objID shorter than 7 characters: "{objID}"')
-    if flags < 0 or flags > 255:
-        raise ValueError(f'Flags ({flags}) outside [0, 255].')
     if any([ord(c) > 255 for c in objID]):
         raise ValueError(f'{[c for c in objID if ord(c) > 255]} not legal objID characters (ascii [1, 255])')
 
-    ssObjectID = flags
-    for character in objID:
+    ssObjectID = ord(objID[0])
+    for character in objID[1:]:
         ssObjectID <<= 8
         ssObjectID += ord(character)
     return ssObjectID
@@ -250,14 +244,12 @@ def ss_object_id_to_obj_id(ssObjectID):
     objID : `str`
         Minor Planet Center packed provisional designation.
 
-    flags : `int`
-        Rubin flags (not yet defined, but usable in case we decouple from MPC).
-
     Raises
     ------
     """
     if ssObjectID < 0 or ssObjectID >= (1 << 64):
         raise ValueError(f'ssObjectID ({ssObjectID}) outside [0, 2^64 - 1].')
 
-    objID = ''.join([chr((ssObjectID >> (8 * i)) % 256) for i in reversed(range(0, 7))])
-    return objID, ssObjectID >> (8 * 7) % 256
+    objID = ''.join([chr((ssObjectID >> (8 * i)) % 256) for i in reversed(range(0, 8))])
+    objID = objID.replace('\x00', '')
+    return objID
