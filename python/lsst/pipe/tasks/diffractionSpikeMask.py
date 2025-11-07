@@ -459,30 +459,3 @@ def getRegion(exposure, margin=None):
         return lsst.sphgeom.ConvexPolygon.convexHull([c.getVector() for c in padded])
 
     return region
-
-
-def computePsfWidthFromMoments(psf, angle=0.):
-    """Calculate the width of an elliptical PSF along a given direction.
-
-    Parameters
-    ----------
-    psf : `lsst.afw.detection.Psf`
-        The point spread function of the image.
-    angle : `float`, optional
-        Rotation CCW from the +x axis to calculate the width of the PSF along.
-
-    Returns
-    -------
-    fwhm : `float`
-        Full width at half maximum of the fitted shape of the PSF along the
-        given `angle`. In pixels.
-    """
-    psfShape = psf.computeShape(psf.getAveragePosition())
-    c = np.cos(np.deg2rad(angle))
-    s = np.sin(np.deg2rad(angle))
-    sigma2 = c*c*psfShape.getIxx() + 2*c*s*psfShape.getIxy() + s*s*psfShape.getIyy()
-    sigma = np.sqrt(max(sigma2, 0.0))   # rms width in pixels
-
-    # 5) optional: Gaussian-equivalent FWHM along angle
-    fwhm = 2.0 * np.sqrt(2.0 * np.log(2.0)) * sigma
-    return fwhm
