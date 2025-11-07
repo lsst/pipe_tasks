@@ -227,7 +227,10 @@ class DiffractionSpikeMaskTask(Task):
         xvals, yvals : `numpy.ndarray`
             Array of x- and y-values of bright sources to mask.
         mask : `lsst.afw.image.Mask`
-            The mask plane of the image to set the BRIGHT mask plane.
+            The mask plane of the image to set the SPIKE mask plane.
+        spikeRadii : `numpy.ndarray`
+            Predicted lengths in pixels of the diffraction spikes for each
+            bright source.
 
         Returns
         -------
@@ -258,7 +261,7 @@ class DiffractionSpikeMaskTask(Task):
         radii : `numpy.ndarray`
             Array of radius values for each bright source.
         mask : `lsst.afw.image.Mask`
-            The mask plane of the image to set the BRIGHT mask plane.
+            The mask plane of the image to set the SPIKE mask plane.
         """
         bbox = mask.getBBox()
         for x, y, r in zip(xvals, yvals, radii):
@@ -430,6 +433,9 @@ def getRegion(exposure, margin=None):
     ----------
     exposure : `lsst.afw.image.Exposure`
         Exposure object with calibrated WCS.
+    margin : `lsst.sphgeom.Angle`, optional
+        Grow the surrounding region of the exposure by this amount, in order to
+        mask the diffraction spikes of stars off the image.
 
     Returns
     -------
