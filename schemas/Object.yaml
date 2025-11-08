@@ -30,6 +30,10 @@ funcs:
         # covariance in reference position for merged "ref" cat.
         functor: RADecCovColumn
         dataset: ref
+    coord_flag:
+        functor: Column
+        args: slot_Centroid_flag
+        dataset: ref
     ra:
         functor: CoordColumn
         args: coord_ra
@@ -192,42 +196,6 @@ funcs:
         functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_1_0_instFluxErr
-    # 1.5 arcsec sigma GAaP flux
-    gaap1p5Flux:
-        functor: SinglePrecisionFloatColumn
-        dataset: forced_src
-        args: ext_gaap_GaapFlux_1_15x_1_5_instFlux
-    gaap1p5FluxErr:
-        functor: SinglePrecisionFloatColumn
-        dataset: forced_src
-        args: ext_gaap_GaapFlux_1_15x_1_5_instFluxErr
-    # 2.5 arcsec sigma GAaP flux
-    gaap2p5Flux:
-        functor: SinglePrecisionFloatColumn
-        dataset: forced_src
-        args: ext_gaap_GaapFlux_1_15x_2_5_instFlux
-    gaap2p5FluxErr:
-        functor: SinglePrecisionFloatColumn
-        dataset: forced_src
-        args: ext_gaap_GaapFlux_1_15x_2_5_instFluxErr
-    # 3.0 arcsec sigma GAaP flux
-    gaap3p0Flux:
-        functor: SinglePrecisionFloatColumn
-        dataset: forced_src
-        args: ext_gaap_GaapFlux_1_15x_3_0_instFlux
-    gaap3p0FluxErr:
-        functor: SinglePrecisionFloatColumn
-        dataset: forced_src
-        args: ext_gaap_GaapFlux_1_15x_3_0_instFluxErr
-    #  Optimal GAaP flux
-    gaapOptimalFlux:
-        functor: SinglePrecisionFloatColumn
-        dataset: forced_src
-        args: ext_gaap_GaapFlux_1_15x_Optimal_instFlux
-    gaapOptimalFluxErr:
-        functor: SinglePrecisionFloatColumn
-        dataset: forced_src
-        args: ext_gaap_GaapFlux_1_15x_Optimal_instFluxErr
     # Taking Shape from meas
     # These pixel-coordinate versions are deprecated following RFC-1081.
     ixx:
@@ -263,22 +231,6 @@ funcs:
     iPSF_flag:
         functor: Column
         args: slot_PsfShape_flag
-        dataset: meas
-    ixxRound:
-        functor: SinglePrecisionFloatColumn
-        args: slot_ShapeRound_xx
-        dataset: meas
-    iyyRound:
-        functor: SinglePrecisionFloatColumn
-        args: slot_ShapeRound_yy
-        dataset: meas
-    ixyRound:
-        functor: SinglePrecisionFloatColumn
-        args: slot_ShapeRound_xy
-        dataset: meas
-    iRound_flag:
-        functor: Column
-        args: slot_ShapeRound_flag
         dataset: meas
     ixxDebiasedPSF:
         functor: SinglePrecisionFloatColumn
@@ -493,15 +445,6 @@ funcs:
     # kronRad50Err: Need to compute DM-16313
     # kronRad90: Need to compute DM-16313
     # kronRad90Err: Need to compute DM-16313
-    # apFlux renamed to calibFlux because it is not guaranteed to be an apFlux
-    calibFlux:
-        functor: SinglePrecisionFloatColumn
-        dataset: meas
-        args: slot_CalibFlux_instFlux
-    calibFluxErr:
-        functor: SinglePrecisionFloatColumn
-        dataset: meas
-        args: slot_CalibFlux_instFluxErr
     # Not in DPDD. Used for QA
     ap03Flux:
         functor: SinglePrecisionFloatColumn
@@ -636,27 +579,6 @@ funcs:
     # lcNonPeriodic:  # Not computed. Need without multi-epoch forced phot S19
     # photoZ:  # Not computed yet
 
-    # COLUMNS ADDED (not in the DPDD)
-    x:
-        functor: Column
-        args: slot_Centroid_x
-        dataset: ref
-    y:
-        functor: Column
-        args: slot_Centroid_y
-        dataset: ref
-    xErr:
-        functor: Column
-        args: slot_Centroid_xErr
-        dataset: ref
-    yErr:
-        functor: Column
-        args: slot_Centroid_yErr
-        dataset: ref
-    xy_flag:
-        functor: Column
-        args: slot_Centroid_flag
-        dataset: ref
     # Not in DPDD
     blendedness:
         functor: SinglePrecisionFloatColumn
@@ -1358,14 +1280,7 @@ flags:
     - slot_ApFlux_flag
     - slot_ApFlux_flag_apertureTruncated
     - slot_ApFlux_flag_sincCoeffsTruncated
-    - slot_CalibFlux_flag
-    - slot_CalibFlux_flag_apertureTruncated
-    - slot_CalibFlux_flag_sincCoeffsTruncated
     - slot_Centroid_flag
-    - slot_Centroid_x
-    - slot_Centroid_xErr
-    - slot_Centroid_y
-    - slot_Centroid_yErr
     - ext_photometryKron_KronFlux_flag
     - ext_photometryKron_KronFlux_flag_bad_radius
     - ext_photometryKron_KronFlux_flag_bad_shape
@@ -1389,13 +1304,6 @@ forcedFlags:
     - modelfit_CModel_flag_apCorr
     - ext_gaap_GaapFlux_flag
     - ext_gaap_GaapFlux_flag_edge
-    - ext_gaap_GaapFlux_1_15x_flag_gaussianization
-    - ext_gaap_GaapFlux_1_15x_Optimal_flag_bigPsf
-    - ext_gaap_GaapFlux_1_15x_0_7_flag_bigPsf
-    - ext_gaap_GaapFlux_1_15x_1_0_flag_bigPsf
-    - ext_gaap_GaapFlux_1_15x_1_5_flag_bigPsf
-    - ext_gaap_GaapFlux_1_15x_2_5_flag_bigPsf
-    - ext_gaap_GaapFlux_1_15x_3_0_flag_bigPsf
 flag_rename_rules:
     # Taken from db-meas-forced
     - ['modelfit_C', 'c']
@@ -1404,17 +1312,12 @@ flag_rename_rules:
     - ['ext_convolved_', '']
     - ['ext_gaap_GaapFlux_1_15x_0_7', 'gaap0p7Flux']
     - ['ext_gaap_GaapFlux_1_15x_1_0', 'gaap1p0Flux']
-    - ['ext_gaap_GaapFlux_1_15x_1_5', 'gaap1p5Flux']
-    - ['ext_gaap_GaapFlux_1_15x_2_5', 'gaap2p5Flux']
-    - ['ext_gaap_GaapFlux_1_15x_3_0', 'gaap3p0Flux']
-    - ['ext_gaap_GaapFlux_1_15x_Optimal', 'gaapOptimalFlux']
     - ['ext_gaap_GaapFlux_1_15x', 'gaapFlux']
     - ['ext_gaap_GaapFlux', 'gaapFlux']
     - ['undeblended_base', 'undeblended']
     - ['undeblended_ext_photometryKron', 'undeblended']
     - ['ext_photometryKron_KronFlux', 'kronFlux']
     - ['slot_Centroid', 'centroid']
-    - ['slot_Calib', 'calib']
     - ['slot_Psf', 'psf']
     - ['slot_Shape', 'shape']
     - ['slot_ApFlux', 'apFlux']
