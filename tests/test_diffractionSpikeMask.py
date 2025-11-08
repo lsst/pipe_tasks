@@ -77,6 +77,15 @@ class DiffractionSpikeMaskTest(lsst.utils.tests.TestCase):
         del self.exposure
         del self.refObjLoader
 
+    def test_raiseWithoutLoader(self):
+        """The task should raise an error if no reference catalog loader is
+        configured.
+        """
+        config = DiffractionSpikeMaskConfig()
+        task = DiffractionSpikeMaskTask(config=config)
+        with self.assertRaises(RuntimeError):
+            task.run(self.exposure)
+
     def test_loadAndMaskStars(self):
         """Run the bright star mask with a selection of reference sources."""
 
@@ -121,7 +130,7 @@ class DiffractionSpikeMaskTest(lsst.utils.tests.TestCase):
         self.assertGreater(outside, 0)
 
     def test_noBrightStars(self):
-        """Run the bright star mask with no bright stars"""
+        """Run the bright star mask with no bright stars."""
 
         # Set a very high magnitude limit so that no stars are selected
         config = DiffractionSpikeMaskConfig(magnitudeThreshold=0)
@@ -133,3 +142,73 @@ class DiffractionSpikeMaskTest(lsst.utils.tests.TestCase):
         exposure.mask.getPlaneBitMask(config.spikeMask)
         # The images should not be modified
         self.assertImagesEqual(self.exposure.image, exposure.image)
+
+    def test_maskSources(self):
+        """Verify that sources on and off the image are masked correctly."""
+        task = DiffractionSpikeMaskTask(self.refObjLoader, config=DiffractionSpikeMaskConfig())
+        task.set_diffraction_angle(self.exposure)
+        self.exposure.mask.addMaskPlane(task.config.spikeMask)
+
+        xSize, ySize = self.bbox.getDimensions()
+        x0, y0 = self.bbox.getBegin()
+        x1, y1 = self.bbox.getEnd()
+
+        nBright = 50
+        rng = np.random.RandomState(3)
+        xLoc = np.arange(x0 - xSize/4, x1 + xSize/4)
+        rng.shuffle(xLoc)
+        xLoc = xLoc[:nBright]
+        yLoc = np.arange(y0 - ySize/4, y1 + ySize/4)
+        rng.shuffle(yLoc)
+        yLoc = yLoc[:nBright]
+        spikeRadii = np.arange(10, 200)
+        rng.shuffle(spikeRadii)
+        spikeRadii = spikeRadii[:nBright]
+        saturatedBox = geom.Box2I(self.bbox.getBegin(), geom.Extent2I(xSize, ySize//2))
+        baseMask = self.exposure.mask.clone()
+        baseMask[saturatedBox].array |= baseMask.getPlaneBitMask(task.config.saturatedMaskPlane)
+        # There are four classes of sources:
+        # 1. Bright sources on the image with saturated cores - masked
+        # 2. Sources on the image without saturated cores - not masked
+        # 3. Bright sources off the image with predicted diffraction spikes that
+        # overlap the image - masked
+        # 4. Bright sources off the image that are far away enough that any
+        # diffraction spikes would not overlap the image - not masked
+        nClass1 = 0
+        nClass2 = 0
+        nClass3 = 0
+        nClass4 = 0
+        selectedSources = task.selectSources(xLoc, yLoc, spikeRadii, baseMask)
+        for x, y, r, selected in zip(xLoc, yLoc, spikeRadii, selectedSources):
+            mask = baseMask.clone()
+            isInImage = self.bbox.contains(geom.Point2I(x, y))
+            # Bright sources on the image with saturated cores.
+            if isInImage and selected:
+                nClass1 += 1
+                task.maskSources([x], [y], [r], mask)
+                self.assertGreater(np.sum(mask.array & mask.getPlaneBitMask(task.config.spikeMask) > 0), 0)
+
+            # Bright sources on the image without saturated cores.
+            if isInImage and not selected:
+                nClass2 += 1
+                # Do *not* run task.maskSources in this case, since these are
+                # skipped.
+
+            # Bright sources off the image that we predict should overlap the
+            # image, should set the SPIKE mask for some pixels.
+            if not isInImage and selected:
+                nClass3 += 1
+                task.maskSources([x], [y], [r], mask)
+                self.assertGreater(np.sum(mask.array & mask.getPlaneBitMask(task.config.spikeMask) > 0), 0)
+
+            # Sources off the image that are skipped in source selection should
+            # not change the mask even if we do calculate their SPIKE mask.
+            if not isInImage and not selected:
+                nClass4 += 1
+                task.maskSources([x], [y], [r], mask)
+                self.assertMasksEqual(mask, baseMask)
+        # Verify that the test points were sufficient to exercise all classes.
+        self.assertGreater(nClass1, 0)
+        self.assertGreater(nClass2, 0)
+        self.assertGreater(nClass3, 0)
+        self.assertGreater(nClass4, 0)
