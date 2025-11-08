@@ -34,6 +34,7 @@ import lsst.geom
 from lsst.pex.config import Config, ConfigField, Field
 from lsst.pipe.base import Struct, Task
 from lsst.meas.algorithms import getRefFluxField, LoadReferenceObjectsConfig
+from lsst.utils.timer import timeMethod
 import lsst.sphgeom
 from .colorterms import ColortermLibrary
 
@@ -162,6 +163,7 @@ class DiffractionSpikeMaskTask(Task):
         """
         self.refObjLoader = refObjLoader
 
+    @timeMethod
     def run(self, exposure):
         """Load reference objects and mask bright stars on an exposure.
 
@@ -200,7 +202,7 @@ class DiffractionSpikeMaskTask(Task):
         if nBright > 0:
             xvals, yvals = exposure.wcs.skyToPixelArray(refCat[bright][self.config.raKey],
                                                         refCat[bright][self.config.decKey])
-            spikeCandidates = self.selectSources(xvals, yvals, mask)
+            spikeCandidates = self.selectSources(xvals, yvals, radii, mask)
             nSpike = len(spikeCandidates)
         else:
             nSpike = 0
@@ -217,7 +219,7 @@ class DiffractionSpikeMaskTask(Task):
 
         return refCat[bright][spikeCandidates].copy(deep=True)
 
-    def selectSources(self, xvals, yvals, mask):
+    def selectSources(self, xvals, yvals, spikeRadii, mask):
         """Select saturated sources, and bright sources that are off the image.
 
         Parameters
@@ -225,7 +227,10 @@ class DiffractionSpikeMaskTask(Task):
         xvals, yvals : `numpy.ndarray`
             Array of x- and y-values of bright sources to mask.
         mask : `lsst.afw.image.Mask`
-            The mask plane of the image to set the BRIGHT mask plane.
+            The mask plane of the image to set the SPIKE mask plane.
+        spikeRadii : `numpy.ndarray`
+            Predicted lengths in pixels of the diffraction spikes for each
+            bright source.
 
         Returns
         -------
@@ -236,16 +241,20 @@ class DiffractionSpikeMaskTask(Task):
         candidates = np.zeros(len(xvals), dtype=bool)
         saturatedBitMask = mask.getPlaneBitMask(self.config.saturatedMaskPlane)
         bbox = mask.getBBox()
+        projection = np.max([abs(np.cos(np.deg2rad(self.angles))),
+                             abs(np.sin(np.deg2rad(self.angles)))])
 
-        for i, (x, y) in enumerate(zip(xvals, yvals)):
+        for i, (x, y, r) in enumerate(zip(xvals, yvals, spikeRadii)):
             srcBox = lsst.geom.Box2I.makeCenteredBox(lsst.geom.Point2D(x, y), lsst.geom.Extent2I(3, 3))
             if bbox.contains(srcBox):
                 candidates[i] = np.all((mask[srcBox].array & saturatedBitMask) > 0)
             else:
-                candidates[i] = True
+                # If the candidate bright source is off the image, only make a
+                # model for it if the diffraction spikes are long enough.
+                candidates[i] = boxSeparation(bbox, x, y) < r*projection
         return candidates
 
-    def maskSources(self, xvals, yvals, radii, mask):
+    def maskSources(self, xvals, yvals, spikeRadii, mask):
         """Apply the SPIKE mask for a given set of coordinates. The mask plane
         will be modified in place.
 
@@ -253,13 +262,13 @@ class DiffractionSpikeMaskTask(Task):
         ----------
         xvals, yvals : `numpy.ndarray`
             Array of x- and y-values of bright sources to mask.
-        radii : `numpy.ndarray`
+        spikeRadii : `numpy.ndarray`
             Array of radius values for each bright source.
         mask : `lsst.afw.image.Mask`
-            The mask plane of the image to set the BRIGHT mask plane.
+            The mask plane of the image to set the SPIKE mask plane.
         """
         bbox = mask.getBBox()
-        for x, y, r in zip(xvals, yvals, radii):
+        for x, y, r in zip(xvals, yvals, spikeRadii):
             maskSingle = self.makeSingleMask(x, y, r)
             singleBBox = maskSingle.getBBox()
             if bbox.overlaps(singleBBox):
@@ -290,10 +299,10 @@ class DiffractionSpikeMaskTask(Task):
             # side along the spike and a short base. For efficiency, model the
             # diffraction spike in the opposite direction at the same time,
             # so the overall shape is a narrow diamond with equal length sides.
-            xLong = math.cos(np.deg2rad(angle))*r
-            yLong = math.sin(np.deg2rad(angle))*r
-            xShort = -math.sin(np.deg2rad(angle))*r/self.config.spikeAspectRatio
-            yShort = math.cos(np.deg2rad(angle))*r/self.config.spikeAspectRatio
+            xLong = np.cos(np.deg2rad(angle))*r
+            yLong = np.sin(np.deg2rad(angle))*r
+            xShort = -np.sin(np.deg2rad(angle))*r/self.config.spikeAspectRatio
+            yShort = np.cos(np.deg2rad(angle))*r/self.config.spikeAspectRatio
 
             corners = [lsst.geom.Point2D(x + xLong, y + yLong),
                        lsst.geom.Point2D(x + xShort, y + yShort),
@@ -428,6 +437,9 @@ def getRegion(exposure, margin=None):
     ----------
     exposure : `lsst.afw.image.Exposure`
         Exposure object with calibrated WCS.
+    margin : `lsst.sphgeom.Angle`, optional
+        Grow the surrounding region of the exposure by this amount, in order to
+        mask the diffraction spikes of stars off the image.
 
     Returns
     -------
@@ -453,28 +465,26 @@ def getRegion(exposure, margin=None):
     return region
 
 
-def computePsfWidthFromMoments(psf, angle=0.):
-    """Calculate the width of an elliptical PSF along a given direction.
+def boxSeparation(bbox, x, y):
+    """Return the minimum horizontal or vertical distance from a point to the
+    outside edge of a bounding box.
 
     Parameters
     ----------
-    psf : `lsst.afw.detection.Psf`
-        The point spread function of the image.
-    angle : `float`, optional
-        Rotation CCW from the +x axis to calculate the width of the PSF along.
+    bbox : `lsst.geom.Box2I`
+        The bounding box to check.
+    x, y : `float`
+        Coordinates of the point.
 
     Returns
     -------
-    fwhm : `float`
-        Full width at half maximum of the fitted shape of the PSF along the
-        given `angle`. In pixels.
+    distance : `float`
+        The distance in pixels by which the point is outside the box, or 0 if
+        it is inside.
     """
-    psfShape = psf.computeShape(psf.getAveragePosition())
-    c = np.cos(np.deg2rad(angle))
-    s = np.sin(np.deg2rad(angle))
-    sigma2 = c*c*psfShape.getIxx() + 2*c*s*psfShape.getIxy() + s*s*psfShape.getIyy()
-    sigma = np.sqrt(max(sigma2, 0.0))   # rms width in pixels
 
-    # 5) optional: Gaussian-equivalent FWHM along angle
-    fwhm = 2.0 * np.sqrt(2.0 * np.log(2.0)) * sigma
-    return fwhm
+    x0, y0 = bbox.getBegin()
+    x1, y1 = bbox.getEnd()
+    dx = 0 if x0 <= x <= x1 else min(abs(x0 - x), abs(x - x1))
+    dy = 0 if y0 <= y <= y1 else min(abs(y0 - y), abs(y - y1))
+    return max(dx, dy)
