@@ -21,6 +21,7 @@
 
 import os
 import glob
+import unittest
 
 import numpy as np
 
@@ -46,10 +47,6 @@ testColorterms = ColortermLibrary(data={
         "test-z": Colorterm(primary="z", secondary="i", c0=0.00, c1=0.00, c2=0.00),
     })
 })
-
-
-def setup_module(module):
-    lsst.utils.tests.init()
 
 
 class DiffractionSpikeMaskTest(lsst.utils.tests.TestCase):
@@ -212,3 +209,16 @@ class DiffractionSpikeMaskTest(lsst.utils.tests.TestCase):
         self.assertGreater(nClass2, 0)
         self.assertGreater(nClass3, 0)
         self.assertGreater(nClass4, 0)
+
+
+class MemoryTestCase(lsst.utils.tests.MemoryTestCase):
+    pass
+
+
+def setup_module(module):
+    lsst.utils.tests.init()
+
+
+if __name__ == "__main__":
+    lsst.utils.tests.init()
+    unittest.main()
