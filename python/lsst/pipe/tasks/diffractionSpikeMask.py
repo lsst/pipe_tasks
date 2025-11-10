@@ -174,7 +174,7 @@ class DiffractionSpikeMaskTask(Task):
 
         Returns
         -------
-        spikeCat : `lsst.afw.table.SourceCatalog`
+        spikeCat : `lsst.afw.table.SimpleCatalog`
             The entries from the reference catalog selected as stars with
             diffraction spikes.
         """
@@ -215,7 +215,7 @@ class DiffractionSpikeMaskTask(Task):
                              mask)
         else:
             self.log.info("No bright stars found in the reference catalog; not masking diffraction spikes.")
-            return afwTable.SourceCatalog(refCat.schema)
+            return afwTable.SimpleCatalog(refCat.schema)
 
         return refCat[bright][spikeCandidates].copy(deep=True)
 
@@ -355,7 +355,7 @@ class DiffractionSpikeMaskTask(Task):
 
         Parameters
         ----------
-        refCat : `lsst.afw.table.SourceCatalog`
+        refCat : `lsst.afw.table.SimpleCatalog`
             The input reference catalog.
         filterLabel : `str`
             Label of filter being calibrated.
