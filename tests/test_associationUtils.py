@@ -60,44 +60,24 @@ class TestAssociationUtils(lsst.utils.tests.TestCase):
         """
         allowed_strings = ['J95X00A', 'J95X01L', 'J95F13B', 'J98SA8Q', 'J98SC7V', 'J98SG2S'] \
             + ['K99AJ3Z', 'K08Aa0A', 'K07Tf8A', 'PLS2040', 'T1S3138', 'T2S1010', 'T3S4101'] \
-            + ['       ', '\x00\x00\x00\x00\x00\x00\x00']
-        allowed_flags = [i for i in range(0, 256)]
-        allowed_ssObjectIDs = [0, 1 << 64 - 1] + [1 << n for n in range(64)]
+            + ['       ', 'PJ48Q010', 'AAAAAAAA']
         for allowed_string in allowed_strings:
-            for allowed_flag in allowed_flags:
-                returned_string, returned_flag = ss_object_id_to_obj_id(
-                    obj_id_to_ss_object_id(allowed_string, allowed_flag))
-                self.assertEqual((allowed_string, allowed_flag), (returned_string, returned_flag))
-        for allowed_ssObjectID in allowed_ssObjectIDs:
-            returned_ssObjectID = obj_id_to_ss_object_id(*ss_object_id_to_obj_id(allowed_ssObjectID))
-            self.assertEqual(allowed_ssObjectID, returned_ssObjectID)
+            returned_string = ss_object_id_to_obj_id(obj_id_to_ss_object_id(allowed_string))
+            self.assertEqual(allowed_string, returned_string)
 
     def test_invalid_conversions_between_obj_id_and_ss_object_id(self):
         """Convert between ssObjectIDs and MPC packed designations
         """
-        allowed_strings = ['J95X00A', 'J95X01L', 'J95F13B', 'J98SA8Q', 'J98SC7V', 'J98SG2S'] \
-            + ['K99AJ3Z', 'K08Aa0A', 'K07Tf8A', 'PLS2040', 'T1S3138', 'T2S1010', 'T3S4101']
-        allowed_flags = [i for i in range(0, 256)]
-        disallowed_flags = [-999999999, -512, -256, -255, -1, 256, 512, 99999999]
         disallowed_strings = [''] + [ch for ch in 'ABCDEFGHIJKMNOPQRSTUVWXYZ0123456789 -'] \
             + ['A' * i for i in range(2, 7)] + ['Z' * i for i in range(2, 7)] \
-            + ['Ā', '🔭', 'A' * 8, ' ' * 8, 'A' * 128]
+            + ['Ā', '🔭', 'A' * 9, ' ' * 9, 'A' * 128]
         disallowed_ssObjectIDs = [-1, 1 << 64, 1 << 64 + 1, 2 << 65]
-        for allowed_string in allowed_strings:
-            for disallowed_flag in disallowed_flags:
-                with self.assertRaises(ValueError):
-                    obj_id_to_ss_object_id(allowed_string, disallowed_flag)
-        for disallowed_string in disallowed_strings:
-            for allowed_flag in allowed_flags:
-                with self.assertRaises(ValueError):
-                    obj_id_to_ss_object_id(disallowed_string, allowed_flag)
-        for disallowed_string in disallowed_strings:
-            for disallowed_flag in disallowed_flags:
-                with self.assertRaises(ValueError):
-                    obj_id_to_ss_object_id(disallowed_string, disallowed_flag)
         for disallowed_ssObjectID in disallowed_ssObjectIDs:
             with self.assertRaises(ValueError):
                 ss_object_id_to_obj_id(disallowed_ssObjectID)
+        for disallowed_string in disallowed_strings:
+            with self.assertRaises(ValueError):
+                obj_id_to_ss_object_id(disallowed_string)
 
 
 class MemoryTestCase(lsst.utils.tests.MemoryTestCase):
