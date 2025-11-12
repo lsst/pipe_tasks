@@ -247,7 +247,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 nDiaSrcIn = len(diaCat)
                 if (ssCat is not None) and (visitSummary is not None):
                     ssoAssocResult = self.runSolarSystemAssociation(diaCat,
-                                                                    ssCat,
+                                                                    ssCat.copy(),
                                                                     visitSummary=visitSummary,
                                                                     patchBbox=innerPatchBox,
                                                                     patchWcs=skyInfo.wcs,
