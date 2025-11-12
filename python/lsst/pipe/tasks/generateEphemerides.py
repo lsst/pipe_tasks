@@ -309,10 +309,16 @@ class GenerateEphemeridesTask(PipelineTask):
                 with open(cache + filename, 'wb') as file:
                     file.write(fileref.fileContents.read())
 
+            abspath = f'{tmpdirname}/sorcha_cache/'
+            split = 79
+            n_iter = int(len(str(abspath)) / split)  # Number of splits required
+            for n in range(n_iter, 0, -1):
+                abspath = abspath[:split * n] + "+' '" + abspath[split * n:]
+
             meta_kernel_text = dedent(f"""\
                                       \\begindata
 
-                                      PATH_VALUES = ('{tmpdirname}/sorcha_cache/')
+                                      PATH_VALUES = ('{abspath}')
 
                                       PATH_SYMBOLS = ('A')
 
