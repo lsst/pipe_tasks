@@ -51,8 +51,6 @@ class MatchBackgroundsConnections(
     PipelineTaskConnections,
     dimensions=("skymap", "tract", "band"),
     defaultTemplates={
-        "inputCoaddName": "deep",
-        "outputCoaddName": "deep",
         "warpType": "direct",
         "warpTypeSuffix": "",
     },
@@ -60,7 +58,7 @@ class MatchBackgroundsConnections(
 
     warps = Input(
         doc=("Warps used to construct a list of matched backgrounds."),
-        name="{inputCoaddName}Coadd_{warpType}Warp",
+        name="{warpType}_warp",
         storageClass="ExposureF",
         dimensions=("skymap", "tract", "patch", "visit"),
         deferLoad=True,
@@ -74,14 +72,14 @@ class MatchBackgroundsConnections(
     )
     backgroundInfoList = Output(
         doc="List of differential backgrounds, with goodness of fit params.",
-        name="{warpType}WarpBackground_diff",  # TODO: settle on appropriate name
+        name="{warpType}_warp_background_diff",  # TODO: settle on appropriate name
         dimensions=("skymap", "tract", "visit", "patch"),
         storageClass="Background",
         multiple=True,
     )
     matchedImageList = Output(
         doc="List of background-matched warps.",
-        name="{inputCoaddName}Coadd_{warpType}Warp_bgMatched",
+        name="{warpType}_warp_background_matched",
         storageClass="ExposureF",
         dimensions=("skymap", "tract", "visit", "patch"),
         multiple=True,
