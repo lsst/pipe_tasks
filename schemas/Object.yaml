@@ -1225,22 +1225,13 @@ refFlags:
     - detect_isDeblendedSource
     - detect_isDeblendedModelSource
     - merge_peak_sky
-    - deblend_nChild
-    - deblend_nPeaks
-    - deblend_failed
-    - deblend_skipped
-    - deblend_isolatedParent
-    - deblend_parentTooBig
-    - deblend_tooManyPeaks
-    - deblend_masked
-    - deblend_incompleteData
-    - deblend_iterations
     - deblend_peak_center_x
     - deblend_peak_center_y
-    - deblend_logL
     - deblend_chi2
     - deblend_blendId
     - deblend_blendNChild
+    - deblend_parentNPeaks
+    - deblend_parentNChild
     - slot_Shape_flag
 flags:
     # flags are columns taken and exploded per-band from the meas tables
