@@ -123,7 +123,7 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
     )
     objectParents = cT.Output(
         doc="Parents of the deblended objects",
-        name="object_parents",
+        name="object_parent_patch",
         storageClass="SourceCatalog",
         dimensions=("tract", "patch", "skymap"),
     )
