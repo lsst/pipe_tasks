@@ -276,7 +276,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         )
 
         # measure
-        measureTask.run(catalog, self.exposure, measParentCat=parentCatalog)
+        measureTask.run(catalog, self.exposure, parentCatalog=parentCatalog)
         outputCat = catalog
         # Set the primary flags
         setPrimaryTask.run(outputCat, skyMap=skyMap, tractInfo=tractInfo, patchInfo=patchInfo)
