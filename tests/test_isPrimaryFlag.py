@@ -228,9 +228,11 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
 
         # We'll customize the configuration of measurement to just run the
         # minimal number of plugins to make setPrimaryFlags work.
+        # As of DM-51670 we also include `base_PsfFlux` to ensure that
+        # the measurement plugins run correctly with the split between
+        # parent and child catalogs.
         measureConfig = SingleFrameMeasurementTask.ConfigClass()
-        measureConfig.plugins.names = ["base_SdssCentroid", "base_SkyCoord"]
-        measureConfig.slots.psfFlux = None
+        measureConfig.plugins.names = ["base_SdssCentroid", "base_SkyCoord", "base_PsfFlux"]
         measureConfig.slots.apFlux = None
         measureConfig.slots.shape = None
         measureConfig.slots.modelFlux = None
@@ -261,10 +263,11 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         result = deblendTask.run(coadds, mDeconvolved, catalog)
         modelData = result.scarletModelData
         catalog = result.deblendedCatalog
+        parentCatalog = result.objectParents
         # Attach footprints to the catalog
         mes.io.updateCatalogFootprints(
             modelData=modelData,
-            parentCatalog=result.objectParents,
+            parentCatalog=parentCatalog,
             catalog=catalog,
             band="test",
             imageForRedistribution=coadds["test"],
@@ -273,7 +276,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         )
 
         # measure
-        measureTask.run(catalog, self.exposure)
+        measureTask.run(catalog, self.exposure, measParentCat=parentCatalog)
         outputCat = catalog
         # Set the primary flags
         setPrimaryTask.run(outputCat, skyMap=skyMap, tractInfo=tractInfo, patchInfo=patchInfo)
@@ -310,6 +313,10 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
             isPseudo,
             isPseudo & (outputCat["parent"] == 0)
         )
+
+        # Check that measurements were performed on all of the children
+        self.assertTrue(np.all(outputCat["base_PsfFlux_instFlux"] != 0) and np.all(np.isfinite(
+            outputCat["base_PsfFlux_instFlux"])))
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):

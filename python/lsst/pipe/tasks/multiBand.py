@@ -808,6 +808,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         # Transform inputCatalog
         table = afwTable.SourceTable.make(self.schema, idGenerator.make_table_id_factory())
         sources = afwTable.SourceCatalog(table)
+        parentCatalog = inputs.pop('scarletModels')
         # Load the correct input catalog
         if "scarletCatalog" in inputs:
             inputCatalog = inputs.pop("scarletCatalog")
@@ -819,14 +820,14 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         del inputCatalog
         # Add the HeavyFootprints to the deblended sources
         if self.config.doAddFootprints:
-            modelData = inputs.pop('scarletModels')
+            modelData = parentCatalog
             if self.config.doConserveFlux:
                 imageForRedistribution = exposure
             else:
                 imageForRedistribution = None
             updateCatalogFootprints(
                 modelData=modelData,
-                parentCatalog=inputs.pop('objectParents'),
+                parentCatalog=parentCatalog,
                 catalog=sources,
                 band=band,
                 imageForRedistribution=imageForRedistribution,
@@ -871,6 +872,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         outputs = self.run(
             exposure=exposure,
             sources=sources,
+            parentCatalog=parentCatalog,
             skyInfo=skyInfo,
             exposureId=idGenerator.catalog_id,
             ccdInputs=ccdInputs,
@@ -886,7 +888,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
                 source.setFootprint(None)
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, exposure, sources, skyInfo, exposureId, ccdInputs=None,
+    def run(self, exposure, sources, parentCatalog, skyInfo, exposureId, ccdInputs=None,
             sourceTableHandleDict=None, finalizedSourceTableHandleDict=None, finalVisitSummaryHandleDict=None,
             apCorrMap=None):
         """Run measurement algorithms on the input exposure, and optionally populate the
@@ -899,6 +901,8 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         sources :  `lsst.afw.table.SourceCatalog`
             A catalog built from the results of merged detections, or
             deblender outputs.
+        parentCatalog : `lsst.afw.table.SourceCatalog`
+            Catalog of parent sources corresponding to sources.
         skyInfo : `lsst.pipe.base.Struct`
             A struct containing information about the position of the input exposure within
             a `SkyMap`, the `SkyMap`, its `Wcs`, and its bounding box.
@@ -936,7 +940,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             for maskPlane in self.config.measurement.plugins["base_PixelFlags"].masksFpCenter:
                 exposure.mask.addMaskPlane(maskPlane)
 
-        self.measurement.run(sources, exposure, exposureId=exposureId)
+        self.measurement.run(sources, exposure, exposureId=exposureId, measParentCat=parentCatalog)
 
         if self.config.doApCorr:
             if apCorrMap is None:
