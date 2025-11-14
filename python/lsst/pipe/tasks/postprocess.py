@@ -1773,11 +1773,13 @@ class TransformForcedSourceTableTask(TransformCatalogBaseTask):
         outputCatalog.index.rename(self.config.keyRef, inplace=True)
         # Add config.keyRef to the column list
         outputCatalog.reset_index(inplace=True)
-        # Set the forcedSourceId to the index. This is specified in the
-        # ForcedSource.yaml
-        outputCatalog.set_index("forcedSourceId", inplace=True, verify_integrity=True)
-        # Rename it to the config.key
-        outputCatalog.index.rename(self.config.key, inplace=True)
+
+        if "forcedSourceId" in outputCatalog.columns:
+            # Set the forcedSourceId to the index. This is specified in the
+            # ForcedSource.yaml
+            outputCatalog.set_index("forcedSourceId", inplace=True, verify_integrity=True)
+            # Rename it to the config.key
+            outputCatalog.index.rename(self.config.key, inplace=True)
 
         self.log.info("Made a table of %d columns and %d rows",
                       len(outputCatalog.columns), len(outputCatalog))

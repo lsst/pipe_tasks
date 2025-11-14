@@ -3,10 +3,6 @@
 # `lsst.pipe.tasks.postprocess.TransformForcedSourceTableTask`.
 # See the DPDD for more information about the output: https://lse-163.lsst.io
 funcs:
-    forcedSourceId:
-        functor: Column
-        args: id
-        dataset: calexp
     parentObjectId:
         functor: Column
         args: parent
