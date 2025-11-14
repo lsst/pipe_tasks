@@ -1314,6 +1314,7 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
         # Run the deblender on the multi-band exposure.
         result = self.deblend.run(mExposure, mDeconvolved, catalog)
         catalog = result.deblendedCatalog
+        parentCatalog = result.objectParents
         modelData = result.scarletModelData
 
         # Determine which bands to process post-deblending.
@@ -1325,6 +1326,7 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
             imageForRedistribution = mExposure[band] if self.config.doConserveFlux else None
             scarlet.io.updateCatalogFootprints(
                 modelData=modelData,
+                parentCatalog=parentCatalog,
                 catalog=catalogs[band],  # In-place modification
                 band=band,
                 imageForRedistribution=imageForRedistribution,

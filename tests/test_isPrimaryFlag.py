@@ -264,6 +264,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         # Attach footprints to the catalog
         mes.io.updateCatalogFootprints(
             modelData=modelData,
+            parentCatalog=result.objectParents,
             catalog=catalog,
             band="test",
             imageForRedistribution=coadds["test"],
@@ -282,6 +283,10 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         # since they both have the same blended sources and only differ
         # over which model to use for the isolated sources.
         isPseudo = outputCat["merge_peak_sky"]
+
+        # Check that all 5 pseudo-sources were created
+        self.assertEqual(np.sum(isPseudo), 5)
+
         self.assertEqual(
             np.sum(outputCat["detect_isDeblendedSource"] & ~isPseudo),
             np.sum(outputCat["detect_isDeblendedModelSource"]))
@@ -300,9 +305,10 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(sum((outputCat["detect_isPrimary"]) & (outputCat["merge_peak_sky"])), 0)
 
         # Check that sky objects have not been deblended
+        # (deblended sources have parent > 0)
         np.testing.assert_array_equal(
             isPseudo,
-            isPseudo & (outputCat["deblend_nChild"] == 0)
+            isPseudo & (outputCat["parent"] == 0)
         )
 
 

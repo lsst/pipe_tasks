@@ -107,6 +107,12 @@ class CoaddMultibandFitInputConnections(
         storageClass="LsstScarletModelData",
         dimensions=("tract", "patch", "skymap"),
     )
+    objectParents = cT.Output(
+        doc="Parents of the deblended objects",
+        name="object_parents",
+        storageClass="SourceCatalog",
+        dimensions=("tract", "patch", "skymap"),
+    )
 
     def adjustQuantum(self, inputs, outputs, label, data_id):
         """Validates the `lsst.daf.butler.DatasetRef` bands against the
@@ -392,6 +398,7 @@ class CoaddMultibandFitBase:
             exposure = exps[dataId]
             updateCatalogFootprints(
                 modelData=models_scarlet,
+                parentCatalog=inputs["objectParents"],
                 catalog=catalog,
                 band=dataId['band'],
                 imageForRedistribution=exposure,

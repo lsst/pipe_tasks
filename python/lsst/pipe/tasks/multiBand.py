@@ -516,6 +516,12 @@ class MeasureMergedCoaddSourcesConnections(
         storageClass="LsstScarletModelData",
         dimensions=("tract", "patch", "skymap"),
     )
+    objectParents = cT.Output(
+        doc="Parents of the deblended objects",
+        name="object_parents",
+        storageClass="SourceCatalog",
+        dimensions=("tract", "patch", "skymap"),
+    )
     outputSources = cT.Output(
         doc="Source catalog containing all the measurement information generated in this task",
         name="{outputCoaddName}Coadd_meas",
@@ -560,6 +566,7 @@ class MeasureMergedCoaddSourcesConnections(
         else:
             del self.deblendedCatalog
             del self.scarletModels
+            del self.objectParents
 
         # TODO[DM-47797]: delete the conditionals below.
         if not config.doMatchSources:
@@ -819,6 +826,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
                 imageForRedistribution = None
             updateCatalogFootprints(
                 modelData=modelData,
+                parentCatalog=inputs.pop('objectParents'),
                 catalog=sources,
                 band=band,
                 imageForRedistribution=imageForRedistribution,
