@@ -1568,6 +1568,18 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
             visitEntry["obsStart"] = visitEntry["expMidpt"] - 0.5 * np.timedelta64(int(expTime * 1E9), "ns")
             expTime_days = expTime / (60*60*24)
             visitEntry["obsStartMJD"] = visitEntry["expMidptMJD"] - 0.5 * expTime_days
+            visitEntry["psfTE1e1"] = visitRow["psfTE1e1"]
+            visitEntry["psfTE1e2"] = visitRow["psfTE1e2"]
+            visitEntry["psfTE1ex"] = visitRow["psfTE1ex"]
+            visitEntry["psfTE2e1"] = visitRow["psfTE2e1"]
+            visitEntry["psfTE2e2"] = visitRow["psfTE2e2"]
+            visitEntry["psfTE2ex"] = visitRow["psfTE2ex"]
+            visitEntry["psfTE3e1"] = visitRow["psfTE3e1"]
+            visitEntry["psfTE3e2"] = visitRow["psfTE3e2"]
+            visitEntry["psfTE3ex"] = visitRow["psfTE3ex"]
+            visitEntry["psfTE4e1"] = visitRow["psfTE4e1"]
+            visitEntry["psfTE4e2"] = visitRow["psfTE4e2"]
+            visitEntry["psfTE4ex"] = visitRow["psfTE4ex"]
             visitEntries.append(visitEntry)
 
             # TODO: DM-30623, Add programId, exposureType, cameraTemp,
