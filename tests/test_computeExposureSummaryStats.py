@@ -36,6 +36,15 @@ from lsst.afw.cameraGeom.testUtils import DetectorWrapper
 from lsst.pipe.tasks.computeExposureSummaryStats import ComputeExposureSummaryStatsTask
 from lsst.pipe.tasks.computeExposureSummaryStats import compute_magnitude_limit
 
+# Values from syseng_throughputs notebook assuming 30s exposure
+# consisting of 2x15s snaps each with readnoise of 9e-
+fwhm_eff_fid = {'g': 0.87, 'r': 0.83, 'i': 0.80}
+skycounts_fid = {'g': 463.634122, 'r': 988.626863, 'i': 1588.280513}
+zeropoint_fid = {'g': 28.508375, 'r': 28.360838, 'i': 28.171396}
+readnoise_fid = {'g': 12.73, 'r': 12.73, 'i': 12.73}
+# Output magnitude limit from syseng_throughputs notebook
+m5_fid = {'g': 24.90, 'r': 24.48, 'i': 24.10}
+
 
 class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
 
@@ -167,17 +176,11 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         """Test the magnitude limit calculation using fiducials from SMTN-002
         and syseng_throughputs."""
 
-        # Values from syseng_throughputs notebook assuming 30s exposure
-        # consisting of 2x15s snaps each with readnoise of 9e-
-        fwhm_eff_fid = {'g': 0.87, 'r': 0.83, 'i': 0.80}
-        skycounts_fid = {'g': 463.634122, 'r': 988.626863, 'i': 1588.280513}
-        zeropoint_fid = {'g': 28.508375, 'r': 28.360838, 'i': 28.171396}
-        readnoise_fid = {'g': 12.73, 'r': 12.73, 'i': 12.73}
         # Assumed values from SMTN-002
         snr = 5
         gain = 1.0
-        # Output magnitude limit from syseng_throughputs notebook
-        m5_fid = {'g': 24.90, 'r': 24.48, 'i': 24.10}
+        # For testing non-unity gain
+        gain_test = 2.0
 
         for band in ['g', 'r', 'i']:
             # Translate into DM quantities
@@ -189,6 +192,12 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
             # Calculate the M5 values
             m5 = compute_magnitude_limit(psfArea, skyBg, zeroPoint, readNoise, gain, snr)
             self.assertFloatsAlmostEqual(m5, m5_fid[band], atol=1e-2)
+
+            # Changing the gain consistently should not change M5
+            m5_gain = compute_magnitude_limit(psfArea, skyBg/gain_test,
+                                              zeroPoint - 2.5*np.log10(gain_test),
+                                              readNoise/gain_test, gain_test, snr)
+            self.assertFloatsAlmostEqual(m5_gain, m5, atol=1e-6)
 
         # Check that input NaN lead to output NaN
         nan = float('nan')
