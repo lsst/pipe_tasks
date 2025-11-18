@@ -997,6 +997,11 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                                                                 astrometry_meta)
             result.psf_stars = result.psf_stars_footprints.asAstropy()
 
+            # Add diffraction spike mask here so it can be used (i.e. avoided)
+            # in the adaptive background estimation.
+            if self.config.doMaskDiffractionSpikes:
+                self.diffractionSpikeMask.run(result.exposure)
+
             if self.config.do_adaptive_threshold_detection:
                 self._remeasure_star_background(
                     result,
@@ -1049,8 +1054,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             if "photometry_matches" in self.config.optional_outputs:
                 result.photometry_matches = lsst.meas.astrom.denormalizeMatches(photometry_matches,
                                                                                 photometry_meta)
-            if self.config.doMaskDiffractionSpikes:
-                self.diffractionSpikeMask.run(result.exposure)
             if "mask" in self.config.optional_outputs:
                 result.mask = result.exposure.mask.clone()
         except pipeBase.AlgorithmError:
