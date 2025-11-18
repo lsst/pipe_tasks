@@ -950,7 +950,8 @@ def compute_magnitude_limit(
     # Total background counts derived from Eq. 45 of LSE-40
     background = (skyBg/gain + sigma_inst**2) * neff
     # Source counts to achieve the desired SNR (from quadratic formula)
-    source = (snr**2)/(2*gain) + np.sqrt((snr**4)/(4*gain) + snr**2 * background)
+    # Note typo in gain exponent in Eq. 45 of LSE-40 (DM-53234)
+    source = (snr**2)/(2*gain) + np.sqrt((snr**4)/(4*gain**2) + snr**2 * background)
 
     # Convert to a magnitude using the zeropoint.
     # Note: Zeropoint currently includes exposure time
