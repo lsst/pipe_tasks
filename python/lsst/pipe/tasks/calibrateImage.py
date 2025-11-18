@@ -1827,7 +1827,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         starBackgroundDetectionConfig.reEstimateBackground = False
         starBackgroundDetectionConfig.includeThresholdMultiplier = 1.0
         starBackgroundDetectionConfig.thresholdValue = max(2.0, 0.2*median_background)
-        starBackgroundDetectionConfig.thresholdType = "pixel_stdev"  # "stdev"
+        starBackgroundDetectionConfig.thresholdType = "pixel_stdev"
 
         n_above_max_per_amp = -99
         highest_detected_fraction_per_amp = float("nan")
