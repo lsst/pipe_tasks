@@ -42,6 +42,15 @@ class TrailMLConnections(lsst.pipe.base.PipelineTaskConnections,
         name="post_isr_image"
     )
 
+    # uncomment this when using model from butler memory
+
+    # model = lsst.pipe.base.connectionTypes.Input(
+    #     doc="Input model.",
+    #     dimensions=("instrument", ),
+    #     storageClass="NNModelPackagePayload",
+    #     name="trailmotion_model"
+    # )
+
     classifications = lsst.pipe.base.connectionTypes.Output(
         doc="Catalog of trailing classification for each visit, "
             "per detector image.",
@@ -51,6 +60,7 @@ class TrailMLConnections(lsst.pipe.base.PipelineTaskConnections,
     )
 
 class TrailMLConfig(lsst.pipe.base.PipelineTaskConfig, pipelineConnections=TrailMLConnections):
+    # comment this out when using model from butler memory
     modelArchPath = lsst.pex.config.Field(
         optional=True,
         dtype=str,
@@ -72,6 +82,7 @@ class TrailMLTask(lsst.pipe.base.PipelineTask):
         super().__init__(**kwargs)
 
         # self.butler_loaded_package = None
+        # comment this put when using model from butler memory
         self.interface = TrailMLInterface(self.config.modelArchPath, self.config.modelWeightsPath)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
@@ -80,27 +91,30 @@ class TrailMLTask(lsst.pipe.base.PipelineTask):
         dataid = butlerQC.quantum.dataId
         print("dataid : ", dataid)
         outputs = self.run(inputs['science'], dataid['visit'], dataid['detector'])
-        # outputs = self.run(inputs['science'], 0, 0)
+
+        # uncomment this when using model from butler memory
+        # outputs = self.run(inputs['science'], dataid['visit'], dataid['detector'], inputs['model'])
 
         butlerQC.put(outputs, outputRefs)
 
 
     @timeMethod
+    # def run(self, science, visit, detector, model):
     def run(self, science, visit, detector):
         # self.butler_loaded_package = pretrainedModel  # This will be used by the interface
+
+        # uncomment the following lines when using model from butler memory
+        # self.interface = TrailMLInterface()
+        # torch.load the model from memory
         
 
         # takes in one image i.e. one CCD at a time
-        # labels = self.interface.infer(science)
         labels, probs = self.interface.infer(science)
-        # labels = 0
-        # self.log.info("Scored %d cutouts.", len(labels))
         print('visit: ', visit, 'detector: ', detector, 'probs: ', probs, 'labels: ', labels)
 
         # write into an AstropyQTable
         
         classifications = at.QTable()
-        # write into a par
         classifications["visit"] = [visit]
         classifications["detector"] = [detector]
         classifications["probs"] = [probs]
