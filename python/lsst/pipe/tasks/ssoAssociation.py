@@ -228,29 +228,41 @@ class SolarSystemAssociationTask(pipeBase.Task):
         maskedObjects['associated'] = False
         if 'diaSourceId' in diaSourceCatalog.columns:
             source_column = 'diaSourceId'
-        for ssObject in maskedObjects:
-            index = ssObject.index
-            ssoVect = self._radec_to_xyz(ssObject["ra"], ssObject["dec"])
-            # Which DIA Sources fall within r?
+
+        # Find all pairs of a source and an object within maxRadius
+        nearby_obj_source_pairs = []
+        for obj_idx, (ra, dec) in enumerate(zip(maskedObjects["ra"].data, maskedObjects["dec"].data)):
+            ssoVect = self._radec_to_xyz(ra, dec)
             dist, idx = tree.query(ssoVect, distance_upper_bound=maxRadius)
-            if len(idx) == 1 and np.isfinite(dist[0]):
-                nFound += 1
-                diaSourceCatalog[idx[0]]["ssObjectId"] = ssObject["ssObjectId"]
-                ssObjectIds.append(ssObject["ssObjectId"])
-                all_cols = ["phaseAngle", "heliocentricDist",
-                            "topocentricDist"] + stateVectorColumns + mpcorbColumns
-                ssSourceData.append(list(ssObject[all_cols].values()))
-                dia_ra = diaSourceCatalog[idx[0]]["ra"]
-                dia_dec = diaSourceCatalog[idx[0]]["dec"]
-                dia_id = diaSourceCatalog[idx[0]][source_column]
-                ras.append(dia_ra)
-                decs.append(dia_dec)
-                dia_ids.append(dia_id)
-                residual_ras.append(dia_ra - ssObject["ra"])
-                residual_decs.append(dia_dec - ssObject["dec"])
-                maskedObjects['associated'][index] = True
-            else:
-                maskedObjects['associated'][index] = False
+            for i in range(len(dist)):
+                nearby_obj_source_pairs.append((dist, obj_idx, idx[i]))
+        nearby_obj_source_pairs = sorted(nearby_obj_source_pairs)
+
+        # From closest to farthest, associate diaSources to SSOs.
+        # Skipping already-associated sources and objects.
+        used_src_indices, used_obj_indices = set(), set()
+        maskedObjects['associated'] = False
+        for dist, obj_idx, src_idx in nearby_obj_source_pairs:
+            if src_idx in used_src_indices or obj_idx in used_obj_indices:
+                continue
+            maskedObject = maskedObjects[obj_idx]
+            used_src_indices.add(src_idx)
+            used_obj_indices.add(obj_idx)
+            diaSourceCatalog[src_idx]["ssObjectId"] = maskedObject["ssObjectId"]
+            ssObjectIds.append(maskedObject["ssObjectId"])
+            all_cols = ["phaseAngle", "heliocentricDist",
+                        "topocentricDist"] + stateVectorColumns + mpcorbColumns
+            ssSourceData.append(list(maskedObject[all_cols].values()))
+            dia_ra = diaSourceCatalog[src_idx]["ra"]
+            dia_dec = diaSourceCatalog[src_idx]["dec"]
+            dia_id = diaSourceCatalog[src_idx][source_column]
+            ras.append(dia_ra)
+            decs.append(dia_dec)
+            dia_ids.append(dia_id)
+            residual_ras.append(dia_ra - maskedObject["ra"])
+            residual_decs.append(dia_dec - maskedObject["dec"])
+            maskedObjects['associated'][obj_idx] = True
+        nFound = len(ras)
 
         self.log.info("Successfully associated %d / %d SolarSystemObjects.", nFound, nSolarSystemObjects)
         self.metadata['nAssociatedSsObjects'] = nFound
