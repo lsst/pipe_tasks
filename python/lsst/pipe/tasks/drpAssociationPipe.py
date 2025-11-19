@@ -437,15 +437,11 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
             unassociatedSsObjects['visit'] = visit
             unassociatedSsObjects['detector'] = detector
 
-        if len(ssoAssocResult.unAssocDiaSources) > 0:
-            unassociatedDiaSources = ssoAssocResult.unAssocDiaSources
-        else:
-            unassociatedDiaSources = pd.DataFrame(columns=ssoAssocResult.unAssocDiaSources.columns)
         return pipeBase.Struct(
             associatedSsSources=associatedSsSources,
             associatedSsDiaSources=associatedSsDiaSources,
             unassociatedSsObjects=unassociatedSsObjects,
-            unassociatedDiaSources=unassociatedDiaSources
+            unassociatedDiaSources=ssoAssocResult.unAssocDiaSources
         )
 
     def _addDiaObjectCoords(self, objects, sources):
