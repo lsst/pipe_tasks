@@ -918,7 +918,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             id_generator = lsst.meas.base.IdGenerator()
 
         result.exposure = self.snap_combine.run(exposures).exposure
-        self._recordMaskedPixelFractions(result.exposure)
         self.log.info("Initial PhotoCalib: %s", result.exposure.getPhotoCalib())
 
         result.exposure.metadata["LSST CALIB ILLUMCORR APPLIED"] = False
@@ -1081,6 +1080,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             result.applied_photo_calib = photo_calib
         else:
             result.applied_photo_calib = None
+
+        self._recordMaskedPixelFractions(result.exposure)
 
         if self.config.run_sattle:
             # send boresight and timing information to sattle so the cache
