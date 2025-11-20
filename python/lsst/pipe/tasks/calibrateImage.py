@@ -324,6 +324,24 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         target=lsst.meas.algorithms.SubtractBackgroundTask,
         doc="Task to perform final background subtraction, just before photoCal.",
     )
+    star_background_min_footprints = pexConfig.Field(
+        dtype=int,
+        default=3,
+        doc="Minimum number of footprints in the detection mask for star_background measurement. "
+            "This number will get adjusted to the fraction config.star_background_peak_fraction "
+            "of the detected peaks if that number is larger. If the number of footprints is less "
+            "than the minimum, the detection threshold is iteratively increased until the "
+            "threshold is met.",
+    )
+    star_background_peak_fraction = pexConfig.Field(
+        dtype=float,
+        default=0.01,
+        doc="The minimum number of footprints in the detection mask for star_background measuremen "
+            "gets set to the maximum of this fraction of the detected peaks and the value set in "
+            "config.star_background_min_footprints. If the number of footprints is less than the "
+            "current minimum set, the detection threshold is iteratively increased until the "
+            "threshold is met.",
+    )
     star_detection = pexConfig.ConfigurableField(
         target=lsst.meas.algorithms.SourceDetectionTask,
         doc="Task to detect stars to return in the output catalog."
@@ -997,6 +1015,11 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                                                                 astrometry_meta)
             result.psf_stars = result.psf_stars_footprints.asAstropy()
 
+            # Add diffraction spike mask here so it can be used (i.e. avoided)
+            # in the adaptive background estimation.
+            if self.config.doMaskDiffractionSpikes:
+                self.diffractionSpikeMask.run(result.exposure)
+
             if self.config.do_adaptive_threshold_detection:
                 self._remeasure_star_background(
                     result,
@@ -1049,8 +1072,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             if "photometry_matches" in self.config.optional_outputs:
                 result.photometry_matches = lsst.meas.astrom.denormalizeMatches(photometry_matches,
                                                                                 photometry_meta)
-            if self.config.doMaskDiffractionSpikes:
-                self.diffractionSpikeMask.run(result.exposure)
             if "mask" in self.config.optional_outputs:
                 result.mask = result.exposure.mask.clone()
         except pipeBase.AlgorithmError:
@@ -1766,8 +1787,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # using an adaptive threshold detection iteration to ensure a
         # "Goldilocks Zone" for the fraction of detected pixels.
         backgroundOrig = result.background.clone()
-        median_background = np.median(backgroundOrig.getImage().array)
-        self.log.warning("Original median_background = %.2f", median_background)
+        median_background_orig = np.median(backgroundOrig.getImage().array)
+        self.log.info("Original median_background = %.2f", median_background_orig)
         result.exposure.image.array += result.background.getImage().array
         result.background = afwMath.BackgroundList()
 
@@ -1819,27 +1840,70 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                          "highest_detected_fraction_per_amp = %.3f",
                          n_above_max_per_amp, highest_detected_fraction_per_amp)
 
+        bgIgnoreMasksToAdd = ["SAT", "SUSPECT", "SPIKE"]
         detected_fraction = 1.0
         nFootprintTemp = 1e12
         starBackgroundDetectionConfig = lsst.meas.algorithms.SourceDetectionConfig()
+        for maskName in bgIgnoreMasksToAdd:
+            if (maskName in result.exposure.mask.getMaskPlaneDict().keys()
+                    and maskName not in starBackgroundDetectionConfig.background.ignoredPixelMask):
+                starBackgroundDetectionConfig.background.ignoredPixelMask += [maskName]
         starBackgroundDetectionConfig.doTempLocalBackground = False
         starBackgroundDetectionConfig.nSigmaToGrow = 70.0
         starBackgroundDetectionConfig.reEstimateBackground = False
         starBackgroundDetectionConfig.includeThresholdMultiplier = 1.0
-        starBackgroundDetectionConfig.thresholdValue = max(2.0, 0.2*median_background)
-        starBackgroundDetectionConfig.thresholdType = "pixel_stdev"  # "stdev"
+        starBackgroundDetectionConfig.thresholdValue = max(2.0, 0.2*median_background_orig)
+        starBackgroundDetectionConfig.thresholdType = "pixel_stdev"
 
         n_above_max_per_amp = -99
         highest_detected_fraction_per_amp = float("nan")
         doCheckPerAmpDetFraction = True
 
+        minFootprints = self.config.star_background_min_footprints
         maxIter = 40
         for nIter in range(maxIter):
             currentThresh = starBackgroundDetectionConfig.thresholdValue
-            if detected_fraction > maxDetFracForFinalBg:
+            nZeroEncountered = 0
+            if nFootprintTemp == 0:
+                zeroFactor = min(0.98, 0.9 + 0.01*nZeroEncountered)
+                starBackgroundDetectionConfig.thresholdValue = zeroFactor*currentThresh
+                self.log.warning("No footprints detected. Decreasing threshold to %.2f and rerunning.",
+                                 starBackgroundDetectionConfig.thresholdValue)
+                starBackgroundDetectionTask = lsst.meas.algorithms.SourceDetectionTask(
+                    config=starBackgroundDetectionConfig)
+                table = afwTable.SourceTable.make(self.initial_stars_schema.schema)
+                tempDetections = starBackgroundDetectionTask.run(
+                    table=table, exposure=result.exposure, clearMask=True)
+                nFootprintTemp = len(tempDetections.sources)
+                minFootprints = max(self.config.star_background_min_footprints,
+                                    int(self.config.star_background_peak_fraction*tempDetections.numPosPeaks))
+                minFootprints = min(200, minFootprints)
+                nZeroEncountered += 1
+                if nFootprintTemp >= minFootprints:
+                    detected_fraction = self._compute_mask_fraction(result.exposure.mask,
+                                                                    detected_mask_planes,
+                                                                    bad_mask_planes)
+                    self.log.info("nIter = %d, thresh = %.2f: Fraction of pixels marked as DETECTED or "
+                                  "DETECTED_NEGATIVE in star_background_detection = %.3f "
+                                  "(max is %.3f; min is %.3f)  nFootprint = %d (current min is %d)",
+                                  nIter, starBackgroundDetectionConfig.thresholdValue,
+                                  detected_fraction, maxDetFracForFinalBg, minDetFracForFinalBg,
+                                  nFootprintTemp, minFootprints)
+                    break
+                else:
+                    # Still not enough footprints, so make sure this loop is
+                    # entered again.
+                    if nFootprintTemp > 0 and nFootprintTemp < minFootprints:
+                        nFootprintTemp = 0
+                    continue
+            if detected_fraction > maxDetFracForFinalBg or nFootprintTemp <= minFootprints:
                 starBackgroundDetectionConfig.thresholdValue = 1.07*currentThresh
-                if nFootprintTemp < 3 and detected_fraction > 0.9*maxDetFracForFinalBg:
-                    starBackgroundDetectionConfig.thresholdValue = 1.2*currentThresh
+                if nFootprintTemp < minFootprints and detected_fraction > 0.9*maxDetFracForFinalBg:
+                    if nFootprintTemp == 1:
+                        starBackgroundDetectionConfig.thresholdValue = 1.4*currentThresh
+                    else:
+                        starBackgroundDetectionConfig.thresholdValue = 1.2*currentThresh
+
             if n_above_max_per_amp > 1:
                 starBackgroundDetectionConfig.thresholdValue = 1.1*currentThresh
             if detected_fraction < minDetFracForFinalBg:
@@ -1851,13 +1915,17 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 table=table, exposure=result.exposure, clearMask=True)
             result.exposure.mask |= dilatedMask
             nFootprintTemp = len(tempDetections.sources)
+            minFootprints = max(self.config.star_background_min_footprints,
+                                int(self.config.star_background_peak_fraction*tempDetections.numPosPeaks))
+            minFootprints = min(200, minFootprints)
             detected_fraction = self._compute_mask_fraction(result.exposure.mask, detected_mask_planes,
                                                             bad_mask_planes)
             self.log.info("nIter = %d, thresh = %.2f: Fraction of pixels marked as DETECTED or "
                           "DETECTED_NEGATIVE in star_background_detection = %.3f "
-                          "(max is %.3f; min is %.3f)",
+                          "(max is %.3f; min is %.3f)  nFooprint = %d (current min is %d)",
                           nIter, starBackgroundDetectionConfig.thresholdValue,
-                          detected_fraction, maxDetFracForFinalBg, minDetFracForFinalBg)
+                          detected_fraction, maxDetFracForFinalBg, minDetFracForFinalBg,
+                          nFootprintTemp, minFootprints)
 
             n_amp = len(result.exposure.detector.getAmplifiers())
             if doCheckPerAmpDetFraction:  # detected_fraction < maxDetFracForFinalBg:
@@ -1870,7 +1938,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
             if (detected_fraction < maxDetFracForFinalBg and detected_fraction > minDetFracForFinalBg
                     and n_above_max_per_amp < int(0.75*n_amp)
-                    and no_zero_det_amps):
+                    and no_zero_det_amps
+                    and nFootprintTemp >= minFootprints):
                 if (n_above_max_per_amp < max(1, int(0.15*n_amp))
                         or detected_fraction < 0.85*maxDetFracForFinalBg):
                     break
@@ -1879,6 +1948,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                     starBackgroundDetectionConfig.thresholdValue = 1.05*currentThresh
             self.log.warning("n_above_max_per_amp = %d (abs max is %d)", n_above_max_per_amp, int(0.75*n_amp))
 
+        detected_fraction = self._compute_mask_fraction(result.exposure.mask, detected_mask_planes,
+                                                        bad_mask_planes)
         self.log.info("Fraction of pixels marked as DETECTED or DETECTED_NEGATIVE is now %.5f "
                       "(highest per amp section = %.5f)",
                       detected_fraction, highest_detected_fraction_per_amp)
@@ -1894,6 +1965,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             backgroundToPhotometricRatio=background_to_photometric_ratio,
         ).background
         result.background.append(star_background[0])
+
+        median_background = np.median(result.background.getImage().array)
+        self.log.info("New initial median_background = %.2f", median_background)
 
         # Perform one more round of background subtraction that is just an
         # overall pedestal (order = 0).  This is intended to account for
@@ -1923,6 +1997,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                            detected_fraction_orig, detected_fraction_dilated)
 
         pedestalBackgroundConfig = lsst.meas.algorithms.SubtractBackgroundConfig()
+        for maskName in bgIgnoreMasksToAdd:
+            if (maskName in result.exposure.mask.getMaskPlaneDict().keys()
+                    and maskName not in pedestalBackgroundConfig.ignoredPixelMask):
+                pedestalBackgroundConfig.ignoredPixelMask += [maskName]
         pedestalBackgroundConfig.statisticsProperty = "MEDIAN"
         pedestalBackgroundConfig.approxOrderX = 0
         pedestalBackgroundConfig.binSize = 64
@@ -1932,11 +2010,11 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             background=result.background,
             backgroundToPhotometricRatio=background_to_photometric_ratio,
         ).background
-        # Isolate the final pedestal background to log the computed value
+        # Isolate the final pedestal background to log the computed value.
         pedestalBackground = afwMath.BackgroundList()
         pedestalBackground.append(pedestalBackgroundList[1])
         pedestalBackgroundLevel = pedestalBackground.getImage().array[0, 0]
-        self.log.warning("Subtracted pedestalBackgroundLevel = %.4f", pedestalBackgroundLevel)
+        self.log.info("Subtracted pedestalBackgroundLevel = %.4f", pedestalBackgroundLevel)
 
         # Clear detected mask plane before final round of detection
         mask = result.exposure.mask
