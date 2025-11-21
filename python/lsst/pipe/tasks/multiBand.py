@@ -909,6 +909,8 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         sources :  `lsst.afw.table.SourceCatalog`
             A catalog built from the results of merged detections, or
             deblender outputs.
+        parentCatalog : `lsst.afw.table.SourceCatalog`
+            Catalog of parent sources corresponding to sources.
         skyInfo : `lsst.pipe.base.Struct`
             A struct containing information about the position of the input exposure within
             a `SkyMap`, the `SkyMap`, its `Wcs`, and its bounding box.

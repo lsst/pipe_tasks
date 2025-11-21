@@ -228,9 +228,11 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
 
         # We'll customize the configuration of measurement to just run the
         # minimal number of plugins to make setPrimaryFlags work.
+        # As of DM-51670 we also include `base_PsfFlux` to ensure that
+        # the measurement plugins run correctly with the split between
+        # parent and child catalogs.
         measureConfig = SingleFrameMeasurementTask.ConfigClass()
-        measureConfig.plugins.names = ["base_SdssCentroid", "base_SkyCoord"]
-        measureConfig.slots.psfFlux = None
+        measureConfig.plugins.names = ["base_SdssCentroid", "base_SkyCoord", "base_PsfFlux"]
         measureConfig.slots.apFlux = None
         measureConfig.slots.shape = None
         measureConfig.slots.modelFlux = None
@@ -282,6 +284,10 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         # since they both have the same blended sources and only differ
         # over which model to use for the isolated sources.
         isPseudo = outputCat["merge_peak_sky"]
+
+        # Check that all 5 pseudo-sources were created
+        self.assertEqual(np.sum(isPseudo), 5)
+
         self.assertEqual(
             np.sum(outputCat["detect_isDeblendedSource"] & ~isPseudo),
             np.sum(outputCat["detect_isDeblendedModelSource"]))
@@ -300,10 +306,15 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(sum((outputCat["detect_isPrimary"]) & (outputCat["merge_peak_sky"])), 0)
 
         # Check that sky objects have not been deblended
+        # (deblended sources have parent > 0)
         np.testing.assert_array_equal(
             isPseudo,
-            isPseudo & (outputCat["deblend_nChild"] == 0)
+            isPseudo & (outputCat["parent"] == 0)
         )
+
+        # Check that measurements were performed on all of the children
+        self.assertTrue(np.all(outputCat["base_PsfFlux_instFlux"] != 0) and np.all(np.isfinite(
+            outputCat["base_PsfFlux_instFlux"])))
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):

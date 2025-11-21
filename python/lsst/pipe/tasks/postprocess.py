@@ -1826,3 +1826,54 @@ class ConsolidateTractTask(pipeBase.PipelineTask):
                       inputRefs.inputCatalogs[0].datasetType.name)
         df = pd.concat(inputs["inputCatalogs"])
         butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
+
+
+class ConsolidateParentTractConnections(
+    pipeBase.PipelineTaskConnections,
+    dimensions=("instrument", "tract")
+):
+    inputCatalogs = connectionTypes.Input(
+        doc="Parents of the deblended objects",
+        name="object_parent_patch",
+        storageClass="SourceCatalog",
+        dimensions=("tract", "patch", "skymap"),
+        multiple=True,
+    )
+
+    outputCatalog = connectionTypes.Output(
+        doc="Output per-tract concatenation of DataFrame Tables",
+        name="object_parent",
+        storageClass="DataFrame",
+        dimensions=("tract", "skymap"),
+    )
+
+
+class ConsolidateParentTractConfig(
+    pipeBase.PipelineTaskConfig,
+    pipelineConnections=ConsolidateParentTractConnections,
+):
+    pass
+
+
+class ConsolidateParentTractTask(pipeBase.PipelineTask):
+    """Concatenate any per-patch, dataframe list into a single
+    per-tract DataFrame.
+    """
+    _DefaultName = "ConsolidateTract"
+    ConfigClass = ConsolidateParentTractConfig
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        # Not checking at least one inputCatalog exists because that'd be an
+        # empty QG.
+        self.log.info("Concatenating %s per-patch %s Tables",
+                      len(inputs["inputCatalogs"]),
+                      inputRefs.inputCatalogs[0].datasetType.name)
+
+        dataFrames = [cat.asAstropy().to_pandas() for cat in inputs["inputCatalogs"]]
+        for df in dataFrames:
+            df.set_index("objectId", inplace=True)
+            df["patch"] = butlerQC.quantum.dataId["patch"]
+            df["tract"] = butlerQC.quantum.dataId["tract"]
+        df = pd.concat(dataFrames)
+        butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
