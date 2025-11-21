@@ -26,6 +26,8 @@ __all__ = ["DrpAssociationPipeTask",
            "DrpAssociationPipeConfig",
            "DrpAssociationPipeConnections"]
 
+import os
+
 import astropy.table as tb
 import numpy as np
 import pandas as pd
@@ -39,6 +41,7 @@ from lsst.meas.base import SkyMapIdGeneratorConfig
 from lsst.skymap import BaseSkyMap
 
 from .coaddBase import makeSkyInfo
+from .schemaUtils import convertDataFrameToSdmSchema, readSdmSchemaFile
 from .simpleAssociation import SimpleAssociationTask
 
 
@@ -146,6 +149,27 @@ class DrpAssociationPipeConfig(
         default=True,
         doc="Process SolarSystem objects through the pipeline.",
     )
+    doUseSchema = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Use an existing schema to coerce the data types of the output columns."
+    )
+    schemaDir = pexConfig.Field(
+        dtype=str,
+        doc="Path to the directory containing schema definitions.",
+        default=os.path.join("${SDM_SCHEMAS_DIR}",
+                             "yml"),
+    )
+    schemaFile = pexConfig.Field(
+        dtype=str,
+        doc="Yaml file specifying the schema of the output catalog.",
+        default="lsstcam.yaml",
+    )
+    schemaName = pexConfig.Field(
+        dtype=str,
+        doc="Name of the schema in the schema file.",
+        default="lsstcam",
+    )
     idGenerator = SkyMapIdGeneratorConfig.make_field()
 
 
@@ -159,6 +183,12 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.makeSubtask('associator')
+
+        if self.config.doUseSchema:
+            schemaFile = os.path.join(self.config.schemaDir, self.config.schemaFile)
+            self.schema = readSdmSchemaFile(schemaFile, self.config.schemaName)
+        else:
+            self.schema = None
         if self.config.doSolarSystemAssociation:
             self.makeSubtask("solarSystemAssociator")
 
@@ -330,6 +360,9 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
 
         if self.config.doAddDiaObjectCoords:
             assocDiaSources = self._addDiaObjectCoords(diaObjects, assocDiaSources)
+        if self.config.doUseSchema:
+            diaObjects = convertDataFrameToSdmSchema(self.schema, diaObjects, tableName="DiaObject")
+            assocDiaSources = convertDataFrameToSdmSchema(self.schema, assocDiaSources, tableName="DiaSource")
 
         return pipeBase.Struct(
             diaObjectTable=diaObjects,
