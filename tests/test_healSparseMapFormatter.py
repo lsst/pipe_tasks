@@ -51,7 +51,8 @@ class HealSparseMapFormatterTestCase(unittest.TestCase):
         del self.hspMap
 
     def testHealSparseMapFormatter(self):
-        butler = Butler(self.root, run="testrun")
+        butler = Butler.from_config(self.root, run="testrun")
+        self.enterContext(butler)
         datasetType = DatasetType("map", [], "HealSparseMap",
                                   universe=butler.dimensions)
         butler.registry.registerDatasetType(datasetType)
