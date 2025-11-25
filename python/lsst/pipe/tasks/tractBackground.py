@@ -39,29 +39,31 @@ from lsst.pipe.tasks.background import interpolateBadPixels, smoothArray
 class TractBackgroundConfig(Config):
     """Configuration for TractBackground
 
-    Parameters `xBin` and `yBin` are in pixels as translation from warps to
+    Parameters `xBin` and `yBin` are in pixels, as translation from warps to
     tract and back only requires geometric transformations in the warped pixel
     plane.
     """
 
-    xBin = Field(dtype=float, default=200, doc="Bin size in x")
-    yBin = Field(dtype=float, default=200, doc="Bin size in y")
+    xBin = Field(dtype=float, default=128, doc="Bin size in x")
+    yBin = Field(dtype=float, default=128, doc="Bin size in y")
     minFrac = Field(dtype=float, default=0.1, doc="Minimum fraction of bin size for good measurement")
+    # TODO: not masking detections could impact reference visit selection.
+    # Either could make the field configurable, or swap to pre-made references
     mask = ListField(
         dtype=str,
         doc="Mask planes to treat as bad",
-        default=["BAD", "SAT", "INTRP", "DETECTED", "DETECTED_NEGATIVE", "EDGE", "NO_DATA"],
+        default=["BAD", "SAT", "EDGE", "NO_DATA"],
     )
     interpolation = ChoiceField(
-        doc="how to interpolate the background values. This maps to an enum; see afw::math::Background",
+        doc="How to interpolate the background values. This maps to an enum; see afw::math::Background",
         dtype=str,
         default="AKIMA_SPLINE",
         optional=True,
         allowed={
             "CONSTANT": "Use a single constant value",
             "LINEAR": "Use linear interpolation",
-            "NATURAL_SPLINE": "cubic spline with zero second derivative at endpoints",
-            "AKIMA_SPLINE": "higher-level nonlinear spline that is more robust to outliers",
+            "NATURAL_SPLINE": "Cubic spline with zero second derivative at endpoints",
+            "AKIMA_SPLINE": "Higher-level nonlinear spline that is more robust to outliers",
             "NONE": "No background estimation is to be attempted",
         },
     )
@@ -73,9 +75,9 @@ class TractBackgroundConfig(Config):
 class TractBackground:
     """Background model for a tract, comprised of warped exposures.
 
-    Similar to background.FocalPlaneBackground class, in that we model the
-    background using the "superpixel" method, measuring the background in each
-    superpixel and interpolating between them.
+    Similar to lsst.pipe.background.FocalPlaneBackground class, in that we
+    model the background using the "superpixel" method, measuring the
+    background in each superpixel and interpolating between them.
 
     There is one use pattern for building a background model: create a
     `TractBackground`, then `addWarp` for each of the patches in a tract.
@@ -90,7 +92,7 @@ class TractBackground:
     skymap : `lsst.skymap.ringsSkyMap.RingsSkyMap`
         Skymap object
     tract : `int`
-        Placeholder Tract ID
+        Working Tract ID.
     transform : `lsst.afw.geom.TransformPoint2ToPoint2`
         Transformation from tract coordinates to warp coordinates.
     values : `lsst.afw.image.ImageF`
@@ -156,7 +158,7 @@ class TractBackground:
         Parameters
         ----------
         warp : `lsst.afw.image.ExposureF`
-            Warped image corresponding to a single patch in a single visit
+            Warped image corresponding to a single patch in a single visit.
         """
         image = warp.getMaskedImage()
         maskVal = image.getMask().getPlaneBitMask(self.config.mask)
@@ -239,12 +241,12 @@ class TractBackground:
         Parameters
         ----------
         warp : `lsst.afw.image.ExposureF`
-            Warped image corresponding to a single patch in a single visit
+            Warped image corresponding to a single patch in a single visit.
 
         Returns
         -------
         bg : `lsst.afw.math.BackgroundList`
-            Background model for warp
+            Background model for warp.
         """
         # Transform to binned warp plane
         binTransform = geom.AffineTransform.makeScaling(self.config.binning)
@@ -259,8 +261,7 @@ class TractBackground:
             raise ValueError(
                 "Patch dimensions %d,%d are unequal: cannot proceed as written." % (ptchDimX, ptchDimY)
             )
-        ptchOutDimX, _ = ptch.getOuterBBox().getDimensions()
-        overlap = ptchDimX - ptchOutDimX
+        overlap = (warp.getBBox().getDimensions().getX() - ptchDimX) // 2
         corner = warp.getBBox().getMin()
         if corner[0] % ptchDimX != 0:
             corner[0] += overlap
@@ -324,7 +325,7 @@ class TractBackground:
             array = values.getArray()
             array[:] = smoothArray(array, isBad, self.config.smoothScale)
             isBad = numpy.isnan(values.array)
-        # This also extrapolates outside the focal plane to the tract edges
+        # Note: this extrapolates outside the focal plane to the tract edges
         if numpy.any(isBad):
             interpolateBadPixels(values.getArray(), isBad, self.config.interpolation)
 
