@@ -114,17 +114,19 @@ def registerDcrSubfilters(repo, num_subfilters, band_names):
         or already exist in each filter band, that has a __str__ method so it
         can be easily printed to the CLI output.
     """
-    butler = Butler(repo, writeable=True)
     results = InsertResults()
-    for filterName in band_names:
-        try:
-            with butler.registry.transaction():
-                for sub in range(num_subfilters):
-                    butler.registry.insertDimensionData("subfilter", {"band": filterName, "subfilter": sub})
-                    results.add(filterName, sub, True)
-        except IntegrityError:
-            records = butler.registry.queryDimensionRecords("subfilter", dataId={"band": filterName})
-            for record in records:
-                results.add(filterName, record.id, False)
+    with Butler.from_config(repo, writeable=True) as butler:
+        for filterName in band_names:
+            try:
+                with butler.registry.transaction():
+                    for sub in range(num_subfilters):
+                        butler.registry.insertDimensionData(
+                            "subfilter", {"band": filterName, "subfilter": sub}
+                        )
+                        results.add(filterName, sub, True)
+            except IntegrityError:
+                records = butler.registry.queryDimensionRecords("subfilter", dataId={"band": filterName})
+                for record in records:
+                    results.add(filterName, record.id, False)
 
     return results

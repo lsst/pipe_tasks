@@ -699,6 +699,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         # Create a and populate a test butler for runQuantum tests.
         self.repo_path = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.repo = butlerTests.makeTestRepo(self.repo_path.name)
+        self.enterContext(self.repo)
 
         # A complete instrument record is necessary for the id generator.
         instrumentRecord = self.repo.dimensions["instrument"].RecordClass(

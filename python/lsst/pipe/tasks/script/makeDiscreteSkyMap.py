@@ -53,35 +53,39 @@ def makeDiscreteSkyMap(repo, config_file, collections, instrument,
         The identifer of the skymap to append to.  Must differ from
         ``skymap_id``.  Ignored unless ``config.doAppend=True``.
     """
-    butler = Butler(repo, collections=collections, writeable=True)
-    instr = Instrument.from_string(instrument, butler.registry)
-    config = MakeDiscreteSkyMapConfig()
-    instr.applyConfigOverrides(MakeDiscreteSkyMapTask._DefaultName, config)
+    with Butler.from_config(repo, collections=collections, writeable=True) as butler:
+        instr = Instrument.from_string(instrument, butler.registry)
+        config = MakeDiscreteSkyMapConfig()
+        instr.applyConfigOverrides(MakeDiscreteSkyMapTask._DefaultName, config)
 
-    if config_file is not None:
-        resource = ResourcePath(config_file)
-        with resource.as_local() as local_config:
-            config.load(local_config.ospath)
+        if config_file is not None:
+            resource = ResourcePath(config_file)
+            with resource.as_local() as local_config:
+                config.load(local_config.ospath)
 
-    # The coaddName for a SkyMap is only relevant in Gen2, and we completely
-    # ignore it here; once Gen2 is gone it can be removed.
-    oldSkyMap = None
-    if config.doAppend:
-        if old_skymap_id is None:
-            raise ValueError("old_skymap_id must be provided if config.doAppend is True.")
-        dataId = {'skymap': old_skymap_id}
-        try:
-            oldSkyMap = butler.get(BaseSkyMap.SKYMAP_DATASET_TYPE_NAME, collections=collections,
-                                   dataId=dataId)
-        except LookupError as e:
-            msg = (f"Could not find seed skymap with dataId {dataId} "
-                   f"in collections {collections} but doAppend is {config.doAppend}.  Aborting...")
-            raise LookupError(msg, *e.args[1:])
+        # The coaddName for a SkyMap is only relevant in Gen2, and we completely
+        # ignore it here; once Gen2 is gone it can be removed.
+        oldSkyMap = None
+        if config.doAppend:
+            if old_skymap_id is None:
+                raise ValueError("old_skymap_id must be provided if config.doAppend is True.")
+            dataId = {'skymap': old_skymap_id}
+            try:
+                oldSkyMap = butler.get(
+                    BaseSkyMap.SKYMAP_DATASET_TYPE_NAME, collections=collections, dataId=dataId
+                )
+            except LookupError as e:
+                msg = (
+                    f"Could not find seed skymap with dataId {dataId} "
+                    f"in collections {collections} but doAppend is {config.doAppend}.  Aborting..."
+                )
+                raise LookupError(msg, *e.args[1:])
 
-    datasets = butler.registry.queryDatasets('calexp', collections=collections)
-    wcs_bbox_tuple_list = [(butler.get(ref.makeComponentRef("wcs")),
-                            butler.get(ref.makeComponentRef("bbox")))
-                           for ref in datasets]
-    task = MakeDiscreteSkyMapTask(config=config)
-    result = task.run(wcs_bbox_tuple_list, oldSkyMap)
-    result.skyMap.register(skymap_id, butler)
+        datasets = butler.registry.queryDatasets('calexp', collections=collections)
+        wcs_bbox_tuple_list = [
+            (butler.get(ref.makeComponentRef("wcs")), butler.get(ref.makeComponentRef("bbox")))
+            for ref in datasets
+        ]
+        task = MakeDiscreteSkyMapTask(config=config)
+        result = task.run(wcs_bbox_tuple_list, oldSkyMap)
+        result.skyMap.register(skymap_id, butler)
