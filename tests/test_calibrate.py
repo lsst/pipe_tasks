@@ -52,7 +52,10 @@ class CalibrateTaskTestCaseWithButler(lsst.utils.tests.TestCase):
         config["datastore", "checksum"] = False
         config["registry", "db"] = "sqlite:///:memory:"
 
-        butler = lsst.daf.butler.Butler(lsst.daf.butler.Butler.makeRepo(root, config=config), writeable=True)
+        butler = lsst.daf.butler.Butler.from_config(
+            lsst.daf.butler.Butler.makeRepo(root, config=config), writeable=True
+        )
+        cls.enterClassContext(butler)
         butler.registry.insertDimensionData(
             "instrument",
             {"name": "notACam", "visit_max": 256, "exposure_max": 256, "detector_max": 64})
