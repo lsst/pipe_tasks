@@ -95,5 +95,5 @@ def registerSkymap(repo, config, config_file):
     if config:
         skyMapConfig.update(**config)
 
-    butler = Butler(repo, writeable=True)
-    makeSkyMap(butler, skyMapConfig)
+    with Butler.from_config(repo, writeable=True) as butler:
+        makeSkyMap(butler, skyMapConfig)
