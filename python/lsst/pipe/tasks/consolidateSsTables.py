@@ -48,6 +48,12 @@ class ConsolidateSsTablesConnections(pipeBase.PipelineTaskConnections,
         multiple=True,
         deferLoad=True,
     )
+    mpcorb = cT.Input(
+        doc="Minor Planet Center orbit table used for association",
+        name="mpcorb",
+        storageClass="DataFrame",
+        dimensions={},
+    )
     ssSourceTable = cT.Output(
         doc="",
         name="{fakesType}{coaddName}Diff_ssSrcTable",
@@ -79,7 +85,7 @@ class ConsolidateSsTablesTask(pipeBase.PipelineTask):
     _DefaultName = "consolidateSsTables"
 
     @timeMethod
-    def run(self, inputCatalogs):
+    def run(self, inputCatalogs, mpcorb):
         """Concatenate per-patch ssSource tables.
             Generate ssObject table.
 
@@ -106,9 +112,11 @@ class ConsolidateSsTablesTask(pipeBase.PipelineTask):
 
         # Compatibility for pre RFC-1138 ss_source_associated tables
         if "heliocentricDist" in ssSourceTable.colnames:
-            au_in_km = (1 * u.au).to(u.km).value
-            ssSourceTable["designation"] = ssSourceTable["ssObjectId"].view("S8")
+            arr = ssSourceTable["ssObjectId"] + 0x20000000_00000000 # leading whitespace
+            arr_s8 = arr.byteswap().view(arr.dtype.newbyteorder()).view("S8")
+            ssSourceTable["designation"] = np.char.lstrip(arr_s8)
             # Distances → convert km → AU
+            au_in_km = (1 * u.au).to(u.km).value
             ssSourceTable.rename_column("topocentricDist", "topoRange"); ssSourceTable["topoRange"] /= au_in_km
             ssSourceTable.rename_column("heliocentricDist", "helioRange"); ssSourceTable["helioRange"] /= au_in_km
             
@@ -137,6 +145,14 @@ class ConsolidateSsTablesTask(pipeBase.PipelineTask):
             ssSourceTable.rename_column("galacticL", "galLon")
             ssSourceTable.rename_column("galacticB", "galLat")
 
+            if mpcorb is not None and "packed_primary_provisional_designation" in mpcorb.columns:
+                mpcorb["unpacked_primary_provisional_designation"] = mpcorb["packed_primary_provisional_designation"]
+
+        if mpcorb is not None:
+            self.log.info(f"mpcorb loaded ({len(mpcorb)} objects)")
+        else:
+            self.log.info("mpcorb not loaded.")
+        
         # extract the DiaSource subset and remove it from ssSourceTable
         diaSource = tb.Table()
         for c in ssp.ssobject.DIA_COLUMNS:
@@ -147,7 +163,8 @@ class ConsolidateSsTablesTask(pipeBase.PipelineTask):
 
         # build the SSObject table
         ssSourceTable.sort("ssObjectId")
-        ssObjectTable = ssp.ssobject.compute_ssobject(ssSourceTable.to_pandas(), diaSource.to_pandas(), None)
+        mpcorb = mpcorb.to_pandas() if isinstance(mpcorb, tb.Table) else mpcorb
+        ssObjectTable = ssp.ssobject.compute_ssobject(ssSourceTable.to_pandas(), diaSource.to_pandas(), mpcorb)
         ssObjectTable = tb.Table(ssObjectTable)
 
         return pipeBase.Struct(
