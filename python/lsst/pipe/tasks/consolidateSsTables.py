@@ -145,11 +145,13 @@ class ConsolidateSsTablesTask(pipeBase.PipelineTask):
             ssSourceTable.rename_column("galacticL", "galLon")
             ssSourceTable.rename_column("galacticB", "galLat")
 
-            if mpcorb is not None and "packed_primary_provisional_designation" in mpcorb.columns:
+            # if we're loading the old-style catalog, we require packed_primary_provisional_designation
+            # to be in the mpcorb schema (and we'll pretend that it's actually unpacked)
+            if mpcorb is not None:
                 mpcorb["unpacked_primary_provisional_designation"] = mpcorb["packed_primary_provisional_designation"]
 
         if mpcorb is not None:
-            self.log.info(f"mpcorb loaded ({len(mpcorb)} objects)")
+            self.log.info(f"mpcorb loaded ({len(mpcorb)} objects, {len(mpcorb.columns)} columns)")
         else:
             self.log.info("mpcorb not loaded.")
         
