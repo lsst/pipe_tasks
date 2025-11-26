@@ -37,6 +37,8 @@ import lsst.pipe.base as pipeBase
 from lsst.utils.timer import timeMethod
 from lsst.pipe.tasks.associationUtils import obj_id_to_ss_object_id
 
+from . import ssp
+from .ssp import ssobject
 
 class SolarSystemAssociationConfig(pexConfig.Config):
     """Config class for SolarSystemAssociationTask.
@@ -289,6 +291,23 @@ class SolarSystemAssociationTask(pipeBase.Task):
         ssSourceData['eclipticBeta'] = coords.barycentrictrueecliptic.lat.deg
         unassociatedObjects = maskedObjects[unAssocObjectMask]
         unassociatedObjects.remove_columns(columns_to_drop)
+
+        ## Add diaSource columns we care about when producing the SSObject table
+        if len(ssSourceData):
+            import astropy.table
+            DIA_COLUMNS = ssp.ssobject.DIA_COLUMNS
+
+            # Extract only DIA_COLUMNS
+            dia = diaSourceCatalog[DIA_COLUMNS].copy()
+
+            # Prefix all except diaSourceId
+            for c in DIA_COLUMNS:
+                if c != "diaSourceId":
+                    dia.rename_column(c, f"DIA_{c}")
+
+            # Join on diaSourceId, keeping all rows of ssSourceData
+            ssSourceData = astropy.table.join(ssSourceData, dia, keys="diaSourceId", join_type="left", uniq_col_name="")
+
         return pipeBase.Struct(
             ssoAssocDiaSources=diaSourceCatalog[assocSourceMask],
             unAssocDiaSources=diaSourceCatalog[~assocSourceMask],
