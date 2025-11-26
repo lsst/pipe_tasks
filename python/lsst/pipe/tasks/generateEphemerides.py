@@ -253,11 +253,11 @@ class GenerateEphemeridesTask(PipelineTask):
             "visitExposureTime": visitTime,
 
             # The following columns are required by Socha but only used after ephemeris generation
-            "filter": ["r"] * n,
-            "seeingFwhmGeom": [-1] * n,
-            "seeingFwhmEff": [-1] * n,
-            "fiveSigmaDepth": [-1] * n,
-            "rotSkyPos": [-1] * n,
+            "filter": ["r"] * n,  # Let's call V-band "r-band" to play nicely with Sorcha...
+            "seeingFwhmGeom": [0.01] * n,
+            "seeingFwhmEff": [0.01] * n,
+            "fiveSigmaDepth": [9999] * n,
+            "rotSkyPos": [0] * n,
         })
 
         inputOrbits = mpcorb[
@@ -293,7 +293,6 @@ class GenerateEphemeridesTask(PipelineTask):
             cache = f'{tmpdirname}/sorcha_cache/'
             self.log.info('making cache')
             os.mkdir(cache)
-            # DONE
             for filename, fileref in [
                 ('de440s.bsp', de440s),
                 ('sb441-n16.bsp', sb441_n16),
@@ -347,7 +346,8 @@ class GenerateEphemeridesTask(PipelineTask):
                     "-p", f"{tmpdirname}/colors.csv",
                     "--pd", f"{tmpdirname}/pointings.db",
                     "--ew", f"{tmpdirname}/ephemeris",
-                    "--ar", f"{tmpdirname}/sorcha_cache/"
+                    "--ar", f"{tmpdirname}/sorcha_cache/",
+                    "-t", "sorcha_output",
                 ],
                 stdout=PIPE,
                 stderr=PIPE,
@@ -357,10 +357,14 @@ class GenerateEphemeridesTask(PipelineTask):
             self.log.info(f"Sorcha STDOUT:\n {result.stdout}")
             self.log.info(f"Sorcha STDERR:\n {result.stderr}")
 
-            eph_path = f'{tmpdirname}/ephemeris.csv'
+            eph_path = f'{tmpdirname}/sorcha_output.csv'
             if not os.path.exists(eph_path):
+                from time import sleep
+                print('not os.path.exists()', eph_path)
+                sleep(1000)
+
                 raise FileNotFoundError(
-                    " Sorcha did not create ephemeris. Check STDOUT/STDERR above. "
+                    " Sorcha did not create sorcha_output. Check STDOUT/STDERR above. "
                     f"Directory contents:\n{os.listdir(tmpdirname)}"
                 )
 

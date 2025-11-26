@@ -12,6 +12,7 @@ DIA_COLUMNS = [
     "diaSourceId", "midpointMjdTai", "ra", "dec", "extendedness",
     "band", "psfFlux", "psfFluxErr"
 ]
+DIA_DTYPES = [int, float, float, float, float, str, float, float]
 
 def nJy_to_mag(f_njy):
     """
