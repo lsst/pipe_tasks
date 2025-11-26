@@ -254,8 +254,11 @@ class SolarSystemAssociationTask(pipeBase.Task):
             used_obj_indices.add(obj_idx)
             diaSourceCatalog[src_idx]["ssObjectId"] = maskedObject["ssObjectId"]
             ssObjectIds.append(maskedObject["ssObjectId"])
-            all_cols = ["phaseAngle", "heliocentricDist",
-                        "topocentricDist"] + stateVectorColumns + mpcorbColumns
+            all_cols = (
+                ["ObjID", "phaseAngle", "helioRange", "topoRange"] + stateVectorColumns + mpcorbColumns
+                + ["ephRa", "ephDec", "RARateCosDec_deg_day",
+                   "DecRate_deg_day", "PSFMagTrue", "RangeRate_LTC_km_s"]
+            )
             ssSourceData.append(list(maskedObject[all_cols].values()))
             dia_ra = diaSourceCatalog[src_idx]["ra"]
             dia_dec = diaSourceCatalog[src_idx]["dec"]
