@@ -338,9 +338,8 @@ class GenerateEphemeridesTask(PipelineTask):
             self.log.info('Sorcha process begun')
 
             result = run(
-                [
-                    "sorcha",
-                    "run",
+                sorcha_run
+                + [
                     "-c", f"{tmpdirname}/eph.ini",
                     "-o", f"{tmpdirname}/",
                     "--ob", f"{tmpdirname}/orbits.csv",
