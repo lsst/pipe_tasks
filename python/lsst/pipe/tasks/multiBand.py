@@ -39,10 +39,12 @@ from lsst.meas.algorithms import (
     DynamicDetectionTask,
     ExceedsMaxVarianceScaleError,
     InsufficientSourcesError,
+    PsfGenerationError,
     ReferenceObjectLoader,
     ScaleVarianceTask,
     SetPrimaryFlagsTask,
     TooManyMaskedPixelsError,
+    ZeroFootprintError,
 )
 from lsst.meas.base import (
     SingleFrameMeasurementTask,
@@ -265,6 +267,8 @@ class DetectCoaddSourcesTask(PipelineTask):
             TooManyMaskedPixelsError,
             ExceedsMaxVarianceScaleError,
             InsufficientSourcesError,
+            PsfGenerationError,
+            ZeroFootprintError,
         ) as e:
             if self.config.writeEmptyBackgrounds:
                 butlerQC.put(self._makeEmptyBackground(exposure, patchInfo), outputRefs.outputBackgrounds)
