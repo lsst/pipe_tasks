@@ -30,7 +30,7 @@ import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
 from lsst.obs.base.utils import TableVStack
 from lsst.utils.timer import timeMethod
-from . import ssp
+from .ssp.ssobject import DIA_COLUMNS, compute_ssobject
 
 warnings.filterwarnings("ignore")
 
@@ -52,7 +52,7 @@ class ConsolidateSsTablesConnections(
         doc="Minor Planet Center orbit table used for association",
         name="mpcorb",
         storageClass="DataFrame",
-        dimensions={},
+        dimensions=(),
     )
     ssSourceTable = cT.Output(
         doc="",
@@ -112,7 +112,8 @@ class ConsolidateSsTablesTask(pipeBase.PipelineTask):
             f"Done. {len(ssSourceTable)} observations, {np.unique(ssSourceTable['ssObjectId']).size} objects."
         )
 
-        # Compatibility for pre RFC-1138 ss_source_associated tables
+        # Compatibility for pre RFC-1138 ss_source_associated tables.
+        # To be removed in DM-53466.
         if "heliocentricDist" in ssSourceTable.colnames:
             arr = ssSourceTable["ssObjectId"] + 0x20000000_00000000  # leading whitespace
             arr_s8 = arr.byteswap().view(arr.dtype.newbyteorder()).view("S8")
@@ -169,7 +170,7 @@ class ConsolidateSsTablesTask(pipeBase.PipelineTask):
 
         # extract the DiaSource subset and remove it from ssSourceTable
         diaSource = tb.Table()
-        for c in ssp.ssobject.DIA_COLUMNS:
+        for c in DIA_COLUMNS:
             src = c if c == "diaSourceId" else f"DIA_{c}"
             diaSource[c] = ssSourceTable[src]
             if src != "diaSourceId":
@@ -178,7 +179,7 @@ class ConsolidateSsTablesTask(pipeBase.PipelineTask):
         # build the SSObject table
         ssSourceTable.sort("ssObjectId")
         mpcorb = mpcorb.to_pandas() if isinstance(mpcorb, tb.Table) else mpcorb
-        ssObjectTable = ssp.ssobject.compute_ssobject(
+        ssObjectTable = compute_ssobject(
             ssSourceTable.to_pandas(), diaSource.to_pandas(), mpcorb
         )
         ssObjectTable = tb.Table(ssObjectTable)
