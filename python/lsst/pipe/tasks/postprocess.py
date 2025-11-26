@@ -1843,7 +1843,7 @@ class ConsolidateParentTractConnections(
     outputCatalog = connectionTypes.Output(
         doc="Output per-tract concatenation of DataFrame Tables",
         name="object_parent",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=("tract", "skymap"),
     )
 
@@ -1867,18 +1867,20 @@ class ConsolidateParentTractTask(pipeBase.PipelineTask):
                       len(inputRefs.inputCatalogs),
                       inputRefs.inputCatalogs[0].datasetType.name)
 
-        dataFrames = []
+        tables = []
         for ref in inputRefs.inputCatalogs:
             catalog = butlerQC.get(ref)
-            df = catalog.asAstropy().to_pandas()
-            df.rename(columns={
-                "id": "objectId",
-                "parent": "parentObjectId",
-                "merge_peak_sky": "sky_object",
-            }, inplace=True)
-            df.set_index("objectId", inplace=True)
-            df["tract"] = ref.dataId["tract"]
-            df["patch"] = ref.dataId["patch"]
-            dataFrames.append(df)
-        df = pd.concat(dataFrames)
-        butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
+            table = catalog.asAstropy()
+
+            # Rename columns
+            table.rename_column("id", "objectId")
+            table.rename_column("parent", "parentObjectId")
+            table.rename_column("merge_peak_sky", "sky_object")
+
+            # Add tract and patch columns
+            table["tract"] = ref.dataId["tract"]
+            table["patch"] = ref.dataId["patch"]
+
+            tables.append(table)
+        outputTable = astropy.table.vstack(tables, join_type="exact")
+        butlerQC.put(pipeBase.Struct(outputCatalog=outputTable), outputRefs)
