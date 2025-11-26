@@ -22,6 +22,7 @@
 __all__ = ["ConsolidateSsTablesConfig", "ConsolidateSsTablesTask", "ConsolidateSsTablesConnections"]
 
 import astropy.table as tb
+import astropy.units as u
 import numpy as np
 import warnings
 
@@ -29,6 +30,8 @@ import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
 from lsst.obs.base.utils import TableVStack
 from lsst.utils.timer import timeMethod
+from . import ssp
+from .ssp import ssobject
 
 warnings.filterwarnings('ignore')
 
@@ -97,13 +100,55 @@ class ConsolidateSsTablesTask(pipeBase.PipelineTask):
                 Table of ssObjects
                 (`astropy.table.Table`).
         """
-        self.log.info("Concatenating %s per-patch ssSource Tables",
-                      len(inputCatalogs))
+        self.log.info("Concatenating %s per-patch ssSource Tables", len(inputCatalogs))
         ssSourceTable = TableVStack.vstack_handles(inputCatalogs)
-        ssObjectTable = tb.Table()
-        ssObjectTable['ssObjectId'], ssObjectTable['numObs'] = np.unique(ssSourceTable['ssObjectId'],
-                                                                         return_counts=True)
-        ssObjectTable['discoverySubmissionDate'] = np.nan
+        self.log.info(f"Done. {len(ssSourceTable)} observations of {np.unique(ssSourceTable['ssObjectId']).size} objects.")
+
+        # Compatibility for pre RFC-1138 ss_source_associated tables
+        if "heliocentricDist" in ssSourceTable.colnames:
+            au_in_km = (1 * u.au).to(u.km).value
+            ssSourceTable["designation"] = ssSourceTable["ssObjectId"].view("S8")
+            # Distances → convert km → AU
+            ssSourceTable.rename_column("topocentricDist", "topoRange"); ssSourceTable["topoRange"] /= au_in_km
+            ssSourceTable.rename_column("heliocentricDist", "helioRange"); ssSourceTable["helioRange"] /= au_in_km
+            
+            ssSourceTable.rename_column("heliocentricX", "helio_x"); ssSourceTable["helio_x"] /= au_in_km
+            ssSourceTable.rename_column("heliocentricY", "helio_y"); ssSourceTable["helio_y"] /= au_in_km
+            ssSourceTable.rename_column("heliocentricZ", "helio_z"); ssSourceTable["helio_z"] /= au_in_km
+            
+            ssSourceTable.rename_column("topocentricX", "topo_x"); ssSourceTable["topo_x"] /= au_in_km
+            ssSourceTable.rename_column("topocentricY", "topo_y"); ssSourceTable["topo_y"] /= au_in_km
+            ssSourceTable.rename_column("topocentricZ", "topo_z"); ssSourceTable["topo_z"] /= au_in_km
+            
+            # Velocities (no unit change, just renaming)
+            ssSourceTable.rename_column("heliocentricVX", "helio_vx")
+            ssSourceTable.rename_column("heliocentricVY", "helio_vy")
+            ssSourceTable.rename_column("heliocentricVZ", "helio_vz")
+            
+            ssSourceTable.rename_column("topocentricVX", "topo_vx")
+            ssSourceTable.rename_column("topocentricVY", "topo_vy")
+            ssSourceTable.rename_column("topocentricVZ", "topo_vz")
+
+            # the rest
+            ssSourceTable.rename_column("residualRa", "ephOffsetRa")
+            ssSourceTable.rename_column("residualDec", "ephOffsetDec")
+            ssSourceTable.rename_column("eclipticLambda", "eclLambda")
+            ssSourceTable.rename_column("eclipticBeta", "eclBeta")
+            ssSourceTable.rename_column("galacticL", "galLon")
+            ssSourceTable.rename_column("galacticB", "galLat")
+
+        # extract the DiaSource subset and remove it from ssSourceTable
+        diaSource = tb.Table()
+        for c in ssp.ssobject.DIA_COLUMNS:
+            src = c if c == "diaSourceId" else f"DIA_{c}"
+            diaSource[c] = ssSourceTable[src]
+            if src != "diaSourceId":
+                del ssSourceTable[src]
+
+        # build the SSObject table
+        ssSourceTable.sort("ssObjectId")
+        ssObjectTable = ssp.ssobject.compute_ssobject(ssSourceTable.to_pandas(), diaSource.to_pandas(), None)
+        ssObjectTable = tb.Table(ssObjectTable)
 
         return pipeBase.Struct(
             ssSourceTable=ssSourceTable,
