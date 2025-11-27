@@ -1826,3 +1826,61 @@ class ConsolidateTractTask(pipeBase.PipelineTask):
                       inputRefs.inputCatalogs[0].datasetType.name)
         df = pd.concat(inputs["inputCatalogs"])
         butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
+
+
+class ConsolidateParentTractConnections(
+    pipeBase.PipelineTaskConnections,
+    dimensions=("instrument", "tract")
+):
+    inputCatalogs = connectionTypes.Input(
+        doc="Parents of the deblended objects",
+        name="object_parent_patch",
+        storageClass="SourceCatalog",
+        dimensions=("tract", "patch", "skymap"),
+        multiple=True,
+    )
+
+    outputCatalog = connectionTypes.Output(
+        doc="Output per-tract concatenation of DataFrame Tables",
+        name="object_parent",
+        storageClass="ArrowAstropy",
+        dimensions=("tract", "skymap"),
+    )
+
+
+class ConsolidateParentTractConfig(
+    pipeBase.PipelineTaskConfig,
+    pipelineConnections=ConsolidateParentTractConnections,
+):
+    pass
+
+
+class ConsolidateParentTractTask(pipeBase.PipelineTask):
+    """Concatenate any per-patch, dataframe list into a single
+    per-tract DataFrame.
+    """
+    _DefaultName = "ConsolidateTract"
+    ConfigClass = ConsolidateParentTractConfig
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        self.log.info("Concatenating %s per-patch %s Tables",
+                      len(inputRefs.inputCatalogs),
+                      inputRefs.inputCatalogs[0].datasetType.name)
+
+        tables = []
+        for ref in inputRefs.inputCatalogs:
+            catalog = butlerQC.get(ref)
+            table = catalog.asAstropy()
+
+            # Rename columns
+            table.rename_column("id", "objectId")
+            table.rename_column("parent", "parentObjectId")
+            table.rename_column("merge_peak_sky", "sky_object")
+
+            # Add tract and patch columns
+            table["tract"] = ref.dataId["tract"]
+            table["patch"] = ref.dataId["patch"]
+
+            tables.append(table)
+        outputTable = astropy.table.vstack(tables, join_type="exact")
+        butlerQC.put(pipeBase.Struct(outputCatalog=outputTable), outputRefs)
