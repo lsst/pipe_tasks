@@ -451,6 +451,14 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         doc="If True, include astrometric errors in the output catalog.",
     )
 
+    background_stats_ignored_pixel_masks = pexConfig.ListField(
+        dtype=str,
+        default=["SAT", "SUSPECT", "SPIKE"],
+        doc="Pixel mask flags to ignore when calculating post-sky-subtraction "
+            "background statistics. These are added to those ignored by the "
+            "meas.algorithms.SubtractBackgroundConfig algorithm."
+    )
+
     run_sattle = pexConfig.Field(
         dtype=bool,
         default=False,
@@ -1091,6 +1099,33 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             raise
         else:
             self._summarize(result.exposure, summary_stat_catalog, result.background)
+
+        # Output post-subtraction background stats to task metadata:
+        # Specify the pixels flags to ignore, starting with those ignored
+        # by the subtraction.
+        bgIgnoredPixelMasks = lsst.meas.algorithms.SubtractBackgroundConfig().ignoredPixelMask.list()
+        for maskName in self.config.background_stats_ignored_pixel_masks:
+            if (maskName in result.exposure.mask.getMaskPlaneDict().keys()
+                    and maskName not in bgIgnoredPixelMasks):
+                bgIgnoredPixelMasks += [maskName]
+
+        statsCtrl = afwMath.StatisticsControl()
+        statsCtrl.setAndMask(afwImage.Mask.getPlaneBitMask(bgIgnoredPixelMasks))
+
+        statObj = afwMath.makeStatistics(result.exposure.getMaskedImage(), afwMath.MEDIAN, statsCtrl)
+        median_bg, _ = statObj.getResult(afwMath.MEDIAN)
+        self.metadata["bg_subtracted_skyPixel_instFlux_median"] = median_bg
+
+        statObj = afwMath.makeStatistics(result.exposure.getMaskedImage(), afwMath.STDEV, statsCtrl)
+        stdev_bg, _ = statObj.getResult(afwMath.STDEV)
+        self.metadata["bg_subtracted_skyPixel_instFlux_stdev"] = stdev_bg
+
+        self.metadata["bg_subtracted_skySource_flux_median"] = (
+            np.median(result.stars[result.stars['sky_source']]['base_CircularApertureFlux_12_0_flux'])
+        )
+        self.metadata["bg_subtracted_skySource_flux_stdev"] = (
+            np.std(result.stars[result.stars['sky_source']]['base_CircularApertureFlux_12_0_flux'])
+        )
 
         if self.config.do_calibrate_pixels:
             self._apply_photometry(
