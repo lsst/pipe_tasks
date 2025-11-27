@@ -39,10 +39,12 @@ from lsst.meas.algorithms import (
     DynamicDetectionTask,
     ExceedsMaxVarianceScaleError,
     InsufficientSourcesError,
+    PsfGenerationError,
     ReferenceObjectLoader,
     ScaleVarianceTask,
     SetPrimaryFlagsTask,
     TooManyMaskedPixelsError,
+    ZeroFootprintError,
 )
 from lsst.meas.base import (
     SingleFrameMeasurementTask,
@@ -170,7 +172,7 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
     writeOnlyBackgrounds = Field(dtype=bool, default=False, doc="If true, only save the background models.")
     writeEmptyBackgrounds = Field(
         dtype=bool,
-        default=False,
+        default=True,
         doc=(
             "If true, save a placeholder background with NaNs in all bins (but the right geometry) when "
             "there are no pixels to compute a background from.  This can be useful if a later task combines "
@@ -261,9 +263,16 @@ class DetectCoaddSourcesTask(PipelineTask):
                 expId=idGenerator.catalog_id,
                 patchInfo=patchInfo,
             )
-        except (TooManyMaskedPixelsError, ExceedsMaxVarianceScaleError, InsufficientSourcesError) as e:
+        except (
+            TooManyMaskedPixelsError,
+            ExceedsMaxVarianceScaleError,
+            InsufficientSourcesError,
+            PsfGenerationError,
+            ZeroFootprintError,
+        ) as e:
             if self.config.writeEmptyBackgrounds:
                 butlerQC.put(self._makeEmptyBackground(exposure, patchInfo), outputRefs.outputBackgrounds)
+            butlerQC.put(exposure, outputRefs.outputExposure)
             error = AnnotatedPartialOutputsError.annotate(
                 e,
                 self,
