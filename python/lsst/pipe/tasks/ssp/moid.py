@@ -7,7 +7,6 @@ from collections import namedtuple
 AU_KM = AU_CONST.to_value(u.km)
 
 
-
 EarthElements = namedtuple(
     "EarthElements",
     ["a_AU", "e", "inc_deg", "Omega_deg", "omega_deg"],
@@ -24,6 +23,7 @@ MOIDResult = namedtuple(
         "TrueAnomaly2_deg",
     ],
 )
+
 
 def earth_orbit_J2000():
     """
@@ -108,7 +108,6 @@ def earth_orbit_J2000():
     )
 
 
-
 class MOIDSolver:
     """
     MOID solver using an adaptive 2D grid in (f1, f2).
@@ -188,7 +187,7 @@ class MOIDSolver:
     @classmethod
     def _make_orbit_params(cls, a_AU, e, inc, Om, om):
         """Return p in AU, rotation matrix Q."""
-        p = a_AU * (1 - e * e)      # AU
+        p = a_AU * (1 - e * e)  # AU
         Q = cls._make_rotation_matrix(inc, Om, om)
         return p, e, Q
 
@@ -230,7 +229,7 @@ class MOIDSolver:
         fac = np.sqrt(mu_km3_s2 / p_km)
 
         vx_pf = -fac * sf
-        vy_pf =  fac * (e + cf)
+        vy_pf = fac * (e + cf)
 
         VX = Q[0, 0] * vx_pf + Q[0, 1] * vy_pf
         VY = Q[1, 0] * vx_pf + Q[1, 1] * vy_pf
@@ -267,7 +266,6 @@ class MOIDSolver:
         prev_moid = np.inf
 
         for level in range(max_ref + 1):
-
             f1_lo = center1 - width1 / 2
             f1_hi = center1 + width1 / 2
             f2_lo = center2 - width2 / 2

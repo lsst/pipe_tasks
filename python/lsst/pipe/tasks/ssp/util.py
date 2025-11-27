@@ -16,6 +16,7 @@ from typing import Optional
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+
 def assoc_validate(dia, assoc):
     # verify coordinates and times match
     dia = dia[["ra", "dec", "midpointMjdTai"]].iloc[assoc["dia_index"].values]
@@ -25,10 +26,10 @@ def assoc_validate(dia, assoc):
     mpc = astropy.coordinates.SkyCoord(ra=assoc["mpc_ra"].values, dec=assoc["mpc_dec"].values, unit="deg")
     sep = obs.separation(mpc)
 
-    print ("Separation diffeerence range (arcsec): ", sep.min().arcsec, sep.max().arcsec)
+    print("Separation diffeerence range (arcsec): ", sep.min().arcsec, sep.max().arcsec)
     assert sep.min().arcsec >= 0
-    assert sep.max().arcsec <= 0.005  ## FIXME: this should be further
-    ## tightened once we start submitting extra precision to the MPC
+    assert sep.max().arcsec <= 0.005  # FIXME: this should be further
+    # tightened once we start submitting extra precision to the MPC
 
     # verify times match
     t_utc = Time(dia["midpointMjdTai"].to_numpy(), format="mjd", scale="tai").utc
@@ -37,15 +38,15 @@ def assoc_validate(dia, assoc):
     delta_sec = (mpc_time - midpoint_utc).dt.total_seconds()
     delta_sec
 
-    print ("Time diffeerence range (sec):          ", delta_sec.min(), delta_sec.max())
+    print("Time diffeerence range (sec):          ", delta_sec.min(), delta_sec.max())
 
     # FIXME: this was relaxed as USDF replica's obstime datatype is borked
     # and rounds (or truncates?) the timestamps to 1 second. E-mailed Dan S.
     # to get it fixed.
-    #assert abs(delta_sec).max() < 0.01
+    # assert abs(delta_sec).max() < 0.01
     assert abs(delta_sec).max() < 0.51
 
-    print (f"All OK, {len(assoc):,} observations.")
+    print(f"All OK, {len(assoc):,} observations.")
 
 
 def packed_ascii_to_uint64_le(mpc_packed):
@@ -62,7 +63,7 @@ def packed_ascii_to_uint64_le(mpc_packed):
 
     # Step 2: Left-pad to length 8 with ASCII spaces (works on older PyArrow!)
     # ascii_lpad takes (string_array, target_length, pad_char)
-    padded = pc.ascii_lpad(arr, 8, " ")     # returns string array padded to 8 chars
+    padded = pc.ascii_lpad(arr, 8, " ")  # returns string array padded to 8 chars
 
     # Step 3: Convert padded string → binary
     bin_arr = pc.cast(padded, pa.binary())
@@ -79,6 +80,7 @@ def packed_ascii_to_uint64_le(mpc_packed):
 
     # Step 7: Interpret every 8 bytes as a little-endian uint64
     return np.frombuffer(buf, dtype="<u8")
+
 
 def solar_elongation_ndarray(ra_deg, dec_deg, t):
     """
@@ -110,7 +112,7 @@ def solar_elongation_ndarray(ra_deg, dec_deg, t):
     sun_dec = sun.dec.radian
 
     # Convert input to radians
-    ra  = np.radians(ra_deg)
+    ra = np.radians(ra_deg)
     dec = np.radians(dec_deg)
 
     # Fast great-circle angular separation
@@ -118,6 +120,7 @@ def solar_elongation_ndarray(ra_deg, dec_deg, t):
 
     # Convert to degrees for return
     return np.degrees(sep)
+
 
 def group_by(arrs, key, func, out=None, check_grouped=True):
     """
@@ -170,25 +173,22 @@ def group_by(arrs, key, func, out=None, check_grouped=True):
                 current = k
 
     # ---------- Find true group boundaries ----------
-    unique_keys, idx_start, counts = np.unique(
-        keys, return_index=True, return_counts=True
-    )
+    unique_keys, idx_start, counts = np.unique(keys, return_index=True, return_counts=True)
     idx_end = idx_start + counts
     n_groups = len(unique_keys)
 
     # ---------- Preallocated output path ----------
     if out is not None:
         if len(out) < n_groups:
-            raise ValueError(
-                f"Out array too small: need {n_groups}, have {len(out)}"
-            )
+            raise ValueError(f"Out array too small: need {n_groups}, have {len(out)}")
 
         for out_idx, (start, end) in enumerate(zip(idx_start, idx_end)):
             subarrs = tuple(a[start:end] for a in arrs)
-            row = out[out_idx]           # writable structured scalar
+            row = out[out_idx]  # writable structured scalar
             func(row, *subarrs)
             if out_idx % 100 == 0:
                 from datetime import datetime
+
                 print(f"[{datetime.now().isoformat()}] count={out_idx}")
 
         return out
@@ -223,6 +223,7 @@ def values_grouped(a: np.ndarray) -> bool:
     #    i.e., all group_vals are unique
     return np.unique(group_vals).size == group_vals.size
 
+
 def earthlocation_from_obscode(obscode: str) -> EarthLocation:
     """
     Convert an MPC observatory code (e.g. 'X05') to an EarthLocation,
@@ -236,11 +237,7 @@ def earthlocation_from_obscode(obscode: str) -> EarthLocation:
     row = row[0]
 
     # Handle missing ground positions (spacecraft, etc.)
-    if (
-        ma.is_masked(row["Longitude"])
-        or ma.is_masked(row["cos"])
-        or ma.is_masked(row["sin"])
-    ):
+    if ma.is_masked(row["Longitude"]) or ma.is_masked(row["cos"]) or ma.is_masked(row["sin"]):
         raise ValueError(f"Obscode {obscode!r} has no ground position (spacecraft?)")
 
     lon = (row["Longitude"] * u.deg).to(u.rad).value  # radians
@@ -301,9 +298,10 @@ def observatory_barycentric_posvel(obscode: str, obstime: Time):
     return r_site_bary, v_site_bary
 
 
-###
-### Serialization
-###
+#
+# Serialization
+#
+
 
 def struct_to_parquet(
     arr: np.ndarray,
@@ -393,6 +391,7 @@ def struct_to_parquet(
 # Jupiter's semimajor axis in AU (J2000-ish)
 A_JUP = 5.2044
 
+
 def tisserand_jupiter(a, e, inc_deg, a_j=A_JUP):
     """
     Compute Tisserand parameter with respect to Jupiter.
@@ -415,6 +414,7 @@ def tisserand_jupiter(a, e, inc_deg, a_j=A_JUP):
     """
     inc_rad = np.deg2rad(inc_deg)
     return (a_j / a) + 2.0 * np.cos(inc_rad) * np.sqrt((a / a_j) * (1.0 - e**2))
+
 
 def unpack(df, to_numpy=True):
     """

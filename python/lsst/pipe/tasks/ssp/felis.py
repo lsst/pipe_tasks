@@ -9,6 +9,7 @@ import yaml
 # Default tables to process if none specified
 DEFAULT_TABLES = ["SSObject", "SSSource", "mpc_orbits", "current_identifications", "numbered_identifications"]
 
+
 # ----------------------------------------------------------------------
 # Helper: timestamp precision → numpy time unit
 # ----------------------------------------------------------------------
@@ -25,7 +26,7 @@ def _timestamp_precision_to_unit(prec: int) -> str:
     elif prec <= 5:
         return "us"
     else:
-        return "ns"   # max precision numpy supports
+        return "ns"  # max precision numpy supports
 
 
 # ----------------------------------------------------------------------
@@ -137,6 +138,7 @@ def felis_table_to_numpy_dtype(table: Mapping[str, Any]) -> np.dtype:
     if metadata:
         return np.dtype(fields, metadata=metadata)
     return np.dtype(fields)
+
 
 def pretty_print_dtype(
     dtype: np.dtype,
@@ -300,9 +302,7 @@ def main():
         "table_names",
         nargs="*",
         default=DEFAULT_TABLES,
-        help=(
-            f"Names of tables to process (default: {', '.join(DEFAULT_TABLES)})"
-        )
+        help=(f"Names of tables to process (default: {', '.join(DEFAULT_TABLES)})"),
     )
     args = parser.parse_args()
 

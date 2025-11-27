@@ -8,11 +8,9 @@ import argparse
 import sys
 
 # The only columns we need from DiaSource.
-DIA_COLUMNS = [
-    "diaSourceId", "midpointMjdTai", "ra", "dec", "extendedness",
-    "band", "psfFlux", "psfFluxErr"
-]
+DIA_COLUMNS = ["diaSourceId", "midpointMjdTai", "ra", "dec", "extendedness", "band", "psfFlux", "psfFluxErr"]
 DIA_DTYPES = [int, float, float, float, float, str, float, float]
+
 
 def nJy_to_mag(f_njy):
     """
@@ -29,6 +27,7 @@ def nJy_to_mag(f_njy):
         AB magnitude corresponding to the input flux density.
     """
     return 31.4 - 2.5 * np.log10(f_njy)
+
 
 def nJy_err_to_mag_err(f_njy, f_err_njy):
     """
@@ -48,6 +47,7 @@ def nJy_err_to_mag_err(f_njy, f_err_njy):
     """
     return 1.085736 * (f_err_njy / f_njy)
 
+
 def compute_ssobject_entry(row, sss):
     # just verify we didn't screw up something
     assert sss["ssObjectId"].nunique() == 1
@@ -56,10 +56,10 @@ def compute_ssobject_entry(row, sss):
     row["ssObjectId"] = sss["ssObjectId"].iloc[0]
     row["firstObservationMjdTai"] = sss["dia_midpointMjdTai"].min()
 
-    if "discoverySubmissionDate" in row.dtype.names: # DP2 does not have this field
+    if "discoverySubmissionDate" in row.dtype.names:  # DP2 does not have this field
         # FIXME: here I arbitrarily guess we discover everything 7 days
         # after first obsv. we should really pull this out of the obs_sbn tbl.
-        row["discoverySubmissionDate"] = row["firstObservationMjdTai"] + 7.
+        row["discoverySubmissionDate"] = row["firstObservationMjdTai"] + 7.0
     row["arc"] = np.ptp(sss["dia_midpointMjdTai"])
     row["designation"] = sss["designation"].iloc[0]
 
@@ -71,13 +71,13 @@ def compute_ssobject_entry(row, sss):
         df = sss[sss["dia_band"] == band]
 
         # set defaults for this band (equivalents of NULL)
-        row[f'{band}_Chi2'] = -1
-        row[f'{band}_G12'] = np.nan
-        row[f'{band}_G12Err'] = np.nan
-        row[f'{band}_H'] = np.nan
-        row[f'{band}_H_{band}_G12_Cov'] = np.nan
-        row[f'{band}_HErr'] = np.nan
-        row[f'{band}_nObsUsed'] = -1
+        row[f"{band}_Chi2"] = -1
+        row[f"{band}_G12"] = np.nan
+        row[f"{band}_G12Err"] = np.nan
+        row[f"{band}_H"] = np.nan
+        row[f"{band}_H_{band}_G12_Cov"] = np.nan
+        row[f"{band}_HErr"] = np.nan
+        row[f"{band}_nObsUsed"] = -1
 
         nBandObs = len(df)
         row[f"{band}_nObs"] = nBandObs
@@ -89,33 +89,33 @@ def compute_ssobject_entry(row, sss):
             if nBandObs > 1:
                 # do the absmag/slope fits, if there are at least two
                 # data points
-                H, G12, sigmaH, sigmaG12, covHG12, chi2dof, nobsv = \
-                    photfit.fitHG12(df["dia_psfMag"], df["dia_psfMagErr"],
-                                    df["phaseAngle"], df["topoRange"],
-                                    df["helioRange"])
+                H, G12, sigmaH, sigmaG12, covHG12, chi2dof, nobsv = photfit.fitHG12(
+                    df["dia_psfMag"], df["dia_psfMagErr"], df["phaseAngle"], df["topoRange"], df["helioRange"]
+                )
                 nDof = 2
                 # print(provID, band, H, G12, sigmaH, sigmaG12, covHG12,
                 #       chi2dof, nobsv)
 
                 # mark if the fit failed
                 if np.isnan(G12):
-                    row[f'{band}_slope_fit_failed'] = True
+                    row[f"{band}_slope_fit_failed"] = True
                     # FIXME: if fitting fails, we should revert to simple
                     # estimation of H using a fiducial G12 value, storing
                     # that G12 as well.
 
-                row[f'{band}_Chi2'] = chi2dof * nDof
-                row[f'{band}_G12'] = G12
-                row[f'{band}_G12Err'] = sigmaG12
-                row[f'{band}_H'] = H
-                row[f'{band}_H_{band}_G12_Cov'] = covHG12
-                row[f'{band}_HErr'] = sigmaH
-                row[f'{band}_nObsUsed'] = nobsv
+                row[f"{band}_Chi2"] = chi2dof * nDof
+                row[f"{band}_G12"] = G12
+                row[f"{band}_G12Err"] = sigmaG12
+                row[f"{band}_H"] = H
+                row[f"{band}_H_{band}_G12_Cov"] = covHG12
+                row[f"{band}_HErr"] = sigmaH
+                row[f"{band}_nObsUsed"] = nobsv
 
     # Extendedness
     row["extendednessMin"] = sss["dia_extendedness"].min()
     row["extendednessMax"] = sss["dia_extendedness"].max()
     row["extendednessMedian"] = sss["dia_extendedness"].median()
+
 
 def compute_ssobject(sss, dia, mpcorb):
     """
@@ -208,15 +208,18 @@ def compute_ssobject(sss, dia, mpcorb):
         # missing from mpcorb (this should not happen often, but it did in DP1).
         # FIXME: at some point require that no objects are missing. I _think_ that
         # shouldn't happen in normal operations.
-        oidx, midx = util.argjoin(obj["designation"].astype("U"),
-                             mpcorb["unpacked_primary_provisional_designation"].to_numpy().astype("U")
-                            )
-        assert np.all(mpcorb["unpacked_primary_provisional_designation"].take(midx) ==
-                    obj["designation"][oidx].astype("U"))
+        oidx, midx = util.argjoin(
+            obj["designation"].astype("U"),
+            mpcorb["unpacked_primary_provisional_designation"].to_numpy().astype("U"),
+        )
+        assert np.all(
+            mpcorb["unpacked_primary_provisional_designation"].take(midx)
+            == obj["designation"][oidx].astype("U")
+        )
         q, e, i, node, argperi = util.unpack(mpcorb["q e i node argperi".split()].take(midx))
-        a = q / (1. - e)
+        a = q / (1.0 - e)
         obj["tisserand_J"][oidx] = util.tisserand_jupiter(a, e, i)
-    
+
         # MOID computation
         solver = MOIDSolver()
         for i, el_obj in enumerate(zip(a, e, i, node, argperi)):
@@ -230,6 +233,7 @@ def compute_ssobject(sss, dia, mpcorb):
 
     return obj
 
+
 def main():
     """
     CLI entry point for building SSObject table from SSSource,
@@ -241,30 +245,17 @@ def main():
         epilog="""
 Examples:
   ssp-build-ssobject sssource.parquet dia_sources.parquet mpc_orbits.parquet --output ssobject.parquet
-        """
+        """,
     )
 
-    parser.add_argument(
-        "sssource_parquet",
-        help="Path to SSSource Parquet file"
-    )
-    parser.add_argument(
-        "diasource_parquet",
-        help="Path to DiaSource Parquet file"
-    )
-    parser.add_argument(
-        "mpcorb_parquet",
-        help="Path to MPC orbits Parquet file"
-    )
-    parser.add_argument(
-        "--output", "-o",
-        required=True,
-        help="Path to output SSObject Parquet file"
-    )
+    parser.add_argument("sssource_parquet", help="Path to SSSource Parquet file")
+    parser.add_argument("diasource_parquet", help="Path to DiaSource Parquet file")
+    parser.add_argument("mpcorb_parquet", help="Path to MPC orbits Parquet file")
+    parser.add_argument("--output", "-o", required=True, help="Path to output SSObject Parquet file")
     parser.add_argument(
         "--reraise",
         action="store_true",
-        help="Re-raise exceptions instead of exiting gracefully (for debugging)"
+        help="Re-raise exceptions instead of exiting gracefully (for debugging)",
     )
 
     args = parser.parse_args()
@@ -272,20 +263,27 @@ Examples:
     try:
         # Load SSSource
         print(f"Loading SSSource from {args.sssource_parquet}...")
-        sss = pd.read_parquet(args.sssource_parquet, engine="pyarrow",
-                              dtype_backend="pyarrow").reset_index(drop=True)
+        sss = pd.read_parquet(args.sssource_parquet, engine="pyarrow", dtype_backend="pyarrow").reset_index(
+            drop=True
+        )
         num = len(sss)
         print(f"Loaded {num:,} SSSource rows")
 
         # Load DiaSource with required columns
         dia_columns = [
-            "diaSourceId", "midpointMjdTai", "ra", "dec", "extendedness",
-            "band", "psfFlux", "psfFluxErr"
+            "diaSourceId",
+            "midpointMjdTai",
+            "ra",
+            "dec",
+            "extendedness",
+            "band",
+            "psfFlux",
+            "psfFluxErr",
         ]
         print(f"Loading DiaSource from {args.diasource_parquet}...")
-        dia = pd.read_parquet(args.diasource_parquet, engine="pyarrow",
-                              dtype_backend="pyarrow", columns=dia_columns
-                              ).reset_index(drop=True)
+        dia = pd.read_parquet(
+            args.diasource_parquet, engine="pyarrow", dtype_backend="pyarrow", columns=dia_columns
+        ).reset_index(drop=True)
         print(f"Loaded {len(dia):,} DiaSource rows")
 
         # Ensure diaSourceId is uint64
@@ -294,13 +292,23 @@ Examples:
 
         # Load MPC orbits
         mpcorb_columns = [
-            "unpacked_primary_provisional_designation", "a", "q", "e", "i",
-            "node", "argperi", "peri_time", "mean_anomaly", "epoch_mjd", "h", "g"
+            "unpacked_primary_provisional_designation",
+            "a",
+            "q",
+            "e",
+            "i",
+            "node",
+            "argperi",
+            "peri_time",
+            "mean_anomaly",
+            "epoch_mjd",
+            "h",
+            "g",
         ]
         print(f"Loading MPC orbits from {args.mpcorb_parquet}...")
-        mpcorb = pd.read_parquet(args.mpcorb_parquet, engine="pyarrow",
-                                 dtype_backend="pyarrow", columns=mpcorb_columns
-                                 ).reset_index(drop=True)
+        mpcorb = pd.read_parquet(
+            args.mpcorb_parquet, engine="pyarrow", dtype_backend="pyarrow", columns=mpcorb_columns
+        ).reset_index(drop=True)
         print(f"Loaded {len(mpcorb):,} MPC orbit rows")
 
         # Compute SSObject
@@ -320,6 +328,7 @@ Examples:
             raise
         sys.exit(1)
 
+
 if __name__ == "__main__":
     input_dir = "./analysis/inputs"
     output_dir = "./analysis/outputs"
@@ -329,15 +338,15 @@ if __name__ == "__main__":
     #
 
     # load SSObject
-    sss = pd.read_parquet(f'{output_dir}/sssource.parquet',
-                          engine="pyarrow", dtype_backend="pyarrow"
-                          ).reset_index(drop=True)
+    sss = pd.read_parquet(
+        f"{output_dir}/sssource.parquet", engine="pyarrow", dtype_backend="pyarrow"
+    ).reset_index(drop=True)
     num = len(sss)
 
     # load corresponding DiaSource
-    dia = pd.read_parquet(f'{input_dir}/dia_sources.parquet',
-                          engine="pyarrow", dtype_backend="pyarrow",
-                          columns=DIA_COLUMNS).reset_index(drop=True)
+    dia = pd.read_parquet(
+        f"{input_dir}/dia_sources.parquet", engine="pyarrow", dtype_backend="pyarrow", columns=DIA_COLUMNS
+    ).reset_index(drop=True)
 
     # FIXME: I'm not sure why the datatype is int and not uint here.
     # Investigate upstream...
@@ -345,13 +354,25 @@ if __name__ == "__main__":
     dia["diaSourceId"] = dia["diaSourceId"].astype("uint64[pyarrow]")
 
     # Load mpcorb
-    mpcorb = pd.read_parquet(f'{input_dir}/mpc_orbits.parquet',
-                             engine="pyarrow", dtype_backend="pyarrow",
-                             columns=[
-                                 "unpacked_primary_provisional_designation",
-                                 "a", "q", "e", "i", "node", "argperi",
-                                 "peri_time", "mean_anomaly", "epoch_mjd", "h", "g"
-                             ]).reset_index(drop=True)
+    mpcorb = pd.read_parquet(
+        f"{input_dir}/mpc_orbits.parquet",
+        engine="pyarrow",
+        dtype_backend="pyarrow",
+        columns=[
+            "unpacked_primary_provisional_designation",
+            "a",
+            "q",
+            "e",
+            "i",
+            "node",
+            "argperi",
+            "peri_time",
+            "mean_anomaly",
+            "epoch_mjd",
+            "h",
+            "g",
+        ],
+    ).reset_index(drop=True)
 
     #
     # Business logic

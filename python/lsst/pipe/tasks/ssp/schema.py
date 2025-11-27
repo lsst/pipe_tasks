@@ -1,4 +1,5 @@
 # ***** GENERATED FILE, DO NOT EDIT BY HAND *****
+# flake8: noqa
 # ruff: noqa: W505
 # generated with /Users/mjuric/miniforge3/envs/ddpp-dev/bin/ssp-generate-dtypes /Users/mjuric/projects/github.com/lsst/sdm_schemas/yml/lsstcam.yaml # noqa: E501
 
