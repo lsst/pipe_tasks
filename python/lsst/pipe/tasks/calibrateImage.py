@@ -22,6 +22,7 @@
 __all__ = ["CalibrateImageTask", "CalibrateImageConfig", "NoPsfStarsToStarsMatchError",
            "AllCentroidsFlaggedError"]
 
+import math
 import numpy as np
 import requests
 import os
@@ -2031,6 +2032,17 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             self.log.debug("detected_fraction_orig = %.3f  detected_fraction_dilated = %.3f",
                            detected_fraction_orig, detected_fraction_dilated)
 
+        bbox = result.exposure.getBBox()
+
+        # Now measure a final background pedestal level (largely to account
+        # for the over-subtraction often seen in the first pass, especially
+        # in high fill-factor fields). Since the pedestal measurement can be
+        # sensitive to the bin size, start an iteration with a small bin size,
+        # then double it on each iteration until the relative or absolute
+        # change criterion is met. If those are never achieved, the iteration
+        # stops when the bin size gets bigger than the exposure's bounding box.
+
+        # Initialize the parameters for the pedestal iteration.
         pedestalBackgroundConfig = lsst.meas.algorithms.SubtractBackgroundConfig()
         for maskName in bgIgnoreMasksToAdd:
             if (maskName in result.exposure.mask.getMaskPlaneDict().keys()
@@ -2038,18 +2050,60 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 pedestalBackgroundConfig.ignoredPixelMask += [maskName]
         pedestalBackgroundConfig.statisticsProperty = "MEDIAN"
         pedestalBackgroundConfig.approxOrderX = 0
-        pedestalBackgroundConfig.binSize = 64
-        pedestalBackgroundTask = lsst.meas.algorithms.SubtractBackgroundTask(config=pedestalBackgroundConfig)
-        pedestalBackgroundList = pedestalBackgroundTask.run(
-            exposure=result.exposure,
-            background=result.background,
-            backgroundToPhotometricRatio=background_to_photometric_ratio,
-        ).background
-        # Isolate the final pedestal background to log the computed value.
-        pedestalBackground = afwMath.BackgroundList()
-        pedestalBackground.append(pedestalBackgroundList[1])
-        pedestalBackgroundLevel = pedestalBackground.getImage().array[0, 0]
-        self.log.info("Subtracted pedestalBackgroundLevel = %.4f", pedestalBackgroundLevel)
+        pedestalBackgroundConfig.binSize = min(32, int(math.ceil(max(bbox.width, bbox.height)/4.0)))
+        self.log.info("Initial pedestal binSize = %d pixels", pedestalBackgroundConfig.binSize)
+        cumulativePedestalLevel = 0.0
+        # When the cumulative pedestal value changes by less than 5% from one
+        # bin size to the next we assume we are converged.
+        relativeStoppingCriterion = 0.05
+        # When the cumulative pedestal value changes by less than 0.5 counts
+        # (electrons or adu) from one bin size to the next, we assume we are
+        # converged.
+        absoluteStoppingCriterion = 0.5
+        inPedestalIteration = True
+        while inPedestalIteration:
+            cumulativePedestalPrev = cumulativePedestalLevel
+            pedestalBackgroundTask = lsst.meas.algorithms.SubtractBackgroundTask(
+                config=pedestalBackgroundConfig)
+            pedestalBackgroundList = pedestalBackgroundTask.run(
+                exposure=result.exposure,
+                background=result.background,
+                backgroundToPhotometricRatio=background_to_photometric_ratio,
+            ).background
+            # Isolate the most recent pedestal background measured to log the
+            # current computed value and add it to the cumulative value.
+            pedestalBackground = afwMath.BackgroundList()
+            pedestalBackground.append(pedestalBackgroundList[-1])
+            pedestalBackgroundLevel = pedestalBackground.getImage().array[0, 0]
+            cumulativePedestalLevel += pedestalBackgroundLevel
+            absoluteDelta = abs(cumulativePedestalLevel - cumulativePedestalPrev)
+            if cumulativePedestalPrev != 0.0:
+                relativeDelta = abs(absoluteDelta/cumulativePedestalPrev)
+            else:
+                relativeDelta = 1.0
+            self.log.info("Subtracted pedestalBackgroundLevel = %.4f (cumulative = %.4f; "
+                          "relativeDelta = %.4f;  absoluteDelta = %.3f)",
+                          pedestalBackgroundLevel, cumulativePedestalLevel,
+                          relativeDelta, absoluteDelta)
+
+            if (relativeDelta < relativeStoppingCriterion
+                    or absoluteDelta < absoluteStoppingCriterion):
+                # We are converged.
+                inPedestalIteration = False
+            else:
+                # We have not yet converged; grow the bin size if possible.
+                if pedestalBackgroundConfig.binSize*2 < 2*max(bbox.width, bbox.height):
+                    pedestalBackgroundConfig.binSize = int(pedestalBackgroundConfig.binSize*2)
+                    self.log.info("Increasing pedestal binSize to %d pixels and remeasuring.",
+                                  pedestalBackgroundConfig.binSize)
+                else:
+                    # We have reached the maximum bin size.
+                    self.log.warning("Reached maximum bin size. Exiting pedestal loop without meeting "
+                                     "the convergence criteria (relativeDelta <= %.2f or "
+                                     "absoluteDelta <= %.2f).",
+                                     relativeStoppingCriterion, absoluteStoppingCriterion)
+                    inPedestalIteration = False
+        self.log.info("Final subtracted cumulativePedestalBackgroundLevel = %.4f", cumulativePedestalLevel)
 
         # Clear detected mask plane before final round of detection
         mask = result.exposure.mask

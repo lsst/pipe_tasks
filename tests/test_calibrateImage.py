@@ -159,7 +159,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.config.star_selector["science"].unresolved.maximum = 0.2
 
     def _check_run(self, calibrate, result, expect_calibrated_pixels: bool = True,
-                   expect_n_background: int = 4):
+                   expect_n_background: int = 4, expect_n_background_equal_or_greater_than: int = -1):
         """Test the result of CalibrateImage.run().
 
         Parameters
@@ -173,7 +173,10 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         """
         # Background should have 4 elements: 3 from compute_psf and one from
         # re-estimation during source detection.
-        self.assertEqual(len(result.background), expect_n_background)
+        if expect_n_background is not None:
+            self.assertEqual(len(result.background), expect_n_background)
+        if expect_n_background_equal_or_greater_than is not None:
+            self.assertTrue(len(result.background) >= expect_n_background_equal_or_greater_than)
 
         # Both afw and astropy psf_stars catalogs should be populated.
         self.assertEqual(result.psf_stars["calib_psf_used"].sum(), 3)
@@ -260,7 +263,10 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         subString = "Using adaptive threshold detection "
         self.assertTrue(any(subString in s for s in cm.output))
 
-        self._check_run(calibrate, result, expect_n_background=2)
+        # Number of backgrounds in list is only guaranteed to have at least 2
+        # entries in the adaptive threshold code path.
+        self._check_run(calibrate, result, expect_n_background=None,
+                        expect_n_background_equal_or_greater_than=2)
 
     def test_run_downsample(self):
         """Test that run() runs with downsample.
