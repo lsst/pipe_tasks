@@ -22,6 +22,7 @@
 __all__ = ["CalibrateImageTask", "CalibrateImageConfig", "NoPsfStarsToStarsMatchError",
            "AllCentroidsFlaggedError"]
 
+import math
 import numpy as np
 import requests
 import os
@@ -2031,6 +2032,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             self.log.debug("detected_fraction_orig = %.3f  detected_fraction_dilated = %.3f",
                            detected_fraction_orig, detected_fraction_dilated)
 
+        bbox = result.exposure.getBBox()
+
         pedestalBackgroundConfig = lsst.meas.algorithms.SubtractBackgroundConfig()
         for maskName in bgIgnoreMasksToAdd:
             if (maskName in result.exposure.mask.getMaskPlaneDict().keys()
@@ -2038,18 +2041,46 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 pedestalBackgroundConfig.ignoredPixelMask += [maskName]
         pedestalBackgroundConfig.statisticsProperty = "MEDIAN"
         pedestalBackgroundConfig.approxOrderX = 0
-        pedestalBackgroundConfig.binSize = 64
-        pedestalBackgroundTask = lsst.meas.algorithms.SubtractBackgroundTask(config=pedestalBackgroundConfig)
-        pedestalBackgroundList = pedestalBackgroundTask.run(
-            exposure=result.exposure,
-            background=result.background,
-            backgroundToPhotometricRatio=background_to_photometric_ratio,
-        ).background
-        # Isolate the final pedestal background to log the computed value.
-        pedestalBackground = afwMath.BackgroundList()
-        pedestalBackground.append(pedestalBackgroundList[1])
-        pedestalBackgroundLevel = pedestalBackground.getImage().array[0, 0]
-        self.log.info("Subtracted pedestalBackgroundLevel = %.4f", pedestalBackgroundLevel)
+        pedestalBackgroundConfig.binSize = min(32, int(math.ceil(max(bbox.width, bbox.height)/4.0)))
+        self.log.info("Initial pedestal binSize = %d pixels", pedestalBackgroundConfig.binSize)
+        inPedestalIteration = True
+        cumulativePedestalLevel = 0.0
+        while inPedestalIteration:
+            cumulativePedestalPrev = cumulativePedestalLevel
+            pedestalBackgroundTask = lsst.meas.algorithms.SubtractBackgroundTask(
+                config=pedestalBackgroundConfig)
+            pedestalBackgroundList = pedestalBackgroundTask.run(
+                exposure=result.exposure,
+                background=result.background,
+                backgroundToPhotometricRatio=background_to_photometric_ratio,
+            ).background
+            # Isolate the final pedestal background to log the computed value.
+            pedestalBackground = afwMath.BackgroundList()
+            pedestalBackground.append(pedestalBackgroundList[-1])
+            pedestalBackgroundLevel = pedestalBackground.getImage().array[0, 0]
+            cumulativePedestalLevel += pedestalBackgroundLevel
+            self.log.info("Subtracted pedestalBackgroundLevel = %.4f (cumulative = %.4f)",
+                          pedestalBackgroundLevel, cumulativePedestalLevel)
+            if cumulativePedestalPrev != 0.0:
+                deltaCumulative = abs(
+                    (cumulativePedestalLevel - cumulativePedestalPrev)/cumulativePedestalPrev)
+            else:
+                deltaCumulative = 1.0
+            self.log.debug("deltaCumulative = %.4f", deltaCumulative)
+            stoppingCriterion = 0.05
+            if deltaCumulative > stoppingCriterion:
+                if pedestalBackgroundConfig.binSize*2 < 2*max(bbox.width, bbox.height):
+                    pedestalBackgroundConfig.binSize = int(pedestalBackgroundConfig.binSize*2)
+                    self.log.info("Increasing pedestal binSize to %d pixels and remeasuring.",
+                                  pedestalBackgroundConfig.binSize)
+                    inPedestalIteration = True
+                else:
+                    self.log.warning("Reached maximum bin size. Exiting pedestal loop without meeting "
+                                     "convergence criterion (deltaCumulative <= %.2f).", stoppingCriterion)
+                    inPedestalIteration = False
+            else:
+                inPedestalIteration = False
+        self.log.info("Final subtracted cumulativePedestalBackgroundLevel = %.4f", cumulativePedestalLevel)
 
         # Clear detected mask plane before final round of detection
         mask = result.exposure.mask
