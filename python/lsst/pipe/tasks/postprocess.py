@@ -33,7 +33,9 @@ __all__ = ["WriteObjectTableConfig", "WriteObjectTableTask",
            "MakeVisitTableConfig", "MakeVisitTableTask",
            "WriteForcedSourceTableConfig", "WriteForcedSourceTableTask",
            "TransformForcedSourceTableConfig", "TransformForcedSourceTableTask",
-           "ConsolidateTractConfig", "ConsolidateTractTask"]
+           "ConsolidateTractConfig", "ConsolidateTractTask",
+           "ComputeColumnsAction", "ModelExtendednessColumnAction",
+           ]
 
 from collections import defaultdict
 import dataclasses
@@ -42,16 +44,19 @@ import functools
 import logging
 import numbers
 import os
+from typing import Iterable
 
 import numpy as np
 import pandas as pd
 import astropy.table
+from numpy.typing import NDArray
 
 import lsst.geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 from lsst.daf.butler.formatters.parquet import pandas_to_astropy
+from lsst.pex.config.configurableActions import ConfigurableAction, ConfigurableActionStructField
 from lsst.pipe.base import NoWorkFound, UpstreamFailureNoWorkFound, connectionTypes
 import lsst.afw.table as afwTable
 from lsst.afw.image import ExposureSummaryStats, ExposureF
@@ -1088,6 +1093,187 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
         return pipeBase.Struct(outputCatalog=tbl)
 
 
+class ComputeColumnsAction(ConfigurableAction):
+    """An action that computes multiple vectors from an input.
+
+    This class is meant to be compatible with analysis_tools'
+    AnalysisAction class, which cannot be a dependency of pipe_tasks."""
+
+    def getInputSchema(self) -> dict[str, type[NDArray]]:
+        """Return the required inputs for this action.
+
+        This function is meant to be compatible with
+        """
+        raise NotImplementedError("This method must be overloaded in subclasses")
+
+    def __call__(self, table: astropy.table.Table) -> dict[str, NDArray]:
+        """This method must return a dict of computed columns."""
+        raise NotImplementedError("This method must be overloaded in subclasses")
+
+
+class ExtendednessColumnActionBase(ComputeColumnsAction):
+    bands = pexConfig.ListField[str](
+        doc="The bands to make single-band outputs for.",
+        default=["u", "g", "r", "i", "z", "y"]
+    )
+    bands_combined = pexConfig.DictField[str, str](
+        doc="Multiband classification column specialization. Keys specify the"
+            " name of the column and values are a comma-separated list of"
+            " bands, all of which must be contained in the bands listed.",
+        default={"griz": "g,r,i,z"},
+        itemCheck=lambda x: (len(y := x.split(",")) > 1) & (len(set(y)) == len(y)),
+    )
+    model_column_flux = pexConfig.Field[str](
+        doc="The model flux column to use for computing the difference to"
+            " to the S/N flux. Must contain the {band} and {model} templates.",
+        default="{band}_{model}Flux",
+        check=lambda x: ("{band}" in x) and ("{model}" in x,),
+    )
+    model_column_flux_err = pexConfig.Field[str](
+        doc="The model flux error column to use for computing the difference"
+            " to the S/N flux. Must contain the {band} and {model} templates.",
+        default="{band}_{model}FluxErr",
+        check=lambda x: ("{band}" in x) and ("{model}" in x,),
+    )
+    model_flux_name = pexConfig.Field[str](
+        doc="The extended object model to use to compared to PSF model fluxes",
+        default="sersic",
+    )
+    output_column = pexConfig.Field[str](
+        doc="Name of the output column. Must contain the {band} template",
+        default="{band}_model_extendedness",
+        check=lambda x: "{band}" in x,
+    )
+    psf_column_flux = pexConfig.Field[str](
+        doc="The name of the PSF flux column. Must contain the {band} template.",
+        default="{band}_psfFlux",
+        check=lambda x: "{band}" in x,
+    )
+    psf_column_flux_err = pexConfig.Field[str](
+        doc="The name of the PSF flux error column. Must contain the {band} template.",
+        default="{band}_psfFluxErr",
+        check=lambda x: "{band}" in x,
+    )
+    size_column = pexConfig.Field[str](
+        doc="The column to use for applying size cuts. Must contain the {axis} template.",
+        default="exponential_reff_{axis}",
+    )
+
+    def getInputSchema(self) -> Iterable[tuple[str, type[NDArray]]]:
+        size_column = self.size_column
+        schema = [
+            (size_column.format(axis=axis), NDArray[float]) for axis in ("x", "y")
+        ]
+        model = self.model_flux_name
+        for column in (
+                self.psf_column_flux, self.psf_column_flux_err,
+                self.model_column_flux, self.model_column_flux_err,
+        ):
+            schema.extend([
+                (column.format(band=band, model=model), NDArray[float]) for band in self.bands
+            ])
+
+        return schema
+
+    def validate(self):
+        super().validate()
+        errors = []
+        for name, band_combined in self.bands_combined.items():
+            bands = band_combined.split(",")
+            bands_missing = [band for band in bands if band not in self.bands]
+            if bands_missing:
+                errors.append(
+                    f"self.bands_combined[{name}] contains bands={bands_missing} not in {self.bands=}"
+                )
+        if errors:
+            raise ValueError(f"Validation failed due to errors: {'; '.join(errors)}")
+
+    def _get_fluxes(self, table, band: str):
+        model = self.model_flux_name
+        flux_psf, fluxerr_psf, flux_model, fluxerr_model = (
+            np.array(table[column.format(band=band, model=model)])
+            for column in (
+                self.psf_column_flux, self.psf_column_flux_err,
+                self.model_column_flux, self.model_column_flux_err,
+            )
+        )
+        return flux_psf, fluxerr_psf, flux_model, fluxerr_model
+
+
+class ModelExtendednessColumnAction(ExtendednessColumnActionBase):
+    fluxerr_coefficent = pexConfig.Field[float](
+        doc="The coefficient to multiply the flux error by when adding to the model flux.",
+        default=1.0,
+        check=lambda x: x >= 0,
+    )
+    fluxerr_stretch = pexConfig.Field[float](
+        doc="The factor to multiply flux error-scaled ratios by to derive extendedness.",
+        default=5.0,
+        check=lambda x: x > 0,
+    )
+    max_reff_compact = pexConfig.Field[float](
+        doc="The maximum effective radius in pixels below which an object is"
+            " classified as not extended, regardless of other parameter values.",
+        default=0.25,
+    )
+
+    def __call__(self, table: astropy.table.Table) -> dict[str, NDArray]:
+        size_column = self.size_column
+        size_model = np.sqrt(
+            0.5*(table[size_column.format(axis='x')]**2 + table[size_column.format(axis='y')]**2)
+        )
+        small = size_model < self.max_reff_compact
+        n_obj = len(small)
+        bands_is_multi = [(band, False) for band in self.bands] + [
+            (band, True) for band in self.bands_combined.keys()]
+        output = {}
+        for band, is_multi in bands_is_multi:
+            if is_multi:
+                bands = self.bands_combined[band].split(",")
+                flux_psf, fluxerr_psf, flux_model, fluxerr_model = (
+                    np.zeros(n_obj, dtype=float) for _ in range(4))
+                for band_single in bands:
+                    flux_psf_b, fluxerr_psf_b, flux_model_b, fluxerr_model_b = self._get_fluxes(
+                        table, band=band_single)
+                    # There's no point adding S/N < 0 fluxes
+                    good = np.isfinite(flux_psf_b) & np.isfinite(flux_model_b) & (
+                        flux_psf_b > 0) & (flux_model_b > 0) & (fluxerr_psf_b > 0) & (fluxerr_model_b > 0)
+                    flux_psf[good] += flux_psf_b[good]
+                    flux_model[good] += flux_model_b[good]
+                    fluxerr_psf[good] += fluxerr_psf_b[good]**2
+                    fluxerr_model[good] += fluxerr_model_b[good]**2
+                fluxerr_psf = np.sqrt(fluxerr_psf)
+                fluxerr_model = np.sqrt(fluxerr_model)
+                fluxerr_psf[fluxerr_psf == 0] = np.inf
+                fluxerr_model[fluxerr_model == 0] = np.inf
+            else:
+                flux_psf, fluxerr_psf, flux_model, fluxerr_model = self._get_fluxes(table, band=band)
+
+            psf_sn = flux_psf/fluxerr_psf
+            good = small & (psf_sn > 10)
+
+            flux_ratio = np.array(flux_psf/flux_model)
+            # Attempt to correct any flux-independent systematic offset
+            # Might need to be a function of S/N
+            if np.sum(good == True) > 10:  # noqa: E712
+                flux_ratio *= 1./np.nanmedian(flux_ratio[good])
+            flux_ratio_err = np.sqrt(
+                (fluxerr_psf/flux_model)**2 + (fluxerr_model*fluxerr_psf/flux_model**2)**2
+            )
+
+            extendedness = (1 - flux_ratio) + self.fluxerr_coefficent*flux_ratio_err
+            extendedness *= np.sqrt(size_model/self.max_reff_compact)
+            extendedness[(extendedness < 0) & (extendedness > -np.inf)] = 0
+            # Make it sigmoid-like with a stretch
+            stretch = self.fluxerr_stretch
+            extendedness *= stretch
+            extendedness = np.clip((stretch + 1)/stretch*extendedness/(1 + extendedness), 0, 1)
+
+            column_out = self.output_column.format(band=band)
+            output[column_out] = extendedness
+        return output
+
+
 class ConsolidateObjectTableConnections(pipeBase.PipelineTaskConnections,
                                         dimensions=("tract", "skymap")):
     inputCatalogs = connectionTypes.Input(
@@ -1108,11 +1294,17 @@ class ConsolidateObjectTableConnections(pipeBase.PipelineTaskConnections,
 
 class ConsolidateObjectTableConfig(pipeBase.PipelineTaskConfig,
                                    pipelineConnections=ConsolidateObjectTableConnections):
-    coaddName = pexConfig.Field(
-        dtype=str,
+    actions = ConfigurableActionStructField[ComputeColumnsAction](
+        doc="Actions to add columns to the final object table",
+    )
+    coaddName = pexConfig.Field[str](
         default="deep",
         doc="Name of coadd"
     )
+
+    def setDefaults(self):
+        super().setDefaults()
+        self.actions.extendedness = ModelExtendednessColumnAction()
 
 
 class ConsolidateObjectTableTask(pipeBase.PipelineTask):
@@ -1131,6 +1323,10 @@ class ConsolidateObjectTableTask(pipeBase.PipelineTask):
         self.log.info("Concatenating %s per-patch Object Tables",
                       len(inputs["inputCatalogs"]))
         table = TableVStack.vstack_handles(inputs["inputCatalogs"])
+        for action in self.config.actions:
+            computed = action(table)
+            for key, values in computed.items():
+                table[key] = values.astype(np.float32) if values.dtype == np.float64 else values
         butlerQC.put(pipeBase.Struct(outputCatalog=table), outputRefs)
 
 
