@@ -1029,6 +1029,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             if self.config.doMaskDiffractionSpikes:
                 self.diffractionSpikeMask.run(result.exposure)
 
+            self.metadata['adaptive_threshold_value'] = float("nan")
             if self.config.do_adaptive_threshold_detection:
                 self._remeasure_star_background(
                     result,
@@ -1925,6 +1926,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                   nIter, starBackgroundDetectionConfig.thresholdValue,
                                   detected_fraction, maxDetFracForFinalBg, minDetFracForFinalBg,
                                   nFootprintTemp, minFootprints)
+                    self.metadata['adaptive_threshold_value'] = starBackgroundDetectionConfig.thresholdValue
+
                     break
                 else:
                     # Still not enough footprints, so make sure this loop is
@@ -1962,6 +1965,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                           nIter, starBackgroundDetectionConfig.thresholdValue,
                           detected_fraction, maxDetFracForFinalBg, minDetFracForFinalBg,
                           nFootprintTemp, minFootprints)
+            self.metadata['adaptive_threshold_value'] = starBackgroundDetectionConfig.thresholdValue
 
             n_amp = len(result.exposure.detector.getAmplifiers())
             if doCheckPerAmpDetFraction:  # detected_fraction < maxDetFracForFinalBg:
@@ -1996,6 +2000,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                              "was too large in star_background_detection = %.3f (max = %.3f). "
                              "Reverting to dilated mask from PSF detection...",
                              detected_fraction, maxDetFracForFinalBg)
+            self.metadata['adaptive_threshold_value'] = float("nan")
         star_background = self.star_background.run(
             exposure=result.exposure,
             backgroundToPhotometricRatio=background_to_photometric_ratio,
