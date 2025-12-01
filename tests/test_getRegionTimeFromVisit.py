@@ -57,6 +57,7 @@ class GetRegionTimeFromVisitTests(lsst.utils.tests.TestCase):
         repo_dir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, repo_dir)
         self.repo = butlerTests.makeTestRepo(repo_dir.name)
+        self.enterContext(self.repo)
 
         butlerTests.addDataIdValue(self.repo, "instrument", instrument)
         butlerTests.addDataIdValue(self.repo, "day_obs", day_obs)
