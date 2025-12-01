@@ -234,6 +234,8 @@ class SolarSystemAssociationTask(pipeBase.Task):
         for obj_idx, (ra, dec) in enumerate(zip(maskedObjects["ra"].data, maskedObjects["dec"].data)):
             ssoVect = self._radec_to_xyz(ra, dec)
             dist, idx = tree.query(ssoVect, distance_upper_bound=maxRadius)
+            if not np.isfinite(dist):
+                continue
             for i in range(len(dist)):
                 nearby_obj_source_pairs.append((dist, obj_idx, idx[i]))
         nearby_obj_source_pairs = sorted(nearby_obj_source_pairs)
