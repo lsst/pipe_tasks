@@ -1018,7 +1018,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 result.exposure, result.psf_stars_footprints
             )
             num_astrometry_matches = len(astrometry_matches)
-            self.metadata["astrometry_matches_count"] = num_astrometry_matches
             if "astrometry_matches" in self.config.optional_outputs:
                 result.astrometry_matches = lsst.meas.astrom.denormalizeMatches(astrometry_matches,
                                                                                 astrometry_meta)
@@ -1591,7 +1590,30 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         matches : `list` [`lsst.afw.table.ReferenceMatch`]
             Reference/stars matches used in the fit.
         """
+        initialWcs = exposure.wcs
         result = self.astrometry.run(stars, exposure)
+
+        # Record astrometry stats to metadata
+        self.metadata["astrometry_matches_count"] = len(result.matches)
+        if exposure.wcs is not None:
+            if initialWcs is not None:
+                center = exposure.getBBox().getCenter()
+                self.metadata['initial_to_final_wcs'] = (
+                    initialWcs.pixelToSky(center).separation(
+                        exposure.wcs.pixelToSky(center)
+                    ).asArcseconds()
+                )
+            else:
+                self.metadata['initial_to_final_wcs'] = float("nan")
+            self.metadata['astrom_offset_mean'] = exposure.metadata['SFM_ASTROM_OFFSET_MEAN']
+            self.metadata['astrom_offset_std'] = exposure.metadata['SFM_ASTROM_OFFSET_STD']
+            self.metadata['astrom_offset_median'] = exposure.metadata['SFM_ASTROM_OFFSET_MEDIAN']
+        else:
+            self.metadata['initial_to_final_wcs'] = float("nan")
+            self.metadata['astrom_offset_mean'] = float("nan")
+            self.metadata['astrom_offset_std'] = float("nan")
+            self.metadata['astrom_offset_median'] = float("nan")
+
         return result.matches, result.matchMeta
 
     def _fit_photometry(self, exposure, stars):
