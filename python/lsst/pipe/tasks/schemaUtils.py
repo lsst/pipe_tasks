@@ -109,7 +109,9 @@ def readSdmSchemaFile(schemaFile: str,
             raise ValueError(f"Schema file {schemaFile!r} does not define schema {schemaName!r}")
         elif len(schemas_list) > 1:
             raise ValueError(f"Schema file {schemaFile!r} defines multiple schemas {schemaName!r}")
-        felis_schema = felis.datamodel.Schema.model_validate(schemas_list[0])
+        felis_schema = felis.datamodel.Schema.model_validate(schemas_list[0],
+                                                             context={'id_generation': True}
+                                                             )
         schema = schema_model.Schema.from_felis(felis_schema)
     schemaTable = {}
 
