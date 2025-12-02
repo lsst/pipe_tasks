@@ -291,6 +291,14 @@ class PsfWcsSelectImagesConnections(pipeBase.PipelineTaskConnections,
 
 class PsfWcsSelectImagesConfig(pipeBase.PipelineTaskConfig,
                                pipelineConnections=PsfWcsSelectImagesConnections):
+    maxPsfFwhm = pexConfig.Field(
+        doc="Maximum PSF FWHM (in arcseconds) to select. This can be used in conjunction with the "
+        "per-visit maxPsfFwhm in BestSeeingSelectVisitsTask to ensure that no outlier CCD has a "
+        "PSF FWHM larger than this value.",
+        dtype=float,
+        default=1.8,
+        optional=True,
+    )
     maxEllipResidual = pexConfig.Field(
         doc="Maximum median ellipticity residual",
         dtype=float,
@@ -501,6 +509,14 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
                 row["visit"], detectorId, nPsfStar, minNPsfStar
             )
             valid = False
+        elif self.config.maxPsfFwhm:
+            pixelScale = row['pixelScale']
+            psfSigma = row['psfSigma']
+            fwhm = psfSigma * pixelScale * np.sqrt(8.*np.log(2.))
+            if not (fwhm <= self.config.maxPsfFwhm):
+                self.log.info("Removing visit %d detector %d because FWHM too large: %f vs %f",
+                              row["visit"], detectorId, fwhm, self.config.maxPsfFwhm)
+                valid = False
 
         return valid
 
