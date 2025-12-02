@@ -1490,6 +1490,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # Measure everything, and use those results to select only stars.
         self.star_measurement.run(sources, exposure)
         self.metadata["post_deblend_source_count"] = np.sum(~sources["sky_source"])
+        self.metadata["failed_deblend_source_count"] = np.sum(
+            ~sources["sky_source"] & sources["deblend_failed"]
+        )
         self.metadata["saturated_source_count"] = np.sum(sources["base_PixelFlags_flag_saturated"])
         self.metadata["bad_source_count"] = np.sum(sources["base_PixelFlags_flag_bad"])
 
