@@ -174,6 +174,13 @@ def convertDataFrameToSdmSchema(apdbSchema, sourceTable, tableName):
 
     data = {}
     nSrc = len(sourceTable)
+    # Check for multiIndex
+    if len(sourceTable.index.names) == 1:
+        indexNames = sourceTable.index.name
+    else:
+        indexNames = sourceTable.index.names
+    if indexNames:
+        sourceTable.reset_index(inplace=True)
 
     for columnDef in table.columns:
         dtype = column_dtype(columnDef.datatype, nullable=columnDef.nullable)
@@ -188,7 +195,10 @@ def convertDataFrameToSdmSchema(apdbSchema, sourceTable, tableName):
                     data[columnDef.name] = pd.Series([np.nan]*nSrc, dtype=dtype, index=sourceTable.index)
             else:
                 data[columnDef.name] = pd.Series([0]*nSrc, dtype=dtype, index=sourceTable.index)
-    return pd.DataFrame(data)
+    df = pd.DataFrame(data)
+    if indexNames:
+        df.set_index(indexNames, drop=False, inplace=True)
+    return df
 
 
 def convertTableToSdmSchema(apdbSchema, sourceTable, tableName):
