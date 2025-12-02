@@ -181,7 +181,7 @@ def checkDataFrameAgainstSdmSchema(schema, sourceTable, tableName):
             raise ValueError(f"Column {columnDef.name} is missing from the table.")
 
 
-def convertDataFrameToSdmSchema(apdbSchema, sourceTable, tableName):
+def convertDataFrameToSdmSchema(apdbSchema, sourceTable, tableName, skipIndex=False):
     """Force a table to conform to the schema defined by the APDB.
 
     This method uses the table definitions in ``sdm_schemas`` to
@@ -209,7 +209,9 @@ def convertDataFrameToSdmSchema(apdbSchema, sourceTable, tableName):
     data = {}
     nSrc = len(sourceTable)
     # Check for multiIndex
-    if len(sourceTable.index.names) == 1:
+    if skipIndex:
+        indexNames = None
+    elif len(sourceTable.index.names) == 1:
         indexNames = sourceTable.index.name
     else:
         indexNames = sourceTable.index.names
@@ -231,7 +233,7 @@ def convertDataFrameToSdmSchema(apdbSchema, sourceTable, tableName):
                 data[columnDef.name] = pd.Series([0]*nSrc, dtype=dtype, index=sourceTable.index)
     df = pd.DataFrame(data)
     if indexNames:
-        df.set_index(indexNames, drop=False, inplace=True)
+        df.set_index(indexNames, drop=True, inplace=True)
     return df
 
 
