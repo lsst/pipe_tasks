@@ -24,8 +24,9 @@
 __all__ = ["SolarSystemAssociationConfig", "SolarSystemAssociationTask"]
 
 from astropy import units as u
-from astropy.table import Table, Column
 from astropy.coordinates import SkyCoord
+from astropy.table import join, Column, Table
+
 import healpy as hp
 import numpy as np
 from numpy.polynomial.chebyshev import Chebyshev, chebval
@@ -36,6 +37,8 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.utils.timer import timeMethod
 from lsst.pipe.tasks.associationUtils import obj_id_to_ss_object_id
+
+from .ssp.ssobject import DIA_COLUMNS, DIA_DTYPES
 
 
 class SolarSystemAssociationConfig(pexConfig.Config):
@@ -106,9 +109,9 @@ class SolarSystemAssociationTask(pipeBase.Task):
         if nSolarSystemObjects <= 0:
             return self._return_empty(diaSourceCatalog, ssObjects)
 
-        mjd_midpoint = visitInfo.date.toAstropy().tai.mjd
-        if 'obs_x_poly' in ssObjects.columns:
-            ref_time = mjd_midpoint - ssObjects["tmin"].value[0]  # all tmin should be identical
+        exposure_midpoint = visitInfo.date.toAstropy()
+        if 'obs_x_poly' in ssObjects.columns:  # mpSky ephemeris
+            ref_time = exposure_midpoint.tai.mjd - ssObjects["tmin"].value[0]  # all tmin should be identical
             ssObjects['obs_position'] = [
                 np.array([chebval(ref_time, row['obs_x_poly']),
                           chebval(ref_time, row['obs_y_poly']),
@@ -131,34 +134,41 @@ class SolarSystemAssociationTask(pipeBase.Task):
                 for row in ssObjects]
             vector = np.vstack(ssObjects['obj_position'].value - ssObjects['obs_position'].value)
             ras, decs = np.vstack(hp.vec2ang(vector, lonlat=True))
-            ssObjects['ra'] = ras
-            ssObjects['dec'] = decs
+            ssObjects['ephRa'] = ras
+            ssObjects['ephDec'] = decs
             ssObjects['obs_position_x'], ssObjects['obs_position_y'], \
                 ssObjects['obs_position_z'] = ssObjects['obs_position'].value.T
-            ssObjects['heliocentricX'], ssObjects['heliocentricY'], \
-                ssObjects['heliocentricZ'] = ssObjects['obj_position'].value.T
+            ssObjects['helio_x'], ssObjects['helio_y'], \
+                ssObjects['helio_z'] = ssObjects['obj_position'].value.T
             ssObjects['obs_velocity_x'], ssObjects['obs_velocity_y'], \
                 ssObjects['obs_velocity_z'] = ssObjects['obs_velocity'].value.T
-            ssObjects['heliocentricVX'], ssObjects['heliocentricVY'], \
-                ssObjects['heliocentricVZ'] = ssObjects['obj_velocity'].value.T
+            ssObjects['helio_vx'], ssObjects['helio_vy'], \
+                ssObjects['helio_vz'] = ssObjects['obj_velocity'].value.T
             ssObjects['topocentric_position'], ssObjects['topocentric_velocity'] = (
                 ssObjects['obj_position'] - ssObjects['obs_position'],
                 ssObjects['obj_velocity'] - ssObjects['obs_velocity'],
             )
-            ssObjects['topocentricX'], ssObjects['topocentricY'], ssObjects['topocentricZ'] = (
+            ssObjects['topo_x'], ssObjects['topo_y'], ssObjects['topo_z'] = (
                 np.array(list(ssObjects['topocentric_position'].value)).T
             )
-            ssObjects['topocentricVX'], ssObjects['topocentricVY'], ssObjects['topocentricVZ'] = (
+            ssObjects['topo_vx'], ssObjects['topo_vy'], ssObjects['topo_vz'] = (
                 np.array(list(ssObjects['topocentric_velocity'].value)).T
             )
-            ssObjects['heliocentricVX'], ssObjects['heliocentricVY'], \
-                ssObjects['heliocentricVZ'] = np.array(list(ssObjects['obj_velocity'].value)).T
-            ssObjects['heliocentricDist'] = np.linalg.norm(ssObjects['obj_position'], axis=1)
-            ssObjects['topocentricDist'] = np.linalg.norm(ssObjects['topocentric_position'], axis=1)
+            ssObjects['helio_vx'], ssObjects['helio_vy'], \
+                ssObjects['helio_vz'] = np.array(list(ssObjects['obj_velocity'].value)).T
+            ssObjects['helioRange'] = np.linalg.norm(ssObjects['obj_position'], axis=1)
+            ssObjects['topoRange'] = np.linalg.norm(ssObjects['topocentric_position'], axis=1)
             ssObjects['phaseAngle'] = np.degrees(np.arccos(np.sum(
                 ssObjects['obj_position'].T * ssObjects['topocentric_position'].T
-                / ssObjects['heliocentricDist'] / ssObjects['topocentricDist'], axis=0
+                / ssObjects['helioRange'] / ssObjects['topoRange'], axis=0
             )))
+            # Add other required columns with dummy values until we compute them properly.
+            # Fix in DM-53463
+            ssObjects['RARateCosDec_deg_day'] = 0
+            ssObjects['DecRate_deg_day'] = 0
+            ssObjects['PSFMagTrue'] = 0
+            ssObjects['RangeRate_LTC_km_s'] = 0
+
             marginArcsec = ssObjects["Err(arcsec)"].max()
 
             columns_to_drop = [
@@ -167,35 +177,37 @@ class SolarSystemAssociationTask(pipeBase.Task):
                 "obj_z_poly", "associated"
             ]
 
-        else:
+        else:  # Sorcha ephemerides
+            if 'PSFMagTrue' not in ssObjects.columns:  # Only possible for historical CI ephemerides
+                ssObjects['PSFMagTrue'] = 0  # Fix in DM-53462
             ssObjects.rename_columns(
-                ['RA_deg', 'Dec_deg', 'phase_deg', 'Range_LTC_km', 'Obj_Sun_x_LTC_km', 'Obj_Sun_y_LTC_km',
-                 'Obj_Sun_z_LTC_km', 'Obj_Sun_vx_LTC_km_s', 'Obj_Sun_vy_LTC_km_s', 'Obj_Sun_vz_LTC_km_s'],
-                ['ra', 'dec', 'phaseAngle', 'topocentricDist', 'heliocentricX', 'heliocentricY',
-                 'heliocentricZ', 'heliocentricVX', 'heliocentricVY', 'heliocentricVZ'])
+                ['RATrue_deg', 'DecTrue_deg', 'phase_deg', 'Range_LTC_km', 'Obj_Sun_x_LTC_km',
+                 'Obj_Sun_y_LTC_km', 'Obj_Sun_z_LTC_km', 'Obj_Sun_vx_LTC_km_s', 'Obj_Sun_vy_LTC_km_s',
+                 'Obj_Sun_vz_LTC_km_s'],
+                ['ephRa', 'ephDec', 'phaseAngle', 'topoRange', 'helio_x', 'helio_y',
+                 'helio_z', 'helio_vx', 'helio_vy', 'helio_vz'])
             ssObjects['ssObjectId'] = [obj_id_to_ss_object_id(v) for v in ssObjects['ObjID']]
-            ssObjects['heliocentricDist'] = (
-                np.sqrt(ssObjects['heliocentricX']**2 + ssObjects['heliocentricY']**2
-                        + ssObjects['heliocentricZ']**2)
+            ssObjects['helioRange'] = (
+                np.sqrt(ssObjects['helio_x']**2 + ssObjects['helio_y']**2
+                        + ssObjects['helio_z']**2)
             )
-            for substring1, substring2 in [('X', 'x_km'), ('Y', 'y_km'), ('Z', 'z_km'),
-                                           ('VX', 'vx_km_s'), ('VY', 'vy_km_s'), ('VZ', 'vz_km_s')]:
-                topoName = 'topocentric' + substring1
-                helioName = 'heliocentric' + substring1
+            for substring1, substring2 in [('x', 'x_km'), ('y', 'y_km'), ('z', 'z_km'),
+                                           ('vx', 'vx_km_s'), ('vy', 'vy_km_s'), ('vz', 'vz_km_s')]:
+                topoName = 'topo_' + substring1
+                helioName = 'helio_' + substring1
                 obsName = 'Obs_Sun_' + substring2
                 ssObjects[topoName] = ssObjects[helioName] - ssObjects[obsName]
 
             marginArcsec = 1.0  # TODO: justify
 
             columns_to_drop = ['FieldID', 'fieldMJD_TAI', 'fieldJD_TDB',
-                               'RangeRate_LTC_km_s', 'RARateCosDec_deg_day',
-                               'DecRate_deg_day', 'Obs_Sun_x_km', 'Obs_Sun_y_km', 'Obs_Sun_z_km',
+                               'Obs_Sun_x_km', 'Obs_Sun_y_km', 'Obs_Sun_z_km',
                                'Obs_Sun_vx_km_s', 'Obs_Sun_vy_km_s', 'Obs_Sun_vz_km_s',
                                '__index_level_0__']
 
-        stateVectorColumns = ['heliocentricX', 'heliocentricY', 'heliocentricZ', 'heliocentricVX',
-                              'heliocentricVY', 'heliocentricVZ', 'topocentricX', 'topocentricY',
-                              'topocentricZ', 'topocentricVX', 'topocentricVY', 'topocentricVZ']
+        stateVectorColumns = ['helio_x', 'helio_y', 'helio_z', 'helio_vx',
+                              'helio_vy', 'helio_vz', 'topo_x', 'topo_y',
+                              'topo_z', 'topo_vx', 'topo_vy', 'topo_vz']
 
         mpcorbColumns = [col for col in ssObjects.columns if col[:7] == 'MPCORB_']
 
@@ -221,7 +233,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
         # Query the KDtree for DIA nearest neighbors to SSOs. Currently only
         # picks the DiaSource with the shortest distance. We can do something
         # fancier later.
-        ssSourceData, ssObjectIds = [], []
+        ssSourceData, ssObjectIds, prov_ids = [], [], []
         ras, decs, residual_ras, residual_decs, dia_ids = [], [], [], [], []
         diaSourceCatalog["ssObjectId"] = 0
         source_column = 'id'
@@ -231,7 +243,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
 
         # Find all pairs of a source and an object within maxRadius
         nearby_obj_source_pairs = []
-        for obj_idx, (ra, dec) in enumerate(zip(maskedObjects["ra"].data, maskedObjects["dec"].data)):
+        for obj_idx, (ra, dec) in enumerate(zip(maskedObjects["ephRa"].data, maskedObjects["ephDec"].data)):
             ssoVect = self._radec_to_xyz(ra, dec)
             dist, idx = tree.query(ssoVect, distance_upper_bound=maxRadius)
             if not np.isfinite(dist):
@@ -252,8 +264,11 @@ class SolarSystemAssociationTask(pipeBase.Task):
             used_obj_indices.add(obj_idx)
             diaSourceCatalog[src_idx]["ssObjectId"] = maskedObject["ssObjectId"]
             ssObjectIds.append(maskedObject["ssObjectId"])
-            all_cols = ["phaseAngle", "heliocentricDist",
-                        "topocentricDist"] + stateVectorColumns + mpcorbColumns
+            all_cols = (
+                ["ObjID", "phaseAngle", "helioRange", "topoRange"] + stateVectorColumns + mpcorbColumns
+                + ["ephRa", "ephDec", "RARateCosDec_deg_day",
+                   "DecRate_deg_day", "PSFMagTrue", "RangeRate_LTC_km_s"]
+            )
             ssSourceData.append(list(maskedObject[all_cols].values()))
             dia_ra = diaSourceCatalog[src_idx]["ra"]
             dia_dec = diaSourceCatalog[src_idx]["dec"]
@@ -261,8 +276,9 @@ class SolarSystemAssociationTask(pipeBase.Task):
             ras.append(dia_ra)
             decs.append(dia_dec)
             dia_ids.append(dia_id)
-            residual_ras.append(dia_ra - maskedObject["ra"])
-            residual_decs.append(dia_dec - maskedObject["dec"])
+            residual_ras.append(dia_ra - maskedObject["ephRa"])
+            residual_decs.append(dia_dec - maskedObject["ephDec"])
+            prov_ids.append(maskedObject['ObjID'])
             maskedObjects['associated'][obj_idx] = True
         nFound = len(ras)
 
@@ -273,22 +289,78 @@ class SolarSystemAssociationTask(pipeBase.Task):
         unAssocObjectMask = np.logical_not(maskedObjects['associated'].value)
         ssSourceData = np.array(ssSourceData)
         ssSourceData = Table(ssSourceData,
-                             names=[
-                                 "phaseAngle", "heliocentricDist", "topocentricDist"
-                             ] + stateVectorColumns + mpcorbColumns)
+                             names=["designation", "phaseAngle", "helioRange", "topoRange"]
+                             + stateVectorColumns + mpcorbColumns
+                             + ["ephRa", "ephDec", "ephRateRa", "ephRateDec", "ephVmag", "topoRangeRate"],
+                             dtype=[str] + [np.float64] * 21)
         ssSourceData['ssObjectId'] = Column(data=ssObjectIds, dtype=int)
         ssSourceData["ra"] = ras
         ssSourceData["dec"] = decs
-        ssSourceData["residualRa"] = residual_ras
-        ssSourceData["residualDec"] = residual_decs
+        ephOffsetRa = np.array(residual_ras * np.cos(np.radians(ssSourceData["dec"]))) * 3600  # in arcsec
+        ephOffsetDec = np.array(residual_decs) * 3600  # in arcsec
+        ssSourceData["ephOffsetRa"] = ephOffsetRa
+        ssSourceData["ephOffsetDec"] = ephOffsetDec
+        ephOffsetVec = np.array([ephOffsetRa, ephOffsetDec])
         ssSourceData[source_column] = dia_ids
         coords = SkyCoord(ra=ssSourceData['ra'].value * u.deg, dec=ssSourceData['dec'].value * u.deg)
-        ssSourceData['galacticL'] = coords.galactic.l.deg
-        ssSourceData['galacticB'] = coords.galactic.b.deg
-        ssSourceData['eclipticLambda'] = coords.barycentrictrueecliptic.lon.deg
-        ssSourceData['eclipticBeta'] = coords.barycentrictrueecliptic.lat.deg
+        ssSourceData['galLon'] = coords.galactic.l.deg
+        ssSourceData['galLat '] = coords.galactic.b.deg
+        ssSourceData['eclLambda'] = coords.barycentrictrueecliptic.lon.deg
+        ssSourceData['eclBeta'] = coords.barycentrictrueecliptic.lat.deg
+        ssSourceData['designation'] = prov_ids
+        ssSourceData['ephRate'] = np.sqrt((ssSourceData['ephRateRa']) ** 2
+                                          + (ssSourceData['ephRateDec']) ** 2)
+        ssSourceData['ephOffset'] = np.sqrt((ssSourceData['ephOffsetRa']) ** 2
+                                            + (ssSourceData['ephOffsetDec']) ** 2)
+        ssSourceData['topo_vtot'] = np.sqrt(ssSourceData['topo_vx'] ** 2
+                                            + ssSourceData['topo_vy'] ** 2
+                                            + ssSourceData['topo_vy'] ** 2)
+        ssSourceData['helio_vtot'] = np.sqrt(ssSourceData['helio_vx'] ** 2
+                                             + ssSourceData['helio_vy'] ** 2
+                                             + ssSourceData['helio_vy'] ** 2)
+        skyMotionNormal0 = (ssSourceData['ephRateRa']/ssSourceData['ephRate']).data
+        skyMotionNormal1 = (ssSourceData['ephRateDec']/ssSourceData['ephRate']).data
+        skyMotionNormal = np.array([skyMotionNormal0, skyMotionNormal1])
+        skyMotionOrthogonal = np.array([[0, -1], [1, 0]]) @ skyMotionNormal
+        ssSourceData['ephOffsetAlongTrack'] = (ephOffsetVec * skyMotionNormal).sum(axis=0)
+        ssSourceData['ephOffsetCrossTrack'] = (ephOffsetVec * skyMotionOrthogonal).sum(axis=0)
+        ssSourceData['diaDistanceRank'] = 1
+        sun_obs_x = ssSourceData['topo_x'] - ssSourceData['helio_x']
+        sun_obs_y = ssSourceData['topo_y'] - ssSourceData['helio_y']
+        sun_obs_z = ssSourceData['topo_z'] - ssSourceData['helio_z']
+        sun_obs_range = np.sqrt(sun_obs_x**2 + sun_obs_y**2 + sun_obs_z**2)
+        sun_obj_dot = (sun_obs_x * ssSourceData['topo_x'] + sun_obs_y * ssSourceData['topo_y']
+                       + sun_obs_z * ssSourceData['topo_z'])
+        ssSourceData["elongation"] = np.degrees(np.arccos(sun_obj_dot
+                                                          / (sun_obs_range * ssSourceData['topoRange'])))
+        ssSourceData["helioRangeRate"] = ((ssSourceData["helio_vx"] * ssSourceData["helio_x"]
+                                           + ssSourceData["helio_vy"] * ssSourceData["helio_y"]
+                                           + ssSourceData["helio_vz"] * ssSourceData["helio_z"])
+                                          / ssSourceData["helioRange"])
+
+        for distanceName in ['helio_x', 'helio_y', 'helio_z', 'topo_x', 'topo_y', 'topo_z',
+                             'helioRange', 'topoRange']:
+            ssSourceData[distanceName] = ssSourceData[distanceName].astype(np.float64)
+            ssSourceData[distanceName] *= (u.km).to(u.AU)
         unassociatedObjects = maskedObjects[unAssocObjectMask]
         unassociatedObjects.remove_columns(columns_to_drop)
+        unassociatedObjects['ra'] = unassociatedObjects['ephRa']
+        unassociatedObjects['dec'] = unassociatedObjects['ephDec']
+
+        # Add diaSource columns we care about when producing the SSObject table
+        if len(ssSourceData):
+
+            # Extract only DIA_COLUMNS
+            dia = diaSourceCatalog[DIA_COLUMNS].copy()
+
+            # Prefix all except diaSourceId
+            for c in DIA_COLUMNS:
+                if c != "diaSourceId":
+                    dia.rename_column(c, f"DIA_{c}")
+
+            # Join on diaSourceId, keeping all rows of ssSourceData
+            ssSourceData = join(ssSourceData, dia, keys="diaSourceId", join_type="left", uniq_col_name="")
+
         return pipeBase.Struct(
             ssoAssocDiaSources=diaSourceCatalog[assocSourceMask],
             unAssocDiaSources=diaSourceCatalog[~assocSourceMask],
@@ -328,8 +400,8 @@ class SolarSystemAssociationTask(pipeBase.Task):
         return ssObjects[bbox_contains_sky_coords(
             bbox,
             wcs,
-            ssObjects['ra'].value * u.degree,
-            ssObjects['dec'].value * u.degree,
+            ssObjects['ephRa'].value * u.degree,
+            ssObjects['ephDec'].value * u.degree,
             padding)]
 
     def _radec_to_xyz(self, ras, decs):
@@ -388,18 +460,21 @@ class SolarSystemAssociationTask(pipeBase.Task):
             Raised if duplicate DiaObjects or duplicate DiaSources are found.
         """
         self.log.info("No SolarSystemObjects found in detector bounding box.")
+        dia_columns = [col for col in DIA_COLUMNS if not col == 'diaSourceId']
+        dia_dtypes = [d[0] for d in zip(DIA_DTYPES, DIA_COLUMNS) if not d[1] == 'diaSourceId']
+        names = ['designation', 'eclBeta', 'eclLambda', 'ephDec', 'ephOffsetDec', 'ephOffsetRa', 'ephRa',
+                 'galLat', 'galLon', 'elongation', 'ephOffset', 'ephOffsetAlongTrack', 'ephOffsetCrossTrack',
+                 'ephRate', 'ephRateDec', 'ephRateRa', 'ephVmag', 'helio_vtot', 'helio_vx', 'helio_vy',
+                 'helio_vz', 'helio_x', 'helio_y', 'helio_z', 'helioRange', 'helioRangeRate', 'phaseAngle',
+                 'topo_vtot', 'topo_vx', 'topo_vy', 'topo_vz', 'topo_x', 'topo_y', 'topo_z', 'topoRange',
+                 'topoRangeRate', 'diaSourceId', 'ssObjectId', 'diaDistanceRank'] + dia_columns
+        dtypes = [str] + [float] * 35 + [int] * 3 + dia_dtypes
         return pipeBase.Struct(
             ssoAssocDiaSources=Table(names=diaSourceCatalog.columns),
             unAssocDiaSources=diaSourceCatalog,
             nTotalSsObjects=0,
             nAssociatedSsObjects=0,
-            associatedSsSources=Table(names=['phaseAngle', 'heliocentricDist', 'topocentricDist',
-                                             'heliocentricX', 'heliocentricY', 'heliocentricZ',
-                                             'heliocentricVX', 'heliocentricVY', 'heliocentricVZ',
-                                             'topocentricX', 'topocentricY', 'topocentricZ',
-                                             'topocentricVX', 'topocentricVY', 'topocentricVZ',
-                                             'residualRa', 'residualDec', 'eclipticLambda', 'eclipticBeta',
-                                             'galacticL', 'galacticB', 'ssObjectId', 'diaSourceId'],
-                                      dtype=[float] * 21 + [int] * 2),
+            associatedSsSources=Table(names=names,
+                                      dtype=dtypes),
             unassociatedSsObjects=Table(names=emptySolarSystemObjects.columns)
         )
