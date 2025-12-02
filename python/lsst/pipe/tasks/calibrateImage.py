@@ -485,6 +485,12 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
             "camera model from the obs_* package."
     )
 
+    background_stats_flux_column = pexConfig.Field(
+        dtype=str,
+        default="base_CircularApertureFlux_12_0_flux",
+        doc="Column used to generate post-subtracted background stats."
+    )
+
     def setDefaults(self):
         super().setDefaults()
 
@@ -1122,10 +1128,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.metadata["bg_subtracted_skyPixel_instFlux_stdev"] = stdev_bg
 
         self.metadata["bg_subtracted_skySource_flux_median"] = (
-            np.median(result.stars[result.stars['sky_source']]['base_CircularApertureFlux_12_0_flux'])
+            np.median(result.stars[result.stars['sky_source']][self.config.background_stats_flux_column])
         )
         self.metadata["bg_subtracted_skySource_flux_stdev"] = (
-            np.std(result.stars[result.stars['sky_source']]['base_CircularApertureFlux_12_0_flux'])
+            np.std(result.stars[result.stars['sky_source']][self.config.background_stats_flux_column])
         )
 
         if self.config.do_calibrate_pixels:
