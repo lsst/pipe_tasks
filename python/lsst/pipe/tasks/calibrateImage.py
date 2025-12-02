@@ -1018,7 +1018,6 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 result.exposure, result.psf_stars_footprints
             )
             num_astrometry_matches = len(astrometry_matches)
-            self.metadata["astrometry_matches_count"] = num_astrometry_matches
             if "astrometry_matches" in self.config.optional_outputs:
                 result.astrometry_matches = lsst.meas.astrom.denormalizeMatches(astrometry_matches,
                                                                                 astrometry_meta)
@@ -1029,6 +1028,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             if self.config.doMaskDiffractionSpikes:
                 self.diffractionSpikeMask.run(result.exposure)
 
+            self.metadata['adaptive_threshold_value'] = float("nan")
             if self.config.do_adaptive_threshold_detection:
                 self._remeasure_star_background(
                     result,
@@ -1490,6 +1490,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # Measure everything, and use those results to select only stars.
         self.star_measurement.run(sources, exposure)
         self.metadata["post_deblend_source_count"] = np.sum(~sources["sky_source"])
+        self.metadata["failed_deblend_source_count"] = np.sum(
+            ~sources["sky_source"] & sources["deblend_failed"]
+        )
         self.metadata["saturated_source_count"] = np.sum(sources["base_PixelFlags_flag_saturated"])
         self.metadata["bad_source_count"] = np.sum(sources["base_PixelFlags_flag_bad"])
 
@@ -1590,7 +1593,30 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         matches : `list` [`lsst.afw.table.ReferenceMatch`]
             Reference/stars matches used in the fit.
         """
+        initialWcs = exposure.wcs
         result = self.astrometry.run(stars, exposure)
+
+        # Record astrometry stats to metadata
+        self.metadata["astrometry_matches_count"] = len(result.matches)
+        if exposure.wcs is not None:
+            if initialWcs is not None:
+                center = exposure.getBBox().getCenter()
+                self.metadata['initial_to_final_wcs'] = (
+                    initialWcs.pixelToSky(center).separation(
+                        exposure.wcs.pixelToSky(center)
+                    ).asArcseconds()
+                )
+            else:
+                self.metadata['initial_to_final_wcs'] = float("nan")
+            self.metadata['astrom_offset_mean'] = exposure.metadata['SFM_ASTROM_OFFSET_MEAN']
+            self.metadata['astrom_offset_std'] = exposure.metadata['SFM_ASTROM_OFFSET_STD']
+            self.metadata['astrom_offset_median'] = exposure.metadata['SFM_ASTROM_OFFSET_MEDIAN']
+        else:
+            self.metadata['initial_to_final_wcs'] = float("nan")
+            self.metadata['astrom_offset_mean'] = float("nan")
+            self.metadata['astrom_offset_std'] = float("nan")
+            self.metadata['astrom_offset_median'] = float("nan")
+
         return result.matches, result.matchMeta
 
     def _fit_photometry(self, exposure, stars):
@@ -1925,6 +1951,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                   nIter, starBackgroundDetectionConfig.thresholdValue,
                                   detected_fraction, maxDetFracForFinalBg, minDetFracForFinalBg,
                                   nFootprintTemp, minFootprints)
+                    self.metadata['adaptive_threshold_value'] = starBackgroundDetectionConfig.thresholdValue
+
                     break
                 else:
                     # Still not enough footprints, so make sure this loop is
@@ -1962,6 +1990,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                           nIter, starBackgroundDetectionConfig.thresholdValue,
                           detected_fraction, maxDetFracForFinalBg, minDetFracForFinalBg,
                           nFootprintTemp, minFootprints)
+            self.metadata['adaptive_threshold_value'] = starBackgroundDetectionConfig.thresholdValue
 
             n_amp = len(result.exposure.detector.getAmplifiers())
             if doCheckPerAmpDetFraction:  # detected_fraction < maxDetFracForFinalBg:
@@ -1996,6 +2025,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                              "was too large in star_background_detection = %.3f (max = %.3f). "
                              "Reverting to dilated mask from PSF detection...",
                              detected_fraction, maxDetFracForFinalBg)
+            self.metadata['adaptive_threshold_value'] = float("nan")
         star_background = self.star_background.run(
             exposure=result.exposure,
             backgroundToPhotometricRatio=background_to_photometric_ratio,
