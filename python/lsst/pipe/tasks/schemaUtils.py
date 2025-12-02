@@ -23,7 +23,8 @@
 """Utilities for working with sdm_schemas.
 """
 __all__ = ("convertDataFrameToSdmSchema", "readSdmSchemaFile",
-           "dropEmptyColumns", "make_empty_catalog", "checkSdmSchemaColumns")
+           "dropEmptyColumns", "make_empty_catalog", "checkSdmSchemaColumns",
+           "checkDataFrameAgainstSdmSchema")
 
 from collections.abc import Mapping
 import os
@@ -145,6 +146,39 @@ def checkSdmSchemaColumns(apdbSchema, colNames, tableName):
         if col not in names:
             missing.append(col)
     return missing
+
+
+def checkDataFrameAgainstSdmSchema(schema, sourceTable, tableName):
+    """Force a table to conform to the supplied schema.
+
+    This method uses the table definitions in ``sdm_schemas`` to load the
+    schema.
+
+    Parameters
+    ----------
+    schema : `dict` [`str`, `lsst.dax.apdb.schema_model.Table`]
+        Schema from ``sdm_schemas`` containing the table definition to use.
+    sourceTable : `pandas.DataFrame`
+        The input table to check.
+    tableName : `str`
+        Name of the table in the schema to use.
+
+    Returns
+    -------
+    `pandas.DataFrame`
+        A table with the correct schema for the APDB and data copied from
+        the input ``sourceTable``.
+    """
+    table = schema[tableName]
+
+    for columnDef in table.columns:
+        dtype = column_dtype(columnDef.datatype, nullable=columnDef.nullable)
+        if columnDef.name in sourceTable.columns:
+            if sourceTable[columnDef.name].dtype != dtype:
+                raise ValueError(f"Column {columnDef.name} dtype {sourceTable[columnDef.name].dtype}"
+                                 f" does not match schema dtype of {dtype}")
+        else:
+            raise ValueError(f"Column {columnDef.name} is missing from the table.")
 
 
 def convertDataFrameToSdmSchema(apdbSchema, sourceTable, tableName):
