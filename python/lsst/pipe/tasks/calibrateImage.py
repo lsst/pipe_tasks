@@ -973,6 +973,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                     result.exposure.detector.getId())
 
         result.background = None
+        result.background_to_photometric_ratio = None
         summary_stat_catalog = None
         # Some exposure components are set to initial placeholder objects
         # while we try to bootstrap them.  If we fail before we fit for them,
@@ -988,10 +989,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 illumination_correction,
             )
 
-            result.psf_stars_footprints, result.background, _, adaptive_det_res_struct = self._compute_psf(
-                result.exposure,
+            result.psf_stars_footprints, _, adaptive_det_res_struct = self._compute_psf(
+                result,
                 id_generator,
-                background_to_photometric_ratio=result.background_to_photometric_ratio,
             )
             have_fit_psf = True
 
@@ -1203,7 +1203,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         return background_to_photometric_ratio
 
-    def _compute_psf(self, exposure, id_generator, background_to_photometric_ratio=None):
+    def _compute_psf(self, result, id_generator):
         """Find bright sources detected on an exposure and fit a PSF model to
         them, repairing likely cosmic rays before detection.
 
@@ -1212,22 +1212,33 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         Parameters
         ----------
-        exposure : `lsst.afw.image.Exposure`
-            Exposure to detect and measure bright stars on.
+        result : `lsst.pipe.base.Struct`
+            Result struct that is modified to allow saving of partial outputs
+            for some failure conditions. Should contain at least the following
+            attributes:
+
+            - exposure : `lsst.afw.image.Exposure`
+                Exposure to detect and measure bright stars on.
+            - background : `lsst.afw.math.BackgroundList` | `None`
+                Background that was fit to the exposure during detection.
+            - background_to_photometric_ratio : `lsst.afw.image.Image` | `None`
+                Image to convert photometric-flattened image to
+                background-flattened image.
         id_generator : `lsst.meas.base.IdGenerator`
             Object that generates source IDs and provides random seeds.
-        background_to_photometric_ratio : `lsst.afw.image.Image`, optional
-            Image to convert photometric-flattened image to
-            background-flattened image.
 
         Returns
         -------
         sources : `lsst.afw.table.SourceCatalog`
             Catalog of detected bright sources.
-        background : `lsst.afw.math.BackgroundList`
-            Background that was fit to the exposure during detection.
         cell_set : `lsst.afw.math.SpatialCellSet`
             PSF candidates returned by the psf determiner.
+
+        Notes
+        -----
+        This method modifies the exposure, background and
+        background_to_photometric_ratio attributes of the result struct
+        in-place.
         """
         def log_psf(msg, addToMetadata=False):
             """Log the parameters of the psf and background, with a prepended
@@ -1242,11 +1253,11 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 Whether to add the final psf sigma value to the task
                 metadata (the default is False).
             """
-            position = exposure.psf.getAveragePosition()
-            sigma = exposure.psf.computeShape(position).getDeterminantRadius()
-            dimensions = exposure.psf.computeImage(position).getDimensions()
-            if background is not None:
-                median_background = np.median(background.getImage().array)
+            position = result.exposure.psf.getAveragePosition()
+            sigma = result.exposure.psf.computeShape(position).getDeterminantRadius()
+            dimensions = result.exposure.psf.computeImage(position).getDimensions()
+            if result.background is not None:
+                median_background = np.median(result.background.getImage().array)
             else:
                 median_background = 0.0
             self.log.info("%s sigma=%0.4f, dimensions=%s; median background=%0.2f",
@@ -1256,14 +1267,14 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         self.log.info("First pass detection with Gaussian PSF FWHM=%s pixels",
                       self.config.install_simple_psf.fwhm)
-        self.install_simple_psf.run(exposure=exposure)
+        self.install_simple_psf.run(exposure=result.exposure)
 
-        background = self.psf_subtract_background.run(
-            exposure=exposure,
-            backgroundToPhotometricRatio=background_to_photometric_ratio,
+        result.background = self.psf_subtract_background.run(
+            exposure=result.exposure,
+            backgroundToPhotometricRatio=result.background_to_photometric_ratio,
         ).background
         log_psf("Initial PSF:")
-        self.psf_repair.run(exposure=exposure, keepCRs=True)
+        self.psf_repair.run(exposure=result.exposure, keepCRs=True)
 
         table = afwTable.SourceTable.make(self.psf_schema, id_generator.make_table_id_factory())
         if not self.config.do_adaptive_threshold_detection:
@@ -1272,15 +1283,15 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             # measurement uses the most accurate background-subtraction.
             detections = self.psf_detection.run(
                 table=table,
-                exposure=exposure,
-                background=background,
-                backgroundToPhotometricRatio=background_to_photometric_ratio,
+                exposure=result.exposure,
+                background=result.background,
+                backgroundToPhotometricRatio=result.background_to_photometric_ratio,
             )
         else:
             initialThreshold = self.config.psf_detection.thresholdValue
             initialThresholdMultiplier = self.config.psf_detection.includeThresholdMultiplier
             adaptive_det_res_struct = self.psf_adaptive_threshold_detection.run(
-                table, exposure,
+                table, result.exposure,
                 initialThreshold=initialThreshold,
                 initialThresholdMultiplier=initialThresholdMultiplier,
             )
@@ -1290,8 +1301,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.metadata["initial_psf_negative_footprint_count"] = detections.numNeg
         self.metadata["initial_psf_positive_peak_count"] = detections.numPosPeaks
         self.metadata["initial_psf_negative_peak_count"] = detections.numNegPeaks
-        self.psf_source_measurement.run(detections.sources, exposure)
-        psf_result = self.psf_measure_psf.run(exposure=exposure, sources=detections.sources)
+        self.psf_source_measurement.run(detections.sources, result.exposure)
+        psf_result = self.psf_measure_psf.run(exposure=result.exposure, sources=detections.sources)
 
         # This 2nd round of PSF fitting has been deemed unnecessary (and
         # sometimes even causing harm), so it is being skipped for the
@@ -1302,7 +1313,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             # Replace the initial PSF with something simpler for the second
             # repair/detect/measure/measure_psf step: this can help it
             # converge.
-            self.install_simple_psf.run(exposure=exposure)
+            self.install_simple_psf.run(exposure=result.exposure)
 
             log_psf("Rerunning with simple PSF:")
             # TODO investigation: Should we only re-run repair here, to use the
@@ -1312,18 +1323,17 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             # for the post-psf_measure_psf step, since we only want to do
             # PsfFlux and GaussianFlux *after* we have a PSF? Maybe that's not
             # relevant once DM-39203 is merged?
-            self.psf_repair.run(exposure=exposure, keepCRs=True)
+            self.psf_repair.run(exposure=result.exposure, keepCRs=True)
             # Re-estimate the background during this detection step, so that
             # measurement uses the most accurate background-subtraction.
             detections = self.psf_detection.run(
                 table=table,
-                exposure=exposure,
-                background=background,
-                backgroundToPhotometricRatio=background_to_photometric_ratio,
+                exposure=result.exposure,
+                background=result.background,
+                backgroundToPhotometricRatio=result.background_to_photometric_ratio,
             )
-            self.psf_source_measurement.run(detections.sources, exposure)
-            psf_result = self.psf_measure_psf.run(exposure=exposure, sources=detections.sources)
-
+            self.psf_source_measurement.run(detections.sources, result.exposure)
+            psf_result = self.psf_measure_psf.run(exposure=result.exposure, sources=detections.sources)
         self.metadata["simple_psf_positive_footprint_count"] = detections.numPos
         self.metadata["simple_psf_negative_footprint_count"] = detections.numNeg
         self.metadata["simple_psf_positive_peak_count"] = detections.numPosPeaks
@@ -1331,13 +1341,13 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         log_psf("Final PSF:", addToMetadata=True)
 
         # Final repair with final PSF, removing cosmic rays this time.
-        self.psf_repair.run(exposure=exposure)
+        self.psf_repair.run(exposure=result.exposure)
         # Final measurement with the CRs removed.
-        self.psf_source_measurement.run(detections.sources, exposure)
+        self.psf_source_measurement.run(detections.sources, result.exposure)
 
         # PSF is set on exposure; candidates are returned to use for
         # calibration flux normalization and aperture corrections.
-        return detections.sources, background, psf_result.cellSet, adaptive_det_res_struct
+        return detections.sources, psf_result.cellSet, adaptive_det_res_struct
 
     def _measure_aperture_correction(self, exposure, bright_sources):
         """Measure and set the ApCorrMap on the Exposure, using
