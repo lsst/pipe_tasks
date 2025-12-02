@@ -55,7 +55,7 @@ class AllCentroidsFlaggedError(pipeBase.AlgorithmError):
     """
     def __init__(self, n_sources, psf_shape_ixx, psf_shape_iyy, psf_shape_ixy, psf_size):
         msg = (f"All source centroids (out of {n_sources}) flagged during PSF fitting. "
-               "Original image PSF is likely unuseable; best-fit PSF shape parameters: "
+               "Original image PSF is likely unusable; best-fit PSF shape parameters: "
                f"Ixx={psf_shape_ixx}, Iyy={psf_shape_iyy}, Ixy={psf_shape_ixy}, size={psf_size}"
                )
         super().__init__(msg)
@@ -284,7 +284,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     )
     psf_subtract_background = pexConfig.ConfigurableField(
         target=lsst.meas.algorithms.SubtractBackgroundTask,
-        doc="Task to perform intial background subtraction, before first detection pass.",
+        doc="Task to perform initial background subtraction, before first detection pass.",
     )
     psf_detection = pexConfig.ConfigurableField(
         target=lsst.meas.algorithms.SourceDetectionTask,
@@ -337,7 +337,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     star_background_peak_fraction = pexConfig.Field(
         dtype=float,
         default=0.01,
-        doc="The minimum number of footprints in the detection mask for star_background measuremen "
+        doc="The minimum number of footprints in the detection mask for star_background measurement. "
             "gets set to the maximum of this fraction of the detected peaks and the value set in "
             "config.star_background_min_footprints. If the number of footprints is less than the "
             "current minimum set, the detection threshold is iteratively increased until the "
@@ -494,7 +494,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     def setDefaults(self):
         super().setDefaults()
 
-        # Use a very broad PSF here, to throughly reject CRs.
+        # Use a very broad PSF here, to thoroughly reject CRs.
         # TODO investigation: a large initial psf guess may make stars look
         # like CRs for very good seeing images.
         self.install_simple_psf.fwhm = 4
@@ -534,7 +534,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         self.psf_measure_psf.psfDeterminer["psfex"].photometricFluxField = \
             "base_CircularApertureFlux_12_0_instFlux"
 
-        # No extendeness information available: we need the aperture
+        # No extendedness information available: we need the aperture
         # corrections to determine that.
         self.measure_aperture_correction.sourceSelector["science"].doUnresolved = False
         self.measure_aperture_correction.sourceSelector["science"].flags.good = ["calib_psf_used"]
@@ -785,7 +785,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         # The final catalog will have calibrated flux columns, which we add to
         # the init-output schema by calibrating our zero-length catalog with an
-        # arbitrary dummy PhotoCalib.  We also use this schema to initialze
+        # arbitrary dummy PhotoCalib.  We also use this schema to initialize
         # the stars catalog in order to ensure it's the same even when we hit
         # an error (and write partial outputs) before calibrating the catalog
         # - note that calibrateCatalog will happily reuse existing output
@@ -1014,7 +1014,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             self._measure_aperture_correction(result.exposure, result.psf_stars_footprints)
             result.psf_stars = result.psf_stars_footprints.asAstropy()
             # Run astrometry using PSF candidate stars.
-            # Update "the psf_stars" source cooordinates with the current wcs.
+            # Update "the psf_stars" source coordinates with the current wcs.
             afwTable.updateSourceCoords(
                 result.exposure.wcs,
                 sourceList=result.psf_stars_footprints,
@@ -1055,7 +1055,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             self._match_psf_stars(result.psf_stars_footprints, result.stars_footprints,
                                   psfSigma=psfSigma)
 
-            # Update the "stars" source cooordinates with the current wcs.
+            # Update the "stars" source coordinates with the current wcs.
             afwTable.updateSourceCoords(
                 result.exposure.wcs,
                 sourceList=result.stars_footprints,
@@ -1254,7 +1254,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             if addToMetadata:
                 self.metadata["final_psf_sigma"] = sigma
 
-        self.log.info("First pass detection with Guassian PSF FWHM=%s pixels",
+        self.log.info("First pass detection with Gaussian PSF FWHM=%s pixels",
                       self.config.install_simple_psf.fwhm)
         self.install_simple_psf.run(exposure=exposure)
 
@@ -1851,7 +1851,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         result : `lsst.pipe.base.Struct`
             The modified result Struct with the new background subtracted.
         """
-        # Restore the previously measured backgroud and remeasure it
+        # Restore the previously measured background and remeasure it
         # using an adaptive threshold detection iteration to ensure a
         # "Goldilocks Zone" for the fraction of detected pixels.
         backgroundOrig = result.background.clone()
@@ -1992,7 +1992,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                                             bad_mask_planes)
             self.log.info("nIter = %d, thresh = %.2f: Fraction of pixels marked as DETECTED or "
                           "DETECTED_NEGATIVE in star_background_detection = %.3f "
-                          "(max is %.3f; min is %.3f)  nFooprint = %d (current min is %d)",
+                          "(max is %.3f; min is %.3f)  nFootprint = %d (current min is %d)",
                           nIter, starBackgroundDetectionConfig.thresholdValue,
                           detected_fraction, maxDetFracForFinalBg, minDetFracForFinalBg,
                           nFootprintTemp, minFootprints)
