@@ -1233,6 +1233,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             Catalog of detected bright sources.
         cell_set : `lsst.afw.math.SpatialCellSet`
             PSF candidates returned by the psf determiner.
+        adaptive_det_res_struct : `lsst.pipe.base.Struct`
+            Result struct from the adaptive threshold detection.
 
         Notes
         -----
