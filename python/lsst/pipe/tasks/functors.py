@@ -2015,6 +2015,12 @@ class MomentsBase(Functor):
             self.shape_xx,
             self.shape_yy,
             self.shape_xy,
+        ] + self.columns_ref
+
+    @property
+    def columns_ref(self):
+        """Return columns that are needed from the ref table."""
+        return [
             self.colCD_1_1,
             self.colCD_1_2,
             self.colCD_2_1,
@@ -2039,10 +2045,10 @@ class MomentsBase(Functor):
         t2
             A term similar to the discriminant of the quadratic formula.
         """
-        xx = (self.sky_uu(df) if sky else self.get_xx(df))**2
-        yy = (self.sky_vv(df) if sky else self.get_yy(df))**2
+        xx = self.sky_uu(df) if sky else self.get_xx(df)
+        yy = self.sky_vv(df) if sky else self.get_yy(df)
         xx_m_yy = xx - yy
-        t2 = xx_m_yy**2 + 4.0*(self.sky_uv(df) if sky else df[self.colXY])**2
+        t2 = xx_m_yy**2 + 4.0*(self.sky_uv(df) if sky else self.get_xy(df))**2
         # TODO: Check alternative form that may be more stable for computing
         # the minor axis size (see gauss2d/src/ellipse.cc)
         # t2 = xx**2 + yy**2 - 2*(xx*yy - 2*xy**2)
@@ -2106,7 +2112,7 @@ class MomentsIuuSky(MomentsBase):
     def _func(self, df):
         sky_uu_radians = self.sky_uu(df)
 
-        return (sky_uu_radians*((180/np.pi)*3600)**2).astype(np.float32)
+        return pd.Series((sky_uu_radians*((180/np.pi)*3600)**2).astype(np.float32), index=df.index)
 
 
 class MomentsIvvSky(MomentsBase):
@@ -2118,7 +2124,7 @@ class MomentsIvvSky(MomentsBase):
     def _func(self, df):
         sky_vv_radians = self.sky_vv(df)
 
-        return (sky_vv_radians*((180/np.pi)*3600)**2).astype(np.float32)
+        return pd.Series((sky_vv_radians*((180/np.pi)*3600)**2).astype(np.float32), index=df.index)
 
 
 class MomentsIuvSky(MomentsBase):
@@ -2130,7 +2136,7 @@ class MomentsIuvSky(MomentsBase):
     def _func(self, df):
         sky_uv_radians = self.sky_uv(df)
 
-        return (sky_uv_radians*((180/np.pi)*3600)**2).astype(np.float32)
+        return pd.Series((sky_uv_radians*((180/np.pi)*3600)**2).astype(np.float32), index=df.index)
 
 
 class PositionAngleFromMoments(MomentsBase):
@@ -2140,13 +2146,12 @@ class PositionAngleFromMoments(MomentsBase):
     shortname = "moments_theta"
 
     def _func(self, df):
-
         sky_uu = self.sky_uu(df)
         sky_vv = self.sky_vv(df)
         sky_uv = self.sky_uv(df)
         theta = 0.5*np.arctan2(2*sky_uv, sky_uu - sky_vv)
 
-        return (np.degrees(np.array(theta))).astype(np.float32)
+        return pd.Series((np.degrees(np.array(theta))).astype(np.float32), index=df.index)
 
 
 class SemimajorAxisFromMoments(MomentsBase):
@@ -2156,11 +2161,11 @@ class SemimajorAxisFromMoments(MomentsBase):
     shortname = "moments_a"
 
     def _func(self, df):
-        xx_p_yy, xx_p_yy, t2 = self.compute_ellipse_terms(df)
-        # This copies what is done (unvectorized) in afw.geom.
+        xx_p_yy, _, t2 = self.compute_ellipse_terms(df)
+        # This copies what is done (unvectorized) in afw.geom.ellipse
         a_radians = np.sqrt(0.5 * (xx_p_yy + np.sqrt(t2)))
 
-        return (np.degrees(a_radians)*3600).astype(np.float32)
+        return pd.Series((np.degrees(a_radians)*3600).astype(np.float32), index=df.index)
 
 
 class SemiminorAxisFromMoments(MomentsBase):
@@ -2170,8 +2175,8 @@ class SemiminorAxisFromMoments(MomentsBase):
     shortname = "moments_b"
 
     def _func(self, df):
-        xx_p_yy, xx_p_yy, t2 = self.compute_ellipse_terms(df)
-        # This copies what is done (unvectorized) in afw.geom.
+        xx_p_yy, _, t2 = self.compute_ellipse_terms(df)
+        # This copies what is done (unvectorized) in afw.geom.ellipse
         b_radians = np.sqrt(0.5 * (xx_p_yy - np.sqrt(t2)))
 
-        return (np.degrees(b_radians)*3600).astype(np.float32)
+        return pd.Series((np.degrees(b_radians)*3600).astype(np.float32), index=df.index)
