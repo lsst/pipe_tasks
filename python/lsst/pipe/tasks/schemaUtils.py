@@ -216,7 +216,10 @@ def convertDataFrameToSdmSchema(schema, sourceTable, tableName, skipIndex=False)
     for columnDef in table.columns:
         dtype = column_dtype(columnDef.datatype, nullable=columnDef.nullable)
         if columnDef.name in sourceTable.columns:
-            data[columnDef.name] = pd.Series(sourceTable[columnDef.name], dtype=dtype,
+            col = sourceTable[columnDef.name]
+            if not columnDef.nullable:
+                col = col.fillna(0)
+            data[columnDef.name] = pd.Series(col, dtype=dtype,
                                              index=sourceTable.index)
         else:
             if columnDef.nullable:
