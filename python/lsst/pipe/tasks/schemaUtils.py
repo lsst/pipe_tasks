@@ -55,8 +55,7 @@ _dtype_map: Mapping[felis.datamodel.DataType, tuple[str, str]] = {
 }
 
 
-def column_dtype(felis_type: felis.datamodel.DataType | schema_model.ExtraDataTypes,
-                 nullable=False) -> str:
+def column_dtype(felis_type: felis.datamodel.DataType, nullable=False) -> str:
     """Return Pandas data type for a given Felis column type.
 
     Parameters
@@ -94,7 +93,7 @@ def readSdmSchemaFile(schemaFile: str,
 
     Returns
     -------
-    schemaTable : dict[str, schema_model.Table]
+    schemaTable : dict[str, felis.datamodel.Schema]
         A dict of the schemas in the given table defined in the specified file.
 
     Raises
@@ -113,20 +112,19 @@ def readSdmSchemaFile(schemaFile: str,
         felis_schema = felis.datamodel.Schema.model_validate(schemas_list[0],
                                                              context={'id_generation': True}
                                                              )
-        schema = schema_model.Schema.from_felis(felis_schema)
     schemaTable = {}
 
-    for singleTable in schema.tables:
+    for singleTable in felis_schema.tables:
         schemaTable[singleTable.name] = singleTable
     return schemaTable
 
 
-def checkSdmSchemaColumns(apdbSchema, colNames, tableName):
+def checkSdmSchemaColumns(schema, colNames, tableName):
     """Check if supplied column names exists in the schema.
 
     Parameters
     ----------
-    apdbSchema : `dict` [`str`, `lsst.dax.apdb.schema_model.Table`]
+    schema : `dict` [`str`, `felis.datamodel.Schema`]
         Schema from ``sdm_schemas`` containing the table definition to use.
     colNames : `list` of ``str`
         Names of the columns to check for in the table.
@@ -138,7 +136,7 @@ def checkSdmSchemaColumns(apdbSchema, colNames, tableName):
     missing : `list` of `str`
         All column names that are not in the schema
     """
-    table = apdbSchema[tableName]
+    table = schema[tableName]
     missing = []
 
     names = [columnDef.name for columnDef in table.columns]
@@ -156,7 +154,7 @@ def checkDataFrameAgainstSdmSchema(schema, sourceTable, tableName):
 
     Parameters
     ----------
-    schema : `dict` [`str`, `lsst.dax.apdb.schema_model.Table`]
+    schema : `dict` [`str`, `felis.datamodel.Schema`]
         Schema from ``sdm_schemas`` containing the table definition to use.
     sourceTable : `pandas.DataFrame`
         The input table to check.
@@ -166,7 +164,7 @@ def checkDataFrameAgainstSdmSchema(schema, sourceTable, tableName):
     Returns
     -------
     `pandas.DataFrame`
-        A table with the correct schema for the APDB and data copied from
+        A table with the correct schema and data copied from
         the input ``sourceTable``.
     """
     table = schema[tableName]
@@ -181,15 +179,12 @@ def checkDataFrameAgainstSdmSchema(schema, sourceTable, tableName):
             raise ValueError(f"Column {columnDef.name} is missing from the table.")
 
 
-def convertDataFrameToSdmSchema(apdbSchema, sourceTable, tableName, skipIndex=False):
-    """Force a table to conform to the schema defined by the APDB.
-
-    This method uses the table definitions in ``sdm_schemas`` to
-    load the schema of the APDB, and does not actually connect to the APDB.
+def convertDataFrameToSdmSchema(schema, sourceTable, tableName, skipIndex=False):
+    """Force a table to conform to the schema defined by the SDM schema.
 
     Parameters
     ----------
-    apdbSchema : `dict` [`str`, `lsst.dax.apdb.schema_model.Table`]
+    schema : `dict` [`str`, `felis.datamodel.Schema`]
         Schema from ``sdm_schemas`` containing the table definition to use.
     sourceTable : `pandas.DataFrame`
         The input table to convert.
@@ -199,12 +194,12 @@ def convertDataFrameToSdmSchema(apdbSchema, sourceTable, tableName, skipIndex=Fa
     Returns
     -------
     `pandas.DataFrame`
-        A table with the correct schema for the APDB and data copied from
+        A table with the correct schema and data copied from
         the input ``sourceTable``.
     """
     if sourceTable.empty:
-        make_empty_catalog(apdbSchema, tableName)
-    table = apdbSchema[tableName]
+        make_empty_catalog(schema, tableName)
+    table = schema[tableName]
 
     data = {}
     nSrc = len(sourceTable)
@@ -237,15 +232,12 @@ def convertDataFrameToSdmSchema(apdbSchema, sourceTable, tableName, skipIndex=Fa
     return df
 
 
-def convertTableToSdmSchema(apdbSchema, sourceTable, tableName):
-    """Force a table to conform to the schema defined by the APDB.
-
-    This method uses the table definitions in ``sdm_schemas`` to
-    load the schema of the APDB, and does not actually connect to the APDB.
+def convertTableToSdmSchema(schema, sourceTable, tableName):
+    """Force a table to conform to the schema defined by the SDM schema.
 
     Parameters
     ----------
-    apdbSchema : `dict` [`str`, `lsst.dax.apdb.schema_model.Table`]
+    schema : `dict` [`str`, `felis.datamodel.Schema`]
         Schema from ``sdm_schemas`` containing the table definition to use.
     sourceTable : `astropy.table.Table`
         The input table to convert.
@@ -255,10 +247,10 @@ def convertTableToSdmSchema(apdbSchema, sourceTable, tableName):
     Returns
     -------
     `astropy.table.Table`
-        A table with the correct schema for the APDB and data copied from
+        A table with the correct schema and data copied from
         the input ``sourceTable``.
     """
-    table = apdbSchema[tableName]
+    table = schema[tableName]
 
     data = {}
     nSrc = len(sourceTable)
@@ -278,22 +270,19 @@ def convertTableToSdmSchema(apdbSchema, sourceTable, tableName):
     return Table(data)
 
 
-def dropEmptyColumns(apdbSchema, sourceTable, tableName):
+def dropEmptyColumns(schema, sourceTable, tableName):
     """Drop empty columns that are nullable.
-
-    This method uses the table definitions in ``sdm_schemas`` to
-    load the schema of the APDB, and does not actually connect to the APDB.
 
     Parameters
     ----------
-    apdbSchema : `dict` [`str`, `lsst.dax.apdb.schema_model.Table`]
+    schema : `dict` [`str`, `felis.datamodel.Schema`]
         Schema from ``sdm_schemas`` containing the table definition to use.
     sourceTable : `pandas.DataFrame`
         The input table to remove missing data columns from.
     tableName : `str`
         Name of the table in the schema to use.
     """
-    table = apdbSchema[tableName]
+    table = schema[tableName]
 
     nullableList = [columnDef.name for columnDef in table.columns if columnDef.nullable]
     nullColumns = sourceTable.isnull().all()
@@ -302,12 +291,12 @@ def dropEmptyColumns(apdbSchema, sourceTable, tableName):
     return sourceTable.drop(columns=dropColumns)
 
 
-def make_empty_catalog(apdbSchema, tableName):
+def make_empty_catalog(schema, tableName):
     """Make an empty catalog for a table with a given name.
 
     Parameters
     ----------
-    apdbSchema : `dict` [`str`, `lsst.dax.apdb.schema_model.Table`]
+    schema : `dict` [`str`, `felis.datamodel.Schema`]
         Schema from ``sdm_schemas`` containing the table definition to use.
     tableName : `str`
         Name of the table in the schema to use.
@@ -317,7 +306,7 @@ def make_empty_catalog(apdbSchema, tableName):
     catalog : `pandas.DataFrame`
         An empty catalog.
     """
-    table = apdbSchema[tableName]
+    table = schema[tableName]
 
     data = {
         columnDef.name: pd.Series(dtype=column_dtype(columnDef.datatype, nullable=columnDef.nullable))
