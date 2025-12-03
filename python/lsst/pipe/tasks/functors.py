@@ -1997,6 +1997,7 @@ class MomentsBase(Functor):
                  colCD_1_2,
                  colCD_2_1,
                  colCD_2_2,
+                 is_covariance: bool,
                  **kwargs):
         self.shape_xx = shape_xx
         self.shape_yy = shape_yy
@@ -2005,6 +2006,7 @@ class MomentsBase(Functor):
         self.colCD_1_2 = colCD_1_2
         self.colCD_2_1 = colCD_2_1
         self.colCD_2_2 = colCD_2_2
+        self.is_covariance = is_covariance
         super().__init__(**kwargs)
 
     @property
@@ -2018,13 +2020,53 @@ class MomentsBase(Functor):
             self.colCD_2_1,
             self.colCD_2_2]
 
+    def compute_ellipse_terms(self, df, sky: bool = True):
+        r"""Return terms commonly used for ellipse parameterization conversions.
+
+        Parameters
+        ----------
+        df
+            The data frame.
+        sky
+            Whether to compute the terms in sky coordinates.
+
+        Returns
+        -------
+        xx_p_yy
+            The sum of the diagonal terms of the covariance.
+        xx_m_yy
+            The difference of the diagonal terms of the covariance.
+        t2
+            A term similar to the discriminant of the quadratic formula.
+        """
+        xx = (self.sky_uu(df) if sky else self.get_xx(df))**2
+        yy = (self.sky_vv(df) if sky else self.get_yy(df))**2
+        xx_m_yy = xx - yy
+        t2 = xx_m_yy**2 + 4.0*(self.sky_uv(df) if sky else df[self.colXY])**2
+        # TODO: Check alternative form that may be more stable for computing
+        # the minor axis size (see gauss2d/src/ellipse.cc)
+        # t2 = xx**2 + yy**2 - 2*(xx*yy - 2*xy**2)
+        return xx + yy, xx_m_yy, t2
+
+    def get_xx(self, df):
+        xx = df[self.shape_xx]
+        return xx if self.is_covariance else xx**2
+
+    def get_yy(self, df):
+        yy = df[self.shape_yy]
+        return yy if self.is_covariance else yy**2
+
+    def get_xy(self, df):
+        xy = df[self.shape_xy]
+        return xy if self.is_covariance else xy*df[self.shape_xx]*df[self.shape_yy]
+
     # Each of sky_uu, sky_vv, sky_uv evalutes one element of
     # CD_matrix * moments_matrix * CD_matrix.T
     def sky_uu(self, df):
         """Return the component of the moments tensor aligned with the RA axis, in radians."""
-        i_xx = df[self.shape_xx]
-        i_yy = df[self.shape_yy]
-        i_xy = df[self.shape_xy]
+        i_xx = self.get_xx(df)
+        i_yy = self.get_yy(df)
+        i_xy = self.get_xy(df)
         CD_1_1 = df[self.colCD_1_1]
         CD_1_2 = df[self.colCD_1_2]
         CD_2_1 = df[self.colCD_2_1]
@@ -2033,9 +2075,9 @@ class MomentsBase(Functor):
 
     def sky_vv(self, df):
         """Return the component of the moments tensor aligned with the dec axis, in radians."""
-        i_xx = df[self.shape_xx]
-        i_yy = df[self.shape_yy]
-        i_xy = df[self.shape_xy]
+        i_xx = self.get_xx(df)
+        i_yy = self.get_yy(df)
+        i_xy = self.get_xy(df)
         CD_1_2 = df[self.colCD_1_2]
         CD_2_1 = df[self.colCD_2_1]
         CD_2_2 = df[self.colCD_2_2]
@@ -2044,9 +2086,9 @@ class MomentsBase(Functor):
 
     def sky_uv(self, df):
         """Return the covariance of the moments tensor in ra, dec coordinates, in radians."""
-        i_xx = df[self.shape_xx]
-        i_yy = df[self.shape_yy]
-        i_xy = df[self.shape_xy]
+        i_xx = self.get_xx(df)
+        i_yy = self.get_yy(df)
+        i_xy = self.get_xy(df)
         CD_1_1 = df[self.colCD_1_1]
         CD_1_2 = df[self.colCD_1_2]
         CD_2_1 = df[self.colCD_2_1]
@@ -2064,7 +2106,7 @@ class MomentsIuuSky(MomentsBase):
     def _func(self, df):
         sky_uu_radians = self.sky_uu(df)
 
-        return pd.Series(sky_uu_radians*((180/np.pi)*3600)**2, index=df.index).astype('float32')
+        return (sky_uu_radians*((180/np.pi)*3600)**2).astype(np.float32)
 
 
 class MomentsIvvSky(MomentsBase):
@@ -2076,7 +2118,7 @@ class MomentsIvvSky(MomentsBase):
     def _func(self, df):
         sky_vv_radians = self.sky_vv(df)
 
-        return pd.Series(sky_vv_radians*((180/np.pi)*3600)**2, index=df.index).astype('float32')
+        return (sky_vv_radians*((180/np.pi)*3600)**2).astype(np.float32)
 
 
 class MomentsIuvSky(MomentsBase):
@@ -2088,7 +2130,7 @@ class MomentsIuvSky(MomentsBase):
     def _func(self, df):
         sky_uv_radians = self.sky_uv(df)
 
-        return pd.Series(sky_uv_radians*((180/np.pi)*3600)**2, index=df.index).astype('float32')
+        return (sky_uv_radians*((180/np.pi)*3600)**2).astype(np.float32)
 
 
 class PositionAngleFromMoments(MomentsBase):
@@ -2104,7 +2146,7 @@ class PositionAngleFromMoments(MomentsBase):
         sky_uv = self.sky_uv(df)
         theta = 0.5*np.arctan2(2*sky_uv, sky_uu - sky_vv)
 
-        return pd.Series(np.degrees(np.array(theta)), index=df.index).astype('float32')
+        return (np.degrees(np.array(theta))).astype(np.float32)
 
 
 class SemimajorAxisFromMoments(MomentsBase):
@@ -2114,18 +2156,11 @@ class SemimajorAxisFromMoments(MomentsBase):
     shortname = "moments_a"
 
     def _func(self, df):
-
-        sky_uu = self.sky_uu(df)
-        sky_vv = self.sky_vv(df)
-        sky_uv = self.sky_uv(df)
-
+        xx_p_yy, xx_p_yy, t2 = self.compute_ellipse_terms(df)
         # This copies what is done (unvectorized) in afw.geom.
-        xx_p_yy = sky_uu + sky_vv
-        xx_m_yy = sky_uu - sky_vv
-        t = np.sqrt(xx_m_yy * xx_m_yy + 4 * sky_uv * sky_uv)
-        a_radians = np.sqrt(0.5 * (xx_p_yy + t))
+        a_radians = np.sqrt(0.5 * (xx_p_yy + np.sqrt(t2)))
 
-        return pd.Series(np.degrees(a_radians)*3600, index=df.index).astype('float32')
+        return (np.degrees(a_radians)*3600).astype(np.float32)
 
 
 class SemiminorAxisFromMoments(MomentsBase):
@@ -2135,15 +2170,8 @@ class SemiminorAxisFromMoments(MomentsBase):
     shortname = "moments_b"
 
     def _func(self, df):
-
-        sky_uu = self.sky_uu(df)
-        sky_vv = self.sky_vv(df)
-        sky_uv = self.sky_uv(df)
-
+        xx_p_yy, xx_p_yy, t2 = self.compute_ellipse_terms(df)
         # This copies what is done (unvectorized) in afw.geom.
-        xx_p_yy = sky_uu + sky_vv
-        xx_m_yy = sky_uu - sky_vv
-        t = np.sqrt(xx_m_yy * xx_m_yy + 4 * sky_uv * sky_uv)
-        b_radians = np.sqrt(0.5 * (xx_p_yy - t))
+        b_radians = np.sqrt(0.5 * (xx_p_yy - np.sqrt(t2)))
 
-        return pd.Series(np.degrees(b_radians)*3600, index=df.index).astype('float32')
+        return (np.degrees(b_radians)*3600).astype(np.float32)
