@@ -43,6 +43,7 @@ from lsst.meas.algorithms import testUtils
 import lsst.meas.extensions.psfex
 import lsst.meas.base
 import lsst.meas.base.tests
+import lsst.pipe.base as pipeBase
 import lsst.pipe.base.testUtils
 from lsst.pipe.tasks.calibrateImage import CalibrateImageTask, \
     NoPsfStarsToStarsMatchError, AllCentroidsFlaggedError
@@ -112,6 +113,12 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # "truth" filter, to match the "truth" refcat.
         self.exposure.setFilter(lsst.afw.image.FilterLabel(physical='truth', band="truth"))
         self.exposure.metadata["LSST ISR FLAT APPLIED"] = True
+
+        # Set up a basic results struct to hold exposure attribute data
+        self.attributes = pipeBase.Struct()
+        self.attributes.exposure = self.exposure
+        self.attributes.background = None
+        self.attributes.background_to_photometric_ratio = None
 
         # Test-specific configuration:
         self.config = CalibrateImageTask.ConfigClass()
@@ -347,14 +354,14 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         that a PSF is assigned to the exposure.
         """
         calibrate = CalibrateImageTask(config=self.config)
-        psf_stars, background, candidates, _ = calibrate._compute_psf(self.exposure, self.id_generator)
+        psf_stars, candidates, _ = calibrate._compute_psf(self.attributes, self.id_generator)
 
         # Catalog ids should be very large from this id generator.
         self.assertTrue(all(psf_stars['id'] > 1000000000))
 
         # Background should have 3 elements: initial subtraction, and two from
         # re-estimation during the two detection passes.
-        self.assertEqual(len(background), 3)
+        self.assertEqual(len(self.attributes.background), 3)
 
         # Only the point-sources with S/N > 50 should be in this output.
         self.assertEqual(psf_stars["calib_psf_used"].sum(), 3)
@@ -419,7 +426,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         exposure.
         """
         calibrate = CalibrateImageTask(config=self.config)
-        psf_stars, background, candidates, _ = calibrate._compute_psf(self.exposure, self.id_generator)
+        psf_stars, candidates, _ = calibrate._compute_psf(self.attributes, self.id_generator)
 
         # First check that the exposure doesn't have an ApCorrMap.
         self.assertIsNone(self.exposure.apCorrMap)
@@ -434,17 +441,17 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         in the image and returns them in the output catalog.
         """
         calibrate = CalibrateImageTask(config=self.config)
-        psf_stars, background, candidates, _ = calibrate._compute_psf(self.exposure, self.id_generator)
+        psf_stars, candidates, _ = calibrate._compute_psf(self.attributes, self.id_generator)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
 
-        stars = calibrate._find_stars(self.exposure, background, self.id_generator)
+        stars = calibrate._find_stars(self.exposure, self.attributes.background, self.id_generator)
 
         # Catalog ids should be very large from this id generator.
         self.assertTrue(all(stars['id'] > 1000000000))
 
         # Background should have 4 elements: 3 from compute_psf and one from
         # re-estimation during source detection.
-        self.assertEqual(len(background), 4)
+        self.assertEqual(len(self.attributes.background), 4)
 
         # Only 5 psf-like sources with S/N>10 should be in the output catalog,
         # plus two sky sources.
@@ -462,9 +469,9 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         """
         calibrate = CalibrateImageTask(config=self.config)
         calibrate.astrometry.setRefObjLoader(self.ref_loader)
-        psf_stars, background, candidates, _ = calibrate._compute_psf(self.exposure, self.id_generator)
+        psf_stars, candidates, _ = calibrate._compute_psf(self.attributes, self.id_generator)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
-        stars = calibrate._find_stars(self.exposure, background, self.id_generator)
+        stars = calibrate._find_stars(self.exposure, self.attributes.background, self.id_generator)
 
         calibrate._fit_astrometry(self.exposure, stars)
 
@@ -482,13 +489,13 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         calibrate = CalibrateImageTask(config=self.config)
         calibrate.astrometry.setRefObjLoader(self.ref_loader)
         calibrate.photometry.match.setRefObjLoader(self.ref_loader)
-        psf_stars, background, candidates, _ = calibrate._compute_psf(self.exposure, self.id_generator)
+        psf_stars, candidates, _ = calibrate._compute_psf(self.attributes, self.id_generator)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
-        stars = calibrate._find_stars(self.exposure, background, self.id_generator)
+        stars = calibrate._find_stars(self.exposure, self.attributes.background, self.id_generator)
         calibrate._fit_astrometry(self.exposure, stars)
 
         stars, matches, meta, photoCalib = calibrate._fit_photometry(self.exposure, stars)
-        calibrate._apply_photometry(self.exposure, background)
+        calibrate._apply_photometry(self.exposure, self.attributes.background)
 
         # NOTE: With this test data, PhotoCalTask returns calibrationErr==0,
         # so we can't check that the photoCal error has been set.
@@ -496,7 +503,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # The exposure should be calibrated by the applied photoCalib,
         # and the background should be calibrated to match.
         uncalibrated = self.exposure.image.clone()
-        uncalibrated += background.getImage()
+        uncalibrated += self.attributes.background.getImage()
         uncalibrated /= self.photo_calib
         self.assertFloatsAlmostEqual(uncalibrated.array, self.truth_exposure.image.array, rtol=1e-2)
         # PhotoCalib on the exposure must be identically 1.
@@ -523,9 +530,9 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         and candidates.
         """
         calibrate = CalibrateImageTask(config=self.config)
-        psf_stars, background, candidates, _ = calibrate._compute_psf(self.exposure, self.id_generator)
+        psf_stars, candidates, _ = calibrate._compute_psf(self.attributes, self.id_generator)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
-        stars = calibrate._find_stars(self.exposure, background, self.id_generator)
+        stars = calibrate._find_stars(self.exposure, self.attributes.background, self.id_generator)
 
         # There should be no psf-related flags set at first.
         self.assertEqual(stars["calib_psf_candidate"].sum(), 0)
