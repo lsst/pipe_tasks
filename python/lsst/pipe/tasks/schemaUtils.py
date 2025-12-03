@@ -78,9 +78,7 @@ def column_dtype(felis_type: felis.datamodel.DataType, nullable=False) -> str:
         raise TypeError(f"Unexpected Felis type: {felis_type}")
 
 
-def readSdmSchemaFile(schemaFile: str,
-                      schemaName: str = "ApdbSchema",
-                      ):
+def readSdmSchemaFile(schemaFile: str, schemaName: str):
     """Read a schema file in YAML format.
 
     Parameters
@@ -88,11 +86,12 @@ def readSdmSchemaFile(schemaFile: str,
     schemaFile : `str`
         Fully specified path to the file to be read.
     schemaName : `str`, optional
-        Name of the table of schemas to read from the file.
+        Name of the table of schemas to read from the file, typically either
+        'lsstcam' or 'ApdbSchema'.
 
     Returns
     -------
-    schemaTable : dict[str, felis.datamodel.Schema]
+    schemaTable : dict[str, felis.datamodel.Table]
         A dict of the schemas in the given table defined in the specified file.
 
     Raises
@@ -115,7 +114,7 @@ def checkSdmSchemaColumns(schema, colNames, tableName):
     Parameters
     ----------
     schema : `dict` [`str`, `felis.datamodel.Schema`]
-        Schema from ``sdm_schemas`` containing the table definition to use.
+        Dictionary of Schemas from ``sdm_schemas`` containing the table definition to use.
     colNames : `list` of ``str`
         Names of the columns to check for in the table.
     tableName : `str`
@@ -145,17 +144,11 @@ def checkDataFrameAgainstSdmSchema(schema, sourceTable, tableName):
     Parameters
     ----------
     schema : `dict` [`str`, `felis.datamodel.Schema`]
-        Schema from ``sdm_schemas`` containing the table definition to use.
+        Dictionary of Schemas from ``sdm_schemas`` containing the table definition to use.
     sourceTable : `pandas.DataFrame`
         The input table to check.
     tableName : `str`
         Name of the table in the schema to use.
-
-    Returns
-    -------
-    `pandas.DataFrame`
-        A table with the correct schema and data copied from
-        the input ``sourceTable``.
     """
     table = schema[tableName]
 
@@ -175,7 +168,7 @@ def convertDataFrameToSdmSchema(schema, sourceTable, tableName, skipIndex=False)
     Parameters
     ----------
     schema : `dict` [`str`, `felis.datamodel.Schema`]
-        Schema from ``sdm_schemas`` containing the table definition to use.
+        Dictionary of Schemas from ``sdm_schemas`` containing the table definition to use.
     sourceTable : `pandas.DataFrame`
         The input table to convert.
     tableName : `str`
@@ -226,12 +219,12 @@ def convertDataFrameToSdmSchema(schema, sourceTable, tableName, skipIndex=False)
 
 
 def convertTableToSdmSchema(schema, sourceTable, tableName):
-    """Force a table to conform to the schema defined by the SDM schema.
+    """Force an Astropy table to conform to the schema defined by the SDM schema.
 
     Parameters
     ----------
     schema : `dict` [`str`, `felis.datamodel.Schema`]
-        Schema from ``sdm_schemas`` containing the table definition to use.
+        Dictionary of Schemas from ``sdm_schemas`` containing the table definition to use.
     sourceTable : `astropy.table.Table`
         The input table to convert.
     tableName : `str`
@@ -269,11 +262,16 @@ def dropEmptyColumns(schema, sourceTable, tableName):
     Parameters
     ----------
     schema : `dict` [`str`, `felis.datamodel.Schema`]
-        Schema from ``sdm_schemas`` containing the table definition to use.
+        Dictionary of Schemas from ``sdm_schemas`` containing the table definition to use.
     sourceTable : `pandas.DataFrame`
         The input table to remove missing data columns from.
     tableName : `str`
         Name of the table in the schema to use.
+
+    Returns
+    -------
+    `pandas.DataFrame`
+        The table with columns that are missing and nullable dropped.
     """
     table = schema[tableName]
 
@@ -290,7 +288,7 @@ def make_empty_catalog(schema, tableName):
     Parameters
     ----------
     schema : `dict` [`str`, `felis.datamodel.Schema`]
-        Schema from ``sdm_schemas`` containing the table definition to use.
+        Dictionary of Schemas from ``sdm_schemas`` containing the table definition to use.
     tableName : `str`
         Name of the table in the schema to use.
 
