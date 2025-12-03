@@ -65,6 +65,7 @@ from lsst.obs.base.utils import strip_provenance_from_fits_header, TableVStack
 
 from .coaddBase import reorderRefs
 from .functors import CompositeFunctor, Column
+from .schemaUtils import convertDataFrameToSdmSchema, readSdmSchemaFile
 
 log = logging.getLogger(__name__)
 
@@ -2016,7 +2017,34 @@ class ConsolidateTractConnections(pipeBase.PipelineTaskConnections,
 
 class ConsolidateTractConfig(pipeBase.PipelineTaskConfig,
                              pipelineConnections=ConsolidateTractConnections):
-    pass
+
+    doUseSchema = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Use an existing schema to coerce the data types of the output columns."
+    )
+    schemaDir = pexConfig.Field(
+        dtype=str,
+        doc="Path to the directory containing schema definitions.",
+        default=os.path.join("${SDM_SCHEMAS_DIR}",
+                             "yml"),
+        optional=True,
+    )
+    schemaFile = pexConfig.Field(
+        dtype=str,
+        doc="Yaml file specifying the schema of the output catalog.",
+        optional=True,
+    )
+    schemaName = pexConfig.Field(
+        dtype=str,
+        doc="Name of the schema in the schema file to read.",
+        optional=True,
+    )
+    tableName = pexConfig.Field(
+        dtype=str,
+        doc="Name of the table in the schema file to read.",
+        optional=True,
+    )
 
 
 class ConsolidateTractTask(pipeBase.PipelineTask):
@@ -2034,6 +2062,10 @@ class ConsolidateTractTask(pipeBase.PipelineTask):
                       len(inputs["inputCatalogs"]),
                       inputRefs.inputCatalogs[0].datasetType.name)
         df = pd.concat(inputs["inputCatalogs"])
+        if self.config.doUseSchema:
+            schemaFile = os.path.join(self.config.schemaDir, self.config.schemaFile)
+            schema = readSdmSchemaFile(schemaFile, self.config.schemaName)
+            df = convertDataFrameToSdmSchema(schema, df, tableName=self.config.tableName)
         butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
 
 
