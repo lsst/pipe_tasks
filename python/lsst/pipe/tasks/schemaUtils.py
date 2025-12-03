@@ -33,7 +33,6 @@ import felis.datamodel
 import numpy as np
 import pandas as pd
 from astropy.table import Table
-import yaml
 
 
 # The first entry in the returned mapping is for nullable columns,
@@ -102,16 +101,7 @@ def readSdmSchemaFile(schemaFile: str,
         If the schema file can't be parsed.
     """
     schemaFile = os.path.expandvars(schemaFile)
-    with open(schemaFile) as yaml_stream:
-        schemas_list = list(yaml.load_all(yaml_stream, Loader=yaml.SafeLoader))
-        schemas_list = [schema for schema in schemas_list if schema.get("name") == schemaName]
-        if not schemas_list:
-            raise ValueError(f"Schema file {schemaFile!r} does not define schema {schemaName!r}")
-        elif len(schemas_list) > 1:
-            raise ValueError(f"Schema file {schemaFile!r} defines multiple schemas {schemaName!r}")
-        felis_schema = felis.datamodel.Schema.model_validate(schemas_list[0],
-                                                             context={'id_generation': True}
-                                                             )
+    felis_schema = felis.datamodel.Schema.from_uri(schemaFile, context={"id_generation": True})
     schemaTable = {}
 
     for singleTable in felis_schema.tables:
