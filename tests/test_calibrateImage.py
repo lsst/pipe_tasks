@@ -104,7 +104,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # self.truth_exposure.variance.array[10, 10] = 100000/noise
 
         # Copy the truth exposure, because CalibrateImage modifies the input.
-        # Post-ISR ccds only contain: initial WCS, VisitInfo, filter
+        # Post-ISR images only contain: initial WCS, VisitInfo, filter
         self.exposure = afwImage.ExposureF(self.truth_exposure, deep=True)
         self.exposure.setWcs(self.truth_exposure.wcs)
         self.exposure.info.setVisitInfo(self.truth_exposure.visitInfo)
@@ -140,7 +140,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # Make a realistic id generator so that output catalog ids are useful.
         # NOTE: The id generator is used to seed the noise replacer during
         # measurement, so changes to values here can have subtle effects on
-        # the centroids and fluxes mesaured on the image, which might cause
+        # the centroids and fluxes measured on the image, which might cause
         # tests to fail.
         data_id = lsst.daf.butler.DataCoordinate.standardize(
             instrument="I",
@@ -203,13 +203,14 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # PhotoCalib comparison is very approximate because we are basing this
         # comparison on just 2-3 stars.
         self.assertFloatsAlmostEqual(photo_calib.getCalibrationMean(), self.photo_calib, rtol=1e-2)
-        # Should have calibrated flux/magnitudes in the afw and astropy catalogs
+        # Should have calibrated flux/mags in the afw and astropy catalogs
         self.assertIn("slot_PsfFlux_flux", result.stars_footprints.schema)
         self.assertIn("slot_PsfFlux_mag", result.stars_footprints.schema)
         self.assertEqual(result.stars["slot_PsfFlux_flux"].unit, u.nJy)
         self.assertEqual(result.stars["slot_PsfFlux_mag"].unit, u.ABmag)
 
-        # Should have detected all S/N >= 10 sources plus 2 sky sources, whether 1 or 2 snaps.
+        # Should have detected all S/N >= 10 sources plus 2 sky sources,
+        # whether 1 or 2 snaps.
         self.assertEqual(len(result.stars), 6)
         # Did the psf flags get propagated from the psf_stars catalog?
         self.assertEqual(result.stars["calib_psf_used"].sum(), 3)
@@ -243,7 +244,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         self._check_run(calibrate, result)
 
-    def test_run_adaptive_threshold_deteection(self):
+    def test_run_adaptive_threshold_detection(self):
         """Test that run() runs with adaptive threshold detection turned on.
         """
         config = copy.copy(self.config)
@@ -343,7 +344,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
     def test_compute_psf(self):
         """Test that our brightest sources are found by _compute_psf(),
-        that a PSF is assigned to the expopsure.
+        that a PSF is assigned to the exposure.
         """
         calibrate = CalibrateImageTask(config=self.config)
         psf_stars, background, candidates, _ = calibrate._compute_psf(self.exposure, self.id_generator)
@@ -357,7 +358,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         # Only the point-sources with S/N > 50 should be in this output.
         self.assertEqual(psf_stars["calib_psf_used"].sum(), 3)
-        # Sort in order of brightness, to easily compare with expected positions.
+        # Sort in brightness order, to easily compare with expected positions.
         psf_stars.sort(psf_stars.getPsfFluxSlot().getMeasKey())
         for record, flux, center in zip(psf_stars[::-1], self.fluxes, self.centroids[self.fluxes > 50]):
             self.assertFloatsAlmostEqual(record.getX(), center[0], rtol=0.01)
@@ -424,8 +425,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.assertIsNone(self.exposure.apCorrMap)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
         self.assertIsInstance(self.exposure.apCorrMap, afwImage.ApCorrMap)
-        # We know that there are 2 fields from the normalization, plus more from
-        # other configured plugins.
+        # We know that there are 2 fields from the normalization, plus more
+        # from other configured plugins.
         self.assertGreater(len(self.exposure.apCorrMap), 2)
 
     def test_find_stars(self):
@@ -449,7 +450,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # plus two sky sources.
         self.assertEqual(len(stars), 6)
         self.assertTrue(stars.isContiguous())
-        # Sort in order of brightness, to easily compare with expected positions.
+        # Sort in brightness order, to easily compare with expected positions.
         stars.sort(stars.getPsfFluxSlot().getMeasKey())
         for record, flux, center in zip(stars[::-1], self.fluxes, self.centroids[self.fluxes > 50]):
             self.assertFloatsAlmostEqual(record.getX(), center[0], rtol=0.01)
@@ -542,7 +543,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         calibrate._match_psf_stars(psf_stars, stars)
 
-        # Check that the three brightest stars have the psf flags transfered
+        # Check that the three brightest stars have the psf flags transferred
         # from the psf_stars catalog by sorting in order of brightness.
         stars.sort(stars.getPsfFluxSlot().getMeasKey())
         # sort() above leaves the catalog non-contiguous.
@@ -654,8 +655,9 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self._check_run(calibrate, result)
 
     @mock.patch.dict(os.environ, {"SATTLE_URI_BASE": ""})
-    def test_fail_on_sattle_miconfiguration(self):
-        """Test for failure if sattle is requested without appropriate configurations.
+    def test_fail_on_sattle_misconfiguration(self):
+        """Test for failure if sattle is requested without appropriate
+        configurations.
         """
         self.config.run_sattle = True
         with self.assertRaises(pexConfig.FieldValidationError):
@@ -663,7 +665,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
     @mock.patch.dict(os.environ, {"SATTLE_URI_BASE": "fake_host:1234"})
     def test_continue_on_sattle_failure(self):
-        """Processing should continue when sattle returns status codes other than 200.
+        """Processing should continue when sattle returns status codes other
+        than 200.
         """
         response = MockResponse({}, 500, "internal sattle error")
 
@@ -677,7 +680,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
     @mock.patch.dict(os.environ, {"SATTLE_URI_BASE": "fake_host:1234"})
     def test_sattle(self):
-        """Test for successful completion when sattle call returns successfully.
+        """Test for successful completion when sattle call returns
+        successfully.
         """
         response = MockResponse({}, 200, "success")
 
