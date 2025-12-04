@@ -78,16 +78,13 @@ def column_dtype(felis_type: felis.datamodel.DataType, nullable=False) -> str:
         raise TypeError(f"Unexpected Felis type: {felis_type}")
 
 
-def readSdmSchemaFile(schemaFile: str, schemaName: str):
+def readSdmSchemaFile(schemaFile: str):
     """Read a schema file in YAML format.
 
     Parameters
     ----------
     schemaFile : `str`
         Fully specified path to the file to be read.
-    schemaName : `str`, optional
-        Name of the table of schemas to read from the file, typically either
-        'lsstcam' or 'ApdbSchema'.
 
     Returns
     -------

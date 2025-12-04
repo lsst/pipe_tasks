@@ -33,8 +33,7 @@ class TestSchemaUtils(unittest.TestCase):
         """Check that an empty catalog has the correct format.
         """
         schemaFile = os.path.join("${SDM_SCHEMAS_DIR}", "yml", "apdb.yaml")
-        schemaName = "ApdbSchema"
-        schema = readSdmSchemaFile(schemaFile, schemaName)
+        schema = readSdmSchemaFile(schemaFile)
 
         tableNames = ["DiaObject", "DiaSource", "DiaForcedSource"]
         for tableName in tableNames:

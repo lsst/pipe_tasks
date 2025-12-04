@@ -2035,11 +2035,6 @@ class ConsolidateTractConfig(pipeBase.PipelineTaskConfig,
         doc="Yaml file specifying the schema of the output catalog.",
         optional=True,
     )
-    schemaName = pexConfig.Field(
-        dtype=str,
-        doc="Name of the schema in the schema file to read.",
-        optional=True,
-    )
     tableName = pexConfig.Field(
         dtype=str,
         doc="Name of the table in the schema file to read.",
@@ -2064,7 +2059,7 @@ class ConsolidateTractTask(pipeBase.PipelineTask):
         df = pd.concat(inputs["inputCatalogs"])
         if self.config.doUseSchema:
             schemaFile = os.path.join(self.config.schemaDir, self.config.schemaFile)
-            schema = readSdmSchemaFile(schemaFile, self.config.schemaName)
+            schema = readSdmSchemaFile(schemaFile)
             df = convertDataFrameToSdmSchema(schema, df, tableName=self.config.tableName)
         butlerQC.put(pipeBase.Struct(outputCatalog=df), outputRefs)
 
