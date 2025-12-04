@@ -165,11 +165,6 @@ class DrpAssociationPipeConfig(
         doc="Yaml file specifying the schema of the output catalog.",
         default="lsstcam.yaml",
     )
-    schemaName = pexConfig.Field(
-        dtype=str,
-        doc="Name of the schema in the schema file.",
-        default="lsstcam",
-    )
     idGenerator = SkyMapIdGeneratorConfig.make_field()
 
 
@@ -186,7 +181,7 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
 
         if self.config.doUseSchema:
             schemaFile = os.path.join(self.config.schemaDir, self.config.schemaFile)
-            self.schema = readSdmSchemaFile(schemaFile, self.config.schemaName)
+            self.schema = readSdmSchemaFile(schemaFile)
         else:
             self.schema = None
         if self.config.doSolarSystemAssociation:
