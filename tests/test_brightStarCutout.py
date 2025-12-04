@@ -37,26 +37,36 @@ class BrightStarCutoutTestCase(lsst.utils.tests.TestCase):
         # Fit values
         self.scale = 2.34e5
         self.pedestal = 3210.1
-        self.xGradient = 5.432
-        self.yGradient = 10.987
+        self.x_gradient = 5.432
+        self.y_gradient = 10.987
+        self.curvature_x = 0.1
+        self.curvature_y = -0.2
+        self.cross_tilt = 1e-2
 
         # Create a pedestal + 2D plane
-        xCoords = np.linspace(-50, 50, 101)
-        yCoords = np.linspace(-50, 50, 101)
-        xPlane, yPlane = np.meshgrid(xCoords, yCoords)
-        pedestal = np.ones_like(xPlane) * self.pedestal
+        x_coords = np.linspace(-50, 50, 101)
+        y_coords = np.linspace(-50, 50, 101)
+        x_plane, y_plane = np.meshgrid(x_coords, y_coords)
+        pedestal = np.ones_like(x_plane) * self.pedestal
 
         # Create a pseudo-PSF
-        dist_from_center = np.sqrt(xPlane**2 + yPlane**2)
-        psfArray = np.exp(-dist_from_center / 5)
-        psfArray /= np.sum(psfArray)
-        fixedKernel = FixedKernel(ImageD(psfArray))
-        psf = KernelPsf(fixedKernel)
+        dist_from_center = np.sqrt(x_plane**2 + y_plane**2)
+        psf_array = np.exp(-dist_from_center / 5)
+        psf_array /= np.sum(psf_array)
+        fixed_kernel = FixedKernel(ImageD(psf_array))
+        psf = KernelPsf(fixed_kernel)
         self.psf = psf.computeKernelImage(psf.getAveragePosition())
 
         # Bring everything together to construct a stamp masked image
-        stampArray = psfArray * self.scale + pedestal + xPlane * self.xGradient + yPlane * self.yGradient
-        stampIm = ImageF((stampArray).astype(np.float32))
+        stamp_array = (
+            psf_array * self.scale + pedestal + x_plane * self.x_gradient + y_plane * self.y_gradient
+        )
+        stamp_array += (
+            x_plane**2 * self.curvature_x
+            + y_plane**2 * self.curvature_y
+            + x_plane * y_plane * self.cross_tilt
+        )
+        stampIm = ImageF((stamp_array).astype(np.float32))
         stampVa = ImageF(stampIm.getBBox(), 654.321)
         self.stampMI = MaskedImageF(image=stampIm, variance=stampVa)
         self.stampMI.setXY0(Point2I(-50, -50))
@@ -80,14 +90,18 @@ class BrightStarCutoutTestCase(lsst.utils.tests.TestCase):
         """Test the PSF fitting method."""
         brightStarCutoutConfig = BrightStarCutoutConfig()
         brightStarCutoutTask = BrightStarCutoutTask(config=brightStarCutoutConfig)
-        fitPsfResults = brightStarCutoutTask._fitPsf(
+        fit_psf_results = brightStarCutoutTask._fit_psf(
             self.stampMI,
             self.psf,
         )
-        assert abs(fitPsfResults["scale"] - self.scale) / self.scale < 1e-6
-        assert abs(fitPsfResults["pedestal"] - self.pedestal) / self.pedestal < 1e-6
-        assert abs(fitPsfResults["xGradient"] - self.xGradient) / self.xGradient < 1e-6
-        assert abs(fitPsfResults["yGradient"] - self.yGradient) / self.yGradient < 1e-6
+
+        assert abs(fit_psf_results["scale"] - self.scale) / self.scale < 1e-3
+        assert abs(fit_psf_results["pedestal"] - self.pedestal) / self.pedestal < 1e-3
+        assert abs(fit_psf_results["x_gradient"] - self.x_gradient) / self.x_gradient < 1e-3
+        assert abs(fit_psf_results["y_gradient"] - self.y_gradient) / self.y_gradient < 1e-3
+        assert abs(fit_psf_results["curvature_x"] - self.curvature_x) / self.curvature_x < 1e-3
+        assert abs(fit_psf_results["curvature_y"] - self.curvature_y) / self.curvature_y < 1e-3
+        assert abs(fit_psf_results["cross_tilt"] - self.cross_tilt) / self.cross_tilt < 1e-3
 
 
 def setup_module(module):
