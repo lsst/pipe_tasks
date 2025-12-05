@@ -64,6 +64,16 @@ funcs:
     # psRadec: No moving point source model yet
     # psPm: No moving point source model yet
     # psParallax: No moving point source model yet
+    # Assume the database will provide UDFs for Mags
+    # psCov:
+    #     Flux should be somewhere in the name?
+    #     How best to store cov matrix?
+
+    # Replace multifit-predicted parameters with other goodness-of-fit parameters
+    # e.g. number of iterations, chi2/dof, derivative of objective function
+    # psLnL:  No moving point source model yet
+    # psChi2:  No moving point source model yet
+    # psNdata: No moving point source model yet
     psfFlux:
         functor: SinglePrecisionFloatColumn
         dataset: forced_src
@@ -84,80 +94,6 @@ funcs:
         functor: Column
         dataset: meas
         args: slot_PsfFlux_flag
-    # Assume the database will provide UDFs for Mags
-    # psCov:
-    #     Flux should be somewhere in the name?
-    #     How best to store cov matrix?
-
-    # Replace multifit-predicted parameters with other goodness-of-fit parameters
-    # e.g. number of iterations, chi2/dof, derivative of objective function
-    # psLnL:  No moving point source model yet
-    # psChi2:  No moving point source model yet
-    # psNdata: No moving point source model yet
-
-    # DRP is working the the Bulge-Disk model fluxes
-    # In the meantime, CModel is the best
-    # CModel fluxes have alias slot_ModelFlux
-    # bdRadec: # Same as SdssCentroid
-    # AB + theta
-    # E1+Re in DPDD is for a reason is no longer valid
-    # We once thought we were going to do shear from these.
-    bdE1:
-        functor: E1
-        dataset: meas
-        args:
-            - modelfit_CModel_ellipse_xx
-            - modelfit_CModel_ellipse_xy
-            - modelfit_CModel_ellipse_yy
-    # rbdE1Err:  Not computed
-    bdE2:
-        functor: E2
-        dataset: meas
-        args:
-            - modelfit_CModel_ellipse_xx
-            - modelfit_CModel_ellipse_xy
-            - modelfit_CModel_ellipse_yy
-    # rbdE2Err:  Not computed
-    bdReB:
-        functor: RadiusFromQuadrupole
-        dataset: meas
-        args:
-            - modelfit_CModel_dev_ellipse_xx
-            - modelfit_CModel_dev_ellipse_xy
-            - modelfit_CModel_dev_ellipse_yy
-    bdReD:
-        functor: RadiusFromQuadrupole
-        dataset: meas
-        args:
-            - modelfit_CModel_exp_ellipse_xx
-            - modelfit_CModel_exp_ellipse_xy
-            - modelfit_CModel_exp_ellipse_yy
-    # bdCov: Not computed
-    # DM-22251: We need a total galaxy model (BD) flux column:
-    # with either a total and fraction in Bulge or Disk
-    # We should change the name BD, it assumes algorithm choice
-    bdChi2:
-        functor: SinglePrecisionFloatColumn
-        dataset: meas
-        args: modelfit_CModel_objective
-    # bdSamples: DM-22242 Remove from the DPDD and
-    # replace with other shear estimation parameters. e.g. How e1 and e2 respond to shear.
-    bdFluxB:
-        functor: SinglePrecisionFloatColumn
-        dataset: meas
-        args: modelfit_CModel_dev_instFlux
-    bdFluxBErr:
-        functor: SinglePrecisionFloatColumn
-        dataset: meas
-        args: modelfit_CModel_dev_instFluxErr
-    bdFluxD:
-        functor: SinglePrecisionFloatColumn
-        dataset: meas
-        args: modelfit_CModel_exp_instFlux
-    bdFluxDErr:
-        functor: SinglePrecisionFloatColumn
-        dataset: meas
-        args: modelfit_CModel_exp_instFluxErr
     # DM-22243: Replace these with g, r, i, z, y and the blessed fluxes to use for colors
     # Need a new name like "gModelColorFlux", "gMatchedApertureGalaxyFlux", or
     # "gMatchedApertureFlux", "gStdFlux"
@@ -258,6 +194,7 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
+            - true
     moments_vv:
         functor: MomentsIvvSky
         args:
@@ -268,6 +205,7 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
+            - true
     moments_uv:
         functor: MomentsIuvSky
         args:
@@ -278,6 +216,7 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
+            - true
     moments_a:
         functor: SemimajorAxisFromMoments
         args:
@@ -288,6 +227,7 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
+            - true
     moments_b:
         functor: SemiminorAxisFromMoments
         args:
@@ -298,6 +238,7 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
+            - true
     moments_theta:
         functor: PositionAngleFromMoments
         args:
@@ -308,6 +249,7 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
+            - true
     moments_flag:
         functor: Column
         args: slot_Shape_flag
@@ -322,6 +264,7 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
+            - true
     moments_psf_vv:
         functor: MomentsIvvSky
         args:
@@ -332,6 +275,7 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
+            - true
     moments_psf_uv:
         functor: MomentsIuvSky
         args:
@@ -342,6 +286,7 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
+            - true
     moments_psf_flag:
         functor: Column
         args: slot_PsfShape_flag
@@ -356,6 +301,7 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
+            - true
     moments_round_vv:
         functor: MomentsIvvSky
         args:
@@ -366,6 +312,7 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
+            - true
     moments_round_uv:
         functor: MomentsIuvSky
         args:
@@ -376,6 +323,7 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
+            - true
     moments_round_flag:
         functor: Column
         args: slot_ShapeRound_flag
@@ -390,6 +338,7 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
+            - true
     moments_psf_debiased_vv:
         functor: MomentsIvvSky
         args:
@@ -400,6 +349,7 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
+            - true
     moments_psf_debiased_uv:
         functor: MomentsIuvSky
         args:
@@ -410,6 +360,7 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
+            - true
     moments_psf_debiased_flag:
         functor: Column
         args: ext_shapeHSM_HsmPsfMomentsDebiased_flag
@@ -584,6 +535,103 @@ funcs:
         functor: SinglePrecisionFloatColumn
         args: base_Blendedness_abs
         dataset: meas
+    # CModel is likely to be deprecated soon in favour of multiprofit
+    # (TBD on Sersic vs more complicated model)
+    cModel_dev_reff_major:
+        functor: SemimajorAxisFromMoments
+        dataset: meas
+        args:
+            - modelfit_CModel_dev_ellipse_xx
+            - modelfit_CModel_dev_ellipse_xy
+            - modelfit_CModel_dev_ellipse_yy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+            - true
+    cModel_dev_reff_minor:
+        functor: SemiminorAxisFromMoments
+        dataset: meas
+        args:
+            - modelfit_CModel_dev_ellipse_xx
+            - modelfit_CModel_dev_ellipse_xy
+            - modelfit_CModel_dev_ellipse_yy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+            - true
+    cModel_dev_theta:
+        functor: PositionAngleFromMoments
+        dataset: meas
+        args:
+            - modelfit_CModel_dev_ellipse_xx
+            - modelfit_CModel_dev_ellipse_xy
+            - modelfit_CModel_dev_ellipse_yy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+            - true
+    cModel_exp_reff_major:
+        functor: SemimajorAxisFromMoments
+        dataset: meas
+        args:
+            - modelfit_CModel_exp_ellipse_xx
+            - modelfit_CModel_exp_ellipse_yy
+            - modelfit_CModel_exp_ellipse_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+            - true
+    cModel_exp_reff_minor:
+        functor: SemiminorAxisFromMoments
+        dataset: meas
+        args:
+            - modelfit_CModel_exp_ellipse_xx
+            - modelfit_CModel_exp_ellipse_yy
+            - modelfit_CModel_exp_ellipse_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+            - true
+    cModel_exp_theta:
+        functor: PositionAngleFromMoments
+        dataset: meas
+        args:
+            - modelfit_CModel_exp_ellipse_xx
+            - modelfit_CModel_exp_ellipse_yy
+            - modelfit_CModel_exp_ellipse_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+            - true
+    # bdCov: Not computed
+    cModel_chi2:
+        functor: SinglePrecisionFloatColumn
+        dataset: meas
+        args: modelfit_CModel_objective
+    # bdSamples: DM-22242 Remove from the DPDD and
+    # replace with other shear estimation parameters. e.g. How e1 and e2 respond to shear.
+    cModel_devFlux:
+        functor: SinglePrecisionFloatColumn
+        dataset: meas
+        args: modelfit_CModel_dev_instFlux
+    cModel_devFluxErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: meas
+        args: modelfit_CModel_dev_instFluxErr
+    cModel_expFlux:
+        functor: SinglePrecisionFloatColumn
+        dataset: meas
+        args: modelfit_CModel_exp_instFlux
+    cModel_expFluxErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: meas
+        args: modelfit_CModel_exp_instFluxErr
     cModelFlux:
         functor: SinglePrecisionFloatColumn
         dataset: forced_src
@@ -596,6 +644,10 @@ funcs:
         functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: modelfit_CModel_instFlux_inner
+    cModel_fracDev:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: modelfit_CModel_fracDev
     free_cModelFlux: # to dm-naming things
         functor: SinglePrecisionFloatColumn
         dataset: meas
@@ -612,6 +664,10 @@ funcs:
         functor: Column
         dataset: meas
         args: modelfit_CModel_flag
+    free_cModel_fracDev:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: modelfit_CModel_fracDev
     # exp, dev, total, fracdev
     # We need different ellipticities for shear measurement:
     hsmShapeRegauss_e1:
@@ -777,7 +833,7 @@ funcs:
         functor: Column
         args: TwoGaussianPsf_n_iter
         dataset: psfs_multiprofit
-    psfModel_TwoGaussian_chisq_reduced:
+    psfModel_TwoGaussian_chi2_reduced:
         functor: SinglePrecisionFloatColumn
         args: TwoGaussianPsf_chisq_reduced
         dataset: psfs_multiprofit
@@ -950,7 +1006,7 @@ funcs:
         functor: Column
         args: n_iter
         dataset: Exp_multiprofit
-    exponential_chisq_reduced:
+    exponential_chi2_reduced:
         functor: SinglePrecisionFloatColumn
         args: chisq_reduced
         dataset: Exp_multiprofit
@@ -999,6 +1055,42 @@ funcs:
         functor: SinglePrecisionFloatColumn
         args: rho
         dataset: Sersic_multiprofit
+    sersic_reff_major:
+        functor: SemimajorAxisFromMoments
+        dataset: Sersic_multiprofit
+        args:
+            - reff_x
+            - reff_y
+            - rho
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+            - false
+    sersic_reff_minor:
+        functor: SemiminorAxisFromMoments
+        dataset: Sersic_multiprofit
+        args:
+            - reff_x
+            - reff_y
+            - rho
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+            - false
+    sersic_theta:
+        functor: PositionAngleFromMoments
+        dataset: Sersic_multiprofit
+        args:
+            - reff_x
+            - reff_y
+            - rho
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+            - false
     g_sersicFlux:
         functor: MultibandSinglePrecisionFloatColumn
         args:
@@ -1139,7 +1231,7 @@ funcs:
         functor: Column
         args: n_iter
         dataset: Sersic_multiprofit
-    sersic_chisq_reduced:
+    sersic_chi2_reduced:
         functor: SinglePrecisionFloatColumn
         args: chisq_reduced
         dataset: Sersic_multiprofit

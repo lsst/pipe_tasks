@@ -941,7 +941,8 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
             "base_LocalWcs_CDMatrix_1_1",
             "base_LocalWcs_CDMatrix_1_2",
             "base_LocalWcs_CDMatrix_2_1",
-            "base_LocalWcs_CDMatrix_1_1"])
+            "base_LocalWcs_CDMatrix_1_1",
+        ])
 
         # CD Matrix from a ComCam exposure.
         self.dataDict["base_LocalWcs_CDMatrix_1_1"] = \
@@ -964,13 +965,14 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
                                       "base_LocalWcs_CDMatrix_1_2",
                                       "base_LocalWcs_CDMatrix_2_1",
                                       "base_LocalWcs_CDMatrix_2_2"]
-        skyXX_functor = MomentsIuuSky(*col_names, filt="g")
-        skyYY_functor = MomentsIvvSky(*col_names, filt="g")
-        skyXY_functor = MomentsIuvSky(*col_names, filt="g")
+        args = col_names + [True]
+        skyXX_functor = MomentsIuuSky(*args, filt="g")
+        skyYY_functor = MomentsIvvSky(*args, filt="g")
+        skyXY_functor = MomentsIuvSky(*args, filt="g")
 
-        axesA_functor = SemimajorAxisFromMoments(*col_names, filt="g")
-        axesB_functor = SemiminorAxisFromMoments(*col_names, filt="g")
-        axesTheta_functor = PositionAngleFromMoments(*col_names, filt="g")
+        axesA_functor = SemimajorAxisFromMoments(*args, filt="g")
+        axesB_functor = SemiminorAxisFromMoments(*args, filt="g")
+        axesTheta_functor = PositionAngleFromMoments(*args, filt="g")
 
         df = self.getMultiIndexDataFrame(self.dataDict)
         output_sky_xx = skyXX_functor(df)
