@@ -38,7 +38,7 @@ NEIGHBOR_MASK_PLANE = "NEIGHBOR"
 
 class BrightStarStackConnections(
     PipelineTaskConnections,
-    dimensions=("instrument", "detector"),
+    dimensions=("instrument", "band"),
 ):
     """Connections for BrightStarStackTask."""
 
@@ -100,7 +100,7 @@ class BrightStarStackConfig(
         ],
     )
     stack_type = Field[str](
-        default="WEIGHTED_MEDIAN",
+        default="MEDIAN",
         doc="Statistic name to use for stacking (from `~lsst.afw.math.Property`)",
     )
     stack_num_sigma_clip = Field[float](
@@ -201,10 +201,7 @@ class BrightStarStackTask(PipelineTask):
             ``brightStarStamps``
                 (`~lsst.meas.algorithms.brightStarStamps.BrightStarStamps`)
         """
-        if self.config.stack_type == "WEIGHTED_MEDIAN":
-            stack_type_property = stringToStatisticsProperty("MEDIAN")
-        else:
-            stack_type_property = stringToStatisticsProperty(self.config.stack_type)
+        stack_type_property = stringToStatisticsProperty(self.config.stack_type)
         statistics_control = StatisticsControl(
             numSigmaClip=self.config.stack_num_sigma_clip,
             numIter=self.config.stack_num_iter,
@@ -241,13 +238,13 @@ class BrightStarStackTask(PipelineTask):
                         stamp.ref_mag < self.config.magnitude_bins[i]
                         and stamp.ref_mag > self.config.magnitude_bins[i + 1]
                     ):
+                        self._applyStampFit(stamp)
                         if not self.config.magnitude_bins[i + 1] in mag_bins_dict.keys():
                             mag_bins_dict[self.config.magnitude_bins[i + 1]] = []
                         stampMI = stamp.stamp_im
-                        self._applyStampFit(stamp)
                         mag_bins_dict[self.config.magnitude_bins[i + 1]].append(stampMI)
-                        badMaskBitMask = stampMI.mask.getPlaneBitMask(self.config.bad_mask_planes)
-                        statistics_control.setAndMask(badMaskBitMask)
+                        bad_mask_bit_mask = stampMI.mask.getPlaneBitMask(self.config.bad_mask_planes)
+                        statistics_control.setAndMask(bad_mask_bit_mask)
                         if (
                             len(mag_bins_dict[self.config.magnitude_bins[i + 1]])
                             == self.config.subset_stamp_number[i]
@@ -274,15 +271,11 @@ class BrightStarStackTask(PipelineTask):
                 )
                 self.metadata["psf_star_count"][str(key)] += len(mag_bins_dict[key])
 
-        # TODO: which stamp mask plane to use here?
-        # TODO: Amir: there might be cases where subset_stampMIs is an empty list. What do we want to do
-        # then?
-        # Currently, we get an "IndexError: list index out of range"
         final_subset_stampMIs = []
         for key in subset_stampMIs.keys():
             final_subset_stampMIs.extend(subset_stampMIs[key])
-        badMaskBitMask = final_subset_stampMIs[0].mask.getPlaneBitMask(self.config.bad_mask_planes)
-        statistics_control.setAndMask(badMaskBitMask)
+        bad_mask_bit_mask = final_subset_stampMIs[0].mask.getPlaneBitMask(self.config.bad_mask_planes)
+        statistics_control.setAndMask(bad_mask_bit_mask)
         extendedPsfMI = statisticsStack(final_subset_stampMIs, stack_type_property, statistics_control)
 
         extendedPsfExtent = extendedPsfMI.getBBox().getDimensions()
