@@ -95,8 +95,8 @@ class BrightStarCutoutConnections(
         dimensions=("visit", "detector"),
     )
     extendedPsf = Input(
-        name="extendedPsf2",
-        storageClass="ImageF",
+        name="extendedPsf",
+        storageClass="MaskedImageF",
         doc="Extended PSF model, built from stacking bright star cutouts.",
         dimensions=("band",),
     )
@@ -364,7 +364,7 @@ class BrightStarCutoutTask(PipelineTask):
             psf = WarpedPsf(inputExposure.getPsf(), pix_to_polar, warping_control)
             constant_psf = KernelPsf(FixedKernel(psf.computeKernelImage(Point2D(0, 0))))
             if self.config.use_extended_psf:
-                psf_image = deepcopy(extendedPsf)  # Assumed to be warped, center at [0,0]
+                psf_image = deepcopy(extendedPsf.image)  # Assumed to be warped, center at [0,0]
             else:
                 psf_image = constant_psf.computeKernelImage(constant_psf.getAveragePosition())
                 # TODO: maybe we want to generate a smaller psf in case the following happens?
