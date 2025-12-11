@@ -51,8 +51,8 @@ class BrightStarStackConnections(
         deferLoad=True,
     )
     extendedPsf = Output(
-        name="extendedPsf2",  # extendedPsfDetector ???
-        storageClass="ImageF",  # stamp_imF
+        name="extendedPsf",  # extendedPsfDetector ???
+        storageClass="MaskedImageF",  # stamp_imF
         doc="Extended PSF model, built from stacking bright star cutouts.",
         dimensions=("band",),
     )
@@ -282,4 +282,4 @@ class BrightStarStackTask(PipelineTask):
         extendedPsfOrigin = Point2I(-1 * (extendedPsfExtent.x // 2), -1 * (extendedPsfExtent.y // 2))
         extendedPsfMI.setXY0(extendedPsfOrigin)
 
-        return Struct(extendedPsf=extendedPsfMI.getImage())
+        return Struct(extendedPsf=extendedPsfMI)
