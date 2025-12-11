@@ -507,10 +507,10 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
 
         Returns
         -------
-        isolated_table : `np.ndarray` (N,)
+        isolated_table : `astropy.table.Table` (N,)
             Table of isolated stars, with indexes to isolated sources.
             Returns None if there are no usable isolated catalogs.
-        isolated_source_table : `np.ndarray` (M,)
+        isolated_source_table : `astropy.table.Table` (M,)
             Table of isolated sources, with indexes to isolated stars.
             Returns None if there are no usable isolated catalogs.
         """
@@ -521,15 +521,12 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
 
         for tract in isolated_star_cat_dict:
             astropy_cat = isolated_star_cat_dict[tract].get()
-            table_cat = np.asarray(astropy_cat)
-
             astropy_source = isolated_star_source_dict[tract].get(
                 parameters={'columns': [self.config.id_column, 'obj_index']}
             )
-            table_source = np.asarray(astropy_source)
 
             # Cut isolated star table to those observed in this band, and adjust indexes
-            (use_band,) = (table_cat[f'nsource_{band}'] > 0).nonzero()
+            (use_band,) = (astropy_cat[f'nsource_{band}'] > 0).nonzero()
 
             if len(use_band) == 0:
                 # There are no sources in this band in this tract.
@@ -538,13 +535,12 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
 
             # With the following matching:
             #   table_source[b] <-> table_cat[use_band[a]]
-            obj_index = table_source['obj_index'][:]
-            a, b = esutil.numpy_util.match(use_band, obj_index)
+            a, b = esutil.numpy_util.match(use_band, np.asarray(astropy_source['obj_index']))
 
             # Update indexes and cut to band-selected stars/sources
-            table_source['obj_index'][b] = a
+            astropy_source['obj_index'][b] = a
             _, index_new = np.unique(a, return_index=True)
-            table_cat[f'source_cat_index_{band}'][use_band] = index_new
+            astropy_cat[f'source_cat_index_{band}'][use_band] = index_new
 
             # After the following cuts, the catalogs have the following properties:
             # - table_cat only contains isolated stars that have at least one source
@@ -555,43 +551,33 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             #   applied to table_source will give all the sources associated with the star.
             # - For each source, table_source["obj_index"] points to the index of the associated
             #   isolated star.
-            table_source = table_source[b]
-            table_cat = table_cat[use_band]
+            astropy_source = astropy_source[b]
+            astropy_cat = astropy_cat[use_band]
 
             # Add reserved flag column to tables
-            table_cat = np.lib.recfunctions.append_fields(
-                table_cat,
-                'reserved',
-                np.zeros(table_cat.size, dtype=bool),
-                usemask=False
-            )
-            table_source = np.lib.recfunctions.append_fields(
-                table_source,
-                'reserved',
-                np.zeros(table_source.size, dtype=bool),
-                usemask=False
-            )
+            astropy_cat['reserved'] = False
+            astropy_source['reserved'] = False
 
             # Get reserve star flags
-            table_cat['reserved'][:] = self.reserve_selection.run(
-                len(table_cat),
+            astropy_cat['reserved'][:] = self.reserve_selection.run(
+                len(astropy_cat),
                 extra=f'{band}_{tract}',
             )
-            table_source['reserved'][:] = table_cat['reserved'][table_source['obj_index']]
+            astropy_source['reserved'][:] = astropy_cat['reserved'][astropy_source['obj_index']]
 
             # Offset indexes to account for tract merging
-            table_cat[f'source_cat_index_{band}'] += merge_source_counter
-            table_source['obj_index'] += merge_cat_counter
+            astropy_cat[f'source_cat_index_{band}'] += merge_source_counter
+            astropy_source['obj_index'] += merge_cat_counter
 
-            isolated_tables.append(table_cat)
-            isolated_sources.append(table_source)
+            isolated_tables.append(astropy_cat)
+            isolated_sources.append(astropy_source)
 
-            merge_cat_counter += len(table_cat)
-            merge_source_counter += len(table_source)
+            merge_cat_counter += len(astropy_cat)
+            merge_source_counter += len(astropy_source)
 
         if len(isolated_tables) > 0:
-            isolated_table = np.concatenate(isolated_tables)
-            isolated_source_table = np.concatenate(isolated_sources)
+            isolated_table = astropy.table.vstack(isolated_tables, metadata_conflicts='silent')
+            isolated_source_table = astropy.table.vstack(isolated_sources, metadata_conflicts='silent')
         else:
             isolated_table = None
             isolated_source_table = None
@@ -633,7 +619,8 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             Detector number (for logging).
         exposure : `lsst.afw.image.ExposureF`
         src : `lsst.afw.table.SourceCatalog`
-        isolated_source_table : `np.ndarray`
+        isolated_source_table : `np.ndarray` or `astropy.table.Table`
+        fgcm_standard_star_cat : `np.ndarray`
 
         Returns
         -------
@@ -674,7 +661,7 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         # Find the isolated sources and set flags
         matched_src, matched_iso = esutil.numpy_util.match(
             selected_src['id'],
-            isolated_source_table[self.config.id_column]
+            np.asarray(isolated_source_table[self.config.id_column]),
         )
         if len(matched_src) == 0:
             self.log.warning(
@@ -689,7 +676,7 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         selected_src['calib_psf_candidate'] = matched_arr
 
         reserved_arr = np.zeros(len(selected_src), dtype=bool)
-        reserved_arr[matched_src] = isolated_source_table['reserved'][matched_iso]
+        reserved_arr[matched_src] = np.asarray(isolated_source_table['reserved'][matched_iso])
         selected_src['calib_psf_reserved'] = reserved_arr
 
         selected_src = selected_src[selected_src['calib_psf_candidate']].copy(deep=True)
