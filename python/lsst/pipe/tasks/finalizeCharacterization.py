@@ -531,13 +531,20 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         merge_cat_counter = 0
         merge_source_counter = 0
 
+        handle = isolated_star_cat_dict[list(isolated_star_cat_dict.keys())[0]]
+        all_source_columns = handle.get(component='columns')
+        source_columns = [self.config.id_column, 'obj_index']
+        # visit can be used if it is in the input catalog.
+        if visit is not None and visit in all_source_columns:
+            source_columns.append('visit')
+            if detector is not None:
+                source_columns.append('detector')
+        else:
+            visit = None
+            detector = None
+
         for tract in isolated_star_cat_dict:
             astropy_cat = isolated_star_cat_dict[tract].get()
-            source_columns = [self.config.id_column, 'obj_index']
-            if visit is not None:
-                source_columns.append('visit')
-                if detector is not None:
-                    source_columns.append('detector')
             astropy_source = isolated_star_source_dict[tract].get(
                 parameters={'columns': source_columns}
             )
@@ -582,8 +589,14 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             # Update indexes and cut to band-selected stars/sources
             astropy_source['obj_index'][b] = a
             if sources_downselected:
-                # Everything is guaranteed to be uniquely matched because we
-                # have already down-selected.
+                # The isolated star catalog is built such that each star
+                # in the catalog is matched to multiple sources. But due
+                # to the way it is constructed of isolated stars there
+                # is at most one unique source on any visit associated
+                # with a single isolated star in the catalog. Therefore,
+                # everything is guaranteed to already be uniquely
+                # matched here because we did visit (and detector)
+                # down-selection above.
                 astropy_cat[f'source_cat_index_{band}'][use_band][a] = b
             else:
                 # If there was no down-selection then each star has
