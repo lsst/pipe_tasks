@@ -142,6 +142,17 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         self.assertFloatsAlmostEqual(summary.psfTraceRadiusDelta, 0.0)
         self.assertFloatsAlmostEqual(summary.psfApFluxDelta, 0.0)
         self.assertFloatsAlmostEqual(summary.psfApCorrSigmaScaledDelta, 0.0)
+        nan = float("nan")
+        self.assertFloatsAlmostEqual(summary.psfStarDeltaE1Median, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.psfStarDeltaE2Median, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.psfStarDeltaE1Scatter, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.psfStarDeltaE2Scatter, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.psfStarDeltaSizeMedian, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.psfStarDeltaSizeScatter, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.psfStarScaledDeltaSizeScatter, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.maxDistToNearestPsf, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.starEMedian, nan, ignoreNaNs=True)
+        self.assertFloatsAlmostEqual(summary.starUnNormalizedEMedian, nan, ignoreNaNs=True)
 
         delta = (scale*50).asDegrees()
         for a, b in zip(summary.raCorners,
