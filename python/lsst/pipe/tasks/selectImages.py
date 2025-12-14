@@ -356,6 +356,41 @@ class PsfWcsSelectImagesConfig(pipeBase.PipelineTaskConfig,
         "band for the exposure is not included as a key in this dict, the value associated "
         "with the \"fallback\" key will be used.",
     )
+    maxStarEPerBand = pexConfig.DictField(
+        keytype=str,
+        itemtype=float,
+        default={
+            "u": 0.4,
+            "g": 0.4,
+            "r": 0.4,
+            "i": 0.4,
+            "z": 0.4,
+            "y": 0.4,
+            "fallback": 0.4,
+        },
+        doc="Maximum median of the ellipticity (sqrt(starE1**2.0 + starE2**2.0)) "
+        "distribution of the star sources used in the PSF model. If the current band "
+        "for the exposure is not included as a key in this dict, the value associated "
+        "with the \"fallback\" key will be used.",
+    )
+    maxStarUnNormalizedEPerBand = pexConfig.DictField(
+        keytype=str,
+        itemtype=float,
+        default={
+            "u": 2.8,
+            "g": 2.8,
+            "r": 2.8,
+            "i": 2.8,
+            "z": 2.8,
+            "y": 2.8,
+            "fallback": 2.8,
+        },
+        doc="Maximum median of the unnormalized ellipticity "
+        "(sqrt((starXX - starYY)**2.0 + (2.0*starXY)**2.0)) distribution of the star "
+        "sources used in the PSF model. If the current band for the exposure is not "
+        "included as a key in this dict, the value associated with the \"fallback\" key "
+        "will be used.",
+    )
     excludeDetectors = pexConfig.ListField(
         dtype=int,
         default=[],
@@ -369,6 +404,14 @@ class PsfWcsSelectImagesConfig(pipeBase.PipelineTaskConfig,
             msg = ("Must include a \"fallback\" key in the config.minNPsfStarPerBand config dict. "
                    f"It is currenly: {self.minNPsfStarPerBand}.")
             raise pexConfig.FieldValidationError(self.__class__.minNPsfStarPerBand, self, msg)
+        if "fallback" not in self.maxStarEPerBand:
+            msg = ("Must include a \"fallback\" key in the config.maxStarEPerBand config dict. "
+                   f"It is currenly: {self.maxStarEPerBand}.")
+            raise pexConfig.FieldValidationError(self.__class__.maxStarEPerBand, self, msg)
+        if "fallback" not in self.maxStarUnNormalizedEPerBand:
+            msg = ("Must include a \"fallback\" key in the config.maxStarUnNormalizedEPerBand "
+                   f"config dict. It is currenly: {self.maxStarUnNormalizedEPerBand}.")
+            raise pexConfig.FieldValidationError(self.__class__.maxStarUnNormalizedEPerBand, self, msg)
 
 
 class PsfWcsSelectImagesTask(WcsSelectImagesTask):
@@ -451,6 +494,14 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
             minNPsfStar = self.config.minNPsfStarPerBand[band]
         else:
             minNPsfStar = self.config.minNPsfStarPerBand["fallback"]
+        if band in self.config.maxStarEPerBand:
+            maxStarE = self.config.maxStarEPerBand[band]
+        else:
+            maxStarE = self.config.maxStarEPerBand["fallback"]
+        if band in self.config.maxStarUnNormalizedEPerBand:
+            maxStarUnNormalizedE = self.config.maxStarUnNormalizedEPerBand[band]
+        else:
+            maxStarUnNormalizedE = self.config.maxStarUnNormalizedEPerBand["fallback"]
         nPsfStar = row["nPsfStar"]
         medianE = np.sqrt(row["psfStarDeltaE1Median"]**2. + row["psfStarDeltaE2Median"]**2.)
         scatterSize = row["psfStarDeltaSizeScatter"]
@@ -458,6 +509,8 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         psfTraceRadiusDelta = row["psfTraceRadiusDelta"]
         psfApFluxDelta = row["psfApFluxDelta"]
         psfApCorrSigmaScaledDelta = row["psfApCorrSigmaScaledDelta"]
+        starEMedian = row["starEMedian"]
+        starUnNormalizedEMedian = row["starUnNormalizedEMedian"]
 
         valid = True
         if self.config.maxEllipResidual and not (medianE <= self.config.maxEllipResidual):
@@ -517,6 +570,19 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
                 self.log.info("Removing visit %d detector %d because FWHM too large: %f vs %f",
                               row["visit"], detectorId, fwhm, self.config.maxPsfFwhm)
                 valid = False
+        elif maxStarE and not (starEMedian <= maxStarE):
+            self.log.info(
+                "Removing visit %d detector %d because the median star ellipticity is too large: %d vs %d",
+                row["visit"], detectorId, starEMedian, maxStarE
+            )
+            valid = False
+        elif maxStarUnNormalizedE and not (starUnNormalizedEMedian <= maxStarUnNormalizedE):
+            self.log.info(
+                "Removing visit %d detector %d because the median star unnormalized ellipticity "
+                "is too large: %d vs %d",
+                row["visit"], detectorId, starUnNormalizedEMedian, maxStarUnNormalizedE
+            )
+            valid = False
 
         return valid
 
