@@ -288,11 +288,10 @@ class SolarSystemAssociationTask(pipeBase.Task):
         assocSourceMask = diaSourceCatalog["ssObjectId"] != 0
         unAssocObjectMask = np.logical_not(maskedObjects['associated'].value)
         ssSourceData = np.array(ssSourceData)
-        ssSourceData = Table(ssSourceData,
-                             names=["designation", "phaseAngle", "helioRange", "topoRange"]
-                             + stateVectorColumns + mpcorbColumns
-                             + ["ephRa", "ephDec", "ephRateRa", "ephRateDec", "ephVmag", "topoRangeRate"],
-                             dtype=[str] + [np.float64] * 21)
+        colnames = ["designation", "phaseAngle", "helioRange", "topoRange"]
+        colnames += stateVectorColumns + mpcorbColumns
+        colnames += ["ephRa", "ephDec", "ephRateRa", "ephRateDec", "ephVmag", "topoRangeRate"]
+        ssSourceData = Table(ssSourceData, names=colnames, dtype=[str] + [np.float64] * (len(colnames) - 1))
         ssSourceData['ssObjectId'] = Column(data=ssObjectIds, dtype=int)
         ssSourceData["ra"] = ras
         ssSourceData["dec"] = decs
