@@ -492,7 +492,14 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
 
         return mapper, selection_schema
 
-    def concat_isolated_star_cats(self, band, isolated_star_cat_dict, isolated_star_source_dict):
+    def concat_isolated_star_cats(
+        self,
+        band,
+        isolated_star_cat_dict,
+        isolated_star_source_dict,
+        visit=None,
+        detector=None,
+    ):
         """
         Concatenate isolated star catalogs and make reserve selection.
 
@@ -504,13 +511,18 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             Per-tract dict of isolated star catalog handles.
         isolated_star_source_dict : `dict`
             Per-tract dict of isolated star source catalog handles.
+        visit : `int`, optional
+            Visit to down-select sources.
+        detector : `int`, optional
+            Detector to down-select sources. Will only be used if visit
+            is also set.
 
         Returns
         -------
-        isolated_table : `np.ndarray` (N,)
+        isolated_table : `astropy.table.Table` (N,)
             Table of isolated stars, with indexes to isolated sources.
             Returns None if there are no usable isolated catalogs.
-        isolated_source_table : `np.ndarray` (M,)
+        isolated_source_table : `astropy.table.Table` (M,)
             Table of isolated sources, with indexes to isolated stars.
             Returns None if there are no usable isolated catalogs.
         """
@@ -519,17 +531,51 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         merge_cat_counter = 0
         merge_source_counter = 0
 
+        handle = isolated_star_cat_dict[list(isolated_star_cat_dict.keys())[0]]
+        all_source_columns = handle.get(component='columns')
+        source_columns = [self.config.id_column, 'obj_index']
+        # visit can be used if it is in the input catalog.
+        if visit is not None and visit in all_source_columns:
+            source_columns.append('visit')
+            if detector is not None:
+                source_columns.append('detector')
+        else:
+            visit = None
+            detector = None
+
         for tract in isolated_star_cat_dict:
             astropy_cat = isolated_star_cat_dict[tract].get()
-            table_cat = np.asarray(astropy_cat)
-
             astropy_source = isolated_star_source_dict[tract].get(
-                parameters={'columns': [self.config.id_column, 'obj_index']}
+                parameters={'columns': source_columns}
             )
-            table_source = np.asarray(astropy_source)
+
+            # Cut the isolated star sources to this visit/detector.
+            sources_downselected = False
+            if visit is not None:
+                sources_downselected = True
+                these_sources = (astropy_source['visit'] == visit)
+
+                if these_sources.sum() == 0:
+                    self.log.info('No sources found for visit %d in tract %d.', visit, tract)
+                    continue
+
+                if detector is not None:
+                    these_sources &= (astropy_source['detector'] == detector)
+                    if these_sources.sum() == 0:
+                        self.log.info(
+                            'No sources found for visit %d, detector %d in tract %d.',
+                            visit,
+                            detector,
+                            tract,
+                        )
+                        continue
+
+                astropy_source = astropy_source[these_sources]
 
             # Cut isolated star table to those observed in this band, and adjust indexes
-            (use_band,) = (table_cat[f'nsource_{band}'] > 0).nonzero()
+            # We must use all the stars in the table in the band to ensure consistent
+            # reserve star selection below.
+            (use_band,) = (astropy_cat[f'nsource_{band}'] > 0).nonzero()
 
             if len(use_band) == 0:
                 # There are no sources in this band in this tract.
@@ -538,13 +584,25 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
 
             # With the following matching:
             #   table_source[b] <-> table_cat[use_band[a]]
-            obj_index = table_source['obj_index'][:]
-            a, b = esutil.numpy_util.match(use_band, obj_index)
+            a, b = esutil.numpy_util.match(use_band, np.asarray(astropy_source['obj_index']))
 
             # Update indexes and cut to band-selected stars/sources
-            table_source['obj_index'][b] = a
-            _, index_new = np.unique(a, return_index=True)
-            table_cat[f'source_cat_index_{band}'][use_band] = index_new
+            astropy_source['obj_index'][b] = a
+            if sources_downselected:
+                # The isolated star catalog is built such that each star
+                # in the catalog is matched to multiple sources. But due
+                # to the way it is constructed of isolated stars there
+                # is at most one unique source on any visit associated
+                # with a single isolated star in the catalog. Therefore,
+                # everything is guaranteed to already be uniquely
+                # matched here because we did visit (and detector)
+                # down-selection above.
+                astropy_cat[f'source_cat_index_{band}'][use_band][a] = b
+            else:
+                # If there was no down-selection then each star has
+                # multiple sources.
+                _, index_new = np.unique(a, return_index=True)
+                astropy_cat[f'source_cat_index_{band}'][use_band] = index_new
 
             # After the following cuts, the catalogs have the following properties:
             # - table_cat only contains isolated stars that have at least one source
@@ -555,43 +613,33 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             #   applied to table_source will give all the sources associated with the star.
             # - For each source, table_source["obj_index"] points to the index of the associated
             #   isolated star.
-            table_source = table_source[b]
-            table_cat = table_cat[use_band]
+            astropy_source = astropy_source[b]
+            astropy_cat = astropy_cat[use_band]
 
             # Add reserved flag column to tables
-            table_cat = np.lib.recfunctions.append_fields(
-                table_cat,
-                'reserved',
-                np.zeros(table_cat.size, dtype=bool),
-                usemask=False
-            )
-            table_source = np.lib.recfunctions.append_fields(
-                table_source,
-                'reserved',
-                np.zeros(table_source.size, dtype=bool),
-                usemask=False
-            )
+            astropy_cat['reserved'] = False
+            astropy_source['reserved'] = False
 
             # Get reserve star flags
-            table_cat['reserved'][:] = self.reserve_selection.run(
-                len(table_cat),
+            astropy_cat['reserved'][:] = self.reserve_selection.run(
+                len(astropy_cat),
                 extra=f'{band}_{tract}',
             )
-            table_source['reserved'][:] = table_cat['reserved'][table_source['obj_index']]
+            astropy_source['reserved'][:] = astropy_cat['reserved'][astropy_source['obj_index']]
 
             # Offset indexes to account for tract merging
-            table_cat[f'source_cat_index_{band}'] += merge_source_counter
-            table_source['obj_index'] += merge_cat_counter
+            astropy_cat[f'source_cat_index_{band}'] += merge_source_counter
+            astropy_source['obj_index'] += merge_cat_counter
 
-            isolated_tables.append(table_cat)
-            isolated_sources.append(table_source)
+            isolated_tables.append(astropy_cat)
+            isolated_sources.append(astropy_source)
 
-            merge_cat_counter += len(table_cat)
-            merge_source_counter += len(table_source)
+            merge_cat_counter += len(astropy_cat)
+            merge_source_counter += len(astropy_source)
 
         if len(isolated_tables) > 0:
-            isolated_table = np.concatenate(isolated_tables)
-            isolated_source_table = np.concatenate(isolated_sources)
+            isolated_table = astropy.table.vstack(isolated_tables, metadata_conflicts='silent')
+            isolated_source_table = astropy.table.vstack(isolated_sources, metadata_conflicts='silent')
         else:
             isolated_table = None
             isolated_source_table = None
@@ -633,7 +681,8 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             Detector number (for logging).
         exposure : `lsst.afw.image.ExposureF`
         src : `lsst.afw.table.SourceCatalog`
-        isolated_source_table : `np.ndarray`
+        isolated_source_table : `np.ndarray` or `astropy.table.Table`
+        fgcm_standard_star_cat : `np.ndarray`
 
         Returns
         -------
@@ -674,7 +723,7 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         # Find the isolated sources and set flags
         matched_src, matched_iso = esutil.numpy_util.match(
             selected_src['id'],
-            isolated_source_table[self.config.id_column]
+            np.asarray(isolated_source_table[self.config.id_column]),
         )
         if len(matched_src) == 0:
             self.log.warning(
@@ -689,7 +738,7 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         selected_src['calib_psf_candidate'] = matched_arr
 
         reserved_arr = np.zeros(len(selected_src), dtype=bool)
-        reserved_arr[matched_src] = isolated_source_table['reserved'][matched_iso]
+        reserved_arr[matched_src] = np.asarray(isolated_source_table['reserved'][matched_iso])
         selected_src['calib_psf_reserved'] = reserved_arr
 
         selected_src = selected_src[selected_src['calib_psf_candidate']].copy(deep=True)
@@ -888,7 +937,8 @@ class FinalizeCharacterizationTask(FinalizeCharacterizationTaskBase):
         _, isolated_source_table = self.concat_isolated_star_cats(
             band,
             isolated_star_cat_dict,
-            isolated_star_source_dict
+            isolated_star_source_dict,
+            visit=visit,
         )
 
         if isolated_source_table is None:
@@ -1052,6 +1102,8 @@ class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
             band,
             isolated_star_cat_dict,
             isolated_star_source_dict,
+            visit=visit,
+            detector=detector,
         )
 
         if isolated_source_table is None:
