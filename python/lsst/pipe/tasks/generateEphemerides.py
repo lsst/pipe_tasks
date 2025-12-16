@@ -44,14 +44,15 @@ __all__ = ["GenerateEphemeridesConfig", "GenerateEphemeridesTask"]
 
 
 import numpy as np
+import glob
+from importlib import resources
 import os
 import pandas as pd
-from importlib import resources
 from sqlite3 import connect as sqlite_connect
-from subprocess import run, PIPE
+from subprocess import Popen, PIPE
 from tempfile import TemporaryDirectory
 from textwrap import dedent
-
+from time import sleep
 
 from lsst.pex.config import Field
 from lsst.pipe.base import connectionTypes, NoWorkFound, PipelineTask, \
@@ -155,6 +156,11 @@ class GenerateEphemeridesConfig(
         dtype=float,
         doc="The field of view of the observatory (degrees)",
         default=2.06,
+    )
+    loggingSleepTime = Field(
+        dtype=int,
+        doc="Time (seconds) to sleep between checking Sorcha's progress",
+        default=300,
     )
 
 
@@ -278,8 +284,6 @@ class GenerateEphemeridesTask(PipelineTask):
         with TemporaryDirectory() as tmpdirname:
             self.log.info(f'temp dir: {tmpdirname}')
 
-            # Orbits
-            inputOrbits.to_csv(f'{tmpdirname}/orbits.csv', index=False)
             # Observations SQLite
             conn = sqlite_connect(f'{tmpdirname}/pointings.db')
             inputVisits.to_sql('observations', conn, if_exists='replace', index=False)
@@ -287,8 +291,6 @@ class GenerateEphemeridesTask(PipelineTask):
 
             with open(f'{tmpdirname}/eph.ini', 'w') as ephFile:
                 ephFile.write(eph_str)
-
-            inputColors.to_csv(f'{tmpdirname}/colors.csv', index=False)
 
             cache = f'{tmpdirname}/sorcha_cache/'
             self.log.info('making cache')
@@ -336,6 +338,10 @@ class GenerateEphemeridesTask(PipelineTask):
                 meta_kernel_file.write(meta_kernel_text)
             self.log.info('Sorcha process begun')
 
+            # Orbits and colors
+            inputOrbits.to_csv(f'{tmpdirname}/orbits.csv', index=False)
+            inputColors.to_csv(f'{tmpdirname}/colors.csv', index=False)
+
             # FIXME: this is a workaround for breakage in sbpy 0.5.0 caused
             # by astropy 7.2.0. DM-53467 once sbpy is updated.
             try:
@@ -357,7 +363,7 @@ class GenerateEphemeridesTask(PipelineTask):
                     sys.exit(main())
                     """)]
 
-            result = run(
+            proc = Popen(
                 sorcha_run
                 + [
                     "-c", f"{tmpdirname}/eph.ini",
@@ -373,9 +379,24 @@ class GenerateEphemeridesTask(PipelineTask):
                 stderr=PIPE,
                 text=True
             )
+            # As long as Sorcha is running, print its output or 'still running' messages
+            outfile = None
+            n_iter = 0
+            while proc.poll() is None:
+                sleep(self.config.loggingSleepTime)
+                n_iter += 1
+                if outfile is None:
+                    outfile = open(glob.glob(f'{tmpdirname}/sorcha_output*.log')[0], 'r')
+                new_text = outfile.read()
+                if len(new_text) > 0:
+                    self.log.info(new_text)
+                else:
+                    seconds_elapsed = n_iter * self.config.loggingSleepTime
+                    self.log.info(f"Sorcha is still running ({seconds_elapsed} seconds)")
 
-            self.log.info(f"Sorcha STDOUT:\n {result.stdout}")
-            self.log.info(f"Sorcha STDERR:\n {result.stderr}")
+            stdout, stderr = proc.communicate()
+            self.log.info(f"Sorcha STDOUT:\n {stdout}")
+            self.log.info(f"Sorcha STDERR:\n {stderr}")
 
             eph_path = f'{tmpdirname}/sorcha_output.csv'
             if not os.path.exists(eph_path):
