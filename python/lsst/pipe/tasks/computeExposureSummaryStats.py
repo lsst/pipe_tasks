@@ -35,6 +35,7 @@ import lsst.afw.math as afwMath
 import lsst.afw.image as afwImage
 import lsst.geom as geom
 from lsst.meas.algorithms import ScienceSourceSelectorTask
+from lsst.meas.algorithms.computeExPsf import ComputeExPsfTask
 from lsst.utils.timer import timeMethod
 import lsst.ip.isr as ipIsr
 
@@ -137,6 +138,22 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         doc="Signal-to-noise ratio for computing the magnitude limit depth.",
         default=5.0
     )
+    psfTE1 = pexConfig.ConfigurableField(
+        target=ComputeExPsfTask,
+        doc="Use treecorr for computing scalar value of TE1.",
+    )
+    psfTE2 = pexConfig.ConfigurableField(
+        target=ComputeExPsfTask,
+        doc="Use treecorr for computing scalar value of TE2.",
+    )
+    psfTE3 = pexConfig.ConfigurableField(
+        target=ComputeExPsfTask,
+        doc="Use treecorr for computing scalar value of TE3.",
+    )
+    psfTE4 = pexConfig.ConfigurableField(
+        target=ComputeExPsfTask,
+        doc="Use treecorr for computing scalar value of TE4.",
+    )
 
     def setDefaults(self):
         super().setDefaults()
@@ -158,6 +175,23 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
 
         self.starSelector.signalToNoise.fluxField = "slot_PsfFlux_instFlux"
         self.starSelector.signalToNoise.errField = "slot_PsfFlux_instFluxErr"
+
+        min_theta = [1e-6, 5.0, 1e-6, 5.0]
+        max_theta = [1.0, 100.0, 5.0, 20.0]
+        psfTEx = [
+            self.psfTE1,
+            self.psfTE2,
+            self.psfTE3,
+            self.psfTE4,
+        ]
+
+        for tex, mint, maxt in zip(psfTEx, min_theta, max_theta):
+            tex.setDefaults()
+            tex.treecorr.min_sep = mint / 60.0
+            tex.treecorr.max_sep = maxt / 60.0
+            tex.treecorr.nbins = 1
+            tex.treecorr.bin_type = "Linear"
+            tex.treecorr.sep_units = "degree"
 
 
 class ComputeExposureSummaryStatsTask(pipeBase.Task):
@@ -200,6 +234,22 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     - psfTraceRadiusDelta
     - psfApFluxDelta
 
+    These quantities are computed as part of:
+    https://rubinobs.atlassian.net/browse/DM-40780
+
+    - psfTE1e1
+    - psfTE1e2
+    - psfTE1ex
+    - psfTE2e1
+    - psfTE2e2
+    - psfTE2ex
+    - psfTE3e1
+    - psfTE3e2
+    - psfTE3ex
+    - psfTE4e1
+    - psfTE4e2
+    - psfTE4ex
+
     This quantity is computed based on the aperture correction map, the
     psfSigma, and the image mask to assess the robustness of the aperture
     corrections across a given detector:
@@ -219,6 +269,11 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         super().__init__(**kwargs)
 
         self.makeSubtask("starSelector")
+        self.makeSubtask("psfTE1")
+        self.makeSubtask("psfTE2")
+        self.makeSubtask("psfTE3")
+        self.makeSubtask("psfTE4")
+        self._isTEXComputationDone = False
 
     @timeMethod
     def run(self, exposure, sources, background):
@@ -408,10 +463,13 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         psfE1 = (psfXX - psfYY)/(psfXX + psfYY)
         psfE2 = 2*psfXY/(psfXX + psfYY)
 
-        psfStarDeltaE1Median = np.median(starE1 - psfE1)
-        psfStarDeltaE1Scatter = sigmaMad(starE1 - psfE1, scale='normal')
-        psfStarDeltaE2Median = np.median(starE2 - psfE2)
-        psfStarDeltaE2Scatter = sigmaMad(starE2 - psfE2, scale='normal')
+        e1Residuals = starE1 - psfE1
+        e2Residuals = starE2 - psfE2
+
+        psfStarDeltaE1Median = np.median(e1Residuals)
+        psfStarDeltaE1Scatter = sigmaMad(e1Residuals, scale='normal')
+        psfStarDeltaE2Median = np.median(e2Residuals)
+        psfStarDeltaE2Scatter = sigmaMad(e2Residuals, scale='normal')
 
         psfStarDeltaSizeMedian = np.median(starSize - psfSize)
         psfStarDeltaSizeScatter = sigmaMad(starSize - psfSize, scale='normal')
@@ -433,6 +491,162 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
                 bad_mask_bits=self.config.psfBadMaskPlanes
             )
             summary.maxDistToNearestPsf = float(maxDistToNearestPsf)
+
+    def comp_psf_TEX_visit_level(self, summary, sources, sources_is_astropy=False):
+        """Compute all summary-statistic fields at visit level for TEx metric of PSF.
+
+        Parameters
+        ----------
+        summary : `lsst.afw.image.ExposureSummaryStats`
+            Summary object to update in-place.
+        sources : `lsst.afw.table.SourceCatalog` or `astropy.table.Table`
+            Catalog for quantities that are computed from source table columns.
+            If `None`, these quantities will be reset (generally to NaN).
+            The type of this table must correspond to the
+            ``sources_is_astropy`` argument.
+        sources_is_astropy : `bool`, optional
+            Whether ``sources`` is an `astropy.table.Table` instance instead
+            of an `lsst.afw.table.Catalog` instance.
+        """
+
+        if self._isTEXComputationDone:
+
+            summary.psfTE1e1 = self.psfTE1e1
+            summary.psfTE1e2 = self.psfTE1e2
+            summary.psfTE1ex = self.psfTE1ex
+            summary.psfTE2e1 = self.psfTE2e1
+            summary.psfTE2e2 = self.psfTE2e2
+            summary.psfTE2ex = self.psfTE2ex
+            summary.psfTE3e1 = self.psfTE3e1
+            summary.psfTE3e2 = self.psfTE3e2
+            summary.psfTE3ex = self.psfTE3ex
+            summary.psfTE4e1 = self.psfTE4e1
+            summary.psfTE4e2 = self.psfTE4e2
+            summary.psfTE4ex = self.psfTE4ex
+
+        else:
+
+            self._isTEXComputationDone = True
+
+            nan = float("nan")
+            summary.psfTE1e1, self.psfTE1e1 = nan, nan
+            summary.psfTE1e2, self.psfTE1e2 = nan, nan
+            summary.psfTE1ex, self.psfTE1ex = nan, nan
+            summary.psfTE2e1, self.psfTE2e1 = nan, nan
+            summary.psfTE2e2, self.psfTE2e2 = nan, nan
+            summary.psfTE2ex, self.psfTE2ex = nan, nan
+            summary.psfTE3e1, self.psfTE3e1 = nan, nan
+            summary.psfTE3e2, self.psfTE3e2 = nan, nan
+            summary.psfTE3ex, self.psfTE3ex = nan, nan
+            summary.psfTE4e1, self.psfTE4e1 = nan, nan
+            summary.psfTE4e2, self.psfTE4e2 = nan, nan
+            summary.psfTE4ex, self.psfTE4ex = nan, nan
+
+            psf_mask = self.starSelector.run(sources).selected
+
+            nPsfStarsUsedInStats = psf_mask.sum()
+
+            if nPsfStarsUsedInStats == 0:
+                # No stars to measure statistics, so we must return the defaults
+                # of 0 stars and NaN values.
+                return
+
+            if sources_is_astropy:
+                psf_cat = sources[psf_mask]
+            else:
+                psf_cat = sources[psf_mask].copy(deep=True)
+
+            starXX = psf_cat[self.config.starShape + '_xx']
+            starYY = psf_cat[self.config.starShape + '_yy']
+            starXY = psf_cat[self.config.starShape + '_xy']
+            psfXX = psf_cat[self.config.psfShape + '_xx']
+            psfYY = psf_cat[self.config.psfShape + '_yy']
+            psfXY = psf_cat[self.config.psfShape + '_xy']
+
+            starE1 = (starXX - starYY)/(starXX + starYY)
+            starE2 = 2*starXY/(starXX + starYY)
+
+            psfE1 = (psfXX - psfYY)/(psfXX + psfYY)
+            psfE2 = 2*psfXY/(psfXX + psfYY)
+
+            e1Residuals = starE1 - psfE1
+            e2Residuals = starE2 - psfE2
+
+            # Comp TEx
+            ra = psf_cat["coord_ra"].to(units.deg)
+            dec = psf_cat["coord_dec"].to(units.deg)
+
+            psfTEx = {
+                "TE1": self.psfTE1,
+                "TE2": self.psfTE2,
+            }
+
+            gatherE12Stat = {
+                "TE1": {"E1": np.nan, "E2": np.nan, "Ex": np.nan, },
+                "TE2": {"E1": np.nan, "E2": np.nan, "Ex": np.nan, },
+            }
+
+            isNotNan = np.array([True] * len(ra))
+            isNotNan &= np.isfinite(ra)
+            isNotNan &= np.isfinite(dec)
+            isNotNan &= np.isfinite(e1Residuals)
+            isNotNan &= np.isfinite(e2Residuals)
+
+            if np.sum(isNotNan) >= 2:
+                # TE1 and TE2 computation, over visit.
+                for TEX in ["TE1", "TE2"]:
+
+                    output = psfTEx[TEX].run(
+                        e1Residuals[isNotNan], e2Residuals[isNotNan],
+                        ra[isNotNan], dec[isNotNan],
+                        units="degree",
+                    )
+
+                    gatherE12Stat[TEX]["E1"] = output.metric_E1
+                    gatherE12Stat[TEX]["E2"] = output.metric_E2
+                    gatherE12Stat[TEX]["Ex"] = output.metric_Ex
+
+                # TE3 and TE4 loop over detector and then median on visit.
+
+                psfTEx = {
+                    "TE3": self.psfTE3,
+                    "TE4": self.psfTE4,
+                }
+
+                gatherE34Stat = {
+                    "TE3": {"E1": [], "E2": [], "Ex": [], },
+                    "TE4": {"E1": [], "E2": [], "Ex": [], },
+                }
+                # calibrateImage run at detector level,
+                # need to wait second run of PSF to run this.
+                if "detector" in psf_cat.colnames:
+                    detectorIds = list(set(psf_cat["detector"]))
+                    for TEX in ["TE3", "TE4"]:
+                        for ccdId in detectorIds:
+                            isccdId = (ccdId == psf_cat["detector"])
+                            mask = (isccdId & isNotNan)
+                            if np.sum(mask) >= 2:
+                                output = psfTEx[TEX].run(
+                                    e1Residuals[mask], e2Residuals[mask],
+                                    ra[mask], dec[mask],
+                                    units="degree",
+                                )
+                                gatherE34Stat[TEX]["E1"].append(output.metric_E1)
+                                gatherE34Stat[TEX]["E2"].append(output.metric_E2)
+                                gatherE34Stat[TEX]["Ex"].append(output.metric_Ex)
+
+                self.psfTE1e1 = summary.psfTE1e1 = gatherE12Stat["TE1"]["E1"]
+                self.psfTE1e2 = summary.psfTE1e2 = gatherE12Stat["TE1"]["E2"]
+                self.psfTE1ex = summary.psfTE1ex = gatherE12Stat["TE1"]["Ex"]
+                self.psfTE2e1 = summary.psfTE2e1 = gatherE12Stat["TE2"]["E1"]
+                self.psfTE2e2 = summary.psfTE2e2 = gatherE12Stat["TE2"]["E2"]
+                self.psfTE2ex = summary.psfTE2ex = gatherE12Stat["TE2"]["Ex"]
+                self.psfTE3e1 = summary.psfTE3e1 = np.nanmedian(gatherE34Stat["TE3"]["E1"])
+                self.psfTE3e2 = summary.psfTE3e2 = np.nanmedian(gatherE34Stat["TE3"]["E2"])
+                self.psfTE3ex = summary.psfTE3ex = np.nanmedian(gatherE34Stat["TE3"]["Ex"])
+                self.psfTE4e1 = summary.psfTE4e1 = np.nanmedian(gatherE34Stat["TE4"]["E1"])
+                self.psfTE4e2 = summary.psfTE4e2 = np.nanmedian(gatherE34Stat["TE4"]["E2"])
+                self.psfTE4ex = summary.psfTE4ex = np.nanmedian(gatherE34Stat["TE4"]["Ex"])
 
     def update_wcs_stats(self, summary, wcs, bbox, visitInfo):
         """Compute all summary-statistic fields that depend on the WCS model.
