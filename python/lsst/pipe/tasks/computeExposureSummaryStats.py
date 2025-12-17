@@ -205,6 +205,12 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     corrections across a given detector:
     - psfApCorrSigmaScaledDelta
 
+    These quantities are computed based on the shape measurements of the
+    sources used in the PSF model to assess the image quality (i.e. as a
+    measure of the deviation from a circular shape):
+    - starEMedian
+    - starUnNormalizedEMedian
+
     These quantities are computed to assess depth:
     - effTime
     - effTimePsfSigmaScale
@@ -325,6 +331,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.psfTraceRadiusDelta = nan
         summary.psfApFluxDelta = nan
         summary.psfApCorrSigmaScaledDelta = nan
+        summary.starEMedian = nan
+        summary.starUnNormalizedEMedian = nan
 
         if psf is None:
             return
@@ -402,6 +410,13 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         starE1 = (starXX - starYY)/(starXX + starYY)
         starE2 = 2*starXY/(starXX + starYY)
         starSizeMedian = np.median(starSize)
+
+        starE = np.sqrt(starE1**2.0 + starE2**2.0)
+        starUnNormalizedE = np.sqrt((starXX - starYY)**2.0 + (2.0*starXY)**2.0)
+        starEMedian = np.median(starE)
+        starUnNormalizedEMedian = np.median(starUnNormalizedE)
+        summary.starEMedian = float(starEMedian)
+        summary.starUnNormalizedEMedian = float(starUnNormalizedEMedian)
 
         # Use the trace radius for the psf size.
         psfSize = np.sqrt(psfXX/2. + psfYY/2.)
