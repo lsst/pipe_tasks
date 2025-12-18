@@ -166,7 +166,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
             # Fix in DM-53463
             ssObjects['RARateCosDec_deg_day'] = 0
             ssObjects['DecRate_deg_day'] = 0
-            ssObjects['PSFMagTrue'] = 0
+            ssObjects['trailedSourceMagTrue'] = 0
             ssObjects['RangeRate_LTC_km_s'] = 0
 
             marginArcsec = ssObjects["Err(arcsec)"].max()
@@ -178,15 +178,15 @@ class SolarSystemAssociationTask(pipeBase.Task):
             ]
 
         else:  # Sorcha ephemerides
-            if 'PSFMagTrue' not in ssObjects.columns:  # Only possible for historical CI ephemerides
-                ssObjects['PSFMagTrue'] = 0  # Fix in DM-53462
+            if 'trailedSourceMagTrue' not in ssObjects.columns:  # Only possible for historical CI ephemerides
+                ssObjects['trailedSourceMagTrue'] = 0  # Fix in DM-53462
             ssObjects.rename_columns(
                 ['RATrue_deg', 'DecTrue_deg', 'phase_deg', 'Range_LTC_km', 'Obj_Sun_x_LTC_km',
                  'Obj_Sun_y_LTC_km', 'Obj_Sun_z_LTC_km', 'Obj_Sun_vx_LTC_km_s', 'Obj_Sun_vy_LTC_km_s',
                  'Obj_Sun_vz_LTC_km_s'],
                 ['ephRa', 'ephDec', 'phaseAngle', 'topoRange', 'helio_x', 'helio_y',
                  'helio_z', 'helio_vx', 'helio_vy', 'helio_vz'])
-            ssObjects['ssObjectId'] = [obj_id_to_ss_object_id(v) for v in ssObjects['ObjID']]
+            ssObjects['ssObjectId'] = [obj_id_to_ss_object_id(v) for v in ssObjects['packed_desig']]
             ssObjects['helioRange'] = (
                 np.sqrt(ssObjects['helio_x']**2 + ssObjects['helio_y']**2
                         + ssObjects['helio_z']**2)
@@ -267,7 +267,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
             all_cols = (
                 ["ObjID", "phaseAngle", "helioRange", "topoRange"] + stateVectorColumns + mpcorbColumns
                 + ["ephRa", "ephDec", "RARateCosDec_deg_day",
-                   "DecRate_deg_day", "PSFMagTrue", "RangeRate_LTC_km_s"]
+                   "DecRate_deg_day", "trailedSourceMagTrue", "RangeRate_LTC_km_s"]
             )
             ssSourceData.append(list(maskedObject[all_cols].values()))
             dia_ra = diaSourceCatalog[src_idx]["ra"]
