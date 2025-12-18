@@ -28,7 +28,6 @@ import warnings
 
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
-from lsst.obs.base.utils import TableVStack
 from lsst.utils.timer import timeMethod
 from .ssp.ssobject import DIA_COLUMNS, compute_ssobject
 
@@ -46,7 +45,6 @@ class ConsolidateSsTablesConnections(
         storageClass="ArrowAstropy",
         dimensions=("tract", "patch"),
         multiple=True,
-        deferLoad=True,
     )
     mpcorb = cT.Input(
         doc="Minor Planet Center orbit table used for association",
@@ -91,7 +89,7 @@ class ConsolidateSsTablesTask(pipeBase.PipelineTask):
 
         Parameters
         ----------
-        inputCatalogs `list` of `lsst.daf.butler.DeferredDatasetHandle`:
+        inputCatalogs `list` of `astropy.table.Table`:
             All per-patch ssSource Tables
 
         Returns
@@ -107,7 +105,7 @@ class ConsolidateSsTablesTask(pipeBase.PipelineTask):
                 (`astropy.table.Table`).
         """
         self.log.info("Concatenating %s per-patch ssSource Tables", len(inputCatalogs))
-        ssSourceTable = TableVStack.vstack_handles(inputCatalogs)
+        ssSourceTable = tb.vstack(inputCatalogs)
         self.log.info(
             f"Done. {len(ssSourceTable)} observations, {np.unique(ssSourceTable['ssObjectId']).size} objects."
         )
