@@ -186,6 +186,16 @@ class BrightStarCutoutConfig(
         doc="Stars fainter than this limit are only included if they appear within the frame boundaries.",
         default=15.0,
     )
+    min_focal_plane_radius = Field[float](
+        doc="Minimum distance to focal plane center in mm. Stars with a focal plane radius smaller than "
+        "this will be omitted.",
+        default=-1.0,
+    )
+    max_focal_plane_radius = Field[float](
+        doc="Maximum distance to focal plane center in mm. Stars with a focal plane radius greater than "
+        "this will be omitted.",
+        default=2000.0,
+    )
 
     # PSF Fitting
     use_extended_psf = Field[bool](
@@ -332,6 +342,11 @@ class BrightStarCutoutTask(PipelineTask):
             # Excluding faint stars that are not within the frame.
             if obj["mag"] > self.config.off_frame_mag_lim and not self.star_in_frame(pix_coord, bbox):
                 continue
+
+            distance_mm, theta_angle = self.star_location_on_focal(pix_coord, detector)
+
+            if distance_mm < self.config.min_focal_plane_radius or distance_mm > self.config.max_focal_plane_radius:
+                continue
             footprint_index = associations.get(star_index, None)
             stampMI = MaskedImageF(self.padded_stamp_bbox)
 
@@ -386,7 +401,6 @@ class BrightStarCutoutTask(PipelineTask):
 
             # Save the stamp if the PSF fit was successful or no fit requested
             if fit_psf_results or not self.config.do_fit_psf:
-                distance_mm, theta_angle = self.star_location_on_focal(pix_coord, detector)
 
                 stamp = BrightStarStamp(
                     stamp_im=stampMI,
