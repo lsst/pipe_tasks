@@ -345,7 +345,10 @@ class BrightStarCutoutTask(PipelineTask):
 
             distance_mm, theta_angle = self.star_location_on_focal(pix_coord, detector)
 
-            if distance_mm < self.config.min_focal_plane_radius or distance_mm > self.config.max_focal_plane_radius:
+            if (
+                distance_mm < self.config.min_focal_plane_radius
+                or distance_mm > self.config.max_focal_plane_radius
+            ):
                 continue
             footprint_index = associations.get(star_index, None)
             stampMI = MaskedImageF(self.padded_stamp_bbox)
@@ -471,7 +474,7 @@ class BrightStarCutoutTask(PipelineTask):
         star_focal_plane_coords = detector.transform(pix_coord, PIXELS, FOCAL_PLANE)
         star_x_fp = star_focal_plane_coords.getX()
         star_y_fp = star_focal_plane_coords.getY()
-        distance_mm = np.sqrt(star_x_fp ** 2 + star_y_fp ** 2)
+        distance_mm = np.sqrt(star_x_fp**2 + star_y_fp**2)
         theta_rad = math.atan2(star_y_fp, star_x_fp)
         theta_angle = Angle(theta_rad, radians)
         return distance_mm, theta_angle
@@ -718,8 +721,8 @@ class BrightStarCutoutTask(PipelineTask):
             coefficient_matrix[:, 0] /= sigma_data
             coefficient_matrix[:, 1] = y / sigma_data
             coefficient_matrix[:, 2] = x / sigma_data
-            coefficient_matrix[:, 3] = y ** 2 / sigma_data
-            coefficient_matrix[:, 4] = x ** 2 / sigma_data
+            coefficient_matrix[:, 3] = y**2 / sigma_data
+            coefficient_matrix[:, 4] = x**2 / sigma_data
             coefficient_matrix[:, 5] = x * y / sigma_data
             # scikit might have a fitting tool
 
@@ -866,8 +869,8 @@ class BrightStarCutoutTask(PipelineTask):
         x_grid, y_grid = np.meshgrid(stamp_bbox.getX().arange(), stamp_bbox.getY().arange())
         x_plane = ImageF((x_grid * x_gradient).astype(np.float32), xy0=stampMI.getXY0())
         y_plane = ImageF((y_grid * y_gradient).astype(np.float32), xy0=stampMI.getXY0())
-        x_curve = ImageF((x_grid ** 2 * x_curvature).astype(np.float32), xy0=stampMI.getXY0())
-        y_curve = ImageF((y_grid ** 2 * y_curvature).astype(np.float32), xy0=stampMI.getXY0())
+        x_curve = ImageF((x_grid**2 * x_curvature).astype(np.float32), xy0=stampMI.getXY0())
+        y_curve = ImageF((y_grid**2 * y_curvature).astype(np.float32), xy0=stampMI.getXY0())
         curvature_xy = ImageF((x_grid * y_grid * curvature_xy).astype(np.float32), xy0=stampMI.getXY0())
         stampMI -= pedestal
         stampMI -= x_plane
