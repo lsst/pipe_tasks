@@ -160,7 +160,7 @@ class GenerateEphemeridesConfig(
     loggingSleepTime = Field(
         dtype=int,
         doc="Time (seconds) to sleep between checking Sorcha's progress",
-        default=300,
+        default=60,
     )
 
 
@@ -266,10 +266,12 @@ class GenerateEphemeridesTask(PipelineTask):
             "rotSkyPos": [0] * n,
         })
 
+        desig_dict = {un: pack for pack, un in mpcorb[['packed_primary_provisional_designation',
+                                                       'unpacked_primary_provisional_designation']].values}
         inputOrbits = mpcorb[
-            ['packed_primary_provisional_designation', 'q', 'e', 'i',
+            ['unpacked_primary_provisional_designation', 'q', 'e', 'i',
              'node', 'argperi', 'peri_time', 'epoch_mjd']
-        ].rename(columns={'packed_primary_provisional_designation': 'ObjID', 'epoch_mjd': 'epochMJD_TDB',
+        ].rename(columns={'unpacked_primary_provisional_designation': 'ObjID', 'epoch_mjd': 'epochMJD_TDB',
                           'i': 'inc', 'argperi': 'argPeri', 'peri_time': 't_p_MJD_TDB'})
         inputOrbits['FORMAT'] = 'COM'
         # Colors exactly like jake's prep_input_colors
@@ -407,6 +409,7 @@ class GenerateEphemeridesTask(PipelineTask):
 
             # Return Sorcha output directly
             ephemeris = pd.read_csv(eph_path)
+        ephemeris['packed_desig'] = ephemeris['ObjID'].map(desig_dict)
         perVisitSsObjects = {FieldID: group for FieldID, group in ephemeris.groupby("FieldID")}
         for v in visits:
             if v not in perVisitSsObjects:
