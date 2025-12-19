@@ -49,7 +49,11 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
                                       ConvertDetectorAngleToPositionAngle,
                                       HtmIndex20, Ebv, MomentsIuuSky, MomentsIvvSky, MomentsIuvSky,
                                       SemimajorAxisFromMoments, SemiminorAxisFromMoments,
-                                      PositionAngleFromMoments)
+                                      PositionAngleFromMoments,
+                                      CorrelationIuuSky, CorrelationIvvSky, CorrelationIuvSky,
+                                      SemimajorAxisFromCorrelation, SemiminorAxisFromCorrelation,
+                                      PositionAngleFromCorrelation
+                                      )
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
@@ -941,7 +945,8 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
             "base_LocalWcs_CDMatrix_1_1",
             "base_LocalWcs_CDMatrix_1_2",
             "base_LocalWcs_CDMatrix_2_1",
-            "base_LocalWcs_CDMatrix_1_1"])
+            "base_LocalWcs_CDMatrix_1_1",
+        ])
 
         # CD Matrix from a ComCam exposure.
         self.dataDict["base_LocalWcs_CDMatrix_1_1"] = \
@@ -958,19 +963,34 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
             np.array([6.12848637, 80.99510036, 6.05671667, 35.79219613, 5.97778765])
         self.dataDict["slot_Shape_xy"] = \
             np.array([-0.10281872, 0.88788384, -0.1261287, -1.60504171, 0.11974515])
+        self.dataDict["slot_Shape_sigma_x"] = np.sqrt(self.dataDict["slot_Shape_xx"])
+        self.dataDict["slot_Shape_sigma_y"] = np.sqrt(self.dataDict["slot_Shape_yy"])
+        self.dataDict["slot_Shape_rho"] = self.dataDict["slot_Shape_xy"]/(
+            self.dataDict["slot_Shape_sigma_x"]*self.dataDict["slot_Shape_sigma_y"]
+        )
 
-        col_names = ["slot_Shape_xx", "slot_Shape_yy", "slot_Shape_xy",
-                                      "base_LocalWcs_CDMatrix_1_1",
-                                      "base_LocalWcs_CDMatrix_1_2",
-                                      "base_LocalWcs_CDMatrix_2_1",
-                                      "base_LocalWcs_CDMatrix_2_2"]
-        skyXX_functor = MomentsIuuSky(*col_names, filt="g")
-        skyYY_functor = MomentsIvvSky(*col_names, filt="g")
-        skyXY_functor = MomentsIuvSky(*col_names, filt="g")
+        args_cd = [
+            "base_LocalWcs_CDMatrix_1_1", "base_LocalWcs_CDMatrix_1_2",
+            "base_LocalWcs_CDMatrix_2_1", "base_LocalWcs_CDMatrix_2_2",
+        ]
+        args = ["slot_Shape_xx", "slot_Shape_yy", "slot_Shape_xy"] + args_cd
+        args_corr = ["slot_Shape_sigma_x", "slot_Shape_sigma_y", "slot_Shape_rho"] + args_cd
 
-        axesA_functor = SemimajorAxisFromMoments(*col_names, filt="g")
-        axesB_functor = SemiminorAxisFromMoments(*col_names, filt="g")
-        axesTheta_functor = PositionAngleFromMoments(*col_names, filt="g")
+        skyXX_functor = MomentsIuuSky(*args, filt="g")
+        skyYY_functor = MomentsIvvSky(*args, filt="g")
+        skyXY_functor = MomentsIuvSky(*args, filt="g")
+
+        axesA_functor = SemimajorAxisFromMoments(*args, filt="g")
+        axesB_functor = SemiminorAxisFromMoments(*args, filt="g")
+        axesTheta_functor = PositionAngleFromMoments(*args, filt="g")
+
+        skyXX_corr_functor = CorrelationIuuSky(*args_corr, filt="g")
+        skyYY_corr_functor = CorrelationIvvSky(*args_corr, filt="g")
+        skyXY_corr_functor = CorrelationIuvSky(*args_corr, filt="g")
+
+        axesA_corr_functor = SemimajorAxisFromCorrelation(*args_corr, filt="g")
+        axesB_corr_functor = SemiminorAxisFromCorrelation(*args_corr, filt="g")
+        axesTheta_corr_functor = PositionAngleFromCorrelation(*args_corr, filt="g")
 
         df = self.getMultiIndexDataFrame(self.dataDict)
         output_sky_xx = skyXX_functor(df)
@@ -980,6 +1000,14 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
         output_axes_a = axesA_functor(df)
         output_axes_b = axesB_functor(df)
         output_axes_theta = axesTheta_functor(df)
+
+        output_sky_xx_corr = skyXX_corr_functor(df)
+        output_sky_yy_corr = skyYY_corr_functor(df)
+        output_sky_xy_corr = skyXY_corr_functor(df)
+
+        output_axes_a_corr = axesA_corr_functor(df)
+        output_axes_b_corr = axesB_corr_functor(df)
+        output_axes_theta_corr = axesTheta_corr_functor(df)
 
         transformed_xx = []
         transformed_yy = []
@@ -1017,10 +1045,16 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
         self.assertFloatsAlmostEqual(output_sky_xx, np.array(transformed_xx), rtol=1e-5)
         self.assertFloatsAlmostEqual(output_sky_yy, np.array(transformed_yy), rtol=1e-5)
         self.assertFloatsAlmostEqual(output_sky_xy, np.array(transformed_xy), rtol=1e-5)
+        self.assertFloatsAlmostEqual(output_sky_xx_corr, np.array(transformed_xx), rtol=1e-5)
+        self.assertFloatsAlmostEqual(output_sky_yy_corr, np.array(transformed_yy), rtol=1e-5)
+        self.assertFloatsAlmostEqual(output_sky_xy_corr, np.array(transformed_xy), rtol=1e-5)
 
         self.assertFloatsAlmostEqual(output_axes_a, np.array(axes_a), rtol=1e-5)
         self.assertFloatsAlmostEqual(output_axes_b, np.array(axes_b), rtol=1e-5)
         self.assertFloatsAlmostEqual(output_axes_theta, np.array(axes_theta), rtol=1e-5)
+        self.assertFloatsAlmostEqual(output_axes_a_corr, np.array(axes_a), rtol=1e-5)
+        self.assertFloatsAlmostEqual(output_axes_b_corr, np.array(axes_b), rtol=1e-5)
+        self.assertFloatsAlmostEqual(output_axes_theta_corr, np.array(axes_theta), rtol=1e-5)
 
     def _dropLevels(self, df):
         levelsToDrop = [n for lev, n in zip(df.columns.levels, df.columns.names) if len(lev) == 1]
