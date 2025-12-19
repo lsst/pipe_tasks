@@ -105,6 +105,8 @@ class SolarSystemAssociationTask(pipeBase.Task):
             - ``ssSourceData`` : ssSource table data. (`Astropy.table.Table`)
         """
 
+        # TODO DM-53699: the source_column should be made consistent, and
+        # should match the definition in sdm_schemas.
         source_columns = DIA_COLUMNS.copy()
         if 'diaSourceId' in diaSourceCatalog.columns:
             source_column = 'diaSourceId'
@@ -462,6 +464,8 @@ class SolarSystemAssociationTask(pipeBase.Task):
             Raised if duplicate DiaObjects or duplicate DiaSources are found.
         """
         self.log.info("No SolarSystemObjects found in detector bounding box.")
+        # TODO DM-53699: these column names and dtypes should match the
+        # definitions in sdm_schemas.
         dia_columns = [col for col in DIA_COLUMNS if not col == source_column]
         dia_dtypes = [d[0] for d in zip(DIA_DTYPES, DIA_COLUMNS) if not d[1] == source_column]
         names = ['designation', 'eclBeta', 'eclLambda', 'ephDec', 'ephOffsetDec', 'ephOffsetRa', 'ephRa',
