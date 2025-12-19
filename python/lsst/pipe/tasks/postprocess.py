@@ -1638,7 +1638,7 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
                              "psfStarDeltaSizeMedian", "psfStarDeltaSizeScatter",
                              "psfStarScaledDeltaSizeScatter", "psfTraceRadiusDelta",
                              "psfApFluxDelta", "psfApCorrSigmaScaledDelta",
-                             "maxDistToNearestPsf",
+                             "maxDistToNearestPsf", "starEMedian", "starUnNormalizedEMedian",
                              "effTime", "effTimePsfSigmaScale",
                              "effTimeSkyBgScale", "effTimeZeroPointScale",
                              "magLim"]
