@@ -105,9 +105,15 @@ class SolarSystemAssociationTask(pipeBase.Task):
             - ``ssSourceData`` : ssSource table data. (`Astropy.table.Table`)
         """
 
+        source_columns = DIA_COLUMNS.copy()
+        if 'diaSourceId' in diaSourceCatalog.columns:
+            source_column = 'diaSourceId'
+        else:
+            source_column = 'id'
+            source_columns[source_columns.index('diaSourceId')] = source_column
         nSolarSystemObjects = len(ssObjects)
         if nSolarSystemObjects <= 0:
-            return self._return_empty(diaSourceCatalog, ssObjects)
+            return self._return_empty(diaSourceCatalog, ssObjects, source_column=source_column)
 
         exposure_midpoint = visitInfo.date.toAstropy()
         if 'obs_x_poly' in ssObjects.columns:  # mpSky ephemeris
@@ -218,7 +224,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
             marginArcsec).copy()
         nSolarSystemObjects = len(maskedObjects)
         if nSolarSystemObjects <= 0:
-            return self._return_empty(diaSourceCatalog, maskedObjects)
+            return self._return_empty(diaSourceCatalog, maskedObjects, source_column=source_column)
 
         maxRadius = np.deg2rad(self.config.maxDistArcSeconds / 3600)
 
@@ -236,10 +242,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
         ssSourceData, ssObjectIds, prov_ids = [], [], []
         ras, decs, residual_ras, residual_decs, dia_ids = [], [], [], [], []
         diaSourceCatalog["ssObjectId"] = 0
-        source_column = 'id'
         maskedObjects['associated'] = False
-        if 'diaSourceId' in diaSourceCatalog.columns:
-            source_column = 'diaSourceId'
 
         # Find all pairs of a source and an object within maxRadius
         nearby_obj_source_pairs = []
@@ -350,15 +353,15 @@ class SolarSystemAssociationTask(pipeBase.Task):
         if len(ssSourceData):
 
             # Extract only DIA_COLUMNS
-            dia = diaSourceCatalog[DIA_COLUMNS].copy()
+            dia = diaSourceCatalog[source_columns].copy()
 
             # Prefix all except diaSourceId
-            for c in DIA_COLUMNS:
-                if c != "diaSourceId":
+            for c in source_columns:
+                if c != source_column:
                     dia.rename_column(c, f"DIA_{c}")
 
             # Join on diaSourceId, keeping all rows of ssSourceData
-            ssSourceData = join(ssSourceData, dia, keys="diaSourceId", join_type="left", uniq_col_name="")
+            ssSourceData = join(ssSourceData, dia, keys=source_column, join_type="left", uniq_col_name="")
 
         return pipeBase.Struct(
             ssoAssocDiaSources=diaSourceCatalog[assocSourceMask],
@@ -432,7 +435,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
 
         return vectors
 
-    def _return_empty(self, diaSourceCatalog, emptySolarSystemObjects):
+    def _return_empty(self, diaSourceCatalog, emptySolarSystemObjects, source_column):
         """Return a struct with all appropriate empty values for no SSO associations.
 
         Parameters
@@ -459,14 +462,14 @@ class SolarSystemAssociationTask(pipeBase.Task):
             Raised if duplicate DiaObjects or duplicate DiaSources are found.
         """
         self.log.info("No SolarSystemObjects found in detector bounding box.")
-        dia_columns = [col for col in DIA_COLUMNS if not col == 'diaSourceId']
-        dia_dtypes = [d[0] for d in zip(DIA_DTYPES, DIA_COLUMNS) if not d[1] == 'diaSourceId']
+        dia_columns = [col for col in DIA_COLUMNS if not col == source_column]
+        dia_dtypes = [d[0] for d in zip(DIA_DTYPES, DIA_COLUMNS) if not d[1] == source_column]
         names = ['designation', 'eclBeta', 'eclLambda', 'ephDec', 'ephOffsetDec', 'ephOffsetRa', 'ephRa',
                  'galLat', 'galLon', 'elongation', 'ephOffset', 'ephOffsetAlongTrack', 'ephOffsetCrossTrack',
                  'ephRate', 'ephRateDec', 'ephRateRa', 'ephVmag', 'helio_vtot', 'helio_vx', 'helio_vy',
                  'helio_vz', 'helio_x', 'helio_y', 'helio_z', 'helioRange', 'helioRangeRate', 'phaseAngle',
                  'topo_vtot', 'topo_vx', 'topo_vy', 'topo_vz', 'topo_x', 'topo_y', 'topo_z', 'topoRange',
-                 'topoRangeRate', 'diaSourceId', 'ssObjectId', 'diaDistanceRank'] + dia_columns
+                 'topoRangeRate', source_column, 'ssObjectId', 'diaDistanceRank'] + dia_columns
         dtypes = [str] + [float] * 35 + [int] * 3 + dia_dtypes
         return pipeBase.Struct(
             ssoAssocDiaSources=Table(names=diaSourceCatalog.columns),
