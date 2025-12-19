@@ -33,6 +33,11 @@ __all__ = ["init_fromDict", "Functor", "CompositeFunctor", "mag_aware_eval",
            "LocalNanojanskyErr", "LocalDipoleMeanFlux",
            "LocalDipoleMeanFluxErr", "LocalDipoleDiffFlux",
            "LocalDipoleDiffFluxErr", "Ebv",
+           "MomentsIuuSky", "MomentsIvvSky", "MomentsIuvSky",
+           "CorrelationIuuSky", "CorrelationIvvSky", "CorrelationIuvSky",
+           "PositionAngleFromMoments", "PositionAngleFromCorrelation",
+           "SemimajorAxisFromMoments", "SemimajorAxisFromCorrelation",
+           "SemiminorAxisFromMoments", "SemiminorAxisFromCorrelation",
            ]
 
 import logging
@@ -1989,18 +1994,20 @@ class Ebv(Functor):
 class MomentsBase(Functor):
     """Base class for functors that use shape moments and localWCS"""
 
+    is_covariance: bool = True
+
     def __init__(self,
-                 shape_xx,
-                 shape_yy,
-                 shape_xy,
+                 shape_1_1,
+                 shape_2_2,
+                 shape_1_2,
                  colCD_1_1,
                  colCD_1_2,
                  colCD_2_1,
                  colCD_2_2,
                  **kwargs):
-        self.shape_xx = shape_xx
-        self.shape_yy = shape_yy
-        self.shape_xy = shape_xy
+        self.shape_1_1 = shape_1_1
+        self.shape_2_2 = shape_2_2
+        self.shape_1_2 = shape_1_2
         self.colCD_1_1 = colCD_1_1
         self.colCD_1_2 = colCD_1_2
         self.colCD_2_1 = colCD_2_1
@@ -2010,21 +2017,69 @@ class MomentsBase(Functor):
     @property
     def columns(self):
         return [
-            self.shape_xx,
-            self.shape_yy,
-            self.shape_xy,
+            self.shape_1_1,
+            self.shape_2_2,
+            self.shape_1_2,
+        ] + self.columns_ref
+
+    @property
+    def columns_ref(self):
+        """Return columns that are needed from the ref table."""
+        return [
             self.colCD_1_1,
             self.colCD_1_2,
             self.colCD_2_1,
             self.colCD_2_2]
 
-    # Each of sky_uu, sky_vv, sky_uv evalutes one element of
+    def compute_ellipse_terms(self, df, sky: bool = True):
+        r"""Return terms commonly used for ellipse parameterization conversions.
+
+        Parameters
+        ----------
+        df
+            The data frame.
+        sky
+            Whether to compute the terms in sky coordinates.
+            If False, XX, YY and XY moments are used instead of
+            UU, VV and UV.
+
+        Returns
+        -------
+        xx_p_yy
+            The sum of the diagonal terms of the covariance.
+        xx_m_yy
+            The difference of the diagonal terms of the covariance.
+        t2
+            A term similar to the discriminant of the quadratic formula.
+        """
+        xx = self.sky_uu(df) if sky else self.get_xx(df)
+        yy = self.sky_vv(df) if sky else self.get_yy(df)
+        xx_m_yy = xx - yy
+        t2 = xx_m_yy**2 + 4.0*(self.sky_uv(df) if sky else self.get_xy(df))**2
+        # TODO: Check alternative form that may be more stable for computing
+        # the minor axis size (see gauss2d/src/ellipse.cc)
+        # t2 = xx**2 + yy**2 - 2*(xx*yy - 2*xy**2)
+        return xx + yy, xx_m_yy, t2
+
+    def get_xx(self, df):
+        xx = df[self.shape_1_1]
+        return xx if self.is_covariance else xx**2
+
+    def get_yy(self, df):
+        yy = df[self.shape_2_2]
+        return yy if self.is_covariance else yy**2
+
+    def get_xy(self, df):
+        xy = df[self.shape_1_2]
+        return xy if self.is_covariance else xy*df[self.shape_1_1]*df[self.shape_2_2]
+
+    # Each of sky_uu, sky_vv, sky_uv evaluates one element of
     # CD_matrix * moments_matrix * CD_matrix.T
     def sky_uu(self, df):
         """Return the component of the moments tensor aligned with the RA axis, in radians."""
-        i_xx = df[self.shape_xx]
-        i_yy = df[self.shape_yy]
-        i_xy = df[self.shape_xy]
+        i_xx = self.get_xx(df)
+        i_yy = self.get_yy(df)
+        i_xy = self.get_xy(df)
         CD_1_1 = df[self.colCD_1_1]
         CD_1_2 = df[self.colCD_1_2]
         CD_2_1 = df[self.colCD_2_1]
@@ -2033,9 +2088,9 @@ class MomentsBase(Functor):
 
     def sky_vv(self, df):
         """Return the component of the moments tensor aligned with the dec axis, in radians."""
-        i_xx = df[self.shape_xx]
-        i_yy = df[self.shape_yy]
-        i_xy = df[self.shape_xy]
+        i_xx = self.get_xx(df)
+        i_yy = self.get_yy(df)
+        i_xy = self.get_xy(df)
         CD_1_2 = df[self.colCD_1_2]
         CD_2_1 = df[self.colCD_2_1]
         CD_2_2 = df[self.colCD_2_2]
@@ -2044,9 +2099,9 @@ class MomentsBase(Functor):
 
     def sky_uv(self, df):
         """Return the covariance of the moments tensor in ra, dec coordinates, in radians."""
-        i_xx = df[self.shape_xx]
-        i_yy = df[self.shape_yy]
-        i_xy = df[self.shape_xy]
+        i_xx = self.get_xx(df)
+        i_yy = self.get_yy(df)
+        i_xy = self.get_xy(df)
         CD_1_1 = df[self.colCD_1_1]
         CD_1_2 = df[self.colCD_1_2]
         CD_2_1 = df[self.colCD_2_1]
@@ -2056,7 +2111,7 @@ class MomentsBase(Functor):
 
 
 class MomentsIuuSky(MomentsBase):
-    """Rotate pixel moments Ixx,Iyy,Iyy into ra,dec frame and arcseconds"""
+    """Rotate pixel moments Ixx,Iyy,Ixy into ra,dec frame and arcseconds"""
     _defaultDataset = 'meas'
     name = "moments_uu"
     shortname = "moments_uu"
@@ -2064,11 +2119,16 @@ class MomentsIuuSky(MomentsBase):
     def _func(self, df):
         sky_uu_radians = self.sky_uu(df)
 
-        return pd.Series(sky_uu_radians*((180/np.pi)*3600)**2, index=df.index).astype('float32')
+        return pd.Series((sky_uu_radians*((180/np.pi)*3600)**2).astype(np.float32), index=df.index)
+
+
+class CorrelationIuuSky(MomentsIuuSky):
+    """MomentsIuuSky but from sigma_x, sigma_y, rho correlation terms."""
+    is_covariance = False
 
 
 class MomentsIvvSky(MomentsBase):
-    """Rotate pixel moments Ixx,Iyy,Iyy into ra,dec frame and arcseconds"""
+    """Rotate pixel moments Ixx,Iyy,Ixy into ra,dec frame and arcseconds"""
     _defaultDataset = 'meas'
     name = "moments_vv"
     shortname = "moments_vv"
@@ -2076,11 +2136,16 @@ class MomentsIvvSky(MomentsBase):
     def _func(self, df):
         sky_vv_radians = self.sky_vv(df)
 
-        return pd.Series(sky_vv_radians*((180/np.pi)*3600)**2, index=df.index).astype('float32')
+        return pd.Series((sky_vv_radians*((180/np.pi)*3600)**2).astype(np.float32), index=df.index)
+
+
+class CorrelationIvvSky(MomentsIvvSky):
+    """MomentsIvvSky but from sigma_x, sigma_y, rho correlation terms."""
+    is_covariance = False
 
 
 class MomentsIuvSky(MomentsBase):
-    """Rotate pixel moments Ixx,Iyy,Iyy into ra,dec frame and arcseconds"""
+    """Rotate pixel moments Ixx,Iyy,Ixy into ra,dec frame and arcseconds"""
     _defaultDataset = 'meas'
     name = "moments_uv"
     shortname = "moments_uv"
@@ -2088,62 +2153,67 @@ class MomentsIuvSky(MomentsBase):
     def _func(self, df):
         sky_uv_radians = self.sky_uv(df)
 
-        return pd.Series(sky_uv_radians*((180/np.pi)*3600)**2, index=df.index).astype('float32')
+        return pd.Series((sky_uv_radians*((180/np.pi)*3600)**2).astype(np.float32), index=df.index)
+
+
+class CorrelationIuvSky(MomentsIuvSky):
+    """MomentsIuvSky but from sigma_x, sigma_y, rho correlation terms."""
+    is_covariance = False
 
 
 class PositionAngleFromMoments(MomentsBase):
-    """Compute position angle relative to ra,dec frame, in degrees."""
+    """Compute position angle relative to ra,dec frame, in degrees, from Ixx,Iyy,Ixy pixel moments."""
     _defaultDataset = 'meas'
     name = "moments_theta"
     shortname = "moments_theta"
 
     def _func(self, df):
-
         sky_uu = self.sky_uu(df)
         sky_vv = self.sky_vv(df)
         sky_uv = self.sky_uv(df)
         theta = 0.5*np.arctan2(2*sky_uv, sky_uu - sky_vv)
 
-        return pd.Series(np.degrees(np.array(theta)), index=df.index).astype('float32')
+        return pd.Series((np.degrees(np.array(theta))).astype(np.float32), index=df.index)
+
+
+class PositionAngleFromCorrelation(PositionAngleFromMoments):
+    """PositionAngleFromMoments but from sigma_x, sigma_y, rho correlation terms."""
+    is_covariance = False
 
 
 class SemimajorAxisFromMoments(MomentsBase):
-    """Compute the semimajor axis length in arcseconds"""
+    """Compute the semimajor axis length in arcseconds, from Ixx,Iyy,Ixy pixel moments."""
     _defaultDataset = 'meas'
     name = "moments_a"
     shortname = "moments_a"
 
     def _func(self, df):
+        xx_p_yy, _, t2 = self.compute_ellipse_terms(df)
+        # This copies what is done (unvectorized) in afw.geom.ellipse
+        a_radians = np.sqrt(0.5 * (xx_p_yy + np.sqrt(t2)))
 
-        sky_uu = self.sky_uu(df)
-        sky_vv = self.sky_vv(df)
-        sky_uv = self.sky_uv(df)
+        return pd.Series((np.degrees(a_radians)*3600).astype(np.float32), index=df.index)
 
-        # This copies what is done (unvectorized) in afw.geom.
-        xx_p_yy = sky_uu + sky_vv
-        xx_m_yy = sky_uu - sky_vv
-        t = np.sqrt(xx_m_yy * xx_m_yy + 4 * sky_uv * sky_uv)
-        a_radians = np.sqrt(0.5 * (xx_p_yy + t))
 
-        return pd.Series(np.degrees(a_radians)*3600, index=df.index).astype('float32')
+class SemimajorAxisFromCorrelation(SemimajorAxisFromMoments):
+    """SemimajorAxisFromMoments but from sigma_x, sigma_y, rho correlation terms."""
+    is_covariance = False
 
 
 class SemiminorAxisFromMoments(MomentsBase):
-    """Compute the semiminor axis length in arcseconds"""
+    """Compute the semiminor axis length in arcseconds, from Ixx,Iyy,Ixy pixel moments."""
     _defaultDataset = 'meas'
     name = "moments_b"
     shortname = "moments_b"
 
     def _func(self, df):
+        xx_p_yy, _, t2 = self.compute_ellipse_terms(df)
+        # This copies what is done (unvectorized) in afw.geom.ellipse
+        b_radians = np.sqrt(0.5 * (xx_p_yy - np.sqrt(t2)))
 
-        sky_uu = self.sky_uu(df)
-        sky_vv = self.sky_vv(df)
-        sky_uv = self.sky_uv(df)
+        return pd.Series((np.degrees(b_radians)*3600).astype(np.float32), index=df.index)
 
-        # This copies what is done (unvectorized) in afw.geom.
-        xx_p_yy = sky_uu + sky_vv
-        xx_m_yy = sky_uu - sky_vv
-        t = np.sqrt(xx_m_yy * xx_m_yy + 4 * sky_uv * sky_uv)
-        b_radians = np.sqrt(0.5 * (xx_p_yy - t))
 
-        return pd.Series(np.degrees(b_radians)*3600, index=df.index).astype('float32')
+class SemiminorAxisFromCorrelation(SemiminorAxisFromMoments):
+    """SemiminorAxisFromMoments but from sigma_x, sigma_y, rho correlation terms."""
+    is_covariance = False
