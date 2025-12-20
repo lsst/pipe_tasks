@@ -919,7 +919,8 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
     _DefaultName = "transformObjectCatalog"
     ConfigClass = TransformObjectCatalogConfig
 
-    datasets_multiband = ("epoch", "ref", "Exp_multiprofit", "Sersic_multiprofit")
+    # ref must go first because other datasets may need columns from it
+    datasets_multiband = ("ref", "epoch", "Exp_multiprofit", "Sersic_multiprofit")
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -928,8 +929,8 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
                              "Must be a valid path to yaml in order to run Task as a PipelineTask.")
         result = self.run(handle=inputs["inputCatalog"], funcs=self.funcs,
                           dataId=dict(outputRefs.outputCatalog.dataId.mapping),
-                          handle_epoch=inputs["inputCatalogEpoch"],
                           handle_ref=inputs["inputCatalogRef"],
+                          handle_epoch=inputs["inputCatalogEpoch"],
                           handle_Exp_multiprofit=inputs["inputCatalogExpMultiprofit"],
                           handle_Sersic_multiprofit=inputs["inputCatalogSersicMultiprofit"],
                           )
@@ -967,6 +968,8 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
 
         # Split up funcs for per-band and multiband tables
         funcDict_band = {}
+        # Check if dataset needs to add any meas table columns
+        columns_add_from_ref = defaultdict(list)
 
         for name, func in funcDict_in.items():
             if func.dataset in funcDicts_multiband:
@@ -981,6 +984,8 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
                     # If it does, then one would need to make a new functor
                     # Determining the (kw)args is tricky in that case
                     func.bands = tuple(inputBands)
+                if hasattr(func, "columns_ref"):
+                    columns_add_from_ref[func.dataset].extend(func.columns_ref)
 
             funcDict = funcDicts_multiband.get(func.dataset, funcDict_band)
             funcDict[name] = func
@@ -1039,6 +1044,9 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
             df = flattenFilters(df, noDupCols=noDupCols, camelCase=self.config.camelCase,
                                 inputBands=inputBands)
 
+        # This will be assigned by running ref first
+        df_ref = None
+
         # Apply per-dataset functors to each multiband dataset in turn
         for dataset, funcDict in funcDicts_multiband.items():
             handle_multiband = handles_multi[dataset]
@@ -1058,6 +1066,16 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
                 df_dataset = df_dataset.to_pandas().set_index(name_index_ap, drop=False)
             elif isinstance(df_dataset, afwTable.SourceCatalog):
                 df_dataset = df_dataset.asAstropy().to_pandas().set_index(name_index, drop=False)
+
+            if dataset == "ref":
+                df_ref = df_dataset
+            else:
+                if df_ref is None:
+                    raise RuntimeError(f"ref must be the first dataset, not {dataset}")
+                # Add columns as if they're a sorted set
+                for column in {key: None for key in columns_add_from_ref.get(dataset, [])}:
+                    df_dataset[column] = df_ref[column]
+
             # TODO: should funcDict have noDup funcs removed?
             # noDup was intended for per-band tables.
             result = self.transform(
