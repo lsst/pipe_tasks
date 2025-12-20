@@ -8,7 +8,8 @@ import argparse
 import sys
 
 # The only columns we need from DiaSource.
-
+# TODO DM-53699: These column names should be taken from and/or checked to
+# match the DiaSource table definition in sdm_schemas
 DIA_COLUMNS = [
     "diaSourceId", "midpointMjdTai", "ra", "dec", "extendedness",
     "band", "psfFlux", "psfFluxErr"
