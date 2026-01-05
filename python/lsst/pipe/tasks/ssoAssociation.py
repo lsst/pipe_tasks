@@ -308,7 +308,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
         ssSourceData[source_column] = dia_ids
         coords = SkyCoord(ra=ssSourceData['ra'].value * u.deg, dec=ssSourceData['dec'].value * u.deg)
         ssSourceData['galLon'] = coords.galactic.l.deg
-        ssSourceData['galLat '] = coords.galactic.b.deg
+        ssSourceData['galLat'] = coords.galactic.b.deg
         ssSourceData['eclLambda'] = coords.barycentrictrueecliptic.lon.deg
         ssSourceData['eclBeta'] = coords.barycentrictrueecliptic.lat.deg
         ssSourceData['designation'] = prov_ids
