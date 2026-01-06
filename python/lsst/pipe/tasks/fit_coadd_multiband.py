@@ -155,39 +155,19 @@ class CoaddMultibandFitInputConnections(
         bands_needed_set = set(bands_needed)
 
         adjusted_inputs = {}
-        bands_found, connection_first = None, None
+        inputs_to_adjust = {}
+        bands_found = bands_needed_set
         for connection_name, (connection, dataset_refs) in inputs.items():
             # Datasets without bands in their dimensions should be fine
             if 'band' in connection.dimensions:
                 datasets_by_band = {dref.dataId['band']: dref for dref in dataset_refs}
                 bands_set = set(datasets_by_band.keys())
                 if self.config.allow_missing_bands:
-                    # Use the first dataset found as the reference since all
-                    # dataset types with band should have the same bands
-                    # This will only break if one of the calexp/meas datasets
-                    # is missing from a given band, which would surely be an
-                    # upstream problem anyway
-                    if bands_found is None:
-                        bands_found, connection_first = bands_set, connection_name
-                        if len(bands_found) == 0:
-                            raise pipeBase.NoWorkFound(
-                                f'DatasetRefs={dataset_refs} for {connection_name=} is empty'
-                            )
-                        elif not set(bands_read_only).issubset(bands_set):
-                            raise pipeBase.NoWorkFound(
-                                f'DatasetRefs={dataset_refs} has {bands_set=} which is missing at least one'
-                                f' of {bands_read_only=}'
-                            )
-                        # Put the bands to fit first, then any other bands
-                        # needed for initialization/priors only last
-                        bands_needed = [band for band in bands_fit if band in bands_found] + [
-                            band for band in bands_read_only if band not in bands_found
-                        ]
-                    elif bands_found != bands_set:
-                        raise RuntimeError(
-                            f'DatasetRefs={dataset_refs} with {connection_name=} has {bands_set=} !='
-                            f' {bands_found=} from {connection_first=}'
+                    if len(bands_found) == 0:
+                        raise pipeBase.NoWorkFound(
+                            f'DatasetRefs={dataset_refs} for {connection_name=} is empty'
                         )
+                    bands_found &= bands_set
                 # All configured bands are treated as necessary
                 elif not bands_needed_set.issubset(bands_set):
                     raise pipeBase.NoWorkFound(
@@ -201,10 +181,21 @@ class CoaddMultibandFitInputConnections(
                     )
                 # Adjust all datasets with band dimensions to include just
                 # the needed bands, in consistent order.
-                adjusted_inputs[connection_name] = (
-                    connection,
-                    [datasets_by_band[band] for band in bands_needed]
+                inputs_to_adjust[connection_name] = (connection, datasets_by_band)
+
+        if self.config.allow_missing_bands:
+            bands_needed = [band for band in bands_fit if band in bands_found] + [
+                band for band in bands_read_only if band not in bands_found
+            ]
+            if len(bands_needed) == 0:
+                raise pipeBase.NoWorkFound(
+                    f'No common bands remaining for inputs {",".join(inputs_to_adjust.keys())}'
                 )
+        for connection_name, (connection, datasets_by_band) in inputs_to_adjust.items():
+            adjusted_inputs[connection_name] = (
+                connection,
+                [datasets_by_band[band] for band in bands_needed]
+            )
 
         # Delegate to super for more checks.
         inputs.update(adjusted_inputs)
@@ -253,6 +244,7 @@ class CoaddMultibandFitSubConfig(pexConfig.Config):
         -------
         The set of such bands.
         """
+        return set()
 
 
 class CoaddMultibandFitSubTask(pipeBase.Task, ABC):
