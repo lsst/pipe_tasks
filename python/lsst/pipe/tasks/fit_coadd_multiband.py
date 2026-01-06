@@ -244,6 +244,7 @@ class CoaddMultibandFitSubConfig(pexConfig.Config):
         -------
         The set of such bands.
         """
+        return set()
 
 
 class CoaddMultibandFitSubTask(pipeBase.Task, ABC):
