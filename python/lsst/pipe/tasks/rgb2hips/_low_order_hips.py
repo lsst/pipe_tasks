@@ -74,9 +74,15 @@ class LowOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=LowOrderHip
         doc="URI to HiPS base for output.",
         optional=False,
     )
-    color_ordering = Field[str](doc="The bands used to construct the input images", optional=False)
+    color_ordering = Field[str](
+        doc=(
+            "A string of the astrophysical bands that correspond to the RGB channels in the color image "
+            "inputs to high_order_hips task. This is in making the hips metadata"
+        ),
+        optional=False,
+    )
     file_extension = ChoiceField[str](
-        doc="Extension for the presisted image, must be png or webp",
+        doc="Extension for the presisted image",
         allowed={"png": "Use the png image extension", "webp": "Use the webp image extension"},
         default="png",
     )
@@ -136,6 +142,8 @@ class LowOrderHipsTask(PipelineTask):
         # loop over each order, assembling the previous order tiles into
         # an array, and writing the image. Resample each image smaller,
         # and continue downward in order.
+        # This must 7 here based on the outputs of HighOrderHipsTask being
+        # healpix order 8 pixels.
         for order in range(7, self.config.min_order - 1, -1):
             self.log.info("Processing order %d", order)
             # sort the previous order's pixels into a mapping with keys of
