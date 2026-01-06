@@ -32,7 +32,6 @@ import healsparse as hsp
 from dataclasses import replace
 from datetime import datetime
 from collections.abc import Iterable
-from astropy.io import fits
 
 
 from lsst.resources import ResourcePath
@@ -91,9 +90,15 @@ class AllSkyHipsTaskConfig(PipelineTaskConfig, pipelineConnections=AllSkyHipsTas
         doc="URI to HiPS base for output.",
         optional=False,
     )
-    color_ordering = Field[str](doc="The bands used to construct the input images", optional=False)
+    color_ordering = Field[str](
+        doc=(
+            "A string of the astrophysical bands that correspond to the RGB channels in the color image "
+            "inputs to high_order_hips task. This is in making the hips metadata"
+        ),
+        optional=False,
+    )
     file_extension = ChoiceField[str](
-        doc="Extension for the presisted image, must be png or webp",
+        doc="Extension for the presisted image.",
         allowed={"png": "Use the png image extension", "webp": "Use the webp image extension"},
         default="png",
     )
@@ -110,8 +115,8 @@ class AllSkyHipsTaskConfig(PipelineTaskConfig, pipelineConnections=AllSkyHipsTas
         doc="Band corresponding to bluest color in image",
         default="g",
     )
-    redest_band = Field[str](
-        doc="Band corresponding to reddes color in image",
+    reddest_band = Field[str](
+        doc="Band corresponding to reddest color in image",
         default="i",
     )
     max_order = Field[int](doc="The maximum order hips that was produced", default=11)
@@ -139,7 +144,6 @@ class AllSkyHipsTaskConfig(PipelineTaskConfig, pipelineConnections=AllSkyHipsTas
         },
         default="uint8",
     )
-    hips_tile_width = Field[int](doc="The width of one hips tile", default=512)
     shift_order = Field[int](
         doc="Shift order of hips, right now must be 9 configuration for future options", default=9
     )
@@ -157,7 +161,7 @@ class AllSkyHipsTaskConfig(PipelineTaskConfig, pipelineConnections=AllSkyHipsTas
 class AllSkyHipsTask(PipelineTask):
     """Pipeline task for generating all-sky HealPix (HiPS) tiles and associated metadata."""
 
-    _DefaultName = "_allSkyHipsTask"
+    _DefaultName = "allSkyHipsTask"
     ConfigClass = AllSkyHipsTaskConfig
     config: ConfigClass
 
@@ -368,7 +372,7 @@ class AllSkyHipsTask(PipelineTask):
                 _write_property(fh, "hips_release_date", date_iso8601)
                 _write_property(fh, "hips_frame", "equatorial")
                 _write_property(fh, "hips_order", str(max_order))
-                _write_property(fh, "hips_tile_width", str(self.config.hips_tile_width))
+                _write_property(fh, "hips_tile_width", str(2**shift_order))
                 _write_property(fh, "hips_status", "private master clonableOnce")
                 _write_property(fh, "hips_tile_format", self.config.file_extension)
                 _write_property(fh, "dataproduct_subtype", "color")
@@ -382,8 +386,8 @@ class AllSkyHipsTask(PipelineTask):
                 else:
                     self.log.warning("blue band %s not in self.config.spectral_ranges.", band)
                     em_min = 3e-7
-                if self.config.redest_band in properties_config.spectral_ranges:
-                    em_max = properties_config.spectral_ranges[self.config.redest_band].lambda_max / 1e9
+                if self.config.reddest_band in properties_config.spectral_ranges:
+                    em_max = properties_config.spectral_ranges[self.config.reddest_band].lambda_max / 1e9
                 else:
                     self.log.warning("red band %s not in self.config.spectral_ranges.", band)
                     em_max = 1e-6
@@ -413,47 +417,13 @@ class AllSkyHipsTask(PipelineTask):
         # Special Dispensation because of the nature of HiPS outputs until
         # a more controlled solution can be found.
 
-        # Make the initial list of UNIQ pixels
-        uniq = 4 * (4**max_order) + pixels
-
         # Make a healsparse map which provides easy degrade/comparisons.
-        hspmap = hsp.HealSparseMap.make_empty(2**min_uniq_order, 2**max_order, dtype=np.float32)
-        hspmap[pixels] = 1.0
-
-        # Loop over orders, degrade each time, and look for pixels with full coverage.
-        for uniq_order in range(max_order - 1, min_uniq_order - 1, -1):
-            hspmap = hspmap.degrade(2**uniq_order, reduction="sum")
-            pix_shift = np.right_shift(pixels, 2 * (max_order - uniq_order))
-            # Check if any of the pixels at uniq_order have full coverage.
-            (covered,) = np.isclose(hspmap[pix_shift], 4 ** (max_order - uniq_order)).nonzero()
-            if covered.size == 0:
-                # No pixels at uniq_order are fully covered, we're done.
-                break
-            # Replace the UNIQ pixels that are fully covered.
-            uniq[covered] = 4 * (4**uniq_order) + pix_shift[covered]
-
-        # Remove duplicate pixels.
-        uniq = np.unique(uniq)
-
-        # Output to fits.
-        tbl = np.zeros(uniq.size, dtype=[("UNIQ", "i8")])
-        tbl["UNIQ"] = uniq
-
-        order = np.log2(tbl["UNIQ"] // 4).astype(np.int32) // 2
-        moc_order = np.max(order)
-
-        hdu = fits.BinTableHDU(tbl)
-        hdu.header["PIXTYPE"] = "HEALPIX"
-        hdu.header["ORDERING"] = "NUNIQ"
-        hdu.header["COORDSYS"] = "C"
-        hdu.header["MOCORDER"] = moc_order
-        hdu.header["MOCTOOL"] = "lsst.pipe.tasks.hips.GenerateHipsTask"
+        hspmap = hsp.HealSparseMap.make_empty(2**min_uniq_order, 2**max_order, dtype=np.int8)
+        hspmap[pixels] = 1
 
         uri = self.hips_base_path.join("Moc.fits")
-
         with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
-            hdu.writeto(temporary_uri.ospath)
-
+            hspmap.write_moc(temporary_uri.ospath)
             uri.transfer_from(temporary_uri, transfer="copy", overwrite=True)
 
     def _write_allsky_file(self, allsky_order):

@@ -101,9 +101,15 @@ class HighOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=HighOrderH
         doc="URI to HiPS base for output.",
         optional=False,
     )
-    color_ordering = Field[str](doc="The bands used to construct the input images", optional=False)
+    color_ordering = Field[str](
+        doc=(
+            "A string of the astrophysical bands that correspond to the RGB channels in the color image "
+            "inputs to high_order_hips task. This is in making the hips metadata"
+        ),
+        optional=False,
+    )
     file_extension = ChoiceField[str](
-        doc="Extension for the presisted image, must be png or webp",
+        doc="Extension for the presisted image.",
         allowed={"png": "Use the png image extension", "webp": "Use the webp image extension"},
         default="png",
     )
@@ -133,12 +139,12 @@ class HighOrderHipsTask(PipelineTask):
     order 8 pixels. This is then divided up into an 8x8 grid to produce 512x512
     images at hips order 11. The images is then resampled using lanczos order 4
     such that the image is half the size. The original image is then divided
-    into a 4x4 gird to produce hips images at order 10. The process is repeasted
+    into a 4x4 grid to produce hips images at order 10. The process is repeated
     to produce hips images at order 9, and finally the image is resampled down
     to 512x512 and saved out at hips order 8.
 
     The order 8 image is resampled one more time to 256x256 and presisted by
-    the butler for later consumption in the `LowOrderhipsTask`.
+    the butler for later consumption in the `LowOrderHipsTask`.
 
     The difference at producding wcs at order 8 and working up to 11, is tested
     to be less than 6 decimal places when converting ra dec to pixel coordinates,
@@ -232,10 +238,16 @@ class HighOrderHipsTask(PipelineTask):
         # Generate tiles for different HealPix orders using Lanczos resampling instead of binning.
         # This handles how intensities should change as the hips level changes.
         #
-        # The loop variables are the resampling factor, the hipx order, and the number of sub-divisions
+        # what this does is take a single 4096 x 4096 image and resamples it in a courser grain such
+        # that the output pixels correspond to a 4x4 grid of hips pixels at an increasingly lower scale.
+        # This works because hips is a hierarchy of tiles all contained in the same area of the sky.
+        # This allows us to generate all the output images by resampling the inputs and saves the time
+        # required to generate whole new images at each scale.
+        #
+        # The loop variables are the resampling factor, the hips order, and the number of sub-divisions
         # a pixel has gone through (used to determine quadrant).
-        for zoom, hpx_level, factor in zip((0, 2, 4, 8), (11, 10, 9, 8), (3, 2, 1, 0)):
-            self.log.info("generating tiles for hxp level %d", hpx_level)
+        for zoom, hips_level, factor in zip((0, 2, 4, 8), (11, 10, 9, 8), (3, 2, 1, 0)):
+            self.log.info("Generating tiles for hxp level %d", hips_level)
             if zoom:
                 size = 4096 // zoom
                 binned_array = cv2.resize(output_array_hpx, (size, size), interpolation=cv2.INTER_LANCZOS4)
@@ -272,13 +284,13 @@ class HighOrderHipsTask(PipelineTask):
                     _write_hips_image(
                         sub_pixel,
                         pixel_id,
-                        hpx_level,
+                        hips_level,
                         self.hips_base_path,
                         self.config.file_extension,
                         self.config.array_type,
                     )
 
-        # Finally, bin the level 8 hpx to 256x256 (1/4 order 7) to save to the buter.
+        # Finally, bin the level 8 hpx to 256x256 (1/4 order 7) to save to the butler.
         # This makes smaller arrays to load, and saves the binning operation in the joint phase.
         zoomed = cv2.resize(output_array_hpx, (256, 256), interpolation=cv2.INTER_LANCZOS4)
 
@@ -299,7 +311,7 @@ class HighOrderHipsTask(PipelineTask):
 
         Returns
         -------
-        mask : `NDArray`
+        mask : `np.ndarray`
             The output weighting mask to use in blending, repeated along third
             axis to use with RGB images.
 
@@ -344,18 +356,19 @@ class HighOrderHipsTask(PipelineTask):
 
         This function takes in an input keyed by tract, with values
         corresponding the patches in that tract that overlap the quatum's
-        healpix value. It assemeble each of these into a single image such
+        healpix value. It assembles each of these into a single image such
         that the return values is a list of images (and metadata) one element
         for each input tract.
 
         Parameters
         ----------
-        tract_patch
+        tract_patch : `dict` of `int` to `iterable` of `tuple` of
+                      `DeferredDatasetHandle`, `SkyWcs` and `Box2I`
             Input images and metadata organized into corresponding tracts.
 
-        Retruns
+        Returns
         -------
-        output_list
+        output_list : `list` of `tuple` of `NDArray` `SkyWcs` and `Box2I`
             List of assembled images and metadata, one element for each tract
 
         """
