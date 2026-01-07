@@ -1475,11 +1475,11 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
         self.log.debug("Concatenating metadata from %d per-detector calexps (visit %d)",
                        len(handles), visit)
 
-        expCatalog = self._combineExposureMetadata(visit, handles)
+        result = self.run(visit=visit, handles=handles)
 
-        butlerQC.put(expCatalog, outputRefs.visitSummary)
+        butlerQC.put(result, outputRefs)
 
-    def _combineExposureMetadata(self, visit, handles):
+    def run(self, *, visit, handles):
         """Make a combined exposure catalog from a list of handles.
         These handles must point to exposures with wcs, summaryStats,
         and other visit metadata.
@@ -1493,8 +1493,11 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
 
         Returns
         -------
-        visitSummary : `lsst.afw.table.ExposureCatalog`
-            Exposure catalog with per-detector summary information.
+        result : `lsst.pipe.base.Struct`
+            Struct with the following attributes:
+
+            - ``visitSummary`` (`lsst.afw.table.ExposureCatalog`): an Exposure
+              catalog with per-detector summary information.
         """
         cat = afwTable.ExposureCatalog(self.schema)
         cat.resize(len(handles))
@@ -1540,7 +1543,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
         cat.setMetadata(metadata)
 
         cat.sort()
-        return cat
+        return pipeBase.Struct(visitSummary=cat)
 
 
 class ConsolidateSourceTableConnections(pipeBase.PipelineTaskConnections,
