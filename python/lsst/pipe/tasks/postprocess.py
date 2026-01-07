@@ -62,6 +62,7 @@ import lsst.afw.table as afwTable
 from lsst.afw.image import ExposureSummaryStats, ExposureF
 from lsst.meas.base import SingleFrameMeasurementTask, DetectorVisitIdGeneratorConfig
 from lsst.obs.base.utils import strip_provenance_from_fits_header, TableVStack
+from lsst.meas.astrom.refit_pointing import RefitPointingTask
 
 from .coaddBase import reorderRefs
 from .functors import CompositeFunctor, Column
@@ -1402,6 +1403,13 @@ class TransformSourceTableTask(TransformCatalogBaseTask):
 class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
                                          dimensions=("instrument", "visit",),
                                          defaultTemplates={"calexpType": ""}):
+    camera = connectionTypes.PrerequisiteInput(
+        doc="Camera geometry.",
+        name="camera",
+        dimensions=("instrument",),
+        storageClass="Camera",
+        isCalibration=True,
+    )
     calexp = connectionTypes.Input(
         doc="Processed exposures used for metadata",
         name="calexp",
@@ -1423,6 +1431,23 @@ class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
         name="visitSummary_schema",
         storageClass="ExposureCatalog",
     )
+    # RefitPointingTask options and connections use snake_case for consistency
+    # with options of the same name in UpdateVisitSummaryTask, which seems more
+    # important than consistently using camelCase within this task.
+    visit_geometry = connectionTypes.Output(
+        doc="Updated visit[, detector] regions that can be used to update butler dimensions records.",
+        name="visit_geometry",
+        dimensions=("instrument", "visit"),
+        storageClass="VisitGeometry",
+    )
+
+    def __init__(self, *, config=None):
+        if self.config.do_refit_pointing:
+            self.camera = dataclasses.replace(self.camera, dimensions=config.cameraDimensions)
+        else:
+            del self.camera
+        if not self.config.do_write_visit_geometry:
+            del self.visit_geometry
 
 
 class ConsolidateVisitSummaryConfig(pipeBase.PipelineTaskConfig,
@@ -1437,6 +1462,37 @@ class ConsolidateVisitSummaryConfig(pipeBase.PipelineTaskConfig,
         dtype=bool,
         default=False,
     )
+    refitPointing = pexConfig.ConfigurableField(
+        "A subtask for refitting the boresight pointing and orientation, "
+        "and using those to produce new regions for butler dimensions.",
+        target=RefitPointingTask,
+    )
+    cameraDimensions = pexConfig.ListField(
+        "The dimensions of the 'camera' prerequisite input connection.",
+        dtype=str,
+        default=["instrument"],
+    )
+    do_refit_pointing = pexConfig.Field(
+        "Whether to re-fit the pointing model.",
+        dtype=bool,
+        default=True,
+    )
+    do_write_visit_geometry = pexConfig.Field(
+        "Whether to write refit-pointing regions that can be used to update butler dimension records.",
+        dtype=bool,
+        default=True,
+    )
+
+    def validate(self):
+        super().validate()
+        if self.do_write_visit_geometry and not self.do_refit_pointing:
+            raise ValueError("Cannot write visit_geometry without refitting the pointing.")
+
+    def setDefaults(self):
+        super().setDefaults()
+        # This prevents a conflict with the fields added by the
+        # UpdateVisitSummaryTask invocation of RefitPointingTask.
+        self.refitPointing.schema_prefix = "preliminary_"
 
 
 class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
@@ -1466,6 +1522,8 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
         self.schema.addField("physical_filter", type="String", size=32, doc="Physical filter")
         self.schema.addField("band", type="String", size=32, doc="Name of band")
         ExposureSummaryStats.update_schema(self.schema)
+        if self.config.do_refit_pointing:
+            self.makeSubtask("refitPointing", schema=self.schema)
         self.visitSummarySchema = afwTable.ExposureCatalog(self.schema)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
@@ -1475,11 +1533,13 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
         self.log.debug("Concatenating metadata from %d per-detector calexps (visit %d)",
                        len(handles), visit)
 
-        result = self.run(visit=visit, handles=handles)
+        camera = butlerQC.get(inputRefs.camera) if self.config.do_refit_pointing else None
+
+        result = self.run(visit=visit, handles=handles, camera=camera)
 
         butlerQC.put(result, outputRefs)
 
-    def run(self, *, visit, handles):
+    def run(self, *, visit, handles, camera=None):
         """Make a combined exposure catalog from a list of handles.
         These handles must point to exposures with wcs, summaryStats,
         and other visit metadata.
@@ -1490,6 +1550,8 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
             Visit identification number.
         handles : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             List of handles in visit.
+        camera : `lsst.afw.cameraGeom.Camera`, optional
+            Camera geometry.  Required if and only if ``do_refit_pointing=True``.
 
         Returns
         -------
@@ -1498,6 +1560,9 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
 
             - ``visitSummary`` (`lsst.afw.table.ExposureCatalog`): an Exposure
               catalog with per-detector summary information.
+            - ``visit_geometry`` (`lsst.obs.base.visit_geometry.VisitGeometry`):
+              Regions that can be used to update butler dimension regions for
+              this visit.  Only present if ``do_refit_pointing=True``.
         """
         cat = afwTable.ExposureCatalog(self.schema)
         cat.resize(len(handles))
@@ -1543,7 +1608,13 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
         cat.setMetadata(metadata)
 
         cat.sort()
-        return pipeBase.Struct(visitSummary=cat)
+        result = pipeBase.Struct(visitSummary=cat)
+
+        if self.config.do_refit_pointing:
+            refitPointingResult = self.refitPointing.run(catalog=cat, camera=camera)
+            result.visit_geometry = refitPointingResult.regions
+
+        return result
 
 
 class ConsolidateSourceTableConnections(pipeBase.PipelineTaskConnections,
