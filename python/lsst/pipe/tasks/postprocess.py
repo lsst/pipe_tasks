@@ -1469,27 +1469,27 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
         self.visitSummarySchema = afwTable.ExposureCatalog(self.schema)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        dataRefs = butlerQC.get(inputRefs.calexp)
-        visit = dataRefs[0].dataId["visit"]
+        handles = butlerQC.get(inputRefs.calexp)
+        visit = handles[0].dataId["visit"]
 
         self.log.debug("Concatenating metadata from %d per-detector calexps (visit %d)",
-                       len(dataRefs), visit)
+                       len(handles), visit)
 
-        expCatalog = self._combineExposureMetadata(visit, dataRefs)
+        expCatalog = self._combineExposureMetadata(visit, handles)
 
         butlerQC.put(expCatalog, outputRefs.visitSummary)
 
-    def _combineExposureMetadata(self, visit, dataRefs):
-        """Make a combined exposure catalog from a list of dataRefs.
-        These dataRefs must point to exposures with wcs, summaryStats,
+    def _combineExposureMetadata(self, visit, handles):
+        """Make a combined exposure catalog from a list of handles.
+        These handles must point to exposures with wcs, summaryStats,
         and other visit metadata.
 
         Parameters
         ----------
         visit : `int`
             Visit identification number.
-        dataRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
-            List of dataRefs in visit.
+        handles : `list` of `lsst.daf.butler.DeferredDatasetHandle`
+            List of handles in visit.
 
         Returns
         -------
@@ -1497,11 +1497,11 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
             Exposure catalog with per-detector summary information.
         """
         cat = afwTable.ExposureCatalog(self.schema)
-        cat.resize(len(dataRefs))
+        cat.resize(len(handles))
 
         cat["visit"] = visit
 
-        for i, dataRef in enumerate(dataRefs):
+        for i, dataRef in enumerate(handles):
             visitInfo = dataRef.get(component="visitInfo")
             filterLabel = dataRef.get(component="filter")
             summaryStats = dataRef.get(component="summaryStats")
@@ -1535,7 +1535,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
 
         metadata = dafBase.PropertyList()
         metadata.add("COMMENT", "Catalog id is detector id, sorted.")
-        # We are looping over existing datarefs, so the following is true
+        # We are looping over existing handles, so the following is true
         metadata.add("COMMENT", "Only detectors with data have entries.")
         cat.setMetadata(metadata)
 
