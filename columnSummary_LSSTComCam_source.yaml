@@ -1,0 +1,4 @@
+description: DRP specialized for LsstComCam surveys
+instrument: lsst.obs.lsst.LsstComCam
+tasks:
+  columnSummary_object: lsst.pipe.tasks.tableColumnSummary_source.TableColumnSummaryTask
