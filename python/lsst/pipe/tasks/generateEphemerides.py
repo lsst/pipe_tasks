@@ -64,12 +64,11 @@ from lsst.utils.timer import timeMethod
 class GenerateEphemeridesConnections(PipelineTaskConnections,
                                      dimensions=("instrument",)):
 
-    visitSummaries = connectionTypes.Input(
-        doc="Summary of visit information including ra, dec, and time",
-        name="preliminary_visit_summary",
-        storageClass="ExposureCatalog",
-        dimensions={"instrument", "visit"},
-        multiple=True
+    visitTable = connectionTypes.Input(
+        doc="Table summarizing each visit, including ra, dec, and time",
+        name="preliminary_visit_table",
+        storageClass="ArrowAstropy",
+        dimensions={"instrument"},
     )
     mpcorb = connectionTypes.Input(
         doc="Minor Planet Center orbit table used for association",
@@ -206,7 +205,7 @@ class GenerateEphemeridesTask(PipelineTask):
             butlerQC.put(ephemeris_visit, ref)
 
     @timeMethod
-    def run(self, visitSummaries, mpcorb, de440s, sb441_n16, obsCodes, linux_p1550p2650, pck00010,
+    def run(self, visitTable, mpcorb, de440s, sb441_n16, obsCodes, linux_p1550p2650, pck00010,
             earth_latest_high_prec, earth_620120_250826, earth_2025_250826_2125_predict, naif0012):
         """Parse the information on the current visit and retrieve the
         observable solar system objects from Sorcha.
@@ -238,17 +237,17 @@ class GenerateEphemeridesTask(PipelineTask):
                     DEC in decimal degrees (`float`)
 
         """
-        if len(visitSummaries) == 0:
+        if len(visitTable) == 0:
             raise NoWorkFound("No visits input!")
-        visitInfos = [vs[0].getVisitInfo() for vs in visitSummaries]
-        fieldRA = np.array([vi.getBoresightRaDec().getRa().asDegrees() for vi in visitInfos])
-        fieldDec = np.array([vi.getBoresightRaDec().getDec().asDegrees() for vi in visitInfos])
-        epochMJD = np.array([vi.date.toAstropy().tai.mjd for vi in visitInfos])
-        visits = [vi.id for vi in visitInfos]
+        visitTable = visitTable.to_pandas()
+        (
+            visits, epochMJD, fieldRA, fieldDec, visitTime
+        ) = visitTable[
+            ['visitId', 'expMidptMJD', 'ra', 'dec', 'expTime']
+        ].values.T
 
         # Confused about seconds/days units here
         n = len(epochMJD)
-        visitTime = np.ones(n) * 30.0  # seconds
         inputVisits = pd.DataFrame({
             "observationMidpointMJD": epochMJD,
             "fieldRA": fieldRA,
