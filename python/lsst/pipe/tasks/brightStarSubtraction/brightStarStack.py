@@ -65,11 +65,11 @@ class BrightStarStackConfig(
     """Configuration parameters for BrightStarStackTask."""
 
     global_reduced_chi_squared_threshold = Field[float](
-        doc="Threshold for global reduced chi-squared for bright star stamps.",
+        doc="Threshold for global reduced chi-squared for stamps.",
         default=5.0,
     )
     psf_reduced_chi_squared_threshold = Field[float](
-        doc="Threshold for PSF reduced chi-squared for bright star stamps.",
+        doc="Threshold for PSF reduced chi-squared for stamps.",
         default=50.0,
     )
     bright_star_threshold = Field[float](
@@ -112,12 +112,12 @@ class BrightStarStackConfig(
         default=5,
     )
     magnitude_bins = ListField[int](
-        doc="Only used if stack_type == WEIGHTED_MEDIAN. Bins of magnitudes for weighting purposes.",
+        doc="Bins of magnitudes for weighting purposes.",
         default=[20, 19, 18, 17, 16, 15, 13, 10],
     )
     subset_stamp_number = ListField[int](
-        doc="Only used if stack_type == WEIGHTED_MEDIAN. Number of stamps per subset to generate stacked "
-        "images for. The length of this parameter must be equal to the length of magnitude_bins plus one.",
+        doc="Number of stamps per subset to generate stacked "
+        "images for. The length of this parameter must be equal to the length of magnitude_bins minus one.",
         default=[300, 200, 150, 100, 100, 100, 1],
     )
     min_focal_plane_radius = Field[float](

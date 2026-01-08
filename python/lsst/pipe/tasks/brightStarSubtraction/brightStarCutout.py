@@ -123,7 +123,7 @@ class BrightStarCutoutConfig(
     # Star selection
     mag_range = ListField[float](
         doc="Magnitude range in Gaia G. Cutouts will be made for all stars in this range.",
-        default=[0, 18],
+        default=[10, 18],
     )
     exclude_arcsec_radius = Field[float](
         doc="Stars with a star in the range ``exclude_mag_range`` mag in ``exclude_arcsec_radius`` are not "
