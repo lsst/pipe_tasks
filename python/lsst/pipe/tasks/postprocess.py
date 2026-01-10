@@ -62,6 +62,7 @@ import lsst.afw.table as afwTable
 from lsst.afw.image import ExposureSummaryStats, ExposureF
 from lsst.meas.base import SingleFrameMeasurementTask, DetectorVisitIdGeneratorConfig
 from lsst.obs.base.utils import strip_provenance_from_fits_header, TableVStack
+from lsst.meas.astrom.refit_pointing import RefitPointingTask
 
 from .coaddBase import reorderRefs
 from .functors import CompositeFunctor, Column
@@ -1402,6 +1403,13 @@ class TransformSourceTableTask(TransformCatalogBaseTask):
 class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
                                          dimensions=("instrument", "visit",),
                                          defaultTemplates={"calexpType": ""}):
+    camera = connectionTypes.PrerequisiteInput(
+        doc="Camera geometry.",
+        name="camera",
+        dimensions=("instrument",),
+        storageClass="Camera",
+        isCalibration=True,
+    )
     calexp = connectionTypes.Input(
         doc="Processed exposures used for metadata",
         name="calexp",
@@ -1423,6 +1431,23 @@ class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
         name="visitSummary_schema",
         storageClass="ExposureCatalog",
     )
+    # RefitPointingTask options and connections use snake_case for consistency
+    # with options of the same name in UpdateVisitSummaryTask, which seems more
+    # important than consistently using camelCase within this task.
+    visit_geometry = connectionTypes.Output(
+        doc="Updated visit[, detector] regions that can be used to update butler dimensions records.",
+        name="visit_geometry",
+        dimensions=("instrument", "visit"),
+        storageClass="VisitGeometry",
+    )
+
+    def __init__(self, *, config=None):
+        if self.config.do_refit_pointing:
+            self.camera = dataclasses.replace(self.camera, dimensions=config.cameraDimensions)
+        else:
+            del self.camera
+        if not self.config.do_write_visit_geometry:
+            del self.visit_geometry
 
 
 class ConsolidateVisitSummaryConfig(pipeBase.PipelineTaskConfig,
@@ -1437,6 +1462,37 @@ class ConsolidateVisitSummaryConfig(pipeBase.PipelineTaskConfig,
         dtype=bool,
         default=False,
     )
+    refitPointing = pexConfig.ConfigurableField(
+        "A subtask for refitting the boresight pointing and orientation, "
+        "and using those to produce new regions for butler dimensions.",
+        target=RefitPointingTask,
+    )
+    cameraDimensions = pexConfig.ListField(
+        "The dimensions of the 'camera' prerequisite input connection.",
+        dtype=str,
+        default=["instrument"],
+    )
+    do_refit_pointing = pexConfig.Field(
+        "Whether to re-fit the pointing model.",
+        dtype=bool,
+        default=True,
+    )
+    do_write_visit_geometry = pexConfig.Field(
+        "Whether to write refit-pointing regions that can be used to update butler dimension records.",
+        dtype=bool,
+        default=True,
+    )
+
+    def validate(self):
+        super().validate()
+        if self.do_write_visit_geometry and not self.do_refit_pointing:
+            raise ValueError("Cannot write visit_geometry without refitting the pointing.")
+
+    def setDefaults(self):
+        super().setDefaults()
+        # This prevents a conflict with the fields added by the
+        # UpdateVisitSummaryTask invocation of RefitPointingTask.
+        self.refitPointing.schema_prefix = "preliminary_"
 
 
 class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
@@ -1466,42 +1522,65 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
         self.schema.addField("physical_filter", type="String", size=32, doc="Physical filter")
         self.schema.addField("band", type="String", size=32, doc="Name of band")
         ExposureSummaryStats.update_schema(self.schema)
+        if self.config.do_refit_pointing:
+            self.makeSubtask("refitPointing", schema=self.schema)
         self.visitSummarySchema = afwTable.ExposureCatalog(self.schema)
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        dataRefs = butlerQC.get(inputRefs.calexp)
-        visit = dataRefs[0].dataId["visit"]
+        handles = butlerQC.get(inputRefs.calexp)
+        visit = handles[0].dataId["visit"]
 
         self.log.debug("Concatenating metadata from %d per-detector calexps (visit %d)",
-                       len(dataRefs), visit)
+                       len(handles), visit)
 
-        expCatalog = self._combineExposureMetadata(visit, dataRefs)
+        camera = butlerQC.get(inputRefs.camera) if self.config.do_refit_pointing else None
 
-        butlerQC.put(expCatalog, outputRefs.visitSummary)
+        result = pipeBase.Struct()
+        try:
+            self.run(visit=visit, handles=handles, camera=camera, result=result)
+        except pipeBase.AlgorithmError as e:
+            error = pipeBase.AnnotatedPartialOutputsError.annotate(
+                e, self, result.visitSummary, log=self.log
+            )
+            butlerQC.put(result, outputRefs)
+            raise error from e
 
-    def _combineExposureMetadata(self, visit, dataRefs):
-        """Make a combined exposure catalog from a list of dataRefs.
-        These dataRefs must point to exposures with wcs, summaryStats,
+        butlerQC.put(result, outputRefs)
+
+    def run(self, *, visit, handles, camera=None, result=None):
+        """Make a combined exposure catalog from a list of handles.
+        These handles must point to exposures with wcs, summaryStats,
         and other visit metadata.
 
         Parameters
         ----------
         visit : `int`
             Visit identification number.
-        dataRefs : `list` of `lsst.daf.butler.DeferredDatasetHandle`
-            List of dataRefs in visit.
+        handles : `list` of `lsst.daf.butler.DeferredDatasetHandle`
+            List of handles in visit.
+        camera : `lsst.afw.cameraGeom.Camera`, optional
+            Camera geometry.  Required if and only if
+            ``do_refit_pointing=True``.
+        result : `lsst.pipe.base.Struct`, optional
+            Output struct to modify in-place.
 
         Returns
         -------
-        visitSummary : `lsst.afw.table.ExposureCatalog`
-            Exposure catalog with per-detector summary information.
+        result : `lsst.pipe.base.Struct`
+            Struct with the following attributes:
+
+            - ``visitSummary`` (`lsst.afw.table.ExposureCatalog`): an Exposure
+              catalog with per-detector summary information.
+            - ``visit_geometry`` (`lsst.obs.base.visit_geometry.VisitGeometry`):
+              Regions that can be used to update butler dimension regions for
+              this visit.  Only present if ``do_refit_pointing=True``.
         """
         cat = afwTable.ExposureCatalog(self.schema)
-        cat.resize(len(dataRefs))
+        cat.resize(len(handles))
 
         cat["visit"] = visit
 
-        for i, dataRef in enumerate(dataRefs):
+        for i, dataRef in enumerate(handles):
             visitInfo = dataRef.get(component="visitInfo")
             filterLabel = dataRef.get(component="filter")
             summaryStats = dataRef.get(component="summaryStats")
@@ -1535,12 +1614,21 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
 
         metadata = dafBase.PropertyList()
         metadata.add("COMMENT", "Catalog id is detector id, sorted.")
-        # We are looping over existing datarefs, so the following is true
+        # We are looping over existing handles, so the following is true
         metadata.add("COMMENT", "Only detectors with data have entries.")
         cat.setMetadata(metadata)
 
         cat.sort()
-        return cat
+
+        if result is None:
+            result = pipeBase.Struct()
+        result.visitSummary = cat
+
+        if self.config.do_refit_pointing:
+            refitPointingResult = self.refitPointing.run(catalog=cat, camera=camera)
+            result.visit_geometry = refitPointingResult.regions
+
+        return result
 
 
 class ConsolidateSourceTableConnections(pipeBase.PipelineTaskConnections,
