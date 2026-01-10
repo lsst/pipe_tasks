@@ -1535,11 +1535,19 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
 
         camera = butlerQC.get(inputRefs.camera) if self.config.do_refit_pointing else None
 
-        result = self.run(visit=visit, handles=handles, camera=camera)
+        result = pipeBase.Struct()
+        try:
+            self.run(visit=visit, handles=handles, camera=camera, result=result)
+        except pipeBase.AlgorithmError as e:
+            error = pipeBase.AnnotatedPartialOutputsError.annotate(
+                e, self, result.visitSummary, log=self.log
+            )
+            butlerQC.put(result, outputRefs)
+            raise error from e
 
         butlerQC.put(result, outputRefs)
 
-    def run(self, *, visit, handles, camera=None):
+    def run(self, *, visit, handles, camera=None, result=None):
         """Make a combined exposure catalog from a list of handles.
         These handles must point to exposures with wcs, summaryStats,
         and other visit metadata.
@@ -1551,7 +1559,10 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
         handles : `list` of `lsst.daf.butler.DeferredDatasetHandle`
             List of handles in visit.
         camera : `lsst.afw.cameraGeom.Camera`, optional
-            Camera geometry.  Required if and only if ``do_refit_pointing=True``.
+            Camera geometry.  Required if and only if
+            ``do_refit_pointing=True``.
+        result : `lsst.pipe.base.Struct`, optional
+            Output struct to modify in-place.
 
         Returns
         -------
@@ -1608,7 +1619,10 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
         cat.setMetadata(metadata)
 
         cat.sort()
-        result = pipeBase.Struct(visitSummary=cat)
+
+        if result is None:
+            result = pipeBase.Struct()
+        result.visitSummary = cat
 
         if self.config.do_refit_pointing:
             refitPointingResult = self.refitPointing.run(catalog=cat, camera=camera)
