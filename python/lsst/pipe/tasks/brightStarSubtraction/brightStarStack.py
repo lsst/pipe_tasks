@@ -26,7 +26,7 @@ __all__ = ["BrightStarStackConnections", "BrightStarStackConfig", "BrightStarSta
 import numpy as np
 from lsst.afw.image import ImageF
 from lsst.afw.math import StatisticsControl, statisticsStack, stringToStatisticsProperty
-from lsst.geom import Point2I
+from lsst.geom import Box2I, Extent2I, Point2I
 from lsst.meas.algorithms import BrightStarStamps
 from lsst.pex.config import Field, ListField
 from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
@@ -38,7 +38,7 @@ NEIGHBOR_MASK_PLANE = "NEIGHBOR"
 
 class BrightStarStackConnections(
     PipelineTaskConnections,
-    dimensions=("instrument", "band"),
+    dimensions=("instrument", "detector"),
 ):
     """Connections for BrightStarStackTask."""
 
@@ -51,8 +51,8 @@ class BrightStarStackConnections(
         deferLoad=True,
     )
     extendedPsf = Output(
-        name="extendedPsf",  # extendedPsfDetector ???
-        storageClass="MaskedImageF",  # stamp_imF
+        name="extendedPsf2",  # extendedPsfDetector ???
+        storageClass="ImageF",  # MaskedImageF
         doc="Extended PSF model, built from stacking bright star cutouts.",
         dimensions=("band",),
     )
@@ -64,28 +64,20 @@ class BrightStarStackConfig(
 ):
     """Configuration parameters for BrightStarStackTask."""
 
-    global_reduced_chi_squared_threshold = Field[float](
-        doc="Threshold for global reduced chi-squared for stamps.",
+    subsetStampNumber = Field[int](
+        doc="Number of stamps per subset to generate stacked images for.",
+        default=20,
+    )
+    globalReducedChiSquaredThreshold = Field[float](
+        doc="Threshold for global reduced chi-squared for bright star stamps.",
         default=5.0,
     )
-    psf_reduced_chi_squared_threshold = Field[float](
-        doc="Threshold for PSF reduced chi-squared for stamps.",
+    psfReducedChiSquaredThreshold = Field[float](
+        doc="Threshold for PSF reduced chi-squared for bright star stamps.",
         default=50.0,
     )
-    bright_star_threshold = Field[float](
-        doc="Stars brighter than this magnitude, are considered as bright stars.",
-        default=12.0,
-    )
-    bright_global_reduced_chi_squared_threshold = Field[float](
-        doc="Threshold for global reduced chi-squared for bright star stamps.",
-        default=250.0,
-    )
-    psf_bright_reduced_chi_squared_threshold = Field[float](
-        doc="Threshold for PSF reduced chi-squared for bright star stamps.",
-        default=400.0,
-    )
 
-    bad_mask_planes = ListField[str](
+    badMaskPlanes = ListField[str](
         doc="Mask planes that identify excluded (masked) pixels.",
         default=[
             "BAD",
@@ -93,42 +85,23 @@ class BrightStarStackConfig(
             "CROSSTALK",
             "EDGE",
             "NO_DATA",
-            "SAT",
-            "SUSPECT",
+            # "SAT",
+            # "SUSPECT",
             "UNMASKEDNAN",
             NEIGHBOR_MASK_PLANE,
         ],
     )
-    stack_type = Field[str](
-        default="MEDIAN",
+    stackType = Field[str](
+        default="MEANCLIP",
         doc="Statistic name to use for stacking (from `~lsst.afw.math.Property`)",
     )
-    stack_num_sigma_clip = Field[float](
+    stackNumSigmaClip = Field[float](
         doc="Number of sigma to use for clipping when stacking.",
         default=3.0,
     )
-    stack_num_iter = Field[int](
+    stackNumIter = Field[int](
         doc="Number of iterations to use for clipping when stacking.",
         default=5,
-    )
-    magnitude_bins = ListField[int](
-        doc="Bins of magnitudes for weighting purposes.",
-        default=[20, 19, 18, 17, 16, 15, 13, 10],
-    )
-    subset_stamp_number = ListField[int](
-        doc="Number of stamps per subset to generate stacked "
-        "images for. The length of this parameter must be equal to the length of magnitude_bins minus one.",
-        default=[300, 200, 150, 100, 100, 100, 1],
-    )
-    min_focal_plane_radius = Field[float](
-        doc="Minimum distance to focal plane center in mm. Stars with a focal plane radius smaller than "
-        "this will be omitted.",
-        default=-1.0,
-    )
-    max_focal_plane_radius = Field[float](
-        doc="Maximum distance to focal plane center in mm. Stars with a focal plane radius greater than "
-        "this will be omitted.",
-        default=2000.0,
     )
 
 
@@ -149,24 +122,14 @@ class BrightStarStackTask(PipelineTask):
 
     def _applyStampFit(self, stamp):
         """Apply fitted stamp components to a single bright star stamp."""
-        stampMI = stamp.stamp_im
-        stamp_bbox = stampMI.getBBox()
-
-        x_grid, y_grid = np.meshgrid(stamp_bbox.getX().arange(), stamp_bbox.getY().arange())
-
-        x_plane = ImageF((x_grid * stamp.gradient_x).astype(np.float32), xy0=stampMI.getXY0())
-        y_plane = ImageF((y_grid * stamp.gradient_y).astype(np.float32), xy0=stampMI.getXY0())
-
-        x_curve = ImageF((x_grid**2 * stamp.curvature_x).astype(np.float32), xy0=stampMI.getXY0())
-        y_curve = ImageF((y_grid**2 * stamp.curvature_y).astype(np.float32), xy0=stampMI.getXY0())
-        xy_curve = ImageF((x_grid * y_grid * stamp.curvature_xy).astype(np.float32), xy0=stampMI.getXY0())
-
+        stampMI = stamp.maskedImage
+        stampBBox = stampMI.getBBox()
+        xGrid, yGrid = np.meshgrid(stampBBox.getX().arange(), stampBBox.getY().arange())
+        xPlane = ImageF((xGrid * stamp.xGradient).astype(np.float32), xy0=stampMI.getXY0())
+        yPlane = ImageF((yGrid * stamp.yGradient).astype(np.float32), xy0=stampMI.getXY0())
         stampMI -= stamp.pedestal
-        stampMI -= x_plane
-        stampMI -= y_plane
-        stampMI -= x_curve
-        stampMI -= y_curve
-        stampMI -= xy_curve
+        stampMI -= xPlane
+        stampMI -= yPlane
         stampMI /= stamp.scale
 
     @timeMethod
@@ -201,85 +164,63 @@ class BrightStarStackTask(PipelineTask):
             ``brightStarStamps``
                 (`~lsst.meas.algorithms.brightStarStamps.BrightStarStamps`)
         """
-        stack_type_property = stringToStatisticsProperty(self.config.stack_type)
-        statistics_control = StatisticsControl(
-            numSigmaClip=self.config.stack_num_sigma_clip,
-            numIter=self.config.stack_num_iter,
+        stackTypeProperty = stringToStatisticsProperty(self.config.stackType)
+        statisticsControl = StatisticsControl(
+            numSigmaClip=self.config.stackNumSigmaClip,
+            numIter=self.config.stackNumIter,
         )
 
-        mag_bins_dict = {}
-        subset_stampMIs = {}
-        self.metadata["psf_star_count"] = {}
-        self.metadata["psf_star_count"]["all"] = 0
-        for i in range(len(self.config.subset_stamp_number)):
-            self.metadata["psf_star_count"][str(self.config.magnitude_bins[i + 1])] = 0
+        subsetStampMIs = []
+        tempStampMIs = []
         for stampsDDH in brightStarStamps:
             stamps = stampsDDH.get()
-            self.metadata["psf_star_count"]["all"] += len(stamps)
             for stamp in stamps:
-                if stamp.ref_mag >= self.config.bright_star_threshold:
-                    global_reduced_chi_squared_threshold = self.config.global_reduced_chi_squared_threshold
-                    psf_reduced_chi_squared_threshold = self.config.psf_reduced_chi_squared_threshold
-                else:
-                    global_reduced_chi_squared_threshold = (
-                        self.config.bright_global_reduced_chi_squared_threshold
-                    )
-                    psf_reduced_chi_squared_threshold = self.config.psf_bright_reduced_chi_squared_threshold
-                for i in range(len(self.config.subset_stamp_number)):
-                    if (
-                        stamp.global_reduced_chi_squared > global_reduced_chi_squared_threshold
-                        or stamp.psf_reduced_chi_squared > psf_reduced_chi_squared_threshold
-                        or stamp.focal_plane_radius < self.config.min_focal_plane_radius
-                        or stamp.focal_plane_radius > self.config.max_focal_plane_radius
-                    ):
-                        continue
+                if (
+                    stamp.globalReducedChiSquared > self.config.globalReducedChiSquaredThreshold
+                    or stamp.psfReducedChiSquared > self.config.psfReducedChiSquaredThreshold
+                ):
+                    continue
+                stampMI = stamp.maskedImage
+                self._applyStampFit(stamp)
+                tempStampMIs.append(stampMI)
 
-                    if (
-                        stamp.ref_mag < self.config.magnitude_bins[i]
-                        and stamp.ref_mag > self.config.magnitude_bins[i + 1]
-                    ):
-                        self._applyStampFit(stamp)
-                        if not self.config.magnitude_bins[i + 1] in mag_bins_dict.keys():
-                            mag_bins_dict[self.config.magnitude_bins[i + 1]] = []
-                        stampMI = stamp.stamp_im
-                        mag_bins_dict[self.config.magnitude_bins[i + 1]].append(stampMI)
-                        bad_mask_bit_mask = stampMI.mask.getPlaneBitMask(self.config.bad_mask_planes)
-                        statistics_control.setAndMask(bad_mask_bit_mask)
-                        if (
-                            len(mag_bins_dict[self.config.magnitude_bins[i + 1]])
-                            == self.config.subset_stamp_number[i]
-                        ):
-                            if self.config.magnitude_bins[i + 1] not in subset_stampMIs.keys():
-                                subset_stampMIs[self.config.magnitude_bins[i + 1]] = []
-                            subset_stampMIs[self.config.magnitude_bins[i + 1]].append(
-                                statisticsStack(
-                                    mag_bins_dict[self.config.magnitude_bins[i + 1]],
-                                    stack_type_property,
-                                    statistics_control,
-                                )
-                            )
-                            self.metadata["psf_star_count"][str(self.config.magnitude_bins[i + 1])] += len(
-                                mag_bins_dict[self.config.magnitude_bins[i + 1]]
-                            )
-                            mag_bins_dict[self.config.magnitude_bins[i + 1]] = []
+                badMaskBitMask = stampMI.mask.getPlaneBitMask(self.config.badMaskPlanes)
+                statisticsControl.setAndMask(badMaskBitMask)
 
-        for key in mag_bins_dict.keys():
-            if key not in subset_stampMIs.keys():
-                subset_stampMIs[key] = []
-                subset_stampMIs[key].append(
-                    statisticsStack(mag_bins_dict[key], stack_type_property, statistics_control)
-                )
-                self.metadata["psf_star_count"][str(key)] += len(mag_bins_dict[key])
+                if len(tempStampMIs) == self.config.subsetStampNumber:
+                    subsetStampMIs.append(statisticsStack(tempStampMIs, stackTypeProperty, statisticsControl))
+                    # TODO: what to do with remaining temp stamps?
+                    tempStampMIs = []
 
-        final_subset_stampMIs = []
-        for key in subset_stampMIs.keys():
-            final_subset_stampMIs.extend(subset_stampMIs[key])
-        bad_mask_bit_mask = final_subset_stampMIs[0].mask.getPlaneBitMask(self.config.bad_mask_planes)
-        statistics_control.setAndMask(bad_mask_bit_mask)
-        extendedPsfMI = statisticsStack(final_subset_stampMIs, stack_type_property, statistics_control)
+        # TODO: which stamp mask plane to use here?
+        badMaskBitMask = subsetStampMIs[0].mask.getPlaneBitMask(self.config.badMaskPlanes)
+        statisticsControl.setAndMask(badMaskBitMask)
+        extendedPsfMI = statisticsStack(subsetStampMIs, stackTypeProperty, statisticsControl)
 
         extendedPsfExtent = extendedPsfMI.getBBox().getDimensions()
         extendedPsfOrigin = Point2I(-1 * (extendedPsfExtent.x // 2), -1 * (extendedPsfExtent.y // 2))
         extendedPsfMI.setXY0(extendedPsfOrigin)
 
-        return Struct(extendedPsf=extendedPsfMI)
+        return Struct(extendedPsf=extendedPsfMI.getImage())
+
+        # stack = []
+        # chiStack = []
+        # for loop over all groups:
+        # load up all visits for this detector
+        # drop all with GOF > thresh
+        # sigma-clip mean stack the rest
+        # append to stack
+        # compute the scatter (MAD/sigma-clipped var, etc) of the rest
+        # divide by sqrt(var plane), and append to chiStack
+        # after for-loop, combine images in median stack for final result
+        # also combine chi-images, save separately
+
+        # idea: run with two different thresholds, and compare the results
+
+        # medianStack = []
+        # for loop over all groups:
+        # load up all visits for this detector
+        # drop all with GOF > thresh
+        # median/sigma-clip stack the rest
+        # append to medianStack
+        # after for-loop, combine images in median stack for final result
