@@ -46,7 +46,9 @@ import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
 import lsst.afw.table as afwTable
 import lsst.meas.algorithms as measAlg
-import lsst.meas.extensions.piff.piffPsfDeterminer  # noqa: F401
+#import lsst.meas.extensions.piff.piffPsfDeterminer  # noqa: F401
+import lsst.meas.extensions.aipsf.aipsfPsfDeterminer # noqa: F401
+
 from lsst.meas.algorithms import MeasureApCorrTask
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask
 from lsst.meas.algorithms.sourceSelector import sourceSelectorRegistry
@@ -97,7 +99,7 @@ class FinalizeCharacterizationConnectionsBase(
         super().__init__(config=config)
         if config is None:
             return None
-        if not self.config.psf_determiner['piff'].useColor:
+        if not self.config.psf_determiner['aipsf'].useColor:
             self.inputs.remove("fgcm_standard_star")
 
 
@@ -195,7 +197,7 @@ class FinalizeCharacterizationConfigBase(
     )
     psf_determiner = measAlg.psfDeterminerRegistry.makeField(
         'PSF Determination algorithm',
-        default='piff'
+        default='aipsf'
     )
     measurement = pexConfig.ConfigurableField(
         target=SingleFrameMeasurementTask,
@@ -346,8 +348,9 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         # Only log warning and fatal errors from the source_selector
         self.source_selector.log.setLevel(self.source_selector.log.WARN)
         self.isPsfDeterminerPiff = False
-        if isinstance(self.psf_determiner, lsst.meas.extensions.piff.piffPsfDeterminer.PiffPsfDeterminerTask):
-            self.isPsfDeterminerPiff = True
+        #if isinstance(self.psf_determiner, lsst.meas.extensions.piff.piffPsfDeterminer.PiffPsfDeterminerTask):
+        #    self.isPsfDeterminerPiff = True
+        self.isPsfDeterminerPiff = False
 
     def _make_output_schema_mapper(self, input_schema):
         """Make the schema mapper from the input schema to the output schema.
@@ -864,7 +867,7 @@ class FinalizeCharacterizationTask(FinalizeCharacterizationTaskBase):
         isolated_star_source_dict = {tract: isolated_star_source_dict_temp[tract] for
                                      tract in sorted(isolated_star_source_dict_temp.keys())}
 
-        if self.config.psf_determiner['piff'].useColor:
+        if self.config.psf_determiner['aipsf'].useColor:
             fgcm_standard_star_dict_temp = {handle.dataId['tract']: handle
                                             for handle in input_handle_dict['fgcm_standard_star']}
             fgcm_standard_star_dict = {tract: fgcm_standard_star_dict_temp[tract] for
@@ -1034,7 +1037,7 @@ class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
         isolated_star_source_dict = {tract: isolated_star_source_dict_temp[tract] for
                                      tract in sorted(isolated_star_source_dict_temp.keys())}
 
-        if self.config.psf_determiner['piff'].useColor:
+        if self.config.psf_determiner['aipsf'].useColor:
             fgcm_standard_star_dict_temp = {handle.dataId['tract']: handle
                                             for handle in input_handle_dict['fgcm_standard_star']}
             fgcm_standard_star_dict = {tract: fgcm_standard_star_dict_temp[tract] for
