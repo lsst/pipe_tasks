@@ -442,6 +442,14 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             doc="Maximum value in the star image used to train PSF.",
             doReplace=True,
         )
+        # add latent space for AI PSF
+        for i in range(16):
+            output_schema.addField(
+                f'z_{i+1}',
+                type=np.float32,
+                doc="Maximum value in the star image used to train PSF.",
+                doReplace=True,
+                )
 
         alias_map = input_schema.getAliasMap()
         alias_map_output = afwTable.AliasMap()
@@ -492,6 +500,15 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             doc="Maximum value in the star image used to train PSF.",
             doReplace=True,
         )
+
+        # add latent space for AI PSF
+        for i in range(16):
+            selection_schema.addField(
+                f'z_{i+1}',
+                type=np.float32,
+                doc="Maximum value in the star image used to train PSF.",
+                doReplace=True,
+                )
 
         return mapper, selection_schema
 
@@ -672,6 +689,16 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
                 srcCat[idSrc]['psf_color_value'] = colors[idColor]
                 srcCat[idSrc]['psf_color_type'] = f"{magStr1}-{magStr2}"
 
+    def add_src_lattent_space(self, measured_src, psf_model):
+
+        for i in range(len(measured_src['slot_Centroid_x'])):
+            for s in psf_model._piffResult.stars:
+                if measured_src[i]['slot_Centroid_x'] == s.x \
+                and measured_src[i]['slot_Centroid_y'] == s.y:
+                    for j in range(16):
+                        measured_src[i][f'z_{j+1}'] = s.fit.params[j]
+                    del s.fit.params
+
     def compute_psf_and_ap_corr_map(self, visit, detector, exposure, src,
                                     isolated_source_table, fgcm_standard_star_cat):
         """Compute psf model and aperture correction map for a single exposure.
@@ -789,6 +816,7 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
                                visit, detector, e)
             return None, None, measured_src
         # Verify that the PSF is usable by downstream tasks
+        self.add_src_lattent_space(measured_src, psf)
         sigma = psf.computeShape(psf.getAveragePosition(), psf.getAverageColor()).getDeterminantRadius()
         if np.isnan(sigma):
             self.log.warning('Failed to determine psf for visit %d, detector %d: '
