@@ -49,6 +49,7 @@ import lsst.afw.table as afwTable
 from lsst.afw.geom import Quadrupole
 import lsst.meas.algorithms as measAlg
 import lsst.meas.extensions.piff.piffPsfDeterminer  # noqa: F401
+
 from lsst.meas.algorithms import MeasureApCorrTask
 from lsst.meas.base import SingleFrameMeasurementTask, ApplyApCorrTask
 from lsst.meas.algorithms.sourceSelector import sourceSelectorRegistry
