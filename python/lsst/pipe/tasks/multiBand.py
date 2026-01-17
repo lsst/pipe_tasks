@@ -326,15 +326,10 @@ class DetectCoaddSourcesTask(PipelineTask):
             for bg in detections.background:
                 backgrounds.append(bg)
         if len(backgrounds) == 0:
-            # Persist a constant background with value of 0.0 to get around
+            # Persist a constant background with value of NaN to get around
             # inability to persist empty BackgroundList.
-            bgLevel = 0.0
-            bgStats = afwImage.MaskedImageF(1, 1)
-            bgStats.set(bgLevel, 0, bgLevel)
-            bg = afwMath.BackgroundMI(exposure.getBBox(), bgStats)
-            bgData = (bg, afwMath.Interpolate.LINEAR, afwMath.REDUCE_INTERP_ORDER,
-                      afwMath.ApproximateControl.UNKNOWN, 0, 0, False)
-            backgrounds.append(bgData)
+            emptyBg = self._makeEmptyBackground(exposure, patchInfo)
+            backgrounds.append(emptyBg)
 
         return Struct(outputSources=sources, outputBackgrounds=backgrounds, outputExposure=exposure)
 
@@ -408,18 +403,21 @@ class DetectCoaddSourcesTask(PipelineTask):
             usable pixels.  This object cannot actually be used for background
             subtraction.
         """
-        # BackgroundList objects are a huge pain to construct without actually
-        # measuring the background, so that's what we do - on an image with
-        # 0s everywhere and no masks.  And then we replace the background
-        # "stats image" with NaNs and NO_DATA.
+        # Create a backgroundList with one entry whose "stats image" is NaNs
+        # and has all pixels set as NO_DATA.
         if self.config.forceExactBinning:
             exposure = self._cropToExactBinning(exposure, patchInfo).clone()
-        exposure.image.array[:, :] = 0.0
-        exposure.mask[:, :] = 0
-        background = self.detection.background.run(exposure).background
+
+        bgLevel = np.nan
+        bgStats = afwImage.MaskedImageF(1, 1)
+        bgStats.set(bgLevel, 0, bgLevel)
+        bg = afwMath.BackgroundMI(exposure.getBBox(), bgStats)
+        bgData = (bg, afwMath.Interpolate.LINEAR, afwMath.REDUCE_INTERP_ORDER,
+                  afwMath.ApproximateControl.UNKNOWN, 0, 0, False)
+        background = afwMath.BackgroundList()
+        background.append(bgData)
         for bg, *_ in background:
             stats = bg.getStatsImage()
-            stats.image.array[:, :] = np.nan
             stats.mask.array[:, :] = stats.mask.getPlaneBitMask("NO_DATA")
             stats.variance.array[:, :] = 0.0
         return background
