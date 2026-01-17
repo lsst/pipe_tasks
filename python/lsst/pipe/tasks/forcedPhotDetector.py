@@ -390,18 +390,23 @@ class ForcedPhotDetectorTask(pipeBase.PipelineTask):
             Astropy Table with only rows from the reference
             catalogs that overlap the exposure bounding box.
         """
-        table_list = [
-            i.get(
-                parameters={
-                    "columns": [
-                        self.config.refCatIdColumn,
-                        self.config.refCatRaColumn,
-                        self.config.refCatDecColumn,
-                    ]
-                }
-            )
-            for i in refTableHandles
-        ]
+        table_list = []
+        for i in refTableHandles:
+            try:
+                table_list.append(i.get(
+                    parameters={
+                        "columns": [
+                            self.config.refCatIdColumn,
+                            self.config.refCatRaColumn,
+                            self.config.refCatDecColumn,
+                        ]
+                    }
+                ))
+            except ValueError:
+                self.log.info("Skipping %s due to empty object table.", i.dataId)
+                continue
+        if not table_list:
+            raise NoWorkFound("All overlapping object catalogs are empty.")
         full_table = astropy.table.vstack(table_list)
         # translate ra/dec coords in table to detector pixel coords
         # to down-select rows that overlap the detector bbox
