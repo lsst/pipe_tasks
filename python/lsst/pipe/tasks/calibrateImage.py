@@ -27,6 +27,7 @@ import numpy as np
 import requests
 import os
 
+from lsst.geom import SpherePoint, degrees
 from lsst.afw.geom import SpanSet
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
@@ -41,7 +42,7 @@ import lsst.meas.base
 import lsst.meas.astrom
 import lsst.meas.deblender
 import lsst.meas.extensions.shapeHSM
-from lsst.obs.base import createInitialSkyWcs
+from lsst.obs.base.utils import createInitialSkyWcsFromBoresight
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.pipe.base import connectionTypes
@@ -799,6 +800,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         inputs = butlerQC.get(inputRefs)
         exposures = inputs.pop("exposures")
 
+        exposure_record = inputRefs.exposures[0].dataId.records["exposure"]
+
         id_generator = self.config.id_generator.apply(butlerQC.quantum.dataId)
 
         astrometry_loader = lsst.meas.algorithms.ReferenceObjectLoader(
@@ -855,6 +858,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 background_flat=background_flat,
                 illumination_correction=illumination_correction,
                 camera_model=camera_model,
+                exposure_record=exposure_record,
             )
         except pipeBase.AlgorithmError as e:
             error = pipeBase.AnnotatedPartialOutputsError.annotate(
@@ -880,6 +884,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         background_flat=None,
         illumination_correction=None,
         camera_model=None,
+        exposure_record=None,
     ):
         """Find stars and perform psf measurement, then do a deeper detection
         and measurement and calibrate astrometry and photometry from that.
@@ -904,6 +909,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             Illumination correction image.
         camera_model : `lsst.afw.cameraGeom.Camera`, optional
             Camera to be used if constructing updated WCS.
+        exposure_record : `lsst.daf.butler.DimensionRecord`, optional
+            Butler metadata for the ``exposure`` dimension.  Used if
+            constructing an updated WCS instead of the boresight and
+            orientation angle from the visit info.
 
         Returns
         -------
@@ -965,7 +974,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         if camera_model:
             if camera_model.get(result.exposure.detector.getId()):
                 self.log.info("Updating WCS with the provided camera model.")
-                self._update_wcs_with_camera_model(result.exposure, camera_model)
+                self._update_wcs_with_camera_model(result.exposure, camera_model, exposure_record)
             else:
                 self.log.warning(
                     "useButlerCamera=True, but detector %s is not available in the provided camera. The "
@@ -1741,7 +1750,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 evaluateMaskFraction(mask, maskPlane)
             )
 
-    def _update_wcs_with_camera_model(self, exposure, cameraModel):
+    def _update_wcs_with_camera_model(self, exposure, cameraModel, exposure_record=None):
         """Replace the existing WCS with one generated using the pointing
         and the input camera model.
 
@@ -1751,9 +1760,25 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             The exposure whose WCS will be updated.
         cameraModel : `lsst.afw.cameraGeom.Camera`
             Camera to be used when constructing updated WCS.
+        exposure_record : `lsst.daf.butler.DimensionRecord`, optional
+            Butler metadata for the ``exposure`` dimension.  Used if
+            constructing an updated WCS instead of the boresight and
+            orientation angle from the visit info.
         """
         detector = cameraModel[exposure.detector.getId()]
-        newWcs = createInitialSkyWcs(exposure.visitInfo, detector)
+        if exposure_record is None:
+            boresight = exposure.visitInfo.getBoresightRaDec()
+            orientation = exposure.visitInfo.getBoresightRotAngle()
+        else:
+            boresight = SpherePoint(exposure_record.tracking_ra, exposure_record.tracking_dec, degrees)
+            orientation = exposure_record.sky_angle * degrees
+            self.log.info(
+                "Pointing from exposure record is %s deg from initial pointing; "
+                "orientation difference is %s deg.",
+                boresight.separation(exposure.visitInfo.getBoresightRaDec()).asDegrees(),
+                (orientation - exposure.visitInfo.getBoresightRotAngle()).asDegrees(),
+            )
+        newWcs = createInitialSkyWcsFromBoresight(boresight, orientation, detector)
         exposure.setWcs(newWcs)
 
     def _compute_mask_fraction(self, mask, mask_planes, bad_mask_planes):
