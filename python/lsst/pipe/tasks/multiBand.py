@@ -580,6 +580,8 @@ class MeasureMergedCoaddSourcesConnections(
         # TODO[DM-47797]: only the 'if' block contents here should survive.
         if config.inputCatalog == "deblendedCatalog":
             del self.inputCatalog
+            # test for ApVerify
+            del self.scarletCatalog
             if not config.doAddFootprints:
                 del self.scarletModels
         else:
