@@ -2109,6 +2109,66 @@ class MomentsBase(Functor):
         return ((CD_1_1 * i_xx + CD_1_2 * i_xy) * CD_2_1
                 + (CD_1_1 * i_xy + CD_1_2 * i_yy) * CD_2_2)
 
+    def get_e1(self, df):
+        sky_uu = self.sky_uu(df)
+        sky_vv = self.sky_vv(df)
+        return ((sky_uu - sky_vv) / (sky_uu + sky_vv)).astype(np.float32)
+
+    def get_e2(self, df):
+        """
+        This has the opposite sign as sky_uv in order to maintain consistency with the HSM moments
+        sign convention.
+        """
+        sky_uu = self.sky_uu(df)
+        sky_vv = self.sky_vv(df)
+        sky_uv = self.sky_uv(df)
+        return (-2*sky_uv / (sky_uu + sky_vv)).astype(np.float32)
+
+    def get_trace(self, df):
+        sky_uu = self.sky_uu(df)
+        sky_vv = self.sky_vv(df)
+        return np.sqrt(0.5*(sky_uu + sky_vv)).astype(np.float32)
+
+
+class MomentsE1Sky(MomentsBase):
+    """Rotate pixel moments Ixx,Iyy,Ixy into ra,dec frame and E1/E2 parameterization"""
+    _defaultDataset = 'meas'
+    name = "moments_e1"
+    shortname = "moments_e1"
+
+    def _func(self, df):
+        sky_e1 = self.get_e1(df)
+
+        return pd.Series(sky_e1.astype(np.float32), index=df.index)
+
+
+class MomentsE2Sky(MomentsBase):
+    """Rotate pixel moments Ixx,Iyy,Ixy into ra,dec frame and E1/E2 parameterization"""
+    _defaultDataset = 'meas'
+    name = "moments_e2"
+    shortname = "moments_e2"
+
+    def _func(self, df):
+        sky_e2 = self.get_e2(df)
+
+        return pd.Series(sky_e2.astype(np.float32), index=df.index)
+
+
+class MomentsTraceSky(MomentsBase):
+    """Trace radius size in arcseconds from pixel moments Ixx,Iyy,Ixy/
+
+    The trace radius size is a measure of size equal to the square root of
+    half of the trace of the second moments tensor.
+    """
+    _defaultDataset = 'meas'
+    name = "moments_trace"
+    shortname = "moments_trace"
+
+    def _func(self, df):
+        sky_trace_radians = self.get_trace(df)
+
+        return pd.Series((sky_trace_radians*(180/np.pi)*3600).astype(np.float32), index=df.index)
+
 
 class MomentsIuuSky(MomentsBase):
     """Rotate pixel moments Ixx,Iyy,Ixy into ra,dec frame and arcseconds"""
