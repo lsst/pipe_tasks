@@ -133,59 +133,10 @@ funcs:
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_1_0_instFluxErr
     # Taking Shape from meas
-    # These pixel-coordinate versions are deprecated following RFC-1081.
-    ixx:
-        functor: SinglePrecisionFloatColumn
-        args: slot_Shape_xx
-        dataset: meas
-    iyy:
-        functor: SinglePrecisionFloatColumn
-        args: slot_Shape_yy
-        dataset: meas
-    ixy:
-        functor: SinglePrecisionFloatColumn
-        args: slot_Shape_xy
-        dataset: meas
-    i_flag:
-        functor: Column
-        args: slot_Shape_flag
-        dataset: meas
     # Icov: # need to compute
     # DM-22249 Evaluate whether we want to replace IxxPSF/IyyPSF/IxyPSF w/ FWHM
-    ixxPSF:
-        functor: SinglePrecisionFloatColumn
-        args: slot_PsfShape_xx
-        dataset: meas
-    iyyPSF:
-        functor: SinglePrecisionFloatColumn
-        args: slot_PsfShape_yy
-        dataset: meas
-    ixyPSF:
-        functor: SinglePrecisionFloatColumn
-        args: slot_PsfShape_xy
-        dataset: meas
-    iPSF_flag:
-        functor: Column
-        args: slot_PsfShape_flag
-        dataset: meas
-    ixxDebiasedPSF:
-        functor: SinglePrecisionFloatColumn
-        args: ext_shapeHSM_HsmPsfMomentsDebiased_xx
-        dataset: meas
-    iyyDebiasedPSF:
-        functor: SinglePrecisionFloatColumn
-        args: ext_shapeHSM_HsmPsfMomentsDebiased_yy
-        dataset: meas
-    ixyDebiasedPSF:
-        functor: SinglePrecisionFloatColumn
-        args:  ext_shapeHSM_HsmPsfMomentsDebiased_xy
-        dataset: meas
-    iDebiasedPSF_flag:
-        functor: Column
-        args: ext_shapeHSM_HsmPsfMomentsDebiased_flag
-        dataset: meas
-    moments_uu:
-        functor: MomentsIuuSky
+    moments_g1:
+        functor: MomentsG1Sky
         args:
             - slot_Shape_xx
             - slot_Shape_yy
@@ -194,8 +145,9 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
-    moments_vv:
-        functor: MomentsIvvSky
+        dataset: meas
+    moments_g2:
+        functor: MomentsG2Sky
         args:
             - slot_Shape_xx
             - slot_Shape_yy
@@ -204,8 +156,9 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
-    moments_uv:
-        functor: MomentsIuvSky
+        dataset: meas
+    moments_trace:
+        functor: MomentsTraceSky
         args:
             - slot_Shape_xx
             - slot_Shape_yy
@@ -214,42 +167,13 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
-    moments_a:
-        functor: SemimajorAxisFromMoments
-        args:
-            - slot_Shape_xx
-            - slot_Shape_yy
-            - slot_Shape_xy
-            - base_LocalWcs_CDMatrix_1_1
-            - base_LocalWcs_CDMatrix_1_2
-            - base_LocalWcs_CDMatrix_2_1
-            - base_LocalWcs_CDMatrix_2_2
-    moments_b:
-        functor: SemiminorAxisFromMoments
-        args:
-            - slot_Shape_xx
-            - slot_Shape_yy
-            - slot_Shape_xy
-            - base_LocalWcs_CDMatrix_1_1
-            - base_LocalWcs_CDMatrix_1_2
-            - base_LocalWcs_CDMatrix_2_1
-            - base_LocalWcs_CDMatrix_2_2
-    moments_theta:
-        functor: PositionAngleFromMoments
-        args:
-            - slot_Shape_xx
-            - slot_Shape_yy
-            - slot_Shape_xy
-            - base_LocalWcs_CDMatrix_1_1
-            - base_LocalWcs_CDMatrix_1_2
-            - base_LocalWcs_CDMatrix_2_1
-            - base_LocalWcs_CDMatrix_2_2
+        dataset: meas
     moments_flag:
         functor: Column
         args: slot_Shape_flag
         dataset: meas
-    moments_psf_uu:
-        functor: MomentsIuuSky
+    moments_psf_g1:
+        functor: MomentsG1Sky
         args:
             - slot_PsfShape_xx
             - slot_PsfShape_yy
@@ -258,8 +182,9 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
-    moments_psf_vv:
-        functor: MomentsIvvSky
+        dataset: meas
+    moments_psf_g2:
+        functor: MomentsG2Sky
         args:
             - slot_PsfShape_xx
             - slot_PsfShape_yy
@@ -268,8 +193,9 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
-    moments_psf_uv:
-        functor: MomentsIuvSky
+        dataset: meas
+    moments_psf_trace:
+        functor: MomentsTraceSky
         args:
             - slot_PsfShape_xx
             - slot_PsfShape_yy
@@ -278,46 +204,24 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
+        dataset: meas
     moments_psf_flag:
         functor: Column
         args: slot_PsfShape_flag
         dataset: meas
-    moments_round_uu:
-        functor: MomentsIuuSky
+    moments_psf_debiased_g1:
+        functor: MomentsG1Sky
         args:
-            - slot_ShapeRound_xx
-            - slot_ShapeRound_yy
-            - slot_ShapeRound_xy
+            - ext_shapeHSM_HsmPsfMomentsDebiased_xx
+            - ext_shapeHSM_HsmPsfMomentsDebiased_yy
+            - ext_shapeHSM_HsmPsfMomentsDebiased_xy
             - base_LocalWcs_CDMatrix_1_1
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
-    moments_round_vv:
-        functor: MomentsIvvSky
-        args:
-            - slot_ShapeRound_xx
-            - slot_ShapeRound_yy
-            - slot_ShapeRound_xy
-            - base_LocalWcs_CDMatrix_1_1
-            - base_LocalWcs_CDMatrix_1_2
-            - base_LocalWcs_CDMatrix_2_1
-            - base_LocalWcs_CDMatrix_2_2
-    moments_round_uv:
-        functor: MomentsIuvSky
-        args:
-            - slot_ShapeRound_xx
-            - slot_ShapeRound_yy
-            - slot_ShapeRound_xy
-            - base_LocalWcs_CDMatrix_1_1
-            - base_LocalWcs_CDMatrix_1_2
-            - base_LocalWcs_CDMatrix_2_1
-            - base_LocalWcs_CDMatrix_2_2
-    moments_round_flag:
-        functor: Column
-        args: slot_ShapeRound_flag
         dataset: meas
-    moments_psf_debiased_uu:
-        functor: MomentsIuuSky
+    moments_psf_debiased_g2:
+        functor: MomentsG2Sky
         args:
             - ext_shapeHSM_HsmPsfMomentsDebiased_xx
             - ext_shapeHSM_HsmPsfMomentsDebiased_yy
@@ -326,8 +230,9 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
-    moments_psf_debiased_vv:
-        functor: MomentsIvvSky
+        dataset: meas
+    moments_psf_debiased_trace:
+        functor: MomentsTraceSky
         args:
             - ext_shapeHSM_HsmPsfMomentsDebiased_xx
             - ext_shapeHSM_HsmPsfMomentsDebiased_yy
@@ -336,16 +241,7 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
-    moments_psf_debiased_uv:
-        functor: MomentsIuvSky
-        args:
-            - ext_shapeHSM_HsmPsfMomentsDebiased_xx
-            - ext_shapeHSM_HsmPsfMomentsDebiased_yy
-            - ext_shapeHSM_HsmPsfMomentsDebiased_xy
-            - base_LocalWcs_CDMatrix_1_1
-            - base_LocalWcs_CDMatrix_1_2
-            - base_LocalWcs_CDMatrix_2_1
-            - base_LocalWcs_CDMatrix_2_2
+        dataset: meas
     moments_psf_debiased_flag:
         functor: Column
         args: ext_shapeHSM_HsmPsfMomentsDebiased_flag
@@ -1252,18 +1148,6 @@ funcs:
         functor: Column
         args: no_data_flag
         dataset: Sersic_multiprofit
-    shape_xx:
-        functor: SinglePrecisionFloatColumn
-        args: slot_Shape_xx
-        dataset: ref
-    shape_yy:
-        functor: SinglePrecisionFloatColumn
-        args: slot_Shape_yy
-        dataset: ref
-    shape_xy:
-        functor: SinglePrecisionFloatColumn
-        args: slot_Shape_xy
-        dataset: ref
     g_epoch:
         functor: MultibandColumn
         args:
