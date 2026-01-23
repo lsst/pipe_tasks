@@ -1335,10 +1335,6 @@ class ConsolidateObjectTableConfig(pipeBase.PipelineTaskConfig,
         doc="Name of coadd"
     )
 
-    def setDefaults(self):
-        super().setDefaults()
-        self.actions.extendedness = ModelExtendednessColumnAction()
-
 
 class ConsolidateObjectTableTask(pipeBase.PipelineTask):
     """Write patch-merged source tables to a tract-level DataFrame Parquet file.
