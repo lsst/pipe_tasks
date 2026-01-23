@@ -93,10 +93,6 @@ class HighOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=HighOrderH
     warp = ConfigField[Warper.ConfigClass](
         doc="Warper configuration",
     )
-    patchGrow = Field[int](
-        doc="Dilate the patches by this much when determining the positions, normally size of overlap",
-        default=200,
-    )
     hips_base_uri = Field[str](
         doc="URI to HiPS base for output.",
         optional=False,
@@ -296,7 +292,7 @@ class HighOrderHipsTask(PipelineTask):
 
         return Struct(output_hpx=zoomed)
 
-    def _make_box_mask(self, shape: tuple[int, int]) -> NDArray:
+    def _make_box_mask(self, shape: tuple[int, int], patch_grow: int) -> NDArray:
         """Create a feathered box to use in blending images together.
 
         This is used when mixing patches together into a larger contiguous region
@@ -306,8 +302,10 @@ class HighOrderHipsTask(PipelineTask):
 
         Parameters
         ----------
-        shape: `tuple` of `int`, `int`
-            shape of the output weighting mask
+        shape : `tuple` of `int`, `int`
+            Shape of the output weighting mask.
+        patch_grow : `int`
+            Amount to grow bounding boxes.
 
         Returns
         -------
@@ -316,41 +314,33 @@ class HighOrderHipsTask(PipelineTask):
             axis to use with RGB images.
 
         """
-        # Ramp in the overlap regions for patches as defined by the patchGrow factor
-        yind, xind = np.mgrid[: self.config.patchGrow * 4, : self.config.patchGrow * 4]
-        dis = ((yind - 2 * self.config.patchGrow) ** 2 + (xind - 2 * self.config.patchGrow) ** 2) ** 0.5
-        radial = 1 - np.clip(dis / (2 * self.config.patchGrow), 0, 1)
+        # Ramp in the overlap regions for patches as defined by the patch_grow factor
+        yind, xind = np.mgrid[: patch_grow * 4, : patch_grow * 4]
+        dis = ((yind - 2 * patch_grow) ** 2 + (xind - 2 * patch_grow) ** 2) ** 0.5
+        radial = 1 - np.clip(dis / (2 * patch_grow), 0, 1)
 
-        ramp = np.linspace(0, 1, self.config.patchGrow * 2)
+        ramp = np.linspace(0, 1, patch_grow * 2)
         tmpImg = np.zeros(shape)
-        tmpImg[: self.config.patchGrow * 2, :] = np.repeat(np.expand_dims(ramp, 1), tmpImg.shape[1], axis=1)
+        tmpImg[: patch_grow * 2, :] = np.repeat(np.expand_dims(ramp, 1), tmpImg.shape[1], axis=1)
 
-        tmpImg[-1 * self.config.patchGrow * 2 :, :] = np.repeat(  # noqa: E203
+        tmpImg[-1 * patch_grow * 2 :, :] = np.repeat(  # noqa: E203
             np.expand_dims(1 - ramp, 1), tmpImg.shape[1], axis=1
         )
-        tmpImg[:, : self.config.patchGrow * 2] = np.repeat(np.expand_dims(ramp, 0), tmpImg.shape[0], axis=0)
+        tmpImg[:, : patch_grow * 2] = np.repeat(np.expand_dims(ramp, 0), tmpImg.shape[0], axis=0)
 
-        tmpImg[:, -1 * self.config.patchGrow * 2 :] = np.repeat(  # noqa: E203
+        tmpImg[:, -1 * patch_grow * 2 :] = np.repeat(  # noqa: E203
             np.expand_dims(1 - ramp, 0), tmpImg.shape[0], axis=0
         )
         # fix the corners
-        tmpImg[: 2 * self.config.patchGrow, : 2 * self.config.patchGrow] = radial[
-            : 2 * self.config.patchGrow, : 2 * self.config.patchGrow
-        ]
-        tmpImg[: 2 * self.config.patchGrow, -2 * self.config.patchGrow :] = radial[
-            : 2 * self.config.patchGrow, -2 * self.config.patchGrow :
-        ]
-        tmpImg[-2 * self.config.patchGrow :, : 2 * self.config.patchGrow] = radial[
-            -2 * self.config.patchGrow :, : 2 * self.config.patchGrow
-        ]
-        tmpImg[-2 * self.config.patchGrow :, -2 * self.config.patchGrow :] = radial[
-            -2 * self.config.patchGrow :, -2 * self.config.patchGrow :
-        ]
+        tmpImg[: 2 * patch_grow, : 2 * patch_grow] = radial[: 2 * patch_grow, : 2 * patch_grow]
+        tmpImg[: 2 * patch_grow, -2 * patch_grow :] = radial[: 2 * patch_grow, -2 * patch_grow :]
+        tmpImg[-2 * patch_grow :, : 2 * patch_grow] = radial[-2 * patch_grow :, : 2 * patch_grow]
+        tmpImg[-2 * patch_grow :, -2 * patch_grow :] = radial[-2 * patch_grow :, -2 * patch_grow :]
         tmpImg = np.repeat(np.expand_dims(tmpImg, 2), 3, axis=2)
         return tmpImg
 
     def _assemble_sub_region(
-        self, tract_patch: dict[int, Iterable[tuple[DeferredDatasetHandle, SkyWcs, Box2I]]]
+        self, tract_patch: dict[int, Iterable[tuple[DeferredDatasetHandle, SkyWcs, Box2I]]], patch_grow: int
     ) -> list[tuple[NDArray, SkyWcs, Box2I]]:
         """Assemble all the patches in each tract into images.
 
@@ -365,6 +355,8 @@ class HighOrderHipsTask(PipelineTask):
         tract_patch : `dict` of `int` to `iterable` of `tuple` of
                       `DeferredDatasetHandle`, `SkyWcs` and `Box2I`
             Input images and metadata organized into corresponding tracts.
+        patch_grow : `int`
+            Amount to grow patches by
 
         Returns
         -------
@@ -398,7 +390,7 @@ class HighOrderHipsTask(PipelineTask):
 
                 image = handle.get()
                 if tmpImg is None:
-                    tmpImg = self._make_box_mask(image.shape[:2])
+                    tmpImg = self._make_box_mask(image.shape[:2], patch_grow)
 
                 # Find all the pixels that are already populated
                 existing = ~np.all(new_array[*tmpBox.slices] == 0, axis=2)
@@ -433,14 +425,17 @@ class HighOrderHipsTask(PipelineTask):
         for input_image_ref in inputRefs.input_images:
             tract = input_image_ref.dataId["tract"]
             patch = input_image_ref.dataId["patch"]
+            # All boxes in a given skymap will have the same inner dimensions
+            # for x and y and will be the same for all patches
             imageWcs = skymap[tract][patch].getWcs()
             box = skymap[tract][patch].getInnerBBox()
-            box = box.dilatedBy(self.config.patchGrow)
+            patch_grow = skymap[tract][patch].getCellInnerDimensions().getX()
+            box = box.dilatedBy(patch_grow)
             imageHandle = butlerQC.get(input_image_ref)
             container = inputs_by_tract.setdefault(tract, list())
             container.append((imageHandle, imageWcs, box))
 
-        input_images = self._assemble_sub_region(inputs_by_tract)
+        input_images = self._assemble_sub_region(inputs_by_tract, patch_grow)
 
         outputs = self.run(input_images, healpix_id)
         butlerQC.put(outputs, outputRefs)
