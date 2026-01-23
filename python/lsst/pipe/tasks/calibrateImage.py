@@ -1932,8 +1932,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 nPixToDilate -= 1
 
         result.exposure.mask = dilatedMask
-        self.log.warning("detected_fraction_orig = %.3f  detected_fraction_dilated = %.3f",
-                         detected_fraction_orig, detected_fraction_dilated)
+        self.log.debug("detected_fraction_orig = %.3f; detected_fraction_dilated = %.3f",
+                       detected_fraction_orig, detected_fraction_dilated)
         n_above_max_per_amp = -99
         highest_detected_fraction_per_amp = float("nan")
 
@@ -1941,9 +1941,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         n_above_max_per_amp, highest_detected_fraction_per_amp, no_zero_det_amps = \
             self._compute_per_amp_fraction(result.exposure, detected_fraction_dilated,
                                            detected_mask_planes, bad_mask_planes)
-        self.log.warning("Dilated mask: n_above_max_per_amp = %d, "
-                         "highest_detected_fraction_per_amp = %.3f",
-                         n_above_max_per_amp, highest_detected_fraction_per_amp)
+        self.log.debug("Dilated mask: n_above_max_per_amp = %d; "
+                       "highest_detected_fraction_per_amp = %.3f",
+                       n_above_max_per_amp, highest_detected_fraction_per_amp)
 
         bgIgnoreMasksToAdd = ["SAT", "SUSPECT", "SPIKE"]
         detected_fraction = 1.0
@@ -2029,7 +2029,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                                             bad_mask_planes)
             self.log.info("nIter = %d, thresh = %.2f: Fraction of pixels marked as DETECTED or "
                           "DETECTED_NEGATIVE in star_background_detection = %.3f "
-                          "(max is %.3f; min is %.3f)  nFootprint = %d (current min is %d)",
+                          "(max is %.3f; min is %.3f); nFootprint = %d (current min is %d)",
                           nIter, starBackgroundDetectionConfig.thresholdValue,
                           detected_fraction, maxDetFracForFinalBg, minDetFracForFinalBg,
                           nFootprintTemp, minFootprints)
@@ -2052,9 +2052,13 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                         or detected_fraction < 0.85*maxDetFracForFinalBg):
                     break
                 else:
-                    self.log.warning("Making small tweak....")
                     starBackgroundDetectionConfig.thresholdValue = 1.05*currentThresh
-            self.log.warning("n_above_max_per_amp = %d (abs max is %d)", n_above_max_per_amp, int(0.75*n_amp))
+                    self.log.debug("Number of amplifiers with detected fraction above the maximum "
+                                   "(%.2f) excedes the maximum allowed (%d >= %d). Making a small "
+                                   "tweak to the threshold (from %.2f to %.2f) and rerunning.",
+                                   maxDetFracForFinalBg, n_above_max_per_amp, int(0.75*n_amp),
+                                   currentThresh, starBackgroundDetectionConfig.thresholdValue)
+            self.log.debug("n_above_max_per_amp = %d (abs max is %d)", n_above_max_per_amp, int(0.75*n_amp))
 
         detected_fraction = self._compute_mask_fraction(result.exposure.mask, detected_mask_planes,
                                                         bad_mask_planes)
@@ -2066,7 +2070,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             result.exposure.mask = dilatedMask
             self.log.warning("Final fraction of pixels marked as DETECTED or DETECTED_NEGATIVE "
                              "was too large in star_background_detection = %.3f (max = %.3f). "
-                             "Reverting to dilated mask from PSF detection...",
+                             "Reverting to dilated mask from PSF detection.",
                              detected_fraction, maxDetFracForFinalBg)
             self.metadata['adaptive_threshold_value'] = float("nan")
         star_background = self.star_background.run(
@@ -2102,7 +2106,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                                                                     detected_mask_planes,
                                                                     bad_mask_planes)
             result.exposure.mask = dilatedMask
-            self.log.debug("detected_fraction_orig = %.3f  detected_fraction_dilated = %.3f",
+            self.log.debug("detected_fraction_orig = %.3f; detected_fraction_dilated = %.3f",
                            detected_fraction_orig, detected_fraction_dilated)
 
         bbox = result.exposure.getBBox()
