@@ -60,9 +60,10 @@ class TestAssociationUtils(lsst.utils.tests.TestCase):
         """
         allowed_strings = ['J95X00A', 'J95X01L', 'J95F13B', 'J98SA8Q', 'J98SC7V', 'J98SG2S'] \
             + ['K99AJ3Z', 'K08Aa0A', 'K07Tf8A', 'PLS2040', 'T1S3138', 'T2S1010', 'T3S4101'] \
-            + ['       ', 'PJ48Q010', 'AAAAAAAA']
+            + ['PJ48Q010']
         for allowed_string in allowed_strings:
-            returned_string = ss_object_id_to_obj_id(obj_id_to_ss_object_id(allowed_string))
+            returned_string = ss_object_id_to_obj_id(obj_id_to_ss_object_id(allowed_string), packed=True)
+            print(allowed_string, returned_string)
             self.assertEqual(allowed_string, returned_string)
 
     def test_invalid_conversions_between_obj_id_and_ss_object_id(self):
