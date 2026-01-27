@@ -198,6 +198,12 @@ def query_disc(nside, ra, dec, max_rad, min_rad=0):
 
 
 def obj_id_to_ss_object_id(objID):
+    if ' ' in objID:
+        objID = pack_provisional_designation(objID)
+    return packed_obj_id_to_ss_object_id(objID)
+
+
+def packed_obj_id_to_ss_object_id(objID):
     """Convert from Minor Planet Center packed provisional object ID to
     Rubin ssObjectID.
 
@@ -232,7 +238,7 @@ def obj_id_to_ss_object_id(objID):
     return ssObjectID
 
 
-def ss_object_id_to_obj_id(ssObjectID):
+def ss_object_id_to_obj_id(ssObjectID, packed=False):
     """Convert from Rubin ssObjectID to Minor Planet Center packed provisional
     object ID.
 
@@ -254,11 +260,14 @@ def ss_object_id_to_obj_id(ssObjectID):
 
     objID = ''.join([chr((ssObjectID >> (8 * i)) % 256) for i in reversed(range(0, 8))])
     objID = objID.replace('\x00', '')
-    return objID
+    if packed:
+        return objID
+    else:
+        return unpack_provisional_designation(objID)
 
 # All the below designation-related code are copied from B612's adam_core
 # adam_core should eventually be added as an external dependency, and this
-# should be replaced with imports.
+# should be replaced with imports on DM-53907
 
 
 def pack_mpc_designation(designation: str) -> str:
