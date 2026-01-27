@@ -170,11 +170,12 @@ class SolarSystemAssociationTask(pipeBase.Task):
                 ssObjects['obj_position'].T * ssObjects['topocentric_position'].T
                 / ssObjects['helioRange'] / ssObjects['topoRange'], axis=0
             )))
+            #  ssObjects['trailedSourceMagTrue'] should already be filled
+
             # Add other required columns with dummy values until we compute them properly.
             # Fix in DM-53463
             ssObjects['RARateCosDec_deg_day'] = 0
             ssObjects['DecRate_deg_day'] = 0
-            ssObjects['trailedSourceMagTrue'] = 0
             ssObjects['RangeRate_LTC_km_s'] = 0
 
             marginArcsec = ssObjects["Err(arcsec)"].max()
@@ -218,7 +219,6 @@ class SolarSystemAssociationTask(pipeBase.Task):
                               'topo_z', 'topo_vx', 'topo_vy', 'topo_vz']
 
         mpcorbColumns = [col for col in ssObjects.columns if col[:7] == 'MPCORB_']
-
         maskedObjects = self._maskToCcdRegion(
             ssObjects,
             bbox,
@@ -259,6 +259,12 @@ class SolarSystemAssociationTask(pipeBase.Task):
 
         # From closest to farthest, associate diaSources to SSOs.
         # Skipping already-associated sources and objects.
+        all_cols = (
+            ["ObjID", "phaseAngle", "helioRange", "topoRange"] + stateVectorColumns + mpcorbColumns
+            + ["ephRa", "ephDec", "RARateCosDec_deg_day",
+               "DecRate_deg_day", "trailedSourceMagTrue", "RangeRate_LTC_km_s"]
+        )
+
         used_src_indices, used_obj_indices = set(), set()
         maskedObjects['associated'] = False
         for dist, obj_idx, src_idx in nearby_obj_source_pairs:
@@ -269,11 +275,6 @@ class SolarSystemAssociationTask(pipeBase.Task):
             used_obj_indices.add(obj_idx)
             diaSourceCatalog[src_idx]["ssObjectId"] = maskedObject["ssObjectId"]
             ssObjectIds.append(maskedObject["ssObjectId"])
-            all_cols = (
-                ["ObjID", "phaseAngle", "helioRange", "topoRange"] + stateVectorColumns + mpcorbColumns
-                + ["ephRa", "ephDec", "RARateCosDec_deg_day",
-                   "DecRate_deg_day", "trailedSourceMagTrue", "RangeRate_LTC_km_s"]
-            )
             ssSourceData.append(list(maskedObject[all_cols].values()))
             dia_ra = diaSourceCatalog[src_idx]["ra"]
             dia_dec = diaSourceCatalog[src_idx]["dec"]
@@ -292,11 +293,20 @@ class SolarSystemAssociationTask(pipeBase.Task):
         self.metadata['nExpectedSsObjects'] = nSolarSystemObjects
         assocSourceMask = diaSourceCatalog["ssObjectId"] != 0
         unAssocObjectMask = np.logical_not(maskedObjects['associated'].value)
-        ssSourceData = np.array(ssSourceData)
+        dtypes = [type(d) if d is not np.ma.core.MaskedConstant else float
+                  for d in maskedObjects[0][all_cols].values()]
+        ssSourceData = np.ma.filled(np.array(ssSourceData), np.nan)
         colnames = ["designation", "phaseAngle", "helioRange", "topoRange"]
         colnames += stateVectorColumns + mpcorbColumns
         colnames += ["ephRa", "ephDec", "ephRateRa", "ephRateDec", "ephVmag", "topoRangeRate"]
-        ssSourceData = Table(ssSourceData, names=colnames, dtype=[str] + [np.float64] * (len(colnames) - 1))
+        ssSourceData = Table(ssSourceData, names=colnames, dtype=dtypes)
+        if 'MPCORB_created_at' in ssSourceData.columns:
+            ssSourceData['MPCORB_created_at'] = 0
+            ssSourceData['MPCORB_updated_at'] = 0
+            ssSourceData['MPCORB_fitting_datetime'] = 0
+            for c in ['MPCORB_created_at', 'MPCORB_updated_at', 'MPCORB_fitting_datetime',
+                      'MPCORB_orbit_type_int', 'MPCORB_u_param']:
+                ssSourceData[c] = ssSourceData[c].astype(np.int64)
         ssSourceData['ssObjectId'] = Column(data=ssObjectIds, dtype=int)
         ssSourceData["ra"] = ras
         ssSourceData["dec"] = decs
