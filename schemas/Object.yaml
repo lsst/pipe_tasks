@@ -863,6 +863,10 @@ funcs:
         functor: SinglePrecisionFloatColumn
         args: cen_decErr
         dataset: Exp_multiprofit
+    exponential_ra_dec_Cov:
+        functor: SinglePrecisionFloatColumn
+        args: cen_ra_dec_Cov
+        dataset: Exp_multiprofit
     exponential_reff_xErr:
         functor: SinglePrecisionFloatColumn
         args: reff_xErr
@@ -959,6 +963,10 @@ funcs:
     sersic_dec:
         functor: Column
         args: cen_dec
+        dataset: Sersic_multiprofit
+    sersic_ra_dec_Cov:
+        functor: SinglePrecisionFloatColumn
+        args: cen_ra_dec_Cov
         dataset: Sersic_multiprofit
     sersic_reff_x:
         functor: SinglePrecisionFloatColumn
