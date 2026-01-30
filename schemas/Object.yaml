@@ -133,8 +133,41 @@ funcs:
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_1_0_instFluxErr
     # Taking Shape from meas
+    # These pixel-coordinate versions are deprecated following RFC-1081.
+    ixx:
+        functor: SinglePrecisionFloatColumn
+        args: slot_Shape_xx
+        dataset: meas
+    iyy:
+        functor: SinglePrecisionFloatColumn
+        args: slot_Shape_yy
+        dataset: meas
+    ixy:
+        functor: SinglePrecisionFloatColumn
+        args: slot_Shape_xy
+        dataset: meas
+    i_flag:
+        functor: Column
+        args: slot_Shape_flag
+        dataset: meas
     # Icov: # need to compute
     # DM-22249 Evaluate whether we want to replace IxxPSF/IyyPSF/IxyPSF w/ FWHM
+    ixxPSF:
+        functor: SinglePrecisionFloatColumn
+        args: slot_PsfShape_xx
+        dataset: meas
+    iyyPSF:
+        functor: SinglePrecisionFloatColumn
+        args: slot_PsfShape_yy
+        dataset: meas
+    ixyPSF:
+        functor: SinglePrecisionFloatColumn
+        args: slot_PsfShape_xy
+        dataset: meas
+    iPSF_flag:
+        functor: Column
+        args: slot_PsfShape_flag
+        dataset: meas
     moments_g1:
         functor: MomentsG1Sky
         args:
@@ -1124,6 +1157,18 @@ funcs:
         functor: Column
         args: no_data_flag
         dataset: Sersic_multiprofit
+    shape_xx:
+        functor: SinglePrecisionFloatColumn
+        args: slot_Shape_xx
+        dataset: ref
+    shape_yy:
+        functor: SinglePrecisionFloatColumn
+        args: slot_Shape_yy
+        dataset: ref
+    shape_xy:
+        functor: SinglePrecisionFloatColumn
+        args: slot_Shape_xy
+        dataset: ref
     g_epoch:
         functor: MultibandColumn
         args:
