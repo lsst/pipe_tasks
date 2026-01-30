@@ -2113,6 +2113,7 @@ class MomentsBase(Functor):
         """
         Calculate shear-type ellipticity parameter G1.
         """
+        # TODO: Replace this with functionality from afwGeom, DM-54015
         sky_uu = self.sky_uu(df)
         sky_vv = self.sky_vv(df)
         sky_uv = self.sky_uv(df)
@@ -2126,6 +2127,7 @@ class MomentsBase(Functor):
         This has the opposite sign as sky_uv in order to maintain consistency with the HSM moments
         sign convention.
         """
+        # TODO: Replace this with functionality from afwGeom, DM-54015
         sky_uu = self.sky_uu(df)
         sky_vv = self.sky_vv(df)
         sky_uv = self.sky_uv(df)
