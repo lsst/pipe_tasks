@@ -31,7 +31,12 @@ from lsst.afw.image import ExposureF, ImageD, ImageF, MaskedImageF, makePhotoCal
 from lsst.afw.math import FixedKernel
 from lsst.geom import Box2I, Extent2I, Point2D, Point2I, SpherePoint, arcseconds, degrees
 from lsst.meas.algorithms import KernelPsf
-from lsst.pipe.tasks.brightStarSubtraction import BrightStarCutoutConfig, BrightStarCutoutTask
+from lsst.pipe.tasks.brightStarSubtraction import (
+    BrightStarCutoutConfig,
+    BrightStarCutoutTask,
+    BrightStarStackConfig,
+    BrightStarStackTask,
+)
 
 
 class BrightStarSubtractionTestCase(lsst.utils.tests.TestCase):
@@ -154,6 +159,15 @@ class BrightStarSubtractionTestCase(lsst.utils.tests.TestCase):
             bright_stars=self.bright_stars,
             visit=12345,
         )
+        assert self.bright_star_stamps is not None
+
+        # Run the bright star stack task
+        brightStarStackConfig = BrightStarStackConfig()
+        brightStarStackTask = BrightStarStackTask(config=brightStarStackConfig)
+        bss_results = brightStarStackTask.run(bright_star_stamps=self.bright_star_stamps)
+        assert bss_results is not None
+        self.extended_psf = bss_results.extended_psf
+        self.moffat_results = bss_results.moffat_results
 
     def test_brightStarCutout(self):
         """Test BrightStarCutoutTask."""
@@ -174,6 +188,20 @@ class BrightStarSubtractionTestCase(lsst.utils.tests.TestCase):
             assert bright_star_stamp.focal_plane_angle is not None
             focal_plane_angle = bright_star_stamp.focal_plane_angle.asRadians()
             self.assertEqual(focal_plane_angle, bright_star_row["theta_radians"])
+
+    def test_brightStarStack(self):
+        """Test BrightStarStackTask."""
+        assert self.extended_psf is not None
+        assert self.moffat_results is not None
+        self.assertAlmostEqual(np.sum(self.extended_psf.image.array), 0.8233416, places=5)
+        self.assertAlmostEqual(np.sum(self.extended_psf.variance.array), 0.007561891, places=5)
+        self.assertAlmostEqual(self.moffat_results["MOFFAT_AMPLITUDE"], 0.078900464260488, places=5)
+        self.assertAlmostEqual(self.moffat_results["MOFFAT_X_0"], -0.68834523633912, places=5)
+        self.assertAlmostEqual(self.moffat_results["MOFFAT_Y_0"], -0.069005412739451, places=5)
+        self.assertAlmostEqual(self.moffat_results["MOFFAT_GAMMA"], 8.0966823485900, places=5)
+        self.assertAlmostEqual(self.moffat_results["MOFFAT_ALPHA"], 16.048683662812, places=5)
+        self.assertAlmostEqual(self.moffat_results["MOFFAT_CHI2"], 107652.97393353, places=5)
+        self.assertAlmostEqual(self.moffat_results["MOFFAT_REDUCED_CHI2"], 1.7088858647141, places=5)
 
 
 def setup_module(module):
