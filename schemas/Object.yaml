@@ -526,19 +526,19 @@ funcs:
     # replace with other shear estimation parameters. e.g. How e1 and e2 respond to shear.
     cModel_devFlux:
         functor: SinglePrecisionFloatColumn
-        dataset: meas
+        dataset: forced_src
         args: modelfit_CModel_dev_instFlux
     cModel_devFluxErr:
         functor: SinglePrecisionFloatColumn
-        dataset: meas
+        dataset: forced_src
         args: modelfit_CModel_dev_instFluxErr
     cModel_expFlux:
         functor: SinglePrecisionFloatColumn
-        dataset: meas
+        dataset: forced_src
         args: modelfit_CModel_exp_instFlux
     cModel_expFluxErr:
         functor: SinglePrecisionFloatColumn
-        dataset: meas
+        dataset: forced_src
         args: modelfit_CModel_exp_instFluxErr
     cModelFlux:
         functor: SinglePrecisionFloatColumn
@@ -576,6 +576,22 @@ funcs:
         functor: SinglePrecisionFloatColumn
         dataset: meas
         args: modelfit_CModel_fracDev
+    free_cModel_devFlux:
+        functor: SinglePrecisionFloatColumn
+        dataset: meas
+        args: modelfit_CModel_dev_instFlux
+    free_cModel_devFluxErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: meas
+        args: modelfit_CModel_dev_instFluxErr
+    free_cModel_expFlux:
+        functor: SinglePrecisionFloatColumn
+        dataset: meas
+        args: modelfit_CModel_exp_instFlux
+    free_cModel_expFluxErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: meas
+        args: modelfit_CModel_exp_instFluxErr
     # exp, dev, total, fracdev
     # We need different ellipticities for shear measurement:
     hsmShapeRegauss_e1:
