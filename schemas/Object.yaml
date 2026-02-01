@@ -688,26 +688,6 @@ funcs:
         dataset: ref
     ebv:
         functor: Ebv
-    deblend_dataCoverage:
-        functor: Column
-        args: deblend_dataCoverage
-        dataset: meas
-    deblend_blendedness:
-        functor: Column
-        args: deblend_blendedness
-        dataset: meas
-    deblend_fluxOverlap:
-        functor: Column
-        args: deblend_fluxOverlap
-        dataset: meas
-    deblend_fluxOverlapFraction:
-        functor: Column
-        args: deblend_fluxOverlapFraction
-        dataset: meas
-    deblend_zeroFlux:
-        functor: Column
-        args: deblend_zeroFlux
-        dataset: meas
     # MultiProFit Two Gaussian PSF model fit parameters
     psfModel_TwoGaussian_gauss1_sigma_x:
         functor: SinglePrecisionFloatColumn
