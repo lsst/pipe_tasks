@@ -1244,7 +1244,6 @@ flags:
     - base_ClassificationSizeExtendedness_flag
     - base_InvalidPsf_flag
     - calib_astrometry_used
-    - calib_photometry_reserved
     - calib_photometry_used
     - calib_psf_candidate
     - calib_psf_reserved
