@@ -45,6 +45,7 @@ def makeMockVisitSummary(visit,
                          zenith_distance=45.0,
                          zero_point=30.0,
                          sky_background=100.0,
+                         sky_lumpiness=0.4,
                          sky_noise=10.0,
                          mean_var=100.0,
                          exposure_time=100.0,
@@ -79,6 +80,8 @@ def makeMockVisitSummary(visit,
         Constant zero point for the visit (magnitudes).
     sky_background : `float`
         Background level for the visit (counts).
+    sky_lumpiness : `float`
+        Measure of sky background unevenness (unitless).
     sky_noise : `float`
         Noise level for the background of the visit (counts).
     mean_var : `float`
@@ -115,6 +118,7 @@ def makeMockVisitSummary(visit,
         row['zenithDistance'] = zenith_distance
         row['zeroPoint'] = zero_point
         row['skyBg'] = sky_background
+        row['skyLumpiness'] = sky_lumpiness
         row['skyNoise'] = sky_noise
         row['meanVar'] = mean_var
 
