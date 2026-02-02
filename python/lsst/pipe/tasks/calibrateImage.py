@@ -972,14 +972,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 )
 
         if camera_model:
-            if camera_model.get(result.exposure.detector.getId()):
-                self.log.info("Updating WCS with the provided camera model.")
-                self._update_wcs_with_camera_model(result.exposure, camera_model, exposure_record)
-            else:
-                self.log.warning(
-                    "useButlerCamera=True, but detector %s is not available in the provided camera. The "
-                    "astrometry fit will use the WCS already attached to the exposure.",
-                    result.exposure.detector.getId())
+            self._update_wcs_with_camera_model(result.exposure, camera_model, exposure_record)
 
         result.background = None
         result.background_to_photometric_ratio = None
@@ -1754,6 +1747,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         """Replace the existing WCS with one generated using the pointing
         and the input camera model.
 
+        If the current detector does not exist in the cameraModel, the pointing
+        will still get updated, but the original distortion model will be used.
+
         Parameters
         ----------
         exposure : `lsst.afw.image.ExposureF`
@@ -1765,7 +1761,15 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             constructing an updated WCS instead of the boresight and
             orientation angle from the visit info.
         """
-        detector = cameraModel[exposure.detector.getId()]
+        if cameraModel.get(exposure.detector.getId()):
+            self.log.info("Updating WCS with the provided camera model.")
+            detector = cameraModel[exposure.detector.getId()]
+        else:
+            self.log.warning(
+                "useButlerCamera=True, but detector %s is not available in the provided camera. The "
+                "astrometry fit will use the initial distortion model for this detector.",
+                exposure.detector.getId())
+            detector = exposure.detector
         if exposure_record is None:
             boresight = exposure.visitInfo.getBoresightRaDec()
             orientation = exposure.visitInfo.getBoresightRotAngle()
@@ -1773,10 +1777,12 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             boresight = SpherePoint(exposure_record.tracking_ra, exposure_record.tracking_dec, degrees)
             orientation = exposure_record.sky_angle * degrees
             self.log.info(
-                "Pointing from exposure record is %s deg from initial pointing; "
-                "orientation difference is %s deg.",
+                "Pointing from exposure record is %.6f deg (%.3f arcsec) from initial pointing; "
+                "orientation difference is %.6f deg (%.3f arcsec).",
                 boresight.separation(exposure.visitInfo.getBoresightRaDec()).asDegrees(),
+                boresight.separation(exposure.visitInfo.getBoresightRaDec()).asArcseconds(),
                 (orientation - exposure.visitInfo.getBoresightRotAngle()).asDegrees(),
+                (orientation - exposure.visitInfo.getBoresightRotAngle()).asArcseconds(),
             )
         newWcs = createInitialSkyWcsFromBoresight(boresight, orientation, detector)
         exposure.setWcs(newWcs)
