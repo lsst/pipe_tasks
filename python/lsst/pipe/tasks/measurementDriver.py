@@ -1138,9 +1138,9 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
             processed by this multi-band driver.
         bands :
             List of bands associated with the exposures in ``mExposure`` after
-            potential adjustments. If not provided in the input, it will be set
-            to a list containing only the provided (or inferred as "unknown")
-            ``refBand`` value.
+            potential adjustments. If not provided for single-band input when
+            using this multi-band driver, it will be set to a list containing
+            only the provided (or inferred as "unknown") ``refBand`` value.
         """
 
         # Perform basic checks that are shared with all driver tasks.
@@ -1374,12 +1374,14 @@ class MultiBandMeasurementDriverTask(MeasurementDriverBaseTask):
             # function's signature, even when using a single band.
             mExposure = afwImage.MultibandExposure.fromExposures(bands, [mExposureData])
 
-        # Attach the WCS from each input exposure to the corresponding band of
-        # the multi-band exposure; otherwise, their WCS will be None,
-        # potentially causing issues downstream. Note that afwImage does not do
-        # this when constructing a MultibandExposure from exposures.
+        # Attach the WCS and ApCorrMap from each input exposure to the
+        # corresponding band of the multi-band exposure; otherwise, their WCS
+        # and ApCorrMap will be None, potentially causing issues downstream.
+        # Note that afwImage does not handle this when constructing a
+        # MultibandExposure from exposures.
         for band, exposure in zip(bands, mExposureData):
             mExposure[band].setWcs(exposure.getWcs())
+            mExposure[band].setApCorrMap(exposure.getInfo().getApCorrMap())
 
         return mExposure
 
