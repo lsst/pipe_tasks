@@ -754,14 +754,6 @@ funcs:
         args: TwoGaussianPsf_no_inputs_flag
         dataset: psfs_multiprofit
     # MultiProFit multiband single exponential object model fit parameters
-    exponential_x:
-        functor: Column
-        args: cen_x
-        dataset: Exp_multiprofit
-    exponential_y:
-        functor: Column
-        args: cen_y
-        dataset: Exp_multiprofit
     exponential_ra:
         functor: Column
         args: cen_ra
@@ -863,14 +855,6 @@ funcs:
             - N708_Flux
             - N708
         dataset: Exp_multiprofit
-    exponential_xErr:
-        functor: SinglePrecisionFloatColumn
-        args: cen_xErr
-        dataset: Exp_multiprofit
-    exponential_yErr:
-        functor: SinglePrecisionFloatColumn
-        args: cen_yErr
-        dataset: Exp_multiprofit
     exponential_raErr:
         functor: SinglePrecisionFloatColumn
         args: cen_raErr
@@ -878,6 +862,10 @@ funcs:
     exponential_decErr:
         functor: SinglePrecisionFloatColumn
         args: cen_decErr
+        dataset: Exp_multiprofit
+    exponential_ra_dec_Cov:
+        functor: SinglePrecisionFloatColumn
+        args: cen_ra_dec_Cov
         dataset: Exp_multiprofit
     exponential_reff_xErr:
         functor: SinglePrecisionFloatColumn
@@ -968,14 +956,6 @@ funcs:
         args: no_data_flag
         dataset: Exp_multiprofit
     # MultiProFit multiband single Sersic object model fit parameters
-    sersic_x:
-        functor: Column
-        args: cen_x
-        dataset: Sersic_multiprofit
-    sersic_y:
-        functor: Column
-        args: cen_y
-        dataset: Sersic_multiprofit
     sersic_ra:
         functor: Column
         args: cen_ra
@@ -983,6 +963,10 @@ funcs:
     sersic_dec:
         functor: Column
         args: cen_dec
+        dataset: Sersic_multiprofit
+    sersic_ra_dec_Cov:
+        functor: SinglePrecisionFloatColumn
+        args: cen_ra_dec_Cov
         dataset: Sersic_multiprofit
     sersic_reff_x:
         functor: SinglePrecisionFloatColumn
@@ -1080,14 +1064,6 @@ funcs:
     sersic_index:
         functor: SinglePrecisionFloatColumn
         args: sersic_index
-        dataset: Sersic_multiprofit
-    sersic_xErr:
-        functor: SinglePrecisionFloatColumn
-        args: cen_xErr
-        dataset: Sersic_multiprofit
-    sersic_yErr:
-        functor: SinglePrecisionFloatColumn
-        args: cen_yErr
         dataset: Sersic_multiprofit
     sersic_raErr:
         functor: SinglePrecisionFloatColumn
