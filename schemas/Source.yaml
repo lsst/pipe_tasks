@@ -6,14 +6,6 @@ funcs:
     sourceId:
         functor: Column
         args: id
-    coord_ra:
-        # reference position required by db. Not in DPDD
-        functor: CoordColumn
-        args: coord_ra
-    coord_dec:
-        # Reference position required by db. Not in DPDD
-        functor: CoordColumn
-        args: coord_dec
     # objectId: not available
     # ssObjectId: not available
     parentSourceId:
