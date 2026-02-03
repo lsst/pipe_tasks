@@ -1992,7 +1992,14 @@ class Ebv(Functor):
 
 
 class MomentsBase(Functor):
-    """Base class for functors that use shape moments and localWCS"""
+    """Base class for functors that use shape moments and localWCS
+
+    Attributes
+    ----------
+    is_covariance : bool
+        Whether the shape columns are terms of a covariance matrix. If False,
+        they will be assumed to be terms of a correlation matrix instead.
+    """
 
     is_covariance: bool = True
 
