@@ -540,6 +540,22 @@ funcs:
         functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: modelfit_CModel_fracDev
+    cModel_devFlux:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: modelfit_CModel_dev_instFlux
+    cModel_devFluxErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: modelfit_CModel_dev_instFluxErr
+    cModel_expFlux:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: modelfit_CModel_exp_instFlux
+    cModel_expFluxErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: modelfit_CModel_exp_instFluxErr
     free_cModelFlux: # to dm-naming things
         functor: SinglePrecisionFloatColumn
         dataset: meas
