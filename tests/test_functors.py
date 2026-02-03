@@ -50,6 +50,7 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
                                       HtmIndex20, Ebv, MomentsIuuSky, MomentsIvvSky, MomentsIuvSky,
                                       SemimajorAxisFromMoments, SemiminorAxisFromMoments,
                                       PositionAngleFromMoments,
+                                      MomentsG1Sky, MomentsG2Sky, MomentsTraceSky,
                                       CorrelationIuuSky, CorrelationIvvSky, CorrelationIuvSky,
                                       SemimajorAxisFromCorrelation, SemiminorAxisFromCorrelation,
                                       PositionAngleFromCorrelation
@@ -992,6 +993,10 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
         axesB_corr_functor = SemiminorAxisFromCorrelation(*args_corr, filt="g")
         axesTheta_corr_functor = PositionAngleFromCorrelation(*args_corr, filt="g")
 
+        moments_g1_functor = MomentsG1Sky(*args, filt="g")
+        moments_g2_functor = MomentsG2Sky(*args, filt="g")
+        moments_trace_functor = MomentsTraceSky(*args, filt="g")
+
         df = self.getMultiIndexDataFrame(self.dataDict)
         output_sky_xx = skyXX_functor(df)
         output_sky_yy = skyYY_functor(df)
@@ -1009,12 +1014,20 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
         output_axes_b_corr = axesB_corr_functor(df)
         output_axes_theta_corr = axesTheta_corr_functor(df)
 
+        output_g1 = moments_g1_functor(df)
+        output_g2 = moments_g2_functor(df)
+        output_trace = moments_trace_functor(df)
+
         transformed_xx = []
         transformed_yy = []
         transformed_xy = []
         axes_a = []
         axes_b = []
         axes_theta = []
+
+        transformed_g1 = []
+        transformed_g2 = []
+        transformed_trace = []
 
         for n in range(5):
             Ixx = df[('meas', 'g', 'slot_Shape_xx')].iloc[n]
@@ -1042,6 +1055,13 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
             axes_b.append(axes.getB())
             axes_theta.append(np.degrees(axes.getTheta()))
 
+            reduced_shear = afwGeom.ellipses.SeparableReducedShearTraceRadius(transformed_q)
+
+            transformed_g1.append(reduced_shear.getE1())
+            # Sign flip for consistency with HSM E2 sign convention.
+            transformed_g2.append(-1*reduced_shear.getE2())
+            transformed_trace.append(reduced_shear.getTraceRadius())
+
         self.assertFloatsAlmostEqual(output_sky_xx, np.array(transformed_xx), rtol=1e-5)
         self.assertFloatsAlmostEqual(output_sky_yy, np.array(transformed_yy), rtol=1e-5)
         self.assertFloatsAlmostEqual(output_sky_xy, np.array(transformed_xy), rtol=1e-5)
@@ -1055,6 +1075,12 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
         self.assertFloatsAlmostEqual(output_axes_a_corr, np.array(axes_a), rtol=1e-5)
         self.assertFloatsAlmostEqual(output_axes_b_corr, np.array(axes_b), rtol=1e-5)
         self.assertFloatsAlmostEqual(output_axes_theta_corr, np.array(axes_theta), rtol=1e-5)
+
+        # TODO: These tolerances are looser than we would like, would be better to
+        # rely on afwGeom for conversions: DM-54015
+        self.assertFloatsAlmostEqual(output_g1, np.array(transformed_g1), rtol=2e-5)
+        self.assertFloatsAlmostEqual(output_g2, np.array(transformed_g2), rtol=2e-5)
+        self.assertFloatsAlmostEqual(output_trace, np.array(transformed_trace), rtol=2e-5)
 
     def _dropLevels(self, df):
         levelsToDrop = [n for lev, n in zip(df.columns.levels, df.columns.names) if len(lev) == 1]
