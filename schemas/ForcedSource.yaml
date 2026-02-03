@@ -8,12 +8,16 @@ funcs:
         args: parent
         dataset: calexp
     coord_ra:
-        # reference position required by database. Not in DPDD
+        # Special reference position column from forced photometry seed:
+        # object or diaObject. Do not change here.
+        # Rename with TransformForcedSourceTableConfig.outputCoordRaColumn
         functor: CoordColumn
         dataset: calexp
         args: coord_ra
     coord_dec:
-        # reference position required by database. Not in DPDD
+        # Special reference position column from forced photometry seed:
+        # object or diaObject. Do not change here.
+        # Rename with TransformForcedSourceTableConfig.outputCoordDecColumn
         functor: CoordColumn
         dataset: calexp
         args: coord_dec

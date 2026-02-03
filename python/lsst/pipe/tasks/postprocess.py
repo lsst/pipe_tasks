@@ -2024,6 +2024,16 @@ class TransformForcedSourceTableConfig(TransformCatalogBaseConfig,
         dtype=str,
         default="forcedSourceId",
     )
+    outputCoordRaColumn = lsst.pex.config.Field(
+        doc="Rename the fiducial `coord_ra` (seed RA) column to this.",
+        dtype=str,
+        default="coord_ra",
+    )
+    outputCoordDecColumn = lsst.pex.config.Field(
+        doc="Rename the fiducial `coord_dec` (seed Dec) column to this.",
+        dtype=str,
+        default="coord_dec",
+    )
 
     def setDefaults(self):
         super().setDefaults()
@@ -2096,6 +2106,11 @@ class TransformForcedSourceTableTask(TransformCatalogBaseTask):
             outputCatalog.set_index("forcedSourceId", inplace=True, verify_integrity=True)
             # Rename it to the config.key
             outputCatalog.index.rename(self.config.key, inplace=True)
+
+        if "coord_ra" in outputCatalog.columns and "coord_dec" in outputCatalog.columns:
+            outputCatalog.rename(columns={"coord_ra": self.config.outputCoordRaColumn,
+                                          "coord_dec": self.config.outputCoordDecColumn},
+                                inplace=True)
 
         self.log.info("Made a table of %d columns and %d rows",
                       len(outputCatalog.columns), len(outputCatalog))
