@@ -2116,6 +2116,78 @@ class MomentsBase(Functor):
         return ((CD_1_1 * i_xx + CD_1_2 * i_xy) * CD_2_1
                 + (CD_1_1 * i_xy + CD_1_2 * i_yy) * CD_2_2)
 
+    def get_g1(self, df):
+        """
+        Calculate shear-type ellipticity parameter G1.
+        """
+        # TODO: Replace this with functionality from afwGeom, DM-54015
+        sky_uu = self.sky_uu(df)
+        sky_vv = self.sky_vv(df)
+        sky_uv = self.sky_uv(df)
+        denom = sky_uu + sky_vv + 2 * np.sqrt(sky_uu*sky_vv - sky_uv**2)
+        return ((sky_uu - sky_vv) / denom).astype(np.float32)
+
+    def get_g2(self, df):
+        """
+        Calculate shear-type ellipticity parameter G2.
+
+        This has the opposite sign as sky_uv in order to maintain consistency with the HSM moments
+        sign convention.
+        """
+        # TODO: Replace this with functionality from afwGeom, DM-54015
+        sky_uu = self.sky_uu(df)
+        sky_vv = self.sky_vv(df)
+        sky_uv = self.sky_uv(df)
+        denom = sky_uu + sky_vv + 2 * np.sqrt(sky_uu*sky_vv - sky_uv**2)
+        return (-2*sky_uv / denom).astype(np.float32)
+
+    def get_trace(self, df):
+        sky_uu = self.sky_uu(df)
+        sky_vv = self.sky_vv(df)
+        return np.sqrt(0.5*(sky_uu + sky_vv)).astype(np.float32)
+
+
+class MomentsG1Sky(MomentsBase):
+    """Rotate pixel moments Ixx,Iyy,Ixy into RA/dec frame and G1/G2 reduced
+    shear parameterization"""
+    _defaultDataset = 'meas'
+    name = "moments_g1"
+    shortname = "moments_g1"
+
+    def _func(self, df):
+        sky_g1 = self.get_g1(df)
+
+        return pd.Series(sky_g1.astype(np.float32), index=df.index)
+
+
+class MomentsG2Sky(MomentsBase):
+    """Rotate pixel moments Ixx,Iyy,Ixy into RA/dec frame and G1/G2 reduced
+    shear parameterization"""
+    _defaultDataset = 'meas'
+    name = "moments_g2"
+    shortname = "moments_g2"
+
+    def _func(self, df):
+        sky_g2 = self.get_g2(df)
+
+        return pd.Series(sky_g2.astype(np.float32), index=df.index)
+
+
+class MomentsTraceSky(MomentsBase):
+    """Trace radius size in arcseconds from pixel moments Ixx,Iyy,Ixy
+
+    The trace radius size is a measure of size equal to the square root of
+    half of the trace of the second moments tensor.
+    """
+    _defaultDataset = 'meas'
+    name = "moments_trace"
+    shortname = "moments_trace"
+
+    def _func(self, df):
+        sky_trace_radians = self.get_trace(df)
+
+        return pd.Series((sky_trace_radians*(180/np.pi)*3600).astype(np.float32), index=df.index)
+
 
 class MomentsIuuSky(MomentsBase):
     """Rotate pixel moments Ixx,Iyy,Ixy into ra,dec frame and arcseconds"""

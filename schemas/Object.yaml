@@ -168,88 +168,45 @@ funcs:
         functor: Column
         args: slot_PsfShape_flag
         dataset: meas
-    ixxDebiasedPSF:
-        functor: SinglePrecisionFloatColumn
-        args: ext_shapeHSM_HsmPsfMomentsDebiased_xx
+    moments_g1:
+        functor: MomentsG1Sky
+        args:
+            - slot_Shape_xx
+            - slot_Shape_yy
+            - slot_Shape_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
         dataset: meas
-    iyyDebiasedPSF:
-        functor: SinglePrecisionFloatColumn
-        args: ext_shapeHSM_HsmPsfMomentsDebiased_yy
+    moments_g2:
+        functor: MomentsG2Sky
+        args:
+            - slot_Shape_xx
+            - slot_Shape_yy
+            - slot_Shape_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
         dataset: meas
-    ixyDebiasedPSF:
-        functor: SinglePrecisionFloatColumn
-        args:  ext_shapeHSM_HsmPsfMomentsDebiased_xy
+    moments_trace:
+        functor: MomentsTraceSky
+        args:
+            - slot_Shape_xx
+            - slot_Shape_yy
+            - slot_Shape_xy
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
         dataset: meas
-    iDebiasedPSF_flag:
-        functor: Column
-        args: ext_shapeHSM_HsmPsfMomentsDebiased_flag
-        dataset: meas
-    moments_uu:
-        functor: MomentsIuuSky
-        args:
-            - slot_Shape_xx
-            - slot_Shape_yy
-            - slot_Shape_xy
-            - base_LocalWcs_CDMatrix_1_1
-            - base_LocalWcs_CDMatrix_1_2
-            - base_LocalWcs_CDMatrix_2_1
-            - base_LocalWcs_CDMatrix_2_2
-    moments_vv:
-        functor: MomentsIvvSky
-        args:
-            - slot_Shape_xx
-            - slot_Shape_yy
-            - slot_Shape_xy
-            - base_LocalWcs_CDMatrix_1_1
-            - base_LocalWcs_CDMatrix_1_2
-            - base_LocalWcs_CDMatrix_2_1
-            - base_LocalWcs_CDMatrix_2_2
-    moments_uv:
-        functor: MomentsIuvSky
-        args:
-            - slot_Shape_xx
-            - slot_Shape_yy
-            - slot_Shape_xy
-            - base_LocalWcs_CDMatrix_1_1
-            - base_LocalWcs_CDMatrix_1_2
-            - base_LocalWcs_CDMatrix_2_1
-            - base_LocalWcs_CDMatrix_2_2
-    moments_a:
-        functor: SemimajorAxisFromMoments
-        args:
-            - slot_Shape_xx
-            - slot_Shape_yy
-            - slot_Shape_xy
-            - base_LocalWcs_CDMatrix_1_1
-            - base_LocalWcs_CDMatrix_1_2
-            - base_LocalWcs_CDMatrix_2_1
-            - base_LocalWcs_CDMatrix_2_2
-    moments_b:
-        functor: SemiminorAxisFromMoments
-        args:
-            - slot_Shape_xx
-            - slot_Shape_yy
-            - slot_Shape_xy
-            - base_LocalWcs_CDMatrix_1_1
-            - base_LocalWcs_CDMatrix_1_2
-            - base_LocalWcs_CDMatrix_2_1
-            - base_LocalWcs_CDMatrix_2_2
-    moments_theta:
-        functor: PositionAngleFromMoments
-        args:
-            - slot_Shape_xx
-            - slot_Shape_yy
-            - slot_Shape_xy
-            - base_LocalWcs_CDMatrix_1_1
-            - base_LocalWcs_CDMatrix_1_2
-            - base_LocalWcs_CDMatrix_2_1
-            - base_LocalWcs_CDMatrix_2_2
     moments_flag:
         functor: Column
         args: slot_Shape_flag
         dataset: meas
-    moments_psf_uu:
-        functor: MomentsIuuSky
+    moments_psf_g1:
+        functor: MomentsG1Sky
         args:
             - slot_PsfShape_xx
             - slot_PsfShape_yy
@@ -258,8 +215,9 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
-    moments_psf_vv:
-        functor: MomentsIvvSky
+        dataset: meas
+    moments_psf_g2:
+        functor: MomentsG2Sky
         args:
             - slot_PsfShape_xx
             - slot_PsfShape_yy
@@ -268,8 +226,9 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
-    moments_psf_uv:
-        functor: MomentsIuvSky
+        dataset: meas
+    moments_psf_trace:
+        functor: MomentsTraceSky
         args:
             - slot_PsfShape_xx
             - slot_PsfShape_yy
@@ -278,46 +237,24 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
+        dataset: meas
     moments_psf_flag:
         functor: Column
         args: slot_PsfShape_flag
         dataset: meas
-    moments_round_uu:
-        functor: MomentsIuuSky
+    moments_psf_debiased_g1:
+        functor: MomentsG1Sky
         args:
-            - slot_ShapeRound_xx
-            - slot_ShapeRound_yy
-            - slot_ShapeRound_xy
+            - ext_shapeHSM_HsmPsfMomentsDebiased_xx
+            - ext_shapeHSM_HsmPsfMomentsDebiased_yy
+            - ext_shapeHSM_HsmPsfMomentsDebiased_xy
             - base_LocalWcs_CDMatrix_1_1
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
-    moments_round_vv:
-        functor: MomentsIvvSky
-        args:
-            - slot_ShapeRound_xx
-            - slot_ShapeRound_yy
-            - slot_ShapeRound_xy
-            - base_LocalWcs_CDMatrix_1_1
-            - base_LocalWcs_CDMatrix_1_2
-            - base_LocalWcs_CDMatrix_2_1
-            - base_LocalWcs_CDMatrix_2_2
-    moments_round_uv:
-        functor: MomentsIuvSky
-        args:
-            - slot_ShapeRound_xx
-            - slot_ShapeRound_yy
-            - slot_ShapeRound_xy
-            - base_LocalWcs_CDMatrix_1_1
-            - base_LocalWcs_CDMatrix_1_2
-            - base_LocalWcs_CDMatrix_2_1
-            - base_LocalWcs_CDMatrix_2_2
-    moments_round_flag:
-        functor: Column
-        args: slot_ShapeRound_flag
         dataset: meas
-    moments_psf_debiased_uu:
-        functor: MomentsIuuSky
+    moments_psf_debiased_g2:
+        functor: MomentsG2Sky
         args:
             - ext_shapeHSM_HsmPsfMomentsDebiased_xx
             - ext_shapeHSM_HsmPsfMomentsDebiased_yy
@@ -326,8 +263,9 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
-    moments_psf_debiased_vv:
-        functor: MomentsIvvSky
+        dataset: meas
+    moments_psf_debiased_trace:
+        functor: MomentsTraceSky
         args:
             - ext_shapeHSM_HsmPsfMomentsDebiased_xx
             - ext_shapeHSM_HsmPsfMomentsDebiased_yy
@@ -336,16 +274,7 @@ funcs:
             - base_LocalWcs_CDMatrix_1_2
             - base_LocalWcs_CDMatrix_2_1
             - base_LocalWcs_CDMatrix_2_2
-    moments_psf_debiased_uv:
-        functor: MomentsIuvSky
-        args:
-            - ext_shapeHSM_HsmPsfMomentsDebiased_xx
-            - ext_shapeHSM_HsmPsfMomentsDebiased_yy
-            - ext_shapeHSM_HsmPsfMomentsDebiased_xy
-            - base_LocalWcs_CDMatrix_1_1
-            - base_LocalWcs_CDMatrix_1_2
-            - base_LocalWcs_CDMatrix_2_1
-            - base_LocalWcs_CDMatrix_2_2
+        dataset: meas
     moments_psf_debiased_flag:
         functor: Column
         args: ext_shapeHSM_HsmPsfMomentsDebiased_flag
