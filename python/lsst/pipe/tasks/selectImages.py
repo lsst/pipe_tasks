@@ -830,6 +830,13 @@ class BestSeeingQuantileSelectVisitsConfig(pipeBase.PipelineTaskConfig,
         min=0,
         max=1,
     )
+    maxPsfFwhm = pexConfig.Field(
+        dtype=float,
+        doc="Maximum PSF FWHM (in arcseconds) to select. Any visits with larger FWHM will be excluded "
+            "before quantile selection.",
+        default=None,
+        optional=True
+    )
     nVisitsMin = pexConfig.Field(
         doc="The minimum number of visits to select, if qMin and qMax alone would have "
             "selected fewer. In regimes with many visits, at least this number of visits will be "
@@ -891,8 +898,10 @@ class BestSeeingQuantileSelectVisitsTask(BestSeeingSelectVisitsTask):
             # read in one-by-one and only once. There may be hundreds
             visitSummary = visitSummary.get()
             # psfSigma is PSF model determinant radius at chip center in pixels
-            psfSigma = np.nanmedian([vs['psfSigma'] for vs in visitSummary])
-            radius[i] = psfSigma
+            psfSigmas = np.array([vs['psfSigma'] for vs in visitSummary if vs.getWcs()])
+            pixelScales = np.array([vs['pixelScale'] for vs in visitSummary if vs.getWcs()])
+            fwhm = np.nanmedian(psfSigmas * pixelScales) * np.sqrt(8.*np.log(2.))
+            radius[i] = fwhm
             if self.config.doConfirmOverlap:
                 intersects[i] = self.doesIntersectPolygon(visitSummary, patchPolygon)
             if self.config.minMJD or self.config.maxMJD:
@@ -902,6 +911,9 @@ class BestSeeingQuantileSelectVisitsTask(BestSeeingSelectVisitsTask):
                 aboveMin = mjd > self.config.minMJD if self.config.minMJD else True
                 belowMax = mjd < self.config.maxMJD if self.config.maxMJD else True
                 intersects[i] = intersects[i] and aboveMin and belowMax
+            if self.config.maxPsfFwhm and fwhm > self.config.maxPsfFwhm:
+                intersects[i] = False
+                self.log.info(f"Rejecting visit {visits[i]}: with FWHM {fwhm:.2f} > {self.config.maxPsfFwhm}")
             if (self.config.visitSummaryMinValues
                 and not _meetsVisitSummaryMinValues(visits[i], visitSummary,
                                                     self.config.visitSummaryMinValues, self.log)):
@@ -914,4 +926,13 @@ class BestSeeingQuantileSelectVisitsTask(BestSeeingSelectVisitsTask):
 
         # In order to store as a StructuredDataDict, convert list to dict
         goodVisits = {int(visit): True for visit in sortedVisits[lowerBound:upperBound]}
+
+        if len(goodVisits) == 0:
+            self.log.info("All visits rejected")
+            # To behave same as BestSeeingSelectVisitsTask
+            raise pipeBase.NoWorkFound(f"No good visits found for {dataId}")
+        else:
+            selectedRadii = sorted(radius[intersects])[lowerBound:upperBound]
+            self.log.info(f"Selected {len(goodVisits)} visits with FWHM range of "
+                          f"{selectedRadii[0]:.2f}--{selectedRadii[-1]:.2f} arcseconds.")
         return pipeBase.Struct(goodVisits=goodVisits)
