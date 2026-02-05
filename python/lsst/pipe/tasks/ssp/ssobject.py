@@ -76,13 +76,15 @@ def compute_ssobject_entry(row, sss):
         df = sss[sss["dia_band"] == band]
 
         # set defaults for this band (equivalents of NULL)
-        row[f"{band}_Chi2"] = -1
+        row[f"{band}_Chi2"] = np.nan
         row[f"{band}_G12"] = np.nan
         row[f"{band}_G12Err"] = np.nan
         row[f"{band}_H"] = np.nan
         row[f"{band}_H_{band}_G12_Cov"] = np.nan
         row[f"{band}_HErr"] = np.nan
-        row[f"{band}_nObsUsed"] = -1
+        row[f"{band}_nObsUsed"] = 0
+        row[f"{band}_phaseAngleMin"] = np.nan
+        row[f"{band}_phaseAngleMax"] = np.nan
 
         nBandObs = len(df)
         row[f"{band}_nObs"] = nBandObs
