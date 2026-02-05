@@ -99,7 +99,7 @@ def compute_ssobject_entry(row, sss):
                 H, G12, sigmaH, sigmaG12, covHG12, chi2dof, nobsv = photfit.fitHG12(
                     df["dia_psfMag"], df["dia_psfMagErr"], df["phaseAngle"], df["topoRange"], df["helioRange"]
                 )
-                nDof = 2
+                nDof = nBandObs - 2
                 # print(provID, band, H, G12, sigmaH, sigmaG12, covHG12,
                 #       chi2dof, nobsv)
 
