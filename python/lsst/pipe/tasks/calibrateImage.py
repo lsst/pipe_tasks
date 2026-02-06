@@ -971,8 +971,16 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                     "Cannot use do_illumination_correction with an image that has not had a flat applied",
                 )
 
+        # Update the exposure pointing to that stored in the butler record
+        # (regardless of a camera model update). This is to pick up any
+        # updates to the pointing stored in the butler record that may not
+        # be reflected in the exposure metadata (headers).
         if camera_model:
-            self._update_wcs_with_camera_model(result.exposure, camera_model, exposure_record)
+            self._update_wcs_with_camera_model(
+                result.exposure, camera_model, exposure_record=exposure_record
+            )
+        elif exposure_record is not None:
+            self._update_wcs_to_exposure_record(result.exposure, exposure_record)
 
         result.background = None
         result.background_to_photometric_ratio = None
@@ -1784,6 +1792,33 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 (orientation - exposure.visitInfo.getBoresightRotAngle()).asDegrees(),
                 (orientation - exposure.visitInfo.getBoresightRotAngle()).asArcseconds(),
             )
+        newWcs = createInitialSkyWcsFromBoresight(boresight, orientation, detector)
+        exposure.setWcs(newWcs)
+
+    def _update_wcs_to_exposure_record(self, exposure, exposure_record):
+        """Replace the existing WCS with the one from the butler derived
+        exposure record pointing.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.ExposureF`
+            The exposure whose WCS will be updated.
+        exposure_record : `lsst.daf.butler.DimensionRecord`, optional
+            Butler metadata for the ``exposure`` dimension.  Used if
+            constructing an updated WCS instead of the boresight and
+            orientation angle from the visit info.
+        """
+        detector = exposure.detector
+        boresight = SpherePoint(exposure_record.tracking_ra, exposure_record.tracking_dec, degrees)
+        orientation = exposure_record.sky_angle * degrees
+        self.log.info(
+            "Pointing from exposure record is %.6f deg (%.3f arcsec) from initial pointing; "
+            "orientation difference is %.6f deg (%.3f arcsec).",
+            boresight.separation(exposure.visitInfo.getBoresightRaDec()).asDegrees(),
+            boresight.separation(exposure.visitInfo.getBoresightRaDec()).asArcseconds(),
+            (orientation - exposure.visitInfo.getBoresightRotAngle()).asDegrees(),
+            (orientation - exposure.visitInfo.getBoresightRotAngle()).asArcseconds(),
+        )
         newWcs = createInitialSkyWcsFromBoresight(boresight, orientation, detector)
         exposure.setWcs(newWcs)
 
