@@ -28,6 +28,7 @@ __all__ = ["init_fromDict", "Functor", "CompositeFunctor", "mag_aware_eval",
            "ComputePixelScale", "ConvertPixelToArcseconds",
            "ConvertPixelSqToArcsecondsSq",
            "ConvertDetectorAngleToPositionAngle",
+           "ConvertDetectorAngleErrToPositionAngleErr,"
            "ReferenceBand", "Photometry",
            "NanoJansky", "NanoJanskyErr", "LocalPhotometry", "LocalNanojansky",
            "LocalNanojanskyErr", "LocalDipoleMeanFlux",
@@ -1394,6 +1395,67 @@ class LocalWcs(Functor):
         # Position angle of vector from (RA1, Dec1) to (RA2, Dec2)
         return np.rad2deg(self.computePositionAngle(ra1, dec1, ra2, dec2))
 
+    def getPositionAngleErrFromDetectorAngleErr(self, theta, theta_err, cd11,
+                                                cd12, cd21, cd22):
+        """Compute position angle error (E of N) from detector angle error.
+
+        Parameters
+        ----------
+        theta : `float`
+            detector angle [radian]
+        theta_err : `float`
+            detector angle err [radian]
+        cd11 : `float`
+            [1, 1] element of the local Wcs affine transform.
+        cd12 : `float`
+            [1, 2] element of the local Wcs affine transform.
+        cd21 : `float`
+            [2, 1] element of the local Wcs affine transform.
+        cd22 : `float`
+            [2, 2] element of the local Wcs affine transform.
+        Returns
+        -------
+        Position Angle Error: `~pandas.Series`
+            Position angle error in degrees
+        """
+        # Need to compute abs(dPA/dtheta)*theta_Err to get propogated errors
+        # Unit vector in (x, y) along da
+        dx = np.cos(theta)
+        dy = np.sin(theta)
+        u = dx * cd11 + dy * cd12
+        v = dx * cd21 + dy * cd22
+
+        # Derivative of position angle wrt detector angle
+        du_dtheta = -np.sin(theta) * cd11 + np.cos(theta) * cd12
+        dv_dtheta = -np.sin(theta) * cd21 + np.cos(theta) * cd22
+
+        # Precomputing sin/cos values
+        sin_u = np.sin(u)
+        cos_u = np.cos(u)
+        sin_v = np.sin(v)
+        cos_v = np.cos(v)
+
+        # PA is atan2(Y, X), for great circle
+        pa_y = sin_u * cos_v
+        pa_x = sin_v
+
+        # We need dPA/dtheta for error propogation.
+        # X' = cos(v) * v'
+        dX_dtheta = cos_v * dv_dtheta
+        # Y' = (cos(u)*cos(v))*u' + (sin(u)*(-sin(v)))*v'
+        dY_dtheta = (cos_u * cos_v) * du_dtheta - (sin_u * sin_v) * dv_dtheta
+
+        denom = pa_x * pa_x + pa_y * pa_y
+
+        dPA_dtheta = (pa_x * dY_dtheta - pa_y * dX_dtheta) / denom
+        dPA_dtheta = np.where(denom == 0, np.nan, dPA_dtheta)
+
+        pa_err = np.rad2deg(np.abs(dPA_dtheta) * theta_err)
+
+        logging.info("PA Error: %s" % pa_err)
+        logging.info("theta_err: %s" % theta_err)
+
+        return pa_err
 
 class ComputePixelScale(LocalWcs):
     """Compute the local pixel scale from the stored CDMatrix.
@@ -1547,6 +1609,53 @@ class ConvertDetectorAngleToPositionAngle(LocalWcs):
     def _func(self, df):
         return self.getPositionAngleFromDetectorAngle(
             df[self.theta_col],
+            df[self.colCD_1_1],
+            df[self.colCD_1_2],
+            df[self.colCD_2_1],
+            df[self.colCD_2_2]
+        )
+
+
+class ConvertDetectorAngleErrToPositionAngleErr(LocalWcs):
+    """Compute a position angle error from a detector angle error and the
+    stored CDMatrix.
+
+    Returns
+    -------
+    position angle error : degrees
+    """
+
+    name = "PositionAngleErr"
+
+    def __init__(
+        self,
+        theta_col,
+        theta_err_col,
+        colCD_1_1,
+        colCD_1_2,
+        colCD_2_1,
+        colCD_2_2,
+        **kwargs
+    ):
+        self.theta_col = theta_col
+        self.theta_err_col = theta_err_col
+        super().__init__(colCD_1_1, colCD_1_2, colCD_2_1, colCD_2_2, **kwargs)
+
+    @property
+    def columns(self):
+        return [
+            self.theta_col,
+            self.theta_err_col,
+            self.colCD_1_1,
+            self.colCD_1_2,
+            self.colCD_2_1,
+            self.colCD_2_2
+        ]
+
+    def _func(self, df):
+        return self.getPositionAngleErrFromDetectorAngleErr(
+            df[self.theta_col],
+            df[self.theta_err_col],
             df[self.colCD_1_1],
             df[self.colCD_1_2],
             df[self.colCD_2_1],
@@ -1992,14 +2101,7 @@ class Ebv(Functor):
 
 
 class MomentsBase(Functor):
-    """Base class for functors that use shape moments and localWCS
-
-    Attributes
-    ----------
-    is_covariance : bool
-        Whether the shape columns are terms of a covariance matrix. If False,
-        they will be assumed to be terms of a correlation matrix instead.
-    """
+    """Base class for functors that use shape moments and localWCS"""
 
     is_covariance: bool = True
 
@@ -2115,7 +2217,6 @@ class MomentsBase(Functor):
         CD_2_2 = df[self.colCD_2_2]
         return ((CD_1_1 * i_xx + CD_1_2 * i_xy) * CD_2_1
                 + (CD_1_1 * i_xy + CD_1_2 * i_yy) * CD_2_2)
-
     def get_g1(self, df):
         """
         Calculate shear-type ellipticity parameter G1.

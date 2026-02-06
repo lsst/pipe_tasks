@@ -53,8 +53,9 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
                                       MomentsG1Sky, MomentsG2Sky, MomentsTraceSky,
                                       CorrelationIuuSky, CorrelationIvvSky, CorrelationIuvSky,
                                       SemimajorAxisFromCorrelation, SemiminorAxisFromCorrelation,
-                                      PositionAngleFromCorrelation
-                                      )
+                                      PositionAngleFromCorrelation,
+                                      PositionAngleFromMoments,
+                                      ConvertDetectorAngleErrToPositionAngleErr)
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
@@ -859,6 +860,109 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
                                             val.values,
                                             atol=1e-16,
                                             rtol=1e-16))
+
+    def testConvertDetectorAngleErrToPositionAngleErr(self):
+        """Test conversion of position angle err in detector degrees to
+        position angle err on sky.
+
+        Requires a similar setup to testConvertDetectorAngleToPositionAngle.
+        """
+        dipoleSep = 10
+        ixx = 10
+        testPixelDeltas = np.random.uniform(-100, 100, size=(self.nRecords, 2))
+
+
+        for dec in np.linspace(-80, 80, 10):
+            for theta in (-35, 0, 90):
+                for x, y in zip(
+                        np.random.uniform(2 * 1109.99981456774, size=10),
+                        np.random.uniform(2 * 560.018167811613, size=10)):
+                    wcs = self._makeWcs(dec=dec, theta=theta)
+                    cd_matrix = wcs.getCdMatrix()
+
+                    self.dataDict["dipoleSep"] = np.full(self.nRecords,
+                                                         dipoleSep)
+                    self.dataDict["ixx"] = np.full(self.nRecords, ixx)
+                    self.dataDict["slot_Centroid_x"] = np.full(self.nRecords,
+                                                               x)
+                    self.dataDict["slot_Centroid_y"] = np.full(self.nRecords,
+                                                               y)
+                    self.dataDict["someCentroid_x"] = x + testPixelDeltas[:, 0]
+                    self.dataDict["someCentroid_y"] = y + testPixelDeltas[:, 1]
+                    self.dataDict["orientation"] = np.arctan2(
+                        self.dataDict["someCentroid_y"] - self.dataDict[
+                            "slot_Centroid_y"],
+                        self.dataDict["someCentroid_x"] - self.dataDict[
+                            "slot_Centroid_x"],
+                    )
+                    self.dataDict["orientation_err"] = np.arctan2(
+                        self.dataDict["someCentroid_y"] - self.dataDict[
+                            "slot_Centroid_y"],
+                        self.dataDict["someCentroid_x"] - self.dataDict[
+                            "slot_Centroid_x"],
+                    ) * 0.001
+
+                    self.dataDict["base_LocalWcs_CDMatrix_1_1"] = np.full(
+                        self.nRecords,
+                        cd_matrix[0, 0])
+                    self.dataDict["base_LocalWcs_CDMatrix_1_2"] = np.full(
+                        self.nRecords,
+                        cd_matrix[0, 1])
+                    self.dataDict["base_LocalWcs_CDMatrix_2_1"] = np.full(
+                        self.nRecords,
+                        cd_matrix[1, 0])
+                    self.dataDict["base_LocalWcs_CDMatrix_2_2"] = np.full(
+                        self.nRecords,
+                        cd_matrix[1, 1])
+                    df = self.getMultiIndexDataFrame(self.dataDict)
+
+                    # Test detector angle err to position angle err conversion
+                    func = ConvertDetectorAngleErrToPositionAngleErr(
+                        "orientation",
+                        "orientation_err",
+                        "base_LocalWcs_CDMatrix_1_1",
+                        "base_LocalWcs_CDMatrix_1_2",
+                        "base_LocalWcs_CDMatrix_2_1",
+                        "base_LocalWcs_CDMatrix_2_2"
+                    )
+                    val = self._funcVal(func, df)
+
+                    # Numerical derivative of the same PA function so a
+                    # compariosn can be made
+                    step = self.dataDict["orientation_err"] # radians. Bigger? Smaller?
+                    pa_plus_deg = func.getPositionAngleFromDetectorAngle(
+                        df[("meas", "g", "orientation")] + step,
+                        df[("meas", "g", "base_LocalWcs_CDMatrix_1_1")],
+                        df[("meas", "g", "base_LocalWcs_CDMatrix_1_2")],
+                        df[("meas", "g", "base_LocalWcs_CDMatrix_2_1")],
+                        df[("meas", "g", "base_LocalWcs_CDMatrix_2_2")],
+                    )
+                    pa_minus_deg = func.getPositionAngleFromDetectorAngle(
+                        df[("meas", "g", "orientation")] - step,
+                        df[("meas", "g", "base_LocalWcs_CDMatrix_1_1")],
+                        df[("meas", "g", "base_LocalWcs_CDMatrix_1_2")],
+                        df[("meas", "g", "base_LocalWcs_CDMatrix_2_1")],
+                        df[("meas", "g", "base_LocalWcs_CDMatrix_2_2")],
+                    )
+
+                    pa_plus = np.deg2rad(pa_plus_deg.to_numpy())
+                    pa_minus = np.deg2rad(pa_minus_deg.to_numpy())
+
+                    # From example: smallest signed angular difference in
+                    # (-pi, +pi]
+                    dpa = np.angle(np.exp(1j * (pa_plus - pa_minus)))
+                    dpa_dtheta = dpa / (2.0 * step)
+
+                    theta_err = df[("meas", "g", "orientation_err")].to_numpy()
+                    expected_pa_err_deg = np.rad2deg(
+                        np.abs(dpa_dtheta) * theta_err)
+
+                    np.testing.assert_allclose(
+                        val.to_numpy(),
+                        expected_pa_err_deg,
+                        rtol=0,
+                        atol=1e-6,
+                    )
 
     def _makeWcs(self, dec=53.1595451514076, theta=0):
         """Create a wcs from real CFHT values, rotated by an optional theta.
