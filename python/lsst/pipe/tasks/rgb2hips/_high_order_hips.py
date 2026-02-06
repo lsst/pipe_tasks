@@ -230,15 +230,15 @@ class HighOrderHipsTask(PipelineTask):
                 both_populated = existing_non_zero * new_non_zero
 
                 # Average places where there is existing and new data
-                existing[warpped_box_slices][are_warpped * both_populated] = (
-                    existing[warpped_box_slices][are_warpped * both_populated]
-                    + warpped.array[are_warpped * both_populated],
+                existing[warpped_box_slices][are_warpped][both_populated] = (
+                    existing[warpped_box_slices][are_warpped][both_populated]
+                    + warpped.array[are_warpped][both_populated],
                 ) / 2.0
 
                 # Add in all the new pixels
-                existing[warpped_box_slices][are_warpped * (~existing_non_zero * new_non_zero)] = (
-                    warpped.array[are_warpped * (~existing_non_zero * new_non_zero)]
-                )
+                existing[warpped_box_slices][are_warpped][~existing_non_zero * new_non_zero] = warpped.array[
+                    are_warpped
+                ][~existing_non_zero * new_non_zero]
 
         # Replace any remaining NaN values with zeros
         output_array_hpx[np.isnan(output_array_hpx)] = 0
