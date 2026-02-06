@@ -232,7 +232,7 @@ class HighOrderHipsTask(PipelineTask):
                 # Average places where there is existing and new data
                 existing[warpped_box_slices][are_warpped][both_populated] = (
                     existing[warpped_box_slices][are_warpped][both_populated]
-                    + warpped.array[are_warpped][both_populated],
+                    + warpped.array[are_warpped][both_populated]
                 ) / 2.0
 
                 # Add in all the new pixels
