@@ -843,6 +843,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              "illumination_correction",
              "camera_model",
              "exposure_record",
+             "exposure_region",
              },
         )
 
@@ -892,6 +893,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              "illumination_correction",
              "camera_model",
              "exposure_record",
+             "exposure_region",
              },
         )
 
@@ -934,6 +936,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              "illumination_correction",
              "camera_model",
              "exposure_record",
+             "exposure_region",
              },
         )
 
@@ -1020,6 +1023,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
              "illumination_correction",
              "camera_model",
              "exposure_record",
+             "exposure_region",
              },
         )
 
@@ -1075,6 +1079,7 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
             illumination_correction=None,
             camera_model=None,
             exposure_record=None,
+            exposure_region=None,
         ):
             """Mock success through compute_psf, but failure after.
             """
