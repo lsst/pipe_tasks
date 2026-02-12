@@ -201,8 +201,9 @@ class GenerateEphemeridesTask(PipelineTask):
         outputs = self.run(**inputs)
         for ref in outputRefs.ssObjects:
             dataId = ref.dataId
-            ephemeris_visit = outputs.ssObjects[dataId['visit']]
-            butlerQC.put(ephemeris_visit, ref)
+            if dataId['visit'] in outputs.ssObjects:
+                ephemeris_visit = outputs.ssObjects[dataId['visit']]
+                butlerQC.put(ephemeris_visit, ref)
 
     @timeMethod
     def run(self, visitTable, mpcorb, de440s, sb441_n16, obsCodes, linux_p1550p2650, pck00010,
@@ -363,7 +364,6 @@ class GenerateEphemeridesTask(PipelineTask):
                     from sorcha_cmdline.run import main
                     sys.exit(main())
                     """)]
-
             proc = Popen(
                 sorcha_run
                 + [
