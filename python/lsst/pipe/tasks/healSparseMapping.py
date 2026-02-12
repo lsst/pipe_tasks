@@ -673,6 +673,17 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
 
             input_map = input_map_dict[patch].get()
 
+            # Extract input map metadata.
+            input_bit_weight_dict = {}
+            for bit in range(input_map.wide_mask_maxbits):
+                # Not all bits may be listed because maxbits must be a multiple
+                # of 8.
+                if f"B{bit:04d}CCD" in input_map.metadata:
+                    visit = input_map.metadata[f"B{bit:04d}VIS"]
+                    detector = input_map.metadata[f"B{bit:04d}CCD"]
+                    weight = input_map.metadata[f"B{bit:04d}WT"]
+                    input_bit_weight_dict[(visit, detector)] = (bit, weight)
+
             # Initialize the tract maps as soon as we have the first input
             # map for getting nside information.
             if not tract_maps_initialized:
@@ -696,8 +707,6 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
                 continue
 
             coadd_photo_calib = coadd_dict[patch].get(component="photoCalib")
-            coadd_inputs = coadd_dict[patch].get(component="coaddInputs")
-
             coadd_zeropoint = 2.5*np.log10(coadd_photo_calib.getInstFluxAtZeroMagnitude())
 
             # Crop input_map to the inner polygon of the patch
@@ -729,7 +738,7 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
             total_weights = np.zeros(valid_pixels.size)
             total_inputs = np.zeros(valid_pixels.size, dtype=np.int32)
 
-            for bit, ccd_row in enumerate(coadd_inputs.ccds):
+            for (visit, detector), (bit, weight) in input_bit_weight_dict.items():
                 # Which pixels in the map are used by this visit/detector
                 inmap, = np.where(input_map.check_bits_pix(valid_pixels, [bit]))
 
@@ -737,30 +746,25 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
                 if inmap.size == 0:
                     continue
 
-                # visit, detector_id, weight = input_dict[bit]
-                visit = ccd_row["visit"]
-                detector_id = ccd_row["ccd"]
-                weight = ccd_row["weight"]
+                # Retrieve the correct visitSummary row
+                if visit not in visit_summary_dict:
+                    msg = f"Visit {visit} not found in visit_summaries."
+                    raise pipeBase.RepeatableQuantumError(msg)
+                row = visit_summary_dict[visit].find(detector)
+                if row is None:
+                    msg = f"Visit {visit} / detector {detector} not found in visit_summaries."
+                    raise pipeBase.RepeatableQuantumError(msg)
 
-                x, y = ccd_row.getWcs().skyToPixelArray(vpix_ra[inmap], vpix_dec[inmap], degrees=True)
-                scalings = self._compute_calib_scale(ccd_row, x, y)
+                x, y = row.wcs.skyToPixelArray(vpix_ra[inmap], vpix_dec[inmap], degrees=True)
+                scalings = self._compute_calib_scale(row, x, y)
 
                 if do_compute_approx_psf:
-                    psf_array = compute_approx_psf_size_and_shape(ccd_row, vpix_ra[inmap], vpix_dec[inmap])
+                    psf_array = compute_approx_psf_size_and_shape(row, vpix_ra[inmap], vpix_dec[inmap])
                 else:
                     psf_array = None
 
                 total_weights[inmap] += weight
                 total_inputs[inmap] += 1
-
-                # Retrieve the correct visitSummary row
-                if visit not in visit_summary_dict:
-                    msg = f"Visit {visit} not found in visit_summaries."
-                    raise pipeBase.RepeatableQuantumError(msg)
-                row = visit_summary_dict[visit].find(detector_id)
-                if row is None:
-                    msg = f"Visit {visit} / detector_id {detector_id} not found in visit_summaries."
-                    raise pipeBase.RepeatableQuantumError(msg)
 
                 # Accumulate the values
                 for property_map in self.property_maps:
