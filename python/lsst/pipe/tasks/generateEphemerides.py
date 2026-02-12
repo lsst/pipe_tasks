@@ -76,6 +76,18 @@ class GenerateEphemeridesConnections(PipelineTaskConnections,
         storageClass="DataFrame",
         dimensions={},
     )
+    # QG generation checks input visits to decide what output visits to expect.
+    # This dummy per-visit input helps QG generation decide to only expect output
+    # visits for visits actually present in the run, which this task gets in the
+    # not-per-visit visitTable input. See discussion on DM-54062 for more details.
+    dummyPerVisitInput = connectionTypes.Input(
+        doc="Dummy per-visit input to help trim QG generation",
+        name="visit_summary",
+        storageClass="ExposureCatalog",
+        dimensions={"instrument", "visit"},
+        multiple=True,
+        deferLoad=True,
+    )
 
     # The following 9 prequisite inputs are Sorcha's required auxiliary files.
     de440s = connectionTypes.PrerequisiteInput(
@@ -198,6 +210,7 @@ class GenerateEphemeridesTask(PipelineTask):
             output connections.
         """
         inputs = butlerQC.get(inputRefs)
+        del inputs["dummyPerVisitInput"]
         outputs = self.run(**inputs)
         for ref in outputRefs.ssObjects:
             dataId = ref.dataId
