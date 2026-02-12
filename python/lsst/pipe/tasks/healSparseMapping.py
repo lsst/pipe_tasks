@@ -140,6 +140,7 @@ class HealSparseInputMapTask(pipeBase.Task):
         pipeBase.Task.__init__(self, **kwargs)
 
         self.ccd_input_map = None
+        self.cell_input_map = None
 
     def build_ccd_input_map(self, bbox, wcs, ccds):
         """Build a map from ccd valid polygons or bounding boxes.
@@ -308,6 +309,124 @@ class HealSparseInputMapTask(pipeBase.Task):
 
         # Clear memory
         self._ccd_input_bad_count_map = None
+
+    def initialize_cell_input_map(self, bbox, wcs, visit_detectors):
+        """Initialize the cell input map.
+
+        Parameters
+        ----------
+        bbox : `lsst.geom.Box2I`
+            Bounding box for region to build input map.
+        wcs : `lsst.afw.geom.SkyWcs`
+            WCS object for region to build input map.
+        visit_detectors : `list` [`tuple`]
+            List of visit/detector tuples.
+        """
+        with warnings.catch_warnings():
+            # Healsparse will emit a warning if nside coverage is greater than
+            # 128.  In the case of generating patch input maps, and not global
+            # maps, high nside coverage works fine, so we can suppress this
+            # warning.
+            warnings.simplefilter("ignore")
+            self.cell_input_map = hsp.HealSparseMap.make_empty(
+                nside_coverage=self.config.nside_coverage,
+                nside_sparse=self.config.nside,
+                dtype=hsp.WIDE_MASK,
+                wide_mask_maxbits=len(visit_detectors),
+            )
+
+        self._wcs = wcs
+        self._bbox = bbox
+        self._visit_detectors = visit_detectors
+
+        metadata = {}
+        self._bits_per_visit_detector = {}
+        self._bits_per_visit = defaultdict(list)
+        for bit, (visit, detector) in enumerate(visit_detectors):
+            metadata[f"B{bit:04d}CCD"] = detector
+            metadata[f"B{bit:04d}VIS"] = visit
+            # Weight will be filled later.
+            metadata[f"B{bit:04d}WT"] = 0.0
+
+            self._bits_per_visit_detector[(visit, detector)] = bit
+            self._bits_per_visit[visit].append(bit)
+
+        self.cell_input_map.metadata = metadata
+
+        self._cell_pixels = {}
+        self._visit_detector_cache = None
+        self._detector_map_cache = None
+
+    def build_cell_input_map(self, cell):
+        """Add a cell to the input map.
+
+        Parameters
+        ----------
+        cell : `lsst.skymap.cellInfo.CellInfo`
+            Cell to initialize.
+        """
+        if self.cell_input_map is None:
+            raise RuntimeError("Must run initialize_cell_input_map() before build_cell_input_map()")
+
+        # The input map only needs the *inner* sky polygon.
+        cell_poly = cell.getInnerSkyPolygon()
+        vertices = np.asarray([[v.x(), v.y(), v.z()] for v in cell_poly.getVertices()])
+        pixels = hpg.query_polygon_vec(self.config.nside, vertices)
+
+        self._cell_pixels[cell.sequential_index] = pixels
+
+    def add_warp_to_cell_input_map(self, ccd_row, weight, cell):
+        """Add a warp to the input map for a given cell.
+
+        Parameters
+        ----------
+        ccd_row : `lsst.afw.table.ExposureRecord`
+            Row from the ccd table.
+        weight : `float`
+            Weight to use for this detector.
+        cell : `lsst.skymap.cellInfo.CellInfo`
+            Cell that overlaps the ccd_table_row.
+        """
+        visit = int(ccd_row["visit"])
+        detector = int(ccd_row["ccd"])
+
+        if (bit := self._bits_per_visit_detector.get((visit, detector), None)) is None:
+            raise RuntimeError(f"Visit {visit} / detector {detector} not expected in map.")
+
+        if (cell_pixels := self._cell_pixels.get(cell.sequential_index, None)) is None:
+            raise RuntimeError(f"Cell {cell.sequential_index} not expected in map.")
+
+        if (visit, detector) != self._visit_detector_cache:
+            self._visit_detector_cache = (visit, detector)
+
+            ccd_poly = ccd_row.validPolygon
+            if ccd_poly is None:
+                ccd_poly = afwGeom.Polygon(lsst.geom.Box2D(ccd_row.getBBox()))
+            # Detectors need to be rendered with their own wcs.
+            ccd_poly_radec = self._pixels_to_radec(ccd_row.getWcs(), ccd_poly.convexHull().getVertices())
+
+            poly = hsp.Polygon(
+                ra=ccd_poly_radec[: -1, 0],
+                dec=ccd_poly_radec[: -1, 1],
+                value=True,
+            )
+            with warnings.catch_warnings():
+                # Healsparse will emit a warning if nside coverage is greater
+                # than 128.  In the case of generating patch input maps, and
+                # not global maps, high nside coverage works fine, so we can
+                # suppress this warning.
+                warnings.simplefilter("ignore")
+
+                self._detector_map_cache = poly.get_map(
+                    nside_coverage=self.config.nside_coverage,
+                    nside_sparse=self.config.nside,
+                    dtype=np.bool_,
+                )
+
+            self.cell_input_map.metadata[f"B{bit:04d}WT"] = weight
+
+        overlap = self._detector_map_cache[cell_pixels]
+        self.cell_input_map.set_bits_pix(cell_pixels[overlap], bit)
 
     def _pixels_to_radec(self, wcs, pixels):
         """Convert pixels to ra/dec positions using a wcs.
