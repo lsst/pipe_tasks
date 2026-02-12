@@ -157,6 +157,13 @@ class HealSparsePropertyMapTaskTestCase(lsst.utils.tests.TestCase):
         inputs.ccds = ccds
         coadd.getInfo().setCoaddInputs(inputs)
 
+        metadata = {}
+        for bit, row in enumerate(ccds):
+            metadata[f"B{bit:04d}CCD"] = row["ccd"]
+            metadata[f"B{bit:04d}VIS"] = row["visit"]
+            metadata[f"B{bit:04d}WT"] = row["weight"]
+        input_map.metadata = metadata
+
         coadd_ref = InMemoryDatasetHandle(coadd, patch=patch, tract=tract, storageClass="ExposureF")
         self.coadd_dict = {patch: coadd_ref}
 
