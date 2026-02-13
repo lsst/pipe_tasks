@@ -21,14 +21,10 @@
 
 __all__ = [
     'DiffMatchedTractCatalogConfig', 'DiffMatchedTractCatalogTask', 'MatchedCatalogFluxesConfig',
-    'MatchType', 'MeasurementType', 'SourceType',
-    'Statistic', 'Median', 'SigmaIQR', 'SigmaMAD', 'Percentile',
 ]
 
 import lsst.afw.geom as afwGeom
-from lsst.meas.astrom.matcher_probabilistic import (
-    ComparableCatalog, ConvertCatalogCoordinatesConfig,
-)
+from lsst.meas.astrom.matcher_probabilistic import ConvertCatalogCoordinatesConfig
 from lsst.meas.astrom.match_probabilistic_task import radec_to_xy
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -36,31 +32,17 @@ import lsst.pipe.base.connectionTypes as cT
 from lsst.skymap import BaseSkyMap
 from lsst.daf.butler import DatasetProvenance
 
-from abc import ABCMeta, abstractmethod
-from astropy.stats import mad_std
 import astropy.table
 import astropy.units as u
-from dataclasses import dataclass
-from decimal import Decimal
-from deprecated.sphinx import deprecated
-from enum import Enum
 import numpy as np
 import pandas as pd
-from scipy.stats import iqr
 from smatch.matcher import sphdist
-from types import SimpleNamespace
 from typing import Sequence
 import warnings
 
 
 def is_sequence_set(x: Sequence):
     return len(x) == len(set(x))
-
-
-@deprecated(reason="This method is no longer being used and will be removed after v28.",
-            version="v28.0", category=FutureWarning)
-def is_percentile(x: str):
-    return 0 <= Decimal(x) <= 100
 
 
 DiffMatchedTractCatalogBaseTemplates = {
@@ -140,8 +122,6 @@ class DiffMatchedTractCatalogConnections(
                     dimensions=(),
                     deferLoad=old.deferLoad,
                 )
-        if not (config.compute_stats and len(config.columns_flux) > 0):
-            del self.diff_matched
 
 
 class MatchedCatalogFluxesConfig(pexConfig.Config):
@@ -190,26 +170,6 @@ class DiffMatchedTractCatalogBaseConfig(pexConfig.Config):
         default='refcat_',
         doc='The prefix for matched columns copied from the reference catalog',
     )
-    column_ref_extended = pexConfig.Field[str](
-        default='is_pointsource',
-        deprecated='This field is no longer being used and will be removed after v28.',
-        doc='The boolean reference table column specifying if the target is extended',
-    )
-    column_ref_extended_inverted = pexConfig.Field[bool](
-        default=True,
-        deprecated='This field is no longer being used and will be removed after v28.',
-        doc='Whether column_ref_extended specifies if the object is compact, not extended',
-    )
-    column_target_extended = pexConfig.Field[str](
-        default='refExtendedness',
-        deprecated='This field is no longer being used and will be removed after v28.',
-        doc='The target table column estimating the extendedness of the object (0 <= x <= 1)',
-    )
-    compute_stats = pexConfig.Field[bool](
-        default=False,
-        deprecated='This field is no longer being used and will be removed after v28.',
-        doc='Whether to compute matched difference statistics',
-    )
     include_unmatched = pexConfig.Field[bool](
         default=False,
         doc='Whether to include unmatched rows in the matched table',
@@ -218,8 +178,6 @@ class DiffMatchedTractCatalogBaseConfig(pexConfig.Config):
     @property
     def columns_in_ref(self) -> list[str]:
         columns_all = [self.coord_format.column_ref_coord1, self.coord_format.column_ref_coord2]
-        if self.compute_stats:
-            columns_all.append(self.column_ref_extended)
         for column_lists in (
             (
                 self.columns_ref_copy,
@@ -234,8 +192,6 @@ class DiffMatchedTractCatalogBaseConfig(pexConfig.Config):
     @property
     def columns_in_target(self) -> list[str]:
         columns_all = [self.coord_format.column_target_coord1, self.coord_format.column_target_coord2]
-        if self.compute_stats:
-            columns_all.append(self.column_target_extended)
         if self.coord_format.coords_ref_to_convert is not None:
             columns_all.extend(col for col in self.coord_format.coords_ref_to_convert.values()
                                if col not in columns_all)
@@ -447,7 +403,9 @@ class DiffMatchedTractCatalogTaskBase(pipeBase.Task):
         column_dist, column_dist_err = 'match_distance', 'match_distanceErr'
         dist = np.full(n_target, np.nan)
 
-        target_match_c1, target_match_c2 = (np.array(coord[matched_row]) for coord in (target.coord1, target.coord2))
+        target_match_c1, target_match_c2 = (
+            np.array(coord[matched_row]) for coord in (target.coord1, target.coord2)
+        )
         target_ref_c1, target_ref_c2 = (np.array(coord[matched_ref]) for coord in (ref.coord1, ref.coord2))
 
         dist_err = np.full(n_target, np.nan)
@@ -514,255 +472,6 @@ class DiffMatchedTractCatalogTaskBase(pipeBase.Task):
                     for column_flux in columns_convert.values():
                         cat_convert[column_flux] = u.ABmag.to(u.nJy, cat_convert[column_flux])
 
-        data = None
-        band_fluxes = [(band, config_flux) for (band, config_flux) in config.columns_flux.items()]
-        n_bands = len(band_fluxes)
-
-        # TODO: Deprecated by RFC-1017 and to be removed in DM-44988
-        do_stats = self.config.compute_stats and (n_bands > 0)
-        if do_stats:
-            # Slightly smelly hack for when a column (like distance) is already relative to truth
-            column_dummy = 'dummy'
-            cat_ref[column_dummy] = np.zeros_like(ref.coord1)
-
-            # Add a boolean column for whether a match is classified correctly
-            # TODO: remove the assumption of a boolean column
-            extended_ref = cat_ref[config.column_ref_extended] == (not config.column_ref_extended_inverted)
-
-            extended_target = cat_target[config.column_target_extended] >= config.extendedness_cut
-
-            # Define difference/chi columns and statistics thereof
-            suffixes = {MeasurementType.DIFF: 'diff', MeasurementType.CHI: 'chi'}
-            # Skip diff for fluxes - covered by mags
-            suffixes_flux = {MeasurementType.CHI: suffixes[MeasurementType.CHI]}
-            # Skip chi for magnitudes, which have strange errors
-            suffixes_mag = {MeasurementType.DIFF: suffixes[MeasurementType.DIFF]}
-            stats = {stat.name_short(): stat() for stat in (Median, SigmaIQR, SigmaMAD)}
-
-            for percentile in self.config.percentiles:
-                stat = Percentile(percentile=float(Decimal(percentile)))
-                stats[stat.name_short()] = stat
-
-            # Get dict of column names
-            columns, n_models = _get_columns(
-                bands_columns=config.columns_flux,
-                suffixes=suffixes,
-                suffixes_flux=suffixes_flux,
-                suffixes_mag=suffixes_mag,
-                stats=stats,
-                target=target,
-                column_dist=column_dist,
-            )
-
-            # Setup numpy table
-            n_bins = config.mag_num_bins
-            data = np.zeros((n_bins,), dtype=[(key, value) for key, value in columns.items()])
-            data['bin'] = np.arange(n_bins)
-
-            # Setup bins
-            bins_mag = np.linspace(start=config.mag_brightest_ref, stop=config.mag_faintest_ref,
-                                   num=n_bins + 1)
-            data['mag_min'] = bins_mag[:-1]
-            data['mag_max'] = bins_mag[1:]
-            bins_mag = tuple((bins_mag[idx], bins_mag[idx + 1]) for idx in range(n_bins))
-
-            # Define temporary columns for intermediate storage
-            column_mag_temp = 'mag_temp'
-            column_color_temp = 'color_temp'
-            column_color_err_temp = 'colorErr_temp'
-            flux_err_frac_prev = [None]*n_models
-            mag_prev = [None]*n_models
-
-            columns_target = {
-                target.column_coord1: (
-                    ref.column_coord1, target.column_coord1, coord1_target_err, False,
-                ),
-                target.column_coord2: (
-                    ref.column_coord2, target.column_coord2, coord2_target_err, False,
-                ),
-                column_dist: (column_dummy, column_dist, column_dist_err, False),
-            }
-
-            # Cheat a little and do the first band last so that the color is
-            # based on the last band
-            band_fluxes.append(band_fluxes[0])
-            flux_err_frac_first = None
-            mag_first = None
-            mag_ref_first = None
-
-            band_prev = None
-            for idx_band, (band, config_flux) in enumerate(band_fluxes):
-                if idx_band == n_bands:
-                    # These were already computed earlier
-                    mag_ref = mag_ref_first
-                    flux_err_frac = flux_err_frac_first
-                    mag_model = mag_first
-                else:
-                    mag_ref = -2.5*np.log10(cat_ref[config_flux.column_ref_flux]) + config.mag_zeropoint_ref
-                    flux_err_frac = [None]*n_models
-                    mag_model = [None]*n_models
-
-                    if idx_band > 0:
-                        cat_ref[column_color_temp] = cat_ref[column_mag_temp] - mag_ref
-
-                cat_ref[column_mag_temp] = mag_ref
-
-                select_ref_bins = [select_ref & (mag_ref > mag_lo) & (mag_ref < mag_hi)
-                                   for idx_bin, (mag_lo, mag_hi) in enumerate(bins_mag)]
-
-                # Iterate over multiple models, compute their mags and colours (if there's a previous band)
-                for idx_model in range(n_models):
-                    column_target_flux = config_flux.columns_target_flux[idx_model]
-                    column_target_flux_err = config_flux.columns_target_flux_err[idx_model]
-
-                    flux_target = cat_target[column_target_flux]
-                    mag_target = -2.5*np.log10(flux_target) + config.mag_zeropoint_target
-                    if config.mag_ceiling_target is not None:
-                        mag_target[mag_target > config.mag_ceiling_target] = config.mag_ceiling_target
-                    mag_model[idx_model] = mag_target
-
-                    # These are needed for computing magnitude/color "errors" (which are a sketchy concept)
-                    flux_err_frac[idx_model] = cat_target[column_target_flux_err]/flux_target
-
-                    # Stop if idx == 0: The rest will be picked up at idx == n_bins
-                    if idx_band > 0:
-                        # Keep these mags tabulated for convenience
-                        column_mag_temp_model = f'{column_mag_temp}{idx_model}'
-                        cat_target[column_mag_temp_model] = mag_target
-
-                        columns_target[f'flux_{column_target_flux}'] = (
-                            config_flux.column_ref_flux,
-                            column_target_flux,
-                            column_target_flux_err,
-                            True,
-                        )
-                        # Note: magnitude errors are generally problematic and not worth aggregating
-                        columns_target[f'mag_{column_target_flux}'] = (
-                            column_mag_temp, column_mag_temp_model, None, False,
-                        )
-
-                        # No need for colors if this is the last band and there are only two bands
-                        # (because it would just be the negative of the first color)
-                        skip_color = (idx_band == n_bands) and (n_bands <= 2)
-                        if not skip_color:
-                            column_color_temp_model = f'{column_color_temp}{idx_model}'
-                            column_color_err_temp_model = f'{column_color_err_temp}{idx_model}'
-
-                            # e.g. if order is ugrizy, first color will be u - g
-                            cat_target[column_color_temp_model] = mag_prev[idx_model] - mag_model[idx_model]
-
-                            # Sum (in quadrature, and admittedly sketchy for faint fluxes) magnitude errors
-                            cat_target[column_color_err_temp_model] = 2.5/np.log(10)*np.hypot(
-                                flux_err_frac[idx_model], flux_err_frac_prev[idx_model])
-                            columns_target[f'color_{band_prev}_m_{band}_{column_target_flux}'] = (
-                                column_color_temp,
-                                column_color_temp_model,
-                                column_color_err_temp_model,
-                                False,
-                            )
-
-                        for idx_bin, (mag_lo, mag_hi) in enumerate(bins_mag):
-                            row = data[idx_bin]
-                            # Reference sources only need to be counted once
-                            if idx_model == 0:
-                                select_ref_bin = select_ref_bins[idx_bin]
-                            select_target_bin = select_target & (mag_target > mag_lo) & (mag_target < mag_hi)
-
-                            for sourcetype in SourceType:
-                                sourcetype_info = sourcetype.value
-                                is_extended = sourcetype_info.is_extended
-                                # Counts filtered by match selection and magnitude bin
-                                select_ref_sub = select_ref_bin.copy()
-                                select_target_sub = select_target_bin.copy()
-                                if is_extended is not None:
-                                    is_extended_ref = (extended_ref == is_extended)
-                                    select_ref_sub &= is_extended_ref
-                                    if idx_model == 0:
-                                        n_ref_sub = np.count_nonzero(select_ref_sub)
-                                        row[_get_column_name(band, sourcetype_info.label, 'n_ref',
-                                                             MatchType.ALL.value)] = n_ref_sub
-                                    select_target_sub &= (extended_target == is_extended)
-                                    n_target_sub = np.count_nonzero(select_target_sub)
-                                    row[_get_column_name(band, sourcetype_info.label, 'n_target',
-                                                         MatchType.ALL.value)] = n_target_sub
-
-                                # Filter matches by magnitude bin and true class
-                                match_row_bin = match_row.copy()
-                                match_row_bin[~select_ref_sub] = -1
-                                match_good = match_row_bin >= 0
-
-                                n_match = np.count_nonzero(match_good)
-
-                                # Same for counts of matched target sources (for e.g. purity)
-
-                                if n_match > 0:
-                                    rows_matched = match_row_bin[match_good]
-                                    subset_target = cat_target[rows_matched]
-                                    if (is_extended is not None) and (idx_model == 0):
-                                        right_type = extended_target[rows_matched] == is_extended
-                                        n_total = len(right_type)
-                                        n_right = np.count_nonzero(right_type)
-                                        row[_get_column_name(band, sourcetype_info.label, 'n_ref',
-                                                             MatchType.MATCH_RIGHT.value)] = n_right
-                                        row[_get_column_name(
-                                            band,
-                                            sourcetype_info.label,
-                                            'n_ref',
-                                            MatchType.MATCH_WRONG.value,
-                                        )] = n_total - n_right
-
-                                    # compute stats for this bin, for all columns
-                                    for column, (column_ref, column_target, column_err_target, skip_diff) \
-                                            in columns_target.items():
-                                        values_ref = cat_ref[column_ref][match_good]
-                                        errors_target = (
-                                            subset_target[column_err_target]
-                                            if column_err_target is not None
-                                            else None
-                                        )
-                                        compute_stats(
-                                            values_ref,
-                                            subset_target[column_target],
-                                            errors_target,
-                                            row,
-                                            stats,
-                                            suffixes,
-                                            prefix=f'{band}_{sourcetype_info.label}_{column}',
-                                            skip_diff=skip_diff,
-                                        )
-
-                                # Count matched target sources with *measured* mags within bin
-                                # Used for e.g. purity calculation
-                                # Should be merged with above code if there's ever a need for
-                                # measuring stats on this source selection
-                                select_target_sub &= matched_target
-
-                                if is_extended is not None and (np.count_nonzero(select_target_sub) > 0):
-                                    n_total = np.count_nonzero(select_target_sub)
-                                    right_type = np.zeros(n_target, dtype=bool)
-                                    right_type[match_row[matched_ref & is_extended_ref]] = True
-                                    right_type &= select_target_sub
-                                    n_right = np.count_nonzero(right_type)
-                                    row[_get_column_name(band, sourcetype_info.label, 'n_target',
-                                                         MatchType.MATCH_RIGHT.value)] = n_right
-                                    row[_get_column_name(band, sourcetype_info.label, 'n_target',
-                                                         MatchType.MATCH_WRONG.value)] = n_total - n_right
-
-                        # delete the flux/color columns since they change with each band
-                        for prefix in ('flux', 'mag'):
-                            del columns_target[f'{prefix}_{column_target_flux}']
-                        if not skip_color:
-                            del columns_target[f'color_{band_prev}_m_{band}_{column_target_flux}']
-
-                # keep values needed for colors
-                flux_err_frac_prev = flux_err_frac
-                mag_prev = mag_model
-                band_prev = band
-                if idx_band == 0:
-                    flux_err_frac_first = flux_err_frac
-                    mag_first = mag_model
-                    mag_ref_first = mag_ref
-
         if config.include_unmatched:
             # This is probably less efficient than just doing an outer join originally; worth checking
             cat_matched = astropy.table.vstack([cat_matched, cat_unmatched])
@@ -793,8 +502,6 @@ class DiffMatchedTractCatalogTaskBase(pipeBase.Task):
                     )
 
         retStruct = pipeBase.Struct(cat_matched=cat_matched)
-        if do_stats:
-            retStruct.diff_matched = astropy.table.Table(data)
         return retStruct
 
 

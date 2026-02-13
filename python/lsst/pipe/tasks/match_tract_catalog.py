@@ -119,7 +119,6 @@ class MatchTractCatalogConnections(
             if config.refcat_sharding_type == "none":
                 is_refcat_sharding_none = True
                 old = self.cat_ref
-                del self.cat_ref
                 self.cat_ref = cT.Input(
                     doc=old.doc,
                     name=old.name,
@@ -251,6 +250,11 @@ class MatchTractCatalogConfig(
     )
     refcat_sharding_type = pexConfig.ChoiceField[str](
         doc="The type of sharding (spatial splitting) for the reference catalog",
+        allowed={"tract": "Tract-based shards", "none": "No sharding at all"},
+        default="tract",
+    )
+    target_sharding_type = pexConfig.ChoiceField[str](
+        doc="The type of sharding (spatial splitting) for the target catalog",
         allowed={"tract": "Tract-based shards", "none": "No sharding at all"},
         default="tract",
     )
