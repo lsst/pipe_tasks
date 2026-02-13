@@ -76,13 +76,15 @@ def compute_ssobject_entry(row, sss):
         df = sss[sss["dia_band"] == band]
 
         # set defaults for this band (equivalents of NULL)
-        row[f"{band}_Chi2"] = -1
+        row[f"{band}_Chi2"] = np.nan
         row[f"{band}_G12"] = np.nan
         row[f"{band}_G12Err"] = np.nan
         row[f"{band}_H"] = np.nan
         row[f"{band}_H_{band}_G12_Cov"] = np.nan
         row[f"{band}_HErr"] = np.nan
-        row[f"{band}_nObsUsed"] = -1
+        row[f"{band}_nObsUsed"] = 0
+        row[f"{band}_phaseAngleMin"] = np.nan
+        row[f"{band}_phaseAngleMax"] = np.nan
 
         nBandObs = len(df)
         row[f"{band}_nObs"] = nBandObs
@@ -97,7 +99,7 @@ def compute_ssobject_entry(row, sss):
                 H, G12, sigmaH, sigmaG12, covHG12, chi2dof, nobsv = photfit.fitHG12(
                     df["dia_psfMag"], df["dia_psfMagErr"], df["phaseAngle"], df["topoRange"], df["helioRange"]
                 )
-                nDof = 2
+                nDof = nBandObs - 2
                 # print(provID, band, H, G12, sigmaH, sigmaG12, covHG12,
                 #       chi2dof, nobsv)
 
