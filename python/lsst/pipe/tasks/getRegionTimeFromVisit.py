@@ -74,6 +74,8 @@ class GetRegionTimeFromVisitTask(pipeBase.PipelineTask):
         # Input datasetRefs guaranteed to be expanded.
         times = inputRefs.dummy_visit.dataId.records["visit"].timespan
         region = inputRefs.dummy_visit.dataId.records["visit_detector_region"].region
+        self.log.info("Associated visit for this group is %d", inputRefs.dummy_visit.dataId["visit"])
+        self.metadata["visit"] = inputRefs.dummy_visit.dataId["visit"]
         outputs = pipeBase.Struct(
             output=RegionTimeInfo(region=region, timespan=times),
             dummy_exposure=None,
