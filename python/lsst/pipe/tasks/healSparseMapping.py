@@ -462,7 +462,7 @@ class HealSparsePropertyMapConnections(pipeBase.PipelineTaskConnections,
     )
     coadd_exposures = pipeBase.connectionTypes.Input(
         doc="Coadded exposures associated with input_maps",
-        name="{coaddName}Coadd",
+        name="{coaddName}Coadd_calexp",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "band"),
         multiple=True,
