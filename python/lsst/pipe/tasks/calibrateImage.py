@@ -476,6 +476,15 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
             "closest in time to the exposure.",
     )
 
+    useButlerExposureRegion = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="If True, use the exposure region stored in the butler as the "
+        "region for reference catalog trimming. If False, the reference loader "
+        "trimming will be set by the loader (typically from a padded version of "
+        "the detector's bounding box + current WCS)."
+    )
+
     useButlerCamera = pexConfig.Field(
         dtype=bool,
         default=False,
@@ -801,6 +810,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         exposures = inputs.pop("exposures")
 
         exposure_record = inputRefs.exposures[0].dataId.records["exposure"]
+        if self.config.useButlerExposureRegion:
+            exposure_region = butlerQC.quantum.dataId.region
+        else:
+            exposure_region = None
 
         id_generator = self.config.id_generator.apply(butlerQC.quantum.dataId)
 
@@ -859,6 +872,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 illumination_correction=illumination_correction,
                 camera_model=camera_model,
                 exposure_record=exposure_record,
+                exposure_region=exposure_region,
             )
         except pipeBase.AlgorithmError as e:
             error = pipeBase.AnnotatedPartialOutputsError.annotate(
@@ -885,6 +899,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         illumination_correction=None,
         camera_model=None,
         exposure_record=None,
+        exposure_region=None,
     ):
         """Find stars and perform psf measurement, then do a deeper detection
         and measurement and calibrate astrometry and photometry from that.
@@ -913,6 +928,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             Butler metadata for the ``exposure`` dimension.  Used if
             constructing an updated WCS instead of the boresight and
             orientation angle from the visit info.
+        exposure_region : `lsst.sphgeom.Region`, optional
+            The exposure region to use for the reference catalog filtering.
+            If `None`, this region will be set as a padded bbox + current WCS
+            of the exposure.
 
         Returns
         -------
@@ -971,8 +990,16 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                     "Cannot use do_illumination_correction with an image that has not had a flat applied",
                 )
 
+        # Update the exposure pointing to that stored in the butler record
+        # (regardless of a camera model update). This is to pick up any
+        # updates to the pointing stored in the butler record that may not
+        # be reflected in the exposure metadata (headers).
         if camera_model:
-            self._update_wcs_with_camera_model(result.exposure, camera_model, exposure_record)
+            self._update_wcs_with_camera_model(
+                result.exposure, camera_model, exposure_record=exposure_record
+            )
+        elif exposure_record is not None:
+            self._update_wcs_to_exposure_record(result.exposure, exposure_record)
 
         result.background = None
         result.background_to_photometric_ratio = None
@@ -1023,7 +1050,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 include_covariance=self.config.do_include_astrometric_errors,
             )
             astrometry_matches, astrometry_meta = self._fit_astrometry(
-                result.exposure, result.psf_stars_footprints
+                result.exposure, result.psf_stars_footprints, exposure_region=exposure_region
             )
             num_astrometry_matches = len(astrometry_matches)
             if "astrometry_matches" in self.config.optional_outputs:
@@ -1595,7 +1622,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         stars['psf_id'][idx_stars] = psf_stars['id'][idx_psf_stars]
         stars['psf_max_value'][idx_stars] = psf_stars['psf_max_value'][idx_psf_stars]
 
-    def _fit_astrometry(self, exposure, stars):
+    def _fit_astrometry(self, exposure, stars, exposure_region=None):
         """Fit an astrometric model to the data and return the reference
         matches used in the fit, and the fitted WCS.
 
@@ -1607,6 +1634,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         stars : `SourceCatalog`
             Good stars selected for use in calibration, with RA/Dec coordinates
             computed from the pixel positions and fitted WCS.
+        exposure_region : `lsst.sphgeom.Region`, optional
+            The exposure region to use for the reference catalog filtering.
+            If `None`, this region will be set as a padded bbox + current WCS
+            of the exposure.
 
         Returns
         -------
@@ -1614,7 +1645,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             Reference/stars matches used in the fit.
         """
         initialWcs = exposure.wcs
-        result = self.astrometry.run(stars, exposure)
+        result = self.astrometry.run(stars, exposure, exposure_region=exposure_region)
 
         # Record astrometry stats to metadata
         self.metadata["astrometry_matches_count"] = len(result.matches)
@@ -1784,6 +1815,33 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 (orientation - exposure.visitInfo.getBoresightRotAngle()).asDegrees(),
                 (orientation - exposure.visitInfo.getBoresightRotAngle()).asArcseconds(),
             )
+        newWcs = createInitialSkyWcsFromBoresight(boresight, orientation, detector)
+        exposure.setWcs(newWcs)
+
+    def _update_wcs_to_exposure_record(self, exposure, exposure_record):
+        """Replace the existing WCS with the one from the butler derived
+        exposure record pointing.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.ExposureF`
+            The exposure whose WCS will be updated.
+        exposure_record : `lsst.daf.butler.DimensionRecord`, optional
+            Butler metadata for the ``exposure`` dimension.  Used if
+            constructing an updated WCS instead of the boresight and
+            orientation angle from the visit info.
+        """
+        detector = exposure.detector
+        boresight = SpherePoint(exposure_record.tracking_ra, exposure_record.tracking_dec, degrees)
+        orientation = exposure_record.sky_angle * degrees
+        self.log.info(
+            "Pointing from exposure record is %.6f deg (%.3f arcsec) from initial pointing; "
+            "orientation difference is %.6f deg (%.3f arcsec).",
+            boresight.separation(exposure.visitInfo.getBoresightRaDec()).asDegrees(),
+            boresight.separation(exposure.visitInfo.getBoresightRaDec()).asArcseconds(),
+            (orientation - exposure.visitInfo.getBoresightRotAngle()).asDegrees(),
+            (orientation - exposure.visitInfo.getBoresightRotAngle()).asArcseconds(),
+        )
         newWcs = createInitialSkyWcsFromBoresight(boresight, orientation, detector)
         exposure.setWcs(newWcs)
 
