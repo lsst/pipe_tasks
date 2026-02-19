@@ -31,7 +31,14 @@ from lsst.afw.image import ExposureF, makeMaskedImage
 from lsst.afw.math import BackgroundMI, binImage
 from lsst.daf.butler import DeferredDatasetHandle
 from lsst.pex.config import Config, ConfigField, ConfigurableField, Field
-from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
+from lsst.pipe.base import (
+    AlgorithmError,
+    AnnotatedPartialOutputsError,
+    PipelineTask,
+    PipelineTaskConfig,
+    PipelineTaskConnections,
+    Struct,
+)
 from lsst.pipe.base.connectionTypes import Input, Output, PrerequisiteInput
 from lsst.pipe.tasks.background import (
     FocalPlaneBackground,
@@ -258,7 +265,15 @@ class SkyCorrectionTask(PipelineTask):
             outputRefs.skyCorr, [ref.dataId["detector"] for ref in outputRefs.skyCorr], detectorOrder
         )
         inputs = butlerQC.get(inputRefs)
-        outputs = self.run(**inputs)
+        try:
+            outputs = self.run(**inputs)
+        except AlgorithmError as e:
+            error = AnnotatedPartialOutputsError.annotate(
+                e,
+                self,  # type: ignore
+                log=self.log,
+            )
+            raise error from e
         butlerQC.put(outputs, outputRefs)
 
     def run(self, calExps, calBkgs, skyFrames, camera, backgroundToPhotometricRatioHandles=[]):
@@ -606,11 +621,7 @@ class SkyCorrectionTask(PipelineTask):
 
         thresh = config.minFrac * spArea
         if np.all(bgModelArray < thresh):
-            raise RuntimeError(
-                f"No background model superpixels are more than {100*config.minFrac}% filled. "
-                "Try decreasing the minFrac configuration parameter, optimizing the subset of detectors "
-                "being processed, or increasing the number of detectors being processed."
-            )
+            raise NoUsableBackgroundSuperpixelsError(bgModelID, config.minFrac)
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", r"invalid value encountered")
@@ -671,3 +682,21 @@ class SkyCorrectionTask(PipelineTask):
             skyCorr.append(newBgData)
         self.log.info("Sky frame subtracted with a scale factor of %.5f", scale)
         return scale
+
+
+class NoUsableBackgroundSuperpixelsError(AlgorithmError):
+    def __init__(self, bgModelID: str, minFrac: float):
+        self.bgModelID = bgModelID
+        self.minFrac = float(minFrac)
+        message = (
+            f"No background model superpixels in {bgModelID} are more than {100 * self.minFrac:.1f}% filled. "
+            "Try decreasing the minFrac configuration parameter, optimizing the subset of detectors "
+            "being processed, or increasing the number of detectors being processed."
+        )
+        super().__init__(message)
+
+    @property
+    def metadata(self) -> dict:
+        return {
+            "bgModelID": self.bgModelID,
+        }
