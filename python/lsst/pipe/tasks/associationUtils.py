@@ -626,14 +626,14 @@ def unpack_provisional_designation(designation_pf: str) -> str:
         The packed provisional designation does not have a year.
     """
     if len(designation_pf) != 7:
-        raise ValueError("Provisional designation must be 7 characters long.")
+        raise ValueError(f"Provisional designation must be 7 characters long: '{designation_pf}'")
     if not designation_pf[1].isdecimal() or not designation_pf[2].isdecimal():
-        raise ValueError("Provisional designation must have a year.")
+        raise ValueError(f"Provisional designation must have a year: '{designation_pf}'")
     year = str(BASE62_MAP[designation_pf[0]] * 100 + int(designation_pf[1:3]))
     letter1 = designation_pf[3]
     letter2 = designation_pf[6]
     if letter1.isdecimal() or letter2.isdecimal():
-        raise ValueError()
+        raise ValueError(f"fourth or seventh char is decimal: '{designation_pf}'")
     cycle1 = designation_pf[4]
     cycle2 = designation_pf[5]
 

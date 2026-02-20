@@ -114,8 +114,13 @@ class SolarSystemAssociationTask(pipeBase.Task):
             source_column = 'id'
             source_columns[source_columns.index('diaSourceId')] = source_column
         nSolarSystemObjects = len(ssObjects)
+
         if nSolarSystemObjects <= 0:
             return self._return_empty(diaSourceCatalog, ssObjects, source_column=source_column)
+
+        for c in ssObjects.columns:
+            if ssObjects[c][0] is np.ma.core.MaskedConstant:
+                ssObjects[c] = None
 
         exposure_midpoint = visitInfo.date.toAstropy()
         if 'obs_x_poly' in ssObjects.columns:  # mpSky ephemeris
@@ -295,7 +300,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
         unAssocObjectMask = np.logical_not(maskedObjects['associated'].value)
         dtypes = [type(d) if d is not np.ma.core.MaskedConstant else float
                   for d in maskedObjects[0][all_cols].values()]
-        ssSourceData = np.ma.filled(np.array(ssSourceData), np.nan)
+        ssSourceData = np.ma.filled(np.array(ssSourceData), None)
         colnames = ["designation", "phaseAngle", "helioRange", "topoRange"]
         colnames += stateVectorColumns + mpcorbColumns
         colnames += ["ephRa", "ephDec", "ephRateRa", "ephRateDec", "ephVmag", "topoRangeRate"]
@@ -305,8 +310,10 @@ class SolarSystemAssociationTask(pipeBase.Task):
             ssSourceData['MPCORB_updated_at'] = 0
             ssSourceData['MPCORB_fitting_datetime'] = 0
             for c in ['MPCORB_created_at', 'MPCORB_updated_at', 'MPCORB_fitting_datetime',
-                      'MPCORB_orbit_type_int', 'MPCORB_u_param']:
-                ssSourceData[c] = ssSourceData[c].astype(np.int64)
+                      'MPCORB_u_param']:
+                ssSourceData[c] = ssSourceData[c].astype(np.float64).astype(np.int64)
+            ssSourceData['MPCORB_orbit_type_int'] = -1  # TODO: DM-54214. Mixed string and nan types.
+            ssSourceData['MPCORB_orbit_type_int'] = ssSourceData['MPCORB_orbit_type_int'].astype(np.int64)
         ssSourceData['ssObjectId'] = Column(data=ssObjectIds, dtype=int)
         ssSourceData["ra"] = ras
         ssSourceData["dec"] = decs
