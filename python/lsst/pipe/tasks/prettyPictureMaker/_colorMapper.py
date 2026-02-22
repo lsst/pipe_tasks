@@ -149,12 +149,20 @@ def lsstRGB(
     # set them to zero or throw.
     img[np.isnan(img)] = 0
 
+    import time
+
+    t1 = time.time()
+
     if remap_bounds is not None:
         img = remap_bounds(img)
+        print(f"doing remap took {time.time() - t1}s")
+        t1 = time.time()
 
     # Convert the starting image into the OK L*a*b* color space.
     # https://en.wikipedia.org/wiki/Oklab_color_space
     Lab = rgb.RGB_to_Oklab(img, cieWhitePoint)
+    print(f"lab conversion took {time.time() - t1}")
+    t1 = time.time()
     lum = Lab[:, :, 0]
 
     # potentially needed for remapping color, so save what it origionaly was
@@ -162,28 +170,42 @@ def lsstRGB(
 
     if bracketing_function is not None:
         lum = bracketing_function(lum)
+        print(f"bracketing took {time.time() - t1}")
+        t1 = time.time()
 
     if scale_lum is not None:
         lum = scale_lum(lum)
+        print(f"lum scale took {time.time() - t1}")
+        t1 = time.time()
 
     if local_contrast is not None:
         lum = local_contrast(lum)
+        print(f"local_contrast took {time.time() - t1}")
+        t1 = time.time()
 
     if psf is not None:
         lum = skimage.restoration.richardson_lucy(lum, psf=psf, clip=False, num_iter=2)
+        print(f"psf took {time.time() - t1}")
+        t1 = time.time()
 
     if scale_color is not None:
         new_a, new_b = scale_color(lum_save, lum, Lab[..., 1], Lab[..., 2])
         Lab[..., 1] = new_a
         Lab[..., 2] = new_b
+        print(f"color correction took {time.time() - t1}")
+        t1 = time.time()
     Lab[..., 0] = lum
 
     # The target output profile whitepoint
     cie_white_point_d65 = (0.31272, 0.32903)
     if gamut_remapping_function is not None:
         result = gamut_remapping_function(Lab, cie_white_point_d65)
+        print(f"gamut fixing took {time.time() - t1}")
+        t1 = time.time()
     else:
         result = rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), cie_white_point_d65)
+        print(f"RGB conversion took {time.time() - t1}")
+        t1 = time.time()
 
     result = np.clip(result, 0, 1)
     return result
