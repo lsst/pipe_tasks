@@ -264,8 +264,7 @@ def _calculateOutput(
 
     """
     # loop over each pixel in the gaussian pyramid
-    # gammaDiff = gamma[1] - gamma[0]
-    for level in prange(0, len(pyramid) - 1):
+    for level in prange(0, len(pyramid)):
         yshape = pyramid[level].shape[0]
         xshape = pyramid[level].shape[1]
         plevel = pyramid[level]
@@ -279,7 +278,7 @@ def _calculateOutput(
             basisTopY = basisTop[y]
             for x in prange(xshape):
                 val = plevelY[x]
-                if not (val >= gamma[0] and val <= gamma[1]):
+                if not (val >= gamma[0] and val < gamma[1]):
                     continue
                 a = (plevelY[x] - gamma[0]) / (gamma[1] - gamma[0])
                 outLevelY[x] = (1 - a) * basisBottomY[x] + a * basisTopY[x]
@@ -327,6 +326,7 @@ def localContrast(
     clarity: float = 0.15,
     maxLevel: int | None = None,
     numGamma: int = 20,
+    skip_levels: int = 0,
 ) -> NDArray:
     """Enhance the local contrast of an input image.
 
@@ -334,7 +334,7 @@ def localContrast(
     ----------
     image : `NDArray`
         Two dimensional numpy array representing the image to have contrast
-        increased.
+        increased. Data must be in the range 0 to 1.
     sigma : `float`
         The scale over which edges are considered real and not noise.
     highlights : `float`
@@ -355,6 +355,9 @@ def localContrast(
         values are interpolated to get the outcome. The higher the numGamma,
         the smoother the image is post contrast enhancement, though above
         some number there is no decerable difference.
+    skip_levels : `int`
+        When calculating the local contrast skip the specified number of levels
+        starting at the lowest level.
 
     Returns
     -------
@@ -408,10 +411,11 @@ def localContrast(
     ).astype(image.dtype)
 
     # build a list of intensities
-    gamma = np.linspace(image.min(), image.max(), numGamma)
+    gamma = np.linspace(0, 1, numGamma)
 
     # make gaussian pyramid
     pyramid = makeGaussianPyramid(imagePadded, padY_amounts, padX_amounts, None)
+    base_lap_pyr = makeLapPyramid(imagePadded, padY_amounts, padX_amounts, None, None, None)
 
     finalPyramid = List()
     for sample in pyramid[:-1]:
@@ -471,6 +475,9 @@ def localContrast(
             pyramidVectors[1],
         )
         del pyramidVectors
+    if skip_levels:
+        for i in range(skip_levels):
+            finalPyramid[i] = base_lap_pyr[i]
 
     # time to reconstruct
     output = finalPyramid[-1]
