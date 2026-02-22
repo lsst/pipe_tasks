@@ -421,7 +421,7 @@ class PrettyPictureTask(PipelineTask):
         # This is so we only apply key word overrides that are specifically set.
         local_contrast_config = self.config.localContrastConfig.toDict()
         to_remove = []
-        for k, v in local_contrast_config["diffusionControl"].items():
+        for k, v in local_contrast_config["diffusionFunction"].items():
             if v is None:
                 to_remove.append(k)
         for item in to_remove:

@@ -86,7 +86,7 @@ class LumCompressor(ConfigurableAction):
         ),
         default=0.07,
     )
-    doDenoise = Field[bool](doc="Denoise the luminance image")
+    doDenoise = Field[bool](doc="Denoise the luminance image", default=False)
 
     def __call__(self, intensities: FloatImagePlane) -> FloatImagePlane:
         if self.doDenoise:
