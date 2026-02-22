@@ -144,9 +144,9 @@ class LocalContrastEnhansor(ConfigurableAction):
             highlights=self.highlights,
             shadows=self.shadows,
             clarity=self.clarity,
-            maxLevel=self.max_level,
-            skip_levels=self.skip_levels,
+            maxLevel=self.maxLevel,
+            skip_levels=self.skipLevels,
         )
-        if self.do_diffusion:
-            intensities = self.diffusion_function(intensities)
+        if self.doDiffusion:
+            intensities = self.diffusionFunction(intensities)
         return intensities
