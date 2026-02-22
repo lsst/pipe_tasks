@@ -35,12 +35,15 @@ __all__ = (
     "PrettyPictureStarFixerTask",
 )
 
+import colour
+import copy
 from collections.abc import Iterable, Mapping
 from lsst.afw.image import ExposureF
 import numpy as np
 from typing import TYPE_CHECKING, cast, Any
 from lsst.skymap import BaseSkyMap
 
+from scipy.optimize import minimize
 from scipy.stats import norm, halfnorm, mode
 from scipy.ndimage import binary_dilation
 from scipy.interpolate import RBFInterpolator
@@ -49,6 +52,7 @@ from skimage.restoration import inpaint_biharmonic
 from lsst.daf.butler import Butler, DeferredDatasetHandle
 from lsst.daf.butler import DatasetRef
 from lsst.pex.config import Field, Config, ConfigDictField, ConfigField, ListField, ChoiceField
+from lsst.pex.config.configurableActions import ConfigurableActionField
 from lsst.pipe.base import (
     PipelineTask,
     PipelineTaskConfig,
@@ -64,6 +68,15 @@ from lsst.afw.image import Exposure, Mask
 
 from ._plugins import plugins
 from ._colorMapper import lsstRGB
+from ._utils import FeatheredMosaicCreator
+from ._functors import (
+    BoundsRemapper,
+    ColorScaler,
+    LumCompressor,
+    ExposureBracketer,
+    GamutFixer,
+    LocalContrastEnhansor,
+)
 
 import tempfile
 
@@ -118,104 +131,12 @@ class ChannelRGBConfig(Config):
     b = Field[float](doc="The amount of blue contained in this channel")
 
 
-class LumConfig(Config):
-    """Configurations to control how luminance is mapped in the rgb code"""
-
-    stretch = Field[float](doc="The stretch of the luminance in asinh", default=400)
-    max = Field[float](doc="The maximum allowed luminance on a 0 to 100 scale", default=85)
-    floor = Field[float](doc="A scaling factor to apply to the luminance before asinh scaling", default=0.0)
-    Q = Field[float](doc="softening parameter", default=0.7)
-    highlight = Field[float](
-        doc="The value of highlights in scaling factor applied to post asinh streaching", default=1.0
-    )
-    shadow = Field[float](
-        doc="The value of shadows in scaling factor applied to post asinh streaching", default=0.0
-    )
-    midtone = Field[float](
-        doc="The value of midtone in scaling factor applied to post asinh streaching", default=0.5
-    )
-
-
-class LocalContrastConfig(Config):
-    """Configuration to control local contrast enhancement of the luminance
-    channel."""
-
-    doLocalContrast = Field[bool](
-        doc="Apply local contrast enhancements to the luminance channel", default=True
-    )
-    highlights = Field[float](doc="Adjustment factor for the highlights", default=-0.9)
-    shadows = Field[float](doc="Adjustment factor for the shadows", default=0.5)
-    clarity = Field[float](doc="Amount of clarity to apply to contrast modification", default=0.1)
-    sigma = Field[float](
-        doc="The scale size of what is considered local in the contrast enhancement", default=30
-    )
-    maxLevel = Field[int](
-        doc="The maximum number of scales the contrast should be enhanced over, if None then all",
-        default=4,
-        optional=True,
-    )
-
-
-class ScaleColorConfig(Config):
-    """Controls color scaling in the RGB generation process."""
-
-    saturation = Field[float](
-        doc=(
-            "The overall saturation factor with the scaled luminance between zero and one. "
-            "A value of one is not recommended as it makes bright pixels very saturated"
-        ),
-        default=0.5,
-    )
-    maxChroma = Field[float](
-        doc=(
-            "The maximum chromaticity in the CIELCh color space, large "
-            "values will cause bright pixels to fall outside the RGB gamut."
-        ),
-        default=50.0,
-    )
-
-
-class RemapBoundsConfig(Config):
-    """Remaps input images to a known range of values.
-
-    Often input images are not mapped to any defined range of values
-    (for instance if they are in count units). This controls how the units of
-    and image are mapped to a zero to one range by determining an upper
-    bound.
-    """
-
-    quant = Field[float](
-        doc=(
-            "The maximum values of each of the three channels will be multiplied by this factor to "
-            "determine the maximum flux of the image, values larger than this quantity will be clipped."
-        ),
-        default=0.8,
-    )
-    absMax = Field[float](
-        doc="Instead of determining the maximum value from the image, use this fixed value instead",
-        default=220,
-        optional=True,
-    )
-
-
 class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureConnections):
     channelConfig = ConfigDictField(
         doc="A dictionary that maps band names to their rgb channel configurations",
         keytype=str,
         itemtype=ChannelRGBConfig,
         default={},
-    )
-    imageRemappingConfig = ConfigField[RemapBoundsConfig](
-        doc="Configuration controlling channel normalization process"
-    )
-    luminanceConfig = ConfigField[LumConfig](
-        doc="Configuration for the luminance scaling when making an RGB image"
-    )
-    localContrastConfig = ConfigField[LocalContrastConfig](
-        doc="Configuration controlling the local contrast correction in RGB image production"
-    )
-    colorConfig = ConfigField[ScaleColorConfig](
-        doc="Configuration to control the color scaling process in RGB image production"
     )
     cieWhitePoint = ListField[float](
         doc="The white point of the input arrays in ciexz coordinates", maxLength=2, default=[0.28, 0.28]
@@ -230,28 +151,6 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
             "float": "Use 32 bit float arrays, 1 max",
         },
     )
-    doPSFDeconcovlve = Field[bool](
-        doc="Use the PSF in a richardson lucy deconvolution on the luminance channel.", default=True
-    )
-    exposureBrackets = ListField[float](
-        doc=(
-            "Exposure scaling factors used in creating multiple exposures with different scalings which will "
-            "then be fused into a final image"
-        ),
-        optional=True,
-        default=[1.25, 1, 0.75],
-    )
-    doRemapGamut = Field[bool](
-        doc="Apply a color correction to unrepresentable colors, if false they will clip", default=True
-    )
-    gamutMethod = ChoiceField[str](
-        doc="If doRemapGamut is True this determines the method",
-        default="inpaint",
-        allowed={
-            "mapping": "Use a mapping function",
-            "inpaint": "Use surrounding pixels to determine likely value",
-        },
-    )
     recenterNoise = Field[float](
         doc="Recenter the noise away from zero. Supplied value is in units of sigma",
         optional=True,
@@ -263,12 +162,82 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         ),
         default=10,
     )
+    doPSFDeconcovlve = Field[bool](
+        doc="Use the PSF in a richardson lucy deconvolution on the luminance channel.", default=True
+    )
+    doRemapGamut = Field[bool](
+        doc="Apply a color correction to unrepresentable colors, if false they will clip", default=True
+    )
+    doExposureBrackets = Field[bool](
+        doc="Apply exposure bracketing to aid in dynamic range compression", default=True
+    )
+    doLocalContrast = Field[bool](doc="Apply local contrast optimizations to luminance.", default=True)
+
+    imageRemappingConfig = ConfigurableActionField[BoundsRemapper](
+        doc="Action controlling normalization process"
+    )
+    luminanceConfig = ConfigurableActionField[LumCompressor](
+        doc="Action controlling luminance scaling when making an RGB image"
+    )
+    localContrastConfig = ConfigurableActionField[LocalContrastEnhansor](
+        doc="Action controlling the local contrast correction in RGB image production"
+    )
+    colorConfig = ConfigurableActionField[ColorScaler](
+        doc="Action to control the color scaling process in RGB image production"
+    )
+    exposureBracketerConfig = ConfigurableActionField[ExposureBracketer](
+        doc=(
+            "Exposure scaling action used in creating multiple exposures with different scalings which will "
+            "then be fused into a final image"
+        ),
+    )
+    gamutMapperConfig = ConfigurableActionField[GamutFixer](
+        doc="Action to fix pixels which lay outside RGB color gamut"
+    )
+
+    # old
+    exposureBrackets = ListField[float](
+        doc=(
+            "Exposure scaling factors used in creating multiple exposures with different scalings which will "
+            "then be fused into a final image"
+        ),
+        optional=True,
+        default=[1.25, 1, 0.75],
+        deprecated="This field will stop working in v31 and be removed in v32, please set exposureBracketerConfig",
+    )
+    gamutMethod = ChoiceField[str](
+        doc="If doRemapGamut is True this determines the method",
+        default="inpaint",
+        allowed={
+            "mapping": "Use a mapping function",
+            "inpaint": "Use surrounding pixels to determine likely value",
+        },
+        deprecated="This field will stop working in v31 and be removed in v32, please set gamutMapperConfig",
+    )
 
     def setDefaults(self):
         self.channelConfig["i"] = ChannelRGBConfig(r=1, g=0, b=0)
         self.channelConfig["r"] = ChannelRGBConfig(r=0, g=1, b=0)
         self.channelConfig["g"] = ChannelRGBConfig(r=0, g=0, b=1)
         return super().setDefaults()
+
+    def _handle_deprecated(self):
+        # check if gamutMethod is set
+        if len(self._history["gamutMethod"]) > 1:
+            # This has been set in config, update it in the new location
+            self.gamutMapperConfig.gamutMethod = self.gamutMethod
+
+        if len(self._history["exposureBrackets"]) > 1:
+            self.exposureBracketerConfig.exposureBrackets = self.exposureBrackets
+            if self.exposureBrackets is None:
+                self.doExposureBrackets = False
+
+        if len(self.localContrastConfig._history["doLocalContrast"]) > 1:
+            self.doLocalContrast = self.localContrastConfig.doLocalContrast
+
+    def freeze(self):
+        self._handle_deprecated()
+        super().freeze()
 
 
 class PrettyPictureTask(PipelineTask):
@@ -449,21 +418,32 @@ class PrettyPictureTask(PipelineTask):
         for plug in plugins.partial():
             colorImage = plug(colorImage, jointMask, maskDict, self.config)
 
+        # Filter the local contrast parameters for diffusion that are None
+        # This is so we only apply key word overrides that are specifically set.
+        local_contrast_config = self.config.localContrastConfig.toDict()
+        to_remove = []
+        for k, v in local_contrast_config["diffusionFunction"].items():
+            if v is None:
+                to_remove.append(k)
+        for item in to_remove:
+            local_contrast_config["diffusionControl"].pop(item)
+
         # Ignore type because Exposures do in fact have a bbox, but it's c++
         # and not typed.
         colorImage = lsstRGB(
             colorImage[:, :, 0],
             colorImage[:, :, 1],
             colorImage[:, :, 2],
-            scaleLumKWargs=self.config.luminanceConfig.toDict(),
-            remapBoundsKwargs=self.config.imageRemappingConfig.toDict(),
-            scaleColorKWargs=self.config.colorConfig.toDict(),
-            **(self.config.localContrastConfig.toDict()),
+            local_contrast=self.config.localContrastConfig if self.config.doLocalContrast else None,
+            scale_lum=self.config.luminanceConfig,
+            scale_color=self.config.colorConfig,
+            remap_bounds=self.config.imageRemappingConfig,
+            bracketing_function=self.config.exposureBracketerConfig
+            if self.config.doExposureBrackets
+            else None,
+            gamut_remapping_function=self.config.gamutMapperConfig if self.config.doRemapGamut else None,
             cieWhitePoint=tuple(self.config.cieWhitePoint),  # type: ignore
             psf=psf if self.config.doPSFDeconcovlve else None,
-            brackets=list(self.config.exposureBrackets) if self.config.exposureBrackets else None,
-            doRemapGamut=self.config.doRemapGamut,
-            gamutMethod=self.config.gamutMethod,
         )
 
         # Find the dataset type and thus the maximum values as well
@@ -737,8 +717,15 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         if np.any(mask):
             # use a minimizer to determine best mu and sigma for a Gaussian
             # given only samples below the mean of the Gaussian.
-            _, sigma_hat = halfnorm.fit(np.abs(image[mask] - maxLikely))
-            mu_hat = maxLikely
+            # result = minimize(
+            # self._neg_log_likelihood,
+            # (maxLikely, initial_std),
+            # args=(image[mask]),
+            # bounds=((maxLikely, None), (1e-8, None)),
+            # )
+            # mu_hat, sigma_hat = result.x
+            mu_hat, sigma_hat = halfnorm.fit(np.abs(image[mask] - maxLikely))
+            # mu_hat = maxLikely
         else:
             mu_hat, sigma_hat = (maxLikely, 2 * initial_std)
 
@@ -949,6 +936,8 @@ class PrettyMosaicConnections(PipelineTaskConnections, dimensions=("tract", "sky
 
 class PrettyMosaicConfig(PipelineTaskConfig, pipelineConnections=PrettyMosaicConnections):
     binFactor = Field[int](doc="The factor to bin by when producing the mosaic")
+    doDCID65Convert = Field[bool]("Force the output to be converted from display p3 to DCI-D65 colorspace.")
+    useLocalTemp = Field[bool](doc="Use the current directory when creating local temp files.", default=False)
 
 
 class PrettyMosaicTask(PipelineTask):
@@ -1000,6 +989,9 @@ class PrettyMosaicTask(PipelineTask):
             boxes.append(bbox)
             newBox.include(bbox)
             tractMaps.append(tractInfo)
+            # This will be overwritten in the loop, but that is ok, because
+            # it is the same for each patch.
+            patch_grow: int = patchInfo.getCellInnerDimensions().getX()
 
         # fixup the boxes to be smaller if needed, and put the origin at zero,
         # this must be done after constructing the complete outer box
@@ -1028,16 +1020,25 @@ class PrettyMosaicTask(PipelineTask):
         newBox = Box2I(newBoxOrigin, newBoxExtent)
 
         # Allocate storage for the mosaic
-        self.imageHandle = tempfile.NamedTemporaryFile()
-        self.maskHandle = tempfile.NamedTemporaryFile()
+        self.imageHandle = tempfile.NamedTemporaryFile(dir="." if self.config.useLocalTemp else None)
+        self.maskHandle = tempfile.NamedTemporaryFile(dir="." if self.config.useLocalTemp else None)
         consolidatedImage = None
         consolidatedMask = None
 
+        # Setup color space conversion in case they are used.
+        d65 = copy.deepcopy(colour.models.RGB_COLOURSPACE_DCI_P3)
+        dp3 = copy.deepcopy(colour.models.RGB_COLOURSPACE_DISPLAY_P3)
+        d65.whitepoint = dp3.whitepoint
+        d65.whitepoint_name = dp3.whitepoint_name
+
         # Actually assemble the mosaic
         maskDict = {}
-        tmpImg = None
+        mosaic_maker = FeatheredMosaicCreator(patch_grow, self.config.binFactor)
         for box, handle, handleMask, tractInfo in zip(boxes, inputRGB, inputRGBMask, tractMaps):
             rgb = handle.get()
+            # convert to the dci-d65 colorspace
+            if self.config.doDCID65Convert:
+                rgb = colour.RGB_to_RGB(np.clip(rgb, 0, 1), dp3, d65)
             rgbMask = handleMask.get()
             maskDict = rgbMask.getMaskPlaneDict()
             # allocate the memory for the mosaic
@@ -1066,45 +1067,12 @@ class PrettyMosaicTask(PipelineTask):
                     fx=shape[0] / self.config.binFactor,
                     fy=shape[1] / self.config.binFactor,
                 )
-                rgbMask = cv2.resize(
-                    rgbMask.array.astype(np.float32),
-                    dst=None,
-                    dsize=shape,
-                    fx=shape[0] / self.config.binFactor,
-                    fy=shape[1] / self.config.binFactor,
-                )
-            existing = ~np.all(consolidatedImage[*box.slices] == 0, axis=2)
-            if tmpImg is None or tmpImg.shape != rgb.shape:
-                ramp = np.linspace(0, 1, tractInfo.patch_border * 2)
-                tmpImg = np.zeros(rgb.shape[:2])
-                tmpImg[: tractInfo.patch_border * 2, :] = np.repeat(
-                    np.expand_dims(ramp, 1), tmpImg.shape[1], axis=1
-                )
+                mask_array = rgbMask.array[:: self.config.binFactor, self.config.binFactor]
+                rgbMask = Mask(*(mask_array.shape[::-1]))
+                rgbMask = mask_array
+            mosaic_maker.add_to_image(consolidatedImage, rgb, newBox, box)
 
-                tmpImg[-1 * tractInfo.patch_border * 2 :, :] = np.repeat(  # noqa: E203
-                    np.expand_dims(1 - ramp, 1), tmpImg.shape[1], axis=1
-                )
-                tmpImg[:, : tractInfo.patch_border * 2] = np.repeat(
-                    np.expand_dims(ramp, 0), tmpImg.shape[0], axis=0
-                )
-
-                tmpImg[:, -1 * tractInfo.patch_border * 2 :] = np.repeat(  # noqa: E203
-                    np.expand_dims(1 - ramp, 0), tmpImg.shape[0], axis=0
-                )
-                tmpImg = np.repeat(np.expand_dims(tmpImg, 2), 3, axis=2)
-
-            consolidatedImage[*box.slices][~existing, :] = rgb[~existing, :]
-            consolidatedImage[*box.slices][existing, :] = (
-                tmpImg[existing] * rgb[existing]
-                + (1 - tmpImg[existing]) * consolidatedImage[*box.slices][existing, :]
-            )
-
-            tmpMask = np.zeros_like(rgbMask.array)
-            tmpMask[existing] = np.bitwise_or(
-                rgbMask.array[existing], consolidatedMask[*box.slices][existing]
-            )
-            tmpMask[~existing] = rgbMask.array[~existing]
-            consolidatedMask[*box.slices] = tmpMask
+            consolidatedMask[*box.slices] = np.bitwise_or(consolidatedMask[*box.slices], rgbMask.array)
 
         for plugin in plugins.full():
             if consolidatedImage is not None and consolidatedMask is not None:
