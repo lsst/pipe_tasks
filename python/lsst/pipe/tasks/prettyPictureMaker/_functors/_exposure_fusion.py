@@ -20,7 +20,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
-from eups.distrib.server import LocalTransporter
 
 __all__ = ("ExposureBracketer",)
 
@@ -31,7 +30,7 @@ from lsst.pipe.tasks.prettyPictureMaker.types import FloatImagePlane
 from lsst.pex.config.configurableActions import ConfigurableAction
 from lsst.pex.config import ListField
 
-from .._localContrast import levelPadder
+from .._localContrast import levelPadder, makeGaussianPyramid, makeLapPyramid
 
 
 def _fuseExposureLum(images, sigma=0.1, maxLevel=3):
