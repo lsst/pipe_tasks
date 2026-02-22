@@ -60,7 +60,7 @@ class GamutFixer(ConfigurableAction):
         """
         rgb_prime = rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), xyz_whitepoint)
 
-        if self.gamut_method == "none":
+        if self.gamutMethod == "none":
             return rgb_prime
 
         # Determine if there are any out of bounds pixels
@@ -74,7 +74,7 @@ class GamutFixer(ConfigurableAction):
             return rgb_prime
 
         logging.info("There are out of gamut pixels, remapping colors")
-        match self.gamut_method:
+        match self.gamutMethod:
             case "inpaint":
                 results = skimage.restoration.inpaint_biharmonic(rgb_prime, outOfBounds, channel_axis=-1)
             case "mapping":
@@ -82,7 +82,7 @@ class GamutFixer(ConfigurableAction):
                 Lab[outOfBounds] = results
                 results = rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), xyz_whitepoint)
             case _:
-                raise ValueError(f"gamut correction {self.gamut_method} is not supported")
+                raise ValueError(f"gamut correction {self.gamutMethod} is not supported")
 
         logging.debug(f"The total number of remapped pixels is: {np.sum(outOfBounds)}")
         return results
