@@ -2089,20 +2089,18 @@ class MomentsBase(Functor):
         i_xy = self.get_xy(df)
         CD_1_1 = df[self.colCD_1_1]
         CD_1_2 = df[self.colCD_1_2]
-        CD_2_1 = df[self.colCD_2_1]
-        return (CD_1_1*(i_xx*CD_1_1 + i_xy*CD_2_1)
-                + CD_1_2*(i_xy*CD_1_1 + i_yy*CD_2_1))
+        return (CD_1_1*(i_xx*CD_1_1 + i_xy*CD_1_2)
+                + CD_1_2*(i_xy*CD_1_1 + i_yy*CD_1_2))
 
     def sky_vv(self, df):
         """Return the component of the moments tensor aligned with the dec axis, in radians."""
         i_xx = self.get_xx(df)
         i_yy = self.get_yy(df)
         i_xy = self.get_xy(df)
-        CD_1_2 = df[self.colCD_1_2]
         CD_2_1 = df[self.colCD_2_1]
         CD_2_2 = df[self.colCD_2_2]
-        return (CD_2_1*(i_xx*CD_1_2 + i_xy*CD_2_2)
-                + CD_2_2*(i_xy*CD_1_2 + i_yy*CD_2_2))
+        return (CD_2_1*(i_xx*CD_2_1 + i_xy*CD_2_2)
+                + CD_2_2*(i_xy*CD_2_1 + i_yy*CD_2_2))
 
     def sky_uv(self, df):
         """Return the covariance of the moments tensor in ra, dec coordinates, in radians."""
