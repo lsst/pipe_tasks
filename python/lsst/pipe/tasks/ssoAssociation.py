@@ -171,6 +171,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
             ssObjects['RangeRate_LTC_km_s'] = 0
 
             marginArcsec = ssObjects["Err(arcsec)"].max()
+            ssObjects['designation'] = ssObjects['MPCORB_unpacked_primary_provisional_designation']
 
             columns_to_drop = [
                 "obs_position", "obs_velocity", "obj_position", "obj_velocity", "topocentric_position",
@@ -198,6 +199,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
                 helioName = 'helio_' + substring1
                 obsName = 'Obs_Sun_' + substring2
                 ssObjects[topoName] = ssObjects[helioName] - ssObjects[obsName]
+            ssObjects['designation'] = ssObjects['ObjID']
 
             marginArcsec = 1.0  # TODO: justify
 
@@ -255,7 +257,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
         # From closest to farthest, associate diaSources to SSOs.
         # Skipping already-associated sources and objects.
         all_cols = (
-            ["ObjID", "phaseAngle", "helioRange", "topoRange"] + stateVectorColumns + mpcorbColumns
+            ["designation", "phaseAngle", "helioRange", "topoRange"] + stateVectorColumns + mpcorbColumns
             + ["ephRa", "ephDec", "RARateCosDec_deg_day",
                "DecRate_deg_day", "trailedSourceMagTrue", "RangeRate_LTC_km_s"]
         )
@@ -316,7 +318,6 @@ class SolarSystemAssociationTask(pipeBase.Task):
         ssSourceData['galLat '] = coords.galactic.b.deg
         ssSourceData['eclLambda'] = coords.barycentrictrueecliptic.lon.deg
         ssSourceData['eclBeta'] = coords.barycentrictrueecliptic.lat.deg
-        ssSourceData['designation'] = prov_ids
         ssSourceData['ephRate'] = np.sqrt((ssSourceData['ephRateRa']) ** 2
                                           + (ssSourceData['ephRateDec']) ** 2)
         ssSourceData['ephOffset'] = np.sqrt((ssSourceData['ephOffsetRa']) ** 2
