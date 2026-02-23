@@ -939,6 +939,9 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
         )
 
     def testSkyMoments(self):
+        # TODO: We should vectorize the afwGeom functions for the conversions instead of just using
+        # them for tests: DM-54015
+
         self.columns.extend([
             "slot_Shape_xx",
             "slot_Shape_yy",
@@ -1062,25 +1065,23 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
             transformed_g2.append(-1*reduced_shear.getE2())
             transformed_trace.append(reduced_shear.getTraceRadius())
 
-        self.assertFloatsAlmostEqual(output_sky_xx, np.array(transformed_xx), rtol=1e-5)
-        self.assertFloatsAlmostEqual(output_sky_yy, np.array(transformed_yy), rtol=1e-5)
-        self.assertFloatsAlmostEqual(output_sky_xy, np.array(transformed_xy), rtol=1e-5)
-        self.assertFloatsAlmostEqual(output_sky_xx_corr, np.array(transformed_xx), rtol=1e-5)
-        self.assertFloatsAlmostEqual(output_sky_yy_corr, np.array(transformed_yy), rtol=1e-5)
-        self.assertFloatsAlmostEqual(output_sky_xy_corr, np.array(transformed_xy), rtol=1e-5)
+        self.assertFloatsAlmostEqual(output_sky_xx, np.array(transformed_xx), rtol=1e-7)
+        self.assertFloatsAlmostEqual(output_sky_yy, np.array(transformed_yy), rtol=1e-7)
+        self.assertFloatsAlmostEqual(output_sky_xy, np.array(transformed_xy), rtol=1e-7)
+        self.assertFloatsAlmostEqual(output_sky_xx_corr, np.array(transformed_xx), rtol=1e-7)
+        self.assertFloatsAlmostEqual(output_sky_yy_corr, np.array(transformed_yy), rtol=1e-7)
+        self.assertFloatsAlmostEqual(output_sky_xy_corr, np.array(transformed_xy), rtol=1e-7)
 
-        self.assertFloatsAlmostEqual(output_axes_a, np.array(axes_a), rtol=1e-5)
-        self.assertFloatsAlmostEqual(output_axes_b, np.array(axes_b), rtol=1e-5)
-        self.assertFloatsAlmostEqual(output_axes_theta, np.array(axes_theta), rtol=1e-5)
-        self.assertFloatsAlmostEqual(output_axes_a_corr, np.array(axes_a), rtol=1e-5)
-        self.assertFloatsAlmostEqual(output_axes_b_corr, np.array(axes_b), rtol=1e-5)
-        self.assertFloatsAlmostEqual(output_axes_theta_corr, np.array(axes_theta), rtol=1e-5)
+        self.assertFloatsAlmostEqual(output_axes_a, np.array(axes_a), rtol=1e-7)
+        self.assertFloatsAlmostEqual(output_axes_b, np.array(axes_b), rtol=1e-7)
+        self.assertFloatsAlmostEqual(output_axes_theta, np.array(axes_theta), rtol=1e-7)
+        self.assertFloatsAlmostEqual(output_axes_a_corr, np.array(axes_a), rtol=1e-7)
+        self.assertFloatsAlmostEqual(output_axes_b_corr, np.array(axes_b), rtol=1e-7)
+        self.assertFloatsAlmostEqual(output_axes_theta_corr, np.array(axes_theta), rtol=1e-7)
 
-        # TODO: These tolerances are looser than we would like, would be better to
-        # rely on afwGeom for conversions: DM-54015
-        self.assertFloatsAlmostEqual(output_g1, np.array(transformed_g1), rtol=2e-5)
-        self.assertFloatsAlmostEqual(output_g2, np.array(transformed_g2), rtol=2e-5)
-        self.assertFloatsAlmostEqual(output_trace, np.array(transformed_trace), rtol=2e-5)
+        self.assertFloatsAlmostEqual(output_g1, np.array(transformed_g1), rtol=1e-7)
+        self.assertFloatsAlmostEqual(output_g2, np.array(transformed_g2), rtol=1e-7)
+        self.assertFloatsAlmostEqual(output_trace, np.array(transformed_trace), rtol=2e-7)
 
     def _dropLevels(self, df):
         levelsToDrop = [n for lev, n in zip(df.columns.levels, df.columns.names) if len(lev) == 1]
