@@ -50,8 +50,8 @@ def heal_gamut(
     new_places = []
     for place in places:
         size = int(0.2 * np.max([sl.stop - sl.start for sl in place]))
-        new_y = slice(np.max(0, place[0].start - size), np.min(mask.shape[0], place[0].stop + size), None)
-        new_x = slice(np.max(0, place[1].start - size), np.min(mask.shape[1], place[1].stop + size), None)
+        new_y = slice(np.max((0, place[0].start - size)), np.min((mask.shape[0], place[0].stop + size)), None)
+        new_x = slice(np.max((0, place[1].start - size)), np.min((mask.shape[1], place[1].stop + size)), None)
         if ((new_y.stop - new_y.start) * (new_x.stop - new_x.start)) <= max_size:
             new_places.append((new_y, new_x))
     # for each slice, dilate the mask by n-pixels, and then diff the mask to make anulus
