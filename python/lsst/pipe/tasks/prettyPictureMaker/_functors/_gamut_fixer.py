@@ -52,21 +52,28 @@ def heal_gamut(
         size = int(3 * np.min([sl.stop - sl.start for sl in place]))
         new_y = slice(np.max((0, place[0].start - size)), np.min((mask.shape[0], place[0].stop + size)), None)
         new_x = slice(np.max((0, place[1].start - size)), np.min((mask.shape[1], place[1].stop + size)), None)
-        if ((new_y.stop - new_y.start) * (new_x.stop - new_x.start)) <= max_size:
-            new_places.append((new_y, new_x))
+        new_places.append((new_y, new_x))
     # for each slice, dilate the mask by n-pixels, and then diff the mask to make anulus
     # get the color data in the anulus
     # set the values in the mask for the a,b channels to the color data
     # use the rgb diffusion to fix the lum channel
     # assign the fixed image back into the
-    for place_y, place_x in places:
+    for (place_y, place_x), (old_y, old_x) in zip(new_places, places):
+        sub_labels = labels[old_y, old_x]
+        if np.sum(sub_labels > 0) >= max_size:
+            continue
+        label_number = np.max(sub_labels)
         # copy to ensure contiguous array, this is faster than operating on view
-        sub_mask = np.copy(mask[place_y, place_x])
+        sub_mask = labels[place_y, place_x] == label_number
         sub_lab = np.copy(lab_image[place_y, place_x])
         outer_mask = binary_dilation(sub_mask, iterations=3)
         ring_mask = outer_mask ^ sub_mask
-        avg_a = np.mean(sub_lab[ring_mask, 1])
-        avg_b = np.mean(sub_lab[ring_mask, 2])
+        sub_a = sub_lab[ring_mask, 1]
+        sub_b = sub_lab[ring_mask, 2]
+        if len(sub_a.size == 0) or len(sub_b.size == 0):
+            breakpoint()
+        avg_a = np.mean(sub_a)
+        avg_b = np.mean(sub_b)
         new_lum = rgb.inpaint_mask(
             np.ascontiguousarray(sub_lab[..., 0]), sub_mask, iterations=32, radius=100, anisotropy_fourth=2.5
         )
