@@ -68,7 +68,7 @@ def heal_gamut(
         avg_a = np.mean(sub_lab[ring_mask][..., 1])
         avg_b = np.mean(sub_lab[ring_mask][..., 2])
         new_lum = rgb.inpaint_mask(
-            np.copy(sub_lab[..., 0]), sub_mask, iterations=32, radius=100, anisotropy_fourth=2.5
+            np.ascontiguousarray(sub_lab[..., 0]), sub_mask, iterations=32, radius=100, anisotropy_fourth=2.5
         )
         lab_image[place_y, place_x, 0] = new_lum
         lab_image[place_y, place_x, 1] = avg_a
