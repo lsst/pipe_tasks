@@ -49,7 +49,7 @@ def heal_gamut(
     # then grow the slices by 20% of the max size
     new_places = []
     for place in places:
-        size = int(2 * np.min([sl.stop - sl.start for sl in place]))
+        size = int(3 * np.min([sl.stop - sl.start for sl in place]))
         new_y = slice(np.max((0, place[0].start - size)), np.min((mask.shape[0], place[0].stop + size)), None)
         new_x = slice(np.max((0, place[1].start - size)), np.min((mask.shape[1], place[1].stop + size)), None)
         if ((new_y.stop - new_y.start) * (new_x.stop - new_x.start)) <= max_size:
