@@ -64,7 +64,7 @@ def heal_gamut(
         sub_mask = np.copy(mask[place_y, place_x])
         sub_lab = np.copy(lab_image[place_y, place_x, 0])
         outer_mask = binary_dilation(sub_mask, iterations=3)
-        ring_mask = outer_mask - sub_mask
+        ring_mask = outer_mask ^ sub_mask
         avg_a = np.mean(sub_lab[ring_mask, 1])
         avg_b = np.mean(sub_lab[ring_mask, 2])
         new_lum = rgb.inpaint_mask(
