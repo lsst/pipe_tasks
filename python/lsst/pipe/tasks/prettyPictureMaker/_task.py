@@ -274,7 +274,7 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
 class PrettyPictureTask(PipelineTask):
     """Turns inputs into an RGB image."""
 
-    _DefaultName = "prettyPictureTask"
+    _DefaultName = "prettyPicture"
     ConfigClass = PrettyPictureConfig
 
     config: ConfigClass
@@ -612,7 +612,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
     """
 
-    _DefaultName = "prettyPictureBackgroundFixerTask"
+    _DefaultName = "prettyPictureBackgroundFixer"
     ConfigClass = PrettyPictureBackgroundFixerConfig
 
     config: ConfigClass
@@ -835,7 +835,7 @@ class PrettyPictureStarFixerTask(PipelineTask):
     bright stars for which there is no data.
     """
 
-    _DefaultName = "prettyPictureStarFixerTask"
+    _DefaultName = "prettyPictureStarFixer"
     ConfigClass = PrettyPictureStarFixerConfig
 
     config: ConfigClass
@@ -957,7 +957,7 @@ class PrettyMosaicConfig(PipelineTaskConfig, pipelineConnections=PrettyMosaicCon
 class PrettyMosaicTask(PipelineTask):
     """Combines multiple RGB arrays into one mosaic."""
 
-    _DefaultName = "prettyMosaicTask"
+    _DefaultName = "prettyMosaic"
     ConfigClass = PrettyMosaicConfig
 
     config: ConfigClass
