@@ -70,16 +70,16 @@ def heal_gamut(
         ring_mask = outer_mask ^ sub_mask
         sub_a = sub_lab[ring_mask, 1]
         sub_b = sub_lab[ring_mask, 2]
-        if len(sub_a.size == 0) or len(sub_b.size == 0):
-            breakpoint()
         avg_a = np.mean(sub_a)
         avg_b = np.mean(sub_b)
         new_lum = rgb.inpaint_mask(
             np.ascontiguousarray(sub_lab[..., 0]), sub_mask, iterations=32, radius=100, anisotropy_fourth=2.5
         )
-        lab_image[place_y, place_x, 0] = new_lum
-        lab_image[place_y, place_x, 1] = avg_a
-        lab_image[place_y, place_x, 2] = avg_b
+        sub_lab[..., 0] = new_lum
+        sub_lab[sub_mask, 1] = avg_a
+        sub_lab[sub_mask, 2] = avg_b
+
+        lab_image[place_y, place_x] = sub_lab
 
     return rgb.Oklab_to_RGB(np.ascontiguousarray(lab_image), xyz_whitepoint)
 
