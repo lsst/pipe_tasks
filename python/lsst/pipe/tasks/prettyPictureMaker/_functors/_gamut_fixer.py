@@ -33,6 +33,48 @@ from lsst.pipe.tasks.prettyPictureMaker.types import LABImage, RGBImage
 from lsst.pex.config.configurableActions import ConfigurableAction
 from lsst.pex.config import ChoiceField
 from lsst.rubinoxide import rgb
+from scipy.ndimge import label, find_objects, binary_dilation
+
+
+def heal_gamut(
+    lab_image: LABImage,
+    mask: np.ndarray[tuple[int, int], np.bool],
+    xyz_whitepoint: tuple[float, float],
+    max_size: int = 500,
+    dilation_iterations: int = 3,
+) -> RGBImage:
+    # Need to split all the regions of the mask
+    labels = label(mask)
+    places = find_objects(labels)
+    # then grow the slices by 20% of the max size
+    new_places = []
+    for place in places:
+        size = int(0.2 * np.max([sl.stop - sl.start for sl in place]))
+        new_y = slice(np.max(0, place[0].start - size), np.min(mask.shape[0], place[0].stop + size), None)
+        new_x = slice(np.max(0, place[1].start - size), np.min(mask.shape[1], place[1].stop + size), None)
+        if ((new_y.stop - new_y.start) * (new_x.stop - new_x.start)) <= max_size:
+            new_places.append((new_y, new_x))
+    # for each slice, dilate the mask by n-pixels, and then diff the mask to make anulus
+    # get the color data in the anulus
+    # set the values in the mask for the a,b channels to the color data
+    # use the rgb diffusion to fix the lum channel
+    # assign the fixed image back into the
+    for place_y, place_x in places:
+        # copy to ensure contiguous array, this is faster than operating on view
+        sub_mask = np.copy(mask[place_y, place_x])
+        sub_lab = np.copy(lab_image[place_y, place_x, 0])
+        outer_mask = binary_dilation(sub_mask, iterations=3)
+        ring_mask = outer_mask - sub_mask
+        avg_a = np.mean(sub_lab[ring_mask, 1])
+        avg_b = np.mean(sub_lab[ring_mask, 2])
+        new_lum = rgb.inpaint_mask(
+            np.copy(sub_lab[..., 0]), sub_mask, iterations=32, radius=100, anisotropy_fourth=2.5
+        )
+        lab_image[place_y, place_x, 0] = new_lum
+        lab_image[place_y, place_x, 1] = avg_a
+        lab_image[place_y, place_x, 2] = avg_b
+
+    return rgb.Oklab_to_RGB(np.ascontiguousarray(lab_image), xyz_whitepoint)
 
 
 class GamutFixer(ConfigurableAction):
@@ -42,6 +84,7 @@ class GamutFixer(ConfigurableAction):
         allowed={
             "mapping": "Use a mapping function",
             "inpaint": "Use surrounding pixels to determine likely value",
+            "heal": "Heal regions with reverse diffusion",
             "none": "Don't fix out of gamut colors",
         },
     )
@@ -81,6 +124,8 @@ class GamutFixer(ConfigurableAction):
                 results = fixGamutOK(Lab[outOfBounds])
                 Lab[outOfBounds] = results
                 results = rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), xyz_whitepoint)
+            case "heal":
+                results = heal_gamut(Lab, outOfBounds, xyz_whitepoint)
             case _:
                 raise ValueError(f"gamut correction {self.gamutMethod} is not supported")
 
