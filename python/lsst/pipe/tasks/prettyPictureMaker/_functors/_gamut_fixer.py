@@ -44,7 +44,7 @@ def heal_gamut(
     dilation_iterations: int = 3,
 ) -> RGBImage:
     # Need to split all the regions of the mask
-    labels = label(mask)[0]
+    labels = label(binary_dilation(mask, iterations=3))[0]
     places = find_objects(labels)
     # then grow the slices by 20% of the max size
     new_places = []
