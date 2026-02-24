@@ -418,6 +418,9 @@ class PrettyPictureTask(PipelineTask):
         imageBArray = np.zeros(shape, dtype=np.float32)
 
         for band, image in channels.items():
+            if band not in self.config.channelConfig:
+                self.log.info(f"{band} image found but not requested in RGB image, skipping")
+                continue
             mix = self.config.channelConfig[band]
             if mix.r:
                 imageRArray += mix.r * image
