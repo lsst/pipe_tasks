@@ -199,7 +199,7 @@ def query_disc(nside, ra, dec, max_rad, min_rad=0):
 
 def obj_id_to_ss_object_id(objID):
     if ' ' in objID:
-        objID = pack_provisional_designation(objID)
+        objID = pack_mpc_designation(objID)
     return packed_obj_id_to_ss_object_id(objID)
 
 
@@ -263,7 +263,7 @@ def ss_object_id_to_obj_id(ssObjectID, packed=False):
     if packed:
         return objID
     else:
-        return unpack_provisional_designation(objID)
+        return unpack_mpc_designation(objID)
 
 # All the below designation-related code are copied from B612's adam_core
 # adam_core should eventually be added as an external dependency, and this
