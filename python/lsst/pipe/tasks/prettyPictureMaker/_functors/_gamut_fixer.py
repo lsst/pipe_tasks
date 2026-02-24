@@ -33,7 +33,7 @@ from lsst.pipe.tasks.prettyPictureMaker.types import LABImage, RGBImage
 from lsst.pex.config.configurableActions import ConfigurableAction
 from lsst.pex.config import ChoiceField
 from lsst.rubinoxide import rgb
-from scipy.ndimge import label, find_objects, binary_dilation
+from scipy.ndimage import label, find_objects, binary_dilation
 
 
 def heal_gamut(
