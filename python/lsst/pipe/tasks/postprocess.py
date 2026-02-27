@@ -49,6 +49,7 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 import astropy.table
+import astropy.units
 from numpy.typing import NDArray
 
 import lsst.geom
@@ -1796,6 +1797,22 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
             ccdEntry["urcdec"] = summaryTable["decCorners"][:, 2]
             ccdEntry["lrcra"] = summaryTable["raCorners"][:, 3]
             ccdEntry["lrcdec"] = summaryTable["decCorners"][:, 3]
+            # These columns are only added on certain updateVisitSummary
+            # configurations, and we want to rename them to camelCase and
+            # convert to arcseconds here.
+            for inName, outName in {
+                "wcs_corner_max_offset": "wcsCornerMaxOffset",
+                "wcs_detector_pointing_residual": "wcsDetectorPointingResidual",
+                "wcs_visit_pointing_residual": "wcsVisitPointingResidual",
+                "preliminary_wcs_detector_pointing_residual": "wcsPreliminaryDetectorPointingResidual",
+                "preliminary_wcs_visit_pointing_residual": "wcsPreliminaryVisitPointingResidual",
+            }.items():
+                if inName in summaryTable.columns:
+                    inCol = summaryTable[inName]
+                    ccdEntry[outName] = astropy.table.Column(
+                        (np.asarray(inCol) * inCol.unit).to_value(astropy.units.arcsec),
+                        unit=astropy.units.arcsec
+                    )
             # TODO: DM-30618, Add raftName, nExposures, ccdTemp, binX, binY,
             # and flags, and decide if WCS, and llcx, llcy, ulcx, ulcy, etc.
             # values are actually wanted.
