@@ -55,6 +55,7 @@ from lsst.pipe.base import (
     PipelineTaskConnections,
     Struct,
     InMemoryDatasetHandle,
+    NoWorkFound
 )
 import cv2
 
@@ -503,6 +504,9 @@ class PrettyPictureTask(PipelineTask):
     ) -> None:
         imageRefs: list[DatasetRef] = inputRefs.inputCoadds
         sortedImages = self.makeInputsFromRefs(imageRefs, butlerQC)
+        if not sortedImages:
+            requested = ', '.join(self.config.channelConfig.keys())
+            raise NoWorkFound(f"No input images of band(s) {requested}")
         outputs = self.run(sortedImages)
         butlerQC.put(outputs, outputRefs)
 
@@ -527,6 +531,9 @@ class PrettyPictureTask(PipelineTask):
         sortedImages: dict[str, Exposure] = {}
         for ref in refs:
             key: str = cast(str, ref.dataId["band"])
+            if key not in self.config.channelConfig:
+                self.log.info(f"{key}-band image found but not requested in RGB image, skipping")
+                continue
             image = butler.get(ref)
             sortedImages[key] = image
         return sortedImages
