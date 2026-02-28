@@ -47,6 +47,9 @@ class ColorScaler(ConfigurableAction):
         ),
         default=0.4,
     )
+    brightFalloff = Field[float](
+        doc="The rate that saturation scaling should slow with brightness", default=800
+    )
     equalizer_levels = ListField[float](
         doc=(
             "A list of factors to modify the color constrast in a scale dependent way. "
@@ -111,7 +114,7 @@ class ColorScaler(ConfigurableAction):
         # Calculate the square of the new chroma based on desired saturation
         sat_original_2 = chroma1_2 / div
         # chroma2_2 = self.saturation * sat_original_2 * new_lum**2 / (1 - sat_original_2)
-        correction_factor = np.arcsinh(abs(new_lum - 1) * 8000) / np.arcsinh(8000)
+        correction_factor = np.arcsinh(abs(new_lum - 1) * self.brightFalloff) / np.arcsinh(self.brightFalloff)
         chroma2_2 = (
             self.saturation
             * correction_factor**2
