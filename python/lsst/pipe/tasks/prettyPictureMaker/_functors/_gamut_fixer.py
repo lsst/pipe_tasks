@@ -73,11 +73,29 @@ def heal_gamut(
         avg_a = np.mean(sub_a)
         avg_b = np.mean(sub_b)
         new_lum = rgb.inpaint_mask(
-            np.ascontiguousarray(sub_lab[..., 0]), sub_mask, iterations=32, radius=100, anisotropy_fourth=2.5
+            np.ascontiguousarray(sub_lab[..., 0]),
+            sub_mask,
+            iterations=62,
+            radius=26,
+            radius_center=5,
+        )
+        new_a = rgb.inpaint_mask(
+            np.ascontiguousarray(sub_lab[..., 1]),
+            sub_mask,
+            iterations=62,
+            radius=26,
+            radius_center=5,
+        )
+        new_b = rgb.inpaint_mask(
+            np.ascontiguousarray(sub_lab[..., 2]),
+            sub_mask,
+            iterations=62,
+            radius=26,
+            radius_center=5,
         )
         sub_lab[..., 0] = new_lum
-        sub_lab[sub_mask, 1] = avg_a
-        sub_lab[sub_mask, 2] = avg_b
+        sub_lab[..., 1] = new_a
+        sub_lab[..., 2] = new_b
 
         lab_image[place_y, place_x] = sub_lab
 

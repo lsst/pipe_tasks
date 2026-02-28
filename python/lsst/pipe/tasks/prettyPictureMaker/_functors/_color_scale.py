@@ -111,6 +111,14 @@ class ColorScaler(ConfigurableAction):
         # Calculate the square of the new chroma based on desired saturation
         sat_original_2 = chroma1_2 / div
         chroma2_2 = self.saturation * sat_original_2 * new_lum**2 / (1 - sat_original_2)
+        # correction_factor = np.arcsinh(abs(new_lum - 1) * 800) / np.arcsinh(800)
+        # chroma2_2 = (
+        #     self.saturation
+        #     * correction_factor**2
+        #     * sat_original_2
+        #     * new_lum**2
+        #     / (1 - sat_original_2 * correction_factor**2)
+        # )
 
         # Compute new 'a' values using the square root of adjusted chroma and
         # considering hue direction.

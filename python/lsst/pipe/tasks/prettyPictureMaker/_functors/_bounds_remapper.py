@@ -92,6 +92,4 @@ class BoundsRemapper(ConfigurableAction):
         image /= scale
 
         # Clip values that exceed the bound to ensure all values are within [0, absMax]
-        np.clip(image, 0, 1, out=image)
-
-        return image
+        return np.clip(image, 0, 1)

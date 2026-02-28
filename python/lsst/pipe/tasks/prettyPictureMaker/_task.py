@@ -43,6 +43,7 @@ import numpy as np
 from typing import TYPE_CHECKING, cast, Any
 from lsst.skymap import BaseSkyMap
 
+from scipy.optimize import minimize
 from scipy.stats import norm, halfnorm, mode
 from scipy.ndimage import binary_dilation
 from scipy.interpolate import RBFInterpolator
@@ -716,8 +717,15 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         if np.any(mask):
             # use a minimizer to determine best mu and sigma for a Gaussian
             # given only samples below the mean of the Gaussian.
-            _, sigma_hat = halfnorm.fit(np.abs(image[mask] - maxLikely))
-            mu_hat = maxLikely
+            # result = minimize(
+            # self._neg_log_likelihood,
+            # (maxLikely, initial_std),
+            # args=(image[mask]),
+            # bounds=((maxLikely, None), (1e-8, None)),
+            # )
+            # mu_hat, sigma_hat = result.x
+            mu_hat, sigma_hat = halfnorm.fit(np.abs(image[mask] - maxLikely))
+            # mu_hat = maxLikely
         else:
             mu_hat, sigma_hat = (maxLikely, 2 * initial_std)
 

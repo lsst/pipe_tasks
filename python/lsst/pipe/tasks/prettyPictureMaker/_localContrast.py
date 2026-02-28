@@ -450,7 +450,7 @@ def localContrast(
         prevImg, padY_amounts, padX_amounts, tmpGauss, next(cycler), upscratch=upscratch
     )
 
-    for value in range(1, len(gamma) - 1):
+    for value in range(1, len(gamma)):
         pyramidVectors = List()
         pyramidVectors.append(prevLapPyr)
         newImg = r(
