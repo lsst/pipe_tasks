@@ -40,7 +40,7 @@ import numpy as np
 import esutil
 from smatch.matcher import Matcher
 
-
+import lsst.geom as geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.daf.base as dafBase
@@ -97,7 +97,10 @@ class FinalizeCharacterizationConnectionsBase(
         super().__init__(config=config)
         if config is None:
             return None
-        if not self.config.psf_determiner['piff'].useColor:
+        # Keep fgcm_standard_star if using chromatic PSF OR if adding FGCM photometry
+        needs_fgcm = (self.config.psf_determiner['piff'].useColor
+                      or self.config.doAddFgcmPhotometry)
+        if not needs_fgcm:
             self.inputs.remove("fgcm_standard_star")
 
 
@@ -208,6 +211,16 @@ class FinalizeCharacterizationConfigBase(
     apply_ap_corr = pexConfig.ConfigurableField(
         target=ApplyApCorrTask,
         doc="Subtask to apply aperture corrections"
+    )
+    doAddSkyMoments = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Add second moments in sky (RA/Dec) and alt/az coordinates to the output table.",
+    )
+    doAddFgcmPhotometry = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Add FGCM photometry for all bands (u,g,r,i,z,y) to the output table.",
     )
 
     def setDefaults(self):
@@ -440,6 +453,84 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             doReplace=True,
         )
 
+        if self.config.doAddSkyMoments:
+            # Sky coordinate moments for source shape (arcsec^2)
+            output_schema.addField(
+                'shape_Iuu',
+                type=np.float32,
+                doc="Second moment of source shape along RA axis in sky coordinates (arcsec^2).",
+            )
+            output_schema.addField(
+                'shape_Ivv',
+                type=np.float32,
+                doc="Second moment of source shape along Dec axis in sky coordinates (arcsec^2).",
+            )
+            output_schema.addField(
+                'shape_Iuv',
+                type=np.float32,
+                doc="Cross-term of source shape second moments in sky coordinates (arcsec^2).",
+            )
+
+            # Sky coordinate moments for PSF shape (arcsec^2)
+            output_schema.addField(
+                'psfShape_Iuu',
+                type=np.float32,
+                doc="Second moment of PSF shape along RA axis in sky coordinates (arcsec^2).",
+            )
+            output_schema.addField(
+                'psfShape_Ivv',
+                type=np.float32,
+                doc="Second moment of PSF shape along Dec axis in sky coordinates (arcsec^2).",
+            )
+            output_schema.addField(
+                'psfShape_Iuv',
+                type=np.float32,
+                doc="Cross-term of PSF shape second moments in sky coordinates (arcsec^2).",
+            )
+
+            # Alt/Az coordinate moments for source shape (arcsec^2)
+            output_schema.addField(
+                'shape_Ialtalt',
+                type=np.float32,
+                doc="Second moment of source shape along altitude axis (arcsec^2).",
+            )
+            output_schema.addField(
+                'shape_Iazaz',
+                type=np.float32,
+                doc="Second moment of source shape along azimuth axis (arcsec^2).",
+            )
+            output_schema.addField(
+                'shape_Ialtaz',
+                type=np.float32,
+                doc="Cross-term of source shape second moments in alt/az coordinates (arcsec^2).",
+            )
+
+            # Alt/Az coordinate moments for PSF shape (arcsec^2)
+            output_schema.addField(
+                'psfShape_Ialtalt',
+                type=np.float32,
+                doc="Second moment of PSF shape along altitude axis (arcsec^2).",
+            )
+            output_schema.addField(
+                'psfShape_Iazaz',
+                type=np.float32,
+                doc="Second moment of PSF shape along azimuth axis (arcsec^2).",
+            )
+            output_schema.addField(
+                'psfShape_Ialtaz',
+                type=np.float32,
+                doc="Cross-term of PSF shape second moments in alt/az coordinates (arcsec^2).",
+            )
+
+        if self.config.doAddFgcmPhotometry:
+            # FGCM photometry for all bands
+            for band_name in ('u', 'g', 'r', 'i', 'z', 'y'):
+                output_schema.addField(
+                    f'fgcm_mag_{band_name}',
+                    type=np.float32,
+                    doc=f"FGCM standard star magnitude in {band_name} band (mag).",
+                )
+
         alias_map = input_schema.getAliasMap()
         alias_map_output = afwTable.AliasMap()
         alias_map_output.set('slot_Centroid', alias_map.get('slot_Centroid'))
@@ -491,6 +582,129 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         )
 
         return mapper, selection_schema
+
+    def _compute_sky_moments(self, wcs, x, y, ixx, iyy, ixy):
+        """Compute second moments in sky coordinates from pixel moments.
+
+        Transforms the second moments tensor from pixel coordinates to sky
+        coordinates (RA/Dec) using the local WCS CD matrix at each source
+        position.
+
+        Parameters
+        ----------
+        wcs : `lsst.afw.geom.SkyWcs`
+            The WCS of the exposure.
+        x : `numpy.ndarray`
+            X pixel coordinates of the sources.
+        y : `numpy.ndarray`
+            Y pixel coordinates of the sources.
+        ixx : `numpy.ndarray`
+            Second moment Ixx in pixel coordinates (pixels^2).
+        iyy : `numpy.ndarray`
+            Second moment Iyy in pixel coordinates (pixels^2).
+        ixy : `numpy.ndarray`
+            Second moment Ixy in pixel coordinates (pixels^2).
+
+        Returns
+        -------
+        iuu : `numpy.ndarray`
+            Second moment along RA axis in sky coordinates (arcsec^2).
+        ivv : `numpy.ndarray`
+            Second moment along Dec axis in sky coordinates (arcsec^2).
+        iuv : `numpy.ndarray`
+            Cross-term of second moments in sky coordinates (arcsec^2).
+        """
+        n_sources = len(x)
+        iuu = np.full(n_sources, np.nan, dtype=np.float32)
+        ivv = np.full(n_sources, np.nan, dtype=np.float32)
+        iuv = np.full(n_sources, np.nan, dtype=np.float32)
+
+        # Conversion factor from degrees^2 to arcsec^2
+        # (CD matrix is in degrees/pixel per FITS standard)
+        deg2_to_arcsec2 = 3600.0 ** 2
+
+        for i in range(n_sources):
+            # Skip sources with invalid moments
+            if not np.isfinite(ixx[i]) or not np.isfinite(iyy[i]) or not np.isfinite(ixy[i]):
+                continue
+
+            center = geom.Point2D(x[i], y[i])
+            cd_matrix = wcs.getCdMatrix(center)
+
+            cd11 = cd_matrix[0, 0]
+            cd12 = cd_matrix[0, 1]
+            cd21 = cd_matrix[1, 0]
+            cd22 = cd_matrix[1, 1]
+
+            # Transform moments: M_sky = CD * M_pixel * CD^T
+            # Iuu = CD11*(Ixx*CD11 + Ixy*CD12) + CD12*(Ixy*CD11 + Iyy*CD12)
+            iuu[i] = (cd11 * (ixx[i] * cd11 + ixy[i] * cd12)
+                      + cd12 * (ixy[i] * cd11 + iyy[i] * cd12))
+            # Ivv = CD21*(Ixx*CD21 + Ixy*CD22) + CD22*(Ixy*CD21 + Iyy*CD22)
+            ivv[i] = (cd21 * (ixx[i] * cd21 + ixy[i] * cd22)
+                      + cd22 * (ixy[i] * cd21 + iyy[i] * cd22))
+            # Iuv = (CD11*Ixx + CD12*Ixy)*CD21 + (CD11*Ixy + CD12*Iyy)*CD22
+            iuv[i] = ((cd11 * ixx[i] + cd12 * ixy[i]) * cd21
+                      + (cd11 * ixy[i] + cd12 * iyy[i]) * cd22)
+
+            # Convert from degrees^2 to arcsec^2
+            iuu[i] *= deg2_to_arcsec2
+            ivv[i] *= deg2_to_arcsec2
+            iuv[i] *= deg2_to_arcsec2
+
+        return iuu, ivv, iuv
+
+    def _rotate_moments_to_altaz(self, iuu, ivv, iuv, parallactic_angle):
+        """Rotate second moments from RA/Dec to Alt/Az coordinates.
+
+        Rotates the second moments tensor from equatorial (RA/Dec) coordinates
+        to horizontal (Alt/Az) coordinates using the parallactic angle.
+
+        Parameters
+        ----------
+        iuu : `numpy.ndarray`
+            Second moment along RA axis in sky coordinates (arcsec^2).
+        ivv : `numpy.ndarray`
+            Second moment along Dec axis in sky coordinates (arcsec^2).
+        iuv : `numpy.ndarray`
+            Cross-term of second moments in sky coordinates (arcsec^2).
+        parallactic_angle : `lsst.geom.Angle`
+            The parallactic angle (from visitInfo.boresightParAngle).
+
+        Returns
+        -------
+        ialtalt : `numpy.ndarray`
+            Second moment along altitude axis (arcsec^2).
+        iazaz : `numpy.ndarray`
+            Second moment along azimuth axis (arcsec^2).
+        ialtaz : `numpy.ndarray`
+            Cross-term of second moments in alt/az coordinates (arcsec^2).
+        """
+        from lsst.afw.geom import Quadrupole
+        from lsst.geom import LinearTransform
+
+        n_sources = len(iuu)
+        ialtalt = np.full(n_sources, np.nan, dtype=np.float32)
+        iazaz = np.full(n_sources, np.nan, dtype=np.float32)
+        ialtaz = np.full(n_sources, np.nan, dtype=np.float32)
+
+        # Create the rotation transformation for the parallactic angle
+        rot_transform = LinearTransform.makeRotation(parallactic_angle)
+
+        for i in range(n_sources):
+            # Skip sources with invalid moments
+            if not np.isfinite(iuu[i]) or not np.isfinite(ivv[i]) or not np.isfinite(iuv[i]):
+                continue
+
+            # Create a Quadrupole from the sky moments and rotate it
+            shape = Quadrupole(iuu[i], ivv[i], iuv[i])
+            rot_shape = shape.transform(rot_transform)
+
+            ialtalt[i] = rot_shape.getIxx()
+            iazaz[i] = rot_shape.getIyy()
+            ialtaz[i] = rot_shape.getIxy()
+
+        return ialtalt, iazaz, ialtaz
 
     def concat_isolated_star_cats(
         self,
@@ -648,7 +862,10 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
 
     def add_src_colors(self, srcCat, fgcmCat, band):
 
-        if self.isPsfDeterminerPiff and fgcmCat is not None:
+        needColor = self.isPsfDeterminerPiff and fgcmCat is not None
+        needColor &= self.config.psf_determiner['piff'].useColor
+
+        if needColor:
 
             raSrc = (srcCat['coord_ra'] * u.radian).to(u.degree).value
             decSrc = (srcCat['coord_dec'] * u.radian).to(u.degree).value
@@ -668,6 +885,43 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             for idSrc, idColor in zip(idxSrcCat, idxColorCat):
                 srcCat[idSrc]['psf_color_value'] = colors[idColor]
                 srcCat[idSrc]['psf_color_type'] = f"{magStr1}-{magStr2}"
+
+    def add_fgcm_photometry(self, srcCat, fgcmCat):
+        """Add FGCM photometry for all bands to the source catalog.
+
+        Parameters
+        ----------
+        srcCat : `lsst.afw.table.SourceCatalog`
+            Source catalog to add photometry to.
+        fgcmCat : `numpy.ndarray`
+            FGCM standard star catalog with ra, dec, and mag_* columns.
+        """
+        # Initialize all FGCM magnitude columns to NaN
+        for band_name in ('u', 'g', 'r', 'i', 'z', 'y'):
+            output_col = f'fgcm_mag_{band_name}'
+            srcCat[output_col] = np.nan
+
+        if fgcmCat is None:
+            return
+
+        raSrc = (srcCat['coord_ra'] * u.radian).to(u.degree).value
+        decSrc = (srcCat['coord_dec'] * u.radian).to(u.degree).value
+
+        with Matcher(raSrc, decSrc) as matcher:
+            idx, idxSrcCat, idxFgcmCat, d = matcher.query_radius(
+                fgcmCat["ra"],
+                fgcmCat["dec"],
+                1. / 3600.0,
+                return_indices=True,
+            )
+
+        # Add FGCM magnitudes for all bands
+        for band_name in ('u', 'g', 'r', 'i', 'z', 'y'):
+            mag_col = f'mag_{band_name}'
+            output_col = f'fgcm_mag_{band_name}'
+            if mag_col in fgcmCat.dtype.names:
+                for idSrc, idFgcm in zip(idxSrcCat, idxFgcmCat):
+                    srcCat[idSrc][output_col] = fgcmCat[mag_col][idFgcm]
 
     def compute_psf_and_ap_corr_map(self, visit, detector, exposure, src,
                                     isolated_source_table, fgcm_standard_star_cat):
@@ -758,6 +1012,10 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         self.add_src_colors(selected_src, fgcm_standard_star_cat, band)
         self.add_src_colors(measured_src, fgcm_standard_star_cat, band)
 
+        # Add FGCM photometry for all bands to the output catalog
+        if self.config.doAddFgcmPhotometry:
+            self.add_fgcm_photometry(measured_src, fgcm_standard_star_cat)
+
         # Select the psf candidates from the selection catalog
         try:
             psf_selection_result = self.make_psf_candidates.run(selected_src, exposure=exposure)
@@ -815,6 +1073,54 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
                              visit, detector, e)
             return psf, None, measured_src
 
+        # Compute sky and alt/az coordinate moments for source and PSF shapes.
+        if self.config.doAddSkyMoments:
+            wcs = exposure.getWcs()
+            x = np.array(measured_src['slot_Centroid_x'])
+            y = np.array(measured_src['slot_Centroid_y'])
+
+            # Source shape sky moments
+            shape_xx = np.array(measured_src['slot_Shape_xx'])
+            shape_yy = np.array(measured_src['slot_Shape_yy'])
+            shape_xy = np.array(measured_src['slot_Shape_xy'])
+            shape_iuu, shape_ivv, shape_iuv = self._compute_sky_moments(
+                wcs, x, y, shape_xx, shape_yy, shape_xy
+            )
+            measured_src['shape_Iuu'] = shape_iuu
+            measured_src['shape_Ivv'] = shape_ivv
+            measured_src['shape_Iuv'] = shape_iuv
+
+            # PSF shape sky moments
+            psf_xx = np.array(measured_src['slot_PsfShape_xx'])
+            psf_yy = np.array(measured_src['slot_PsfShape_yy'])
+            psf_xy = np.array(measured_src['slot_PsfShape_xy'])
+            psf_iuu, psf_ivv, psf_iuv = self._compute_sky_moments(
+                wcs, x, y, psf_xx, psf_yy, psf_xy
+            )
+            measured_src['psfShape_Iuu'] = psf_iuu
+            measured_src['psfShape_Ivv'] = psf_ivv
+            measured_src['psfShape_Iuv'] = psf_iuv
+
+            # Rotate sky moments to alt/az coordinates using the parallactic angle.
+            visit_info = exposure.info.getVisitInfo()
+            parallactic_angle = visit_info.boresightParAngle
+
+            # Source shape alt/az moments
+            shape_ialtalt, shape_iazaz, shape_ialtaz = self._rotate_moments_to_altaz(
+                shape_iuu, shape_ivv, shape_iuv, parallactic_angle
+            )
+            measured_src['shape_Ialtalt'] = shape_ialtalt
+            measured_src['shape_Iazaz'] = shape_iazaz
+            measured_src['shape_Ialtaz'] = shape_ialtaz
+
+            # PSF shape alt/az moments
+            psf_ialtalt, psf_iazaz, psf_ialtaz = self._rotate_moments_to_altaz(
+                psf_iuu, psf_ivv, psf_iuv, parallactic_angle
+            )
+            measured_src['psfShape_Ialtalt'] = psf_ialtalt
+            measured_src['psfShape_Iazaz'] = psf_iazaz
+            measured_src['psfShape_Ialtaz'] = psf_ialtaz
+
         # And finally the ap corr map.
         try:
             ap_corr_map = self.measure_ap_corr.run(exposure=exposure,
@@ -864,7 +1170,9 @@ class FinalizeCharacterizationTask(FinalizeCharacterizationTaskBase):
         isolated_star_source_dict = {tract: isolated_star_source_dict_temp[tract] for
                                      tract in sorted(isolated_star_source_dict_temp.keys())}
 
-        if self.config.psf_determiner['piff'].useColor:
+        needs_fgcm = (self.config.psf_determiner['piff'].useColor
+                      or self.config.doAddFgcmPhotometry)
+        if needs_fgcm:
             fgcm_standard_star_dict_temp = {handle.dataId['tract']: handle
                                             for handle in input_handle_dict['fgcm_standard_star']}
             fgcm_standard_star_dict = {tract: fgcm_standard_star_dict_temp[tract] for
@@ -1034,7 +1342,9 @@ class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
         isolated_star_source_dict = {tract: isolated_star_source_dict_temp[tract] for
                                      tract in sorted(isolated_star_source_dict_temp.keys())}
 
-        if self.config.psf_determiner['piff'].useColor:
+        needs_fgcm = (self.config.psf_determiner['piff'].useColor
+                      or self.config.doAddFgcmPhotometry)
+        if needs_fgcm:
             fgcm_standard_star_dict_temp = {handle.dataId['tract']: handle
                                             for handle in input_handle_dict['fgcm_standard_star']}
             fgcm_standard_star_dict = {tract: fgcm_standard_star_dict_temp[tract] for
