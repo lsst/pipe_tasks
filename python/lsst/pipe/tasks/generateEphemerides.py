@@ -43,8 +43,10 @@ done, mpsky should be modified to do the same.
 __all__ = ["GenerateEphemeridesConfig", "GenerateEphemeridesTask"]
 
 
-import numpy as np
+from astropy.table import Table
+import astropy.units as u
 import glob
+import numpy as np
 from importlib import resources
 import os
 import pandas as pd
@@ -60,6 +62,13 @@ from lsst.pipe.base import connectionTypes, NoWorkFound, PipelineTask, \
 import lsst.pipe.tasks
 from lsst.utils.timer import timeMethod
 
+COL_TO_UNIT = {'RATrue_deg': u.deg, 'DecTrue_deg': u.deg, 'phase_deg': u.deg, 'Range_LTC_km': u.km,
+               'Obj_Sun_x_LTC_km': u.km, 'Obj_Sun_y_LTC_km': u.km, 'Obj_Sun_z_LTC_km': u.km,
+               'Obj_Sun_vx_LTC_km_s': u.km/u.s, 'Obj_Sun_vy_LTC_km_s': u.km/u.s,
+               'Obj_Sun_vz_LTC_km_s': u.km/u.s, 'Obs_Sun_x_km': u.km, 'Obs_Sun_y_km': u.km,
+               'Obs_Sun_z_km': u.km, 'Obs_Sun_vx_km_s': u.km/u.s, 'Obs_Sun_vy_km_s': u.km/u.s,
+               'Obs_Sun_vz_km_s': u.km/u.s, 'fieldMJD_TAI': u.d, 'fieldJD_TDB': u.d}
+
 
 class GenerateEphemeridesConnections(PipelineTaskConnections,
                                      dimensions=("instrument",)):
@@ -73,7 +82,7 @@ class GenerateEphemeridesConnections(PipelineTaskConnections,
     mpcorb = connectionTypes.Input(
         doc="Minor Planet Center orbit table used for association",
         name="mpcorb",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions={},
     )
     # QG generation checks input visits to decide what output visits to expect.
@@ -280,12 +289,15 @@ class GenerateEphemeridesTask(PipelineTask):
         })
 
         desig_dict = {un: pack for pack, un in mpcorb[['packed_primary_provisional_designation',
-                                                       'unpacked_primary_provisional_designation']].values}
-        inputOrbits = mpcorb[
-            ['unpacked_primary_provisional_designation', 'q', 'e', 'i',
-             'node', 'argperi', 'peri_time', 'epoch_mjd']
-        ].rename(columns={'unpacked_primary_provisional_designation': 'ObjID', 'epoch_mjd': 'epochMJD_TDB',
-                          'i': 'inc', 'argperi': 'argPeri', 'peri_time': 't_p_MJD_TDB'})
+                                                       'unpacked_primary_provisional_designation']]}
+
+        inputOrbits = Table(mpcorb[['unpacked_primary_provisional_designation', 'q', 'e', 'i',
+                                    'node', 'argperi', 'peri_time', 'epoch_mjd']])
+
+        inputOrbits.rename_columns(
+            ['unpacked_primary_provisional_designation', 'epoch_mjd', 'i', 'argperi', 'peri_time'],
+            ['ObjID', 'epochMJD_TDB', 'inc', 'argPeri', 't_p_MJD_TDB']
+        )
         inputOrbits['FORMAT'] = 'COM'
         # Colors exactly like jake's prep_input_colors
         inputColors = inputOrbits[["ObjID"]].copy()
@@ -354,8 +366,8 @@ class GenerateEphemeridesTask(PipelineTask):
             self.log.info('Sorcha process begun')
 
             # Orbits and colors
-            inputOrbits.to_csv(f'{tmpdirname}/orbits.csv', index=False)
-            inputColors.to_csv(f'{tmpdirname}/colors.csv', index=False)
+            inputOrbits.write(f'{tmpdirname}/orbits.csv', format='ascii.csv')
+            inputColors.write(f'{tmpdirname}/colors.csv', format='ascii.csv')
 
             # FIXME: this is a workaround for breakage in sbpy 0.5.0 caused
             # by astropy 7.2.0. DM-53467 once sbpy is updated.
@@ -420,10 +432,13 @@ class GenerateEphemeridesTask(PipelineTask):
                 )
 
             # Return Sorcha output directly
-            ephemeris = pd.read_csv(eph_path)
-        ephemeris['packed_desig'] = ephemeris['ObjID'].map(desig_dict)
-        perVisitSsObjects = {FieldID: group for FieldID, group in ephemeris.groupby("FieldID")}
+            ephemeris = Table.read(eph_path, format='ascii.csv')
+        ephemeris['packed_desig'] = np.array([desig_dict[k] for k in ephemeris['ObjID']])
+        for col in COL_TO_UNIT:
+            ephemeris[col] *= COL_TO_UNIT[col]
+
+        perVisitSsObjects = {group['FieldID'][0]: group for group in ephemeris.group_by("FieldID").groups}
         for v in visits:
             if v not in perVisitSsObjects:
-                perVisitSsObjects[v] = ephemeris.iloc[:0]
+                perVisitSsObjects[v] = ephemeris[:0]
         return Struct(ssObjects=perVisitSsObjects)
