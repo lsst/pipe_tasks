@@ -318,11 +318,11 @@ class BrightStarCutoutTask(PipelineTask):
         # Identify candidate bright stars that have no contaminant neighbors
         is_candidate_isolated = np.ones(len(coords_candidate), dtype=bool)
         if len(coords_neighbor) > 0:
-            index_candidate, _, separation2d, _ = coords_candidate.search_around_sky(
+            _, indices_candidate, angular_separation, _ = coords_candidate.search_around_sky(
                 coords_neighbor, exclude_arcsec_radius
             )
-            index_candidate = index_candidate[separation2d > 0 * u.arcsec]  # Exclude self-matches
-            is_candidate_isolated[index_candidate] = False
+            indices_candidate = indices_candidate[angular_separation > 0 * u.arcsec]  # Exclude self-matches
+            is_candidate_isolated[indices_candidate] = False
 
         # Trim ref cat subset to isolated bright stars; add ancillary data
         bright_stars = ref_cat_subset[is_candidate][is_candidate_isolated]
