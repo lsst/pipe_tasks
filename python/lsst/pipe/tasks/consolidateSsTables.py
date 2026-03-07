@@ -49,7 +49,7 @@ class ConsolidateSsTablesConnections(
     mpcorb = cT.Input(
         doc="Minor Planet Center orbit table used for association",
         name="mpcorb",
-        storageClass="DataFrame",
+        storageClass="ArrowAstropy",
         dimensions=(),
     )
     ssSourceTable = cT.Output(
