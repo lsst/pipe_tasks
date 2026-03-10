@@ -134,6 +134,20 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         "Keyed by band.",
         default={'u': 9.0, 'g': 9.0, 'r': 9.0, 'i': 9.0, 'z': 9.0, 'y': 9.0},
     )
+    fiducialExpTime = pexConfig.DictField(
+        keytype=str,
+        itemtype=float,
+        doc="Fiducial exposure time (seconds). "
+        "Keyed by band.",
+        default={'u': 30.0, 'g': 30.0, 'r': 30.0, 'i': 30.0, 'z': 30.0, 'y': 30.0},
+    )
+    fiducialMagLim = pexConfig.DictField(
+        keytype=str,
+        itemtype=float,
+        doc="Fiducial magnitude limit depth at SNR=5. "
+        "Keyed by band.",
+        default={'u': 25.0, 'g': 25.0, 'r': 25.0, 'i': 25.0, 'z': 25.0, 'y': 25.0},
+    )
     maxEffectiveTransparency = pexConfig.Field(
         dtype=float,
         doc="Maximum value allowed for effective transparency scale factor (often inf or 1.0).",
@@ -166,7 +180,7 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         self.starSelector.signalToNoise.fluxField = "slot_PsfFlux_instFlux"
         self.starSelector.signalToNoise.errField = "slot_PsfFlux_instFluxErr"
 
-    def fiducialMagnitudeLimit(self, band, exposureTime, pixelScale, gain):
+    def fiducialMagnitudeLimit(self, band, pixelScale, gain):
         """Compute the fiducial point-source magnitude limit based on config values.
         This follows the conventions laid out in SMTN-002, LSE-40, and DMTN-296.
 
@@ -174,8 +188,6 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         ----------
         band : `str`
             The band of interest
-        exposureTime : `float`
-            The exposure time [seconds]
         pixelScale : `float`
             The pixel scale [arcsec/pix]
         gain : `float`
@@ -194,12 +206,13 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         fiducialSkyBackground = self.fiducialSkyBackground.get(band, nan)
         fiducialZeroPoint = self.fiducialZeroPoint.get(band, nan)
         fiducialReadNoise = self.fiducialReadNoise.get(band, nan)
+        fiducialExpTime = self.fiducialExpTime.get(band, nan)
         magLimSnr = self.magLimSnr
 
         # Derived fiducial quantities
         fiducialPsfArea = psf_sigma_to_psf_area(fiducialPsfSigma, pixelScale)
-        fiducialZeroPoint += 2.5*np.log10(exposureTime)
-        fiducialSkyBg = fiducialSkyBackground * exposureTime
+        fiducialZeroPoint += 2.5*np.log10(fiducialExpTime)
+        fiducialSkyBg = fiducialSkyBackground * fiducialExpTime
         fiducialReadNoise /= gain
 
         # Calculate the fiducial magnitude limit
@@ -721,22 +734,13 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             fiducialSkyBackground = self.config.fiducialSkyBackground[band]
             b_eff = fiducialSkyBackground/(summary.skyBg/exposureTime)
 
-        # Effective exposure time scale factor
-        t_eff = f_eff * c_eff * b_eff
+        # Old effective exposure time scale factor
+        # t_eff = f_eff * c_eff * b_eff
 
-        # Effective exposure time (seconds)
-        effectiveTime = t_eff * exposureTime
-
-        # Effective exposure time (seconds)
-        # md = exposure.getMetadata()
-        # if md.get("LSST ISR UNITS", "adu") == "electron":
-        #     gain = 1.0
-        # else:
-        #     gainList = list(ipIsr.getExposureGains(exposure).values())
-        #     gain = np.nanmean(gainList)
-        #
-        # fiducialMagLim = self.config.fiducialMagLim(band, exposureTime, summary.pixelScale, gain)
-        # effectiveTime = compute_effective_time(summary.magLim, fiducialMagLim, exposureTime)
+        # New effective exposure time (seconds) from magnitude limit
+        effectiveTime = compute_effective_time(summary.magLim,
+                                               self.config.fiducialMagLim[band],
+                                               self.config.fiducialExpTime[band])
 
         # Output quantities
         summary.effTime = float(effectiveTime)
@@ -1065,15 +1069,15 @@ def psf_sigma_to_psf_area(psfSigma, pixelScale):
 def compute_effective_time(
         magLim,
         fiducialMagLim,
-        exposureTime
+        fiducialExpTime
 ):
     """Compute the effective exposure time from m5 following the prescription described in SMTN-296.
 
-      teff = 10**(0.8 * (maglim - maglim_fid) ) * expTime
+      teff = 10**(0.8 * (magLim - fiducialMagLim) ) * fiducialExpTime
 
-    where magLim is the magnitude limit, magLim_fid is the fiducial magnitude limit calculated from
-    the fiducial values of the ``psfArea``, ``skyBg``, ``zeroPoint``, and ``readNoise``, and expTime
-    is the exposure time (s).
+    where `magLim` is the magnitude limit, `fiducialMagLim` is the fiducial magnitude limit calculated from
+    the fiducial values of the ``psfArea``, ``skyBg``, ``zeroPoint``, and ``readNoise``, and
+    `fiducialExpTime` is the fiducial exposure time (s).
 
     Parameters
     ----------
@@ -1081,13 +1085,13 @@ def compute_effective_time(
         The measured magnitude limit [mag].
     fiducialMagLim : `float`
         The fiducial magnitude limit [mag].
-    exposureTime : `float`
-        Exposure time [s].
+    fiducialExpTime : `float`
+        The fiducial exposure time [s].
 
     Returns
     -------
     effectiveTime : `float`
         The effective exposure time.
     """
-    effectiveTime = 10**(0.8 * (magLim - fiducialMagLim)) * exposureTime
+    effectiveTime = 10**(0.8 * (magLim - fiducialMagLim)) * fiducialExpTime
     return effectiveTime
