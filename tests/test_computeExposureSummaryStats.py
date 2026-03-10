@@ -36,6 +36,7 @@ from lsst.afw.cameraGeom.testUtils import DetectorWrapper
 from lsst.pipe.tasks.computeExposureSummaryStats import ComputeExposureSummaryStatsTask
 from lsst.pipe.tasks.computeExposureSummaryStats import ComputeExposureSummaryStatsConfig
 from lsst.pipe.tasks.computeExposureSummaryStats import compute_magnitude_limit
+from lsst.pipe.tasks.computeExposureSummaryStats import compute_effective_time
 
 # Values from syseng_throughputs notebook assuming 30s exposure
 # consisting of 2x15s snaps each with readnoise of 9e-
@@ -126,10 +127,16 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
 
         # Configure and run the task
         expSummaryTask = ComputeExposureSummaryStatsTask()
+        config = expSummaryTask.config
+
         # Configure nominal values for effective time calculation (normalized to 1s exposure)
-        expSummaryTask.config.fiducialZeroPoint = {band: float(zp - 2.5*np.log10(expTime))}
-        expSummaryTask.config.fiducialPsfSigma = {band: float(psfSize)}
-        expSummaryTask.config.fiducialSkyBackground = {band: float(skyMean/expTime)}
+        config.fiducialZeroPoint = {band: float(zp - 2.5*np.log10(expTime))}
+        config.fiducialPsfSigma = {band: float(psfSize)}
+        config.fiducialSkyBackground = {band: float(skyMean/expTime)}
+        config.fiducialReadNoise = {band: float(readNoise)}
+        config.fiducialExpTime = {band: expTime}
+        config.fiducialMagLim = {band: 26.584}
+
         # Run the task
         summary = expSummaryTask.run(exposure, None, background)
 
@@ -181,8 +188,8 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         self.assertFloatsAlmostEqual(summary.zenithDistance, 30.57112, atol=1e-5)
 
         # Effective exposure time and depth
+        self.assertFloatsAlmostEqual(summary.magLim, config.fiducialMagLim[band], rtol=1e-3)
         self.assertFloatsAlmostEqual(summary.effTime, expTime, rtol=1e-3)
-        self.assertFloatsAlmostEqual(summary.magLim, 26.584, rtol=1e-3)
 
     def testComputeMagnitudeLimit(self):
         """Test the magnitude limit calculation using fiducials from SMTN-002
@@ -195,8 +202,6 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         gain_test = 2.0
         exposure_time = 30
         pixel_scale = 0.2
-        # Output magnitude limit from syseng_throughputs notebook
-        m5_fid = {'g': 24.90, 'r': 24.48, 'i': 24.10}
 
         for band in ['g', 'r', 'i']:
             # Translate into DM quantities
@@ -214,6 +219,12 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
                                               zeroPoint - 2.5*np.log10(gain_test),
                                               readNoise/gain_test, gain_test, snr)
             self.assertFloatsAlmostEqual(m5_gain, m5, atol=1e-6)
+
+            # Calculate effective time values
+            eff_time = compute_effective_time(m5, m5_fid[band], exposure_time)
+            self.assertFloatsAlmostEqual(eff_time, exposure_time, rtol=1e-2)
+            eff_time_half = compute_effective_time(m5 - 0.375, m5_fid[band], exposure_time)
+            self.assertFloatsAlmostEqual(eff_time_half, exposure_time/2.0, rtol=1e-2)
 
         # Check that input NaN lead to output NaN
         nan = float('nan')
@@ -246,8 +257,11 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         config.fiducialReadNoise = {
             "u": 9.0, "g": 9.0, "r": 9.0, "i": 9.0, "z": 9.0, "y": 9.0,
         }
+        config.fiducialExpTime = {
+            "u": 30.0, "g": 30.0, "r": 30.0, "i": 30.0, "z": 30.0, "y": 30.0,
+        }
+
         # Other properties
-        exposureTime = 30  # second
         pixelScale = 0.2  # arcsec/pix
         gain = 1.0  # [e-/ADU]
 
@@ -259,13 +273,13 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         # Compare fiducial m5 calculated from config to SMTN-002 values
         for band in fiducialMagLim.keys():
             print(f"\n{band}")
-            m5fid = config.fiducialMagnitudeLimit(band, exposureTime, pixelScale, gain)
+            m5fid = config.fiducialMagnitudeLimit(band, pixelScale, gain)
             print(f"{fiducialMagLim[band]:.2f} {m5fid:.3f}")
             self.assertFloatsAlmostEqual(m5fid, fiducialMagLim[band], atol=1e-2)
 
         # Check that passing an unknown band outputs NaN
         nan = float('nan')
-        m5fid = config.fiducialMagnitudeLimit("block", exposureTime, pixelScale, gain)
+        m5fid = config.fiducialMagnitudeLimit("block", pixelScale, gain)
         self.assertFloatsAlmostEqual(m5fid, nan, ignoreNaNs=True)
 
 
