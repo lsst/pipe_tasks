@@ -353,10 +353,10 @@ class SolarSystemAssociationTask(pipeBase.Task):
                                             + (ssSourceData['ephOffsetDec']) ** 2)
         ssSourceData['topo_vtot'] = np.sqrt(ssSourceData['topo_vx'] ** 2
                                             + ssSourceData['topo_vy'] ** 2
-                                            + ssSourceData['topo_vy'] ** 2)
+                                            + ssSourceData['topo_vz'] ** 2)
         ssSourceData['helio_vtot'] = np.sqrt(ssSourceData['helio_vx'] ** 2
                                              + ssSourceData['helio_vy'] ** 2
-                                             + ssSourceData['helio_vy'] ** 2)
+                                             + ssSourceData['helio_vz'] ** 2)
         skyMotionNormal0 = (ssSourceData['ephRateRa']/ssSourceData['ephRate']).data
         skyMotionNormal1 = (ssSourceData['ephRateDec']/ssSourceData['ephRate']).data
         skyMotionNormal = np.array([skyMotionNormal0, skyMotionNormal1])
