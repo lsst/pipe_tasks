@@ -111,59 +111,66 @@ class SolarSystemAssociationTask(pipeBase.Task):
 
         exposure_midpoint = visitInfo.date.toAstropy()
         if 'obs_x_poly' in ssObjects.columns:  # mpSky ephemeris
-            ref_time = exposure_midpoint.tai.mjd - ssObjects["tmin"].value[0]  # all tmin should be identical
+            # tmin, tmax are mjd. All tmin should be identical, so just take the first.
+            ref_time = exposure_midpoint.tai.mjd - ssObjects["tmin"].quantity.to_value(u.d)[0]
+            # *_poly are Chebyshev polynomials encoding the observer and object positions.
+            # Positions are received in equatorial, cartesian au. Velocities are in au/d.
             ssObjects['obs_position'] = [
                 np.array([chebval(ref_time, row['obs_x_poly']),
                           chebval(ref_time, row['obs_y_poly']),
                           chebval(ref_time, row['obs_z_poly'])])
-                for row in ssObjects]
+                for row in ssObjects] * u.au
             ssObjects['obs_velocity'] = [
                 np.array([chebval(ref_time, Chebyshev(row['obs_x_poly']).deriv().coef),
                           chebval(ref_time, Chebyshev(row['obs_y_poly']).deriv().coef),
                           chebval(ref_time, Chebyshev(row['obs_z_poly']).deriv().coef)])
-                for row in ssObjects]
+                for row in ssObjects] * u.au/u.d
             ssObjects['obj_position'] = [
                 np.array([chebval(ref_time, row['obj_x_poly']),
                           chebval(ref_time, row['obj_y_poly']),
                           chebval(ref_time, row['obj_z_poly'])])
-                for row in ssObjects]
+                for row in ssObjects] * u.au
             ssObjects['obj_velocity'] = [
                 np.array([chebval(ref_time, Chebyshev(row['obj_x_poly']).deriv().coef),
                           chebval(ref_time, Chebyshev(row['obj_y_poly']).deriv().coef),
                           chebval(ref_time, Chebyshev(row['obj_z_poly']).deriv().coef)])
-                for row in ssObjects]
-            vector = np.vstack(ssObjects['obj_position'].value - ssObjects['obs_position'].value)
+                for row in ssObjects] * u.au/u.d
+
+            vector = np.vstack(ssObjects['obj_position'].quantity.to_value(u.au)
+                               - ssObjects['obs_position'].quantity.to_value(u.au))
             ras, decs = np.vstack(hp.vec2ang(vector, lonlat=True))
-            ssObjects['ephRa'] = ras
-            ssObjects['ephDec'] = decs
+            # Angles in degrees
+            ssObjects['ephRa'] = ras * u.deg
+            ssObjects['ephDec'] = decs * u.deg
+            # Positions in au, velocities in km/s.
             ssObjects['obs_position_x'], ssObjects['obs_position_y'], \
-                ssObjects['obs_position_z'] = ssObjects['obs_position'].value.T
+                ssObjects['obs_position_z'] = ssObjects['obs_position'].quantity.to_value(u.au).T
             ssObjects['helio_x'], ssObjects['helio_y'], \
-                ssObjects['helio_z'] = ssObjects['obj_position'].value.T
+                ssObjects['helio_z'] = ssObjects['obj_position'].quantity.to_value(u.au).T
             ssObjects['obs_velocity_x'], ssObjects['obs_velocity_y'], \
-                ssObjects['obs_velocity_z'] = ssObjects['obs_velocity'].value.T
+                ssObjects['obs_velocity_z'] = ssObjects['obs_velocity'].quantity.to_value(u.km/u.s).T
             ssObjects['helio_vx'], ssObjects['helio_vy'], \
-                ssObjects['helio_vz'] = ssObjects['obj_velocity'].value.T
+                ssObjects['helio_vz'] = ssObjects['obj_velocity'].quantity.to_value(u.km/u.s).T
             ssObjects['topocentric_position'], ssObjects['topocentric_velocity'] = (
                 ssObjects['obj_position'] - ssObjects['obs_position'],
                 ssObjects['obj_velocity'] - ssObjects['obs_velocity'],
             )
             ssObjects['topo_x'], ssObjects['topo_y'], ssObjects['topo_z'] = (
-                np.array(list(ssObjects['topocentric_position'].value)).T
+                np.array(list(ssObjects['topocentric_position'].quantity.to_value(u.au))).T
             )
             ssObjects['topo_vx'], ssObjects['topo_vy'], ssObjects['topo_vz'] = (
-                np.array(list(ssObjects['topocentric_velocity'].value)).T
+                np.array(list(ssObjects['topocentric_velocity'].quantity.to_value(u.km/u.s))).T
             )
-            ssObjects['helio_vx'], ssObjects['helio_vy'], \
-                ssObjects['helio_vz'] = np.array(list(ssObjects['obj_velocity'].value)).T
             ssObjects['helioRange'] = np.linalg.norm(ssObjects['obj_position'], axis=1)
             ssObjects['topoRange'] = np.linalg.norm(ssObjects['topocentric_position'], axis=1)
+
+            # Phase angle in degrees
             ssObjects['phaseAngle'] = np.degrees(np.arccos(np.sum(
                 ssObjects['obj_position'].T * ssObjects['topocentric_position'].T
                 / ssObjects['helioRange'] / ssObjects['topoRange'], axis=0
             )))
-            #  ssObjects['trailedSourceMagTrue'] should already be filled
 
+            #  ssObjects['trailedSourceMagTrue'] should already be filled
             # Add other required columns with dummy values until we compute them properly.
             # Fix in DM-53463
             ssObjects['RARateCosDec_deg_day'] = 0
@@ -188,17 +195,27 @@ class SolarSystemAssociationTask(pipeBase.Task):
                  'Obj_Sun_vz_LTC_km_s'],
                 ['ephRa', 'ephDec', 'phaseAngle', 'topoRange', 'helio_x', 'helio_y',
                  'helio_z', 'helio_vx', 'helio_vy', 'helio_vz'])
+            for col in ['topoRange', 'helio_x', 'helio_y', 'helio_z']:
+                ssObjects[col] = ssObjects[col].quantity.to_value(u.au)
+            for col in ['Obs_Sun_x_km', 'Obs_Sun_y_km', 'Obs_Sun_z_km']:
+                ssObjects[col.replace('km', 'au')] = ssObjects[col].quantity.to_value(u.au)
+            for col in ['helio_vx', 'helio_vy', 'helio_vz', 'Obs_Sun_vx_km_s', 'Obs_Sun_vy_km_s',
+                        'Obs_Sun_vz_km_s']:
+                ssObjects[col] = ssObjects[col].quantity.to_value(u.km/u.s)
+
             ssObjects['ssObjectId'] = [obj_id_to_ss_object_id(v) for v in ssObjects['packed_desig']]
-            ssObjects['helioRange'] = (
-                np.sqrt(ssObjects['helio_x']**2 + ssObjects['helio_y']**2
-                        + ssObjects['helio_z']**2)
-            )
-            for substring1, substring2 in [('x', 'x_km'), ('y', 'y_km'), ('z', 'z_km'),
+            for substring1, substring2 in [('x', 'x_au'), ('y', 'y_au'), ('z', 'z_au'),
                                            ('vx', 'vx_km_s'), ('vy', 'vy_km_s'), ('vz', 'vz_km_s')]:
                 topoName = 'topo_' + substring1
                 helioName = 'helio_' + substring1
                 obsName = 'Obs_Sun_' + substring2
                 ssObjects[topoName] = ssObjects[helioName] - ssObjects[obsName]
+
+            ssObjects['helioRange'] = (
+                np.sqrt(ssObjects['helio_x']**2 + ssObjects['helio_y']**2
+                        + ssObjects['helio_z']**2)
+            )
+
             ssObjects['designation'] = ssObjects['ObjID']
 
             marginArcsec = 1.0  # TODO: justify
@@ -206,7 +223,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
             columns_to_drop = ['FieldID', 'fieldMJD_TAI', 'fieldJD_TDB',
                                'Obs_Sun_x_km', 'Obs_Sun_y_km', 'Obs_Sun_z_km',
                                'Obs_Sun_vx_km_s', 'Obs_Sun_vy_km_s', 'Obs_Sun_vz_km_s',
-                               '__index_level_0__']
+                               'Obs_Sun_x_au', 'Obs_Sun_y_au', 'Obs_Sun_z_au']
 
         stateVectorColumns = ['helio_x', 'helio_y', 'helio_z', 'helio_vx',
                               'helio_vy', 'helio_vz', 'topo_x', 'topo_y',
@@ -290,7 +307,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
         self.metadata['nExpectedSsObjects'] = nSolarSystemObjects
         assocSourceMask = diaSourceCatalog["ssObjectId"] != 0
         unAssocObjectMask = np.logical_not(maskedObjects['associated'].value)
-        dtypes = [type(d) if d is not np.ma.core.MaskedConstant else float
+        dtypes = [float if d is np.ma.core.MaskedConstant else type(d)
                   for d in maskedObjects[0][all_cols].values()]
         ssSourceData = np.ma.filled(np.array(ssSourceData), np.nan)
         colnames = ["designation", "phaseAngle", "helioRange", "topoRange"]
@@ -313,7 +330,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
         ssSourceData["ephOffsetDec"] = ephOffsetDec
         ephOffsetVec = np.array([ephOffsetRa, ephOffsetDec])
         ssSourceData[source_column] = dia_ids
-        coords = SkyCoord(ra=ssSourceData['ra'].value * u.deg, dec=ssSourceData['dec'].value * u.deg)
+        coords = SkyCoord(ra=ssSourceData['ra'] * u.deg, dec=ssSourceData['dec'] * u.deg)
         ssSourceData['galLon'] = coords.galactic.l.deg
         ssSourceData['galLat'] = coords.galactic.b.deg
         ssSourceData['eclLambda'] = coords.barycentrictrueecliptic.lon.deg
@@ -348,10 +365,6 @@ class SolarSystemAssociationTask(pipeBase.Task):
                                            + ssSourceData["helio_vz"] * ssSourceData["helio_z"])
                                           / ssSourceData["helioRange"])
 
-        for distanceName in ['helio_x', 'helio_y', 'helio_z', 'topo_x', 'topo_y', 'topo_z',
-                             'helioRange', 'topoRange']:
-            ssSourceData[distanceName] = ssSourceData[distanceName].astype(np.float64)
-            ssSourceData[distanceName] *= (u.km).to(u.AU)
         unassociatedObjects = maskedObjects[unAssocObjectMask]
         unassociatedObjects.remove_columns(columns_to_drop)
         unassociatedObjects['ra'] = unassociatedObjects['ephRa']
@@ -410,8 +423,8 @@ class SolarSystemAssociationTask(pipeBase.Task):
         return ssObjects[bbox_contains_sky_coords(
             bbox,
             wcs,
-            ssObjects['ephRa'].value * u.degree,
-            ssObjects['ephDec'].value * u.degree,
+            ssObjects['ephRa'],
+            ssObjects['ephDec'],
             padding)]
 
     def _radec_to_xyz(self, ras, decs):
