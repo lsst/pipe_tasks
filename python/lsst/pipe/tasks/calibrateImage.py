@@ -296,6 +296,11 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         default=True,
         doc="Implement the adaptive detection thresholding approach?",
     )
+    do_remeasure_star_background = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Do iterative star background measurement (used if do_adaptive_threshold_detection is True).",
+    )
     psf_adaptive_threshold_detection = pexConfig.ConfigurableField(
         target=AdaptiveThresholdDetectionTask,
         doc="Task to adaptively detect sources for PSF determination.",
@@ -1064,7 +1069,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 self.diffractionSpikeMask.run(result.exposure)
 
             self.metadata['adaptive_threshold_value'] = float("nan")
-            if self.config.do_adaptive_threshold_detection:
+            if self.config.do_remeasure_star_background and self.config.do_adaptive_threshold_detection:
                 self._remeasure_star_background(
                     result,
                     background_to_photometric_ratio=result.background_to_photometric_ratio,
