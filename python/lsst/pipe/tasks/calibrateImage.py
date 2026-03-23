@@ -299,7 +299,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     do_remeasure_star_background = pexConfig.Field(
         dtype=bool,
         default=True,
-        doc="Do iterative star background measurement (used if do_adaptive_threshold_detection is True).",
+        doc="Do iterative star background measurement (ignored if do_adaptive_threshold_detection is False).",
     )
     psf_adaptive_threshold_detection = pexConfig.ConfigurableField(
         target=AdaptiveThresholdDetectionTask,
