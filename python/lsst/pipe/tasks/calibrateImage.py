@@ -1447,7 +1447,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         if adaptive_det_res_struct is not None:
             for adaptiveDetIter in range(maxAdaptiveDetIter):
                 adaptiveDetectionConfig = lsst.meas.algorithms.SourceDetectionConfig()
-                adaptiveDetectionConfig.reEstimateBackground = False
+                if self.config.do_remeasure_star_background:
+                    adaptiveDetectionConfig.reEstimateBackground = False
+                else:
+                    adaptiveDetectionConfig.reEstimateBackground = True
                 adaptiveDetectionConfig.includeThresholdMultiplier = 2.0
                 psfThreshold = (
                     adaptive_det_res_struct.thresholdValue*adaptive_det_res_struct.includeThresholdMultiplier
