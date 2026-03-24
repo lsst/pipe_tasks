@@ -576,7 +576,10 @@ class PrettyPictureBackgroundFixerConnections(
 class PrettyPictureBackgroundFixerConfig(
     PipelineTaskConfig, pipelineConnections=PrettyPictureBackgroundFixerConnections
 ):
-    pass
+    use_detection_mask = Field[bool](
+        doc="Use the detection mask to determine background instead of imperically finding it in this task",
+        default=False,
+    )
 
 
 class PrettyPictureBackgroundFixerTask(PipelineTask):
@@ -684,7 +687,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
         return tiles
 
-    def fixBackground(self, image):
+    def fixBackground(self, image, detection_mask=None):
         """Estimate and subtract the background from an image.
 
         This function estimates the background level in an image using a median-based
@@ -702,37 +705,40 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         numpy.ndarray
             An array representing the estimated background level across the image.
         """
-        # Find the median value in the image, which is likely to be
-        # close to average background. Note this doesn't work well
-        # in fields with high density or diffuse flux.
-        maxLikely = np.median(image, axis=None)
+        if detection_mask is None:
+            # Find the median value in the image, which is likely to be
+            # close to average background. Note this doesn't work well
+            # in fields with high density or diffuse flux.
+            maxLikely = np.median(image, axis=None)
 
-        # find all the pixels that are fainter than this
-        # and find the std. This is just used as an initialization
-        # parameter and doesn't need to be accurate.
-        mask = image < maxLikely
-        initial_std = (image[mask] - maxLikely).std()
+            # find all the pixels that are fainter than this
+            # and find the std. This is just used as an initialization
+            # parameter and doesn't need to be accurate.
+            mask = image < maxLikely
+            initial_std = (image[mask] - maxLikely).std()
 
-        # Don't do anything if there are no pixels to check
-        if np.any(mask):
-            # use a minimizer to determine best mu and sigma for a Gaussian
-            # given only samples below the mean of the Gaussian.
-            # result = minimize(
-            # self._neg_log_likelihood,
-            # (maxLikely, initial_std),
-            # args=(image[mask]),
-            # bounds=((maxLikely, None), (1e-8, None)),
-            # )
-            # mu_hat, sigma_hat = result.x
-            mu_hat, sigma_hat = halfnorm.fit(np.abs(image[mask] - maxLikely))
-            # mu_hat = maxLikely
+            # Don't do anything if there are no pixels to check
+            if np.any(mask):
+                # use a minimizer to determine best mu and sigma for a Gaussian
+                # given only samples below the mean of the Gaussian.
+                # result = minimize(
+                # self._neg_log_likelihood,
+                # (maxLikely, initial_std),
+                # args=(image[mask]),
+                # bounds=((maxLikely, None), (1e-8, None)),
+                # )
+                # mu_hat, sigma_hat = result.x
+                mu_hat, sigma_hat = halfnorm.fit(np.abs(image[mask] - maxLikely))
+                # mu_hat = maxLikely
+            else:
+                mu_hat, sigma_hat = (maxLikely, 2 * initial_std)
+
+            # create a new masking threshold that is the determined
+            # mean plus std from the fit
+            threshhold = mu_hat + sigma_hat
+            image_mask = image < threshhold
         else:
-            mu_hat, sigma_hat = (maxLikely, 2 * initial_std)
-
-        # create a new masking threshold that is the determined
-        # mean plus std from the fit
-        threshhold = mu_hat + sigma_hat
-        image_mask = image < threshhold
+            image_mask = detection_mask
 
         # create python slices that tile the image.
         tiles = self._tile_slices(image, 25, 25)
@@ -758,7 +764,12 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         positions = np.meshgrid(np.arange(image.shape[0]), np.arange(image.shape[1]))
         # create an interpolant for the background and interpolate over the image.
         inter = RBFInterpolator(
-            np.vstack((yloc, xloc)).T, values, kernel="thin_plate_spline", degree=4, smoothing=0.05
+            np.vstack((yloc, xloc)).T,
+            values,
+            kernel="thin_plate_spline",
+            degree=4,
+            smoothing=0.05,
+            neighbors=101,
         )
         backgrounds = inter(np.array(positions)[::-1].reshape(2, -1).T).reshape(image.shape)
 
@@ -779,7 +790,13 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             This `Struct` will have an attribute named ``outputCoadd``.
 
         """
-        background = self.fixBackground(inputCoadd.image.array)
+        # background = self.fixBackground(inputCoadd.image.array)
+        if self.config.use_detection_mask:
+            mask_plane_dict = inputCoadd.mask.getMaskPlaneDict()
+            detection_mask = ~(inputCoadd.mask.array & 2 ** mask_plane_dict["DETECTED"])
+        else:
+            detection_mask = None
+        background = self.fixBackground(inputCoadd.image.array, detection_mask=detection_mask)
         # create a copy to mutate
         output = ExposureF(inputCoadd, deep=True)
         output.image.array -= background
