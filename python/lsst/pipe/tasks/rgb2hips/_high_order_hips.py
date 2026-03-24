@@ -52,6 +52,7 @@ from lsst.sphgeom import RangeSet
 import cv2
 
 from ._utils import _write_hips_image
+from ..prettyPictureMaker import FeatheredMosaicCreator
 
 
 class ColorChannel(Enum):
@@ -292,53 +293,6 @@ class HighOrderHipsTask(PipelineTask):
 
         return Struct(output_hpx=zoomed)
 
-    def _make_box_mask(self, shape: tuple[int, int], patch_grow: int) -> NDArray:
-        """Create a feathered box to use in blending images together.
-
-        This is used when mixing patches together into a larger contiguous region
-        such that overlaps are blended by a ramp function. This will be 50%
-        for each area at exactly halfway through the overlap, and 1/0 at the
-        extremes.
-
-        Parameters
-        ----------
-        shape : `tuple` of `int`, `int`
-            Shape of the output weighting mask.
-        patch_grow : `int`
-            Amount to grow bounding boxes.
-
-        Returns
-        -------
-        mask : `np.ndarray`
-            The output weighting mask to use in blending, repeated along third
-            axis to use with RGB images.
-
-        """
-        # Ramp in the overlap regions for patches as defined by the patch_grow factor
-        yind, xind = np.mgrid[: patch_grow * 4, : patch_grow * 4]
-        dis = ((yind - 2 * patch_grow) ** 2 + (xind - 2 * patch_grow) ** 2) ** 0.5
-        radial = 1 - np.clip(dis / (2 * patch_grow), 0, 1)
-
-        ramp = np.linspace(0, 1, patch_grow * 2)
-        tmpImg = np.zeros(shape)
-        tmpImg[: patch_grow * 2, :] = np.repeat(np.expand_dims(ramp, 1), tmpImg.shape[1], axis=1)
-
-        tmpImg[-1 * patch_grow * 2 :, :] = np.repeat(  # noqa: E203
-            np.expand_dims(1 - ramp, 1), tmpImg.shape[1], axis=1
-        )
-        tmpImg[:, : patch_grow * 2] = np.repeat(np.expand_dims(ramp, 0), tmpImg.shape[0], axis=0)
-
-        tmpImg[:, -1 * patch_grow * 2 :] = np.repeat(  # noqa: E203
-            np.expand_dims(1 - ramp, 0), tmpImg.shape[0], axis=0
-        )
-        # fix the corners
-        tmpImg[: 2 * patch_grow, : 2 * patch_grow] = radial[: 2 * patch_grow, : 2 * patch_grow]
-        tmpImg[: 2 * patch_grow, -2 * patch_grow :] = radial[: 2 * patch_grow, -2 * patch_grow :]
-        tmpImg[-2 * patch_grow :, : 2 * patch_grow] = radial[-2 * patch_grow :, : 2 * patch_grow]
-        tmpImg[-2 * patch_grow :, -2 * patch_grow :] = radial[-2 * patch_grow :, -2 * patch_grow :]
-        tmpImg = np.repeat(np.expand_dims(tmpImg, 2), 3, axis=2)
-        return tmpImg
-
     def _assemble_sub_region(
         self, tract_patch: dict[int, Iterable[tuple[DeferredDatasetHandle, SkyWcs, Box2I]]], patch_grow: int
     ) -> list[tuple[NDArray, SkyWcs, Box2I]]:
@@ -368,6 +322,7 @@ class HighOrderHipsTask(PipelineTask):
 
         boxes = []
         for _, iterable in tract_patch.items():
+            mosaic_maker = FeatheredMosaicCreator(patch_grow)
             new_box = Box2I()
             for _, _, bbox in iterable:
                 new_box.include(bbox)
@@ -387,23 +342,10 @@ class HighOrderHipsTask(PipelineTask):
                     y=int(np.floor(box.getHeight())),
                 )
                 tmpBox = Box2I(localOrigin, localExtent)
+                tmp_new_box = Box2I(Point2I(x=0, y=0), Extent2I(x=new_box.getWidth(), y=new_box.getHeight()))
 
                 image = handle.get()
-                if tmpImg is None:
-                    tmpImg = self._make_box_mask(image.shape[:2], patch_grow)
-
-                # Find all the pixels that are already populated
-                existing = ~np.all(new_array[*tmpBox.slices] == 0, axis=2)
-
-                # Populate all the pixels that don't already have a value in them
-                new_array[*tmpBox.slices][~existing, :] = image[~existing, :]
-
-                # For pixels with an existing value, compute the weighted average
-                # of values and assign that.
-                new_array[*tmpBox.slices][existing, :] = (
-                    tmpImg[existing] * image[existing]
-                    + (1 - tmpImg[existing]) * new_array[*tmpBox.slices][existing, :]
-                )
+                mosaic_maker.add_to_image(new_array, image, tmp_new_box, tmpBox)
                 boxes.append((new_array, skyWcs, new_box))
         return boxes
 
