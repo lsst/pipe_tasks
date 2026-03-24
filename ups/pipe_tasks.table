@@ -27,6 +27,7 @@ setupRequired(skymap)
 setupRequired(sphgeom)
 setupRequired(utils)
 setupRequired(verify)
+setupRequired(rubinoxide)
 
 envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
 envPrepend(PATH, ${PRODUCT_DIR}/bin)
