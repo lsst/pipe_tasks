@@ -123,6 +123,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # Test-specific configuration:
         self.config = CalibrateImageTask.ConfigClass()
         # We don't have many sources, so have to fit simpler models.
+        self.config.psf_star_compute_shapelets.min_n_stars = 4
         self.config.psf_detection.background.approxOrderX = 1
         self.config.star_detection.background.approxOrderX = 1
         # Only insert 2 sky sources, for simplicity.
@@ -166,7 +167,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         self.config.star_selector["science"].unresolved.maximum = 0.2
 
     def _check_run(self, calibrate, result, expect_calibrated_pixels: bool = True,
-                   expect_n_background: int = 4, expect_n_background_equal_or_greater_than: int = -1):
+                   expect_n_background: int = 4, expect_n_background_equal_or_greater_than: int = -1,
+                   do_shapelet_check: bool = False):
         """Test the result of CalibrateImage.run().
 
         Parameters
@@ -191,6 +193,25 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         # Check that the summary statistics are reasonable.
         summary = result.exposure.info.getSummaryStats()
+        # Values below are only correct for the base run test.
+        if do_shapelet_check:
+            psfStarShapeletCoeffs = [
+                0.2829708755016327, -0.00039724985228336787, -0.002792374252182994, -0.0007247190187626984,
+                -0.0023498665871330214, -0.001156783976707513, 8.751486121298505e-06, -9.96407186896418e-05,
+                2.5281912074203446e-05, 0.00055409017425221, -6.470082526561571e-06, 5.628346116282046e-05,
+                8.146830077748746e-05, 0.0003909556253347546, 2.73326650645568e-05, -0.0002122929172495809,
+                -4.5059394124130254e-05, -0.00014798711144206383, -0.00012427004391338573,
+                1.8972541007475493e-05, 0.00035871812341272503, -3.018050958589598e-05,
+                9.584459362597762e-05, -7.805555206837104e-05, 0.0003234126197639852,
+                2.8581763257594527e-05, 0.0001323768980452138, 0.00045080664555231396
+            ]
+            for iShapelet in range(len(psfStarShapeletCoeffs)):
+                self.assertFloatsAlmostEqual(
+                    summary.psfStarShapeletCoeffs[iShapelet], psfStarShapeletCoeffs[iShapelet], rtol=1e-3)
+                self.assertEqual(summary.nShapeletStar, 4)
+                self.assertFloatsAlmostEqual(
+                    summary.centroidDiffShapeletVsSlotMedian, 0.10838090573, rtol=1e-3)
+
         self.assertFloatsAlmostEqual(summary.psfSigma, 2.0, rtol=1e-2)
         self.assertFloatsAlmostEqual(summary.ra, self.sky_center.getRa().asDegrees(), rtol=1e-7)
         self.assertFloatsAlmostEqual(summary.dec, self.sky_center.getDec().asDegrees(), rtol=1e-7)
@@ -229,6 +250,13 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         key = "LSST CALIB ILLUMCORR APPLIED"
         self.assertIn(key, result.exposure.metadata)
         self.assertEqual(result.exposure.metadata[key], False)
+        for iSuffix in range(15):
+            key = "PSF_SHAPELET_COEFF_" + str(iSuffix)
+            self.assertIn(key, result.exposure.metadata)
+        key = "N_SHAPELET_STAR"
+        self.assertIn(key, result.exposure.metadata)
+        key = "CENTROID_DIFF_SHAPELET_VS_SLOT_MEDIAN"
+        self.assertIn(key, result.exposure.metadata)
 
         # Check that the psf_stars cross match worked correctly.
         matches = esutil.numpy_util.match(result.psf_stars["id"], result.stars["psf_id"])
@@ -249,7 +277,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         calibrate.photometry.match.setRefObjLoader(self.ref_loader)
         result = calibrate.run(exposures=self.exposure)
 
-        self._check_run(calibrate, result)
+        self._check_run(calibrate, result, do_shapelet_check=True)
 
     def test_run_adaptive_threshold_detection(self):
         """Test that run() runs with adaptive threshold detection turned on.

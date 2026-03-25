@@ -38,6 +38,7 @@ import lsst.meas.algorithms.installGaussianPsf
 import lsst.meas.algorithms.measureApCorr
 import lsst.meas.algorithms.setPrimaryFlags
 from lsst.meas.algorithms.adaptive_thresholds import AdaptiveThresholdDetectionTask
+from lsst.meas.algorithms.computeRoughPsfShapelets import ComputeRoughPsfShapeletsTask
 import lsst.meas.base
 import lsst.meas.astrom
 import lsst.meas.deblender
@@ -279,6 +280,35 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         doc="Task to install a simple PSF model into the input exposure to use "
             "when detecting bright sources for PSF estimation.",
     )
+    psf_star_compute_shapelets = pexConfig.ConfigurableField(
+        target=ComputeRoughPsfShapeletsTask,
+        doc="Task to computes a rough shapelet expansion of the PSF from a set "
+            "of high S/N detections.",
+    )
+    do_compute_psf_star_shapelets = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Compute a rough shapelet expansion of the PSF stars?",
+    )
+    shapelet_coefficient_name_list = pexConfig.ListField(
+        doc="List of the shapelet coefficient names in association with the shapelet_order",
+        dtype=str,
+        default=[
+            "[0,0]",
+            "Re([1,0])", "Im([1,0])",
+            "Re([2,0])", "Im([2,0])", "[1,1]",
+            "Re([3,0])", "Im([3,0])", "Re([2,1])", "Im([2,1])",
+            "Re([4,0])", "Im([4,0])", "Re([3,1])", "Im([3,1])", "[2,2]",
+            "Re([5,0])", "Im([5,0])", "Re([4,1])", "Im([4,1])", "Re([3,2])", "Im([3,2])",
+            "Re([6,0])", "Im([6,0])", "Re([5,1])", "Im([5,1])", "Re([4,2])", "Im([4,2])", "[3,3]"
+        ],
+    )
+    non_gaussian_non_atmosphere_index_list = pexConfig.ListField(
+        doc="Index list of non-Gaussian, non-atmospheric contributors in the list of shapelet "
+        "coefficients associated with shapelet_order",
+        dtype=int,
+        default=list(range(6, 10)) + list(range(15, 24)),
+    )
     psf_repair = pexConfig.ConfigurableField(
         target=repair.RepairTask,
         doc="Task to repair cosmic rays on the exposure before PSF determination.",
@@ -509,6 +539,7 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     def setDefaults(self):
         super().setDefaults()
 
+        self.psf_star_compute_shapelets.shapelet_order = 6
         # Use a very broad PSF here, to thoroughly reject CRs.
         # TODO investigation: a large initial psf guess may make stars look
         # like CRs for very good seeing images.
@@ -748,6 +779,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             doc="PSF max value.",
         )
         afwTable.CoordKey.addErrorFields(self.psf_schema)
+        if self.config.do_compute_psf_star_shapelets:
+            self.makeSubtask("psf_star_compute_shapelets", schema=self.psf_schema)
         self.makeSubtask("psf_detection", schema=self.psf_schema)
         self.makeSubtask("psf_source_measurement", schema=self.psf_schema)
         self.makeSubtask("psf_adaptive_threshold_detection")
@@ -1029,6 +1062,15 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             )
             have_fit_psf = True
 
+            if self.config.do_adaptive_threshold_detection:
+                metadata_name = "psf_adaptive_threshold_value"
+                result.exposure.metadata[metadata_name.upper()] = adaptive_det_res_struct.thresholdValue
+                self.metadata[metadata_name] = adaptive_det_res_struct.thresholdValue
+                metadata_name = "psf_adaptive_include_threshold_multiplier"
+                result.exposure.metadata[metadata_name.upper()] = \
+                    adaptive_det_res_struct.includeThresholdMultiplier
+                self.metadata[metadata_name] = adaptive_det_res_struct.includeThresholdMultiplier
+
             # Check if all centroids have been flagged. This should happen
             # after the PSF is fit and recorded because even a junky PSF
             # model is informative.
@@ -1047,6 +1089,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
             self._measure_aperture_correction(result.exposure, result.psf_stars_footprints)
             result.psf_stars = result.psf_stars_footprints.asAstropy()
+
             # Run astrometry using PSF candidate stars.
             # Update "the psf_stars" source coordinates with the current wcs.
             afwTable.updateSourceCoords(
@@ -1338,6 +1381,65 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.metadata["initial_psf_positive_peak_count"] = detections.numPosPeaks
         self.metadata["initial_psf_negative_peak_count"] = detections.numNegPeaks
         self.psf_source_measurement.run(detections.sources, result.exposure)
+
+        if self.config.do_compute_psf_star_shapelets:
+            shapelet_base_name = "RoughPsfShapelets"
+            # Compute rough shapeletes on the PSF stars to assess focus (IQ).
+            seed = id_generator.catalog_id & 0xFFFFFFFF
+            shapelet_result = self.psf_star_compute_shapelets.run(
+                masked_image=result.exposure.getMaskedImage(), catalog=detections.sources, seed=seed
+            )
+            shapelet_coeffs = shapelet_result.shapelet.getCoefficients()
+            for shapelet_coeff_name, shapelet_coeff in zip(
+                    self.config.shapelet_coefficient_name_list, shapelet_coeffs):
+                metadata_name = shapelet_coeff_name
+                result.exposure.metadata[metadata_name.upper()] = shapelet_coeff
+                self.metadata[metadata_name] = shapelet_coeff
+            total_power = np.sum(shapelet_coeffs**2.0)
+            non_atm_power = np.sum(
+                shapelet_coeffs[self.config.non_gaussian_non_atmosphere_index_list]**2.0
+            )
+            shapelet_score = float(np.where(total_power > 0, non_atm_power/total_power, 0.0))
+            self.log.warning("shapelet_score = %.5f", shapelet_score)
+            metadata_name = "shapelets_score"
+            result.exposure.metadata[metadata_name.upper()] = shapelet_score
+            self.metadata[metadata_name] = shapelet_score
+            shapelet_used_cat = shapelet_result.catalog[
+                (shapelet_result.catalog[shapelet_base_name + "_used"])
+                & (~shapelet_result.catalog[shapelet_base_name + "_flag"])].copy(deep=True)
+            metadata_name = "n_shapelet_star"
+            self.metadata[metadata_name] = len(shapelet_used_cat)
+            result.exposure.metadata[metadata_name.upper()] = len(shapelet_used_cat)
+            centroid_diff_shapelet_vs_slot_median = np.nanmedian(np.sqrt(
+                (shapelet_used_cat["slot_Centroid_x"]
+                 - shapelet_used_cat[shapelet_base_name + "_x"])**2.0
+                + (shapelet_used_cat["slot_Centroid_y"]
+                   - shapelet_used_cat[shapelet_base_name + "_y"])**2.0)
+            )
+            metadata_name = "centroid_diff_shapelet_vs_slot_median"
+            result.exposure.metadata[metadata_name.upper()] = centroid_diff_shapelet_vs_slot_median
+            self.metadata[metadata_name] = centroid_diff_shapelet_vs_slot_median
+
+            shapelet_star_xx = shapelet_used_cat[shapelet_base_name + "_xx"]
+            shapelet_star_yy = shapelet_used_cat[shapelet_base_name + "_yy"]
+            shapelet_star_xy = shapelet_used_cat[shapelet_base_name + "_xy"]
+            shapelet_star_e1 = (shapelet_star_xx - shapelet_star_yy)/(shapelet_star_xx + shapelet_star_yy)
+            shapelet_star_e2 = 2*shapelet_star_xy/(shapelet_star_xx + shapelet_star_yy)
+
+            shapelet_star_e = np.sqrt(shapelet_star_e1**2.0 + shapelet_star_e2**2.0)
+            shapelet_star_unnormalized_e = np.sqrt(
+                (shapelet_star_xx - shapelet_star_yy)**2.0 + (2.0*shapelet_star_xy)**2.0)
+            shapelet_star_e_median = np.median(shapelet_star_e)
+            shapelet_star_unnormalized_e_median = np.median(shapelet_star_unnormalized_e)
+            metadata_name = "shapelet_star_e_median"
+            result.exposure.metadata[metadata_name.upper()] = shapelet_star_e_median
+            self.metadata[metadata_name] = shapelet_star_e_median
+            metadata_name = "shapelet_star_unnormalized_e_median"
+            result.exposure.metadata[metadata_name.upper()] = shapelet_star_unnormalized_e_median
+            self.metadata[metadata_name] = shapelet_star_unnormalized_e_median
+
+            detections.sources = shapelet_result.catalog
+
         psf_result = self.psf_measure_psf.run(exposure=result.exposure, sources=detections.sources)
 
         # This 2nd round of PSF fitting has been deemed unnecessary (and

@@ -343,6 +343,24 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         self.update_effective_time_stats(summary, exposure)
 
         md = exposure.getMetadata()
+        psf_star_shapelet_coeffs = []
+        if "PSF_ADAPTIVE_THRESHOLD_VALUE" in md:
+            summary.psfAdaptiveThresholdValue = md["PSF_ADAPTIVE_THRESHOLD_VALUE"]
+            summary.psfAdaptiveIncludeThresholdMultiplier = \
+                md["PSF_ADAPTIVE_INCLUDE_THRESHOLD_MULTIPLIER"]
+        if "N_SHAPELET_STAR" in md:
+            summary.nShapeletStar = md["N_SHAPELET_STAR"]
+        if "PSF_SHAPELET_COEFF_0" in md:
+            for mdName, mdValue in md.items():
+                if "SHAPELET_COEFF" in mdName:
+                    psf_star_shapelet_coeffs.append(mdValue)
+            summary.psfStarShapeletCoeffs = psf_star_shapelet_coeffs
+        if "CENTROID_DIFF_SHAPELET_VS_SLOT_MEDIAN" in md:
+            summary.centroidDiffShapeletVsSlotMedian = md["CENTROID_DIFF_SHAPELET_VS_SLOT_MEDIAN"]
+        if "SHAPELET_STAR_E_MEDIAN" in md:
+            summary.shapeletStarEMedian = md["SHAPELET_STAR_E_MEDIAN"]
+        if "SHAPELET_STAR_UNNORMALIZED_E_MEDIAN" in md:
+            summary.shapeletStarUnNormalizedEMedian = md["SHAPELET_STAR_UNNORMALIZED_E_MEDIAN"]
         if "SFM_ASTROM_OFFSET_MEAN" in md:
             summary.astromOffsetMean = md["SFM_ASTROM_OFFSET_MEAN"]
             summary.astromOffsetStd = md["SFM_ASTROM_OFFSET_STD"]
