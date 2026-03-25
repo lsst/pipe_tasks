@@ -298,7 +298,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         self.makeSubtask("starSelector")
 
     @timeMethod
-    def run(self, exposure, sources, background):
+    def run(self, exposure, sources, background, summary=None):
         """Measure exposure statistics from the exposure, sources, and
         background.
 
@@ -307,6 +307,9 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         exposure : `lsst.afw.image.ExposureF`
         sources : `lsst.afw.table.SourceCatalog`
         background : `lsst.afw.math.BackgroundList`
+        summary : `lsst.afw.image.ExposureSummary`, optional
+            Summary object to be appended to if not `None`.  If `None` a new
+            summary object will be created.
 
         Returns
         -------
@@ -314,7 +317,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         """
         self.log.info("Measuring exposure statistics")
 
-        summary = afwImage.ExposureSummaryStats()
+        if summary is None:
+            summary = afwImage.ExposureSummaryStats()
 
         # Set exposure time.
         exposureTime = exposure.getInfo().getVisitInfo().getExposureTime()
@@ -343,6 +347,10 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         self.update_effective_time_stats(summary, exposure)
 
         md = exposure.getMetadata()
+        if "PSF_ADAPTIVE_THRESHOLD_VALUE" in md:
+            summary.psfAdaptiveThresholdValue = md["PSF_ADAPTIVE_THRESHOLD_VALUE"]
+        if "PSF_ADAPTIVE_INCLUDE_THRESHOLD_MULTIPLIER" in md:
+            summary.psfAdaptiveIncludeThresholdMultiplier = md["PSF_ADAPTIVE_INCLUDE_THRESHOLD_MULTIPLIER"]
         if "SFM_ASTROM_OFFSET_MEAN" in md:
             summary.astromOffsetMean = md["SFM_ASTROM_OFFSET_MEAN"]
             summary.astromOffsetStd = md["SFM_ASTROM_OFFSET_STD"]
