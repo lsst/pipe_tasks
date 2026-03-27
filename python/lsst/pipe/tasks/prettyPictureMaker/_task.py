@@ -715,13 +715,11 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             # mu_hat = maxLikely
         else:
             mu_hat, sigma_hat = (maxLikely, 2 * initial_std)
-            print("in else")
-        print(maxLikely, mu_hat, sigma_hat)
 
         # create a new masking threshold that is the determined
         # mean plus std from the fit
         threshhold = mu_hat + sigma_hat
-        image_mask = image < threshhold
+        image_mask = (image < threshhold) * (image > (mu_hat - 3 * sigma_hat))
         return image_mask
 
     def fixBackground(self, image, detection_mask=None):
@@ -762,7 +760,9 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             yloc.append(ypos)
             xloc.append(xpos)
             window = image[yslice, xslice][image_mask[yslice, xslice]]
-            if window.size > 0:
+            # make sure each bin is at least 5% filled
+            min_fill = int((yslice.stop - yslice.start) ** 2 * 0.005)
+            if window.size > min_fill:
                 value = np.median(window)
             else:
                 value = 0
