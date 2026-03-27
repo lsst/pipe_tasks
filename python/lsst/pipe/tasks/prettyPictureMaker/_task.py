@@ -687,6 +687,43 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
         return tiles
 
+    @staticmethod
+    def findBackgroundPixels(image):
+        # Find the median value in the image, which is likely to be
+        # close to average background. Note this doesn't work well
+        # in fields with high density or diffuse flux.
+        maxLikely = np.median(image, axis=None)
+
+        # find all the pixels that are fainter than this
+        # and find the std. This is just used as an initialization
+        # parameter and doesn't need to be accurate.
+        mask = image < maxLikely
+        initial_std = (image[mask] - maxLikely).std()
+
+        # Don't do anything if there are no pixels to check
+        if np.any(mask):
+            # use a minimizer to determine best mu and sigma for a Gaussian
+            # given only samples below the mean of the Gaussian.
+            # result = minimize(
+            # self._neg_log_likelihood,
+            # (maxLikely, initial_std),
+            # args=(image[mask]),
+            # bounds=((maxLikely, None), (1e-8, None)),
+            # )
+            # mu_hat, sigma_hat = result.x
+            mu_hat, sigma_hat = halfnorm.fit(np.abs(image[mask] - maxLikely))
+            # mu_hat = maxLikely
+        else:
+            mu_hat, sigma_hat = (maxLikely, 2 * initial_std)
+            print("in else")
+        print(maxLikely, mu_hat, sigma_hat)
+
+        # create a new masking threshold that is the determined
+        # mean plus std from the fit
+        threshhold = mu_hat + sigma_hat
+        image_mask = image < threshhold
+        return image_mask
+
     def fixBackground(self, image, detection_mask=None):
         """Estimate and subtract the background from an image.
 
@@ -706,37 +743,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             An array representing the estimated background level across the image.
         """
         if detection_mask is None:
-            # Find the median value in the image, which is likely to be
-            # close to average background. Note this doesn't work well
-            # in fields with high density or diffuse flux.
-            maxLikely = np.median(image, axis=None)
-
-            # find all the pixels that are fainter than this
-            # and find the std. This is just used as an initialization
-            # parameter and doesn't need to be accurate.
-            mask = image < maxLikely
-            initial_std = (image[mask] - maxLikely).std()
-
-            # Don't do anything if there are no pixels to check
-            if np.any(mask):
-                # use a minimizer to determine best mu and sigma for a Gaussian
-                # given only samples below the mean of the Gaussian.
-                # result = minimize(
-                # self._neg_log_likelihood,
-                # (maxLikely, initial_std),
-                # args=(image[mask]),
-                # bounds=((maxLikely, None), (1e-8, None)),
-                # )
-                # mu_hat, sigma_hat = result.x
-                mu_hat, sigma_hat = halfnorm.fit(np.abs(image[mask] - maxLikely))
-                # mu_hat = maxLikely
-            else:
-                mu_hat, sigma_hat = (maxLikely, 2 * initial_std)
-
-            # create a new masking threshold that is the determined
-            # mean plus std from the fit
-            threshhold = mu_hat + sigma_hat
-            image_mask = image < threshhold
+            image_mask = self.findBackgroundPixels(image)
         else:
             image_mask = detection_mask
 
