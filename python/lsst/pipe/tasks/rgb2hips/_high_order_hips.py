@@ -345,7 +345,7 @@ class HighOrderHipsTask(PipelineTask):
                 tmp_new_box = Box2I(Point2I(x=0, y=0), Extent2I(x=new_box.getWidth(), y=new_box.getHeight()))
 
                 image = handle.get()
-                mosaic_maker.add_to_image(new_array, image, tmp_new_box, tmpBox)
+                mosaic_maker.add_to_image(new_array, image, tmp_new_box, tmpBox, reverse=False)
                 boxes.append((new_array, skyWcs, new_box))
         return boxes
 
