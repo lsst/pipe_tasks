@@ -54,7 +54,6 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
                                       CorrelationIuuSky, CorrelationIvvSky, CorrelationIuvSky,
                                       SemimajorAxisFromCorrelation, SemiminorAxisFromCorrelation,
                                       PositionAngleFromCorrelation,
-                                      PositionAngleFromMoments,
                                       ConvertDetectorAngleErrToPositionAngleErr)
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
@@ -871,7 +870,6 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
         ixx = 10
         testPixelDeltas = np.random.uniform(-100, 100, size=(self.nRecords, 2))
 
-
         for dec in np.linspace(-80, 80, 10):
             for theta in (-35, 0, 90):
                 for x, y in zip(
@@ -929,7 +927,7 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
 
                     # Numerical derivative of the same PA function so a
                     # compariosn can be made
-                    step = self.dataDict["orientation_err"] # radians. Bigger? Smaller?
+                    step = self.dataDict["orientation_err"]  # radians. Bigger? Smaller?
                     pa_plus_deg = func.getPositionAngleFromDetectorAngle(
                         df[("meas", "g", "orientation")] + step,
                         df[("meas", "g", "base_LocalWcs_CDMatrix_1_1")],

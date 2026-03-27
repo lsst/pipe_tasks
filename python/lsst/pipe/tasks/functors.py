@@ -28,7 +28,7 @@ __all__ = ["init_fromDict", "Functor", "CompositeFunctor", "mag_aware_eval",
            "ComputePixelScale", "ConvertPixelToArcseconds",
            "ConvertPixelSqToArcsecondsSq",
            "ConvertDetectorAngleToPositionAngle",
-           "ConvertDetectorAngleErrToPositionAngleErr,"
+           "ConvertDetectorAngleErrToPositionAngleErr",
            "ReferenceBand", "Photometry",
            "NanoJansky", "NanoJanskyErr", "LocalPhotometry", "LocalNanojansky",
            "LocalNanojanskyErr", "LocalDipoleMeanFlux",
@@ -1435,6 +1435,7 @@ class LocalWcs(Functor):
         delta = (delta + 180) % 360 - 180
         return np.abs(delta) / 2
 
+
 class ComputePixelScale(LocalWcs):
     """Compute the local pixel scale from the stored CDMatrix.
     """
@@ -2193,6 +2194,7 @@ class MomentsBase(Functor):
         CD_2_2 = df[self.colCD_2_2]
         return ((CD_1_1 * i_xx + CD_1_2 * i_xy) * CD_2_1
                 + (CD_1_1 * i_xy + CD_1_2 * i_yy) * CD_2_2)
+
     def get_g1(self, df):
         """
         Calculate shear-type ellipticity parameter G1.
