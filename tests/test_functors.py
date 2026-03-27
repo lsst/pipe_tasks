@@ -895,12 +895,12 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
                         self.dataDict["someCentroid_x"] - self.dataDict[
                             "slot_Centroid_x"],
                     )
-                    self.dataDict["orientation_err"] = np.arctan2(
+                    self.dataDict["orientation_err"] = np.abs(np.arctan2(
                         self.dataDict["someCentroid_y"] - self.dataDict[
                             "slot_Centroid_y"],
                         self.dataDict["someCentroid_x"] - self.dataDict[
                             "slot_Centroid_x"],
-                    ) * 0.001
+                    )) * 0.001
 
                     self.dataDict["base_LocalWcs_CDMatrix_1_1"] = np.full(
                         self.nRecords,
@@ -963,6 +963,69 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
                         rtol=0,
                         atol=1e-6,
                     )
+
+    def testPositionAngleErrPureRotationWcs(self):
+        """PA error for a pure scaling WCS is exactly rad2deg(theta_err).
+
+        For CD = diag(s, -s) the sky direction of a pixel unit vector at
+        angle theta is PA(theta) = theta + pi/2 (flat-sky), so
+        |dPA/dtheta| = 1 everywhere and the propagated error is simply
+        np.rad2deg(theta_err) regardless of theta.  This gives an
+        independent analytical expectation that does not depend on the
+        implementation under test.
+        """
+        s = 5e-5  # degrees/pixel, representative of LSST
+        cd11, cd12, cd21, cd22 = s, 0.0, 0.0, -s
+        local_wcs = LocalWcs("cd11", "cd12", "cd21", "cd22")
+
+        thetas = pd.Series([0.0, np.pi / 4, np.pi / 3, -np.pi / 6, 1.2, -0.8])
+        theta_err = 0.01  # radians, small enough that linearity holds precisely
+        n = len(thetas)
+        cd11_s = pd.Series(np.full(n, cd11))
+        cd12_s = pd.Series(np.full(n, cd12))
+        cd21_s = pd.Series(np.full(n, cd21))
+        cd22_s = pd.Series(np.full(n, cd22))
+
+        pa_err = local_wcs.getPositionAngleErrFromDetectorAngleErr(
+            thetas, theta_err, cd11_s, cd12_s, cd21_s, cd22_s
+        )
+
+        expected_pa_err_deg = np.rad2deg(theta_err)
+        np.testing.assert_allclose(
+            pa_err.to_numpy(), expected_pa_err_deg, rtol=1e-4, atol=0
+        )
+
+    def testPositionAngleErrWrapAround(self):
+        """PA error is correct when PA crosses the ±180 deg boundary.
+
+        For CD = diag(s, -s) and theta = pi/2, PA(theta) = pi deg exactly
+        (the wrap boundary).  With a small theta_err:
+          pa_plus  = PA(pi/2 + theta_err) wraps to  -180 + rad2deg(theta_err)
+          pa_minus = PA(pi/2 - theta_err)          = +180 - rad2deg(theta_err)
+
+        Naive subtraction gives ~-360 deg → apparent error ~180 deg (wrong).
+        The wrap-corrected implementation should return rad2deg(theta_err).
+        """
+        s = 5e-5  # degrees/pixel
+        cd11, cd12, cd21, cd22 = s, 0.0, 0.0, -s
+        local_wcs = LocalWcs("cd11", "cd12", "cd21", "cd22")
+
+        theta_center = np.pi / 2   # PA(theta_center) = 180 deg → wrap boundary
+        theta_err = 0.01  # radians
+
+        cd_s = lambda v: pd.Series([v])  # noqa: E731
+        pa_err = local_wcs.getPositionAngleErrFromDetectorAngleErr(
+            pd.Series([theta_center]),
+            theta_err,
+            cd_s(cd11), cd_s(cd12), cd_s(cd21), cd_s(cd22),
+        )
+
+        expected_pa_err_deg = np.rad2deg(theta_err)
+        # Correct result is ~0.57 deg; naive (unwrapped) result would be ~180 deg.
+        np.testing.assert_allclose(
+            pa_err.to_numpy(), expected_pa_err_deg, rtol=1e-4, atol=0
+        )
+        self.assertLess(float(pa_err.iloc[0]), 1.0)
 
     def _makeWcs(self, dec=53.1595451514076, theta=0):
         """Create a wcs from real CFHT values, rotated by an optional theta.

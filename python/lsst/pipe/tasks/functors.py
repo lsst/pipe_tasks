@@ -1413,49 +1413,27 @@ class LocalWcs(Functor):
             [2, 1] element of the local Wcs affine transform.
         cd22 : `float`
             [2, 2] element of the local Wcs affine transform.
+
         Returns
         -------
         Position Angle Error: `~pandas.Series`
             Position angle error in degrees
+
+        Notes
+        -----
+        The error is estimated by evaluating the position angle at
+        ``theta ± theta_err`` and taking half the absolute difference.
         """
-        # Need to compute abs(dPA/dtheta)*theta_Err to get propogated errors
-        # Unit vector in (x, y) along da
-        dx = np.cos(theta)
-        dy = np.sin(theta)
-        u = dx * cd11 + dy * cd12
-        v = dx * cd21 + dy * cd22
-
-        # Derivative of position angle wrt detector angle
-        du_dtheta = -np.sin(theta) * cd11 + np.cos(theta) * cd12
-        dv_dtheta = -np.sin(theta) * cd21 + np.cos(theta) * cd22
-
-        # Precomputing sin/cos values
-        sin_u = np.sin(u)
-        cos_u = np.cos(u)
-        sin_v = np.sin(v)
-        cos_v = np.cos(v)
-
-        # PA is atan2(Y, X), for great circle
-        pa_y = sin_u * cos_v
-        pa_x = sin_v
-
-        # We need dPA/dtheta for error propogation.
-        # X' = cos(v) * v'
-        dX_dtheta = cos_v * dv_dtheta
-        # Y' = (cos(u)*cos(v))*u' + (sin(u)*(-sin(v)))*v'
-        dY_dtheta = (cos_u * cos_v) * du_dtheta - (sin_u * sin_v) * dv_dtheta
-
-        denom = pa_x * pa_x + pa_y * pa_y
-
-        dPA_dtheta = (pa_x * dY_dtheta - pa_y * dX_dtheta) / denom
-        dPA_dtheta = np.where(denom == 0, np.nan, dPA_dtheta)
-
-        pa_err = np.rad2deg(np.abs(dPA_dtheta) * theta_err)
-
-        logging.info("PA Error: %s" % pa_err)
-        logging.info("theta_err: %s" % theta_err)
-
-        return pa_err
+        pa_plus = self.getPositionAngleFromDetectorAngle(
+            theta + theta_err, cd11, cd12, cd21, cd22
+        )
+        pa_minus = self.getPositionAngleFromDetectorAngle(
+            theta - theta_err, cd11, cd12, cd21, cd22
+        )
+        # Wrap difference into (-180, 180] to handle the ±180 deg boundary.
+        delta = pa_plus - pa_minus
+        delta = (delta + 180) % 360 - 180
+        return np.abs(delta) / 2
 
 class ComputePixelScale(LocalWcs):
     """Compute the local pixel scale from the stored CDMatrix.
