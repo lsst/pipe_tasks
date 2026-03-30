@@ -60,6 +60,7 @@ from lsst.pipe.base import (
     Struct,
     InMemoryDatasetHandle,
 )
+from lsst.rubinoxide import rbf_interpolator
 import cv2
 
 from lsst.pipe.base.connectionTypes import Input, Output
@@ -771,7 +772,6 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
                 value = 0
             values.append(value)
 
-        positions = np.meshgrid(np.arange(image.shape[0]), np.arange(image.shape[1]))
         # create an interpolant for the background and interpolate over the image.
         inter = RBFInterpolator(
             np.vstack((yloc, xloc)).T,
@@ -779,9 +779,10 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             kernel="thin_plate_spline",
             degree=4,
             smoothing=0.05,
-            neighbors=101,
+            neighbors=None,
         )
-        backgrounds = inter(np.array(positions)[::-1].reshape(2, -1).T).reshape(image.shape)
+
+        backgrounds = rbf_interpolator.fast_rbf_interpolation_on_grid(inter, image.shape)
 
         return backgrounds
 
