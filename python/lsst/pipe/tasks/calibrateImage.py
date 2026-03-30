@@ -1076,7 +1076,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 )
 
             # Run the stars_detection subtask for the photometric calibration.
-            result.stars_footprints = self._find_stars(
+            result.stars_footprints = self._find_and_measure_stars(
                 result.exposure,
                 result.background,
                 id_generator,
@@ -1415,8 +1415,15 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         exposure.info.setApCorrMap(ap_corr_map)
 
-    def _find_stars(self, exposure, background, id_generator, background_to_photometric_ratio=None,
-                    adaptive_det_res_struct=None, num_astrometry_matches=None):
+    def _find_and_measure_stars(
+        self,
+        exposure,
+        background,
+        id_generator,
+        background_to_photometric_ratio=None,
+        adaptive_det_res_struct=None,
+        num_astrometry_matches=None,
+    ):
         """Detect stars on an exposure that has a PSF model, and measure their
         PSF, circular aperture, compensated gaussian fluxes.
 
