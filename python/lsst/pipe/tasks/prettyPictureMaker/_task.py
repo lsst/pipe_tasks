@@ -584,6 +584,9 @@ class PrettyPictureBackgroundFixerConfig(
     num_background_bins = Field[int](
         doc="The number of bins along each axis when determing background", default=10
     )
+    min_bin_fraction = Field[float](
+        doc="Bins with fewer pixels than this fraction of the total will be ignored", default=0.005
+    )
 
 
 class PrettyPictureBackgroundFixerTask(PipelineTask):
@@ -765,7 +768,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             xloc.append(xpos)
             window = image[yslice, xslice][image_mask[yslice, xslice]]
             # make sure each bin is at least 1% filled
-            min_fill = int((yslice.stop - yslice.start) ** 2 * 0.01)
+            min_fill = int((yslice.stop - yslice.start) ** 2 * self.config.min_bin_fraction)
             if window.size > min_fill:
                 value = np.median(window)
             else:
