@@ -580,6 +580,9 @@ class PrettyPictureBackgroundFixerConfig(
         doc="Use the detection mask to determine background instead of imperically finding it in this task",
         default=False,
     )
+    num_background_bins = Field[int](
+        doc="The number of bins along each axis when determing background", default=10
+    )
 
 
 class PrettyPictureBackgroundFixerTask(PipelineTask):
@@ -746,7 +749,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             image_mask = detection_mask
 
         # create python slices that tile the image.
-        tiles = self._tile_slices(image, 25, 25)
+        tiles = self._tile_slices(image, self.config.num_background_bins, self.config.num_background_bins)
 
         yloc = []
         xloc = []
@@ -760,8 +763,8 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             yloc.append(ypos)
             xloc.append(xpos)
             window = image[yslice, xslice][image_mask[yslice, xslice]]
-            # make sure each bin is at least 5% filled
-            min_fill = int((yslice.stop - yslice.start) ** 2 * 0.005)
+            # make sure each bin is at least 1% filled
+            min_fill = int((yslice.stop - yslice.start) ** 2 * 0.01)
             if window.size > min_fill:
                 value = np.median(window)
             else:
