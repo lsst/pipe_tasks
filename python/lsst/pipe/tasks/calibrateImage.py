@@ -1184,12 +1184,16 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         stdev_bg, _ = statObj.getResult(afwMath.STDEV)
         self.metadata["bg_subtracted_skyPixel_instFlux_stdev"] = stdev_bg
 
-        self.metadata["bg_subtracted_skySource_flux_median"] = (
-            np.median(result.stars[result.stars['sky_source']][self.config.background_stats_flux_column])
-        )
-        self.metadata["bg_subtracted_skySource_flux_stdev"] = (
-            np.std(result.stars[result.stars['sky_source']][self.config.background_stats_flux_column])
-        )
+        if self.config.do_full_star_detection:
+            self.metadata["bg_subtracted_skySource_flux_median"] = (
+                np.median(result.stars[result.stars['sky_source']][self.config.background_stats_flux_column])
+            )
+            self.metadata["bg_subtracted_skySource_flux_stdev"] = (
+                np.std(result.stars[result.stars['sky_source']][self.config.background_stats_flux_column])
+            )
+        else:
+            self.metadata["bg_subtracted_skySource_flux_median"] = np.nan
+            self.metadata["bg_subtracted_skySource_flux_stdev"] = np.nan
 
         if self.config.do_calibrate_pixels:
             self._apply_photometry(
