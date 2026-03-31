@@ -444,7 +444,11 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         psf_stars, candidates, _ = calibrate._compute_psf(self.attributes, self.id_generator)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
 
-        stars = calibrate._find_and_measure_stars(self.exposure, self.attributes.background, self.id_generator)
+        stars = calibrate._find_and_measure_stars(
+            self.exposure,
+            self.attributes.background,
+            self.id_generator,
+        )
 
         # Catalog ids should be very large from this id generator.
         self.assertTrue(all(stars['id'] > 1000000000))
@@ -471,7 +475,11 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         calibrate.astrometry.setRefObjLoader(self.ref_loader)
         psf_stars, candidates, _ = calibrate._compute_psf(self.attributes, self.id_generator)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
-        stars = calibrate._find_and_measure_stars(self.exposure, self.attributes.background, self.id_generator)
+        stars = calibrate._find_and_measure_stars(
+            self.exposure,
+            self.attributes.background,
+            self.id_generator,
+        )
 
         calibrate._fit_astrometry(self.exposure, stars)
 
@@ -486,44 +494,68 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         """Test that the fitted photoCalib matches the one we generated,
         and that the exposure is calibrated.
         """
-        calibrate = CalibrateImageTask(config=self.config)
-        calibrate.astrometry.setRefObjLoader(self.ref_loader)
-        calibrate.photometry.match.setRefObjLoader(self.ref_loader)
-        psf_stars, candidates, _ = calibrate._compute_psf(self.attributes, self.id_generator)
-        calibrate._measure_aperture_correction(self.exposure, psf_stars)
-        stars = calibrate._find_and_measure_stars(self.exposure, self.attributes.background, self.id_generator)
-        calibrate._fit_astrometry(self.exposure, stars)
+        for do_full_star_detection in [True, False]:
+            attributes = pipeBase.Struct()
+            attributes.exposure = self.exposure.clone()
+            attributes.background = None
+            attributes.background_to_photometric_ratio = None
 
-        stars, matches, meta, photoCalib = calibrate._fit_photometry(self.exposure, stars)
-        calibrate._apply_photometry(self.exposure, self.attributes.background)
+            calibrate = CalibrateImageTask(config=self.config)
+            calibrate.astrometry.setRefObjLoader(self.ref_loader)
+            calibrate.photometry.match.setRefObjLoader(self.ref_loader)
+            psf_stars_footprints, candidates, _ = calibrate._compute_psf(attributes, self.id_generator)
+            calibrate._measure_aperture_correction(attributes.exposure, psf_stars_footprints)
 
-        # NOTE: With this test data, PhotoCalTask returns calibrationErr==0,
-        # so we can't check that the photoCal error has been set.
-        self.assertFloatsAlmostEqual(photoCalib.getCalibrationMean(), self.photo_calib, rtol=1e-2)
-        # The exposure should be calibrated by the applied photoCalib,
-        # and the background should be calibrated to match.
-        uncalibrated = self.exposure.image.clone()
-        uncalibrated += self.attributes.background.getImage()
-        uncalibrated /= self.photo_calib
-        self.assertFloatsAlmostEqual(uncalibrated.array, self.truth_exposure.image.array, rtol=1e-2)
-        # PhotoCalib on the exposure must be identically 1.
-        self.assertEqual(self.exposure.photoCalib.getCalibrationMean(), 1.0)
+            if do_full_star_detection:
+                stars = calibrate._find_and_measure_stars(
+                    attributes.exposure,
+                    attributes.background,
+                    self.id_generator,
+                )
+                # Some hidden state in this test written before the refactor
+                # makes it impossible to use the psf stars here.
+                calibrate._fit_astrometry(attributes.exposure, stars)
+            else:
+                # The psf stars work perfectly fine in this mode.
+                calibrate._fit_astrometry(attributes.exposure, psf_stars_footprints)
 
-        # Check that we got reliable magnitudes and fluxes vs. truth, ignoring
-        # sky sources.
-        sky = stars["sky_source"]
-        fitted = SkyCoord(stars[~sky]['coord_ra'], stars[~sky]['coord_dec'], unit="radian")
-        truth = SkyCoord(self.truth_cat['coord_ra'], self.truth_cat['coord_dec'], unit="radian")
-        idx, _, _ = fitted.match_to_catalog_sky(truth)
-        # Because the input variance image does not include contributions from
-        # the sources, we can't use fluxErr as a bound on the measurement
-        # quality here.
-        self.assertFloatsAlmostEqual(stars[~sky]['slot_PsfFlux_flux'],
-                                     self.truth_cat['truth_flux'][idx],
-                                     rtol=0.1)
-        self.assertFloatsAlmostEqual(stars[~sky]['slot_PsfFlux_mag'],
-                                     self.truth_cat['truth_mag'][idx],
-                                     rtol=0.01)
+                stars = calibrate._measure_psf_stars(
+                    attributes.exposure,
+                    psf_stars_footprints,
+                    self.id_generator,
+                )
+
+            stars, matches, meta, photoCalib = calibrate._fit_photometry(attributes.exposure, stars)
+
+            calibrate._apply_photometry(attributes.exposure, attributes.background)
+
+            # NOTE: With this test data, PhotoCalTask returns calibrationErr==0,
+            # so we can't check that the photoCal error has been set.
+            self.assertFloatsAlmostEqual(photoCalib.getCalibrationMean(), self.photo_calib, rtol=1e-2)
+            # The exposure should be calibrated by the applied photoCalib,
+            # and the background should be calibrated to match.
+            uncalibrated = attributes.exposure.image.clone()
+            uncalibrated += attributes.background.getImage()
+            uncalibrated /= self.photo_calib
+            self.assertFloatsAlmostEqual(uncalibrated.array, self.truth_exposure.image.array, rtol=1e-2)
+            # PhotoCalib on the exposure must be identically 1.
+            self.assertEqual(attributes.exposure.photoCalib.getCalibrationMean(), 1.0)
+
+            # Check that we got reliable magnitudes and fluxes vs. truth, ignoring
+            # sky sources.
+            sky = stars["sky_source"]
+            fitted = SkyCoord(stars[~sky]['coord_ra'], stars[~sky]['coord_dec'], unit="radian")
+            truth = SkyCoord(self.truth_cat['coord_ra'], self.truth_cat['coord_dec'], unit="radian")
+            idx, _, _ = fitted.match_to_catalog_sky(truth)
+            # Because the input variance image does not include contributions from
+            # the sources, we can't use fluxErr as a bound on the measurement
+            # quality here.
+            self.assertFloatsAlmostEqual(stars[~sky]['slot_PsfFlux_flux'],
+                                         self.truth_cat['truth_flux'][idx],
+                                         rtol=0.1)
+            self.assertFloatsAlmostEqual(stars[~sky]['slot_PsfFlux_mag'],
+                                         self.truth_cat['truth_mag'][idx],
+                                         rtol=0.01)
 
     def test_match_psf_stars(self):
         """Test that _match_psf_stars() flags the correct stars as psf stars
@@ -532,7 +564,11 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         calibrate = CalibrateImageTask(config=self.config)
         psf_stars, candidates, _ = calibrate._compute_psf(self.attributes, self.id_generator)
         calibrate._measure_aperture_correction(self.exposure, psf_stars)
-        stars = calibrate._find_and_measure_stars(self.exposure, self.attributes.background, self.id_generator)
+        stars = calibrate._find_and_measure_stars(
+            self.exposure,
+            self.attributes.background,
+            self.id_generator,
+        )
 
         # There should be no psf-related flags set at first.
         self.assertEqual(stars["calib_psf_candidate"].sum(), 0)
