@@ -582,7 +582,7 @@ class PrettyPictureBackgroundFixerConfig(
         default=False,
     )
     num_background_bins = Field[int](
-        doc="The number of bins along each axis when determing background", default=10
+        doc="The number of bins along each axis when determing background", default=30
     )
     min_bin_fraction = Field[float](
         doc="Bins with fewer pixels than this fraction of the total will be ignored", default=0.005
@@ -726,7 +726,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         # create a new masking threshold that is the determined
         # mean plus std from the fit
         threshhold = mu_hat + sigma_hat
-        image_mask = (image < threshhold) * (image > (mu_hat - 3 * sigma_hat))
+        image_mask = (image < threshhold) * (image > (mu_hat - 5 * sigma_hat))
         return image_mask
 
     def fixBackground(self, image, detection_mask=None):
@@ -764,16 +764,16 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         for xslice, yslice in tiles:
             ypos = (yslice.stop - yslice.start) / 2 + yslice.start
             xpos = (xslice.stop - xslice.start) / 2 + xslice.start
-            yloc.append(ypos)
-            xloc.append(xpos)
             window = image[yslice, xslice][image_mask[yslice, xslice]]
             # make sure each bin is at least 1% filled
             min_fill = int((yslice.stop - yslice.start) ** 2 * self.config.min_bin_fraction)
             if window.size > min_fill:
                 value = np.median(window)
             else:
-                value = 0
+                continue
             values.append(value)
+            yloc.append(ypos)
+            xloc.append(xpos)
 
         # create an interpolant for the background and interpolate over the image.
         inter = RBFInterpolator(
