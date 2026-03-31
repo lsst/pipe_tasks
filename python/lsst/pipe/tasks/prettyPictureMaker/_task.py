@@ -775,6 +775,10 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             yloc.append(ypos)
             xloc.append(xpos)
 
+        # At least 15 points are requred for TPS with 4th order polynomial
+        if len(yloc) < 15:
+            return np.zeros(image.shape)
+
         # create an interpolant for the background and interpolate over the image.
         inter = RBFInterpolator(
             np.vstack((yloc, xloc)).T,
