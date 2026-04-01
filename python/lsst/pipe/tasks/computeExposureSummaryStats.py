@@ -351,6 +351,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             summary.psfAdaptiveThresholdValue = md["PSF_ADAPTIVE_THRESHOLD_VALUE"]
         if "PSF_ADAPTIVE_INCLUDE_THRESHOLD_MULTIPLIER" in md:
             summary.psfAdaptiveIncludeThresholdMultiplier = md["PSF_ADAPTIVE_INCLUDE_THRESHOLD_MULTIPLIER"]
+        if "REF_CAT_SOURCE_DENSITY" in md:
+            summary.refCatSourceDensity = md["REF_CAT_SOURCE_DENSITY"]
         if "SFM_ASTROM_OFFSET_MEAN" in md:
             summary.astromOffsetMean = md["SFM_ASTROM_OFFSET_MEAN"]
             summary.astromOffsetStd = md["SFM_ASTROM_OFFSET_STD"]
