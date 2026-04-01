@@ -37,7 +37,21 @@ from .._equalizers import contrast_equalizer, tone_equalizer
 
 
 class LumCompressor(ConfigurableAction):
-    """Configurations to control how luminance is mapped in the rgb code"""
+    """Compress and enhance luminance using multi-stage processing.
+
+    This class implements luminance compression for RGB image generation using
+    a multi-stage algorithm that includes:
+
+    - Asinh stretching for non-linear brightness mapping
+    - Linear contrast manipulation
+    - Midtone adjustment
+    - Optional Gaussian denoising
+    - Optional contrast equalization
+    - Optional tone adjustment
+
+    The configuration fields control the parameters for each stage of the
+    processing pipeline.
+    """
 
     stretch = Field[float](doc="The stretch of the luminance in asinh", default=400)
     max = Field[float](doc="The maximum allowed luminance on a 0 to 1 scale", default=0.85)
@@ -89,6 +103,41 @@ class LumCompressor(ConfigurableAction):
     doDenoise = Field[bool](doc="Denoise the luminance image", default=False)
 
     def __call__(self, intensities: FloatImagePlane) -> FloatImagePlane:
+        """Compress and enhance luminance using multi-stage processing.
+
+        This method applies the configured luminance compression algorithm to
+        the input image. The processing pipeline includes optional denoising,
+        asinh stretching, linear contrast manipulation, midtone adjustment,
+        contrast equalization, and tone adjustment.
+
+        Parameters
+        ----------
+        intensities : `FloatImagePlane`
+            Input image with pixel intensities. This FloatImagePlane should
+            contain the luminance data to be compressed.
+
+        Returns
+        -------
+        `FloatImagePlane`
+            The processed image with luminance compression applied. Values
+            are clipped to the range [0, 1].
+
+        Notes
+        -----
+        The processing pipeline consists of the following stages:
+
+        1. Optional wavelet denoising if doDenoise is True
+        2. Asinh stretching with configurable stretch parameter
+        3. Linear contrast adjustment using highlight, shadow parameters
+        4. Midtone adjustment using midtone parameter
+        5. Optional contrast equalization if equalizerLevels is configured
+        6. Optional tone adjustment if toneAdjustment is configured
+        7. Final clipping to [0, 1] range
+
+        The configuration fields (stretch, highlight, shadow, midtone,
+        equalizerLevels, toneAdjustment, toneWidth) control the behavior
+        of each processing stage.
+        """
         if self.doDenoise:
             intensities = skimage.restoration.denoise_wavelet(intensities)
 

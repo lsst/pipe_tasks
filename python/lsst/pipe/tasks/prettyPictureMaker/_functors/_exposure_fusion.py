@@ -33,7 +33,50 @@ from lsst.pex.config import ListField
 from .._localContrast import levelPadder, makeGaussianPyramid, makeLapPyramid
 
 
-def _fuseExposureLum(images, sigma=0.1, maxLevel=3):
+def _fuseExposureLum(images: list[FloatImagePlane], sigma: float = 0.1, maxLevel: int | None = 3) -> FloatImagePlane:
+    """Fuse multiple exposure images using Laplacian pyramid blending.
+
+    Parameters
+    ----------
+    images : list[FloatImagePlane]
+        List of exposure images to fuse. Each image should be a FloatImagePlane
+        with pixel values typically in the range [0, 1].
+    sigma : float, optional
+        Controls the exposure weighting sensitivity. Lower values make the
+        weighting more sensitive to deviations from the reference exposure
+        (0.7). Default is 0.1.
+    maxLevel : int | None, optional
+        Maximum pyramid level to use for blending. If None, automatically
+        determined based on image dimensions. Default is 3.
+
+    Returns
+    -------
+    FloatImagePlane
+        Fused image with enhanced local contrast and balanced exposure.
+
+    Raises
+    ------
+    ValueError
+        If maxLevel is greater than the maximum allowed level based on
+        image dimensions.
+
+    Notes
+    -----
+    This function implements exposure fusion using a Laplacian pyramid
+    approach. The algorithm works as follows:
+
+    1. Compute exposure weights for each image based on how close pixel
+       values are to the reference exposure (0.7). Values above 1.0 receive
+       reduced weight.
+    2. Build Gaussian pyramids from the weights and Laplacian pyramids from
+       the padded images.
+    3. Blend the Laplacian pyramids using the Gaussian pyramid weights at
+       each level.
+    4. Reconstruct the final image from the blended pyramid.
+
+    The fusion preserves local contrast while balancing exposure across
+    the input images.
+    """
     weights = np.zeros((len(images), *images[0].shape[:2]))
     for i, image in enumerate(images):
         exposure = np.exp(-((image[:, :] - 0.7) ** 2) / (2 * sigma))
@@ -98,6 +141,35 @@ class ExposureBracketer(ConfigurableAction):
     )
 
     def __call__(self, intensities: FloatImagePlane) -> FloatImagePlane:
+        """Apply exposure bracketing and fusion to an image.
+
+        Parameters
+        ----------
+        intensities : FloatImagePlane
+            Input image to process. This FloatImagePlane contains the pixel
+            intensities that will be bracketed and fused.
+
+        Returns
+        -------
+        FloatImagePlane
+            Processed image with exposure bracketing applied. If multiple
+            brackets are configured, returns the fused result. If a single
+            bracket or no brackets are configured, returns the scaled image.
+
+        Notes
+        -----
+        When multiple exposure brackets are configured (default [1.25, 1, 0.75]):
+        The input image is divided by each bracket factor to create a stack
+        of differently exposed images, which are then fused using
+        _fuseExposureLum to produce a final image with balanced exposure
+        and enhanced local contrast.
+
+        When a single bracket is configured: The input image is divided by
+        that bracket factor and returned directly without fusion.
+
+        When no brackets are configured (exposureBrackets is None): The
+        input image is returned unchanged.
+        """
         if self.exposureBrackets is None:
             return intensities
         stack = []

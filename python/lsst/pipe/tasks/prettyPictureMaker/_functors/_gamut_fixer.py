@@ -43,6 +43,42 @@ def heal_gamut(
     max_size: int = 500,
     dilation_iterations: int = 3,
 ) -> RGBImage:
+    """Heal out-of-gamut regions in a Lab image using diffusion-based inpainting.
+
+    Parameters
+    ----------
+    lab_image : LABImage
+        A NxMx3 array in the Lab colorspace to be modified in-place.
+    mask : `NDArray` of `bool`
+        A boolean mask indicating which pixels are out of gamut.
+    xyz_whitepoint : `tuple` of `float`, `float`
+        Sets the white point of the xyz colorspace in xy coordinates.
+    max_size : `int`, optional
+        Maximum size of regions to heal. Larger regions are skipped. Default is 500.
+    dilation_iterations : `int`, optional
+        Number of iterations for mask dilation. Default is 3.
+
+    Returns
+    -------
+    RGBImage : `NDArray`
+        The healed image converted to RGB colorspace.
+
+    Raises
+    ------
+    ValueError
+        If the shapes of lab_image and mask are incompatible.
+
+    Notes
+    -----
+    The healing algorithm works by:
+
+    1. Labeling connected regions in the mask
+    2. For each region smaller than max_size:
+       - Dilating the mask to create an annulus around the region
+       - Computing average a,b color values from the annulus
+       - Using rgb.inpaint_mask to interpolate the L, a, and b channels
+       - Filling the masked region with the interpolated values
+    """
     # Need to split all the regions of the mask
     labels = label(binary_dilation(mask, iterations=3))[0]
     places = find_objects(labels)
@@ -103,6 +139,13 @@ def heal_gamut(
 
 
 class GamutFixer(ConfigurableAction):
+    """Fix out-of-gamut colors in images by remapping them back into the RGB gamut.
+
+    This class provides multiple methods for handling colors that fall outside
+    the standard RGB color gamut, including inpainting, mapping functions,
+    and diffusion-based healing.
+    """
+
     gamutMethod = ChoiceField[str](
         doc="If doRemapGamut is True this determines the method",
         default="inpaint",
@@ -121,10 +164,20 @@ class GamutFixer(ConfigurableAction):
 
         Parameters
         ----------
-        Lab : `NDArray`
-            A NxMX3 array that contains data in the Lab colorspace.
+        Lab : LABImage
+            A NxMx3 array that contains data in the Lab colorspace.
         xyz_whitepoint : `tuple` of `float`, `float`
             Sets the white point of the xyz colorspace in xy coordinates.
+
+        Returns
+        -------
+        RGBImage : `NDArray`
+            The image with out-of-gamut colors remapped to RGB colorspace.
+
+        Raises
+        ------
+        ValueError
+            If the gamut method is not one of the supported methods.
         """
         rgb_prime = rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), xyz_whitepoint)
 

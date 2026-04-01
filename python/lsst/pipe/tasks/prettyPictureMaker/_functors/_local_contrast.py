@@ -32,8 +32,20 @@ from .._localContrast import localContrast
 
 
 class DiffusionFunction(ConfigurableAction):
-    """Configuration that controlls the rgb diffusion process. This can be
-    used for things like sharpening, or filling in holes.
+    """Apply anisotropic diffusion processing to enhance image details.
+
+    Anisotropic diffusion is a multi-scale image processing technique that
+    selectively smooths regions while preserving edges by using spatially
+    varying diffusion coefficients. This implementation uses wavelet-based
+    anisotropic diffusion with configurable anisotropy parameters to control
+    how different frequency components diffuse relative to their gradients.
+
+    The diffusion process works by:
+    - Applying multiple iterations of gradient-based diffusion
+    - Using different diffusion speeds for low and high frequency wavelets
+    - Controlling diffusion direction via anisotropy parameters
+    - Regularizing coefficients to detect and preserve edges
+    - Modulating response to low-variance regions via variance threshold
     """
 
     iterations = Field[int]("number of interations in the diffusion process", default=3)
@@ -86,6 +98,39 @@ class DiffusionFunction(ConfigurableAction):
     )
 
     def __call__(self, intensities: FloatImagePlane) -> FloatImagePlane:
+        """Apply anisotropic diffusion to the input intensity image.
+
+        Parameters
+        ----------
+        intensities : FloatImagePlane
+            The input intensity image to process.
+
+        Returns
+        -------
+        FloatImagePlane
+            The diffused intensity image with enhanced details.
+
+        Notes
+        -----
+        This method implements wavelet-based anisotropic diffusion:
+
+        1. Multi-scale decomposition: The image is analyzed across multiple
+           frequency bands using wavelet decomposition.
+        2. Directional diffusion: Low-frequency wavelets diffuse according to
+           their own gradient orientation (anisotropy_first) and high-frequency
+           gradients (anisotropy_second). High-frequency wavelets diffuse
+           relative to low-frequency gradients (anisotropy_third) and their
+           own gradients (anisotropy_fourth).
+        3. Speed control: Diffusion speeds are configured via `first`, `second`,
+           `third`, and `fourth` parameters for each anisotropy axis.
+        4. Edge preservation: Regularization prevents diffusion across edges.
+           Variance threshold modulates response to smooth regions.
+        5. Scale selection: `radius_center` and `radius` define which scales
+           are modified, enabling targeted enhancement or denoising.
+
+        The diffusion equation is solved iteratively for `iterations` steps,
+        with the `shaprness` parameter adjusting final detail amplitudes.
+        """
         return rgb.diffuse_gray_image(
             intensities,
             iterations=self.iterations,
@@ -106,6 +151,21 @@ class DiffusionFunction(ConfigurableAction):
 
 
 class LocalContrastEnhansor(ConfigurableAction):
+    """Multi-stage local contrast enhancement processor.
+
+    This class implements a two-stage approach for enhancing image contrast:
+
+    1. **Local Contrast Enhancement**: Applies scale-space contrast enhancement
+       using a Laplacian pyramid approach. This adjusts highlights, shadows,
+       and clarity while operating on multiple resolution levels.
+
+    2. **Anisotropic Diffusion**: Optionally applies wavelet-based anisotropic
+       diffusion to further sharpen details and preserve edges. This stage
+       selectively smooths regions based on local gradient information.
+
+    The processing pipeline is configurable via parameters for both stages,
+    allowing fine-tuned control over the enhancement behavior.
+    """
     doLocalContrast = Field[bool](
         "Do apply local contrast",
         default=True,
@@ -138,6 +198,39 @@ class LocalContrastEnhansor(ConfigurableAction):
         self.diffusionFunction.fourth = 0.0
 
     def __call__(self, intensities: FloatImagePlane) -> FloatImagePlane:
+        """Apply multi-stage contrast enhancement to the input image.
+
+        Parameters
+        ----------
+        intensities : FloatImagePlane
+            The input intensity image to process.
+
+        Returns
+        -------
+        FloatImagePlane
+            The enhanced intensity image with improved local contrast.
+
+        Notes
+        -----
+        This method implements a two-stage enhancement pipeline:
+
+        1. **Local Contrast Enhancement** (via `localContrast`):
+           - Builds a Laplacian pyramid of the input image
+           - Applies scale-dependent contrast modifications
+           - Adjusts highlights and shadows via `highlights` and `shadows`
+           - Controls clarity and sharpness via `clarity` parameter
+           - Operates over `maxLevel` scales, skipping `skipLevels` lowest
+           - Uses `sigma` to define what is considered "local"
+
+        2. **Anisotropic Diffusion** (optional, via `diffusionFunction`):
+           - Applied only if `doDiffusion=True`
+           - Performs wavelet-based anisotropic diffusion
+           - Preserves edges while enhancing details
+           - Configurable via diffusionFunction parameters
+
+        The two stages are applied sequentially, with the diffusion stage
+        operating on the locally enhanced image to further refine details.
+        """
         intensities = localContrast(
             intensities,
             sigma=self.sigma,

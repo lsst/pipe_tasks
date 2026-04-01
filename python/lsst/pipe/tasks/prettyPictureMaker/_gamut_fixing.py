@@ -31,25 +31,37 @@ from skimage.restoration import inpaint_biharmonic
 from lsst.rubinoxide import rgb
 from lsst.cpputils import fixGamutOK
 
+from .types import LABImage
+
 
 def fixOutOfGamutColors(
-    Lab: NDArray,
+    Lab: LABImage,
     xyz_whitepoint: tuple[float, float],
     gamutMethod: Literal["mapping", "inpaint"] = "inpaint",
-) -> NDArray:
+) -> LABImage:
     """Remap colors that fall outside an RGB color gamut back into it.
 
     This function modifies the input Lab array in-place for memory reasons.
 
     Parameters
     ----------
-    Lab : `NDArray`
-        A NxMX3 array that contains data in the Lab colorspace.
+    Lab : `LABImage`
+        Input image array in the Lab colorspace with shape (height, width, 3).
     xyz_whitepoint : `tuple` of `float`, `float`
         Sets the white point of the xyz colorspace in xy coordinates.
-    gamut_method : `str`, optional
+    gamutMethod : `str`, optional
         This determines what algorithm will be used to map out of gamut
         colors. Must be one of ``mapping`` or ``inpaint``.
+
+    Returns
+    -------
+    `LABImage`
+        Modified Lab array with out-of-gamut colors remapped.
+
+    Raises
+    ------
+    ValueError
+        Raised if gamutMethod is not one of the supported options (``mapping`` or ``inpaint``).
     """
     rgb_prime = rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), xyz_whitepoint)
 
@@ -68,7 +80,7 @@ def fixOutOfGamutColors(
         case "inpaint":
             results = inpaint_biharmonic(rgb_prime, outOfBounds, channel_axis=-1)
         case "mapping":
-            results = fixGamutOK(Lab[outOfBounds])
+            results = fixGamutOK(Lab[outOfBounds])  # type: ignore
             Lab[outOfBounds] = results
             results = rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), xyz_whitepoint)
         case _:
