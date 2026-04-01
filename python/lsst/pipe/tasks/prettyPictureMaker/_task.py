@@ -596,10 +596,14 @@ class PrettyPictureBackgroundFixerConfig(
         default=False,
     )
     num_background_bins = Field[int](
-        doc="The number of bins along each axis when determing background", default=30
+        doc="The number of bins along each axis when determing background", default=5
     )
     min_bin_fraction = Field[float](
-        doc="Bins with fewer pixels than this fraction of the total will be ignored", default=0.005
+        doc="Bins with fewer pixels than this fraction of the total will be ignored", default=0.1
+    )
+
+    pos_sigma_multiplier = Field[float](
+        doc="How many sigma to consider as background in the positive direction", default=2
     )
 
 
@@ -729,7 +733,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         return tiles
 
     @staticmethod
-    def findBackgroundPixels(image):
+    def findBackgroundPixels(image, pos_sigma_mult=1):
         """Find pixels that are likely to be background based on image statistics.
 
         This method estimates background pixels by analyzing the distribution of
@@ -742,6 +746,8 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         ----------
         image : `NDArray`
             Input image array for which to find background pixels.
+        pos_sigma_mult : `float`
+            How many sigma to consider as background in the positive direction
 
         Returns
         -------
@@ -783,7 +789,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
         # create a new masking threshold that is the determined
         # mean plus std from the fit
-        threshhold = mu_hat + sigma_hat
+        threshhold = mu_hat + pos_sigma_mult * sigma_hat
         image_mask = (image < threshhold) * (image > (mu_hat - 5 * sigma_hat))
         return image_mask
 
@@ -806,7 +812,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             An array representing the estimated background level across the image.
         """
         if detection_mask is None:
-            image_mask = self.findBackgroundPixels(image)
+            image_mask = self.findBackgroundPixels(image, self.config.pos_sigma_multiplier)
         else:
             image_mask = detection_mask
 
