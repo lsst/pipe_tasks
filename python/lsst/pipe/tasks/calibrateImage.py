@@ -22,6 +22,8 @@
 __all__ = ["CalibrateImageTask", "CalibrateImageConfig", "NoPsfStarsToStarsMatchError",
            "AllCentroidsFlaggedError"]
 
+from astropy.coordinates import SkyCoord
+import astropy.units as u
 import math
 import numpy as np
 import requests
@@ -32,6 +34,7 @@ from lsst.afw.geom import SpanSet
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
+import lsst.geom as geom
 from lsst.ip.diffim.utils import evaluateMaskFraction, populate_sattle_visit_cache
 import lsst.meas.algorithms
 import lsst.meas.algorithms.installGaussianPsf
@@ -1005,6 +1008,42 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             )
         elif exposure_record is not None:
             self._update_wcs_to_exposure_record(result.exposure, exposure_record)
+
+        epoch = result.exposure.visitInfo.date.toAstropy()
+        band = result.exposure.filter.bandLabel
+
+        if self.astrometry.refObjLoader is not None:
+            if exposure_region is not None:
+                loadResult = self.astrometry.refObjLoader.loadRegion(
+                    region=exposure_region,
+                    filterName=band,
+                    epoch=epoch,
+                    wcsForCentroids=result.exposure.wcs,
+                )
+                if self.astrometry.refObjLoader.config.pixelMargin > 0:
+                    self.log.warning("Note that the astrometry_ref_loader.pixelMargin (currently "
+                                     "set to %d) is ignored when loading the reference catalog "
+                                     "with an exposure_region (i.e. the region is used as is, with "
+                                     "no additional padding).",
+                                     self.astrometry.refObjLoader.config.pixelMargin)
+            else:
+                loadResult = self.astrometry.refObjLoader.loadPixelBox(
+                    bbox=result.exposure.getBBox(),
+                    wcs=result.exposure.wcs,
+                    filterName=band,
+                    epoch=epoch,
+                )
+            refCat = loadResult.refCat
+            self.log.warning("Number of reference objects loaded: %d", len(refCat))
+            refCat = refCat[(np.isfinite(refCat["coord_ra"])
+                             & np.isfinite(refCat["coord_dec"]))].copy(deep=True)
+            refCat = refCat.asAstropy()
+            self.log.warning("Number of reference objects with finite coords: %d", len(refCat))
+
+            refcat_density_per_deg2 = self._compute_refcat_density(refCat, result.exposure)
+            metadata_name = "refcat_density_per_deg2"
+            result.exposure.metadata[metadata_name.upper()] = refcat_density_per_deg2
+            self.metadata[metadata_name] = refcat_density_per_deg2
 
         result.background = None
         result.background_to_photometric_ratio = None
@@ -2262,3 +2301,26 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             mask &= ~mask.getPlaneBitMask(detected_mask_planes)
 
         return result
+
+    def _compute_refcat_density(self, refCat, exposure):
+        bbox = exposure.getBBox()
+        self.log.warning("bbox area in pixels^2 = %d in deg^2 = %.5f",
+                         bbox.getArea(), bbox.getArea()*(0.2/3600)**2.0)
+
+        radius = 0.5*np.sqrt(bbox.getWidth()**2.0 + bbox.getHeight()**2.0)*0.2/3600
+
+        pt = geom.Point2D(bbox.getCenter())
+        center_x = exposure.wcs.pixelToSky(pt)[0].asDegrees()
+        center_y = exposure.wcs.pixelToSky(pt)[1].asDegrees()
+        inCircle = []
+        c1 = SkyCoord(center_x*u.deg, center_y*u.deg, unit="deg", frame="icrs")
+        c2 = SkyCoord(np.rad2deg(refCat["coord_ra"].value)*u.deg, np.rad2deg(refCat["coord_dec"].value)*u.deg,
+                      unit="deg", frame="icrs")
+        sep = c1.separation(c2)
+        sepDeg = sep.deg
+        inCircle = sepDeg < radius
+        refCatTrim = refCat[inCircle].copy()
+        sourceDensity = len(refCatTrim)/(np.pi*radius**2.0)
+        self.log.info("Source density from the %s refcat: %.4f per deg^2",
+                      self.config.connections.astrometry_ref_cat, sourceDensity)
+        return sourceDensity
