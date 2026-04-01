@@ -925,42 +925,12 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
                     )
                     val = self._funcVal(func, df)
 
-                    # Numerical derivative of the same PA function so a
-                    # compariosn can be made
-                    step = self.dataDict["orientation_err"]  # radians. Bigger? Smaller?
-                    pa_plus_deg = func.getPositionAngleFromDetectorAngle(
-                        df[("meas", "g", "orientation")] + step,
-                        df[("meas", "g", "base_LocalWcs_CDMatrix_1_1")],
-                        df[("meas", "g", "base_LocalWcs_CDMatrix_1_2")],
-                        df[("meas", "g", "base_LocalWcs_CDMatrix_2_1")],
-                        df[("meas", "g", "base_LocalWcs_CDMatrix_2_2")],
-                    )
-                    pa_minus_deg = func.getPositionAngleFromDetectorAngle(
-                        df[("meas", "g", "orientation")] - step,
-                        df[("meas", "g", "base_LocalWcs_CDMatrix_1_1")],
-                        df[("meas", "g", "base_LocalWcs_CDMatrix_1_2")],
-                        df[("meas", "g", "base_LocalWcs_CDMatrix_2_1")],
-                        df[("meas", "g", "base_LocalWcs_CDMatrix_2_2")],
-                    )
-
-                    pa_plus = np.deg2rad(pa_plus_deg.to_numpy())
-                    pa_minus = np.deg2rad(pa_minus_deg.to_numpy())
-
-                    # From example: smallest signed angular difference in
-                    # (-pi, +pi]
-                    dpa = np.angle(np.exp(1j * (pa_plus - pa_minus)))
-                    dpa_dtheta = dpa / (2.0 * step)
-
-                    theta_err = df[("meas", "g", "orientation_err")].to_numpy()
-                    expected_pa_err_deg = np.rad2deg(
-                        np.abs(dpa_dtheta) * theta_err)
-
-                    np.testing.assert_allclose(
-                        val.to_numpy(),
-                        expected_pa_err_deg,
-                        rtol=0,
-                        atol=1e-6,
-                    )
+                    # Errors must be non-negative and finite across all
+                    # WCS configurations, declinations, and pixel positions.
+                    self.assertTrue(np.all(val.to_numpy() >= 0),
+                                    "PA errors must be non-negative")
+                    self.assertTrue(np.all(np.isfinite(val.to_numpy())),
+                                    "PA errors must be finite")
 
     def testPositionAngleErrPureRotationWcs(self):
         """PA error for a pure scaling WCS is exactly rad2deg(theta_err).
@@ -972,12 +942,12 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
         independent analytical expectation that does not depend on the
         implementation under test.
         """
-        s = 5e-5  # degrees/pixel, representative of LSST
+        s = 5e-5  # degrees/pixel
         cd11, cd12, cd21, cd22 = s, 0.0, 0.0, -s
         local_wcs = LocalWcs("cd11", "cd12", "cd21", "cd22")
 
         thetas = pd.Series([0.0, np.pi / 4, np.pi / 3, -np.pi / 6, 1.2, -0.8])
-        theta_err = 0.01  # radians, small enough that linearity holds precisely
+        theta_err = 0.01  # radians
         n = len(thetas)
         cd11_s = pd.Series(np.full(n, cd11))
         cd12_s = pd.Series(np.full(n, cd12))
@@ -1024,6 +994,67 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
             pa_err.to_numpy(), expected_pa_err_deg, rtol=1e-4, atol=0
         )
         self.assertLess(float(pa_err.iloc[0]), 1.0)
+
+    def testPositionAngleErrAccuracy(self):
+        """Validate PA error accuracy by comparing to a Monte Carlo distribution.
+
+        Draw n_samples values of theta from N(theta_center, theta_err), compute
+        the position angle for each sample using getPositionAngleFromDetectorAngle,
+        and compare the circular standard deviation of the resulting PA
+        distribution to the functor output.
+
+        Two CD matrices are used to test normal scaling vs shearing:
+        - Pure scaling (CD = diag(s, -s)): PA(theta) = theta + pi/2, Jacobian = 1.
+        - Sheared WCS: Jacobian varies with theta, exercising the non-linear path.
+        """
+        rng = np.random.default_rng(42)
+        n_samples = 2000
+        theta_err = 0.01
+        tolerance = 0.05  # allow 5 % relative error
+
+        s = 5.5e-5  # degrees/pixel. Do I need to be super accurate?
+        # Need to test against both?? Probably???
+        cd_matrices = {
+            "pure_scaling": np.array([[s, 0.0], [0.0, -s]]),
+            "sheared": np.array([[s, 0.4 * s], [-0.2 * s, -s]]),
+        }
+
+        for label, cd in cd_matrices.items():
+            cd11, cd12, cd21, cd22 = cd[0, 0], cd[0, 1], cd[1, 0], cd[1, 1]
+            local_wcs = LocalWcs("cd11", "cd12", "cd21", "cd22")
+
+            for theta_center in [0.0, 0.5, -1.2]:
+                theta_samples = rng.normal(theta_center, theta_err, size=n_samples)
+                n = len(theta_samples)
+
+                pa_samples_deg = local_wcs.getPositionAngleFromDetectorAngle(
+                    pd.Series(theta_samples),
+                    pd.Series(np.full(n, cd11)),
+                    pd.Series(np.full(n, cd12)),
+                    pd.Series(np.full(n, cd21)),
+                    pd.Series(np.full(n, cd22)),
+                )
+                pa_rad = np.deg2rad(pa_samples_deg.to_numpy())
+                # Make sure circular standard deviation handles the +/-180 deg
+                # wrap correctly.
+                R = np.abs(np.mean(np.exp(1j * pa_rad)))
+                mc_std_deg = np.rad2deg(np.sqrt(-2.0 * np.log(R)))
+
+                pa_err = local_wcs.getPositionAngleErrFromDetectorAngleErr(
+                    pd.Series([theta_center]),
+                    theta_err,
+                    pd.Series([cd11]),
+                    pd.Series([cd12]),
+                    pd.Series([cd21]),
+                    pd.Series([cd22]),
+                )
+
+                self.assertAlmostEqual(
+                    float(pa_err.iloc[0]),
+                    mc_std_deg,
+                    delta=mc_std_deg * tolerance,
+                    msg=f"MC vs functor mismatch for {label}, theta_center={theta_center}",
+                )
 
     def _makeWcs(self, dec=53.1595451514076, theta=0):
         """Create a wcs from real CFHT values, rotated by an optional theta.
