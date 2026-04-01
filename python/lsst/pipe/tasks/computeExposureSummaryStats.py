@@ -361,6 +361,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             summary.shapeletStarEMedian = md["SHAPELET_STAR_E_MEDIAN"]
         if "SHAPELET_STAR_UNNORMALIZED_E_MEDIAN" in md:
             summary.shapeletStarUnNormalizedEMedian = md["SHAPELET_STAR_UNNORMALIZED_E_MEDIAN"]
+        if "REFCAT_DENSITY_PER_DEG2" in md:
+            summary.refcatDensityPerDeg2 = md["REFCAT_DENSITY_PER_DEG2"]
         if "SFM_ASTROM_OFFSET_MEAN" in md:
             summary.astromOffsetMean = md["SFM_ASTROM_OFFSET_MEAN"]
             summary.astromOffsetStd = md["SFM_ASTROM_OFFSET_STD"]

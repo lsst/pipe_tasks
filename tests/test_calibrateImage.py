@@ -194,6 +194,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         # Check that the summary statistics are reasonable.
         summary = result.exposure.info.getSummaryStats()
         # Values below are only correct for the base run test.
+        self.assertFloatsAlmostEqual(summary.refcatDensityPerDeg2, 39470.0430204, rtol=1e-3)
         if do_shapelet_check:
             psfStarShapeletCoeffs = [
                 0.2829708755016327, -0.00039724985228336787, -0.002792374252182994, -0.0007247190187626984,
@@ -250,6 +251,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         key = "LSST CALIB ILLUMCORR APPLIED"
         self.assertIn(key, result.exposure.metadata)
         self.assertEqual(result.exposure.metadata[key], False)
+        key = "REFCAT_DENSITY_PER_DEG2"
+        self.assertIn(key, result.exposure.metadata)
         for iSuffix in range(15):
             key = "PSF_SHAPELET_COEFF_" + str(iSuffix)
             self.assertIn(key, result.exposure.metadata)
