@@ -31,7 +31,7 @@ import logging
 from lsst.cpputils import fixGamutOK
 from lsst.pipe.tasks.prettyPictureMaker.types import LABImage, RGBImage
 from lsst.pex.config.configurableActions import ConfigurableAction
-from lsst.pex.config import ChoiceField
+from lsst.pex.config import ChoiceField, Field
 from lsst.rubinoxide import rgb
 from scipy.ndimage import label, find_objects, binary_dilation
 
@@ -156,6 +156,7 @@ class GamutFixer(ConfigurableAction):
             "none": "Don't fix out of gamut colors",
         },
     )
+    max_size = Field[int](doc="Maximum number of contiguous pixels that will be fixed", default=10000)
 
     def __call__(self, Lab: LABImage, xyz_whitepoint: tuple[float, float]) -> RGBImage:
         """Remap colors that fall outside an RGB color gamut back into it.
@@ -197,6 +198,12 @@ class GamutFixer(ConfigurableAction):
         logging.info("There are out of gamut pixels, remapping colors")
         match self.gamutMethod:
             case "inpaint":
+                labels, num_features = label(binary_dilation(outOfBounds, iterations=3))
+                for index in range(num_features):
+                    if np.sum(sub_mask := (labels == index)) > self.max_size:
+                        # ignore areas that are too large
+                        outOfBounds[sub_mask] = 0
+
                 results = skimage.restoration.inpaint_biharmonic(rgb_prime, outOfBounds, channel_axis=-1)
             case "mapping":
                 results = fixGamutOK(Lab[outOfBounds])
