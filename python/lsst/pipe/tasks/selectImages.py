@@ -513,6 +513,20 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
         starUnNormalizedEMedian = row["starUnNormalizedEMedian"]
 
         valid = True
+        # The logic of this condition does not follow the ones below.  Isolating
+        # it from the get-go such that it doesn't break the established flow of
+        # the selections below (and having the psfFwhm cut as the first/dominant
+        # one seems reasonable).
+        if self.config.maxPsfFwhm:
+            pixelScale = row['pixelScale']
+            psfSigma = row['psfSigma']
+            fwhm = psfSigma * pixelScale * np.sqrt(8.*np.log(2.))
+            if not (fwhm <= self.config.maxPsfFwhm):
+                self.log.info("Removing visit %d detector %d because FWHM too large: %f vs %f",
+                              row["visit"], detectorId, fwhm, self.config.maxPsfFwhm)
+                valid = False
+                return valid
+
         if self.config.maxEllipResidual and not (medianE <= self.config.maxEllipResidual):
             self.log.info("Removing visit %d detector %d because median e residual too large: %f vs %f",
                           row["visit"], detectorId, medianE, self.config.maxEllipResidual)
@@ -562,24 +576,17 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
                 row["visit"], detectorId, nPsfStar, minNPsfStar
             )
             valid = False
-        elif self.config.maxPsfFwhm:
-            pixelScale = row['pixelScale']
-            psfSigma = row['psfSigma']
-            fwhm = psfSigma * pixelScale * np.sqrt(8.*np.log(2.))
-            if not (fwhm <= self.config.maxPsfFwhm):
-                self.log.info("Removing visit %d detector %d because FWHM too large: %f vs %f",
-                              row["visit"], detectorId, fwhm, self.config.maxPsfFwhm)
-                valid = False
         elif maxStarE and not (starEMedian <= maxStarE):
             self.log.info(
-                "Removing visit %d detector %d because the median star ellipticity is too large: %d vs %d",
+                "Removing visit %d detector %d because the median star ellipticity is too large: "
+                "%.2f vs %.2f",
                 row["visit"], detectorId, starEMedian, maxStarE
             )
             valid = False
         elif maxStarUnNormalizedE and not (starUnNormalizedEMedian <= maxStarUnNormalizedE):
             self.log.info(
                 "Removing visit %d detector %d because the median star unnormalized ellipticity "
-                "is too large: %d vs %d",
+                "is too large: %.2f vs %.2f",
                 row["visit"], detectorId, starUnNormalizedEMedian, maxStarUnNormalizedE
             )
             valid = False
