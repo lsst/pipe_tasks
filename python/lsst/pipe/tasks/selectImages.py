@@ -243,7 +243,7 @@ class WcsSelectImagesTask(BaseSelectImagesTask):
         result = []
         for i, (imageWcs, imageBox, dataId) in enumerate(zip(wcsList, bboxList, dataIds)):
             if dataId and ("detector" in dataId) and (dataId["detector"] in self.config.excludeDetectors):
-                self.log.info("De-selecting exposure %s because detector %s is exluded from processing",
+                self.log.info("De-selecting exposure %s because detector %s is excluded from processing",
                               dataId, dataId["detector"])
             elif imageWcs is None:
                 self.log.info("De-selecting exposure %s:  Exposure has no WCS.", dataId)
@@ -402,15 +402,15 @@ class PsfWcsSelectImagesConfig(pipeBase.PipelineTaskConfig,
         super().validate()
         if "fallback" not in self.minNPsfStarPerBand:
             msg = ("Must include a \"fallback\" key in the config.minNPsfStarPerBand config dict. "
-                   f"It is currenly: {self.minNPsfStarPerBand}.")
+                   f"It is currently: {self.minNPsfStarPerBand}.")
             raise pexConfig.FieldValidationError(self.__class__.minNPsfStarPerBand, self, msg)
         if "fallback" not in self.maxStarEPerBand:
             msg = ("Must include a \"fallback\" key in the config.maxStarEPerBand config dict. "
-                   f"It is currenly: {self.maxStarEPerBand}.")
+                   f"It is currently: {self.maxStarEPerBand}.")
             raise pexConfig.FieldValidationError(self.__class__.maxStarEPerBand, self, msg)
         if "fallback" not in self.maxStarUnNormalizedEPerBand:
             msg = ("Must include a \"fallback\" key in the config.maxStarUnNormalizedEPerBand "
-                   f"config dict. It is currenly: {self.maxStarUnNormalizedEPerBand}.")
+                   f"config dict. It is currently: {self.maxStarUnNormalizedEPerBand}.")
             raise pexConfig.FieldValidationError(self.__class__.maxStarUnNormalizedEPerBand, self, msg)
 
 
@@ -564,9 +564,9 @@ class PsfWcsSelectImagesTask(WcsSelectImagesTask):
                 and not (psfApCorrSigmaScaledDelta <= self.config.maxPsfApCorrSigmaScaledDelta)
         ):
             self.log.info(
-                "Removing visit %d detector %d because max-min delta of the model PSF apterture correction "
+                "Removing visit %d detector %d because max-min delta of the model PSF aperture correction "
                 "values scaled (divided) by the psfSigma across the unmasked detector pixels is not "
-                "finite or too large: %.3f vs %.3f (fatcor)",
+                "finite or too large: %.3f vs %.3f (factor)",
                 row["visit"], detectorId, psfApCorrSigmaScaledDelta, self.config.maxPsfApCorrSigmaScaledDelta
             )
             valid = False
