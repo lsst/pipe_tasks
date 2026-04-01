@@ -30,12 +30,46 @@ if TYPE_CHECKING:
 
 
 class FeatheredMosaicCreator:
-    def __init__(self, patch_grow: int, bin_factor: int = 1):
+    """Create feathering masks for seamless image patch blending.
+
+    This class generates feathering masks used to smoothly blend image patches
+    into a larger mosaic. The feathering gradually transitions from full opacity
+    to zero opacity across the patch boundaries, reducing visible seams.
+
+    Parameters
+    ----------
+    patch_grow : `int`
+        Number of pixels to grow the patch boundaries for feathering.
+    bin_factor : `int`, optional
+        Binning factor for the feathering calculation. Reduces resolution
+        of feathering masks for faster computation. Default is 1.
+
+    Notes
+    -----
+    The feathering masks are created as linear ramps from 0 to 1 (or 1 to 0)
+    over the `patch_grow` distance. The masks are stored in `self.featherings`
+    as a list of arrays in the order: [top, bottom, left, right].
+    """
+
+    def __init__(self, patch_grow: int, bin_factor: int = 1) -> None:
         self.patch_grow = patch_grow
         self.bin_factor = bin_factor
         self.featherings = None
 
     def _make_featherings(self, dimensions: tuple[int, int]) -> None:
+        """Create feathering masks for all edges of the patch.
+
+        Parameters
+        ----------
+        dimensions : `tuple` of `int`
+            Shape of the patch (height, width) for which to create feathering masks.
+
+        Notes
+        -----
+        This method creates four feathering masks (top, bottom, left, right) using
+        linear ramps from 0 to 1 (or 1 to 0) over the `patch_grow` distance. The
+        featherings are stored in `self.featherings` as a list of arrays.
+        """
         extent = self.patch_grow * 2
         if self.bin_factor != 1:
             extent = int(np.floor(extent / self.bin_factor))
@@ -66,6 +100,30 @@ class FeatheredMosaicCreator:
     def add_to_image(
         self, image: NDArray, patch: NDArray, newBox: Box2I, box: Box2I, reverse: bool = True
     ) -> None:
+        """Add a patch to an image with feathering at the edges.
+
+        Parameters
+        ----------
+        image : `NDArray`
+            Target image to which the patch will be added. Modified in-place.
+        patch : `NDArray`
+            Patch array to be added to the image.
+        newBox : `Box2I`
+            New bounding box position of the patch.
+        box : `Box2I`
+            Original bounding box position of the patch.
+        reverse : `bool`, optional
+            If True, reverse the patch along the first axis before adding.
+            Default is True.
+
+        Notes
+        -----
+        This method applies feathering to smoothly blend the patch into the image
+        at the edges where the patch overlaps with existing image content. The
+        feathering is applied based on which edges of the patch differ between
+        `box` and `newBox`. The patch is multiplied by a mixer array that gradually
+        transitions from 0 to 1 across the feathering region.
+        """
         base_shape = patch.shape if patch.ndim == 2 else patch.shape[:2]
         mixer = np.ones(base_shape)
         if self.featherings is None:

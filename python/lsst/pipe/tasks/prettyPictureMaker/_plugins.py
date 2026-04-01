@@ -60,26 +60,30 @@ class PluginsRegistry:
     This class should not be instantiated directly other than the one
     instantiation in this module.
 
-    example
-    -------
+    Examples
+    --------
     Using this registry to create a plugin would look somehting like the
     following.
 
-    @plugins.register(1, PluginType.PARTIAL)
-    def fixNoData(
-        image: NDArray,
-        mask: NDArray,
-        maskDict: Mapping[str, int]
-        ) -> NDArray:
-        m = (mask & 2 ** maskDict["NO_DATA"]).astype(bool)
-        for i in range(3):
-            image[:, :, i] = cv2.inpaint(
-                image[:, :, i].astype(np.float32),
-                m.astype(np.uint8),
-                3,
-                cv2.INPAINT_TELEA
-            ).astype(image.dtype)
-        return image
+    >>> @plugins.register(1, PluginType.PARTIAL)
+    >>> def fixNoData(
+    >>>     image: NDArray,
+    >>>     mask: NDArray,
+    >>>     maskDict: Mapping[str, int]
+    >>>     ) -> NDArray:
+    >>>     m = (mask & 2 ** maskDict["NO_DATA"]).astype(bool)
+    >>>     for i in range(3):
+    >>>         image[:, :, i] = cv2.inpaint(
+    >>>             image[:, :, i].astype(np.float32),
+    >>>             m.astype(np.uint8),
+    >>>             3,
+    >>>             cv2.INPAINT_TELEA
+    >>>         ).astype(image.dtype)
+    >>>     return image
+
+    Parameters
+    ----------
+    None
 
     """
 
@@ -89,19 +93,55 @@ class PluginsRegistry:
         self._channel_values: list[tuple[float, PLUGIN_TYPE]] = []
 
     def channel(self) -> Generator[PLUGIN_TYPE, None, None]:
+        """Yield generators of channel plugins.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        gen : Generator[PLUGIN_TYPE, None, None]
+            Generator of channel plugins.
+
+        """
         yield from (func for _, func in self._channel_values)
 
     def partial(self) -> Generator[PLUGIN_TYPE, None, None]:
+        """Yield generators of partial plugins.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        gen : Generator[PLUGIN_TYPE, None, None]
+            Generator of partial plugins.
+
+        """
         yield from (func for _, func in self._partial_values)
 
     def full(self) -> Generator[PLUGIN_TYPE, None, None]:
+        """Yield generators of full plugins.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        gen : Generator[PLUGIN_TYPE, None, None]
+            Generator of full plugins.
+
+        """
         yield from (func for _, func in self._full_values)
 
     def register(self, order: float, kind: PluginType) -> Callable:
         """Register a plugin which is to be run when producing a
         pretty picture.
 
-        parameters
+        Parameters
         ----------
         order : `float`
             This determines in what order plugins will be run. For
@@ -112,11 +152,29 @@ class PluginsRegistry:
             This specifies what data the registered plugin expects
             to run on, a channel, a partial image, or a full mosaic.
 
+        Returns
+        -------
+        wrapper : Callable
+            Decorator function for registering the plugin.
+
         """
 
         def wrapper(
             func: Callable[[NDArray, NDArray, Mapping[str, int], PipelineTaskConfig], NDArray],
         ) -> Callable[[NDArray, NDArray, Mapping[str, int], PipelineTaskConfig], NDArray]:
+            """Wrapper decorator for registering plugin functions.
+
+            Parameters
+            ----------
+            func : Callable
+                Plugin function being registered.
+
+            Returns
+            -------
+            func : Callable
+                The same plugin function, now registered in the registry.
+
+            """
             match kind:
                 case PluginType.PARTIAL:
                     self._partial_values.append((order, func))

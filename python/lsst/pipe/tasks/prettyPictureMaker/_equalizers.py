@@ -21,22 +21,29 @@
 
 import numpy as np
 import cv2
+from numpy.typing import NDArray
 from scipy.ndimage import gaussian_filter
 
 
 from ._localContrast import levelPadder, makeLapPyramid
+from .types import FloatImagePlane
 
 
-def eigf_variance_analysis_no_mask(guide, sigma):
+def eigf_variance_analysis_no_mask(guide: FloatImagePlane, sigma: float) -> NDArray:
     """
     Computes average and variance of guide using Gaussian filtering.
 
-    Parameters:
-        guide (numpy.ndarray): 2D array representing the guide image.
-        sigma (float): Standard deviation for Gaussian kernel.
+    Parameters
+    ----------
+    guide : `FloatImagePlane`
+        2D array representing the guide image.
+    sigma : `float`
+        Standard deviation for Gaussian kernel.
 
-    Returns:
-        numpy.ndarray: Array where each pixel has [average, variance].
+    Returns
+    -------
+    `NDArray`
+        Array where each pixel has [average, variance].
     """
     # Compute average of guide
     mu_guide = gaussian_filter(guide, sigma=sigma)
@@ -54,15 +61,20 @@ def eigf_variance_analysis_no_mask(guide, sigma):
     return output
 
 
-def eigf_blending_no_mask(image, av, feathering, filter_type):
+def eigf_blending_no_mask(image: FloatImagePlane, av: NDArray, feathering: float, filter_type: int) -> None:
     """
     Applies blending without a mask using averages and variances.
 
-    Parameters:
-        image (numpy.ndarray): 2D input image array.
-        av (numpy.ndarray): Array with shape (height*width, 2) containing averages and variances.
-        feathering (float): Feathering parameter for blending.
-        filter_type (int): Blending type: 0 for linear, 1 for geometric mean.
+    Parameters
+    ----------
+    image : `FloatImagePlane`
+        2D input image array. Modified in-place.
+    av : `NDArray`
+        Array with shape (height, width, 2) containing averages and variances.
+    feathering : `float`
+        Feathering parameter for blending.
+    filter_type : `int`
+        Blending type: 0 for linear, 1 for geometric mean.
     """
     # Reshape 'av' to match image dimensions
     av_reshaped = av.reshape(image.shape[0], image.shape[1], -1)
@@ -84,16 +96,24 @@ def eigf_blending_no_mask(image, av, feathering, filter_type):
         image[:] = np.sqrt(image[:])
 
 
-def fast_eigf_surface_blur(image, sigma, feathering, iterations=1, filter_type=1):
+def fast_eigf_surface_blur(
+    image: FloatImagePlane, sigma: float, feathering: float, iterations: int = 1, filter_type: int = 1
+) -> None:
     """
     Applies exposure-independent guided blur with down-scaling and up-sampling.
 
-    Parameters:
-        image (numpy.ndarray): Input image array of shape (height, width).
-        sigma (float): Standard deviation for Gaussian kernel.
-        feathering (float): Feathering parameter.
-        iterations (int): Number of iterations to model diffusion.
-        filter_type (int): Blending type: 0 for linear, 1 for geometric mean.
+    Parameters
+    ----------
+    image : `FloatImagePlane`
+        Input image array of shape (height, width). Modified in-place.
+    sigma : `float`
+        Standard deviation for Gaussian kernel.
+    feathering : `float`
+        Feathering parameter.
+    iterations : `int`, optional
+        Number of iterations to model diffusion. Default is 1.
+    filter_type : `int`, optional
+        Blending type: 0 for linear, 1 for geometric mean. Default is 1.
     """
     scaling = np.maximum(np.minimum(sigma, 4.0), 1.0)
     ds_sigma = np.maximum(sigma / scaling, 1.0)
@@ -105,8 +125,43 @@ def fast_eigf_surface_blur(image, sigma, feathering, iterations=1, filter_type=1
         eigf_blending_no_mask(image, av.reshape(-1, 2), feathering, filter_type)
 
 
-def tone_equalizer(image, tone_factors, weight, sigma, feathering, iterations=1, filter_type=1):
-    # need to blur the input luminance image
+def tone_equalizer(
+    image: FloatImagePlane,
+    tone_factors: list[float],
+    weight: float,
+    sigma: float,
+    feathering: float,
+    iterations: int = 1,
+    filter_type: int = 1,
+) -> FloatImagePlane:
+    """Enhance image brightness using exposure-dependent correction.
+
+    This function adjusts image brightness by applying exposure-dependent
+    corrections based on tone factors. It uses exposure centers spanning from
+    0 to 1 (10 levels) and applies Gaussian-weighted adjustments.
+
+    Parameters
+    ----------
+    image : `FloatImagePlane`
+        Input image array of shape (height, width).
+    tone_factors : `list` of `float`
+        List of 10 tone correction factors, one for each exposure level.
+    weight : `float`
+        Width of the Gaussian kernel for exposure weighting.
+    sigma : `float`
+        Standard deviation for Gaussian blur of luminance.
+    feathering : `float`
+        Feathering parameter for exposure-independent guided blur.
+    iterations : `int`, optional
+        Number of iterations for the blur process. Default is 1.
+    filter_type : `int`, optional
+        Blending type: 0 for linear, 1 for geometric mean. Default is 1.
+
+    Returns
+    -------
+    `FloatImagePlane`
+        Image with brightness adjusted based on tone factors.
+    """
     luminance = np.copy(image)
     fast_eigf_surface_blur(luminance, sigma, feathering, iterations, filter_type)
     exposure = luminance
@@ -117,7 +172,29 @@ def tone_equalizer(image, tone_factors, weight, sigma, feathering, iterations=1,
     return image + corrections
 
 
-def contrast_equalizer(image, contrast_factors):
+def contrast_equalizer(image: FloatImagePlane, contrast_factors: list[float]) -> FloatImagePlane:
+    """Enhance image contrast using Laplacian pyramid adjustment.
+
+    This function performs contrast equalization by modifying the Laplacian
+    pyramid coefficients of the input image. Each level of the pyramid
+    corresponds to a different spatial scale, allowing for scale-dependent
+    contrast adjustments.
+
+    Parameters
+    ----------
+    image : `FloatImagePlane`
+        Input image array of shape (height, width).
+    contrast_factors : `list` of `float`
+        List of factors to multiply each pyramid level. Values > 1 increase
+        contrast, values < 1 decrease contrast. The list should specify
+        factors for the largest scales first; unspecified levels use a factor
+        of 1.0.
+
+    Returns
+    -------
+    `FloatImagePlane`
+        Image with contrast adjusted at multiple spatial scales.
+    """
     maxLevel = int(np.min(np.log2(image.shape)))
     support = 1 << (maxLevel - 1)
     padY_amounts = levelPadder(image.shape[0] + support, maxLevel)
@@ -127,7 +204,6 @@ def contrast_equalizer(image, contrast_factors):
     ).astype(image.dtype)
     lap = makeLapPyramid(imagePadded, padY_amounts, padX_amounts, None, None)
     for i, factor in enumerate(contrast_factors):
-        # negative indexing so +1, +1 to skip the highest pyramid
         i = i + 2
         if i > len(lap):
             break

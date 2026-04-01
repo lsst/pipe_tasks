@@ -223,6 +223,20 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         return super().setDefaults()
 
     def _handle_deprecated(self):
+        """Handle deprecated configuration migration.
+
+        This method migrates deprecated configuration fields to their new
+        locations in sub-configurations. It checks the configuration history
+        to determine if deprecated fields were explicitly set and updates
+        the new configuration locations accordingly.
+
+        Notes
+        -----
+        The following deprecated fields are migrated:
+        - ``gamutMethod`` -> ``gamutMapperConfig.gamutMethod``
+        - ``exposureBrackets`` -> ``exposureBracketerConfig.exposureBrackets``
+        - ``doLocalContrast`` -> ``localContrastConfig.doLocalContrast``
+        """
         # check if gamutMethod is set
         if len(self._history["gamutMethod"]) > 1:
             # This has been set in config, update it in the new location
@@ -666,7 +680,27 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         N = arr.shape[1]
 
         # Function to compute slices for a given dimension size and number of divisions
-        def get_slices(total_size, num_divisions):
+        def get_slices(total_size: int, num_divisions: int) -> list[tuple[int, int]]:
+            """Generate slice ranges for dividing a size into equal parts.
+
+            Parameters
+            ----------
+            total_size : `int`
+                Total size to be divided into slices.
+            num_divisions : `int`
+                Number of divisions to create.
+
+            Returns
+            -------
+            `list` of `tuple` of `int`
+                List of (start, end) tuples representing each slice.
+
+            Notes
+            -----
+            This function divides the total_size into num_divisions equal parts.
+            If the division is not exact, the remainder is distributed by adding
+            1 to the first 'remainder' slices, ensuring balanced distribution.
+            """
             base = total_size // num_divisions
             remainder = total_size % num_divisions
             slices = []
@@ -696,6 +730,30 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
     @staticmethod
     def findBackgroundPixels(image):
+        """Find pixels that are likely to be background based on image statistics.
+
+        This method estimates background pixels by analyzing the distribution of
+        pixel values in the image. It uses the median as an estimate of the background
+        level and fits a half-normal distribution to values below the median to
+        determine the background sigma. Pixels below a threshold (mean + sigma) are
+        classified as background.
+
+        Parameters
+        ----------
+        image : `NDArray`
+            Input image array for which to find background pixels.
+
+        Returns
+        -------
+        `NDArray`
+            Boolean mask array where True indicates background pixels.
+
+        Notes
+        -----
+        This method works best for images with relatively uniform background. It may
+        not perform well in fields with high density or diffuse flux, as noted in
+        the implementation comments.
+        """
         # Find the median value in the image, which is likely to be
         # close to average background. Note this doesn't work well
         # in fields with high density or diffuse flux.
