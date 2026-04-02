@@ -31,17 +31,15 @@ from skimage.restoration import inpaint_biharmonic
 from lsst.rubinoxide import rgb
 from lsst.cpputils import fixGamutOK
 
-from .types import LABImage
+from .types import LABImage, RGBImage
 
 
 def fixOutOfGamutColors(
     Lab: LABImage,
     xyz_whitepoint: tuple[float, float],
     gamutMethod: Literal["mapping", "inpaint"] = "inpaint",
-) -> LABImage:
+) -> RGBImage:
     """Remap colors that fall outside an RGB color gamut back into it.
-
-    This function modifies the input Lab array in-place for memory reasons.
 
     Parameters
     ----------
@@ -55,8 +53,8 @@ def fixOutOfGamutColors(
 
     Returns
     -------
-    `LABImage`
-        Modified Lab array with out-of-gamut colors remapped.
+    result : `RGBImage`
+        Image with out-of-gamut colors remapped in RGB colorspace.
 
     Raises
     ------

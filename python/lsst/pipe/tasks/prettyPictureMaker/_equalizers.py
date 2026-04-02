@@ -138,7 +138,8 @@ def tone_equalizer(
 
     This function adjusts image brightness by applying exposure-dependent
     corrections based on tone factors. It uses exposure centers spanning from
-    0 to 1 (10 levels) and applies Gaussian-weighted adjustments.
+    0 to 1 (10 levels) and applies Gaussian-weighted adjustments. A copy of
+    the input image is made before processing.
 
     Parameters
     ----------
@@ -178,7 +179,8 @@ def contrast_equalizer(image: FloatImagePlane, contrast_factors: list[float]) ->
     This function performs contrast equalization by modifying the Laplacian
     pyramid coefficients of the input image. Each level of the pyramid
     corresponds to a different spatial scale, allowing for scale-dependent
-    contrast adjustments.
+    contrast adjustments. A padded copy of the input image is created for
+    processing.
 
     Parameters
     ----------

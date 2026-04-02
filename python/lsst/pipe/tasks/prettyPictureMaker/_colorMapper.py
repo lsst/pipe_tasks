@@ -36,7 +36,7 @@ from .types import (
 )
 
 from ._functors import (
-    LocalContrastEnhansor,
+    LocalContrastEnhancer,
     LumCompressor,
     ColorScaler,
     BoundsRemapper,
@@ -72,15 +72,15 @@ def lsstRGB(
 
     Parameters
     ----------
-    rArray : `NDArray`
+    rArray : `FloatImagePlane`
         The array used as the red channel
-    gArray : `NDArray`
+    gArray : `FloatImagePlane`
         The array used as the green channel
-    bArray : `NDArray`
+    bArray : `FloatImagePlane`
         The array used as the blue channel
     local_contrast : `LocalContrastFunction` or `None`
         This is a callable that's passed the luminance values, and is expected
-        to do local contrast enhcment. Set to None to bypass.
+        to do local contrast enhancement. Set to None to bypass.
     scale_lum : `ScaleLumFunction` or `None`
         This is a callable that's passed the luminance values and should
         return a scaled luminance array the same shape as the input.
@@ -103,7 +103,7 @@ def lsstRGB(
         This is a callable that is passed the final OkLab image. It's job
         is to detect and correct any pixel values that would fall outside
         an RGB P3 colorspace. Set to None for no fixes.
-    psf : `NDArray` or `None`
+    psf : `FloatImagePlane` or `None`
         If this parameter is an image of a PSF kernel the luminance channel is
         deconvolved with it. Set to None to skip deconvolution.
     cieWhitePoint : `tuple` of `float`, `float`
@@ -124,7 +124,7 @@ def lsstRGB(
 
     # Default construct functors to be used as callables
     if local_contrast is default:
-        local_contrast = LocalContrastEnhansor()
+        local_contrast = LocalContrastEnhancer()
     if scale_lum is default:
         scale_lum = LumCompressor()
     if scale_color is default:
@@ -165,7 +165,7 @@ def lsstRGB(
     t1 = time.time()
     lum = Lab[:, :, 0]
 
-    # potentially needed for remapping color, so save what it origionaly was
+    # potentially needed for remapping color, so save what it originally was
     lum_save = np.copy(lum)
 
     if bracketing_function is not None:

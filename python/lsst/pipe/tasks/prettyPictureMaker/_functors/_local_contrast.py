@@ -21,7 +21,7 @@
 
 from __future__ import annotations
 
-__all__ = ("DiffusionFunction", "LocalContrastEnhansor")
+__all__ = ("DiffusionFunction", "LocalContrastEnhancer")
 
 from lsst.pipe.tasks.prettyPictureMaker.types import FloatImagePlane
 from lsst.pex.config.configurableActions import ConfigurableAction, ConfigurableActionField
@@ -65,7 +65,7 @@ class DiffusionFunction(ConfigurableAction):
         "The diffusion direction of high-frequency wavelets relative to their own gradient orientation",
         default=1,
     )
-    regularization = Field[float]("Regularization of coefficiencts used to detect edges", default=2.94)
+    regularization = Field[float]("Regularization of coefficients used to detect edges", default=2.94)
     variance_threshold = Field[float](
         doc=(
             "The variance threshold modulates the filter's response to low-variance regions, with positive "
@@ -93,7 +93,7 @@ class DiffusionFunction(ConfigurableAction):
     fourth = Field[float](
         doc="High-frequency wavelet diffusion speed along the 4th-order anisotropy axis.", default=-0.2774
     )
-    shaprness = Field[float](
+    sharpness = Field[float](
         doc="Adjusts wavelet detail amplitude. Positive values sharpen, negative values blur.", default=0.0
     )
 
@@ -129,7 +129,7 @@ class DiffusionFunction(ConfigurableAction):
            are modified, enabling targeted enhancement or denoising.
 
         The diffusion equation is solved iteratively for `iterations` steps,
-        with the `shaprness` parameter adjusting final detail amplitudes.
+        with the `sharpness` parameter adjusting final detail amplitudes.
         """
         return rgb.diffuse_gray_image(
             intensities,
@@ -146,11 +146,11 @@ class DiffusionFunction(ConfigurableAction):
             third=self.third,
             fourth=self.fourth,
             variance_threshold=self.variance_threshold,
-            sharpness=self.shaprness,
+            sharpness=self.sharpness,
         )
 
 
-class LocalContrastEnhansor(ConfigurableAction):
+class LocalContrastEnhancer(ConfigurableAction):
     """Multi-stage local contrast enhancement processor.
 
     This class implements a two-stage approach for enhancing image contrast:
@@ -206,9 +206,9 @@ class LocalContrastEnhansor(ConfigurableAction):
             The input intensity image to process.
 
         Returns
-        -------
-        FloatImagePlane
-            The enhanced intensity image with improved local contrast.
+            -------
+            result : `FloatImagePlane`
+                The enhanced intensity image with improved local contrast.
 
         Notes
         -----

@@ -47,8 +47,9 @@ def heal_gamut(
 
     Parameters
     ----------
-    lab_image : LABImage
-        A NxMx3 array in the Lab colorspace to be modified in-place.
+    lab_image : `LABImage`
+        A NxMx3 array in the Lab colorspace. Modified in-place by healing out-of-gamut regions.
+        For each region, a copy is made before modification, then written back.
     mask : `NDArray` of `bool`
         A boolean mask indicating which pixels are out of gamut.
     xyz_whitepoint : `tuple` of `float`, `float`
@@ -60,7 +61,7 @@ def heal_gamut(
 
     Returns
     -------
-    RGBImage : `NDArray`
+    result : `RGBImage`
         The healed image converted to RGB colorspace.
 
     Raises
@@ -78,6 +79,7 @@ def heal_gamut(
        - Computing average a,b color values from the annulus
        - Using rgb.inpaint_mask to interpolate the L, a, and b channels
        - Filling the masked region with the interpolated values
+    3. Regions larger than max_size are skipped.
     """
     # Need to split all the regions of the mask
     labels = label(binary_dilation(mask, iterations=3))[0]
@@ -161,18 +163,19 @@ class GamutFixer(ConfigurableAction):
     def __call__(self, Lab: LABImage, xyz_whitepoint: tuple[float, float]) -> RGBImage:
         """Remap colors that fall outside an RGB color gamut back into it.
 
-        This function modifies the input Lab array in-place for memory reasons.
+        When gamutMethod is 'heal', regions larger than the configured max_size
+        are skipped.
 
         Parameters
         ----------
-        Lab : LABImage
-            A NxMx3 array that contains data in the Lab colorspace.
+        Lab : `LABImage`
+            A NxMx3 array in the Lab colorspace containing the image data.
         xyz_whitepoint : `tuple` of `float`, `float`
             Sets the white point of the xyz colorspace in xy coordinates.
 
         Returns
         -------
-        RGBImage : `NDArray`
+        result : `RGBImage`
             The image with out-of-gamut colors remapped to RGB colorspace.
 
         Raises

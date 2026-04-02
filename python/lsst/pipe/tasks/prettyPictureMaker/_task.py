@@ -76,7 +76,7 @@ from ._functors import (
     LumCompressor,
     ExposureBracketer,
     GamutFixer,
-    LocalContrastEnhansor,
+    LocalContrastEnhancer,
 )
 
 import tempfile
@@ -180,7 +180,7 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
     luminanceConfig = ConfigurableActionField[LumCompressor](
         doc="Action controlling luminance scaling when making an RGB image"
     )
-    localContrastConfig = ConfigurableActionField[LocalContrastEnhansor](
+    localContrastConfig =   ConfigurableActionField[LocalContrastEnhancer](
         doc="Action controlling the local contrast correction in RGB image production"
     )
     colorConfig = ConfigurableActionField[ColorScaler](
@@ -265,6 +265,11 @@ class PrettyPictureTask(PipelineTask):
 
     def _find_normal_stats(self, array):
         """Calculate standard deviation from negative values using half-normal distribution.
+
+        Raises
+        ------
+        ValueError
+            Array dimension validation fails.
 
         Parameters
         ----------
@@ -513,7 +518,7 @@ class PrettyPictureTask(PipelineTask):
         Returns
         -------
         sortedImages : `dict` of `str` to `Exposure`
-            A dictionary of `Exposure`\ s that keyed by the band they
+            A dictionary of `Exposure`\ s keyed by the band they
             correspond to.
         """
         sortedImages: dict[str, Exposure] = {}
@@ -535,8 +540,8 @@ class PrettyPictureTask(PipelineTask):
 
         Returns
         -------
-        sortedImages : `dict` of `str` to `Exposure`
-            A dictionary of `Exposure`\ s that keyed by the band they
+        sortedImages : `dict` of `int` to `DeferredDatasetHandle`
+            A dictionary of `DeferredDatasetHandle`\ s keyed by the band they
             correspond to.
         """
         # ignore type because there aren't proper stubs for afw
@@ -559,8 +564,8 @@ class PrettyPictureTask(PipelineTask):
 
         Returns
         -------
-        sortedImages : `dict` of `str` to `Exposure`
-            A dictionary of `Exposure`\ s that keyed by the band they
+        sortedImages : `dict` of `int` to `DeferredDatasetHandle`
+            A dictionary of `DeferredDatasetHandle`\ s keyed by the band they
             correspond to.
         """
         sortedImages = {}
@@ -1205,15 +1210,14 @@ class PrettyMosaicTask(PipelineTask):
         Parameters
         ----------
         inputs : `Iterable` of `tuple` of `Mapping` and `NDArray`
-            An iterable where each element is a tuble with the first
+            An iterable where each element is a tuple with the first
             element is a mapping that corresponds to an arrays dataId,
             and the second is an `NDArray`.
 
         Returns
         -------
-        sortedImages : `dict` of `str` to `Exposure`
-            A dictionary of `Exposure`\ s that keyed by the band they
-            correspond to.
+        sortedImages : `Iterable` of `DeferredDatasetHandle`
+            An iterable of `DeferredDatasetHandle`\ s containing the input data.
         """
         structuredInputs = []
         for dataId, array in inputs:

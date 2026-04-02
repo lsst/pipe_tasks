@@ -50,9 +50,9 @@ def _fuseExposureLum(images: list[FloatImagePlane], sigma: float = 0.1, maxLevel
         determined based on image dimensions. Default is 3.
 
     Returns
-    -------
-    FloatImagePlane
-        Fused image with enhanced local contrast and balanced exposure.
+        -------
+        result : `FloatImagePlane`
+            Fused image with balanced exposure.
 
     Raises
     ------
@@ -95,7 +95,7 @@ def _fuseExposureLum(images: list[FloatImagePlane], sigma: float = 0.1, maxLevel
         maxLevel = maxImageLevel
     if maxImageLevel < maxLevel:
         raise ValueError(
-            f"The supplied max level {maxLevel} is is greater than the max of the image: {maxImageLevel}"
+            f"The supplied max level {maxLevel} is greater than the max of the image: {maxImageLevel}"
         )
     support = 1 << (maxLevel - 1)
     padY_amounts = levelPadder(image.shape[0] + support, maxLevel)
@@ -156,13 +156,12 @@ class ExposureBracketer(ConfigurableAction):
             brackets are configured, returns the fused result. If a single
             bracket or no brackets are configured, returns the scaled image.
 
-        Notes
-        -----
-        When multiple exposure brackets are configured (default [1.25, 1, 0.75]):
-        The input image is divided by each bracket factor to create a stack
-        of differently exposed images, which are then fused using
-        _fuseExposureLum to produce a final image with balanced exposure
-        and enhanced local contrast.
+       Notes
+            -----
+            When multiple exposure brackets are configured (default [1.25, 1, 0.75]):
+            The input image is divided by each bracket factor to create a stack
+            of differently exposed images, which are then fused using
+            _fuseExposureLum to produce a final image with balanced exposure.
 
         When a single bracket is configured: The input image is divided by
         that bracket factor and returned directly without fusion.

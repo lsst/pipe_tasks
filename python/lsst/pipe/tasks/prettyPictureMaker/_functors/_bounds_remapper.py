@@ -35,8 +35,9 @@ class BoundsRemapper(ConfigurableAction):
 
     Often input images are not mapped to any defined range of values
     (for instance if they are in count units). This controls how the units of
-    and image are mapped to a zero to one range by determining an upper
-    bound.
+    an image are mapped to a zero to one range by determining an upper
+    bound. A copy of the input image is created before processing.
+
     """
 
     quant = Field[float](
@@ -62,15 +63,15 @@ class BoundsRemapper(ConfigurableAction):
         argument or by scaling the maximum across all channels with the
         supplied quant variable.
 
-        Parameters
-        ----------
-        img : `NDArray` like
-            Must have dimensions of y,x,3 where the channels are in RGB order
+       Parameters
+            ----------
+            img : `RGBImage`
+                Input RGB image array with dimensions (height, width, 3) in RGB order.
 
-        Returns
-        -------
-        image : `NDArray`
-            The result of the remapping process
+            Returns
+            -------
+            result : `RGBImage`
+                The remapped image with values clipped to the range [0, 1].
         """
         if np.max(img) == 1:
             return img

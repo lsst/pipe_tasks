@@ -95,7 +95,7 @@ class LumCompressor(ConfigurableAction):
         doc=(
             "This parameters controls how each tone control point affect the adjustment "
             "of the values in between. Increase the value to have a more continuous "
-            "change between control points, decrease to make the control shaprer. Value "
+            "change between control points, decrease to make the control sharper. Value "
             "must be greater than zero."
         ),
         default=0.07,

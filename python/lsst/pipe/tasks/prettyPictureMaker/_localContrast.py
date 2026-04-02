@@ -359,7 +359,7 @@ def localContrast(
         is done. Contrast values in the image which fall between two of these
         values are interpolated to get the outcome. The higher the numGamma,
         the smoother the image is post contrast enhancement, though above
-        some number there is no decidable difference.
+        some number there is no discernible difference.
     skip_levels : `int`
         When calculating the local contrast skip the specified number of levels
         starting at the lowest level.
@@ -378,7 +378,7 @@ def localContrast(
 
     Notes
     -----
-    This function, and it's supporting functions, spiritually implement the
+    This function, and its supporting functions, spiritually implement the
     algorithm outlined at
     https://people.csail.mit.edu/sparis/publi/2011/siggraph/
     titled "Local Laplacian Filters: Edge-aware Image Processing with Laplacian
@@ -406,7 +406,7 @@ def localContrast(
         maxLevel = maxImageLevel
     if maxImageLevel < maxLevel:
         raise ValueError(
-            f"The supplied max level {maxLevel} is is greater than the max of the image: {maxImageLevel}"
+            f"The supplied max level {maxLevel} is greater than the max of the image: {maxImageLevel}"
         )
     support = 1 << (maxLevel - 1)
     padY_amounts = levelPadder(image.shape[0] + support, maxLevel)
