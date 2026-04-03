@@ -190,8 +190,10 @@ class GamutFixer(ConfigurableAction):
 
         # Determine if there are any out of bounds pixels
         outOfBounds = np.bitwise_or(
-            np.bitwise_or(rgb_prime[:, :, 0] > 1, rgb_prime[:, :, 1] > 1), rgb_prime[:, :, 2] > 1
+            np.bitwise_or(rgb_prime[:, :, 0] > 1, rgb_prime[:, :, 0] < 0),
+            np.bitwise_or(rgb_prime[:, :, 1] > 1, rgb_prime[:, :, 1] < 0)
         )
+        outOfBounds = np.bitwise_or(outOfBounds, np.bitwise_or(rgb_prime[:, :, 2] > 1, rgb_prime[:, :, 2] < 0))
 
         # If all pixels are in bounds, return immediately.
         if not np.any(outOfBounds):
