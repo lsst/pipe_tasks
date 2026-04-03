@@ -104,12 +104,6 @@ def heal_gamut(
         # copy to ensure contiguous array, this is faster than operating on view
         sub_mask = labels[place_y, place_x] == label_number
         sub_lab = np.copy(lab_image[place_y, place_x])
-        outer_mask = binary_dilation(sub_mask, iterations=3)
-        ring_mask = outer_mask ^ sub_mask
-        sub_a = sub_lab[ring_mask, 1]
-        sub_b = sub_lab[ring_mask, 2]
-        avg_a = np.mean(sub_a)
-        avg_b = np.mean(sub_b)
         new_lum = rgb.inpaint_mask(
             np.ascontiguousarray(sub_lab[..., 0]),
             sub_mask,
@@ -191,9 +185,11 @@ class GamutFixer(ConfigurableAction):
         # Determine if there are any out of bounds pixels
         outOfBounds = np.bitwise_or(
             np.bitwise_or(rgb_prime[:, :, 0] > 1, rgb_prime[:, :, 0] < 0),
-            np.bitwise_or(rgb_prime[:, :, 1] > 1, rgb_prime[:, :, 1] < 0)
+            np.bitwise_or(rgb_prime[:, :, 1] > 1, rgb_prime[:, :, 1] < 0),
         )
-        outOfBounds = np.bitwise_or(outOfBounds, np.bitwise_or(rgb_prime[:, :, 2] > 1, rgb_prime[:, :, 2] < 0))
+        outOfBounds = np.bitwise_or(
+            outOfBounds, np.bitwise_or(rgb_prime[:, :, 2] > 1, rgb_prime[:, :, 2] < 0)
+        )
 
         # If all pixels are in bounds, return immediately.
         if not np.any(outOfBounds):
@@ -203,11 +199,14 @@ class GamutFixer(ConfigurableAction):
         logging.info("There are out of gamut pixels, remapping colors")
         match self.gamutMethod:
             case "inpaint":
-                labels, num_features = label(binary_dilation(outOfBounds, iterations=3))
-                for index in range(num_features):
-                    if np.sum(sub_mask := (labels == index)) > self.max_size:
+                logging.debug("Running inpaint")
+                labels, num_features = label(outOfBounds)
+                label_counts = np.bincount(labels.ravel())[0:]
+                for index, amount in zip(range(num_features), label_counts):
+                    if amount > self.max_size:
+                        logging.debug(f"Eliminating {amount} pixels")
                         # ignore areas that are too large
-                        outOfBounds[sub_mask] = 0
+                        outOfBounds[labels == index] = 0
 
                 results = skimage.restoration.inpaint_biharmonic(rgb_prime, outOfBounds, channel_axis=-1)
             case "mapping":

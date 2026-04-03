@@ -101,7 +101,7 @@ class PluginsRegistry:
 
         Returns
         -------
-        gen : Generator[PLUGIN_TYPE, None, None]
+        gen : `Generator[PLUGIN_TYPE, None, None]`
             Generator of channel plugins.
 
         """
@@ -116,7 +116,7 @@ class PluginsRegistry:
 
         Returns
         -------
-        gen : Generator[PLUGIN_TYPE, None, None]
+        gen : `Generator[PLUGIN_TYPE, None, None]`
             Generator of partial plugins.
 
         """
@@ -131,7 +131,7 @@ class PluginsRegistry:
 
         Returns
         -------
-        gen : Generator[PLUGIN_TYPE, None, None]
+        gen : `Generator[PLUGIN_TYPE, None, None]`
             Generator of full plugins.
 
         """
@@ -154,7 +154,7 @@ class PluginsRegistry:
 
         Returns
         -------
-        wrapper : Callable
+        wrapper : `Callable`
             Decorator function for registering the plugin.
 
         """
@@ -166,12 +166,12 @@ class PluginsRegistry:
 
             Parameters
             ----------
-            func : Callable
+            func : `Callable`
                 Plugin function being registered.
 
             Returns
             -------
-            func : Callable
+            func : `Callable`
                 The same plugin function, now registered in the registry.
 
             """
