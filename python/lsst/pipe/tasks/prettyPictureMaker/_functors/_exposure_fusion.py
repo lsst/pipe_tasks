@@ -33,7 +33,9 @@ from lsst.pex.config import ListField
 from .._localContrast import levelPadder, makeGaussianPyramid, makeLapPyramid
 
 
-def _fuseExposureLum(images: list[FloatImagePlane], sigma: float = 0.1, maxLevel: int | None = 3) -> FloatImagePlane:
+def _fuseExposureLum(
+    images: list[FloatImagePlane], sigma: float = 0.1, maxLevel: int | None = 3
+) -> FloatImagePlane:
     """Fuse multiple exposure images using Laplacian pyramid blending.
 
     Parameters
@@ -144,37 +146,35 @@ class ExposureBracketer(ConfigurableAction):
         """Apply exposure bracketing and fusion to an image.
 
         Parameters
-        ----------
-        intensities : FloatImagePlane
-            Input image to process. This FloatImagePlane contains the pixel
-            intensities that will be bracketed and fused.
+           ----------
+           intensities : `FloatImagePlane`
+               Input image to process. This FloatImagePlane contains the pixel
 
-        Returns
-        -------
-        FloatImagePlane
-            Processed image with exposure bracketing applied. If multiple
-            brackets are configured, returns the fused result. If a single
-            bracket or no brackets are configured, returns the scaled image.
+           Returns
+           -------
+           `FloatImagePlane`
+               Processed image with exposure bracketing applied. If multiple
+               brackets are configured, returns the fused result. If a single
+               bracket or no brackets are configured, returns the scaled image.
 
-       Notes
-            -----
-            When multiple exposure brackets are configured (default [1.25, 1, 0.75]):
-            The input image is divided by each bracket factor to create a stack
-            of differently exposed images, which are then fused using
-            _fuseExposureLum to produce a final image with balanced exposure.
+          Notes
+               -----
+               When multiple exposure brackets are configured (default [1.25, 1, 0.75]):
+               The input image is divided by each bracket factor to create a stack
+               of differently exposed images, which are then fused using
+               _fuseExposureLum to produce a final image with balanced exposure.
 
-        When a single bracket is configured: The input image is divided by
-        that bracket factor and returned directly without fusion.
+           When a single bracket is configured: The input image is divided by
+           that bracket factor and returned directly without fusion.
 
-        When no brackets are configured (exposureBrackets is None): The
-        input image is returned unchanged.
+           When no brackets are configured (exposureBrackets is None): The
+           input image is returned unchanged.
         """
         if self.exposureBrackets is None:
             return intensities
         stack = []
         for bracket in self.exposureBrackets:
-            intensities = intensities / bracket
-            stack.append(intensities)
+            stack.append(intensities / bracket)
 
         if len(stack) == 1:
             intensities = stack[0]

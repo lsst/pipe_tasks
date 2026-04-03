@@ -150,19 +150,19 @@ class LumCompressor(ConfigurableAction):
         top = np.arcsinh(self.stretch)
         bottom = (np.arcsinh(nj_to_lum * self.stretch) - 0.2 * top) / 0.8
         intensities = (np.arcsinh(intensities * self.stretch) - bottom) / (top - bottom)
-        logging.debug("arcsinh max %d", intensities.max())
+        logging.debug("arcsinh max %.4f", intensities.max())
         intensities = np.clip(intensities, 0, 1)
         intensities = (intensities - self.shadow) / ((self.highlight) - self.shadow)
-        logging.debug("post lin streatch max %d", intensities.max())
+        logging.debug("post lin stretch max %.4f", intensities.max())
         intensities = ((self.midtone - 1) * intensities) / (
             ((2 * self.midtone - 1) * intensities) - self.midtone
         )
-        logging.debug("midtone adjustment max %d", intensities.max())
+        logging.debug("midtone adjustment max %.4f", intensities.max())
         intensities = np.clip(intensities, 0.0, self.max)
 
         if self.equalizerLevels is not None:
             intensities = contrast_equalizer(intensities, self.equalizerLevels)
-            logging.debug("equalizer max %d", intensities.max())
+            logging.debug("equalizer max %.4f", intensities.max())
 
         if self.toneAdjustment is not None:
             intensities = np.clip(intensities, 0, self.max)

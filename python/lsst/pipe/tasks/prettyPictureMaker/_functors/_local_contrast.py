@@ -102,12 +102,12 @@ class DiffusionFunction(ConfigurableAction):
 
         Parameters
         ----------
-        intensities : FloatImagePlane
+        intensities : `FloatImagePlane`
             The input intensity image to process.
 
         Returns
         -------
-        FloatImagePlane
+        result : `FloatImagePlane`
             The diffused intensity image with enhanced details.
 
         Notes
@@ -166,10 +166,14 @@ class LocalContrastEnhancer(ConfigurableAction):
     The processing pipeline is configurable via parameters for both stages,
     allowing fine-tuned control over the enhancement behavior.
     """
+
     doLocalContrast = Field[bool](
         "Do apply local contrast",
         default=True,
-        deprecated="This will stop working in v31 and be removed in v32, please set doLocalContrast on PrettyPictureConfig",
+        deprecated=(
+            "This will stop working in v31 and be removed in v32, please set doLocalContrast on"
+            " PrettyPictureConfig"
+        ),
     )
     highlights = Field[float](doc="Adjustment factor for the highlights", default=-0.9)
     shadows = Field[float](doc="Adjustment factor for the shadows", default=0.5)
@@ -202,13 +206,13 @@ class LocalContrastEnhancer(ConfigurableAction):
 
         Parameters
         ----------
-        intensities : FloatImagePlane
+        intensities : `FloatImagePlane`
             The input intensity image to process.
 
         Returns
-            -------
-            result : `FloatImagePlane`
-                The enhanced intensity image with improved local contrast.
+        -------
+        result : `FloatImagePlane`
+            The enhanced intensity image with improved local contrast.
 
         Notes
         -----

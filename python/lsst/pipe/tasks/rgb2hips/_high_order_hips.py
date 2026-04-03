@@ -318,7 +318,6 @@ class HighOrderHipsTask(PipelineTask):
             List of assembled images and metadata, one element for each tract
 
         """
-        tmpImg = None
 
         boxes = []
         for _, iterable in tract_patch.items():

@@ -43,7 +43,6 @@ import numpy as np
 from typing import TYPE_CHECKING, cast, Any
 from lsst.skymap import BaseSkyMap
 
-from scipy.optimize import minimize
 from scipy.stats import norm, halfnorm, mode
 from scipy.ndimage import binary_dilation
 from scipy.interpolate import RBFInterpolator
@@ -51,7 +50,7 @@ from skimage.restoration import inpaint_biharmonic
 
 from lsst.daf.butler import Butler, DeferredDatasetHandle
 from lsst.daf.butler import DatasetRef
-from lsst.pex.config import Field, Config, ConfigDictField, ConfigField, ListField, ChoiceField
+from lsst.pex.config import Field, Config, ConfigDictField, ListField, ChoiceField
 from lsst.pex.config.configurableActions import ConfigurableActionField
 from lsst.pipe.base import (
     PipelineTask,
@@ -163,8 +162,14 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         ),
         default=10,
     )
+    doPSFDeconvolve = Field[bool](
+        doc="Use the PSF in a richardson lucy deconvolution on the luminance channel.", default=False
+    )
     doPSFDeconcovlve = Field[bool](
-        doc="Use the PSF in a richardson lucy deconvolution on the luminance channel.", default=True
+        doc="Use the PSF in a richardson lucy deconvolution on the luminance channel.",
+        default=True,
+        deprecated="This field will be removed in v32. Use doPSFDeconvolve instead.",
+        optional=True,
     )
     doRemapGamut = Field[bool](
         doc="Apply a color correction to unrepresentable colors, if false they will clip", default=True
@@ -180,7 +185,7 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
     luminanceConfig = ConfigurableActionField[LumCompressor](
         doc="Action controlling luminance scaling when making an RGB image"
     )
-    localContrastConfig =   ConfigurableActionField[LocalContrastEnhancer](
+    localContrastConfig = ConfigurableActionField[LocalContrastEnhancer](
         doc="Action controlling the local contrast correction in RGB image production"
     )
     colorConfig = ConfigurableActionField[ColorScaler](
@@ -204,7 +209,9 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         ),
         optional=True,
         default=[1.25, 1, 0.75],
-        deprecated="This field will stop working in v31 and be removed in v32, please set exposureBracketerConfig",
+        deprecated=(
+            "This field will stop working in v31 and be removed in v32, please setexposureBracketerConfig"
+        ),
     )
     gamutMethod = ChoiceField[str](
         doc="If doRemapGamut is True this determines the method",
@@ -236,6 +243,7 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         - ``gamutMethod`` -> ``gamutMapperConfig.gamutMethod``
         - ``exposureBrackets`` -> ``exposureBracketerConfig.exposureBrackets``
         - ``doLocalContrast`` -> ``localContrastConfig.doLocalContrast``
+        - ``doPSFDeconcovlve`` -> ``doPSFDeconvolve``
         """
         # check if gamutMethod is set
         if len(self._history["gamutMethod"]) > 1:
@@ -249,6 +257,10 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
 
         if len(self.localContrastConfig._history["doLocalContrast"]) > 1:
             self.doLocalContrast = self.localContrastConfig.doLocalContrast
+
+        # Handle doPSFDeconcovlve typo fix
+        if len(self._history["doPSFDeconcovlve"]) > 1:
+            self.doPSFDeconvolve = self.doPSFDeconcovlve
 
     def freeze(self):
         self._handle_deprecated()
@@ -448,8 +460,6 @@ class PrettyPictureTask(PipelineTask):
         for item in to_remove:
             local_contrast_config["diffusionControl"].pop(item)
 
-        # Ignore type because Exposures do in fact have a bbox, but it's c++
-        # and not typed.
         colorImage = lsstRGB(
             colorImage[:, :, 0],
             colorImage[:, :, 1],
@@ -463,7 +473,7 @@ class PrettyPictureTask(PipelineTask):
             else None,
             gamut_remapping_function=self.config.gamutMapperConfig if self.config.doRemapGamut else None,
             cieWhitePoint=tuple(self.config.cieWhitePoint),  # type: ignore
-            psf=psf if self.config.doPSFDeconcovlve else None,
+            psf=psf if self.config.doPSFDeconvolve else None,
         )
 
         # Find the dataset type and thus the maximum values as well
@@ -597,11 +607,11 @@ class PrettyPictureBackgroundFixerConfig(
     PipelineTaskConfig, pipelineConnections=PrettyPictureBackgroundFixerConnections
 ):
     use_detection_mask = Field[bool](
-        doc="Use the detection mask to determine background instead of imperically finding it in this task",
+        doc="Use the detection mask to determine background instead of empirically finding it in this task",
         default=False,
     )
     num_background_bins = Field[int](
-        doc="The number of bins along each axis when determing background", default=5
+        doc="The number of bins along each axis when determining background", default=5
     )
     min_bin_fraction = Field[float](
         doc="Bins with fewer pixels than this fraction of the total will be ignored", default=0.1
@@ -1171,9 +1181,8 @@ class PrettyMosaicTask(PipelineTask):
                     fx=shape[0] / self.config.binFactor,
                     fy=shape[1] / self.config.binFactor,
                 )
-                mask_array = rgbMask.array[:: self.config.binFactor, self.config.binFactor]
+                mask_array = rgbMask.array[:: self.config.binFactor, :: self.config.binFactor]
                 rgbMask = Mask(*(mask_array.shape[::-1]))
-                rgbMask = mask_array
             mosaic_maker.add_to_image(consolidatedImage, rgb, newBox, box)
 
             consolidatedMask[*box.slices] = np.bitwise_or(consolidatedMask[*box.slices], rgbMask.array)

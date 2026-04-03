@@ -99,8 +99,9 @@ class ColorScaler(ConfigurableAction):
         # angle representation.
         chromaMask = chroma1 == 0
         chroma1[chromaMask] = 1
-        # I think these ratios are right, but I see them opposite in a different
-        # version. Keep an eye on this in testing.
+        # Calculate sine and cosine of hue angle from chromaticity coordinates.
+        # In CIELAB a-b plane: sin(hue) = b/chroma, cos(hue) = a/chroma
+        # These are used below to preserve hue while adjusting chroma.
         sinHue = b / chroma1
         cosHue = a / chroma1
         sinHue[chromaMask] = 0
