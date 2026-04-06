@@ -111,47 +111,47 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         itemtype=float,
         doc="Fiducial sky background level (ADU/s) assumed when calculating effective exposure time. "
         "Keyed by band.",
-        default={'u': 1.0, 'g': 1.0, 'r': 1.0, 'i': 1.0, 'z': 1.0, 'y': 1.0},
+        default={"u": 1.0, "g": 1.0, "r": 1.0, "i": 1.0, "z": 1.0, "y": 1.0},
     )
     fiducialPsfSigma = pexConfig.DictField(
         keytype=str,
         itemtype=float,
         doc="Fiducial PSF sigma (pixels) assumed when calculating effective exposure time. "
         "Keyed by band.",
-        default={'u': 1.0, 'g': 1.0, 'r': 1.0, 'i': 1.0, 'z': 1.0, 'y': 1.0},
+        default={"u": 1.0, "g": 1.0, "r": 1.0, "i": 1.0, "z": 1.0, "y": 1.0},
     )
     fiducialZeroPoint = pexConfig.DictField(
         keytype=str,
         itemtype=float,
         doc="Fiducial zero point assumed when calculating effective exposure time. "
         "Keyed by band.",
-        default={'u': 25.0, 'g': 25.0, 'r': 25.0, 'i': 25.0, 'z': 25.0, 'y': 25.0},
+        default={"u": 25.0, "g": 25.0, "r": 25.0, "i": 25.0, "z": 25.0, "y": 25.0},
     )
     fiducialReadNoise = pexConfig.DictField(
         keytype=str,
         itemtype=float,
         doc="Fiducial readnoise (electrons) assumed when calculating effective exposure time. "
         "Keyed by band.",
-        default={'u': 9.0, 'g': 9.0, 'r': 9.0, 'i': 9.0, 'z': 9.0, 'y': 9.0},
+        default={"u": 9.0, "g": 9.0, "r": 9.0, "i": 9.0, "z": 9.0, "y": 9.0},
     )
     fiducialExpTime = pexConfig.DictField(
         keytype=str,
         itemtype=float,
         doc="Fiducial exposure time (seconds). "
         "Keyed by band.",
-        default={'u': 30.0, 'g': 30.0, 'r': 30.0, 'i': 30.0, 'z': 30.0, 'y': 30.0},
+        default={"u": 30.0, "g": 30.0, "r": 30.0, "i": 30.0, "z": 30.0, "y": 30.0},
     )
     fiducialMagLim = pexConfig.DictField(
         keytype=str,
         itemtype=float,
         doc="Fiducial magnitude limit depth at SNR=5. "
         "Keyed by band.",
-        default={'u': 25.0, 'g': 25.0, 'r': 25.0, 'i': 25.0, 'z': 25.0, 'y': 25.0},
+        default={"u": 25.0, "g": 25.0, "r": 25.0, "i": 25.0, "z": 25.0, "y": 25.0},
     )
     maxEffectiveTransparency = pexConfig.Field(
         dtype=float,
         doc="Maximum value allowed for effective transparency scale factor (often inf or 1.0).",
-        default=float('inf')
+        default=float("inf")
     )
     magLimSnr = pexConfig.Field(
         dtype=float,
@@ -338,9 +338,9 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         self.update_effective_time_stats(summary, exposure)
 
         md = exposure.getMetadata()
-        if 'SFM_ASTROM_OFFSET_MEAN' in md:
-            summary.astromOffsetMean = md['SFM_ASTROM_OFFSET_MEAN']
-            summary.astromOffsetStd = md['SFM_ASTROM_OFFSET_STD']
+        if "SFM_ASTROM_OFFSET_MEAN" in md:
+            summary.astromOffsetMean = md["SFM_ASTROM_OFFSET_MEAN"]
+            summary.astromOffsetStd = md["SFM_ASTROM_OFFSET_STD"]
 
         return summary
 
@@ -463,12 +463,12 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         else:
             psf_cat = sources[psf_mask].copy(deep=True)
 
-        starXX = psf_cat[self.config.starShape + '_xx']
-        starYY = psf_cat[self.config.starShape + '_yy']
-        starXY = psf_cat[self.config.starShape + '_xy']
-        psfXX = psf_cat[self.config.psfShape + '_xx']
-        psfYY = psf_cat[self.config.psfShape + '_yy']
-        psfXY = psf_cat[self.config.psfShape + '_xy']
+        starXX = psf_cat[self.config.starShape + "_xx"]
+        starYY = psf_cat[self.config.starShape + "_yy"]
+        starXY = psf_cat[self.config.starShape + "_xy"]
+        psfXX = psf_cat[self.config.psfShape + "_xx"]
+        psfYY = psf_cat[self.config.psfShape + "_yy"]
+        psfXY = psf_cat[self.config.psfShape + "_xy"]
 
         # Use the trace radius for the star size.
         starSize = np.sqrt(starXX/2. + starYY/2.)
@@ -490,12 +490,12 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         psfE2 = 2*psfXY/(psfXX + psfYY)
 
         psfStarDeltaE1Median = np.median(starE1 - psfE1)
-        psfStarDeltaE1Scatter = sigmaMad(starE1 - psfE1, scale='normal')
+        psfStarDeltaE1Scatter = sigmaMad(starE1 - psfE1, scale="normal")
         psfStarDeltaE2Median = np.median(starE2 - psfE2)
-        psfStarDeltaE2Scatter = sigmaMad(starE2 - psfE2, scale='normal')
+        psfStarDeltaE2Scatter = sigmaMad(starE2 - psfE2, scale="normal")
 
         psfStarDeltaSizeMedian = np.median(starSize - psfSize)
-        psfStarDeltaSizeScatter = sigmaMad(starSize - psfSize, scale='normal')
+        psfStarDeltaSizeScatter = sigmaMad(starSize - psfSize, scale="normal")
         psfStarScaledDeltaSizeScatter = psfStarDeltaSizeScatter/starSizeMedian
 
         summary.psfStarDeltaE1Median = float(psfStarDeltaE1Median)
@@ -564,7 +564,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
                                 lon=observatory.getLongitude().asDegrees()*units.deg,
                                 height=observatory.getElevation()*units.m)
             obstime = Time(visitInfo.getDate().get(system=DateTime.MJD),
-                           location=loc, format='mjd')
+                           location=loc, format="mjd")
             coord = SkyCoord(
                 summary.ra*units.degree,
                 summary.dec*units.degree,
@@ -572,7 +572,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
                 location=loc,
             )
             with warnings.catch_warnings():
-                warnings.simplefilter('ignore')
+                warnings.simplefilter("ignore")
                 altaz = coord.transform_to(AltAz)
 
             summary.zenithDistance = float(90.0 - altaz.alt.degree)
@@ -797,7 +797,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
             summary.magLim = float("nan")
             return
 
-        # Get the image units (default to 'adu' if metadata key absent)
+        # Get the image units (default to "adu" if metadata key absent)
         md = exposure.getMetadata()
         if md.get("LSST ISR UNITS", "adu") == "electron":
             gain = 1.0
