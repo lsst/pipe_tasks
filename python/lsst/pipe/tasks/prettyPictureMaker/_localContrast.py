@@ -41,9 +41,9 @@ def r(
 
     Parameters
     ----------
-    img : `NDArray`
+    img : `numpy.ndarray`
         The input image array of shape (n_images, height, width).
-    out : `NDArray`
+    out : `numpy.ndarray`
         The output image array where the result will be stored. Should have the same shape as `img`.
     g : `float`
         A parameter for gamma correction.
@@ -58,7 +58,7 @@ def r(
 
     Returns
     -------
-    result : `NDArray`
+    result : `numpy.ndarray`
         The processed image array with the same shape as `out`.
     """
 
@@ -109,19 +109,19 @@ def makeGaussianPyramid(
 
     Parameters
     ----------
-    img : `NDArray`
+    img : `numpy.ndarray`
         The input image, which will be processed to create the pyramid.
     padY : `list` of `int`
         List containing padding sizes along the Y-axis for each level of the pyramid.
     padX : `list` of `int`
         List containing padding sizes along the X-axis for each level of the pyramid.
-    out : `List` of `NDArray` or `None`
+    out : `~numba.typed.typedlist.List` of `NDArray` or `None`
         Optional list to store the output images of the pyramid levels.
         If None, a new list is created.
 
     Returns
     -------
-    pyramid : `Sequence` of `NDArray`
+    pyramid : `~collections.abc.sequence` of `numpy.ndarray`
         A sequence of images representing the Gaussian Pyramid.
 
     Notes
@@ -191,24 +191,24 @@ def makeLapPyramid(
 
     Parameters
     ----------
-    img : `NDArray`
+    img : `numpy.ndarray`
         The input image as a numpy array.
     padY : `list` of `int`
         List of padding sizes for rows (vertical padding).
     padX : `list` of `int`
         List of padding sizes for columns (horizontal padding).
-    gaussOut : `List` of `NDArray` or None
+    gaussOut : `~numba.typed.typedlist.List` of `numpy.ndarray` or None
         Preallocated storage for the output of the Gaussian pyramid function.
         If `None` new storage is allocated.
-    lapOut : `List` of `NDArray` or None
+    lapOut : `~numba.typed.typedlist.List` of `numpy.ndarray` or None
         Preallocated for the output Laplacian pyramid. If None, a new
         `List` is created.
-    upscratch : `List` of `NDArray`, optional
+    upscratch : `~numba.typed.typedlist.List` of `numpy.ndarray`, optional
         List to store intermediate results of pyramids (default is None).
 
     Returns
     -------
-    results : `Sequence` of `NDArray`
+    results : `~collections.abc.sequence` of `numpy.ndarray`
         The Laplacian pyramid as a sequence of numpy arrays.
 
     """
@@ -253,17 +253,17 @@ def _calculateOutput(
 
     Parameters
     ----------
-    out : `List` of `NDArray`
+    out : `~numba.typed.typedlist.List` of `numpy.ndarray`
         A list of numpy arrays representing the output image pyramids.
-    pyramid : `List` of `NDArray`
+    pyramid : `~numba.typed.typedlist.List` of `numpy.ndarray`
         A list of numpy arrays representing the Gaussian pyramids.
-    gamma : `NDArray`
+    gamma : `numpy.ndarray`
         A numpy array containing the range for pixel values to be considered in
         the interpolation.
-    pyramidVectorsBottom : `List` of `NDArray`
+    pyramidVectorsBottom : `~numba.typed.typedlist.List` of `numpy.ndarray`
         A list of numpy arrays representing the basis vectors at the bottom
         level of each pyramid layer.
-    pyramidVectorsTop : `List` of `NDArray`
+    pyramidVectorsTop : `~numba.typed.typedlist.List` of `numpy.ndarray`
         A list of numpy arrays representing the basis vectors at the top level
         of each pyramid layer.
 
@@ -290,19 +290,19 @@ def _calculateOutput(
 
 
 def levelPadder(numb: int, levels: int) -> list[int]:
-    """   Determine if each level of transform will need to be padded by
-    one to ensure the level is divisible by two.
+    """Determine if each level of transform will need to be padded by one to
+    ensure the level is divisible by two.
 
     Parameters
     ----------
-    numb : int
+    numb : `int`
         The size of the input dimension
-    levels : int
+    levels : `int`
         The number of times the dimensions will be reduced by a factor of two
 
     Returns
     -------
-    pads : list of int
+    pads : `list` of `int`
         A list where the entries are either zero or one depending on if the
         size will need pad to be a power of two.
 
@@ -331,13 +331,13 @@ def localContrast(
     clarity: float = 0.15,
     maxLevel: int | None = None,
     numGamma: int = 20,
-    skip_levels: int = 0,
+    skipLevels: int = 0,
 ) -> NDArray:
     """Enhance the local contrast of an input image.
 
     Parameters
     ----------
-    image : `NDArray`
+    image : `numpy.ndarray`
         Two dimensional numpy array representing the image to have contrast
         increased. Data must be in the range 0 to 1.
     sigma : `float`
@@ -360,13 +360,13 @@ def localContrast(
         values are interpolated to get the outcome. The higher the numGamma,
         the smoother the image is post contrast enhancement, though above
         some number there is no discernible difference.
-    skip_levels : `int`
+    skipLevels : `int`
         When calculating the local contrast skip the specified number of levels
         starting at the lowest level.
 
     Returns
     -------
-    image : `NDArray`
+    image : `numpy.ndarray`
         Two dimensional numpy array of the input image with increased local
         contrast.
 
@@ -480,8 +480,8 @@ def localContrast(
             pyramidVectors[1],
         )
         del pyramidVectors
-    if skip_levels:
-        for i in range(skip_levels):
+    if skipLevels:
+        for i in range(skipLevels):
             finalPyramid[i] = base_lap_pyr[i]
 
     # time to reconstruct

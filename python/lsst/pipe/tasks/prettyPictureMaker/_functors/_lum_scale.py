@@ -35,6 +35,8 @@ from lsst.rubinoxide import rgb
 
 from .._equalizers import contrast_equalizer, tone_equalizer
 
+logger = logging.getLogger(__name__)
+
 
 class LumCompressor(ConfigurableAction):
     """Compress and enhance luminance using multi-stage processing.
@@ -72,12 +74,12 @@ class LumCompressor(ConfigurableAction):
     )
     equalizerLevels = ListField[float](
         doc=(
-            "A list of factors to modify the constrast in a scale dependent way. "
+            "A list of factors to modify the constrast in a scale-dependent way. "
             "One coefficient for each spatial scale, starting from the largest. "
             "Values large than 1 increase contrast, while less than 1 decreases. "
-            "This adjustment is multaplicative. "
+            "This adjustment is multiplicative. "
             "Only scales upto and including the largest to be modified need specified, "
-            "IE [1.1,0.9] modifieds the first two [1.1,1,0.9] modifies the first three."
+            "i.e. [1.1,0.9] modifies the first two [1.1,1,0.9] modifies the first three."
         ),
         optional=True,
     )
@@ -118,7 +120,7 @@ class LumCompressor(ConfigurableAction):
 
         Returns
         -------
-        `FloatImagePlane`
+        result : `FloatImagePlane`
             The processed image with luminance compression applied. Values
             are clipped to the range [0, 1].
 
@@ -143,26 +145,25 @@ class LumCompressor(ConfigurableAction):
 
         # Scale the values with linear manipulation for contrast
         intensities = abs(intensities)
-        # intensities = rgb_diffusion.diffuse_gray_image(intensities)
         nj_to_lum = rgb.RGB_to_Oklab(
             np.array([[[self.floor, self.floor, self.floor]]], dtype=float), (0.28, 0.28)
         )[0, 0, 0]
         top = np.arcsinh(self.stretch)
         bottom = (np.arcsinh(nj_to_lum * self.stretch) - 0.2 * top) / 0.8
         intensities = (np.arcsinh(intensities * self.stretch) - bottom) / (top - bottom)
-        logging.debug("arcsinh max %.4f", intensities.max())
+        logger.debug("arcsinh max %.4f", intensities.max())
         intensities = np.clip(intensities, 0, 1)
         intensities = (intensities - self.shadow) / ((self.highlight) - self.shadow)
-        logging.debug("post lin stretch max %.4f", intensities.max())
+        logger.debug("post lin stretch max %.4f", intensities.max())
         intensities = ((self.midtone - 1) * intensities) / (
             ((2 * self.midtone - 1) * intensities) - self.midtone
         )
-        logging.debug("midtone adjustment max %.4f", intensities.max())
+        logger.debug("midtone adjustment max %.4f", intensities.max())
         intensities = np.clip(intensities, 0.0, self.max)
 
         if self.equalizerLevels is not None:
             intensities = contrast_equalizer(intensities, self.equalizerLevels)
-            logging.debug("equalizer max %.4f", intensities.max())
+            logger.debug("equalizer max %.4f", intensities.max())
 
         if self.toneAdjustment is not None:
             intensities = np.clip(intensities, 0, self.max)

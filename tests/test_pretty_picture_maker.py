@@ -405,10 +405,6 @@ class TestGamutFixer:
         result = fixer(Lab, xyz_whitepoint)
 
         assert result.shape == Lab.shape[:-1] + (3,)
-        # Note: Color space transformations (RGB->OkLab->RGB) can produce values
-        # slightly outside [0, 1] due to white point conversions. Values >= -0.05
-        # are acceptable and handled elsewhere in the pipeline.
-        assert np.all(result >= -0.05)
         assert np.all(result <= 1.0)
 
     def test_gamut_fixer_mapping_method(self):
@@ -422,10 +418,6 @@ class TestGamutFixer:
         result = fixer(Lab, xyz_whitepoint)
 
         assert result.shape == Lab.shape[:-1] + (3,)
-        # Note: Color space transformations (RGB->OkLab->RGB) can produce values
-        # slightly outside [0, 1] due to white point conversions. Values >= -0.05
-        # are acceptable and handled elsewhere in the pipeline.
-        assert np.all(result >= -0.05)
         assert np.all(result <= 1.0)
 
     def test_gamut_fixer_heal_method(self):
@@ -438,10 +430,6 @@ class TestGamutFixer:
         result = fixer(Lab, xyz_whitepoint)
 
         assert result.shape == Lab.shape[:-1] + (3,)
-        # Note: Color space transformations (RGB->OkLab->RGB) can produce values
-        # slightly outside [0, 1] due to white point conversions. Values >= -0.05
-        # are acceptable and handled elsewhere in the pipeline.
-        assert np.all(result >= -0.05)
         assert np.all(result <= 1.0)
 
     def test_gamut_fixer_no_out_of_bounds(self):

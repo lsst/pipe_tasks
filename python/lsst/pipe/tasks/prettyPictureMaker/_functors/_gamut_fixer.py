@@ -50,7 +50,7 @@ def heal_gamut(
     lab_image : `LABImage`
         A NxMx3 array in the Lab colorspace. Modified in-place by healing out-of-gamut regions.
         For each region, a copy is made before modification, then written back.
-    mask : `NDArray` of `bool`
+    mask : `numpy.ndarray` of `bool`
         A boolean mask indicating which pixels are out of gamut.
     xyz_whitepoint : `tuple` of `float`, `float`
         Sets the white point of the xyz colorspace in xy coordinates.
@@ -67,7 +67,7 @@ def heal_gamut(
     Raises
     ------
     ValueError
-        If the shapes of lab_image and mask are incompatible.
+        Raised if the shapes of lab_image and mask are incompatible.
 
     Notes
     -----
@@ -75,10 +75,12 @@ def heal_gamut(
 
     1. Labeling connected regions in the mask
     2. For each region smaller than max_size:
+
        - Dilating the mask to create an annulus around the region
        - Computing average a,b color values from the annulus
        - Using rgb.inpaint_mask to interpolate the L, a, and b channels
        - Filling the masked region with the interpolated values
+
     3. Regions larger than max_size are skipped.
     """
     # Need to split all the regions of the mask
@@ -175,7 +177,7 @@ class GamutFixer(ConfigurableAction):
         Raises
         ------
         ValueError
-            If the gamut method is not one of the supported methods.
+            Raise if the gamut method is not one of the supported methods.
         """
         rgb_prime = rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), xyz_whitepoint)
 
