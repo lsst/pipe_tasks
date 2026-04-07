@@ -19,12 +19,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ("lsstRGB",)
+__all__ = ("lsstRGB", "DEFAULT_FUNCTION")
 
 import logging
 import numpy as np
 import skimage
 import time
+
+from enum import Enum, auto
 
 
 from .types import (
@@ -53,23 +55,23 @@ from lsst.rubinoxide import rgb
 logger = logging.getLogger(__name__)
 
 
-class _SentinalDefault:
-    pass
+class _SentinalDefault(Enum):
+    DEFAULT_FUNCTION = auto()
 
 
-default = _SentinalDefault()
+DEFAULT_FUNCTION = _SentinalDefault.DEFAULT_FUNCTION
 
 
 def lsstRGB(
     rArray: FloatImagePlane,
     gArray: FloatImagePlane,
     bArray: FloatImagePlane,
-    local_contrast: LocalContrastFunction | None | _SentinalDefault = default,
-    scale_lum: ScaleLumFunction | None | _SentinalDefault = default,
-    scale_color: ScaleColorFunction | None | _SentinalDefault = default,
-    remap_bounds: RemapBoundsFunction | None | _SentinalDefault = default,
-    bracketing_function: BracketingFunction | None | _SentinalDefault = default,
-    gamut_remapping_function: GamutRemappingFunction | None | _SentinalDefault = default,
+    local_contrast: LocalContrastFunction | None | _SentinalDefault = DEFAULT_FUNCTION,
+    scale_lum: ScaleLumFunction | None | _SentinalDefault = DEFAULT_FUNCTION,
+    scale_color: ScaleColorFunction | None | _SentinalDefault = DEFAULT_FUNCTION,
+    remap_bounds: RemapBoundsFunction | None | _SentinalDefault = DEFAULT_FUNCTION,
+    bracketing_function: BracketingFunction | None | _SentinalDefault = DEFAULT_FUNCTION,
+    gamut_remapping_function: GamutRemappingFunction | None | _SentinalDefault = DEFAULT_FUNCTION,
     psf: FloatImagePlane | None = None,
     cieWhitePoint: tuple[float, float] = (0.28, 0.28),
 ) -> RGBImage:
@@ -77,11 +79,11 @@ def lsstRGB(
 
     Parameters
     ----------
-    rArray : `FloatImagePlane`
+    rArray : `numpy.ndarray`
         The array used as the red channel
-    gArray : `FloatImagePlane`
+    gArray : `numpy.ndarray`
         The array used as the green channel
-    bArray : `FloatImagePlane`
+    bArray : `numpy.ndarray`
         The array used as the blue channel
     local_contrast : `LocalContrastFunction` or `None`
         This is a callable that's passed the luminance values, and is expected
@@ -99,13 +101,14 @@ def lsstRGB(
     remap_bounds : `RemapBoundsFunction` or `None`
         This is a callable that remaps the input arrays such that each of
         them fall within a zero to one range. This callable is given the
-        initial image. Set to None for no remapping.
+        initial image. Set to None for no remapping. If this is None
+        input arrays should already be in 0-1 range.
     bracketing_function : `BracketingFunction` or `None`
         This is a callable that is passed the input luminance, and should
         create various exposure levels and then fuse them together.
         Set to None for no bracketing.
     gamut_remapping_function : `GamutRemappingFunction` or `None`
-        This is a callable that is passed the final OkLab image. It's job
+        This is a callable that is passed the final OkLab image. Its job
         is to detect and correct any pixel values that would fall outside
         an RGB P3 colorspace. Set to None for no fixes.
     psf : `FloatImagePlane` or `None`
@@ -128,17 +131,17 @@ def lsstRGB(
     """
 
     # Default construct functors to be used as callables
-    if local_contrast is default:
+    if local_contrast is DEFAULT_FUNCTION:
         local_contrast = LocalContrastEnhancer()
-    if scale_lum is default:
+    if scale_lum is DEFAULT_FUNCTION:
         scale_lum = LumCompressor()
-    if scale_color is default:
+    if scale_color is DEFAULT_FUNCTION:
         scale_color = ColorScaler()
-    if remap_bounds is default:
+    if remap_bounds is DEFAULT_FUNCTION:
         remap_bounds = BoundsRemapper()
-    if bracketing_function is default:
+    if bracketing_function is DEFAULT_FUNCTION:
         bracketing_function = ExposureBracketer()
-    if gamut_remapping_function is default:
+    if gamut_remapping_function is DEFAULT_FUNCTION:
         gamut_remapping_function = GamutFixer()
 
     # Validate inputs

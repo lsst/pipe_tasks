@@ -153,6 +153,8 @@ class DiffusionFunction(ConfigurableAction):
 class LocalContrastEnhancer(ConfigurableAction):
     """Multi-stage local contrast enhancement processor.
 
+    Notes
+    -----
     This class implements a two-stage approach for enhancing image contrast:
 
     1. **Local Contrast Enhancement**: Applies scale-space contrast enhancement
@@ -242,7 +244,7 @@ class LocalContrastEnhancer(ConfigurableAction):
             shadows=self.shadows,
             clarity=self.clarity,
             maxLevel=self.maxLevel,
-            skip_levels=self.skipLevels,
+            skipLevels=self.skipLevels,
         )
         if self.doDiffusion:
             intensities = self.diffusionFunction(intensities)

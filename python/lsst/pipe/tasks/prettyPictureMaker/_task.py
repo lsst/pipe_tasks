@@ -43,7 +43,7 @@ import numpy as np
 from typing import TYPE_CHECKING, cast, Any
 from lsst.skymap import BaseSkyMap
 
-from scipy.stats import norm, halfnorm, mode
+from scipy.stats import halfnorm, mode
 from scipy.ndimage import binary_dilation
 from scipy.interpolate import RBFInterpolator
 from skimage.restoration import inpaint_biharmonic
@@ -162,17 +162,17 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         ),
         default=10,
     )
-    doPSFDeconvolve = Field[bool](
-        doc="Use the PSF in a richardson lucy deconvolution on the luminance channel.", default=False
+    doPsfDeconvolve = Field[bool](
+        doc="Use the PSF in a Richardson-Lucy deconvolution on the luminance channel.", default=False
     )
     doPSFDeconcovlve = Field[bool](
-        doc="Use the PSF in a richardson lucy deconvolution on the luminance channel.",
-        default=True,
-        deprecated="This field will be removed in v32. Use doPSFDeconvolve instead.",
+        doc="Use the PSF in a Richardson-Lucy deconvolution on the luminance channel.",
+        default=False,
+        deprecated="This field will be removed in v32. Use doPsfDeconvolve instead.",
         optional=True,
     )
     doRemapGamut = Field[bool](
-        doc="Apply a color correction to unrepresentable colors, if false they will clip", default=True
+        doc="Apply a color correction to unrepresentable colors; if False, clip them.", default=True
     )
     doExposureBrackets = Field[bool](
         doc="Apply exposure bracketing to aid in dynamic range compression", default=True
@@ -201,7 +201,6 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         doc="Action to fix pixels which lay outside RGB color gamut"
     )
 
-    # old
     exposureBrackets = ListField[float](
         doc=(
             "Exposure scaling factors used in creating multiple exposures with different scalings which will "
@@ -210,7 +209,8 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         optional=True,
         default=[1.25, 1, 0.75],
         deprecated=(
-            "This field will stop working in v31 and be removed in v32, please setexposureBracketerConfig"
+            "This field will stop working in v31 and be removed in v32, "
+            "please set exposureBracketerConfig.exposureBrackets"
         ),
     )
     gamutMethod = ChoiceField[str](
@@ -243,7 +243,7 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         - ``gamutMethod`` -> ``gamutMapperConfig.gamutMethod``
         - ``exposureBrackets`` -> ``exposureBracketerConfig.exposureBrackets``
         - ``doLocalContrast`` -> ``localContrastConfig.doLocalContrast``
-        - ``doPSFDeconcovlve`` -> ``doPSFDeconvolve``
+        - ``doPSFDeconcovlve`` -> ``doPsfDeconvolve``
         """
         # check if gamutMethod is set
         if len(self._history["gamutMethod"]) > 1:
@@ -258,12 +258,14 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         if len(self.localContrastConfig._history["doLocalContrast"]) > 1:
             self.doLocalContrast = self.localContrastConfig.doLocalContrast
 
-        # Handle doPSFDeconcovlve typo fix
+        # Handle doPsfDeconcovlve typo fix
         if len(self._history["doPSFDeconcovlve"]) > 1:
-            self.doPSFDeconvolve = self.doPSFDeconcovlve
+            self.doPsfDeconvolve = self.doPSFDeconcovlve
 
     def freeze(self):
-        self._handle_deprecated()
+        # ensure this is not already frozen
+        if self._frozen is not True:
+            self._handle_deprecated()
         super().freeze()
 
 
@@ -468,12 +470,12 @@ class PrettyPictureTask(PipelineTask):
             scale_lum=self.config.luminanceConfig,
             scale_color=self.config.colorConfig,
             remap_bounds=self.config.imageRemappingConfig,
-            bracketing_function=self.config.exposureBracketerConfig
-            if self.config.doExposureBrackets
-            else None,
+            bracketing_function=(
+                self.config.exposureBracketerConfig if self.config.doExposureBrackets else None
+            ),
             gamut_remapping_function=self.config.gamutMapperConfig if self.config.doRemapGamut else None,
             cieWhitePoint=tuple(self.config.cieWhitePoint),  # type: ignore
-            psf=psf if self.config.doPSFDeconvolve else None,
+            psf=psf if self.config.doPsfDeconvolve else None,
         )
 
         # Find the dataset type and thus the maximum values as well
@@ -538,21 +540,22 @@ class PrettyPictureTask(PipelineTask):
             sortedImages[key] = image
         return sortedImages
 
-    def makeInputsFromArrays(self, **kwargs) -> dict[int, DeferredDatasetHandle]:
+    def makeInputsFromArrays(self, **kwargs) -> dict[str, DeferredDatasetHandle]:
         r"""Make valid inputs for the run method from numpy arrays.
 
         Parameters
         ----------
-        kwargs : `NDArray`
+        kwargs : `numpy.ndarray`
             This is standard python kwargs where the left side of the equals
-            is the data band, and the right side is the corresponding `NDArray`
+            is the data band, and the right side is the corresponding `numpy.ndarray`
             array.
 
         Returns
         -------
-        sortedImages : `dict` of `int` to `DeferredDatasetHandle`
-            A dictionary of `DeferredDatasetHandle`\ s keyed by the band they
-            correspond to.
+        sortedImages : `dict` of `str` to \
+                `~lsst.daf.butler.DeferredDatasetHandle`
+            A dictionary of `~lsst.daf.butlger.DeferredDatasetHandle`\ s keyed
+            by the band they correspond to.
         """
         # ignore type because there aren't proper stubs for afw
         temp = {}
@@ -574,9 +577,10 @@ class PrettyPictureTask(PipelineTask):
 
         Returns
         -------
-        sortedImages : `dict` of `int` to `DeferredDatasetHandle`
-            A dictionary of `DeferredDatasetHandle`\ s keyed by the band they
-            correspond to.
+        sortedImages : `dict` of `int` to \
+                `~lsst.daf.butler.DeferredDatasetHandle`
+            A dictionary of `~lsst.daf.butler.DeferredDatasetHandle`\ s keyed
+            by the band they correspond to.
         """
         sortedImages = {}
         for key, value in kwargs.items():
@@ -637,41 +641,6 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
     config: ConfigClass
 
-    def _neg_log_likelihood(self, params, x):
-        """Calculate the negative log-likelihood for a Gaussian distribution.
-
-        This function computes the negative log-likelihood of a set of data `x`
-        given a Gaussian distribution with parameters `mu` and `sigma`.  It's
-        designed to be used as the objective function for a minimization routine
-        to find the best-fit Gaussian parameters.
-
-        Parameters
-        ----------
-        params : `tuple`
-            A tuple containing the mean (`mu`) and standard deviation (`sigma`)
-            of the Gaussian distribution.
-        x : `NDArray`
-            The data samples for which to calculate the log-likelihood.
-
-        Returns
-        -------
-        float
-            The negative log-likelihood of the data given the Gaussian parameters.
-            Returns infinity if sigma is non-positive or if the mean is less than
-            the maximum value in x (to enforce the constraint that the Gaussian
-            only models the lower tail of the distribution).
-        """
-        mu, sigma = params
-        if sigma <= 0:
-            return np.inf
-        M = np.max(x)
-        if mu < M - 1e-8:  # Allow for floating point precision issues
-            return np.inf
-        z = (x - mu) / sigma
-        term = np.log(2) - np.log(sigma) + norm.logpdf(z)
-        loglikelihood = np.sum(term)
-        return -loglikelihood
-
     def _tile_slices(self, arr, R, C):
         """Generate slices for tiling an array.
 
@@ -682,7 +651,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
         Parameters
         ----------
-        arr : `NDArray`
+        arr : `numyp.ndarray`
            The input array to be tiled. Used only to determine the array's shape.
         R : `int`
            The number of tiles in the row dimension.
@@ -759,14 +728,14 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
         Parameters
         ----------
-        image : `NDArray`
+        image : `numpy.ndarray`
             Input image array for which to find background pixels.
         pos_sigma_mult : `float`
             How many sigma to consider as background in the positive direction
 
         Returns
         -------
-        `NDArray`
+        result : `numpy.ndarray`
             Boolean mask array where True indicates background pixels.
 
         Notes
@@ -790,13 +759,6 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         if np.any(mask):
             # use a minimizer to determine best mu and sigma for a Gaussian
             # given only samples below the mean of the Gaussian.
-            # result = minimize(
-            # self._neg_log_likelihood,
-            # (maxLikely, initial_std),
-            # args=(image[mask]),
-            # bounds=((maxLikely, None), (1e-8, None)),
-            # )
-            # mu_hat, sigma_hat = result.x
             mu_hat, sigma_hat = halfnorm.fit(np.abs(image[mask] - maxLikely))
             # mu_hat = maxLikely
         else:
@@ -818,7 +780,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
         Parameters
         ----------
-        image : `NDArray`
+        image : `numpy.ndarray`
             The input image as a NumPy array.
 
         Returns
@@ -887,7 +849,6 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             This `Struct` will have an attribute named ``outputCoadd``.
 
         """
-        # background = self.fixBackground(inputCoadd.image.array)
         if self.config.use_detection_mask:
             mask_plane_dict = inputCoadd.mask.getMaskPlaneDict()
             detection_mask = ~(inputCoadd.mask.array & 2 ** mask_plane_dict["DETECTED"])
@@ -1068,21 +1029,23 @@ class PrettyMosaicTask(PipelineTask):
         skyMap: BaseSkyMap,
         inputRGBMask: Iterable[DeferredDatasetHandle],
     ) -> Struct:
-        r"""Assemble individual `NDArrays` into a mosaic.
+        r"""Assemble individual `numpy.ndarrays` into a mosaic.
 
-        Each input is a `DeferredDatasetHandle` because they're loaded in one
-        at a time to be placed into the mosaic to save memory.
+        Each input is a `~lsst.daf.butler.DeferredDatasetHandle` because
+        they're loaded in one at a time to be placed into the mosaic to save
+        memory.
 
         Parameters
         ----------
-        inputRGB : `Iterable` of `DeferredDatasetHandle`
-            `DeferredDatasetHandle`\ s pointing to RGB `NDArrays`.
+        inputRGB : `Iterable` of `~lsst.daf.butler.DeferredDatasetHandle`
+            `~lsst.daf.butler.DeferredDatasetHandle`\ s pointing to RGB
+            `numpy.ndarrays`.
         skyMap : `BaseSkyMap`
             The skymap that defines the relative position of each of the input
             images.
-        inputRGBMask : `Iterable` of `DeferredDatasetHandle`
-            `DeferredDatasetHandle`\ s pointing to masks for each of the
-            corresponding images.
+        inputRGBMask : `Iterable` of `~lsst.daf.butler.DeferredDatasetHandle`
+            `~lsst.daf.butler.DeferredDatasetHandle`\ s pointing to masks for
+            each of the corresponding images.
 
         Returns
         -------
@@ -1218,15 +1181,16 @@ class PrettyMosaicTask(PipelineTask):
 
         Parameters
         ----------
-        inputs : `Iterable` of `tuple` of `Mapping` and `NDArray`
+        inputs : `Iterable` of `tuple` of `Mapping` and `numpy.ndarray`
             An iterable where each element is a tuple with the first
             element is a mapping that corresponds to an arrays dataId,
-            and the second is an `NDArray`.
+            and the second is an `numpy.ndarray`.
 
         Returns
         -------
-        sortedImages : `Iterable` of `DeferredDatasetHandle`
-            An iterable of `DeferredDatasetHandle`\ s containing the input data.
+        sortedImages : `Iterable` of `~lsst.daf.butler.DeferredDatasetHandle`
+            An iterable of `~lsst.daf.butler.DeferredDatasetHandle`\ s
+            containing the input data.
         """
         structuredInputs = []
         for dataId, array in inputs:

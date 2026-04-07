@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+__all__ = ("tone_equalizer", "contrast_equalizer")
+
 import numpy as np
 import cv2
 from numpy.typing import NDArray
@@ -29,9 +31,8 @@ from ._localContrast import levelPadder, makeLapPyramid
 from .types import FloatImagePlane
 
 
-def eigf_variance_analysis_no_mask(guide: FloatImagePlane, sigma: float) -> NDArray:
-    """
-    Computes average and variance of guide using Gaussian filtering.
+def _eigf_variance_analysis_no_mask(guide: FloatImagePlane, sigma: float) -> NDArray:
+    """Computes average and variance of guide using Gaussian filtering.
 
     Parameters
     ----------
@@ -42,7 +43,7 @@ def eigf_variance_analysis_no_mask(guide: FloatImagePlane, sigma: float) -> NDAr
 
     Returns
     -------
-    `NDArray`
+    result : `numpy.ndarray`
         Array where each pixel has [average, variance].
     """
     # Compute average of guide
@@ -61,15 +62,14 @@ def eigf_variance_analysis_no_mask(guide: FloatImagePlane, sigma: float) -> NDAr
     return output
 
 
-def eigf_blending_no_mask(image: FloatImagePlane, av: NDArray, feathering: float, filter_type: int) -> None:
-    """
-    Applies blending without a mask using averages and variances.
+def _eigf_blending_no_mask(image: FloatImagePlane, av: NDArray, feathering: float, filter_type: int) -> None:
+    """Applies blending without a mask using averages and variances.
 
     Parameters
     ----------
     image : `FloatImagePlane`
         2D input image array. Modified in-place.
-    av : `NDArray`
+    av : `numpy.ndarray`
         Array with shape (height, width, 2) containing averages and variances.
     feathering : `float`
         Feathering parameter for blending.
@@ -96,11 +96,10 @@ def eigf_blending_no_mask(image: FloatImagePlane, av: NDArray, feathering: float
         image[:] = np.sqrt(image[:])
 
 
-def fast_eigf_surface_blur(
+def _fast_eigf_surface_blur(
     image: FloatImagePlane, sigma: float, feathering: float, iterations: int = 1, filter_type: int = 1
 ) -> None:
-    """
-    Applies exposure-independent guided blur with down-scaling and up-sampling.
+    """Applies exposure-independent guided blur with down-scaling and up-sampling.
 
     Parameters
     ----------
@@ -121,8 +120,8 @@ def fast_eigf_surface_blur(
     # Down-sampling dimensions
 
     for _ in range(iterations):
-        av = eigf_variance_analysis_no_mask(image, ds_sigma)
-        eigf_blending_no_mask(image, av.reshape(-1, 2), feathering, filter_type)
+        av = _eigf_variance_analysis_no_mask(image, ds_sigma)
+        _eigf_blending_no_mask(image, av.reshape(-1, 2), feathering, filter_type)
 
 
 def tone_equalizer(
@@ -138,8 +137,8 @@ def tone_equalizer(
 
     This function adjusts image brightness by applying exposure-dependent
     corrections based on tone factors. It uses exposure centers spanning from
-    0 to 1 (10 levels) and applies Gaussian-weighted adjustments. A copy of
-    the input image is made before processing.
+    0 to 1 (10 levels) and applies Gaussian-weighted adjustments using edge
+    informed guided filters. A copy of the input image is made before processing.
 
     Parameters
     ----------
@@ -160,11 +159,11 @@ def tone_equalizer(
 
     Returns
     -------
-    `FloatImagePlane`
+    result : `FloatImagePlane`
         Image with brightness adjusted based on tone factors.
     """
     luminance = np.copy(image)
-    fast_eigf_surface_blur(luminance, sigma, feathering, iterations, filter_type)
+    _fast_eigf_surface_blur(luminance, sigma, feathering, iterations, filter_type)
     exposure = luminance
     corrections = np.zeros_like(luminance)
     EXPOSURE_CENTERS = np.linspace(0, 1, 10)
@@ -194,7 +193,7 @@ def contrast_equalizer(image: FloatImagePlane, contrast_factors: list[float]) ->
 
     Returns
     -------
-    `FloatImagePlane`
+    result : `FloatImagePlane`
         Image with contrast adjusted at multiple spatial scales.
     """
     maxLevel = int(np.min(np.log2(image.shape)))

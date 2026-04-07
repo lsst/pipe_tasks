@@ -88,54 +88,39 @@ class PluginsRegistry:
     """
 
     def __init__(self) -> None:
-        self._full_values: list[tuple[float, PLUGIN_TYPE]] = []
-        self._partial_values: list[tuple[float, PLUGIN_TYPE]] = []
-        self._channel_values: list[tuple[float, PLUGIN_TYPE]] = []
+        self._full_values: list[tuple[float, Callable]] = []
+        self._partial_values: list[tuple[float, Callable]] = []
+        self._channel_values: list[tuple[float, Callable]] = []
 
     def channel(self) -> Generator[PLUGIN_TYPE, None, None]:
         """Yield generators of channel plugins.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
-        gen : `Generator[PLUGIN_TYPE, None, None]`
+        gen : `~collections.abc.Iterator`
             Generator of channel plugins.
-
         """
-        yield from (func for _, func in self._channel_values)
+        return (func for _, func in self._channel_values)
 
     def partial(self) -> Generator[PLUGIN_TYPE, None, None]:
         """Yield generators of partial plugins.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
-        gen : `Generator[PLUGIN_TYPE, None, None]`
+        gen : `~collections.abc.Iterator`
             Generator of partial plugins.
-
         """
-        yield from (func for _, func in self._partial_values)
+        return (func for _, func in self._partial_values)
 
     def full(self) -> Generator[PLUGIN_TYPE, None, None]:
         """Yield generators of full plugins.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
-        gen : `Generator[PLUGIN_TYPE, None, None]`
+        gen : `~collections.abc.Iterator`
             Generator of full plugins.
-
         """
-        yield from (func for _, func in self._full_values)
+        return (func for _, func in self._full_values)
 
     def register(self, order: float, kind: PluginType) -> Callable:
         """Register a plugin which is to be run when producing a
@@ -156,7 +141,6 @@ class PluginsRegistry:
         -------
         wrapper : `Callable`
             Decorator function for registering the plugin.
-
         """
 
         def wrapper(
@@ -173,7 +157,6 @@ class PluginsRegistry:
             -------
             func : `Callable`
                 The same plugin function, now registered in the registry.
-
             """
             match kind:
                 case PluginType.PARTIAL:
