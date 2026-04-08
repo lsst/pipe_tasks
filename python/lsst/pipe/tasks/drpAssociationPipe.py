@@ -258,7 +258,10 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
         ssObjectIdDict = prepareCatalogDict(ssObjectTableRefs, useVisitDetector=False)
         finalVisitSummaryIdDict = prepareCatalogDict(finalVisitSummaryRefs, useVisitDetector=False)
 
-        diaSourceHistory, ssSourceHistory, unassociatedSsObjectHistory = [], [], []
+        # diaSourceHistory: non-ss diaSources to be made into diaObjects.
+        # ssDiaSourceHistory: sso-associated diaSources which skip diaObject creation,
+        #   but are included in diaSource.
+        diaSourceHistory, ssDiaSourceHistory, ssSourceHistory, unassociatedSsObjectHistory = [], [], [], []
         nSsSrc, nSsObj = 0, 0
         visits = set([v for v, _ in diaIdDict.keys()])
         for visit in visits:
@@ -308,12 +311,15 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                     diaSourceHistory.append(diaCat[diaInPatch])
                 if nSsSrc > 0:
                     ssSourceHistory.append(ssoAssocResult.associatedSsSources)
+                    ssDiaSourceHistory.append(ssoAssocResult.associatedSsDiaSources)
+
                 if nSsObj > 0:
                     unassociatedSsObjectHistory.append(ssoAssocResult.unassociatedSsObjects)
 
         # After looping over all of the detector-level catalogs that overlap the
         # patch, combine them into patch-level catalogs
         diaSourceHistoryCat = self._stackCatalogs(diaSourceHistory)
+        ssDiaSourceHistoryCat = self._stackCatalogs(ssDiaSourceHistory)
         if self.config.doSolarSystemAssociation:
             ssSourceHistoryCat = self._stackCatalogs(ssSourceHistory, remove_columns=['ra', 'dec'])
             nSsSrcTotal = len(ssSourceHistoryCat) if ssSourceHistoryCat else 0
@@ -355,10 +361,12 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
 
         if self.config.doAddDiaObjectCoords:
             assocDiaSources = self._addDiaObjectCoords(diaObjects, assocDiaSources)
+        if ssDiaSourceHistoryCat:
+            ssDiaSourceHistoryCat = ssDiaSourceHistoryCat.to_pandas().set_index("diaSourceId", drop=True)
+            assocDiaSources = pd.concat([assocDiaSources, ssDiaSourceHistoryCat])
         if self.config.doUseSchema:
             diaObjects = convertDataFrameToSdmSchema(self.schema, diaObjects, tableName="DiaObject")
             assocDiaSources = convertDataFrameToSdmSchema(self.schema, assocDiaSources, tableName="DiaSource")
-
         return pipeBase.Struct(
             diaObjectTable=diaObjects,
             assocDiaSourceTable=assocDiaSources,
