@@ -458,6 +458,13 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         doc="If True, include astrometric errors in the output catalog.",
     )
 
+    do_full_star_detection = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="If True, run the full star detection/deblend/measurement. Otherwise, "
+            "use PSF stars.",
+    )
+
     background_stats_ignored_pixel_masks = pexConfig.ListField(
         dtype=str,
         default=["SAT", "SUSPECT", "SPIKE"],
@@ -533,14 +540,18 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         # shapeHSM/moments for star/galaxy separation.
         # TODO DM-39203: we can remove aperture correction from this task
         # once we are using the shape-based star/galaxy code.
-        self.psf_source_measurement.plugins = ["base_PixelFlags",
-                                               "base_SdssCentroid",
-                                               "ext_shapeHSM_HsmSourceMoments",
-                                               "base_CircularApertureFlux",
-                                               "base_GaussianFlux",
-                                               "base_PsfFlux",
-                                               "base_CompensatedTophatFlux",
-                                               ]
+        self.psf_source_measurement.plugins = [
+            "base_PixelFlags",
+            "base_SdssCentroid",
+            "ext_shapeHSM_HsmSourceMoments",
+            "ext_shapeHSM_HsmPsfMoments",
+            "base_GaussianFlux",
+            "base_PsfFlux",
+            "base_CircularApertureFlux",
+            "base_ClassificationSizeExtendedness",
+            "base_CompensatedTophatFlux",
+        ]
+        self.psf_source_measurement.slots.psfShape = "ext_shapeHSM_HsmPsfMoments"
         self.psf_source_measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
         # Only measure apertures we need for PSF measurement.
         self.psf_source_measurement.plugins["base_CircularApertureFlux"].radii = [12.0]
@@ -560,16 +571,17 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         self.star_detection.reEstimateBackground = False
         self.star_detection.thresholdValue = 5.0
         self.star_detection.includeThresholdMultiplier = 2.0
-        self.star_measurement.plugins = ["base_PixelFlags",
-                                         "base_SdssCentroid",
-                                         "ext_shapeHSM_HsmSourceMoments",
-                                         "ext_shapeHSM_HsmPsfMoments",
-                                         "base_GaussianFlux",
-                                         "base_PsfFlux",
-                                         "base_CircularApertureFlux",
-                                         "base_ClassificationSizeExtendedness",
-                                         "base_CompensatedTophatFlux",
-                                         ]
+        self.star_measurement.plugins = [
+            "base_PixelFlags",
+            "base_SdssCentroid",
+            "ext_shapeHSM_HsmSourceMoments",
+            "ext_shapeHSM_HsmPsfMoments",
+            "base_GaussianFlux",
+            "base_PsfFlux",
+            "base_CircularApertureFlux",
+            "base_ClassificationSizeExtendedness",
+            "base_CompensatedTophatFlux",
+        ]
         self.star_measurement.slots.psfShape = "ext_shapeHSM_HsmPsfMoments"
         self.star_measurement.slots.shape = "ext_shapeHSM_HsmSourceMoments"
         # Only measure the apertures we need for star selection.
@@ -1076,18 +1088,29 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 )
 
             # Run the stars_detection subtask for the photometric calibration.
-            result.stars_footprints = self._find_stars(
-                result.exposure,
-                result.background,
-                id_generator,
-                background_to_photometric_ratio=result.background_to_photometric_ratio,
-                adaptive_det_res_struct=adaptive_det_res_struct,
-                num_astrometry_matches=num_astrometry_matches,
-            )
+            if self.config.do_full_star_detection:
+                result.stars_footprints = self._find_and_measure_stars(
+                    result.exposure,
+                    result.background,
+                    id_generator,
+                    background_to_photometric_ratio=result.background_to_photometric_ratio,
+                    adaptive_det_res_struct=adaptive_det_res_struct,
+                    num_astrometry_matches=num_astrometry_matches,
+                )
+            else:
+                result.stars_footprints = self._measure_psf_stars(
+                    result.exposure,
+                    result.psf_stars_footprints,
+                    id_generator,
+                    num_astrometry_matches=num_astrometry_matches,
+                )
+
             psf = result.exposure.getPsf()
             psfSigma = psf.computeShape(result.exposure.getBBox().getCenter()).getDeterminantRadius()
-            self._match_psf_stars(result.psf_stars_footprints, result.stars_footprints,
-                                  psfSigma=psfSigma)
+
+            if self.config.do_full_star_detection:
+                self._match_psf_stars(result.psf_stars_footprints, result.stars_footprints,
+                                      psfSigma=psfSigma)
 
             # Update the "stars" source coordinates with the current wcs.
             afwTable.updateSourceCoords(
@@ -1161,12 +1184,16 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         stdev_bg, _ = statObj.getResult(afwMath.STDEV)
         self.metadata["bg_subtracted_skyPixel_instFlux_stdev"] = stdev_bg
 
-        self.metadata["bg_subtracted_skySource_flux_median"] = (
-            np.median(result.stars[result.stars['sky_source']][self.config.background_stats_flux_column])
-        )
-        self.metadata["bg_subtracted_skySource_flux_stdev"] = (
-            np.std(result.stars[result.stars['sky_source']][self.config.background_stats_flux_column])
-        )
+        if self.config.do_full_star_detection:
+            self.metadata["bg_subtracted_skySource_flux_median"] = (
+                np.median(result.stars[result.stars['sky_source']][self.config.background_stats_flux_column])
+            )
+            self.metadata["bg_subtracted_skySource_flux_stdev"] = (
+                np.std(result.stars[result.stars['sky_source']][self.config.background_stats_flux_column])
+            )
+        else:
+            self.metadata["bg_subtracted_skySource_flux_median"] = np.nan
+            self.metadata["bg_subtracted_skySource_flux_stdev"] = np.nan
 
         if self.config.do_calibrate_pixels:
             self._apply_photometry(
@@ -1415,8 +1442,15 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         exposure.info.setApCorrMap(ap_corr_map)
 
-    def _find_stars(self, exposure, background, id_generator, background_to_photometric_ratio=None,
-                    adaptive_det_res_struct=None, num_astrometry_matches=None):
+    def _find_and_measure_stars(
+        self,
+        exposure,
+        background,
+        id_generator,
+        background_to_photometric_ratio=None,
+        adaptive_det_res_struct=None,
+        num_astrometry_matches=None,
+    ):
         """Detect stars on an exposure that has a PSF model, and measure their
         PSF, circular aperture, compensated gaussian fluxes.
 
@@ -1482,7 +1516,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                     nPeak += nPeakSrc
                 minIsolated = min(400, max(3, 0.005*nPeak, 0.6*num_astrometry_matches))
                 if nFootprint > 0:
-                    self.log.info("Adaptive threshold detection _find_stars nIter: %d; "
+                    self.log.info("Adaptive threshold detection _find_and_measure_stars nIter: %d; "
                                   "nPeak/nFootprint = %.2f (max is 800); nIsolated = %d (min is %.1f).",
                                   adaptiveDetIter, nPeak/nFootprint, nIsolated, minIsolated)
                     if nPeak/nFootprint > 800 or nIsolated < minIsolated:
@@ -1555,6 +1589,58 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # normalization correction to create normalized
         # calibration fluxes.
         self.star_normalized_calibration_flux.run(exposure=exposure, catalog=sources)
+        self.star_apply_aperture_correction.run(sources, exposure.apCorrMap)
+        self.star_catalog_calculation.run(sources)
+        self.star_set_primary_flags.run(sources)
+
+        result = self.star_selector.run(sources)
+        # The star selector may not produce a contiguous catalog.
+        if not result.sourceCat.isContiguous():
+            return result.sourceCat.copy(deep=True)
+        else:
+            return result.sourceCat
+
+    def _measure_psf_stars(self, exposure, psf_stars, id_generator, num_astrometry_matches=None):
+        """Do measurements on PSF stars only.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
+            Exposure to measure stars on.
+        psf_stars : `lsst.afw.table.SourceCatalog`
+            Catalog of PSF stars.
+        id_generator : `lsst.meas.base.IdGenerator`
+            Object that generates source IDs and provides random seeds.
+        num_astrometry_matches : `int`
+            Number of astrometry matches (for metadata).
+
+        Returns
+        -------
+        stars : `SourceCatalog`
+            PSF stars, with a limited set of measurements performed on them.
+        """
+        # Create the sources table with the correct schema.
+        sources = afwTable.SourceCatalog(self.initial_stars_schema.schema)
+        sources.resize(len(psf_stars))
+
+        # Copy columns.
+        sourcesNames = sources.schema.getNames()
+        for column in psf_stars.schema.getNames():
+            if column in sourcesNames:
+                sources[column] = psf_stars[column]
+
+        # Copy footprints.
+        for i, row in enumerate(psf_stars):
+            sources[i].setFootprint(row.getFootprint())
+
+        self.metadata["post_deblend_source_count"] = len(sources)
+        self.metadata["failed_deblend_source_count"] = 0
+        self.metadata["saturated_source_count"] = np.sum(sources["base_PixelFlags_flag_saturated"])
+        self.metadata["bad_source_count"] = np.sum(sources["base_PixelFlags_flag_bad"])
+
+        # We do not need to run star_normalized_calibration_flux because it
+        # was already applied.
+
         self.star_apply_aperture_correction.run(sources, exposure.apCorrMap)
         self.star_catalog_calculation.run(sources)
         self.star_set_primary_flags.run(sources)
