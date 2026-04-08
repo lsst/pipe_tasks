@@ -58,6 +58,7 @@ from lsst.pipe.base import (
     PipelineTaskConnections,
     Struct,
     InMemoryDatasetHandle,
+    NoWorkFound,
 )
 from lsst.rubinoxide import rbf_interpolator
 import cv2
@@ -272,7 +273,7 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
 class PrettyPictureTask(PipelineTask):
     """Turns inputs into an RGB image."""
 
-    _DefaultName = "prettyPictureTask"
+    _DefaultName = "prettyPicture"
     ConfigClass = PrettyPictureConfig
 
     config: ConfigClass
@@ -421,6 +422,9 @@ class PrettyPictureTask(PipelineTask):
         imageBArray = np.zeros(shape, dtype=np.float32)
 
         for band, image in channels.items():
+            if band not in self.config.channelConfig:
+                self.log.info(f"{band} image found but not requested in RGB image, skipping")
+                continue
             mix = self.config.channelConfig[band]
             if mix.r:
                 imageRArray += mix.r * image
@@ -512,6 +516,9 @@ class PrettyPictureTask(PipelineTask):
     ) -> None:
         imageRefs: list[DatasetRef] = inputRefs.inputCoadds
         sortedImages = self.makeInputsFromRefs(imageRefs, butlerQC)
+        if not sortedImages:
+            requested = ", ".join(self.config.channelConfig.keys())
+            raise NoWorkFound(f"No input images of band(s) {requested}")
         outputs = self.run(sortedImages)
         butlerQC.put(outputs, outputRefs)
 
@@ -636,7 +643,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
     """
 
-    _DefaultName = "prettyPictureBackgroundFixerTask"
+    _DefaultName = "prettyPictureBackgroundFixer"
     ConfigClass = PrettyPictureBackgroundFixerConfig
 
     config: ConfigClass
@@ -894,7 +901,7 @@ class PrettyPictureStarFixerTask(PipelineTask):
     bright stars for which there is no data.
     """
 
-    _DefaultName = "prettyPictureStarFixerTask"
+    _DefaultName = "prettyPictureStarFixer"
     ConfigClass = PrettyPictureStarFixerConfig
 
     config: ConfigClass
@@ -1018,7 +1025,7 @@ class PrettyMosaicConfig(PipelineTaskConfig, pipelineConnections=PrettyMosaicCon
 class PrettyMosaicTask(PipelineTask):
     """Combines multiple RGB arrays into one mosaic."""
 
-    _DefaultName = "prettyMosaicTask"
+    _DefaultName = "prettyMosaic"
     ConfigClass = PrettyMosaicConfig
 
     config: ConfigClass
