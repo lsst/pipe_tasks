@@ -369,9 +369,8 @@ class HighOrderHipsTask(PipelineTask):
             # All boxes in a given skymap will have the same inner dimensions
             # for x and y and will be the same for all patches
             imageWcs = skymap[tract][patch].getWcs()
-            box = skymap[tract][patch].getInnerBBox()
+            box = skymap[tract][patch].getOuterBBox()
             patch_grow = skymap[tract][patch].getCellInnerDimensions().getX()
-            box = box.dilatedBy(patch_grow)
             imageHandle = butlerQC.get(input_image_ref)
             container = inputs_by_tract.setdefault(tract, list())
             container.append((imageHandle, imageWcs, box))
