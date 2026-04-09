@@ -35,27 +35,32 @@ __all__ = (
     "PrettyPictureStarFixerTask",
 )
 
+import colour
+import copy
 from collections.abc import Iterable, Mapping
 from lsst.afw.image import ExposureF
 import numpy as np
 from typing import TYPE_CHECKING, cast, Any
 from lsst.skymap import BaseSkyMap
 
-from scipy.stats import norm, halfnorm, mode
+from scipy.stats import halfnorm, mode
 from scipy.ndimage import binary_dilation
 from scipy.interpolate import RBFInterpolator
 from skimage.restoration import inpaint_biharmonic
 
 from lsst.daf.butler import Butler, DeferredDatasetHandle
 from lsst.daf.butler import DatasetRef
-from lsst.pex.config import Field, Config, ConfigDictField, ConfigField, ListField, ChoiceField
+from lsst.pex.config import Field, Config, ConfigDictField, ListField, ChoiceField
+from lsst.pex.config.configurableActions import ConfigurableActionField
 from lsst.pipe.base import (
     PipelineTask,
     PipelineTaskConfig,
     PipelineTaskConnections,
     Struct,
     InMemoryDatasetHandle,
+    NoWorkFound,
 )
+from lsst.rubinoxide import rbf_interpolator
 import cv2
 
 from lsst.pipe.base.connectionTypes import Input, Output
@@ -64,6 +69,15 @@ from lsst.afw.image import Exposure, Mask
 
 from ._plugins import plugins
 from ._colorMapper import lsstRGB
+from ._utils import FeatheredMosaicCreator
+from ._functors import (
+    BoundsRemapper,
+    ColorScaler,
+    LumCompressor,
+    ExposureBracketer,
+    GamutFixer,
+    LocalContrastEnhancer,
+)
 
 import tempfile
 
@@ -118,104 +132,12 @@ class ChannelRGBConfig(Config):
     b = Field[float](doc="The amount of blue contained in this channel")
 
 
-class LumConfig(Config):
-    """Configurations to control how luminance is mapped in the rgb code"""
-
-    stretch = Field[float](doc="The stretch of the luminance in asinh", default=400)
-    max = Field[float](doc="The maximum allowed luminance on a 0 to 100 scale", default=85)
-    floor = Field[float](doc="A scaling factor to apply to the luminance before asinh scaling", default=0.0)
-    Q = Field[float](doc="softening parameter", default=0.7)
-    highlight = Field[float](
-        doc="The value of highlights in scaling factor applied to post asinh streaching", default=1.0
-    )
-    shadow = Field[float](
-        doc="The value of shadows in scaling factor applied to post asinh streaching", default=0.0
-    )
-    midtone = Field[float](
-        doc="The value of midtone in scaling factor applied to post asinh streaching", default=0.5
-    )
-
-
-class LocalContrastConfig(Config):
-    """Configuration to control local contrast enhancement of the luminance
-    channel."""
-
-    doLocalContrast = Field[bool](
-        doc="Apply local contrast enhancements to the luminance channel", default=True
-    )
-    highlights = Field[float](doc="Adjustment factor for the highlights", default=-0.9)
-    shadows = Field[float](doc="Adjustment factor for the shadows", default=0.5)
-    clarity = Field[float](doc="Amount of clarity to apply to contrast modification", default=0.1)
-    sigma = Field[float](
-        doc="The scale size of what is considered local in the contrast enhancement", default=30
-    )
-    maxLevel = Field[int](
-        doc="The maximum number of scales the contrast should be enhanced over, if None then all",
-        default=4,
-        optional=True,
-    )
-
-
-class ScaleColorConfig(Config):
-    """Controls color scaling in the RGB generation process."""
-
-    saturation = Field[float](
-        doc=(
-            "The overall saturation factor with the scaled luminance between zero and one. "
-            "A value of one is not recommended as it makes bright pixels very saturated"
-        ),
-        default=0.5,
-    )
-    maxChroma = Field[float](
-        doc=(
-            "The maximum chromaticity in the CIELCh color space, large "
-            "values will cause bright pixels to fall outside the RGB gamut."
-        ),
-        default=50.0,
-    )
-
-
-class RemapBoundsConfig(Config):
-    """Remaps input images to a known range of values.
-
-    Often input images are not mapped to any defined range of values
-    (for instance if they are in count units). This controls how the units of
-    and image are mapped to a zero to one range by determining an upper
-    bound.
-    """
-
-    quant = Field[float](
-        doc=(
-            "The maximum values of each of the three channels will be multiplied by this factor to "
-            "determine the maximum flux of the image, values larger than this quantity will be clipped."
-        ),
-        default=0.8,
-    )
-    absMax = Field[float](
-        doc="Instead of determining the maximum value from the image, use this fixed value instead",
-        default=220,
-        optional=True,
-    )
-
-
 class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureConnections):
     channelConfig = ConfigDictField(
         doc="A dictionary that maps band names to their rgb channel configurations",
         keytype=str,
         itemtype=ChannelRGBConfig,
         default={},
-    )
-    imageRemappingConfig = ConfigField[RemapBoundsConfig](
-        doc="Configuration controlling channel normalization process"
-    )
-    luminanceConfig = ConfigField[LumConfig](
-        doc="Configuration for the luminance scaling when making an RGB image"
-    )
-    localContrastConfig = ConfigField[LocalContrastConfig](
-        doc="Configuration controlling the local contrast correction in RGB image production"
-    )
-    colorConfig = ConfigField[ScaleColorConfig](
-        doc="Configuration to control the color scaling process in RGB image production"
     )
     cieWhitePoint = ListField[float](
         doc="The white point of the input arrays in ciexz coordinates", maxLength=2, default=[0.28, 0.28]
@@ -230,28 +152,6 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
             "float": "Use 32 bit float arrays, 1 max",
         },
     )
-    doPSFDeconcovlve = Field[bool](
-        doc="Use the PSF in a richardson lucy deconvolution on the luminance channel.", default=True
-    )
-    exposureBrackets = ListField[float](
-        doc=(
-            "Exposure scaling factors used in creating multiple exposures with different scalings which will "
-            "then be fused into a final image"
-        ),
-        optional=True,
-        default=[1.25, 1, 0.75],
-    )
-    doRemapGamut = Field[bool](
-        doc="Apply a color correction to unrepresentable colors, if false they will clip", default=True
-    )
-    gamutMethod = ChoiceField[str](
-        doc="If doRemapGamut is True this determines the method",
-        default="inpaint",
-        allowed={
-            "mapping": "Use a mapping function",
-            "inpaint": "Use surrounding pixels to determine likely value",
-        },
-    )
     recenterNoise = Field[float](
         doc="Recenter the noise away from zero. Supplied value is in units of sigma",
         optional=True,
@@ -263,6 +163,66 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         ),
         default=10,
     )
+    doPsfDeconvolve = Field[bool](
+        doc="Use the PSF in a Richardson-Lucy deconvolution on the luminance channel.", default=False
+    )
+    doPSFDeconcovlve = Field[bool](
+        doc="Use the PSF in a Richardson-Lucy deconvolution on the luminance channel.",
+        default=False,
+        deprecated="This field will be removed in v32. Use doPsfDeconvolve instead.",
+        optional=True,
+    )
+    doRemapGamut = Field[bool](
+        doc="Apply a color correction to unrepresentable colors; if False, clip them.", default=True
+    )
+    doExposureBrackets = Field[bool](
+        doc="Apply exposure bracketing to aid in dynamic range compression", default=True
+    )
+    doLocalContrast = Field[bool](doc="Apply local contrast optimizations to luminance.", default=True)
+
+    imageRemappingConfig = ConfigurableActionField[BoundsRemapper](
+        doc="Action controlling normalization process"
+    )
+    luminanceConfig = ConfigurableActionField[LumCompressor](
+        doc="Action controlling luminance scaling when making an RGB image"
+    )
+    localContrastConfig = ConfigurableActionField[LocalContrastEnhancer](
+        doc="Action controlling the local contrast correction in RGB image production"
+    )
+    colorConfig = ConfigurableActionField[ColorScaler](
+        doc="Action to control the color scaling process in RGB image production"
+    )
+    exposureBracketerConfig = ConfigurableActionField[ExposureBracketer](
+        doc=(
+            "Exposure scaling action used in creating multiple exposures with different scalings which will "
+            "then be fused into a final image"
+        ),
+    )
+    gamutMapperConfig = ConfigurableActionField[GamutFixer](
+        doc="Action to fix pixels which lay outside RGB color gamut"
+    )
+
+    exposureBrackets = ListField[float](
+        doc=(
+            "Exposure scaling factors used in creating multiple exposures with different scalings which will "
+            "then be fused into a final image"
+        ),
+        optional=True,
+        default=[1.25, 1, 0.75],
+        deprecated=(
+            "This field will stop working in v31 and be removed in v32, "
+            "please set exposureBracketerConfig.exposureBrackets"
+        ),
+    )
+    gamutMethod = ChoiceField[str](
+        doc="If doRemapGamut is True this determines the method",
+        default="inpaint",
+        allowed={
+            "mapping": "Use a mapping function",
+            "inpaint": "Use surrounding pixels to determine likely value",
+        },
+        deprecated="This field will stop working in v31 and be removed in v32, please set gamutMapperConfig",
+    )
 
     def setDefaults(self):
         self.channelConfig["i"] = ChannelRGBConfig(r=1, g=0, b=0)
@@ -270,17 +230,61 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         self.channelConfig["g"] = ChannelRGBConfig(r=0, g=0, b=1)
         return super().setDefaults()
 
+    def _handle_deprecated(self):
+        """Handle deprecated configuration migration.
+
+        This method migrates deprecated configuration fields to their new
+        locations in sub-configurations. It checks the configuration history
+        to determine if deprecated fields were explicitly set and updates
+        the new configuration locations accordingly.
+
+        Notes
+        -----
+        The following deprecated fields are migrated:
+        - ``gamutMethod`` -> ``gamutMapperConfig.gamutMethod``
+        - ``exposureBrackets`` -> ``exposureBracketerConfig.exposureBrackets``
+        - ``doLocalContrast`` -> ``localContrastConfig.doLocalContrast``
+        - ``doPSFDeconcovlve`` -> ``doPsfDeconvolve``
+        """
+        # check if gamutMethod is set
+        if len(self._history["gamutMethod"]) > 1:
+            # This has been set in config, update it in the new location
+            self.gamutMapperConfig.gamutMethod = self.gamutMethod
+
+        if len(self._history["exposureBrackets"]) > 1:
+            self.exposureBracketerConfig.exposureBrackets = self.exposureBrackets
+            if self.exposureBrackets is None:
+                self.doExposureBrackets = False
+
+        if len(self.localContrastConfig._history["doLocalContrast"]) > 1:
+            self.doLocalContrast = self.localContrastConfig.doLocalContrast
+
+        # Handle doPsfDeconcovlve typo fix
+        if len(self._history["doPSFDeconcovlve"]) > 1:
+            self.doPsfDeconvolve = self.doPSFDeconcovlve
+
+    def freeze(self):
+        # ensure this is not already frozen
+        if self._frozen is not True:
+            self._handle_deprecated()
+        super().freeze()
+
 
 class PrettyPictureTask(PipelineTask):
     """Turns inputs into an RGB image."""
 
-    _DefaultName = "prettyPictureTask"
+    _DefaultName = "prettyPicture"
     ConfigClass = PrettyPictureConfig
 
     config: ConfigClass
 
     def _find_normal_stats(self, array):
         """Calculate standard deviation from negative values using half-normal distribution.
+
+        Raises
+        ------
+        ValueError
+            Array dimension validation fails.
 
         Parameters
         ----------
@@ -418,6 +422,9 @@ class PrettyPictureTask(PipelineTask):
         imageBArray = np.zeros(shape, dtype=np.float32)
 
         for band, image in channels.items():
+            if band not in self.config.channelConfig:
+                self.log.info(f"{band} image found but not requested in RGB image, skipping")
+                continue
             mix = self.config.channelConfig[band]
             if mix.r:
                 imageRArray += mix.r * image
@@ -449,21 +456,30 @@ class PrettyPictureTask(PipelineTask):
         for plug in plugins.partial():
             colorImage = plug(colorImage, jointMask, maskDict, self.config)
 
-        # Ignore type because Exposures do in fact have a bbox, but it's c++
-        # and not typed.
+        # Filter the local contrast parameters for diffusion that are None
+        # This is so we only apply key word overrides that are specifically set.
+        local_contrast_config = self.config.localContrastConfig.toDict()
+        to_remove = []
+        for k, v in local_contrast_config["diffusionFunction"].items():
+            if v is None:
+                to_remove.append(k)
+        for item in to_remove:
+            local_contrast_config["diffusionControl"].pop(item)
+
         colorImage = lsstRGB(
             colorImage[:, :, 0],
             colorImage[:, :, 1],
             colorImage[:, :, 2],
-            scaleLumKWargs=self.config.luminanceConfig.toDict(),
-            remapBoundsKwargs=self.config.imageRemappingConfig.toDict(),
-            scaleColorKWargs=self.config.colorConfig.toDict(),
-            **(self.config.localContrastConfig.toDict()),
+            local_contrast=self.config.localContrastConfig if self.config.doLocalContrast else None,
+            scale_lum=self.config.luminanceConfig,
+            scale_color=self.config.colorConfig,
+            remap_bounds=self.config.imageRemappingConfig,
+            bracketing_function=(
+                self.config.exposureBracketerConfig if self.config.doExposureBrackets else None
+            ),
+            gamut_remapping_function=self.config.gamutMapperConfig if self.config.doRemapGamut else None,
             cieWhitePoint=tuple(self.config.cieWhitePoint),  # type: ignore
-            psf=psf if self.config.doPSFDeconcovlve else None,
-            brackets=list(self.config.exposureBrackets) if self.config.exposureBrackets else None,
-            doRemapGamut=self.config.doRemapGamut,
-            gamutMethod=self.config.gamutMethod,
+            psf=psf if self.config.doPsfDeconvolve else None,
         )
 
         # Find the dataset type and thus the maximum values as well
@@ -500,6 +516,9 @@ class PrettyPictureTask(PipelineTask):
     ) -> None:
         imageRefs: list[DatasetRef] = inputRefs.inputCoadds
         sortedImages = self.makeInputsFromRefs(imageRefs, butlerQC)
+        if not sortedImages:
+            requested = ", ".join(self.config.channelConfig.keys())
+            raise NoWorkFound(f"No input images of band(s) {requested}")
         outputs = self.run(sortedImages)
         butlerQC.put(outputs, outputRefs)
 
@@ -518,7 +537,7 @@ class PrettyPictureTask(PipelineTask):
         Returns
         -------
         sortedImages : `dict` of `str` to `Exposure`
-            A dictionary of `Exposure`\ s that keyed by the band they
+            A dictionary of `Exposure`\ s keyed by the band they
             correspond to.
         """
         sortedImages: dict[str, Exposure] = {}
@@ -528,21 +547,22 @@ class PrettyPictureTask(PipelineTask):
             sortedImages[key] = image
         return sortedImages
 
-    def makeInputsFromArrays(self, **kwargs) -> dict[int, DeferredDatasetHandle]:
+    def makeInputsFromArrays(self, **kwargs) -> dict[str, DeferredDatasetHandle]:
         r"""Make valid inputs for the run method from numpy arrays.
 
         Parameters
         ----------
-        kwargs : `NDArray`
+        kwargs : `numpy.ndarray`
             This is standard python kwargs where the left side of the equals
-            is the data band, and the right side is the corresponding `NDArray`
+            is the data band, and the right side is the corresponding `numpy.ndarray`
             array.
 
         Returns
         -------
-        sortedImages : `dict` of `str` to `Exposure`
-            A dictionary of `Exposure`\ s that keyed by the band they
-            correspond to.
+        sortedImages : `dict` of `str` to \
+                `~lsst.daf.butler.DeferredDatasetHandle`
+            A dictionary of `~lsst.daf.butlger.DeferredDatasetHandle`\ s keyed
+            by the band they correspond to.
         """
         # ignore type because there aren't proper stubs for afw
         temp = {}
@@ -564,9 +584,10 @@ class PrettyPictureTask(PipelineTask):
 
         Returns
         -------
-        sortedImages : `dict` of `str` to `Exposure`
-            A dictionary of `Exposure`\ s that keyed by the band they
-            correspond to.
+        sortedImages : `dict` of `int` to \
+                `~lsst.daf.butler.DeferredDatasetHandle`
+            A dictionary of `~lsst.daf.butler.DeferredDatasetHandle`\ s keyed
+            by the band they correspond to.
         """
         sortedImages = {}
         for key, value in kwargs.items():
@@ -596,7 +617,20 @@ class PrettyPictureBackgroundFixerConnections(
 class PrettyPictureBackgroundFixerConfig(
     PipelineTaskConfig, pipelineConnections=PrettyPictureBackgroundFixerConnections
 ):
-    pass
+    use_detection_mask = Field[bool](
+        doc="Use the detection mask to determine background instead of empirically finding it in this task",
+        default=False,
+    )
+    num_background_bins = Field[int](
+        doc="The number of bins along each axis when determining background", default=5
+    )
+    min_bin_fraction = Field[float](
+        doc="Bins with fewer pixels than this fraction of the total will be ignored", default=0.1
+    )
+
+    pos_sigma_multiplier = Field[float](
+        doc="How many sigma to consider as background in the positive direction", default=2
+    )
 
 
 class PrettyPictureBackgroundFixerTask(PipelineTask):
@@ -609,45 +643,10 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
     """
 
-    _DefaultName = "prettyPictureBackgroundFixerTask"
+    _DefaultName = "prettyPictureBackgroundFixer"
     ConfigClass = PrettyPictureBackgroundFixerConfig
 
     config: ConfigClass
-
-    def _neg_log_likelihood(self, params, x):
-        """Calculate the negative log-likelihood for a Gaussian distribution.
-
-        This function computes the negative log-likelihood of a set of data `x`
-        given a Gaussian distribution with parameters `mu` and `sigma`.  It's
-        designed to be used as the objective function for a minimization routine
-        to find the best-fit Gaussian parameters.
-
-        Parameters
-        ----------
-        params : `tuple`
-            A tuple containing the mean (`mu`) and standard deviation (`sigma`)
-            of the Gaussian distribution.
-        x : `NDArray`
-            The data samples for which to calculate the log-likelihood.
-
-        Returns
-        -------
-        float
-            The negative log-likelihood of the data given the Gaussian parameters.
-            Returns infinity if sigma is non-positive or if the mean is less than
-            the maximum value in x (to enforce the constraint that the Gaussian
-            only models the lower tail of the distribution).
-        """
-        mu, sigma = params
-        if sigma <= 0:
-            return np.inf
-        M = np.max(x)
-        if mu < M - 1e-8:  # Allow for floating point precision issues
-            return np.inf
-        z = (x - mu) / sigma
-        term = np.log(2) - np.log(sigma) + norm.logpdf(z)
-        loglikelihood = np.sum(term)
-        return -loglikelihood
 
     def _tile_slices(self, arr, R, C):
         """Generate slices for tiling an array.
@@ -659,7 +658,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
         Parameters
         ----------
-        arr : `NDArray`
+        arr : `numyp.ndarray`
            The input array to be tiled. Used only to determine the array's shape.
         R : `int`
            The number of tiles in the row dimension.
@@ -676,7 +675,27 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         N = arr.shape[1]
 
         # Function to compute slices for a given dimension size and number of divisions
-        def get_slices(total_size, num_divisions):
+        def get_slices(total_size: int, num_divisions: int) -> list[tuple[int, int]]:
+            """Generate slice ranges for dividing a size into equal parts.
+
+            Parameters
+            ----------
+            total_size : `int`
+                Total size to be divided into slices.
+            num_divisions : `int`
+                Number of divisions to create.
+
+            Returns
+            -------
+            `list` of `tuple` of `int`
+                List of (start, end) tuples representing each slice.
+
+            Notes
+            -----
+            This function divides the total_size into num_divisions equal parts.
+            If the division is not exact, the remainder is distributed by adding
+            1 to the first 'remainder' slices, ensuring balanced distribution.
+            """
             base = total_size // num_divisions
             remainder = total_size % num_divisions
             slices = []
@@ -704,23 +723,33 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
         return tiles
 
-    def fixBackground(self, image):
-        """Estimate and subtract the background from an image.
+    @staticmethod
+    def findBackgroundPixels(image, pos_sigma_mult=1):
+        """Find pixels that are likely to be background based on image statistics.
 
-        This function estimates the background level in an image using a median-based
-        approach combined with Gaussian fitting and radial basis function interpolation.
-        It aims to provide a more accurate background estimation than a simple median
-        filter, especially in images with varying background levels.
+        This method estimates background pixels by analyzing the distribution of
+        pixel values in the image. It uses the median as an estimate of the background
+        level and fits a half-normal distribution to values below the median to
+        determine the background sigma. Pixels below a threshold (mean + sigma) are
+        classified as background.
 
         Parameters
         ----------
-        image : `NDArray`
-            The input image as a NumPy array.
+        image : `numpy.ndarray`
+            Input image array for which to find background pixels.
+        pos_sigma_mult : `float`
+            How many sigma to consider as background in the positive direction
 
         Returns
         -------
-        numpy.ndarray
-            An array representing the estimated background level across the image.
+        result : `numpy.ndarray`
+            Boolean mask array where True indicates background pixels.
+
+        Notes
+        -----
+        This method works best for images with relatively uniform background. It may
+        not perform well in fields with high density or diffuse flux, as noted in
+        the implementation comments.
         """
         # Find the median value in the image, which is likely to be
         # close to average background. Note this doesn't work well
@@ -737,18 +766,42 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         if np.any(mask):
             # use a minimizer to determine best mu and sigma for a Gaussian
             # given only samples below the mean of the Gaussian.
-            _, sigma_hat = halfnorm.fit(np.abs(image[mask] - maxLikely))
-            mu_hat = maxLikely
+            mu_hat, sigma_hat = halfnorm.fit(np.abs(image[mask] - maxLikely))
+            # mu_hat = maxLikely
         else:
             mu_hat, sigma_hat = (maxLikely, 2 * initial_std)
 
         # create a new masking threshold that is the determined
         # mean plus std from the fit
-        threshhold = mu_hat + sigma_hat
-        image_mask = image < threshhold
+        threshhold = mu_hat + pos_sigma_mult * sigma_hat
+        image_mask = (image < threshhold) * (image > (mu_hat - 5 * sigma_hat))
+        return image_mask
+
+    def fixBackground(self, image, detection_mask=None):
+        """Estimate and subtract the background from an image.
+
+        This function estimates the background level in an image using a median-based
+        approach combined with Gaussian fitting and radial basis function interpolation.
+        It aims to provide a more accurate background estimation than a simple median
+        filter, especially in images with varying background levels.
+
+        Parameters
+        ----------
+        image : `numpy.ndarray`
+            The input image as a NumPy array.
+
+        Returns
+        -------
+        numpy.ndarray
+            An array representing the estimated background level across the image.
+        """
+        if detection_mask is None:
+            image_mask = self.findBackgroundPixels(image, self.config.pos_sigma_multiplier)
+        else:
+            image_mask = detection_mask
 
         # create python slices that tile the image.
-        tiles = self._tile_slices(image, 25, 25)
+        tiles = self._tile_slices(image, self.config.num_background_bins, self.config.num_background_bins)
 
         yloc = []
         xloc = []
@@ -759,21 +812,32 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         for xslice, yslice in tiles:
             ypos = (yslice.stop - yslice.start) / 2 + yslice.start
             xpos = (xslice.stop - xslice.start) / 2 + xslice.start
-            yloc.append(ypos)
-            xloc.append(xpos)
             window = image[yslice, xslice][image_mask[yslice, xslice]]
-            if window.size > 0:
+            # make sure each bin is at least 1% filled
+            min_fill = int((yslice.stop - yslice.start) ** 2 * self.config.min_bin_fraction)
+            if window.size > min_fill:
                 value = np.median(window)
             else:
-                value = 0
+                continue
             values.append(value)
+            yloc.append(ypos)
+            xloc.append(xpos)
 
-        positions = np.meshgrid(np.arange(image.shape[0]), np.arange(image.shape[1]))
+        # At least 15 points are requred for TPS with 4th order polynomial
+        if len(yloc) < 15:
+            return np.zeros(image.shape)
+
         # create an interpolant for the background and interpolate over the image.
         inter = RBFInterpolator(
-            np.vstack((yloc, xloc)).T, values, kernel="thin_plate_spline", degree=4, smoothing=0.05
+            np.vstack((yloc, xloc)).T,
+            values,
+            kernel="thin_plate_spline",
+            degree=4,
+            smoothing=0.05,
+            neighbors=None,
         )
-        backgrounds = inter(np.array(positions)[::-1].reshape(2, -1).T).reshape(image.shape)
+
+        backgrounds = rbf_interpolator.fast_rbf_interpolation_on_grid(inter, image.shape)
 
         return backgrounds
 
@@ -792,7 +856,12 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             This `Struct` will have an attribute named ``outputCoadd``.
 
         """
-        background = self.fixBackground(inputCoadd.image.array)
+        if self.config.use_detection_mask:
+            mask_plane_dict = inputCoadd.mask.getMaskPlaneDict()
+            detection_mask = ~(inputCoadd.mask.array & 2 ** mask_plane_dict["DETECTED"])
+        else:
+            detection_mask = None
+        background = self.fixBackground(inputCoadd.image.array, detection_mask=detection_mask)
         # create a copy to mutate
         output = ExposureF(inputCoadd, deep=True)
         output.image.array -= background
@@ -832,7 +901,7 @@ class PrettyPictureStarFixerTask(PipelineTask):
     bright stars for which there is no data.
     """
 
-    _DefaultName = "prettyPictureStarFixerTask"
+    _DefaultName = "prettyPictureStarFixer"
     ConfigClass = PrettyPictureStarFixerConfig
 
     config: ConfigClass
@@ -949,12 +1018,14 @@ class PrettyMosaicConnections(PipelineTaskConnections, dimensions=("tract", "sky
 
 class PrettyMosaicConfig(PipelineTaskConfig, pipelineConnections=PrettyMosaicConnections):
     binFactor = Field[int](doc="The factor to bin by when producing the mosaic")
+    doDCID65Convert = Field[bool]("Force the output to be converted from display p3 to DCI-D65 colorspace.")
+    useLocalTemp = Field[bool](doc="Use the current directory when creating local temp files.", default=False)
 
 
 class PrettyMosaicTask(PipelineTask):
     """Combines multiple RGB arrays into one mosaic."""
 
-    _DefaultName = "prettyMosaicTask"
+    _DefaultName = "prettyMosaic"
     ConfigClass = PrettyMosaicConfig
 
     config: ConfigClass
@@ -965,21 +1036,23 @@ class PrettyMosaicTask(PipelineTask):
         skyMap: BaseSkyMap,
         inputRGBMask: Iterable[DeferredDatasetHandle],
     ) -> Struct:
-        r"""Assemble individual `NDArrays` into a mosaic.
+        r"""Assemble individual `numpy.ndarrays` into a mosaic.
 
-        Each input is a `DeferredDatasetHandle` because they're loaded in one
-        at a time to be placed into the mosaic to save memory.
+        Each input is a `~lsst.daf.butler.DeferredDatasetHandle` because
+        they're loaded in one at a time to be placed into the mosaic to save
+        memory.
 
         Parameters
         ----------
-        inputRGB : `Iterable` of `DeferredDatasetHandle`
-            `DeferredDatasetHandle`\ s pointing to RGB `NDArrays`.
+        inputRGB : `Iterable` of `~lsst.daf.butler.DeferredDatasetHandle`
+            `~lsst.daf.butler.DeferredDatasetHandle`\ s pointing to RGB
+            `numpy.ndarrays`.
         skyMap : `BaseSkyMap`
             The skymap that defines the relative position of each of the input
             images.
-        inputRGBMask : `Iterable` of `DeferredDatasetHandle`
-            `DeferredDatasetHandle`\ s pointing to masks for each of the
-            corresponding images.
+        inputRGBMask : `Iterable` of `~lsst.daf.butler.DeferredDatasetHandle`
+            `~lsst.daf.butler.DeferredDatasetHandle`\ s pointing to masks for
+            each of the corresponding images.
 
         Returns
         -------
@@ -1000,6 +1073,9 @@ class PrettyMosaicTask(PipelineTask):
             boxes.append(bbox)
             newBox.include(bbox)
             tractMaps.append(tractInfo)
+            # This will be overwritten in the loop, but that is ok, because
+            # it is the same for each patch.
+            patch_grow: int = patchInfo.getCellInnerDimensions().getX()
 
         # fixup the boxes to be smaller if needed, and put the origin at zero,
         # this must be done after constructing the complete outer box
@@ -1028,16 +1104,25 @@ class PrettyMosaicTask(PipelineTask):
         newBox = Box2I(newBoxOrigin, newBoxExtent)
 
         # Allocate storage for the mosaic
-        self.imageHandle = tempfile.NamedTemporaryFile()
-        self.maskHandle = tempfile.NamedTemporaryFile()
+        self.imageHandle = tempfile.NamedTemporaryFile(dir="." if self.config.useLocalTemp else None)
+        self.maskHandle = tempfile.NamedTemporaryFile(dir="." if self.config.useLocalTemp else None)
         consolidatedImage = None
         consolidatedMask = None
 
+        # Setup color space conversion in case they are used.
+        d65 = copy.deepcopy(colour.models.RGB_COLOURSPACE_DCI_P3)
+        dp3 = copy.deepcopy(colour.models.RGB_COLOURSPACE_DISPLAY_P3)
+        d65.whitepoint = dp3.whitepoint
+        d65.whitepoint_name = dp3.whitepoint_name
+
         # Actually assemble the mosaic
         maskDict = {}
-        tmpImg = None
+        mosaic_maker = FeatheredMosaicCreator(patch_grow, self.config.binFactor)
         for box, handle, handleMask, tractInfo in zip(boxes, inputRGB, inputRGBMask, tractMaps):
             rgb = handle.get()
+            # convert to the dci-d65 colorspace
+            if self.config.doDCID65Convert:
+                rgb = colour.RGB_to_RGB(np.clip(rgb, 0, 1), dp3, d65)
             rgbMask = handleMask.get()
             maskDict = rgbMask.getMaskPlaneDict()
             # allocate the memory for the mosaic
@@ -1066,45 +1151,11 @@ class PrettyMosaicTask(PipelineTask):
                     fx=shape[0] / self.config.binFactor,
                     fy=shape[1] / self.config.binFactor,
                 )
-                rgbMask = cv2.resize(
-                    rgbMask.array.astype(np.float32),
-                    dst=None,
-                    dsize=shape,
-                    fx=shape[0] / self.config.binFactor,
-                    fy=shape[1] / self.config.binFactor,
-                )
-            existing = ~np.all(consolidatedImage[*box.slices] == 0, axis=2)
-            if tmpImg is None or tmpImg.shape != rgb.shape:
-                ramp = np.linspace(0, 1, tractInfo.patch_border * 2)
-                tmpImg = np.zeros(rgb.shape[:2])
-                tmpImg[: tractInfo.patch_border * 2, :] = np.repeat(
-                    np.expand_dims(ramp, 1), tmpImg.shape[1], axis=1
-                )
+                mask_array = rgbMask.array[:: self.config.binFactor, :: self.config.binFactor]
+                rgbMask = Mask(*(mask_array.shape[::-1]))
+            mosaic_maker.add_to_image(consolidatedImage, rgb, newBox, box)
 
-                tmpImg[-1 * tractInfo.patch_border * 2 :, :] = np.repeat(  # noqa: E203
-                    np.expand_dims(1 - ramp, 1), tmpImg.shape[1], axis=1
-                )
-                tmpImg[:, : tractInfo.patch_border * 2] = np.repeat(
-                    np.expand_dims(ramp, 0), tmpImg.shape[0], axis=0
-                )
-
-                tmpImg[:, -1 * tractInfo.patch_border * 2 :] = np.repeat(  # noqa: E203
-                    np.expand_dims(1 - ramp, 0), tmpImg.shape[0], axis=0
-                )
-                tmpImg = np.repeat(np.expand_dims(tmpImg, 2), 3, axis=2)
-
-            consolidatedImage[*box.slices][~existing, :] = rgb[~existing, :]
-            consolidatedImage[*box.slices][existing, :] = (
-                tmpImg[existing] * rgb[existing]
-                + (1 - tmpImg[existing]) * consolidatedImage[*box.slices][existing, :]
-            )
-
-            tmpMask = np.zeros_like(rgbMask.array)
-            tmpMask[existing] = np.bitwise_or(
-                rgbMask.array[existing], consolidatedMask[*box.slices][existing]
-            )
-            tmpMask[~existing] = rgbMask.array[~existing]
-            consolidatedMask[*box.slices] = tmpMask
+            consolidatedMask[*box.slices] = np.bitwise_or(consolidatedMask[*box.slices], rgbMask.array)
 
         for plugin in plugins.full():
             if consolidatedImage is not None and consolidatedMask is not None:
@@ -1137,16 +1188,16 @@ class PrettyMosaicTask(PipelineTask):
 
         Parameters
         ----------
-        inputs : `Iterable` of `tuple` of `Mapping` and `NDArray`
-            An iterable where each element is a tuble with the first
+        inputs : `Iterable` of `tuple` of `Mapping` and `numpy.ndarray`
+            An iterable where each element is a tuple with the first
             element is a mapping that corresponds to an arrays dataId,
-            and the second is an `NDArray`.
+            and the second is an `numpy.ndarray`.
 
         Returns
         -------
-        sortedImages : `dict` of `str` to `Exposure`
-            A dictionary of `Exposure`\ s that keyed by the band they
-            correspond to.
+        sortedImages : `Iterable` of `~lsst.daf.butler.DeferredDatasetHandle`
+            An iterable of `~lsst.daf.butler.DeferredDatasetHandle`\ s
+            containing the input data.
         """
         structuredInputs = []
         for dataId, array in inputs:

@@ -19,9 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from __future__ import annotations
-
-from ._task import *
-from ._colorMapper import *
-from ._localContrast import *
-from ._utils import *
+from ._bounds_remapper import *
+from ._color_scale import *
+from ._exposure_fusion import *
+from ._gamut_fixer import *
+from ._local_contrast import *
+from ._lum_scale import *
