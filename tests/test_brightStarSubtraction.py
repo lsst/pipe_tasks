@@ -20,7 +20,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import unittest
+from typing import cast
 
+import astropy.units as u
 import lsst.utils.tests
 import numpy as np
 from astropy.table import Table
@@ -37,6 +39,7 @@ from lsst.afw.image import (
 )
 from lsst.afw.math import FixedKernel
 from lsst.geom import Box2I, Extent2I, Point2D, Point2I, SpherePoint, arcseconds, degrees
+from lsst.images import Image
 from lsst.meas.algorithms import KernelPsf
 from lsst.pipe.tasks.brightStarSubtraction import BrightStarCutoutConfig, BrightStarCutoutTask
 
@@ -117,7 +120,7 @@ class BrightStarSubtractionTestCase(lsst.utils.tests.TestCase):
                 "pixel_x": pixel_x,
                 "pixel_y": pixel_y,
                 "radius_mm": radius_mm,
-                "theta_radians": theta_radians,
+                "angle_radians": theta_radians,
             }
         )
 
@@ -165,22 +168,31 @@ class BrightStarSubtractionTestCase(lsst.utils.tests.TestCase):
     def test_brightStarCutout(self):
         """Test BrightStarCutoutTask."""
         assert self.bright_star_stamps is not None
-        self.assertAlmostEqual(self.bright_star_stamps.metadata["FOCAL_PLANE_RADIUS_MIN"], 5.22408977, 7)
-        self.assertAlmostEqual(self.bright_star_stamps.metadata["FOCAL_PLANE_RADIUS_MAX"], 14.6045832, 7)
+        self.assertAlmostEqual(
+            float(self.bright_star_stamps.metadata["FOCAL_PLANE_RADIUS_MM_MIN"]), 5.22408977, 7
+        )
+        self.assertAlmostEqual(
+            float(self.bright_star_stamps.metadata["FOCAL_PLANE_RADIUS_MM_MAX"]), 14.6045832, 7
+        )
         self.assertEqual(len(self.bright_star_stamps), len(self.bright_stars))
-        self.assertEqual(self.bright_star_stamps[0].visit, 12345)
-        self.assertEqual(self.bright_star_stamps[0].detector, 10)
+        self.assertEqual(self.bright_star_stamps[0].stamp_info.visit, 12345)
+        self.assertEqual(self.bright_star_stamps[0].stamp_info.detector, 10)
 
         for bright_star_stamp, bright_star_row in zip(self.bright_star_stamps, self.bright_stars):
-            self.assertEqual(bright_star_stamp.ref_id, bright_star_row["id"])
-            self.assertEqual(bright_star_stamp.ref_mag, bright_star_row["mag"])
-            assert bright_star_stamp.position is not None
-            self.assertEqual(bright_star_stamp.position.getX(), bright_star_row["pixel_x"])
-            self.assertEqual(bright_star_stamp.position.getY(), bright_star_row["pixel_y"])
-            self.assertEqual(bright_star_stamp.focal_plane_radius, bright_star_row["radius_mm"])
-            assert bright_star_stamp.focal_plane_angle is not None
-            focal_plane_angle = bright_star_stamp.focal_plane_angle.asRadians()
-            self.assertEqual(focal_plane_angle, bright_star_row["theta_radians"])
+            self.assertEqual(bright_star_stamp.stamp_info.ref_id, bright_star_row["id"])
+            self.assertEqual(bright_star_stamp.stamp_info.ref_mag, bright_star_row["mag"])
+            self.assertEqual(bright_star_stamp.stamp_info.position_x, bright_star_row["pixel_x"])
+            self.assertEqual(bright_star_stamp.stamp_info.position_y, bright_star_row["pixel_y"])
+            self.assertIsInstance(bright_star_stamp.psf_kernel_image, Image)
+            self.assertEqual(bright_star_stamp.psf_kernel_image.array.ndim, 2)
+            self.assertGreater(bright_star_stamp.psf_kernel_image.array.shape[0], 0)
+            self.assertGreater(bright_star_stamp.psf_kernel_image.array.shape[1], 0)
+            self.assertTrue(np.isfinite(bright_star_stamp.psf_kernel_image.array).all())
+            self.assertGreater(bright_star_stamp.psf_kernel_image.array.sum(), 0.0)
+            focal_plane_radius = cast(u.Quantity, bright_star_stamp.stamp_info.focal_plane_radius)
+            focal_plane_angle = cast(u.Quantity, bright_star_stamp.stamp_info.focal_plane_angle)
+            self.assertEqual(focal_plane_radius.to_value(u.mm), bright_star_row["radius_mm"])
+            self.assertEqual(focal_plane_angle.to_value(u.rad), bright_star_row["angle_radians"])
 
 
 def setup_module(module):
