@@ -31,12 +31,10 @@ from lsst.afw.detection import footprintsToNumpy
 from lsst.afw.geom import makeModifiedWcs
 from lsst.afw.geom.transformFactory import makeTransform
 from lsst.afw.image import ExposureF, MaskedImageF
-from lsst.afw.math import BackgroundList, FixedKernel, WarpingControl, warpImage
+from lsst.afw.math import BackgroundList, WarpingControl, warpImage
 from lsst.afw.table import SourceCatalog
-from lsst.daf.base import PropertyList
 from lsst.geom import (
     AffineTransform,
-    Angle,
     Box2I,
     Extent2D,
     Extent2I,
@@ -47,10 +45,11 @@ from lsst.geom import (
     floor,
     radians,
 )
+from lsst.images import GeneralFrame, Image, Mask, Projection
 from lsst.meas.algorithms import (
     BrightStarStamp,
+    BrightStarStampInfo,
     BrightStarStamps,
-    KernelPsf,
     LoadReferenceObjectsConfig,
     ReferenceObjectLoader,
     WarpedPsf,
@@ -458,36 +457,34 @@ class BrightStarCutoutTask(PipelineTask):
             if good_frac < self.config.min_area_fraction:
                 continue
 
-            warped_psf = WarpedPsf(input_exposure.getPsf(), pixels_to_stamp_frame, warp_control)
-            stamp_psf = KernelPsf(FixedKernel(warped_psf.computeKernelImage(Point2D(0, 0))))
+            # Define a WCS for the stamp consistent with the warping
             stamp_wcs = makeModifiedWcs(pixels_to_stamp_frame, input_exposure.wcs, False)
+            projection = Projection.from_legacy(stamp_wcs, GeneralFrame(unit=u.pixel))
 
-            stamp = BrightStarStamp(
-                stamp_im=stamp_MI,
-                psf=stamp_psf,
-                wcs=stamp_wcs,
+            # Compute the kernel image of the PSF at the stamp center
+            psf_warped = WarpedPsf(input_exposure.getPsf(), pixels_to_stamp_frame, warp_control)
+            psf_kernel_image = Image.from_legacy(psf_warped.computeKernelImage(Point2D(0, 0)))
+
+            # Assemble the stamp info to be persisted alongside the image data
+            stamp_info = BrightStarStampInfo(
                 visit=input_exposure.visitInfo.getId(),
                 detector=input_exposure.detector.getId(),
                 ref_id=bright_star["id"],
                 ref_mag=bright_star["mag"],
-                position=pix_coord,
-                focal_plane_radius=bright_star["radius_mm"],
-                focal_plane_angle=Angle(bright_star["theta_radians"], radians),
-                scale=None,
-                scale_err=None,
-                pedestal=None,
-                pedestal_err=None,
-                pedestal_scale_cov=None,
-                gradient_x=None,
-                gradient_y=None,
-                curvature_x=None,
-                curvature_y=None,
-                curvature_xy=None,
-                global_reduced_chi_squared=None,
-                global_degrees_of_freedom=None,
-                psf_reduced_chi_squared=None,
-                psf_degrees_of_freedom=None,
-                psf_masked_flux_fraction=None,
+                position_x=pix_coord.x,
+                position_y=pix_coord.y,
+                focal_plane_radius=bright_star["radius_mm"] * u.mm,
+                focal_plane_angle=bright_star["angle_radians"] * u.rad,
+            )
+
+            # Generate a bright star stamp and store outputs
+            stamp = BrightStarStamp(
+                image=Image.from_legacy(stamp_MI.image),
+                mask=Mask.from_legacy(stamp_MI.mask),
+                variance=Image.from_legacy(stamp_MI.variance),
+                projection=projection,
+                psf_kernel_image=psf_kernel_image,
+                stamp_info=stamp_info,
             )
             stamps.append(stamp)
 
