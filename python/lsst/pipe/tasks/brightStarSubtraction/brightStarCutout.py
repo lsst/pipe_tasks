@@ -339,9 +339,9 @@ class BrightStarCutoutTask(PipelineTask):
         mm_coords_x = np.array([mm_coord.x for mm_coord in mm_coords])
         mm_coords_y = np.array([mm_coord.y for mm_coord in mm_coords])
         radius_mm = np.sqrt(mm_coords_x**2 + mm_coords_y**2)
-        theta_radians = np.arctan2(mm_coords_y, mm_coords_x)
+        angle_radians = np.arctan2(mm_coords_y, mm_coords_x)
         bright_stars["radius_mm"] = radius_mm
-        bright_stars["theta_radians"] = theta_radians
+        bright_stars["angle_radians"] = angle_radians
 
         # Trim bright star catalog to those within the exposure bounding box,
         # and optionally within a range of focal plane radii
@@ -354,13 +354,10 @@ class BrightStarCutoutTask(PipelineTask):
         bright_stars = bright_stars[within_bbox & within_radii]
 
         self.log.info(
-            "Identified %i of %i reference catalog stars that are in the field of view, are in the "
-            "range %s mag, and that have no neighboring stars in the range %s mag within %s arcsec.",
+            "Identified %i reference star%s in the field of view after applying magnitude and isolation "
+            "cuts.",
             len(bright_stars),
-            len(ref_cat_full),
-            self.config.mag_range,
-            self.config.exclude_mag_range,
-            self.config.exclude_arcsec_radius,
+            "s" if len(bright_stars) != 1 else "",
         )
 
         return bright_stars
@@ -405,7 +402,7 @@ class BrightStarCutoutTask(PipelineTask):
         warp_control = WarpingControl(self.config.warping_kernel_name, self.config.mask_warping_kernel_name)
         bbox = input_exposure.getBBox()
 
-        # Prepare masked image for warping
+        # Prepare data: add bg back on, and convert to nJy
         input_MI = input_exposure.getMaskedImage()
         if input_background is not None:
             input_MI += input_background.getImage()
@@ -424,11 +421,12 @@ class BrightStarCutoutTask(PipelineTask):
 
         # Stamp bounding boxes
         stamp_radius = floor(Extent2D(*self.config.stamp_size) / 2)
-        stamp_bbox = Box2I(Point2I(0, 0), Extent2I(1, 1)).dilatedBy(stamp_radius)
-        stamp_radius_padded = floor((Extent2D(*self.config.stamp_size) * 1.42) / 2)
+        stamp_bbox = Box2I(Point2I(0, 0), Extent2I(1, 1)).dilatedBy(stamp_radius)  # always odd, centered 0,0
+        stamp_radius_padded = floor((Extent2D(*self.config.stamp_size) * 1.42) / 2)  # max possible req. pad
         stamp_bbox_padded = Box2I(Point2I(0, 0), Extent2I(1, 1)).dilatedBy(stamp_radius_padded)
 
         stamps = []
+        focal_plane_radii_mm = []
         for bright_star in bright_stars:
             pix_coord = Point2D(bright_star["pixel_x"], bright_star["pixel_y"])
 
@@ -442,7 +440,7 @@ class BrightStarCutoutTask(PipelineTask):
             # Define linear shifting and rotation to recenter and align stamps
             boresight_pseudopixel_coord = pixels_to_boresight_pseudopixels.applyForward(pix_coord)
             shift = makeTransform(AffineTransform(Point2D(0, 0) - boresight_pseudopixel_coord))
-            rotation = makeTransform(AffineTransform.makeRotation(-bright_star["theta_radians"] * radians))
+            rotation = makeTransform(AffineTransform.makeRotation(-bright_star["angle_radians"] * radians))
             pixels_to_stamp_frame = pixels_to_boresight_pseudopixels.then(shift).then(rotation)
 
             # Warp the image and mask to the stamp frame
@@ -450,7 +448,7 @@ class BrightStarCutoutTask(PipelineTask):
             warpImage(stamp_MI, input_MI, pixels_to_stamp_frame, warp_control)
             stamp_MI = stamp_MI[stamp_bbox]
 
-            # Check mask coverage, update metadata
+            # Skip if masked area fraction is too high
             bad_bit_mask = stamp_MI.mask.getPlaneBitMask(self.config.bad_mask_planes)
             good = (stamp_MI.mask.array & bad_bit_mask) == 0
             good_frac = np.sum(good) / stamp_MI.mask.array.size
@@ -487,13 +485,14 @@ class BrightStarCutoutTask(PipelineTask):
                 stamp_info=stamp_info,
             )
             stamps.append(stamp)
+            focal_plane_radii_mm.append(bright_star["radius_mm"])
 
         num_stars = len(bright_stars)
         num_excluded = num_stars - len(stamps)
         percent_excluded = 100.0 * num_excluded / num_stars if num_stars > 0 else 0.0
         self.log.info(
             "Extracted %i bright star stamp%s. "
-            "Excluded %i star%s (%.1f%%) due to a masked area fraction < %s.",
+            "Excluded %i star%s (%.1f%%) with an unmasked area fraction below %s.",
             len(stamps),
             "" if len(stamps) == 1 else "s",
             num_excluded,
@@ -503,10 +502,15 @@ class BrightStarCutoutTask(PipelineTask):
         )
 
         if not stamps:
+            self.log.warning(
+                "No bright star stamps were retained from %i selected reference star%s.",
+                num_stars,
+                "" if num_stars == 1 else "s",
+            )
             return None
 
-        focal_plane_radii = [stamp.focal_plane_radius for stamp in stamps]
-        metadata = PropertyList()
-        metadata["FOCAL_PLANE_RADIUS_MIN"] = np.min(focal_plane_radii)
-        metadata["FOCAL_PLANE_RADIUS_MAX"] = np.max(focal_plane_radii)
+        metadata = {
+            "FOCAL_PLANE_RADIUS_MM_MIN": np.min(focal_plane_radii_mm),
+            "FOCAL_PLANE_RADIUS_MM_MAX": np.max(focal_plane_radii_mm),
+        }
         return BrightStarStamps(stamps, metadata=metadata)
