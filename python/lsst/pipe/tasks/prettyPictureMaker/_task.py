@@ -50,6 +50,7 @@ from skimage.restoration import inpaint_biharmonic
 
 from lsst.daf.butler import Butler, DeferredDatasetHandle
 from lsst.daf.butler import DatasetRef
+from lsst.images import ColorImage, Projection, Box, TractFrame
 from lsst.pex.config import Field, Config, ConfigDictField, ListField, ChoiceField
 from lsst.pex.config.configurableActions import ConfigurableActionField
 from lsst.pipe.base import (
@@ -104,10 +105,17 @@ class PrettyPictureConnections(
         multiple=True,
     )
 
+    skyMap = Input(
+        doc="The skymap which the data has been mapped onto",
+        storageClass="SkyMap",
+        name=BaseSkyMap.SKYMAP_DATASET_TYPE_NAME,
+        dimensions=("skymap",),
+    )
+
     outputRGB = Output(
         doc="A RGB image created from the input data stored as a 3d array",
-        name="rgb_picture_array",
-        storageClass="NumpyArray",
+        name="rgb_picture",
+        storageClass="ColorImage",
         dimensions=("tract", "patch", "skymap"),
     )
 
@@ -369,21 +377,30 @@ class PrettyPictureTask(PipelineTask):
             # Apply adjustment to qualifying values
             array[lower_pos] = (array[lower_pos] - mu) * sigma_ratio + min_sig * factor
 
-    def run(self, images: Mapping[str, Exposure]) -> Struct:
+    def run(
+        self,
+        images: Mapping[str, Exposure],
+        image_wcs: Projection[Any] | None = None,
+        image_box: Box | None = None,
+    ) -> Struct:
         """Turns the input arguments in arguments into an RGB array.
 
         Parameters
         ----------
         images : `Mapping` of `str` to `Exposure`
             A mapping of input images and the band they correspond to.
+        image_wcs : `~lsst.images.Projection`, optional
+            A projection describing the sky coordinate of each pixel.
+        image_box : `~lsst.images.Box`, optional
+            A box that defines this image as part of a larger region.
 
         Returns
         -------
         result : `Struct`
             A struct with the corresponding RGB image, and mask used in
             RGB image construction. The struct will have the attributes
-            outputRGBImage and outputRGBMask. Each of the outputs will
-            be a `NDarray` object.
+            outputRGB and outputRGBMask. Each of the outputs will
+            be a `~lsst.images.ColorImage` object.
 
         Notes
         -----
@@ -506,7 +523,10 @@ class PrettyPictureTask(PipelineTask):
         # pack the joint mask back into a mask object
         lsstMask = Mask(width=jointMask.shape[1], height=jointMask.shape[0], planeDefs=maskDict)
         lsstMask.array = jointMask  # type: ignore
-        return Struct(outputRGB=colorImage.astype(dtype), outputRGBMask=lsstMask)  # type: ignore
+        return Struct(
+            outputRGB=ColorImage(colorImage.astype(dtype), bbox=image_box, projection=image_wcs),
+            outputRGBMask=lsstMask,
+        )  # type: ignore
 
     def runQuantum(
         self,
@@ -519,7 +539,24 @@ class PrettyPictureTask(PipelineTask):
         if not sortedImages:
             requested = ", ".join(self.config.channelConfig.keys())
             raise NoWorkFound(f"No input images of band(s) {requested}")
-        outputs = self.run(sortedImages)
+
+        # get the patch tract bounding box and wcs
+        skymap = butlerQC.get(inputRefs.skyMap)
+        quantumDataId = butlerQC.quantum.dataId
+        tractInfo = skymap[quantumDataId["tract"]]
+        patchInfo = tractInfo[quantumDataId["patch"]]
+        outputs = self.run(
+            images=sortedImages,
+            image_wcs=Projection.from_legacy(
+                patchInfo.wcs,
+                TractFrame(
+                    skymap=quantumDataId["skymap"],
+                    tract=quantumDataId["tract"],
+                    bbox=Box.from_legacy(tractInfo.bbox),
+                ),
+            ),
+            image_box=Box.from_legacy(patchInfo.getOuterBBox()),
+        )
         butlerQC.put(outputs, outputRefs)
 
     def makeInputsFromRefs(
@@ -985,8 +1022,8 @@ class PrettyPictureStarFixerTask(PipelineTask):
 class PrettyMosaicConnections(PipelineTaskConnections, dimensions=("tract", "skymap")):
     inputRGB = Input(
         doc="Individual RGB images that are to go into the mosaic",
-        name="rgb_picture_array",
-        storageClass="NumpyArray",
+        name="rgb_picture",
+        storageClass="ColorImage",
         dimensions=("tract", "patch", "skymap"),
         multiple=True,
         deferLoad=True,
@@ -1010,8 +1047,8 @@ class PrettyMosaicConnections(PipelineTaskConnections, dimensions=("tract", "sky
 
     outputRGBMosaic = Output(
         doc="A RGB mosaic created from the input data stored as a 3d array",
-        name="rgb_mosaic_array",
-        storageClass="NumpyArray",
+        name="rgb_mosaic",
+        storageClass="ColorImage",
         dimensions=("tract", "skymap"),
     )
 
@@ -1119,7 +1156,7 @@ class PrettyMosaicTask(PipelineTask):
         maskDict = {}
         mosaic_maker = FeatheredMosaicCreator(patch_grow, self.config.binFactor)
         for box, handle, handleMask, tractInfo in zip(boxes, inputRGB, inputRGBMask, tractMaps):
-            rgb = handle.get()
+            rgb = handle.get().array
             # convert to the dci-d65 colorspace
             if self.config.doDCID65Convert:
                 rgb = colour.RGB_to_RGB(np.clip(rgb, 0, 1), dp3, d65)
@@ -1165,7 +1202,7 @@ class PrettyMosaicTask(PipelineTask):
         if consolidatedImage is None:
             consolidatedImage = np.zeros((0, 0, 0), dtype=np.uint8)
 
-        return Struct(outputRGBMosaic=consolidatedImage)
+        return Struct(outputRGBMosaic=ColorImage(consolidatedImage))
 
     def runQuantum(
         self,
