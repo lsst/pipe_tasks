@@ -47,9 +47,6 @@ from lsst.geom import (
 )
 from lsst.images import GeneralFrame, Image, Mask, Projection
 from lsst.meas.algorithms import (
-    BrightStarStamp,
-    BrightStarStampInfo,
-    BrightStarStamps,
     LoadReferenceObjectsConfig,
     ReferenceObjectLoader,
     WarpedPsf,
@@ -58,6 +55,8 @@ from lsst.pex.config import ChoiceField, ConfigField, Field, ListField
 from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections, Struct
 from lsst.pipe.base.connectionTypes import Input, Output, PrerequisiteInput
 from lsst.utils.timer import timeMethod
+
+from .brightStarStamps import BrightStarStamp, BrightStarStampInfo, BrightStarStamps
 
 NEIGHBOR_MASK_PLANE = "NEIGHBOR"
 
