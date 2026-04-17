@@ -56,7 +56,7 @@ from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnect
 from lsst.pipe.base.connectionTypes import Input, Output, PrerequisiteInput
 from lsst.utils.timer import timeMethod
 
-from .extendedPsfCandidates import ExtendedPsfCandidate, ExtendedPsfCandidateInfo, ExtendedPsfCandidates
+from .extended_psf_candidates import ExtendedPsfCandidate, ExtendedPsfCandidateInfo, ExtendedPsfCandidates
 
 NEIGHBOR_MASK_PLANE = "NEIGHBOR"
 

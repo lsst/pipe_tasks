@@ -27,7 +27,7 @@ import lsst.images.tests
 import lsst.utils.tests
 import numpy as np
 from lsst.images import Image, Mask, MaskedImage, MaskSchema
-from lsst.pipe.tasks.extendedPsf import ExtendedPsfCandidate, ExtendedPsfCandidateInfo, ExtendedPsfCandidates
+from lsst.pipe.tasks.extended_psf import ExtendedPsfCandidate, ExtendedPsfCandidateInfo, ExtendedPsfCandidates
 
 
 class ExtendedPsfCandidatesTestCase(lsst.utils.tests.TestCase):

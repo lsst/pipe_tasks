@@ -41,7 +41,7 @@ from lsst.afw.math import FixedKernel
 from lsst.geom import Box2I, Extent2I, Point2D, Point2I, SpherePoint, arcseconds, degrees
 from lsst.images import Image
 from lsst.meas.algorithms import KernelPsf
-from lsst.pipe.tasks.extendedPsf import ExtendedPsfCutoutConfig, ExtendedPsfCutoutTask
+from lsst.pipe.tasks.extended_psf import ExtendedPsfCutoutConfig, ExtendedPsfCutoutTask
 
 
 class ExtendedPsfSubtractionTestCase(lsst.utils.tests.TestCase):
