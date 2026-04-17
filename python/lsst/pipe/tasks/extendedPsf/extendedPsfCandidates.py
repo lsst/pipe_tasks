@@ -1,4 +1,4 @@
-# This file is part of meas_algorithms.
+# This file is part of pipe_tasks.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -19,16 +19,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Collection of small images (postage stamps) centered on bright stars."""
-
 from __future__ import annotations
 
 __all__ = [
-    "BrightStarStampInfo",
-    "BrightStarStampSerializationModel",
-    "BrightStarStampsSerializationModel",
-    "BrightStarStamp",
-    "BrightStarStamps",
+    "ExtendedPsfCandidateInfo",
+    "ExtendedPsfCandidateSerializationModel",
+    "ExtendedPsfCandidatesSerializationModel",
+    "ExtendedPsfCandidate",
+    "ExtendedPsfCandidates",
 ]
 
 import functools
@@ -53,28 +51,27 @@ from lsst.images.serialization import ArchiveTree, InputArchive, MetadataValue, 
 from lsst.images.utils import is_none
 
 
-class BrightStarStampInfo(BaseModel):
-    """Information about a bright star in a `BrightStarStamp`.
+class ExtendedPsfCandidateInfo(BaseModel):
+    """Information about a star in an `ExtendedPsfCandidate`.
 
     Attributes
     ----------
     visit : `int`, optional
-        The visit during which the bright star was observed.
+        The visit during which the star was observed.
     detector : `int`, optional
-        The detector on which the bright star was observed.
+        The detector on which the star was observed.
     ref_id : `int`, optional
-        The reference catalog ID for the bright star.
+        The reference catalog ID for the star.
     ref_mag : `float`, optional
-        The reference magnitude for the bright star.
+        The reference magnitude for the star.
     position_x : `float`, optional
-        The x-coordinate of the bright star in the focal plane.
+        The x-coordinate of the star in the focal plane.
     position_y : `float`, optional
-        The y-coordinate of the bright star in the focal plane.
+        The y-coordinate of the star in the focal plane.
     focal_plane_radius : `~lsst.images.utils.Quantity`, optional
-        The radius of the bright star from the center of the focal plane.
+        The radius of the star from the center of the focal plane.
     focal_plane_angle : `~lsst.images.utils.Quantity`, optional
-        The angle of the bright star in the focal plane,
-        measured from the +x axis.
+        The angle of the star in the focal plane, measured from the +x axis.
     """
 
     visit: int | None = None
@@ -88,38 +85,38 @@ class BrightStarStampInfo(BaseModel):
 
     def __str__(self) -> str:
         attrs = ", ".join(f"{k}={v!r}" for k, v in self.__dict__.items())
-        return f"BrightStarStampInfo({attrs})"
+        return f"ExtendedPsfCandidateInfo({attrs})"
 
     __repr__ = __str__
 
 
-class BrightStarStampSerializationModel[P: BaseModel](MaskedImageSerializationModel[P]):
-    """A Pydantic model used to represent a serialized `BrightStarStamp`."""
+class ExtendedPsfCandidateSerializationModel[P: BaseModel](MaskedImageSerializationModel[P]):
+    """A Pydantic model to represent a serialized `ExtendedPsfCandidate`."""
 
     psf_kernel_image: ImageSerializationModel[P] | None = Field(
         default=None,
         exclude_if=is_none,
-        description="Kernel image of the PSF at the stamp center.",
+        description="Kernel image of the PSF at the cutout center.",
     )
-    stamp_info: BrightStarStampInfo = Field(description="Information about the bright star in the stamp.")
+    star_info: ExtendedPsfCandidateInfo = Field(description="Information about the star in the cutout.")
 
 
-class BrightStarStampsSerializationModel[P: BaseModel](ArchiveTree):
-    """A Pydantic model used to represent serialized `BrightStarStamps`."""
+class ExtendedPsfCandidatesSerializationModel[P: BaseModel](ArchiveTree):
+    """A Pydantic model to represent serialized `ExtendedPsfCandidates`."""
 
-    stamps: list[BrightStarStampSerializationModel[P]] = Field(
+    candidates: list[ExtendedPsfCandidateSerializationModel[P]] = Field(
         default_factory=list,
-        description="The bright star stamps in this collection.",
+        description="The candidate cutouts in this collection.",
     )
 
 
-class BrightStarStamp(MaskedImage):
-    """A postage stamp centered on a bright star, with associated metadata.
+class ExtendedPsfCandidate(MaskedImage):
+    """A cutout centered on a star, with associated metadata.
 
     Parameters
     ----------
     image : `~lsst.images.Image`
-        The main data image for this bright star stamp.
+        The main data image for this star cutout.
     mask : `~lsst.images.Mask`, optional
         Bitmask that annotates the main image's pixels.
     variance : `~lsst.images.Image`, optional
@@ -131,18 +128,18 @@ class BrightStarStamp(MaskedImage):
     obs_info : `~astro_metadata_translator.ObservationInfo`, optional
         Standardized description of visit metadata.
     metadata : `dict` [`str`, `MetadataValue`], optional
-        Additional metadata to associate with this stamp.
+        Additional metadata to associate with this cutout.
     psf_kernel_image : `~lsst.images.Image`, optional
-        Kernel image of the PSF at the stamp center.
-    stamp_info : `BrightStarStampInfo`, optional
-        Information about the bright star in the stamp.
+        Kernel image of the PSF at the cutout center.
+    star_info : `ExtendedPsfCandidateInfo`, optional
+        Information about the star in the cutout.
 
     Attributes
     ----------
     psf_kernel_image : `~lsst.images.Image`
-        Kernel image of the PSF at the stamp center.
-    stamp_info : `BrightStarStampInfo`
-        Information about the bright star in this stamp.
+        Kernel image of the PSF at the cutout center.
+    star_info : `ExtendedPsfCandidateInfo`
+        Information about the star in this cutout.
     """
 
     def __init__(
@@ -156,7 +153,7 @@ class BrightStarStamp(MaskedImage):
         obs_info: ObservationInfo | None = None,
         metadata: dict[str, MetadataValue] | None = None,
         psf_kernel_image: Image | None = None,
-        stamp_info: BrightStarStampInfo | None = None,
+        star_info: ExtendedPsfCandidateInfo | None = None,
     ):
         super().__init__(
             image,
@@ -169,59 +166,59 @@ class BrightStarStamp(MaskedImage):
         )
 
         self._psf_kernel_image = psf_kernel_image
-        self._stamp_info = stamp_info or BrightStarStampInfo()
+        self._star_info = star_info or ExtendedPsfCandidateInfo()
 
-    def __getitem__(self, bbox: Box | EllipsisType) -> BrightStarStamp:
+    def __getitem__(self, bbox: Box | EllipsisType) -> ExtendedPsfCandidate:
         if bbox is ...:
             return self
         super().__getitem__(bbox)
         return self._transfer_metadata(
-            BrightStarStamp(
+            ExtendedPsfCandidate(
                 # Projection and obs_info propagate from the image.
                 self.image[bbox],
                 mask=self.mask[bbox],
                 variance=self.variance[bbox],
                 psf_kernel_image=self.psf_kernel_image,
-                stamp_info=self.stamp_info,
+                star_info=self.star_info,
             ),
             bbox=bbox,
         )
 
     def __str__(self) -> str:
-        return f"BrightStarStamp({self.image!s}, {list(self.mask.schema.names)}, {self.stamp_info})"
+        return f"ExtendedPsfCandidate({self.image!s}, {list(self.mask.schema.names)}, {self.star_info})"
 
     def __repr__(self) -> str:
         return (
-            f"BrightStarStamp({self.image!r}, mask_schema={self.mask.schema!r}, "
-            f"stamp_info={self.stamp_info!r})"
+            f"ExtendedPsfCandidate({self.image!r}, mask_schema={self.mask.schema!r}, "
+            f"star_info={self.star_info!r})"
         )
 
     @property
     def psf_kernel_image(self) -> Image:
-        """Kernel image of the PSF at the stamp center."""
+        """Kernel image of the PSF at the cutout center."""
         if self._psf_kernel_image is None:
-            raise RuntimeError("No PSF kernel image is attached to this BrightStarStamp.")
+            raise RuntimeError("No PSF kernel image is attached to this ExtendedPsfCandidate.")
         return self._psf_kernel_image
 
     @property
-    def stamp_info(self) -> BrightStarStampInfo:
-        """Return the BrightStarStampInfo associated with this stamp."""
-        return self._stamp_info
+    def star_info(self) -> ExtendedPsfCandidateInfo:
+        """Return the ExtendedPsfCandidateInfo associated with this star."""
+        return self._star_info
 
-    def copy(self) -> BrightStarStamp:
-        """Deep-copy the bright star stamp, metadata, and stamp info."""
+    def copy(self) -> ExtendedPsfCandidate:
+        """Deep-copy the star cutout, metadata, and star info."""
         return self._transfer_metadata(
-            BrightStarStamp(
+            ExtendedPsfCandidate(
                 image=self._image.copy(),
                 mask=self._mask.copy(),
                 variance=self._variance.copy(),
                 psf_kernel_image=self._psf_kernel_image,
-                stamp_info=self._stamp_info.model_copy(),
+                star_info=self._star_info.model_copy(),
             ),
             copy=True,
         )
 
-    def serialize(self, archive: OutputArchive[Any]) -> BrightStarStampSerializationModel:
+    def serialize(self, archive: OutputArchive[Any]) -> ExtendedPsfCandidateSerializationModel:
         masked_image_model = super().serialize(archive)
         serialized_psf_kernel_image = (
             archive.serialize_direct(
@@ -231,39 +228,45 @@ class BrightStarStamp(MaskedImage):
             if self._psf_kernel_image is not None
             else None
         )
-        return BrightStarStampSerializationModel(
+        return ExtendedPsfCandidateSerializationModel(
             **masked_image_model.model_dump(),
             psf_kernel_image=serialized_psf_kernel_image,
-            stamp_info=self.stamp_info,
+            star_info=self.star_info,
         )
 
     @staticmethod
+    def _get_archive_tree_type[P: BaseModel](
+        pointer_type: type[P],
+    ) -> type[ExtendedPsfCandidateSerializationModel[P]]:
+        return ExtendedPsfCandidateSerializationModel[pointer_type]
+
+    @staticmethod
     def deserialize(
-        model: BrightStarStampSerializationModel[Any],
+        model: ExtendedPsfCandidateSerializationModel[Any],
         archive: InputArchive[Any],
         *,
         bbox: Box | None = None,
-    ) -> BrightStarStamp:
+    ) -> ExtendedPsfCandidate:
         masked_image = MaskedImage.deserialize(model, archive, bbox=bbox)
         psf_kernel_image = (
             Image.deserialize(model.psf_kernel_image, archive) if model.psf_kernel_image is not None else None
         )
-        return BrightStarStamp(
+        return ExtendedPsfCandidate(
             masked_image.image,
             mask=masked_image.mask,
             variance=masked_image.variance,
             psf_kernel_image=psf_kernel_image,
-            stamp_info=model.stamp_info,
+            star_info=model.star_info,
         )._finish_deserialize(model)
 
 
-class BrightStarStamps(Sequence[BrightStarStamp]):
-    """A collection of bright star stamps.
+class ExtendedPsfCandidates(Sequence[ExtendedPsfCandidate]):
+    """A collection of star cutouts.
 
     Parameters
     ----------
-    stamps : `Iterable` [`BrightStarStamp`]
-        Collection of `BrightStarStamp` instances.
+    candidates : `Iterable` [`ExtendedPsfCandidate`]
+        Collection of `ExtendedPsfCandidate` instances.
     metadata : `dict` [`str`, `MetadataValue`], optional
         Global metadata associated with the collection.
 
@@ -271,35 +274,37 @@ class BrightStarStamps(Sequence[BrightStarStamp]):
     ----------
     metadata : `dict` [`str`, `MetadataValue`]
         Global metadata associated with the collection.
-    ref_id_map : `dict` [`int`, `BrightStarStamp`]
-        A mapping from reference IDs to `BrightStarStamp` objects.
-        Only includes stamps with valid reference IDs.
+    ref_id_map : `dict` [`int`, `ExtendedPsfCandidate`]
+        A mapping from reference IDs to `ExtendedPsfCandidate` objects.
+        Only includes candidates with valid reference IDs.
     """
 
     def __init__(
         self,
-        stamps: Sequence[BrightStarStamp],
+        candidates: Sequence[ExtendedPsfCandidate],
         metadata: dict[str, MetadataValue] | None = None,
     ):
-        self._stamps = list(stamps)
+        self._candidates = list(candidates)
         self._metadata = {} if metadata is None else dict(metadata)
         self._ref_id_map = {
-            stamp.stamp_info.ref_id: stamp for stamp in self if stamp.stamp_info.ref_id is not None
+            candidate.star_info.ref_id: candidate
+            for candidate in self
+            if candidate.star_info.ref_id is not None
         }
 
     def __len__(self):
-        return len(self._stamps)
+        return len(self._candidates)
 
     def __getitem__(self, index):
         if isinstance(index, slice):
-            return BrightStarStamps(self._stamps[index], metadata=self._metadata)
-        return self._stamps[index]
+            return ExtendedPsfCandidates(self._candidates[index], metadata=self._metadata)
+        return self._candidates[index]
 
     def __iter__(self):
-        return iter(self._stamps)
+        return iter(self._candidates)
 
     def __str__(self) -> str:
-        return f"BrightStarStamps(length={len(self)})"
+        return f"ExtendedPsfCandidates(length={len(self)})"
 
     __repr__ = __str__
 
@@ -310,30 +315,33 @@ class BrightStarStamps(Sequence[BrightStarStamp]):
 
     @property
     def ref_id_map(self):
-        """Map reference IDs to `BrightStarStamp` objects."""
+        """Map reference IDs to `ExtendedPsfCandidate` objects."""
         return self._ref_id_map
 
-    def serialize(self, archive: OutputArchive[Any]) -> BrightStarStampsSerializationModel:
-        return BrightStarStampsSerializationModel(
-            stamps=[
-                archive.serialize_direct(f"stamp_{index}", stamp.serialize)
-                for index, stamp in enumerate(self._stamps)
+    def serialize(self, archive: OutputArchive[Any]) -> ExtendedPsfCandidatesSerializationModel:
+        return ExtendedPsfCandidatesSerializationModel(
+            candidates=[
+                archive.serialize_direct(f"candidate_{index}", candidate.serialize)
+                for index, candidate in enumerate(self._candidates)
             ],
             metadata=self._metadata,
         )
 
     @staticmethod
     def deserialize(
-        model: BrightStarStampsSerializationModel[Any],
+        model: ExtendedPsfCandidatesSerializationModel[Any],
         archive: InputArchive[Any],
-    ) -> BrightStarStamps:
-        return BrightStarStamps(
-            [BrightStarStamp.deserialize(stamp_model, archive) for stamp_model in model.stamps],
+    ) -> ExtendedPsfCandidates:
+        return ExtendedPsfCandidates(
+            [
+                ExtendedPsfCandidate.deserialize(candidate_model, archive)
+                for candidate_model in model.candidates
+            ],
             metadata=model.metadata,
         )
 
     @staticmethod
     def _get_archive_tree_type[P: BaseModel](
         pointer_type: type[P],
-    ) -> type[BrightStarStampsSerializationModel[P]]:
-        return BrightStarStampsSerializationModel[pointer_type]
+    ) -> type[ExtendedPsfCandidatesSerializationModel[P]]:
+        return ExtendedPsfCandidatesSerializationModel[pointer_type]

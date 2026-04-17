@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["BrightStarCutoutConnections", "BrightStarCutoutConfig", "BrightStarCutoutTask"]
+__all__ = ["ExtendedPsfCutoutConnections", "ExtendedPsfCutoutConfig", "ExtendedPsfCutoutTask"]
 
 import astropy.units as u
 import numpy as np
@@ -56,21 +56,21 @@ from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnect
 from lsst.pipe.base.connectionTypes import Input, Output, PrerequisiteInput
 from lsst.utils.timer import timeMethod
 
-from .brightStarStamps import BrightStarStamp, BrightStarStampInfo, BrightStarStamps
+from .extendedPsfCandidates import ExtendedPsfCandidate, ExtendedPsfCandidateInfo, ExtendedPsfCandidates
 
 NEIGHBOR_MASK_PLANE = "NEIGHBOR"
 
 
-class BrightStarCutoutConnections(
+class ExtendedPsfCutoutConnections(
     PipelineTaskConnections,
     dimensions=("instrument", "visit", "detector"),
 ):
-    """Connections for BrightStarCutoutTask."""
+    """Connections for ExtendedPsfCutoutTask."""
 
     ref_cat = PrerequisiteInput(
         name="the_monster_20250219",
         storageClass="SimpleCatalog",
-        doc="Reference catalog that contains bright star positions.",
+        doc="Reference catalog that contains star positions.",
         dimensions=("skypix",),
         multiple=True,
         deferLoad=True,
@@ -78,7 +78,7 @@ class BrightStarCutoutConnections(
     input_exposure = Input(
         name="preliminary_visit_image",
         storageClass="ExposureF",
-        doc="Background-subtracted input exposure from which to extract bright star stamp cutouts.",
+        doc="Background-subtracted input exposure from which to extract cutouts around a star.",
         dimensions=("visit", "detector"),
     )
     input_background = Input(
@@ -93,19 +93,19 @@ class BrightStarCutoutConnections(
         doc="Source catalog containing footprints on the input exposure, used to mask neighboring sources.",
         dimensions=("visit", "detector"),
     )
-    bright_star_stamps = Output(
-        name="bright_star_stamps",
-        storageClass="BrightStarStamps",
-        doc="Set of preprocessed postage stamp cutouts, each centered on a single bright star.",
+    extended_psf_candidates = Output(
+        name="extended_psf_candidates",
+        storageClass="ExtendedPsfCandidates",
+        doc="Set of preprocessed cutouts, each centered on a single star.",
         dimensions=("visit", "detector"),
     )
 
 
-class BrightStarCutoutConfig(
+class ExtendedPsfCutoutConfig(
     PipelineTaskConfig,
-    pipelineConnections=BrightStarCutoutConnections,
+    pipelineConnections=ExtendedPsfCutoutConnections,
 ):
-    """Configuration parameters for BrightStarCutoutTask."""
+    """Configuration parameters for ExtendedPsfCutoutTask."""
 
     # Star selection
     mag_range = ListField[float](
@@ -113,17 +113,17 @@ class BrightStarCutoutConfig(
         default=[10, 18],
     )
     exclude_arcsec_radius = Field[float](
-        doc="No postage stamp will be generated for stars with a neighboring star in the range "
+        doc="No cutouts will be generated for stars with a neighboring star in the range "
         "``exclude_mag_range`` mag within ``exclude_arcsec_radius`` arcseconds.",
         default=5,
     )
     exclude_mag_range = ListField[float](
-        doc="No postage stamp will be generated for stars with a neighboring star in the range "
+        doc="No cutouts will be generated for stars with a neighboring star in the range "
         "``exclude_mag_range`` mag within ``exclude_arcsec_radius`` arcseconds.",
         default=[0, 20],
     )
     min_area_fraction = Field[float](
-        doc="Minimum fraction of the stamp area, post-masking, that must remain for a cutout to be retained.",
+        doc="Minimum fraction of the cutout area, post-masking, that must remain for it to be retained.",
         default=0.1,
     )
     bad_mask_planes = ListField[str](
@@ -151,9 +151,9 @@ class BrightStarCutoutConfig(
         default=np.inf,
     )
 
-    # Stamp geometry
-    stamp_size = ListField[int](
-        doc="Size of the stamps to be extracted, in pixels.",
+    # Cutout geometry
+    cutout_size = ListField[int](
+        doc="Size of the cutouts to be extracted, in pixels.",
         default=[251, 251],
     )
     warping_kernel_name = ChoiceField[str](
@@ -188,21 +188,21 @@ class BrightStarCutoutConfig(
     )
 
 
-class BrightStarCutoutTask(PipelineTask):
-    """Extract bright star cutouts, and warp to the same pixel grid.
+class ExtendedPsfCutoutTask(PipelineTask):
+    """Extract extended PSF cutouts, and warp to the same pixel grid.
 
-    The BrightStarCutoutTask is used to extract, process, and store small image
-    cutouts (or "postage stamps") around bright stars.
+    The ExtendedPsfCutoutTask is used to extract, process, and store small
+    image cutouts around stars.
     This task essentially consists of two principal steps.
-    First, it identifies bright stars within an exposure using a reference
-    catalog and extracts a stamp around each.
-    Second, it shifts and warps each stamp to remove optical distortions and
+    First, it identifies stars within an exposure using a reference
+    catalog and extracts a cutout around each.
+    Second, it shifts and warps each cutout to remove optical distortions and
     sample all stars on the same pixel grid.
     """
 
-    ConfigClass = BrightStarCutoutConfig
-    _DefaultName = "brightStarCutout"
-    config: BrightStarCutoutConfig
+    ConfigClass = ExtendedPsfCutoutConfig
+    _DefaultName = "extendedPsfCutout"
+    config: ExtendedPsfCutoutConfig
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -213,7 +213,7 @@ class BrightStarCutoutTask(PipelineTask):
             config=self.config.load_reference_objects_config,
         )
         output = self.run(**inputs, ref_obj_loader=ref_obj_loader)
-        # Only ingest Stamp if it exists; prevents ingesting an empty FITS file
+        # Only ingest if output exists; prevents ingesting an empty FITS file
         if output:
             butlerQC.put(output, outputRefs)
 
@@ -225,13 +225,13 @@ class BrightStarCutoutTask(PipelineTask):
         input_source_catalog: SourceCatalog,
         ref_obj_loader: ReferenceObjectLoader,
     ):
-        """Identify bright stars within an exposure using a reference catalog,
-        extract stamps around each and warp/shift stamps onto a common frame.
+        """Identify stars within an exposure using a reference catalog,
+        extract cutouts around each and warp/shift cutouts onto a common frame.
 
         Parameters
         ----------
         input_exposure : `~lsst.afw.image.ExposureF`
-            The background-subtracted image to extract bright star stamps.
+            The background-subtracted image to extract cutouts around stars.
         input_background : `~lsst.afw.math.BackgroundList`
             The background model associated with the input exposure.
         input_source_catalog : `~lsst.afw.table.SourceCatalog`
@@ -241,45 +241,46 @@ class BrightStarCutoutTask(PipelineTask):
 
         Returns
         -------
-        bright_star_stamps : `~lsst.meas.algorithms.BrightStarStamps`
-            A set of postage stamp cutouts, each centered on a bright star.
+        extended_psf_candidates :
+                `~lsst.pipe.tasks.extendedPsf.ExtendedPsfCandidates`
+            A set of cutouts, each centered on an extended PSF candidate.
         """
-        bright_stars = self._get_bright_stars(ref_obj_loader, input_exposure)
+        extended_psf_candidate_table = self._get_extended_psf_candidate_table(ref_obj_loader, input_exposure)
 
-        bright_star_stamps = self._get_bright_star_stamps(
+        extended_psf_candidates = self._get_extended_psf_candidates(
             input_exposure,
             input_background,
             input_source_catalog,
-            bright_stars,
+            extended_psf_candidate_table,
         )
 
-        return Struct(bright_star_stamps=bright_star_stamps)
+        return Struct(extended_psf_candidates=extended_psf_candidates)
 
-    def _get_bright_stars(
+    def _get_extended_psf_candidate_table(
         self,
         ref_obj_loader: ReferenceObjectLoader,
         input_exposure: ExposureF,
     ) -> Table:
-        """Get a table of bright stars from the reference catalog.
+        """Get a table of extended PSF candidates from the reference catalog.
 
         Trim the reference catalog to only those objects within the exposure
         bounding box.
-        Then, select bright stars based on the specified magnitude range,
+        Then, select stars based on the specified magnitude range,
         isolation criteria, and optionally focal plane radius criteria.
         Finally, add columns with pixel coordinates and focal plane coordinates
-        for each bright star.
+        for each extended PSF candidate.
 
         Parameters
         ----------
         ref_obj_loader : `~lsst.meas.algorithms.ReferenceObjectLoader`
             Loader to find objects within a reference catalog.
         input_exposure : `~lsst.afw.image.ExposureF`
-            The exposure for which bright stars are being selected.
+            The exposure for which extended PSF candidates are being selected.
 
         Returns
         -------
-        bright_stars : `~astropy.table.Table`
-            Table of bright stars within the exposure.
+        extended_psf_candidate_table : `~astropy.table.Table`
+            Table of extended PSF candidates within the exposure.
         """
         bbox = input_exposure.getBBox()
         wcs = input_exposure.getWcs()
@@ -299,12 +300,12 @@ class BrightStarCutoutTask(PipelineTask):
         # potentially be either a candidate or a neighbor based on flux
         flux_min = np.min((flux_range_candidate[0], flux_range_neighbor[0]))
         flux_max = np.max((flux_range_candidate[1], flux_range_neighbor[1]))
-        stars_subset = (ref_cat_full[flux_field] >= flux_min) & (ref_cat_full[flux_field] <= flux_max)
+        maximal_subset = (ref_cat_full[flux_field] >= flux_min) & (ref_cat_full[flux_field] <= flux_max)
         ref_cat_subset_columns = ("id", "coord_ra", "coord_dec", flux_field)
-        ref_cat_subset = Table(ref_cat_full.extract(*ref_cat_subset_columns, where=stars_subset))
+        ref_cat_subset = Table(ref_cat_full.extract(*ref_cat_subset_columns, where=maximal_subset))
         flux_subset = ref_cat_subset[flux_field]
 
-        # Identify candidate bright stars and their neighbors based on flux
+        # Identify candidate stars and their neighbors based on flux
         is_candidate = (flux_subset >= flux_range_candidate[0]) & (flux_subset <= flux_range_candidate[1])
         is_neighbor = (flux_subset >= flux_range_neighbor[0]) & (flux_subset <= flux_range_neighbor[1])
 
@@ -313,7 +314,7 @@ class BrightStarCutoutTask(PipelineTask):
         coords_candidate = coords[is_candidate]
         coords_neighbor = coords[is_neighbor]
 
-        # Identify candidate bright stars that have no contaminant neighbors
+        # Identify candidate stars that have no contaminant neighbors
         is_candidate_isolated = np.ones(len(coords_candidate), dtype=bool)
         if len(coords_neighbor) > 0:
             _, indices_candidate, angular_separation, _ = coords_candidate.search_around_sky(
@@ -322,66 +323,69 @@ class BrightStarCutoutTask(PipelineTask):
             indices_candidate = indices_candidate[angular_separation > 0 * u.arcsec]  # Exclude self-matches
             is_candidate_isolated[indices_candidate] = False
 
-        # Trim ref cat subset to isolated bright stars; add ancillary data
-        bright_stars = ref_cat_subset[is_candidate][is_candidate_isolated]
+        # Trim ref cat subset to isolated stars; add ancillary data
+        extended_psf_candidate_table = ref_cat_subset[is_candidate][is_candidate_isolated]
 
-        flux_nanojansky = bright_stars[flux_field][:] * u.nJy
-        bright_stars["mag"] = flux_nanojansky.to(u.ABmag).to_value()  # AB magnitudes
+        flux_nanojansky = extended_psf_candidate_table[flux_field][:] * u.nJy
+        extended_psf_candidate_table["mag"] = flux_nanojansky.to(u.ABmag).to_value()  # AB magnitudes
 
-        zip_ra_dec = zip(bright_stars["coord_ra"] * radians, bright_stars["coord_dec"] * radians)
+        zip_ra_dec = zip(
+            extended_psf_candidate_table["coord_ra"] * radians,
+            extended_psf_candidate_table["coord_dec"] * radians,
+        )
         sphere_points = [SpherePoint(ra, dec) for ra, dec in zip_ra_dec]
         pixel_coords = wcs.skyToPixel(sphere_points)
-        bright_stars["pixel_x"] = [pixel_coord.x for pixel_coord in pixel_coords]
-        bright_stars["pixel_y"] = [pixel_coord.y for pixel_coord in pixel_coords]
+        extended_psf_candidate_table["pixel_x"] = [pixel_coord.x for pixel_coord in pixel_coords]
+        extended_psf_candidate_table["pixel_y"] = [pixel_coord.y for pixel_coord in pixel_coords]
 
         mm_coords = detector.transform(pixel_coords, PIXELS, FOCAL_PLANE)
         mm_coords_x = np.array([mm_coord.x for mm_coord in mm_coords])
         mm_coords_y = np.array([mm_coord.y for mm_coord in mm_coords])
         radius_mm = np.sqrt(mm_coords_x**2 + mm_coords_y**2)
         angle_radians = np.arctan2(mm_coords_y, mm_coords_x)
-        bright_stars["radius_mm"] = radius_mm
-        bright_stars["angle_radians"] = angle_radians
+        extended_psf_candidate_table["radius_mm"] = radius_mm
+        extended_psf_candidate_table["angle_radians"] = angle_radians
 
-        # Trim bright star catalog to those within the exposure bounding box,
+        # Trim star catalog to those within the exposure bounding box,
         # and optionally within a range of focal plane radii
-        within_bbox = bright_stars["pixel_x"] >= bbox.getMinX()
-        within_bbox &= bright_stars["pixel_x"] <= bbox.getMaxX()
-        within_bbox &= bright_stars["pixel_y"] >= bbox.getMinY()
-        within_bbox &= bright_stars["pixel_y"] <= bbox.getMaxY()
-        within_radii = bright_stars["radius_mm"] >= self.config.min_focal_plane_radius
-        within_radii &= bright_stars["radius_mm"] <= self.config.max_focal_plane_radius
-        bright_stars = bright_stars[within_bbox & within_radii]
+        within_bbox = extended_psf_candidate_table["pixel_x"] >= bbox.getMinX()
+        within_bbox &= extended_psf_candidate_table["pixel_x"] <= bbox.getMaxX()
+        within_bbox &= extended_psf_candidate_table["pixel_y"] >= bbox.getMinY()
+        within_bbox &= extended_psf_candidate_table["pixel_y"] <= bbox.getMaxY()
+        within_radii = extended_psf_candidate_table["radius_mm"] >= self.config.min_focal_plane_radius
+        within_radii &= extended_psf_candidate_table["radius_mm"] <= self.config.max_focal_plane_radius
+        extended_psf_candidate_table = extended_psf_candidate_table[within_bbox & within_radii]
 
         self.log.info(
             "Identified %i reference star%s in the field of view after applying magnitude and isolation "
             "cuts.",
-            len(bright_stars),
-            "s" if len(bright_stars) != 1 else "",
+            len(extended_psf_candidate_table),
+            "s" if len(extended_psf_candidate_table) != 1 else "",
         )
 
-        return bright_stars
+        return extended_psf_candidate_table
 
-    def _get_bright_star_stamps(
+    def _get_extended_psf_candidates(
         self,
         input_exposure: ExposureF,
         input_background: BackgroundList | None,
         footprints: SourceCatalog | np.ndarray,
-        bright_stars: Table,
-    ) -> BrightStarStamps | None:
-        """Extract and warp bright star stamps.
+        extended_psf_candidate_table: Table,
+    ) -> ExtendedPsfCandidates | None:
+        """Extract and warp extended PSF candidate cutouts.
 
-        For each bright star, extract a stamp from the input exposure centered
-        on the star's pixel coordinates.
-        Then, shift and warp the stamp to recenter on the star and align each
-        to the same orientation.
-        Finally, check the fraction of the stamp area that is masked
-        (e.g. due to neighboring sources or bad pixels), and only retain stamps
+        For each extended PSF candidate, extract a cutout from the input
+        exposure centered on the candidate's pixel coordinates.
+        Then, shift and warp the cutout to recenter on the candidate and align
+        each to the same orientation.
+        Finally, check the fraction of the cutout area that is masked
+        (e.g. due to neighboring sources or bad pixels), and only retain those
         with sufficient unmasked area.
 
         Parameters
         ----------
         input_exposure : `~lsst.afw.image.ExposureF`
-            The science image to extract bright star stamps.
+            The science image to extract extended PSF cutouts.
         input_background : `~lsst.afw.math.BackgroundList` | None
             The background model associated with the input exposure.
             If provided, this will be added back on to the input image.
@@ -389,14 +393,15 @@ class BrightStarCutoutTask(PipelineTask):
             The source catalog containing footprints on the input exposure, or
             a 2D numpy array with the same dimensions as the input exposure
             where each pixel value corresponds to the source footprint ID.
-        bright_stars : `~astropy.table.Table`
-            Table of bright stars for which to extract stamps.
+        extended_psf_candidate_table : `~astropy.table.Table`
+            Table of extended PSF candidates for which to extract cutouts.
 
         Returns
         -------
-        bright_star_stamps : `~lsst.meas.algorithms.BrightStarStamps` | None
-            A set of postage stamp cutouts, each centered on a bright star.
-            If no bright star stamps are retained post-masking, returns `None`.
+        extended_psf_candidates :
+                `~lsst.pipe.tasks.extendedPsf.ExtendedPsfCandidates` | None
+            A set of cutouts, each centered on an extended PSF candidate.
+            If no cutouts are retained post-masking, returns `None`.
         """
         warp_control = WarpingControl(self.config.warping_kernel_name, self.config.mask_warping_kernel_name)
         bbox = input_exposure.getBBox()
@@ -418,91 +423,93 @@ class BrightStarCutoutTask(PipelineTask):
             makeTransform(AffineTransform.makeScaling(1 / pixel_scale.asRadians()))
         )
 
-        # Stamp bounding boxes
-        stamp_radius = floor(Extent2D(*self.config.stamp_size) / 2)
-        stamp_bbox = Box2I(Point2I(0, 0), Extent2I(1, 1)).dilatedBy(stamp_radius)  # always odd, centered 0,0
-        stamp_radius_padded = floor((Extent2D(*self.config.stamp_size) * 1.42) / 2)  # max possible req. pad
-        stamp_bbox_padded = Box2I(Point2I(0, 0), Extent2I(1, 1)).dilatedBy(stamp_radius_padded)
+        # Cutout bounding boxes
+        cutout_radius = floor(Extent2D(*self.config.cutout_size) / 2)
+        cutout_bbox = Box2I(Point2I(0, 0), Extent2I(1, 1)).dilatedBy(
+            cutout_radius
+        )  # always odd, centered 0,0
+        cutout_radius_padded = floor((Extent2D(*self.config.cutout_size) * 1.42) / 2)  # max possible req. pad
+        cutout_bbox_padded = Box2I(Point2I(0, 0), Extent2I(1, 1)).dilatedBy(cutout_radius_padded)
 
-        stamps = []
+        cutouts = []
         focal_plane_radii_mm = []
-        for bright_star in bright_stars:
-            pix_coord = Point2D(bright_star["pixel_x"], bright_star["pixel_y"])
+        for candidate in extended_psf_candidate_table:
+            pix_coord = Point2D(candidate["pixel_x"], candidate["pixel_y"])
 
             # Set NEIGHBOR mask plane for all sources except the current one
             neighbor_bit_mask = input_MI.mask.getPlaneBitMask(NEIGHBOR_MASK_PLANE)
             input_MI.mask.clearMaskPlane(input_MI.mask.getMaskPlaneDict()[NEIGHBOR_MASK_PLANE])
-            bright_star_id = footprints[int(pix_coord.y), int(pix_coord.x)]
-            neighbor_mask = (footprints != 0) & (footprints != bright_star_id)
+            candidate_id = footprints[int(pix_coord.y), int(pix_coord.x)]
+            neighbor_mask = (footprints != 0) & (footprints != candidate_id)
             input_MI.mask.array[neighbor_mask] |= neighbor_bit_mask
 
-            # Define linear shifting and rotation to recenter and align stamps
+            # Define linear shifting and rotation to recenter and align cutouts
             boresight_pseudopixel_coord = pixels_to_boresight_pseudopixels.applyForward(pix_coord)
             shift = makeTransform(AffineTransform(Point2D(0, 0) - boresight_pseudopixel_coord))
-            rotation = makeTransform(AffineTransform.makeRotation(-bright_star["angle_radians"] * radians))
-            pixels_to_stamp_frame = pixels_to_boresight_pseudopixels.then(shift).then(rotation)
+            rotation = makeTransform(AffineTransform.makeRotation(-candidate["angle_radians"] * radians))
+            pixels_to_cutout_frame = pixels_to_boresight_pseudopixels.then(shift).then(rotation)
 
-            # Warp the image and mask to the stamp frame
-            stamp_MI = MaskedImageF(stamp_bbox_padded)
-            warpImage(stamp_MI, input_MI, pixels_to_stamp_frame, warp_control)
-            stamp_MI = stamp_MI[stamp_bbox]
+            # Warp the image and mask to the cutout frame
+            cutout_MI = MaskedImageF(cutout_bbox_padded)
+            warpImage(cutout_MI, input_MI, pixels_to_cutout_frame, warp_control)
+            cutout_MI = cutout_MI[cutout_bbox]
 
             # Skip if masked area fraction is too high
-            bad_bit_mask = stamp_MI.mask.getPlaneBitMask(self.config.bad_mask_planes)
-            good = (stamp_MI.mask.array & bad_bit_mask) == 0
-            good_frac = np.sum(good) / stamp_MI.mask.array.size
+            bad_bit_mask = cutout_MI.mask.getPlaneBitMask(self.config.bad_mask_planes)
+            good = (cutout_MI.mask.array & bad_bit_mask) == 0
+            good_frac = np.sum(good) / cutout_MI.mask.array.size
             if good_frac < self.config.min_area_fraction:
                 continue
 
-            # Define a WCS for the stamp consistent with the warping
-            stamp_wcs = makeModifiedWcs(pixels_to_stamp_frame, input_exposure.wcs, False)
-            projection = Projection.from_legacy(stamp_wcs, GeneralFrame(unit=u.pixel))
+            # Define a WCS for the cutout consistent with the warping
+            cutout_wcs = makeModifiedWcs(pixels_to_cutout_frame, input_exposure.wcs, False)
+            projection = Projection.from_legacy(cutout_wcs, GeneralFrame(unit=u.pixel))
 
-            # Compute the kernel image of the PSF at the stamp center
-            psf_warped = WarpedPsf(input_exposure.getPsf(), pixels_to_stamp_frame, warp_control)
+            # Compute the kernel image of the PSF at the cutout center
+            psf_warped = WarpedPsf(input_exposure.getPsf(), pixels_to_cutout_frame, warp_control)
             psf_kernel_image = Image.from_legacy(psf_warped.computeKernelImage(Point2D(0, 0)))
 
-            # Assemble the stamp info to be persisted alongside the image data
-            stamp_info = BrightStarStampInfo(
+            # Assemble the star info to be persisted alongside the image data
+            star_info = ExtendedPsfCandidateInfo(
                 visit=input_exposure.visitInfo.getId(),
                 detector=input_exposure.detector.getId(),
-                ref_id=bright_star["id"],
-                ref_mag=bright_star["mag"],
+                ref_id=candidate["id"],
+                ref_mag=candidate["mag"],
                 position_x=pix_coord.x,
                 position_y=pix_coord.y,
-                focal_plane_radius=bright_star["radius_mm"] * u.mm,
-                focal_plane_angle=bright_star["angle_radians"] * u.rad,
+                focal_plane_radius=candidate["radius_mm"] * u.mm,
+                focal_plane_angle=candidate["angle_radians"] * u.rad,
             )
 
-            # Generate a bright star stamp and store outputs
-            stamp = BrightStarStamp(
-                image=Image.from_legacy(stamp_MI.image),
-                mask=Mask.from_legacy(stamp_MI.mask),
-                variance=Image.from_legacy(stamp_MI.variance),
+            # Generate an extended PSF candidate and store outputs
+            cutout = ExtendedPsfCandidate(
+                image=Image.from_legacy(cutout_MI.image),
+                mask=Mask.from_legacy(cutout_MI.mask),
+                variance=Image.from_legacy(cutout_MI.variance),
                 projection=projection,
                 psf_kernel_image=psf_kernel_image,
-                stamp_info=stamp_info,
+                star_info=star_info,
             )
-            stamps.append(stamp)
-            focal_plane_radii_mm.append(bright_star["radius_mm"])
+            cutouts.append(cutout)
+            focal_plane_radii_mm.append(candidate["radius_mm"])
 
-        num_stars = len(bright_stars)
-        num_excluded = num_stars - len(stamps)
+        num_stars = len(extended_psf_candidate_table)
+        num_excluded = num_stars - len(cutouts)
         percent_excluded = 100.0 * num_excluded / num_stars if num_stars > 0 else 0.0
         self.log.info(
-            "Extracted %i bright star stamp%s. "
+            "Extracted %i extended PSF candidate%s. "
             "Excluded %i star%s (%.1f%%) with an unmasked area fraction below %s.",
-            len(stamps),
-            "" if len(stamps) == 1 else "s",
+            len(cutouts),
+            "" if len(cutouts) == 1 else "s",
             num_excluded,
             "" if num_excluded == 1 else "s",
             percent_excluded,
             self.config.min_area_fraction,
         )
 
-        if not stamps:
+        if not cutouts:
             self.log.warning(
-                "No bright star stamps were retained from %i selected reference star%s.",
+                "No extended PSF candidates were retained from %i selected reference star%s.",
                 num_stars,
                 "" if num_stars == 1 else "s",
             )
@@ -512,4 +519,4 @@ class BrightStarCutoutTask(PipelineTask):
             "FOCAL_PLANE_RADIUS_MM_MIN": np.min(focal_plane_radii_mm),
             "FOCAL_PLANE_RADIUS_MM_MAX": np.max(focal_plane_radii_mm),
         }
-        return BrightStarStamps(stamps, metadata=metadata)
+        return ExtendedPsfCandidates(cutouts, metadata=metadata)
