@@ -46,9 +46,11 @@ from lsst.images import (
     MaskedImageSerializationModel,
     MaskSchema,
     Projection,
+    fits,
 )
 from lsst.images.serialization import ArchiveTree, InputArchive, MetadataValue, OutputArchive, Quantity
 from lsst.images.utils import is_none
+from lsst.resources import ResourcePathExpression
 
 
 class ExtendedPsfCandidateInfo(BaseModel):
@@ -317,6 +319,28 @@ class ExtendedPsfCandidates(Sequence[ExtendedPsfCandidate]):
     def ref_id_map(self):
         """Map reference IDs to `ExtendedPsfCandidate` objects."""
         return self._ref_id_map
+
+    @classmethod
+    def read_fits(cls, url: ResourcePathExpression) -> ExtendedPsfCandidates:
+        """Read a collection from a FITS file.
+
+        Parameters
+        ----------
+        url
+            URL of the file to read; may be any type supported by
+            `lsst.resources.ResourcePath`.
+        """
+        return fits.read(cls, url).deserialized
+
+    def write_fits(self, filename: str) -> None:
+        """Write the collection to a FITS file.
+
+        Parameters
+        ----------
+        filename
+            Name of the file to write to. Must not already exist.
+        """
+        fits.write(self, filename)
 
     def serialize(self, archive: OutputArchive[Any]) -> ExtendedPsfCandidatesSerializationModel:
         return ExtendedPsfCandidatesSerializationModel(
