@@ -99,6 +99,19 @@ class NoPsfStarsToStarsMatchError(pipeBase.AlgorithmError):
                 }
 
 
+class ComputeShapeletsOnlyError(pipeBase.AlgorithmError):
+    """Raised when only computing shapelets.
+    """
+    def __init__(self):
+        msg = ("Only computing shapelets...this isn't really and error, but raising as "
+               "one to get the same persistance behaviour as a PSF model fail.")
+        super().__init__(msg)
+
+    @property
+    def metadata(self):
+        pass
+
+
 class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
                                 dimensions=("instrument", "visit", "detector")):
 
@@ -1099,7 +1112,11 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 result,
                 id_generator,
             )
-            have_fit_psf = True
+            self.log.warning("result.exposure.psf = %s", result.exposure.psf)
+            if result.exposure.psf is not None:
+                have_fit_psf = True
+            else:
+                raise ComputeShapeletsOnlyError()
 
             if self.config.do_adaptive_threshold_detection:
                 metadata_name = "psf_adaptive_threshold_value"
@@ -1478,6 +1495,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             self.metadata[metadata_name] = shapelet_star_unnormalized_e_median
 
             detections.sources = shapelet_result.catalog
+        # Crap out here, just after shapelet decomposition
+        if 0:  # self.config.compute_shapelets_only:
+            result.exposure.setPsf(None)
+            return detections.sources, None, None
 
         psf_result = self.psf_measure_psf.run(exposure=result.exposure, sources=detections.sources)
 
