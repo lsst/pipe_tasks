@@ -75,6 +75,11 @@ class ComputeExposureSummaryStatsConfig(pexConfig.Config):
         dtype=str,
         default="slot_PsfShape"
     )
+    starHigherOrderMomentBase = pexConfig.Field(
+        doc="Base name of the columns from which to obtain the higher-order moments.",
+        dtype=str,
+        default="ext_shapeHSM_HigherOrderMomentsSource",
+    )
     psfSampling = pexConfig.Field(
         dtype=int,
         doc="Sampling rate in pixels in each dimension for the maxDistToNearestPsf metric "
@@ -399,6 +404,13 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.psfApCorrSigmaScaledDelta = nan
         summary.starEMedian = nan
         summary.starUnNormalizedEMedian = nan
+        summary.starComa1Median = nan
+        summary.starComa2Median = nan
+        summary.starTrefoil1Median = nan
+        summary.starTrefoil2Median = nan
+        summary.starKurtosisMedian = nan
+        summary.starE41Median = nan
+        summary.starE42Median = nan
 
         if psf is None:
             return
@@ -505,6 +517,42 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         summary.psfStarDeltaSizeMedian = float(psfStarDeltaSizeMedian)
         summary.psfStarDeltaSizeScatter = float(psfStarDeltaSizeScatter)
         summary.psfStarScaledDeltaSizeScatter = float(psfStarScaledDeltaSizeScatter)
+
+        # Higher-order moments and derived metrics.
+        if sources_is_astropy:
+            columnNames = psf_cat.colnames
+        else:
+            columnNames = psf_cat.schema.getNames()
+        if self.config.starHigherOrderMomentBase + "_03" in columnNames:
+            starM03 = psf_cat[self.config.starHigherOrderMomentBase + "_03"]
+            starM12 = psf_cat[self.config.starHigherOrderMomentBase + "_12"]
+            starM21 = psf_cat[self.config.starHigherOrderMomentBase + "_21"]
+            starM30 = psf_cat[self.config.starHigherOrderMomentBase + "_30"]
+            starM04 = psf_cat[self.config.starHigherOrderMomentBase + "_04"]
+            starM13 = psf_cat[self.config.starHigherOrderMomentBase + "_13"]
+            starM22 = psf_cat[self.config.starHigherOrderMomentBase + "_22"]
+            starM31 = psf_cat[self.config.starHigherOrderMomentBase + "_31"]
+            starM40 = psf_cat[self.config.starHigherOrderMomentBase + "_40"]
+
+            starComa1Median = np.nanmedian(starM30 + starM12)
+            starComa2Median = np.nanmedian(starM21 + starM03)
+            starTrefoil1Median = np.nanmedian(starM30 - 3.0*starM12)
+            starTrefoil2Median = np.nanmedian(3.0*starM21 - starM03)
+            starKurtosisMedian = np.nanmedian(starM40 + 2.0*starM22 + starM04)
+            starE41Median = np.nanmedian(starM40 - starM04)
+            starE42Median = np.nanmedian(2.0*(starM31 + starM13))
+
+            summary.starComa1Median = float(starComa1Median)
+            summary.starComa2Median = float(starComa2Median)
+            summary.starTrefoil1Median = float(starTrefoil1Median)
+            summary.starTrefoil2Median = float(starTrefoil2Median)
+            summary.starKurtosisMedian = float(starKurtosisMedian)
+            summary.starE41Median = float(starE41Median)
+            summary.starE42Median = float(starE42Median)
+        else:
+            self.log.warning("Higher-order moments with base column name %s not found in source "
+                             "catalog. Setting the derived metrics (i.e. coma1[2], trefoil1[2], "
+                             "kurtosis, e4_1, and e4_2) to nan.", self.config.starHigherOrderMomentBase)
 
         if image_mask is not None:
             maxDistToNearestPsf = maximum_nearest_psf_distance(
