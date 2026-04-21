@@ -1395,46 +1395,6 @@ class LocalWcs(Functor):
         # Position angle of vector from (RA1, Dec1) to (RA2, Dec2)
         return np.rad2deg(self.computePositionAngle(ra1, dec1, ra2, dec2))
 
-    def getPositionAngleErrFromDetectorAngleErr(self, theta, theta_err, cd11,
-                                                cd12, cd21, cd22):
-        """Compute position angle error (E of N) from detector angle error.
-
-        Parameters
-        ----------
-        theta : `float`
-            detector angle [radian]
-        theta_err : `float`
-            detector angle err [radian]
-        cd11 : `float`
-            [1, 1] element of the local Wcs affine transform.
-        cd12 : `float`
-            [1, 2] element of the local Wcs affine transform.
-        cd21 : `float`
-            [2, 1] element of the local Wcs affine transform.
-        cd22 : `float`
-            [2, 2] element of the local Wcs affine transform.
-
-        Returns
-        -------
-        Position Angle Error: `~pandas.Series`
-            Position angle error in degrees
-
-        Notes
-        -----
-        The error is estimated by evaluating the position angle at
-        ``theta ± theta_err`` and taking half the absolute difference.
-        """
-        pa_plus = self.getPositionAngleFromDetectorAngle(
-            theta + theta_err, cd11, cd12, cd21, cd22
-        )
-        pa_minus = self.getPositionAngleFromDetectorAngle(
-            theta - theta_err, cd11, cd12, cd21, cd22
-        )
-        # Wrap difference into (-180, 180] to handle the ±180 deg boundary.
-        delta = pa_plus - pa_minus
-        delta = (delta + 180) % 360 - 180
-        return np.abs(delta) / 2
-
 
 class ComputePixelScale(LocalWcs):
     """Compute the local pixel scale from the stored CDMatrix.
@@ -1596,8 +1556,7 @@ class ConvertDetectorAngleToPositionAngle(LocalWcs):
 
 
 class ConvertDetectorAngleErrToPositionAngleErr(LocalWcs):
-    """Compute a position angle error from a detector angle error and the
-    stored CDMatrix.
+    """Convrt a a detector angle error to a position angle error.
 
     Returns
     -------
@@ -1608,38 +1567,20 @@ class ConvertDetectorAngleErrToPositionAngleErr(LocalWcs):
 
     def __init__(
         self,
-        theta_col,
         theta_err_col,
-        colCD_1_1,
-        colCD_1_2,
-        colCD_2_1,
-        colCD_2_2,
         **kwargs
     ):
-        self.theta_col = theta_col
         self.theta_err_col = theta_err_col
-        super().__init__(colCD_1_1, colCD_1_2, colCD_2_1, colCD_2_2, **kwargs)
+        Functor.__init__(self, **kwargs)
 
     @property
     def columns(self):
         return [
-            self.theta_col,
             self.theta_err_col,
-            self.colCD_1_1,
-            self.colCD_1_2,
-            self.colCD_2_1,
-            self.colCD_2_2
         ]
 
     def _func(self, df):
-        return self.getPositionAngleErrFromDetectorAngleErr(
-            df[self.theta_col],
-            df[self.theta_err_col],
-            df[self.colCD_1_1],
-            df[self.colCD_1_2],
-            df[self.colCD_2_1],
-            df[self.colCD_2_2]
-        )
+        return np.rad2deg(df[self.theta_err_col])
 
 
 class ReferenceBand(Functor):
