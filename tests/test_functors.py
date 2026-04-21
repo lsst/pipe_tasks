@@ -873,7 +873,6 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
                                             atol=1e-16,
                                             rtol=1e-16))
 
-
     def _makeWcs(self, dec=53.1595451514076, theta=0):
         """Create a wcs from real CFHT values, rotated by an optional theta.
 
