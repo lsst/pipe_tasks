@@ -20,7 +20,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import unittest
+from typing import cast
 
+import astropy.units as u
 import lsst.utils.tests
 import numpy as np
 from astropy.table import Table
@@ -37,11 +39,12 @@ from lsst.afw.image import (
 )
 from lsst.afw.math import FixedKernel
 from lsst.geom import Box2I, Extent2I, Point2D, Point2I, SpherePoint, arcseconds, degrees
+from lsst.images import Image
 from lsst.meas.algorithms import KernelPsf
-from lsst.pipe.tasks.brightStarSubtraction import BrightStarCutoutConfig, BrightStarCutoutTask
+from lsst.pipe.tasks.extended_psf import ExtendedPsfCutoutConfig, ExtendedPsfCutoutTask
 
 
-class BrightStarSubtractionTestCase(lsst.utils.tests.TestCase):
+class ExtendedPsfSubtractionTestCase(lsst.utils.tests.TestCase):
     def setUp(self):
         rng = np.random.default_rng(42)
 
@@ -89,7 +92,7 @@ class BrightStarSubtractionTestCase(lsst.utils.tests.TestCase):
             _ = self.exposure.mask.addMaskPlane(mask_plane)
         self.exposure.variance.array.fill(1.0)
 
-        # Make a bright stars table
+        # Make a table of extended PSF candidate stars
         corners = self.exposure.wcs.pixelToSky([Point2D(x) for x in self.exposure.getBBox().getCorners()])
         corner_ras = [corner.getRa().asDegrees() for corner in corners]
         corner_decs = [corner.getDec().asDegrees() for corner in corners]
@@ -107,7 +110,7 @@ class BrightStarSubtractionTestCase(lsst.utils.tests.TestCase):
         mm_coords_y = np.array([mm_coord.y for mm_coord in mm_coords])
         radius_mm = np.sqrt(mm_coords_x**2 + mm_coords_y**2)
         theta_radians = np.arctan2(mm_coords_y, mm_coords_x)
-        self.bright_stars = Table(
+        self.extended_psf_candidate_table = Table(
             {
                 "id": np.arange(num_stars),
                 "coord_ra": ras,
@@ -117,13 +120,13 @@ class BrightStarSubtractionTestCase(lsst.utils.tests.TestCase):
                 "pixel_x": pixel_x,
                 "pixel_y": pixel_y,
                 "radius_mm": radius_mm,
-                "theta_radians": theta_radians,
+                "angle_radians": theta_radians,
             }
         )
 
         # Make a synthetic star
-        stamp_radius = 25
-        grid_y, grid_x = np.mgrid[-stamp_radius : stamp_radius + 1, -stamp_radius : stamp_radius + 1]
+        cutout_radius = 25
+        grid_y, grid_x = np.mgrid[-cutout_radius : cutout_radius + 1, -cutout_radius : cutout_radius + 1]
         dist_from_center = np.sqrt(grid_x**2 + grid_y**2)
         sigma = 1.5
         psf_array = np.exp(-(dist_from_center**2) / (2 * sigma**2))
@@ -135,52 +138,63 @@ class BrightStarSubtractionTestCase(lsst.utils.tests.TestCase):
 
         # Add synthetic stars to the exposure
         footprints = ImageF(self.exposure.getBBox())
-        for bright_star_id, bright_star in enumerate(self.bright_stars):
-            bbox_star = Box2I(
-                Point2I(bright_star["pixel_x"], bright_star["pixel_y"]), Extent2I(1, 1)
-            ).dilatedBy(stamp_radius)
+        for candidate_id, candidate in enumerate(self.extended_psf_candidate_table):
+            bbox_star = Box2I(Point2I(candidate["pixel_x"], candidate["pixel_y"]), Extent2I(1, 1)).dilatedBy(
+                cutout_radius
+            )
             bbox_star_clipped = bbox_star.clippedTo(self.exposure.getBBox())
-            bright_star_im = MaskedImageF(bbox_star)
-            bright_star_im.image.array = bright_star["phot_g_mean_flux"] * psf.getArray()
-            bright_star_im = bright_star_im[bbox_star_clipped]
+            candidate_im = MaskedImageF(bbox_star)
+            candidate_im.image.array = candidate["phot_g_mean_flux"] * psf.getArray()
+            candidate_im = candidate_im[bbox_star_clipped]
             detection_threshold = self.exposure.getPhotoCalib().magnitudeToInstFlux(25)
-            detected = bright_star_im.image.array > detection_threshold
-            footprints[bbox_star_clipped].array = detected * (bright_star_id + 1)
-            _ = bright_star_im.mask.addMaskPlane("DETECTED")
-            bright_star_im.mask.array[detected] |= bright_star_im.mask.getPlaneBitMask("DETECTED")
-            bright_star_im.variance.array.fill(1.0)
-            self.exposure.maskedImage[bbox_star_clipped] += bright_star_im
+            detected = candidate_im.image.array > detection_threshold
+            footprints[bbox_star_clipped].array = detected * (candidate_id + 1)
+            _ = candidate_im.mask.addMaskPlane("DETECTED")
+            candidate_im.mask.array[detected] |= candidate_im.mask.getPlaneBitMask("DETECTED")
+            candidate_im.variance.array.fill(1.0)
+            self.exposure.maskedImage[bbox_star_clipped] += candidate_im
         self.footprints = footprints.array
 
-        # Run the bright star cutout task
-        brightStarCutoutConfig = BrightStarCutoutConfig()
-        brightStarCutoutTask = BrightStarCutoutTask(config=brightStarCutoutConfig)
-        self.bright_star_stamps = brightStarCutoutTask._get_bright_star_stamps(
+        # Run the cutout task
+        extendedPsfCutoutConfig = ExtendedPsfCutoutConfig()
+        extendedPsfCutoutTask = ExtendedPsfCutoutTask(config=extendedPsfCutoutConfig)
+        self.extended_psf_candidates = extendedPsfCutoutTask._get_extended_psf_candidates(
             input_exposure=self.exposure,
             input_background=None,
             footprints=self.footprints,
-            bright_stars=self.bright_stars,
+            extended_psf_candidate_table=self.extended_psf_candidate_table,
         )
 
-    def test_brightStarCutout(self):
-        """Test BrightStarCutoutTask."""
-        assert self.bright_star_stamps is not None
-        self.assertAlmostEqual(self.bright_star_stamps.metadata["FOCAL_PLANE_RADIUS_MIN"], 5.22408977, 7)
-        self.assertAlmostEqual(self.bright_star_stamps.metadata["FOCAL_PLANE_RADIUS_MAX"], 14.6045832, 7)
-        self.assertEqual(len(self.bright_star_stamps), len(self.bright_stars))
-        self.assertEqual(self.bright_star_stamps[0].visit, 12345)
-        self.assertEqual(self.bright_star_stamps[0].detector, 10)
+    def test_extendedPsfCutout(self):
+        """Test ExtendedPsfCutoutTask."""
+        assert self.extended_psf_candidates is not None
+        self.assertAlmostEqual(
+            float(self.extended_psf_candidates.metadata["FOCAL_PLANE_RADIUS_MM_MIN"]), 5.22408977, 7
+        )
+        self.assertAlmostEqual(
+            float(self.extended_psf_candidates.metadata["FOCAL_PLANE_RADIUS_MM_MAX"]), 14.6045832, 7
+        )
+        self.assertEqual(len(self.extended_psf_candidates), len(self.extended_psf_candidate_table))
+        self.assertEqual(self.extended_psf_candidates[0].star_info.visit, 12345)
+        self.assertEqual(self.extended_psf_candidates[0].star_info.detector, 10)
 
-        for bright_star_stamp, bright_star_row in zip(self.bright_star_stamps, self.bright_stars):
-            self.assertEqual(bright_star_stamp.ref_id, bright_star_row["id"])
-            self.assertEqual(bright_star_stamp.ref_mag, bright_star_row["mag"])
-            assert bright_star_stamp.position is not None
-            self.assertEqual(bright_star_stamp.position.getX(), bright_star_row["pixel_x"])
-            self.assertEqual(bright_star_stamp.position.getY(), bright_star_row["pixel_y"])
-            self.assertEqual(bright_star_stamp.focal_plane_radius, bright_star_row["radius_mm"])
-            assert bright_star_stamp.focal_plane_angle is not None
-            focal_plane_angle = bright_star_stamp.focal_plane_angle.asRadians()
-            self.assertEqual(focal_plane_angle, bright_star_row["theta_radians"])
+        for candidate, candidate_entry in zip(
+            self.extended_psf_candidates, self.extended_psf_candidate_table
+        ):
+            self.assertEqual(candidate.star_info.ref_id, candidate_entry["id"])
+            self.assertEqual(candidate.star_info.ref_mag, candidate_entry["mag"])
+            self.assertEqual(candidate.star_info.position_x, candidate_entry["pixel_x"])
+            self.assertEqual(candidate.star_info.position_y, candidate_entry["pixel_y"])
+            self.assertIsInstance(candidate.psf_kernel_image, Image)
+            self.assertEqual(candidate.psf_kernel_image.array.ndim, 2)
+            self.assertGreater(candidate.psf_kernel_image.array.shape[0], 0)
+            self.assertGreater(candidate.psf_kernel_image.array.shape[1], 0)
+            self.assertTrue(np.isfinite(candidate.psf_kernel_image.array).all())
+            self.assertGreater(candidate.psf_kernel_image.array.sum(), 0.0)
+            focal_plane_radius = cast(u.Quantity, candidate.star_info.focal_plane_radius)
+            focal_plane_angle = cast(u.Quantity, candidate.star_info.focal_plane_angle)
+            self.assertEqual(focal_plane_radius.to_value(u.mm), candidate_entry["radius_mm"])
+            self.assertEqual(focal_plane_angle.to_value(u.rad), candidate_entry["angle_radians"])
 
 
 def setup_module(module):
