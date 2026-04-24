@@ -195,9 +195,6 @@ Python API reference
 .. automodapi:: lsst.pipe.tasks.postprocess
    :no-inheritance-diagram:
 
-.. automodapi:: lsst.pipe.tasks.processBrightStars
-   :no-inheritance-diagram:
-
 .. automodapi:: lsst.pipe.tasks.processCcdWithFakes
    :no-inheritance-diagram:
 
