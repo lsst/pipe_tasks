@@ -97,7 +97,8 @@ def compute_ssobject_entry(row, sss, fixedG12=None):
                 # do the absmag/slope fits, if there are at least two
                 # data points
                 H, G12, sigmaH, sigmaG12, covHG12, chi2dof, nobsv = photfit.fitHG12(
-                    df["dia_psfMag"], df["dia_psfMagErr"], df["phaseAngle"], df["topoRange"], df["helioRange"],
+                    df["dia_psfMag"], df["dia_psfMagErr"],
+                    df["phaseAngle"], df["topoRange"], df["helioRange"],
                     fixedG12=fixedG12,
                 )
                 nDof = nBandObs - (1 if fixedG12 is not None else 2)
