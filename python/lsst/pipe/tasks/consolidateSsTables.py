@@ -26,6 +26,7 @@ import astropy.units as u
 import numpy as np
 import warnings
 
+import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
 from lsst.utils.timer import timeMethod
@@ -70,6 +71,14 @@ class ConsolidateSsTablesConfig(
     pipeBase.PipelineTaskConfig, pipelineConnections=ConsolidateSsTablesConnections
 ):
     """Config for ConsolidateSsTablesTask"""
+
+    fixedG12 = pexConfig.Field(
+        dtype=float,
+        default=None,
+        optional=True,
+        doc="If set, fix the G12 slope parameter to this value and only fit H. "
+            "If None (default), both H and G12 are fit.",
+    )
 
 
 class ConsolidateSsTablesTask(pipeBase.PipelineTask):
@@ -178,7 +187,8 @@ class ConsolidateSsTablesTask(pipeBase.PipelineTask):
         ssSourceTable.sort("ssObjectId")
         mpcorb = mpcorb.to_pandas() if isinstance(mpcorb, tb.Table) else mpcorb
         ssObjectTable = compute_ssobject(
-            ssSourceTable.to_pandas(), diaSource.to_pandas(), mpcorb
+            ssSourceTable.to_pandas(), diaSource.to_pandas(), mpcorb,
+            fixedG12=self.config.fixedG12,
         )
         ssObjectTable = tb.Table(ssObjectTable)
 
