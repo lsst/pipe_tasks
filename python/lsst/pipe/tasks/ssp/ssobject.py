@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from functools import partial
 from . import photfit
 from . import util
 from . import schema
@@ -53,7 +54,7 @@ def nJy_err_to_mag_err(f_njy, f_err_njy):
     return 1.085736 * (f_err_njy / f_njy)
 
 
-def compute_ssobject_entry(row, sss):
+def compute_ssobject_entry(row, sss, fixedG12=None):
     # just verify we didn't screw up something
     assert sss["ssObjectId"].nunique() == 1
 
@@ -97,9 +98,10 @@ def compute_ssobject_entry(row, sss):
                 # do the absmag/slope fits, if there are at least two
                 # data points
                 H, G12, sigmaH, sigmaG12, covHG12, chi2dof, nobsv = photfit.fitHG12(
-                    df["dia_psfMag"], df["dia_psfMagErr"], df["phaseAngle"], df["topoRange"], df["helioRange"]
+                    df["dia_psfMag"], df["dia_psfMagErr"], df["phaseAngle"], df["topoRange"], df["helioRange"],
+                    fixedG12=fixedG12,
                 )
-                nDof = nBandObs - 2
+                nDof = nBandObs - (1 if fixedG12 is not None else 2)
                 # print(provID, band, H, G12, sigmaH, sigmaG12, covHG12,
                 #       chi2dof, nobsv)
 
@@ -124,7 +126,7 @@ def compute_ssobject_entry(row, sss):
     row["extendednessMedian"] = sss["dia_extendedness"].median()
 
 
-def compute_ssobject(sss, dia, mpcorb):
+def compute_ssobject(sss, dia, mpcorb, fixedG12=None):
     """
     Compute solar system object properties by joining and processing
     SSSource, DiaSource, and MPC orbit data.
@@ -203,7 +205,8 @@ def compute_ssobject(sss, dia, mpcorb):
     obj = np.zeros(totalNumObjects, dtype=schema.SSObjectDtype)
 
     # compute per-object quantities
-    util.group_by([sss], "ssObjectId", compute_ssobject_entry, out=obj)
+    callback = partial(compute_ssobject_entry, fixedG12=fixedG12)
+    util.group_by([sss], "ssObjectId", callback, out=obj)
 
     #
     # compute columns that can be efficiently computed in a vector fashon
