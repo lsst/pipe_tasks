@@ -107,7 +107,7 @@ def fit(mag, phase, sigma, model=HG12_model, params=[0.1]):
     return sol
 
 
-def fitHG12(mag, magSigma, phaseAngle, tdist, rdist):
+def fitHG12(mag, magSigma, phaseAngle, tdist, rdist, fixedG12=None):
     # This uses the HG12 function from Muinonen et al (2010)
     nobsv = len(mag)
 
@@ -117,22 +117,38 @@ def fitHG12(mag, magSigma, phaseAngle, tdist, rdist):
     # correct the mag to 1AU distance
     dmag = -5.0 * np.log10(tdist * rdist)
     mag = mag + dmag
-    # phaseAngle = np.deg2rad(phaseAngle)
+
+    if fixedG12 is not None:
+        def model(phase, params):
+            return HG12_model(phase, [params[0], fixedG12])
+
+        nparams = 1
+        fit_params = []
+    else:
+        model = HG12_model
+        nparams = 2
+        fit_params = [0.1]
 
     # fit, suppressing warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
 
-        sol = fit(mag, phaseAngle, magSigma)
+        sol = fit(mag, phaseAngle, magSigma, model=model, params=fit_params)
         if sol[-1] in [1, 2, 3] and sol[1] is not None:  # least squares solver flags
             chi2 = np.sum(sol[2]["fvec"] ** 2)
             H = sol[0][0]
-            G = sol[0][1]
             H_err = np.sqrt(sol[1][0, 0])
-            G_err = np.sqrt(sol[1][1, 1])
-            HG_cov = sol[1][0, 1]
 
-            return H, G, H_err, G_err, HG_cov, chi2 / (nobsv - 2), nobsv
+            if fixedG12 is not None:
+                G = fixedG12
+                G_err = np.nan
+                HG_cov = np.nan
+            else:
+                G = sol[0][1]
+                G_err = np.sqrt(sol[1][1, 1])
+                HG_cov = sol[1][0, 1]
+
+            return H, G, H_err, G_err, HG_cov, chi2 / (nobsv - nparams), nobsv
         else:
             # fit failed
             return (np.nan,) * 6 + (0,)
