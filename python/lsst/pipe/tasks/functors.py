@@ -1555,8 +1555,8 @@ class ConvertDetectorAngleToPositionAngle(LocalWcs):
         )
 
 
-class ConvertDetectorAngleErrToPositionAngleErr(LocalWcs):
-    """Convrt a a detector angle error to a position angle error.
+class ConvertDetectorAngleErrToPositionAngleErr(Functor):
+    """Convert a detector angle error to a position angle error.
 
     Returns
     -------
@@ -1565,19 +1565,13 @@ class ConvertDetectorAngleErrToPositionAngleErr(LocalWcs):
 
     name = "PositionAngleErr"
 
-    def __init__(
-        self,
-        theta_err_col,
-        **kwargs
-    ):
+    def __init__(self, theta_err_col, **kwargs):
         self.theta_err_col = theta_err_col
-        Functor.__init__(self, **kwargs)
+        super().__init__(**kwargs)
 
     @property
     def columns(self):
-        return [
-            self.theta_err_col,
-        ]
+        return [self.theta_err_col]
 
     def _func(self, df):
         return np.rad2deg(df[self.theta_err_col])
