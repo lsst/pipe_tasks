@@ -80,6 +80,13 @@ class ConsolidateSsTablesConfig(
             "If None (default), both H and G12 are fit.",
     )
 
+    magSigmaFloor = pexConfig.Field(
+        dtype=float,
+        default=0.01,
+        doc="Systematic magnitude error floor (mag) added in quadrature "
+            "to measurement errors before HG12 fitting.",
+    )
+
 
 class ConsolidateSsTablesTask(pipeBase.PipelineTask):
     """Consolidate per-patch ssSource tables into a single table.
@@ -184,11 +191,16 @@ class ConsolidateSsTablesTask(pipeBase.PipelineTask):
                 del ssSourceTable[src]
 
         # build the SSObject table
+        self.log.info(
+            "HG12 fit config: fixedG12=%s, magSigmaFloor=%s",
+            self.config.fixedG12, self.config.magSigmaFloor,
+        )
         ssSourceTable.sort("ssObjectId")
         mpcorb = mpcorb.to_pandas() if isinstance(mpcorb, tb.Table) else mpcorb
         ssObjectTable = compute_ssobject(
             ssSourceTable.to_pandas(), diaSource.to_pandas(), mpcorb,
             fixedG12=self.config.fixedG12,
+            magSigmaFloor=self.config.magSigmaFloor,
         )
         ssObjectTable = tb.Table(ssObjectTable)
 
