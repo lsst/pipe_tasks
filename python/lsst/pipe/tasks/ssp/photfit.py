@@ -111,6 +111,9 @@ def fitHG12(mag, magSigma, phaseAngle, tdist, rdist, fixedG12=None, magSigmaFloo
     # This uses the HG12 function from Muinonen et al (2010)
     nobsv = len(mag)
 
+    if nobsv == 0:
+        return (np.nan,) * 6 + (0,)
+
     # ensure these are plain ndarrays
     (mag, magSigma, phaseAngle, tdist, rdist) = map(np.asarray, (mag, magSigma, phaseAngle, tdist, rdist))
 
