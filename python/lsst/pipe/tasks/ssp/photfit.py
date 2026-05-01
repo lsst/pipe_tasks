@@ -107,12 +107,16 @@ def fit(mag, phase, sigma, model=HG12_model, params=[0.1]):
     return sol
 
 
-def fitHG12(mag, magSigma, phaseAngle, tdist, rdist, fixedG12=None):
+def fitHG12(mag, magSigma, phaseAngle, tdist, rdist, fixedG12=None, magSigmaFloor=0.0):
     # This uses the HG12 function from Muinonen et al (2010)
     nobsv = len(mag)
 
     # ensure these are plain ndarrays
     (mag, magSigma, phaseAngle, tdist, rdist) = map(np.asarray, (mag, magSigma, phaseAngle, tdist, rdist))
+
+    # add systematic error floor in quadrature
+    if magSigmaFloor > 0:
+        magSigma = np.sqrt(magSigma**2 + magSigmaFloor**2)
 
     # correct the mag to 1AU distance
     dmag = -5.0 * np.log10(tdist * rdist)
