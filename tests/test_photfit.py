@@ -112,9 +112,9 @@ class TestHG12Model(lsst.utils.tests.TestCase):
             MAG_EXPECTED, MAG_SIGMA, PHASE_ANGLE, TDIST, RDIST,
             fixedG12=0.8,
         )
-        chi2_correct = result_correct[5]
-        H_wrong = result_wrong[0]
-        chi2_wrong = result_wrong[5]
+        chi2_correct = result_correct.chi2dof
+        H_wrong = result_wrong.H
+        chi2_wrong = result_wrong.chi2dof
 
         # Wrong G12 should produce a noticeably different H
         self.assertGreater(abs(H_wrong - H_TRUE), 0.005)
@@ -134,10 +134,10 @@ class TestHG12Model(lsst.utils.tests.TestCase):
             noisy_mag, MAG_SIGMA, PHASE_ANGLE, TDIST, RDIST,
             fixedG12=G12_TRUE, magSigmaFloor=0.05,
         )
-        chi2_no_floor = result_no_floor[5]
-        chi2_with_floor = result_with_floor[5]
-        herr_no_floor = result_no_floor[2]
-        herr_with_floor = result_with_floor[2]
+        chi2_no_floor = result_no_floor.chi2dof
+        chi2_with_floor = result_with_floor.chi2dof
+        herr_no_floor = result_no_floor.H_err
+        herr_with_floor = result_with_floor.H_err
 
         # Floor inflates errors → chi2 should decrease
         self.assertLess(chi2_with_floor, chi2_no_floor)
@@ -178,8 +178,7 @@ class TestHG12Model(lsst.utils.tests.TestCase):
         result = fitHG12(
             mag2, sigma2, PHASE_ANGLE, TDIST, rdist2,
         )
-        H_fit = result[0]
-        self.assertAlmostEqual(H_fit, H_TRUE, places=4)
+        self.assertAlmostEqual(result.H, H_TRUE, places=4)
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
