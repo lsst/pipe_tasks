@@ -4,7 +4,7 @@ from functools import partial
 from . import photfit
 from . import util
 from . import schema
-from .moid import MOIDSolver, earth_orbit_J2000
+from .moid import MOIDSolver, earth_orbit
 import argparse
 import sys
 
@@ -226,14 +226,17 @@ def compute_ssobject(sss, dia, mpcorb, fixedG12=None, magSigmaFloor=0.0):
             mpcorb["unpacked_primary_provisional_designation"].take(midx)
             == obj["designation"][oidx].astype("U")
         )
-        q, e, i, node, argperi = util.unpack(mpcorb["q e i node argperi".split()].take(midx))
+        q, e, i, node, argperi, epoch_mjd = util.unpack(
+            mpcorb["q e i node argperi epoch_mjd".split()].take(midx)
+        )
         a = q / (1.0 - e)
         obj["tisserand_J"][oidx] = util.tisserand_jupiter(a, e, i)
 
         # MOID computation
         solver = MOIDSolver()
         for i, el_obj in enumerate(zip(a, e, i, node, argperi)):
-            (moid, deltaV, eclon, trueEarth, trueObject) = solver.compute(earth_orbit_J2000(), el_obj)
+            earth = earth_orbit(epoch_mjd[i])
+            (moid, deltaV, eclon, trueEarth, trueObject) = solver.compute(earth, el_obj)
             row = obj[oidx[i]]
             row["MOIDEarth"] = moid
             row["MOIDEarthDeltaV"] = deltaV
