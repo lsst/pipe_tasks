@@ -82,7 +82,7 @@ class ConsolidateSsTablesConfig(
 
     magSigmaFloor = pexConfig.Field(
         dtype=float,
-        default=0.01,
+        default=0.0,
         doc="Systematic magnitude error floor (mag) added in quadrature "
             "to measurement errors before HG12 fitting.",
     )
