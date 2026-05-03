@@ -164,6 +164,44 @@ class TestHG12Model(lsst.utils.tests.TestCase):
         self.assertTrue(np.isnan(H))
         self.assertEqual(nobs, 0)
 
+    def testFitWithNaNMagnitudes(self):
+        """NaN magnitudes (from negative fluxes) should be filtered
+        out, not crash the fit.
+        """
+        # Insert NaN values into the test data
+        mag = MAG_EXPECTED.copy()
+        sigma = MAG_SIGMA.copy()
+        phase = PHASE_ANGLE.copy()
+        tdist = TDIST.copy()
+        rdist = RDIST.copy()
+
+        # Inject 3 NaN magnitudes
+        mag_nan = np.concatenate([mag, [np.nan, np.nan, np.nan]])
+        sig_nan = np.concatenate([sigma, [0.03, 0.03, 0.03]])
+        pa_nan = np.concatenate([phase, [10.0, 20.0, 30.0]])
+        td_nan = np.concatenate([tdist, [1.3, 1.3, 1.3]])
+        rd_nan = np.concatenate([rdist, [2.2, 2.2, 2.2]])
+
+        result = fitHG12(
+            mag_nan, sig_nan, pa_nan, td_nan, rd_nan,
+            fixedG12=G12_TRUE,
+        )
+        # Should succeed using the 15 valid observations
+        self.assertAlmostEqual(result.H, H_TRUE, places=4)
+        self.assertEqual(result.nobs, 15)
+
+    def testFitAllNaN(self):
+        """All-NaN input should return failure, not crash."""
+        result = fitHG12(
+            np.array([np.nan, np.nan]),
+            np.array([0.03, 0.03]),
+            np.array([10.0, 20.0]),
+            np.array([1.3, 1.3]),
+            np.array([2.2, 2.2]),
+        )
+        self.assertTrue(np.isnan(result.H))
+        self.assertEqual(result.nobs, 0)
+
     def testDistanceCorrection(self):
         """Same (H, G12, phase) at different distances should yield
         the same H.
