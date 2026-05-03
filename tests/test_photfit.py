@@ -202,6 +202,55 @@ class TestHG12Model(lsst.utils.tests.TestCase):
         self.assertTrue(np.isnan(result.H))
         self.assertEqual(result.nobs, 0)
 
+    def testSigmaClipping(self):
+        """Outliers should be rejected when nSigmaClip is set."""
+        # Start with clean noiseless data, add a few outliers
+        mag = MAG_EXPECTED.copy()
+        sigma = MAG_SIGMA.copy()
+
+        # Add 3 extreme outlier observations
+        outlier_mag = np.array([25.0, 15.0, 30.0])
+        outlier_sigma = np.array([0.03, 0.03, 0.03])
+        outlier_phase = np.array([10.0, 20.0, 40.0])
+        outlier_tdist = np.array([1.3, 1.2, 1.25])
+        outlier_rdist = np.array([2.2, 2.18, 2.1])
+
+        all_mag = np.concatenate([mag, outlier_mag])
+        all_sigma = np.concatenate([sigma, outlier_sigma])
+        all_phase = np.concatenate([PHASE_ANGLE, outlier_phase])
+        all_tdist = np.concatenate([TDIST, outlier_tdist])
+        all_rdist = np.concatenate([RDIST, outlier_rdist])
+
+        # Without clipping: fit is pulled by outliers
+        result_no_clip = fitHG12(
+            all_mag, all_sigma, all_phase, all_tdist, all_rdist,
+            fixedG12=G12_TRUE,
+        )
+
+        # With clipping: outliers removed, H should recover
+        result_clip = fitHG12(
+            all_mag, all_sigma, all_phase, all_tdist, all_rdist,
+            fixedG12=G12_TRUE, nSigmaClip=3.0,
+        )
+
+        # Clipped result should be closer to true H
+        self.assertLess(
+            abs(result_clip.H - H_TRUE),
+            abs(result_no_clip.H - H_TRUE),
+        )
+        # Should have fewer observations after clipping
+        self.assertLess(result_clip.nobs, 18)
+        self.assertGreater(result_clip.nobs, 0)
+
+    def testSigmaClipNoOutliers(self):
+        """Clean data with clipping should keep all points."""
+        result = fitHG12(
+            MAG_EXPECTED, MAG_SIGMA, PHASE_ANGLE, TDIST, RDIST,
+            fixedG12=G12_TRUE, nSigmaClip=3.0,
+        )
+        self.assertAlmostEqual(result.H, H_TRUE, places=4)
+        self.assertEqual(result.nobs, 15)
+
     def testDistanceCorrection(self):
         """Same (H, G12, phase) at different distances should yield
         the same H.

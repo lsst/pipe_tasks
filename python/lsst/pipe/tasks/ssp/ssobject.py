@@ -54,7 +54,9 @@ def nJy_err_to_mag_err(f_njy, f_err_njy):
     return 1.085736 * (f_err_njy / f_njy)
 
 
-def compute_ssobject_entry(row, sss, fixedG12=None, magSigmaFloor=0.0):
+def compute_ssobject_entry(
+    row, sss, fixedG12=None, magSigmaFloor=0.0, nSigmaClip=None,
+):
     # just verify we didn't screw up something
     assert sss["ssObjectId"].nunique() == 1
 
@@ -101,6 +103,7 @@ def compute_ssobject_entry(row, sss, fixedG12=None, magSigmaFloor=0.0):
                     df["dia_psfMag"], df["dia_psfMagErr"],
                     df["phaseAngle"], df["topoRange"], df["helioRange"],
                     fixedG12=fixedG12, magSigmaFloor=magSigmaFloor,
+                    nSigmaClip=nSigmaClip,
                 )
                 nDof = nBandObs - (1 if fixedG12 is not None else 2)
                 # print(provID, band, H, G12, sigmaH, sigmaG12, covHG12,
@@ -127,7 +130,10 @@ def compute_ssobject_entry(row, sss, fixedG12=None, magSigmaFloor=0.0):
     row["extendednessMedian"] = sss["dia_extendedness"].median()
 
 
-def compute_ssobject(sss, dia, mpcorb, fixedG12=None, magSigmaFloor=0.0):
+def compute_ssobject(
+    sss, dia, mpcorb, fixedG12=None, magSigmaFloor=0.0,
+    nSigmaClip=None,
+):
     """
     Compute solar system object properties by joining and processing
     SSSource, DiaSource, and MPC orbit data.
@@ -206,7 +212,10 @@ def compute_ssobject(sss, dia, mpcorb, fixedG12=None, magSigmaFloor=0.0):
     obj = np.zeros(totalNumObjects, dtype=schema.SSObjectDtype)
 
     # compute per-object quantities
-    callback = partial(compute_ssobject_entry, fixedG12=fixedG12, magSigmaFloor=magSigmaFloor)
+    callback = partial(
+        compute_ssobject_entry, fixedG12=fixedG12,
+        magSigmaFloor=magSigmaFloor, nSigmaClip=nSigmaClip,
+    )
     util.group_by([sss], "ssObjectId", callback, out=obj)
 
     #
