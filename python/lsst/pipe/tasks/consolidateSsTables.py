@@ -72,27 +72,29 @@ class ConsolidateSsTablesConfig(
 ):
     """Config for ConsolidateSsTablesTask"""
 
-    fixedG12 = pexConfig.Field(
+    hg12FixedG12 = pexConfig.Field(
         dtype=float,
         default=None,
         optional=True,
-        doc="If set, fix the G12 slope parameter to this value and only fit H. "
-            "If None (default), both H and G12 are fit.",
+        doc="If set, fix the G12 slope parameter to this value "
+            "and only fit H. If None (default), both H and G12 "
+            "are fit.",
     )
 
-    magSigmaFloor = pexConfig.Field(
+    hg12MagSigmaFloor = pexConfig.Field(
         dtype=float,
         default=0.0,
-        doc="Systematic magnitude error floor (mag) added in quadrature "
-            "to measurement errors before HG12 fitting.",
+        doc="Systematic magnitude error floor (mag) added in "
+            "quadrature to measurement errors before HG12 "
+            "fitting.",
     )
 
-    nSigmaClipHG12Fit = pexConfig.Field(
+    hg12NSigmaClip = pexConfig.Field(
         dtype=float,
         default=None,
         optional=True,
-        doc="If set, reject outliers beyond this many sigma after "
-            "an initial robust fit. If None, no clipping.",
+        doc="If set, reject outliers beyond this many sigma "
+            "after an initial robust fit. If None, no clipping.",
     )
 
 
@@ -200,18 +202,19 @@ class ConsolidateSsTablesTask(pipeBase.PipelineTask):
 
         # build the SSObject table
         self.log.info(
-            "HG12 fit config: fixedG12=%s, magSigmaFloor=%s, "
-            "nSigmaClipHG12Fit=%s",
-            self.config.fixedG12, self.config.magSigmaFloor,
-            self.config.nSigmaClipHG12Fit,
+            "HG12 fit config: hg12FixedG12=%s, "
+            "hg12MagSigmaFloor=%s, hg12NSigmaClip=%s",
+            self.config.hg12FixedG12,
+            self.config.hg12MagSigmaFloor,
+            self.config.hg12NSigmaClip,
         )
         ssSourceTable.sort("ssObjectId")
         mpcorb = mpcorb.to_pandas() if isinstance(mpcorb, tb.Table) else mpcorb
         ssObjectTable = compute_ssobject(
             ssSourceTable.to_pandas(), diaSource.to_pandas(), mpcorb,
-            fixedG12=self.config.fixedG12,
-            magSigmaFloor=self.config.magSigmaFloor,
-            nSigmaClip=self.config.nSigmaClipHG12Fit,
+            fixedG12=self.config.hg12FixedG12,
+            magSigmaFloor=self.config.hg12MagSigmaFloor,
+            nSigmaClip=self.config.hg12NSigmaClip,
         )
         ssObjectTable = tb.Table(ssObjectTable)
 
