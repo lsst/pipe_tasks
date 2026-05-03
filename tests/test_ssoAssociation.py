@@ -360,17 +360,18 @@ class TestMatching(lsst.utils.tests.TestCase):
 
     def testNoMatchBeyondRadius(self):
         """Sources beyond matching radius should not match."""
+        max_arcsec = self.task.config.maxDistArcSeconds
         sso_ra = np.array([180.0])
         sso_dec = np.array([0.0])
-        # Source 10 arcsec away
-        dia_ra = np.array([180.0 + 10.0 / 3600])
+        # Source well beyond the matching radius
+        dia_ra = np.array([180.0 + 10 * max_arcsec / 3600])
         dia_dec = np.array([0.0])
 
         dia_xyz = self.task._radec_to_xyz(dia_ra, dia_dec)
         tree = cKDTree(dia_xyz)
 
         sso_xyz = self.task._radec_to_xyz(sso_ra, sso_dec)
-        max_rad = np.radians(1.0 / 3600)  # 1 arcsec
+        max_rad = np.radians(max_arcsec / 3600)
         dist, idx = tree.query(
             sso_xyz, k=1,
             distance_upper_bound=max_rad,
