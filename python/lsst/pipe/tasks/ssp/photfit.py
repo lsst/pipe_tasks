@@ -173,6 +173,18 @@ def fitHG12(mag, magSigma, phaseAngle, tdist, rdist, fixedG12=None, magSigmaFloo
     if magSigmaFloor > 0:
         magSigma = np.sqrt(magSigma**2 + magSigmaFloor**2)
 
+    # filter to finite magnitudes and positive errors
+    good = np.isfinite(mag) & np.isfinite(magSigma) & (magSigma > 0)
+    mag = mag[good]
+    magSigma = magSigma[good]
+    phaseAngle = phaseAngle[good]
+    tdist = tdist[good]
+    rdist = rdist[good]
+    nobsv = len(mag)
+
+    if nobsv == 0:
+        return HG12FitResult(*(np.nan,) * 6, nobs=0)
+
     # correct the mag to 1AU distance
     dmag = -5.0 * np.log10(tdist * rdist)
     mag = mag + dmag
