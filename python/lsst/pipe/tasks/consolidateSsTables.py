@@ -87,6 +87,14 @@ class ConsolidateSsTablesConfig(
             "to measurement errors before HG12 fitting.",
     )
 
+    nSigmaClipHG12Fit = pexConfig.Field(
+        dtype=float,
+        default=None,
+        optional=True,
+        doc="If set, reject outliers beyond this many sigma after "
+            "an initial robust fit. If None, no clipping.",
+    )
+
 
 class ConsolidateSsTablesTask(pipeBase.PipelineTask):
     """Consolidate per-patch ssSource tables into a single table.
@@ -192,8 +200,10 @@ class ConsolidateSsTablesTask(pipeBase.PipelineTask):
 
         # build the SSObject table
         self.log.info(
-            "HG12 fit config: fixedG12=%s, magSigmaFloor=%s",
+            "HG12 fit config: fixedG12=%s, magSigmaFloor=%s, "
+            "nSigmaClipHG12Fit=%s",
             self.config.fixedG12, self.config.magSigmaFloor,
+            self.config.nSigmaClipHG12Fit,
         )
         ssSourceTable.sort("ssObjectId")
         mpcorb = mpcorb.to_pandas() if isinstance(mpcorb, tb.Table) else mpcorb
@@ -201,6 +211,7 @@ class ConsolidateSsTablesTask(pipeBase.PipelineTask):
             ssSourceTable.to_pandas(), diaSource.to_pandas(), mpcorb,
             fixedG12=self.config.fixedG12,
             magSigmaFloor=self.config.magSigmaFloor,
+            nSigmaClip=self.config.nSigmaClipHG12Fit,
         )
         ssObjectTable = tb.Table(ssObjectTable)
 
