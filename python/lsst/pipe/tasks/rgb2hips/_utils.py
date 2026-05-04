@@ -76,15 +76,21 @@ def _write_hips_image(
     hips_base_path : `ResourcePath`
         Base directory path where the HealPix tiles will be stored.
     file_extension : `str`
-        File extension (format) for saving the image ('png' or 'webp').
+        File extension (format) for saving the image ('png' or 'webp' or 'fits').
     output_type : `str`
         Data type of the output array, which can be:
             - "uint8": 8-bit unsigned integers (0-255)
             - "uint16": 16-bit unsigned integers (0-65535)
             - "half": 16-bit floating-point numbers
             - "float": 32-bit floating-point numbers
+    Raises
+    ------
+    ValueError :
+        Raised if the fits file extension is used with a type other than float
 
     """
+    if file_extension == "fits" and output_type != "float":
+        raise ValueError("Fits files must be written with data type float")
     # clip in case any of the warping caused values over 1
     image_data = np.clip(image_data, 0, 1)
     # remap the image_data to the chosen output_type
