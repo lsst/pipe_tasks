@@ -1,9 +1,10 @@
 import pandas as pd
 import numpy as np
+from functools import partial
 from . import photfit
 from . import util
 from . import schema
-from .moid import MOIDSolver, earth_orbit_J2000
+from .moid import MOIDSolver, earth_orbit
 import argparse
 import sys
 
@@ -53,7 +54,9 @@ def nJy_err_to_mag_err(f_njy, f_err_njy):
     return 1.085736 * (f_err_njy / f_njy)
 
 
-def compute_ssobject_entry(row, sss):
+def compute_ssobject_entry(
+    row, sss, fixedG12=None, magSigmaFloor=0.0, nSigmaClip=None,
+):
     # just verify we didn't screw up something
     assert sss["ssObjectId"].nunique() == 1
 
@@ -97,9 +100,12 @@ def compute_ssobject_entry(row, sss):
                 # do the absmag/slope fits, if there are at least two
                 # data points
                 H, G12, sigmaH, sigmaG12, covHG12, chi2dof, nobsv = photfit.fitHG12(
-                    df["dia_psfMag"], df["dia_psfMagErr"], df["phaseAngle"], df["topoRange"], df["helioRange"]
+                    df["dia_psfMag"], df["dia_psfMagErr"],
+                    df["phaseAngle"], df["topoRange"], df["helioRange"],
+                    fixedG12=fixedG12, magSigmaFloor=magSigmaFloor,
+                    nSigmaClip=nSigmaClip,
                 )
-                nDof = nBandObs - 2
+                nDof = nBandObs - (1 if fixedG12 is not None else 2)
                 # print(provID, band, H, G12, sigmaH, sigmaG12, covHG12,
                 #       chi2dof, nobsv)
 
@@ -124,7 +130,10 @@ def compute_ssobject_entry(row, sss):
     row["extendednessMedian"] = sss["dia_extendedness"].median()
 
 
-def compute_ssobject(sss, dia, mpcorb):
+def compute_ssobject(
+    sss, dia, mpcorb, fixedG12=None, magSigmaFloor=0.0,
+    nSigmaClip=None,
+):
     """
     Compute solar system object properties by joining and processing
     SSSource, DiaSource, and MPC orbit data.
@@ -203,7 +212,11 @@ def compute_ssobject(sss, dia, mpcorb):
     obj = np.zeros(totalNumObjects, dtype=schema.SSObjectDtype)
 
     # compute per-object quantities
-    util.group_by([sss], "ssObjectId", compute_ssobject_entry, out=obj)
+    callback = partial(
+        compute_ssobject_entry, fixedG12=fixedG12,
+        magSigmaFloor=magSigmaFloor, nSigmaClip=nSigmaClip,
+    )
+    util.group_by([sss], "ssObjectId", callback, out=obj)
 
     #
     # compute columns that can be efficiently computed in a vector fashon
@@ -223,14 +236,17 @@ def compute_ssobject(sss, dia, mpcorb):
             mpcorb["unpacked_primary_provisional_designation"].take(midx)
             == obj["designation"][oidx].astype("U")
         )
-        q, e, i, node, argperi = util.unpack(mpcorb["q e i node argperi".split()].take(midx))
+        q, e, i, node, argperi, epoch_mjd = util.unpack(
+            mpcorb["q e i node argperi epoch_mjd".split()].take(midx)
+        )
         a = q / (1.0 - e)
         obj["tisserand_J"][oidx] = util.tisserand_jupiter(a, e, i)
 
         # MOID computation
         solver = MOIDSolver()
         for i, el_obj in enumerate(zip(a, e, i, node, argperi)):
-            (moid, deltaV, eclon, trueEarth, trueObject) = solver.compute(earth_orbit_J2000(), el_obj)
+            earth = earth_orbit(epoch_mjd[i])
+            (moid, deltaV, eclon, trueEarth, trueObject) = solver.compute(earth, el_obj)
             row = obj[oidx[i]]
             row["MOIDEarth"] = moid
             row["MOIDEarthDeltaV"] = deltaV
