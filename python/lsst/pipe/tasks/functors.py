@@ -28,6 +28,7 @@ __all__ = ["init_fromDict", "Functor", "CompositeFunctor", "mag_aware_eval",
            "ComputePixelScale", "ConvertPixelToArcseconds",
            "ConvertPixelSqToArcsecondsSq",
            "ConvertDetectorAngleToPositionAngle",
+           "ConvertDetectorAngleErrToPositionAngleErr",
            "ReferenceBand", "Photometry",
            "NanoJansky", "NanoJanskyErr", "LocalPhotometry", "LocalNanojansky",
            "LocalNanojanskyErr", "LocalDipoleMeanFlux",
@@ -1554,6 +1555,28 @@ class ConvertDetectorAngleToPositionAngle(LocalWcs):
         )
 
 
+class ConvertDetectorAngleErrToPositionAngleErr(Functor):
+    """Convert a detector angle error to a position angle error.
+
+    Returns
+    -------
+    position angle error : degrees
+    """
+
+    name = "PositionAngleErr"
+
+    def __init__(self, theta_err_col, **kwargs):
+        self.theta_err_col = theta_err_col
+        super().__init__(**kwargs)
+
+    @property
+    def columns(self):
+        return [self.theta_err_col]
+
+    def _func(self, df):
+        return np.rad2deg(df[self.theta_err_col])
+
+
 class ReferenceBand(Functor):
     """Return the band used to seed multiband forced photometry.
 
@@ -1992,14 +2015,7 @@ class Ebv(Functor):
 
 
 class MomentsBase(Functor):
-    """Base class for functors that use shape moments and localWCS
-
-    Attributes
-    ----------
-    is_covariance : bool
-        Whether the shape columns are terms of a covariance matrix. If False,
-        they will be assumed to be terms of a correlation matrix instead.
-    """
+    """Base class for functors that use shape moments and localWCS"""
 
     is_covariance: bool = True
 
