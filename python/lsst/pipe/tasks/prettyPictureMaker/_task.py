@@ -37,6 +37,7 @@ __all__ = (
 
 import colour
 import copy
+import itertools
 from collections.abc import Iterable, Mapping
 from lsst.afw.image import ExposureF
 import numpy as np
@@ -48,7 +49,7 @@ from scipy.ndimage import binary_dilation
 from scipy.interpolate import RBFInterpolator
 from skimage.restoration import inpaint_biharmonic
 
-from lsst.daf.butler import Butler, DeferredDatasetHandle
+from lsst.daf.butler import Butler, DataCoordinate, DeferredDatasetHandle
 from lsst.daf.butler import DatasetRef
 from lsst.images import ColorImage, Projection, Box, TractFrame
 from lsst.pex.config import Field, Config, ConfigDictField, ListField, ChoiceField
@@ -60,6 +61,7 @@ from lsst.pipe.base import (
     Struct,
     InMemoryDatasetHandle,
     NoWorkFound,
+    QuantaAdjuster,
 )
 from lsst.rubinoxide import rbf_interpolator
 import cv2
@@ -67,6 +69,7 @@ import cv2
 from lsst.pipe.base.connectionTypes import Input, Output
 from lsst.geom import Box2I, Point2I, Extent2I
 from lsst.afw.image import Exposure, Mask
+from lsst.skymap import Index2D
 
 from ._plugins import plugins
 from ._colorMapper import lsstRGB
@@ -642,6 +645,7 @@ class PrettyPictureBackgroundFixerConnections(
         name="{coaddTypeName}CoaddPsfMatched",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "band"),
+        multiple=True
     )
     outputCoadd = Output(
         doc="The coadd with the background fixed and subtracted",
@@ -649,6 +653,64 @@ class PrettyPictureBackgroundFixerConnections(
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "band"),
     )
+
+    def adjust_all_quanta(self,  adjuster: QuantaAdjuster) -> None:
+        # At this stage of a QG build, we won't necessarily have pruned
+        # quanta that don't have inputs, so instead of a set of quantum data
+        # IDs, we want to start from a set of quantum *input* data IDs.  We'll
+        # just ignore quanta that don't; they'll get prune later.
+        flat_data_ids: set[DataCoordinate] = set()
+        for quantum_data_id in adjuster.iter_data_ids():
+            flat_data_ids.update(adjuster.get_inputs(quantum_data_id)["inputCoadd"])
+        # Reorganize task data IDs into
+        #
+        # {skymap: {(band, tract): [patches]}}}
+        #
+        # It's unlikely we'll ever get more than one skymap in a single QG
+        # build, of course, but not impossible.
+        hierarchical_data_ids: dict[str, dict[tuple[str, int], list[int]]] = {}
+        for quantum_data_id in flat_data_ids:
+            hierarchical_data_ids.setdefault(
+                quantum_data_id["skymap"], {}
+            ).setdefault(
+                (quantum_data_id["band"], quantum_data_id["tract"]), []
+            ).append(
+                quantum_data_id["patch"]
+            )
+        for skymap_name, data_ids_for_skymap in hierarchical_data_ids.items():
+            # We need to load the skyMap to turn single-int patch_id IDs into
+            # grid (x, y) pairs, so we can offset those to find neighbors.
+            skyMap = adjuster.butler.get("skyMap", skymap=skymap_name)
+            for (tract_id, band), patches in data_ids_for_skymap.items():
+                tract_info = skyMap[tract_id]
+                base_data_id = DataCoordinate.standardize(
+                    skymap=skymap_name,
+                    tract=tract_id,
+                    band=band,
+                    universe=adjuster.butler.dimensions,
+                )
+                for patch_id in patches:
+                    patch_index: Index2D = tract_info.getPatchIndexPair(patch_id)
+                    quantum_data_id = DataCoordinate.standardize(base_data_id, patch=patch_id)
+                    # Find all adjacent patches (including corner neighbors).
+                    for offset_x, offset_y in itertools.product((-1, 0, 1), (-1, 0, 1)):
+                        if not (offset_x or offset_y):
+                            # Skip the input that matches the quantum data ID;
+                            # it's already got an edge to this quantum.
+                            continue
+                        neighbor_patch_id = tract_info.getSequentialPatchIndexFromPair(
+                            Index2D(x=patch_index.x + offset_x, y=patch_index.y + offset_y)
+                        )
+                        neighbor_data_id = DataCoordinate.standardize(base_data_id, patch=neighbor_patch_id)
+                        if neighbor_data_id not in flat_data_ids:
+                            # Skip inputs that don't exist, either because
+                            # they didn't have data or because they're just a
+                            # totally invalid patch index.
+                            continue
+                        # Finally we can add an edge from the neighboring
+                        # input to this quantum.
+                        adjuster.add_input(quantum_data_id, "inputCoadd", neighbor_data_id)
+
 
 
 class PrettyPictureBackgroundFixerConfig(
