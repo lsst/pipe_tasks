@@ -25,87 +25,88 @@ MOIDResult = namedtuple(
 )
 
 
-def earth_orbit_J2000():
-    """
-    Return canonical heliocentric Keplerian orbital elements for the Earth,
-    suitable for MOID computations, in the J2000 mean ecliptic and equinox
-    reference frame.
+def earth_orbit(epoch_mjd=51544.5):
+    """Return Earth’s heliocentric Keplerian elements at a given epoch.
 
-    The elements describe a *fixed Keplerian ellipse* that approximates the
-    Earth's mean orbit at epoch J2000. This is the standard convention used
-    in MOID literature and software (e.g., Milani & Gronchi, NEODyS, JPL)
-    when computing the MOID between small bodies and the Earth.
+    Evaluates a linear secular model for Earth’s orbital elements
+    in the J2000 ecliptic and equinox frame. The model coefficients
+    are from JPL’s "Keplerian Elements for Approximate Positions of
+    the Major Planets" (Standish 1992, Table 1), valid for
+    3000 BC -- 3000 AD.
+
+    Parameters
+    ----------
+    epoch_mjd : float, optional
+        Epoch as Modified Julian Date. Default is 51544.5
+        (J2000.0 = 2000 Jan 1.5 TDB).
 
     Returns
     -------
     EarthElements
         A namedtuple with fields:
 
-        - a_AU : float
-            Semi-major axis in astronomical units (AU).
-            Canonical value: 1.00000011 AU
-
-        - e : float
-            Eccentricity (dimensionless).
-            Canonical value: 0.01671022
-
-        - inc_deg : float
-            Inclination to the ecliptic in degrees.
-            Canonical value: 0.00005 deg
-
-            Note: by definition the ecliptic plane is the Earth's mean orbital
-            plane, so the true inclination is ~0. A very small non-zero value
-            is used in practice to avoid singularities in rotation matrices
-            and angle definitions.
-
-        - Omega_deg : float
-            Longitude of the ascending node in degrees, measured in the
-            ecliptic plane from the J2000 vernal equinox.
-            Canonical value: -11.26064 deg  (equivalent to 348.73936 deg)
-
-        - omega_deg : float
-            Argument of perihelion in degrees, measured from the ascending
-            node along the Earth's orbital plane.
-            Canonical value: 102.94719 deg
+        ``a_AU``
+            Semi-major axis in AU.
+        ``e``
+            Eccentricity.
+        ``inc_deg``
+            Inclination to the ecliptic in degrees. Set to a small
+            nonzero value (0.00005°) to avoid singularities in
+            rotation matrices; the true value is ~0 by definition
+            since the ecliptic *is* Earth’s mean orbital plane.
+        ``Omega_deg``
+            Longitude of the ascending node in degrees. Zero by
+            definition in the ecliptic frame.
+        ``omega_deg``
+            Argument of perihelion in degrees. Since Omega = 0 in
+            the ecliptic frame, this equals the longitude of
+            perihelion (ϖ).
 
     Notes
     -----
-    * These values are the widely used J2000 "mean elements" of the Earth’s
-      heliocentric orbit, compatible with VSOP87-style low-order models and
-      with the orbital elements quoted in many celestial mechanics references.
+    The linear model for each element is::
 
-    * They are intended for *geometric* computations such as MOID, where one
-      wants a fixed Keplerian ellipse representing the Earth's orbit, rather
-      than the true, time-varying perturbed Earth orbit.
+        element(T) = element_0 + element_dot * T
 
-    * If you are using the MOIDSolver defined above, you can plug this
-      directly into the solver as the Earth orbit, e.g.:
+    where T is Julian centuries from J2000.0. The coefficients are:
 
-          earth = earth_orbit_J2000()
-          result = solver.compute(asteroid_elements, earth)
+    ======  ===============  =================
+    Param   Value at J2000   Rate (per century)
+    ======  ===============  =================
+    a       1.00000261 AU    +0.00000562 AU
+    e       0.01671123       -0.00004392
+    ϖ       102.93768193°    +0.32327364°
+    ======  ===============  =================
 
-      or reverse the order depending on which way you want to label the
-      "orbit 1" quantities.
+    Inclination and Omega are fixed at ~0 (ecliptic frame).
 
-    * The epoch associated with these elements is J2000.0; MOID is a purely
-      geometric quantity, so there is no mean anomaly / phase dependence.
+    MOID is a purely geometric quantity (no mean anomaly / phase
+    dependence), but the *shape and orientation* of Earth’s orbit
+    do evolve slowly. Evaluating at the asteroid’s osculating
+    element epoch ensures the two orbits are compared at a
+    consistent time.
 
     References
     ----------
-    These values (or very close variants) are quoted in many sources, e.g.:
-
-      - Explanatory Supplement to the Astronomical Almanac
-      - VSOP87/IAU-style mean orbital element lists for planets
-      - Milani, A., & Gronchi, G. F., "Theory of Orbit Determination"
-      - Online resources summarizing J2000 planetary elements
+    Standish, E.M. (1992). "Keplerian Elements for Approximate
+    Positions of the Major Planets." Solar System Dynamics Group,
+    JPL. https://ssd.jpl.nasa.gov/planets/approx_pos.html
     """
+    T = (epoch_mjd - 51544.5) / 36525.0  # Julian centuries from J2000
     return EarthElements(
-        a_AU=1.00000011,
-        e=0.01671022,
+        a_AU=1.00000261 + 0.00000562 * T,
+        e=0.01671123 - 0.00004392 * T,
         inc_deg=0.00005,
-        Omega_deg=-11.26064,
-        omega_deg=102.94719,
+        Omega_deg=0.0,
+        omega_deg=102.93768193 + 0.32327364 * T,
     )
+
+
+def earth_orbit_J2000():
+    """Return Earth’s elements at J2000.0. Deprecated; use
+    `earth_orbit(epoch_mjd)` instead.
+    """
+    return earth_orbit(51544.5)
 
 
 class MOIDSolver:

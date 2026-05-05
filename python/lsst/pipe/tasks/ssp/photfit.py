@@ -1,7 +1,13 @@
 import numpy as np
+from collections import namedtuple
 from scipy.interpolate import CubicSpline
-from scipy.optimize import leastsq
+from scipy.optimize import leastsq, least_squares
 import warnings
+
+HG12FitResult = namedtuple(
+    "HG12FitResult",
+    ["H", "G12", "H_err", "G12_err", "HG_cov", "chi2dof", "nobs"],
+)
 
 # Constants
 
@@ -107,35 +113,177 @@ def fit(mag, phase, sigma, model=HG12_model, params=[0.1]):
     return sol
 
 
-def fitHG12(mag, magSigma, phaseAngle, tdist, rdist):
-    # This uses the HG12 function from Muinonen et al (2010)
+def fitHG12(
+    mag, magSigma, phaseAngle, tdist, rdist,
+    fixedG12=None, magSigmaFloor=0.0, nSigmaClip=None,
+):
+    """Fit the HG12 phase curve model (Muinonen et al. 2010).
+
+    Fits absolute magnitude H (and optionally the slope parameter
+    G12) to apparent magnitude observations at known phase angles
+    and distances.
+
+    Parameters
+    ----------
+    mag : array_like
+        Apparent magnitudes.
+    magSigma : array_like
+        Magnitude uncertainties (1-sigma).
+    phaseAngle : array_like
+        Phase angles in degrees.
+    tdist : array_like
+        Topocentric (observer-target) distances in AU.
+    rdist : array_like
+        Heliocentric (sun-target) distances in AU.
+    fixedG12 : float or None, optional
+        If set, fix G12 to this value and only fit H.
+        If None (default), both H and G12 are fit.
+    magSigmaFloor : float, optional
+        Systematic error floor (mag) added in quadrature to
+        ``magSigma`` before fitting. Default is 0.0.
+    nSigmaClip : float or None, optional
+        If set, perform outlier rejection: an initial robust fit
+        (soft_l1 loss) followed by sigma clipping at this
+        threshold, then a final linear least-squares refit on the
+        clipped data. If None (default), no clipping is performed.
+
+    Returns
+    -------
+    result : `HG12FitResult`
+        Named tuple with fields:
+
+        ``H``
+            Best-fit absolute magnitude.
+        ``G12``
+            Best-fit (or fixed) slope parameter.
+        ``H_err``
+            Uncertainty on H from the covariance matrix.
+        ``G12_err``
+            Uncertainty on G12 (NaN if ``fixedG12`` is set).
+        ``HG_cov``
+            H-G12 covariance (NaN if ``fixedG12`` is set).
+        ``chi2dof``
+            Reduced chi-squared of the fit.
+        ``nobs``
+            Number of observations used (after clipping).
+
+        On failure, all float fields are NaN and ``nobs`` is 0.
+    """
     nobsv = len(mag)
 
+    if nobsv == 0:
+        return HG12FitResult(*(np.nan,) * 6, nobs=0)
+
     # ensure these are plain ndarrays
-    (mag, magSigma, phaseAngle, tdist, rdist) = map(np.asarray, (mag, magSigma, phaseAngle, tdist, rdist))
+    (mag, magSigma, phaseAngle, tdist, rdist) = map(
+        np.asarray, (mag, magSigma, phaseAngle, tdist, rdist)
+    )
+
+    # add systematic error floor in quadrature
+    if magSigmaFloor > 0:
+        magSigma = np.sqrt(magSigma**2 + magSigmaFloor**2)
+
+    # filter to finite magnitudes and positive errors
+    good = (
+        np.isfinite(mag) & np.isfinite(magSigma)
+        & (magSigma > 0)
+    )
+    mag = mag[good]
+    magSigma = magSigma[good]
+    phaseAngle = phaseAngle[good]
+    tdist = tdist[good]
+    rdist = rdist[good]
+    nobsv = len(mag)
+
+    if nobsv == 0:
+        return HG12FitResult(*(np.nan,) * 6, nobs=0)
 
     # correct the mag to 1AU distance
     dmag = -5.0 * np.log10(tdist * rdist)
     mag = mag + dmag
-    # phaseAngle = np.deg2rad(phaseAngle)
+
+    if fixedG12 is not None:
+        def model(phase, params):
+            return HG12_model(phase, [params[0], fixedG12])
+
+        nparams = 1
+    else:
+        model = HG12_model
+        nparams = 2
+
+    phase_rad = np.deg2rad(phaseAngle)
+    x0 = np.array(
+        [mag[0]] + ([] if fixedG12 is not None else [0.1])
+    )
+
+    def residuals(params):
+        return (mag - model(phase_rad, params)) / magSigma
 
     # fit, suppressing warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
 
-        sol = fit(mag, phaseAngle, magSigma)
-        if sol[-1] in [1, 2, 3] and sol[1] is not None:  # least squares solver flags
-            chi2 = np.sum(sol[2]["fvec"] ** 2)
-            H = sol[0][0]
-            G = sol[0][1]
-            H_err = np.sqrt(sol[1][0, 0])
-            G_err = np.sqrt(sol[1][1, 1])
-            HG_cov = sol[1][0, 1]
+        if nSigmaClip is not None and nobsv > nparams + 1:
+            # Stage 1: robust fit with soft_l1 loss
+            sol_robust = least_squares(
+                residuals, x0, loss='soft_l1', f_scale=1.0,
+            )
+            if not sol_robust.success:
+                return HG12FitResult(*(np.nan,) * 6, nobs=0)
 
-            return H, G, H_err, G_err, HG_cov, chi2 / (nobsv - 2), nobsv
+            # Sigma clipping on residuals from robust fit
+            resid = residuals(sol_robust.x)
+            keep = np.abs(resid) < nSigmaClip
+            mag = mag[keep]
+            magSigma = magSigma[keep]
+            phase_rad = phase_rad[keep]
+            nobsv = len(mag)
+
+            if nobsv <= nparams:
+                return HG12FitResult(*(np.nan,) * 6, nobs=0)
+
+            # Redefine residuals for clipped data
+            def residuals(params):
+                return (
+                    (mag - model(phase_rad, params)) / magSigma
+                )
+
+            x0 = sol_robust.x
+
+        # Final fit (linear loss for proper chi2/covariance)
+        sol = least_squares(residuals, x0, loss='linear')
+
+        if not sol.success:
+            return HG12FitResult(*(np.nan,) * 6, nobs=0)
+
+        # Extract results
+        chi2_total = np.sum(sol.fun ** 2)
+
+        # Covariance from Jacobian: cov = inv(J^T J)
+        J = sol.jac
+        try:
+            cov = np.linalg.inv(J.T @ J)
+        except np.linalg.LinAlgError:
+            return HG12FitResult(*(np.nan,) * 6, nobs=0)
+
+        H = sol.x[0]
+        H_err = np.sqrt(cov[0, 0])
+
+        if fixedG12 is not None:
+            G = fixedG12
+            G_err = np.nan
+            HG_cov = np.nan
         else:
-            # fit failed
-            return (np.nan,) * 6 + (0,)
+            G = sol.x[1]
+            G_err = np.sqrt(cov[1, 1])
+            HG_cov = cov[0, 1]
+
+        return HG12FitResult(
+            H=H, G12=G, H_err=H_err, G12_err=G_err,
+            HG_cov=HG_cov,
+            chi2dof=chi2_total / (nobsv - nparams),
+            nobs=nobsv,
+        )
 
 
 ####################
