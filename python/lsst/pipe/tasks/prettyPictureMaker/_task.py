@@ -174,6 +174,13 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         ),
         default=10,
     )
+    maxNoiseImbalance = Field[float](
+        doc=(
+            "When recentering noise, if the ratio of counts of positive pixels, to negative pixesl passes "
+            "this threhsold, consider there to be extened low flux and only estimate noise below zero."
+        ),
+        default=1.5
+    )
     doPsfDeconvolve = Field[bool](
         doc="Use the PSF in a Richardson-Lucy deconvolution on the luminance channel.", default=False
     )
@@ -331,7 +338,16 @@ class PrettyPictureTask(PipelineTask):
             # Handle fitting failures (e.g., constant data, optimization issues)
             return 0, np.inf
 
-        return center, sigma
+        # examine for excess positive flux, this means there is contaminating signal
+        new_cut = (array[array < (mu + 3*sigma)])
+        positivity_ratio = np.sum(new_cut > mu)/np.sum(new_cut < mu)
+
+        if positivity_ratio > self.config.maxNoiseImbalance:
+            # This means there is an excess flux, possibly diffuse source,
+            # only estimate around zero.
+            mu, sigma = halfnorm.fit(np.abs(values_noise[values_noise < 0]))
+
+        return mu, sigma
 
     def _match_sigmas_and_recenter(self, *arrays, factor=1):
         """Scale array values to match minimum standard deviation across arrays
