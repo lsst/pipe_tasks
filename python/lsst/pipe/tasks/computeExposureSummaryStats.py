@@ -343,6 +343,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         self.update_effective_time_stats(summary, exposure)
 
         md = exposure.getMetadata()
+        if "REFCAT_DENSITY_PER_DEG2" in md:
+            summary.refcatDensityPerDeg2 = md["REFCAT_DENSITY_PER_DEG2"]
         if "SFM_ASTROM_OFFSET_MEAN" in md:
             summary.astromOffsetMean = md["SFM_ASTROM_OFFSET_MEAN"]
             summary.astromOffsetStd = md["SFM_ASTROM_OFFSET_STD"]

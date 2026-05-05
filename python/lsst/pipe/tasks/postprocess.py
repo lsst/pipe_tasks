@@ -1739,6 +1739,7 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
             selectColumns = ["id", "visit", "physical_filter", "band", "ra", "dec",
                              "pixelScale", "zenithDistance",
                              "expTime", "zeroPoint", "psfSigma", "skyBg", "skyNoise",
+                             "refcatDensityPerDeg2",
                              "astromOffsetMean", "astromOffsetStd", "nPsfStar",
                              "psfStarDeltaE1Median", "psfStarDeltaE2Median",
                              "psfStarDeltaE1Scatter", "psfStarDeltaE2Scatter",

@@ -191,6 +191,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
         # Check that the summary statistics are reasonable.
         summary = result.exposure.info.getSummaryStats()
+        # Values below are only correct for the base run test.
+        self.assertFloatsAlmostEqual(summary.refcatDensityPerDeg2, 39470.0430204, rtol=1e-3)
         self.assertFloatsAlmostEqual(summary.psfSigma, 2.0, rtol=1e-2)
         self.assertFloatsAlmostEqual(summary.ra, self.sky_center.getRa().asDegrees(), rtol=1e-7)
         self.assertFloatsAlmostEqual(summary.dec, self.sky_center.getDec().asDegrees(), rtol=1e-7)
@@ -229,6 +231,8 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         key = "LSST CALIB ILLUMCORR APPLIED"
         self.assertIn(key, result.exposure.metadata)
         self.assertEqual(result.exposure.metadata[key], False)
+        key = "REFCAT_DENSITY_PER_DEG2"
+        self.assertIn(key, result.exposure.metadata)
 
         # Check that the psf_stars cross match worked correctly.
         matches = esutil.numpy_util.match(result.psf_stars["id"], result.stars["psf_id"])
