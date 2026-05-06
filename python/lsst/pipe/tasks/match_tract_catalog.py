@@ -357,12 +357,19 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
             diff_prefix_target = self.config.diff_matched_catalog.value.column_matched_prefix_target
             name_tract_ref = f"{diff_prefix_ref}tract"
             name_tract_target = f"{diff_prefix_target}tract"
+            name_patch_ref = f"{diff_prefix_ref}patch"
+            name_patch_target = f"{diff_prefix_target}patch"
             # Avoid collisions if, for example, both prefixes are ''
             if name_tract_ref == name_tract_target:
-                name_new = f"{'ref' if diff_prefix_ref != 'ref' else 'refcat'}_tract"
+                prefix_new = {'ref' if diff_prefix_ref != 'ref' else 'refcat'}
+                name_new = f"{prefix_new}_tract"
                 catalog_ref.rename_column(name_tract_ref, name_new)
                 name_tract_ref = name_new
                 name_tract_ref_in = name_new
+                if name_patch_ref in catalog_ref.colnames:
+                    name_new = f"{prefix_new}_patch"
+                    catalog_ref.rename_column(name_patch_ref, name_new)
+                    name_patch_ref = name_new
 
         if self.config.output_matched_catalog:
             outputs_new = self.diff_matched_catalog.run(
@@ -391,6 +398,7 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
                 cat_matched = outputs.cat_output_matched
                 catalogs_out = []
                 tract_target = cat_matched[name_tract_target]
+                patch_target = cat_matched[name_patch_target]
                 masked_target = tract_target.mask == True  # noqa: E712
 
                 tract_ref = cat_matched[name_tract_ref]
@@ -398,6 +406,12 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
                 tract_out[masked_target] = tract_ref[masked_target]
                 cat_matched["tract"] = tract_out
                 cat_matched["tract"].description = f"{name_tract_target} if available else {name_tract_ref}"
+                patch_ref = cat_matched[name_patch_ref]
+                patch_out = np.array(patch_target)
+                # The patch and target masks should be identical
+                patch_out[masked_target] = patch_ref[masked_target]
+                cat_matched["patch"] = patch_out
+                cat_matched["patch"].description = f"{name_patch_target} if available else {name_patch_ref}"
 
                 for outputRef in outputRefs.cat_output_matched:
                     tract = outputRef.dataId["tract"]
@@ -442,7 +456,20 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
                                     cat_output_target=output.cat_output_target)
         return retStruct
 
-    def _add_tract_column_to_catalogs(self, catalog_ref, catalog_target, skymap):
+    def _add_tract_column_to_catalogs(self, catalog_ref, catalog_target, skymap, add_patch: bool = True):
+        """Add a tract column to catalogs that may be missing it.
+
+        Parameters
+        ----------
+        catalog_ref
+            A reference catalog.
+        catalog_target
+            A target catalog.
+        skymap
+            The skymap info to use.
+        add_patch
+            Whether to add a patch column as well.
+        """
         errors = []
         if compute_tract_target := ("tract" not in catalog_target.colnames):
             if self.config.target_sharding_type != "none":
@@ -456,8 +483,10 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
                 )
         if errors:
             raise RuntimeError("; ".join(errors))
+        compute_patch_ref = add_patch and ("patch" not in catalog_ref.colnames)
+        compute_patch_target = add_patch and ("patch" not in catalog_target.colnames)
         unit_dict = self._astropy_u_to_lsst_geom.copy()
-        if compute_tract_target or compute_tract_ref:
+        if compute_tract_target or compute_tract_ref or compute_patch_target or compute_patch_ref:
             if not self.config.diff_matched_catalog.coord_format.coords_spherical:
                 raise RuntimeError(
                     f"Can't compute tract columns with unless"
@@ -467,11 +496,13 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
                 catalog_ref=catalog_ref, catalog_target=catalog_target,
             )
             cats_add = []
-            if compute_tract_target:
-                cats_add.append((target_c, catalog_target, "target"))
+            if compute_tract_target or compute_patch_target:
+                cats_add.append((
+                    target_c, catalog_target, "target", compute_tract_target, compute_patch_target
+                ))
             if compute_tract_ref:
-                cats_add.append((ref_c, catalog_ref, "ref"))
-            for cat_c, catalog_add, name_c in cats_add:
+                cats_add.append((ref_c, catalog_ref, "ref", compute_tract_ref, compute_patch_ref))
+            for cat_c, catalog_add, name_c, compute_tract, compute_patch in cats_add:
                 unit = getattr(catalog_add[cat_c.column_coord1], "unit", self.config.coord_unit)
                 if unit is None:
                     raise RuntimeError(
@@ -480,4 +511,12 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
                     )
                 unit = getattr(lsst.geom, unit_dict[str(unit)])
                 coords = [SpherePoint(ra, dec, unit) for ra, dec in zip(cat_c.coord1, cat_c.coord2)]
-                catalog_add["tract"] = np.array([skymap.findTract(coord).getId() for coord in coords])
+                if compute_tract:
+                    catalog_add["tract"] = np.array([skymap.findTract(coord).getId() for coord in coords])
+                if compute_patch:
+                    tracts = catalog_add["tract"]
+                    patches = np.array([
+                        skymap[tract].findPatch(coord).getSequentialIndex()
+                        for coord, tract in zip(coords, tracts)
+                    ])
+                    catalog_add["patch"] = patches
