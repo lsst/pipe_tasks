@@ -846,7 +846,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         return tiles
 
     @staticmethod
-    def findBackgroundPixels(image, pos_sigma_mult=1, max_flux_imbalance=1.7, max_search_flux=10):
+    def findBackgroundPixels(image, pos_sigma_mult=1, max_flux_imbalance=1.7, max_search_flux=3):
         """Find pixels that are likely to be background based on image statistics.
 
         This method estimates background pixels by analyzing the distribution of
@@ -912,8 +912,8 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
         if positivity_ratio > max_flux_imbalance:
             # This means there is an excess flux, possibly diffuse source,
-            # only estimate around zero.
-            mu_hat, sigma_hat = halfnorm.fit(np.abs(image[image < 0]))
+            # assume all flux is diffuse
+            return np.zeros(image.shape, dtype=bool)
 
         # create a new masking threshold that's the determined
         # mean plus std from the fit
