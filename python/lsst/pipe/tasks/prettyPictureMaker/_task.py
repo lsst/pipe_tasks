@@ -742,7 +742,6 @@ class PrettyPictureBackgroundFixerConfig(
     pos_sigma_multiplier = Field[float](
         doc="How many sigma to consider as background in the positive direction", default=2
     )
-
     extra_pixel_rad = Field[int](
         doc=(
             "If there are neighboring input images consider control points that are radius of input image"
@@ -750,6 +749,9 @@ class PrettyPictureBackgroundFixerConfig(
             "points to use."
         ),
         default=2000,
+    )
+    max_search_flux = Field[float](
+        doc="Pixels above this value should never be considered background", default=3
     )
 
 
@@ -844,7 +846,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         return tiles
 
     @staticmethod
-    def findBackgroundPixels(image, pos_sigma_mult=1, max_flux_imbalance=1.7):
+    def findBackgroundPixels(image, pos_sigma_mult=1, max_flux_imbalance=1.7, max_search_flux=10):
         """Find pixels that are likely to be background based on image statistics.
 
         This method estimates background pixels by analyzing the distribution of
@@ -865,6 +867,8 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             assumed to be diffuse background flux in the image, and zero is
             assumed to be the background level. Some excess flux is expected as
             there is a real distribution of faint flux.
+        max_serach_flux : `float`
+            Pixels above this value should never be considered background
 
         Returns
         -------
@@ -880,7 +884,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         # Find the median value in the image, which is likely to be
         # close to average background. Note this doesn't work well
         # in fields with high density or diffuse flux.
-        maxLikely = np.median(image, axis=None)
+        maxLikely = np.median(image[image < max_search_flux], axis=None)
 
         # find all the pixels that are fainter than this
         # and find the std. This is just used as an initialization
@@ -889,7 +893,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         initial_std = (image[mask] - maxLikely).std()
 
         # new estimate
-        sub_image = image[image < initial_std + 3 * initial_std]
+        sub_image = image[image < max(initial_std + 3 * initial_std, max_search_flux)]
 
         center = mode(np.round(sub_image, 2)).mode
 
@@ -913,16 +917,18 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
         # create a new masking threshold that's the determined
         # mean plus std from the fit
-        threshhold = mu_hat + pos_sigma_mult * sigma_hat
+        threshhold = max(mu_hat + pos_sigma_mult * sigma_hat, max_search_flux)
         image_mask = (image < threshhold) * (image > (mu_hat - 5 * sigma_hat))
         return image_mask
 
-    def _findControlPoints(self, exposure: Exposure, origin: Point2I, make_detection_mask: bool = True):
-        if make_detection_mask:
-            image_mask = self.findBackgroundPixels(exposure.image.array, self.config.pos_sigma_multiplier)
-        else:
+    def _findControlPoints(self, exposure: Exposure, origin: Point2I, use_detection_mask: bool = False):
+        if use_detection_mask:
             mask_plane_dict = exposure.mask.getMaskPlaneDict()
             image_mask = ~(exposure.mask.array & 2 ** mask_plane_dict["DETECTED"])
+        else:
+            image_mask = self.findBackgroundPixels(
+                exposure.image.array, self.config.pos_sigma_multiplier, self.config.max_search_flux
+            )
         tiles = self._tile_slices(
             exposure.image.array, self.config.num_background_bins, self.config.num_background_bins
         )
@@ -939,14 +945,14 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
         # for each box find the middle position and the median background
         # value in the window.
-        for xslice, yslice in tiles:
+        for i, (xslice, yslice) in enumerate(tiles):
             ypos = (yslice.stop - yslice.start) / 2 + yslice.start
             xpos = (xslice.stop - xslice.start) / 2 + xslice.start
             window = exposure.image.array[yslice, xslice][image_mask[yslice, xslice]]
             # make sure each bin is at least 1% filled
             min_fill = int((yslice.stop - yslice.start) ** 2 * self.config.min_bin_fraction)
             if window.size > min_fill:
-                value = np.median(window)
+                value = np.mean(window)
             else:
                 continue
             values.append(value)
@@ -1016,8 +1022,8 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         input_y_dim, input_x_dim = inputCoadd.image.array.shape
         input_rad = np.sqrt((input_y_dim / 2) ** 2 + (input_x_dim / 2) ** 2)
         inside_rad = input_rad + self.config.extra_pixel_rad
-        center_x = origin.getX() + input_x_dim / 2
-        center_y = origin.getY() + input_y_dim / 2
+        center_x = input_x_dim / 2
+        center_y = input_y_dim / 2
         values, yloc, xloc = self._findControlPoints(inputCoadd, origin, self.config.use_detection_mask)
 
         if neighbors:
