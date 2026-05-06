@@ -179,7 +179,7 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
             "When recentering noise, if the ratio of counts of positive pixels, to negative pixesl passes "
             "this threhsold, consider there to be extened low flux and only estimate noise below zero."
         ),
-        default=1.5
+        default=1.5,
     )
     doPsfDeconvolve = Field[bool](
         doc="Use the PSF in a Richardson-Lucy deconvolution on the luminance channel.", default=False
@@ -333,14 +333,15 @@ class PrettyPictureTask(PipelineTask):
 
         try:
             # Fit half-normal distribution to absolute negative values
-            mu, sigma = halfnorm.fit(np.abs(values_neg))
+            mu, sigma = halfnorm.fit(np.abs(values_neg - center))
+            mu += center
         except (ValueError, RuntimeError):
             # Handle fitting failures (e.g., constant data, optimization issues)
             return 0, np.inf
 
         # examine for excess positive flux, this means there is contaminating signal
-        new_cut = (array[array < (mu + 3*sigma)])
-        positivity_ratio = np.sum(new_cut > mu)/np.sum(new_cut < mu)
+        new_cut = array[array < (mu + 3 * sigma)]
+        positivity_ratio = np.sum(new_cut > mu) / np.sum(new_cut < mu)
 
         if positivity_ratio > self.config.maxNoiseImbalance:
             # This means there is an excess flux, possibly diffuse source,
@@ -661,7 +662,7 @@ class PrettyPictureBackgroundFixerConnections(
         name="{coaddTypeName}CoaddPsfMatched",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "skymap", "band"),
-        multiple=True
+        multiple=True,
     )
     outputCoadd = Output(
         doc="The coadd with the background fixed and subtracted",
@@ -670,7 +671,7 @@ class PrettyPictureBackgroundFixerConnections(
         dimensions=("tract", "patch", "skymap", "band"),
     )
 
-    def adjust_all_quanta(self,  adjuster: QuantaAdjuster) -> None:
+    def adjust_all_quanta(self, adjuster: QuantaAdjuster) -> None:
         # At this stage of a QG build, we won't necessarily have pruned
         # quanta that don't have inputs, so instead of a set of quantum data
         # IDs, we want to start from a set of quantum *input* data IDs.  We'll
@@ -686,13 +687,9 @@ class PrettyPictureBackgroundFixerConnections(
         # build, of course, but not impossible.
         hierarchical_data_ids: dict[str, dict[tuple[str, int], list[int]]] = {}
         for quantum_data_id in flat_data_ids:
-            hierarchical_data_ids.setdefault(
-                quantum_data_id["skymap"], {}
-            ).setdefault(
+            hierarchical_data_ids.setdefault(quantum_data_id["skymap"], {}).setdefault(
                 (quantum_data_id["band"], quantum_data_id["tract"]), []
-            ).append(
-                quantum_data_id["patch"]
-            )
+            ).append(quantum_data_id["patch"])
         for skymap_name, data_ids_for_skymap in hierarchical_data_ids.items():
             # We need to load the skyMap to turn single-int patch_id IDs into
             # grid (x, y) pairs, so we can offset those to find neighbors.
@@ -728,7 +725,6 @@ class PrettyPictureBackgroundFixerConnections(
                         adjuster.add_input(quantum_data_id, "inputCoadd", neighbor_data_id)
 
 
-
 class PrettyPictureBackgroundFixerConfig(
     PipelineTaskConfig, pipelineConnections=PrettyPictureBackgroundFixerConnections
 ):
@@ -745,6 +741,15 @@ class PrettyPictureBackgroundFixerConfig(
 
     pos_sigma_multiplier = Field[float](
         doc="How many sigma to consider as background in the positive direction", default=2
+    )
+
+    extra_pixel_rad = Field[int](
+        doc=(
+            "If there are neighboring input images consider control points that are radius of input image"
+            ", (x^2 + x^2)^(1/2), plus this many pixels away from the center of the input image as control"
+            "points to use."
+        ),
+        default=2000,
     )
 
 
@@ -839,7 +844,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         return tiles
 
     @staticmethod
-    def findBackgroundPixels(image, pos_sigma_mult=1):
+    def findBackgroundPixels(image, pos_sigma_mult=1, max_flux_imbalance=1.7):
         """Find pixels that are likely to be background based on image statistics.
 
         This method estimates background pixels by analyzing the distribution of
@@ -854,6 +859,12 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             Input image array for which to find background pixels.
         pos_sigma_mult : `float`
             How many sigma to consider as background in the positive direction
+        max_flux_imbalance : `float`
+            Limit on the ratio of the area below the determined average to that
+            above. If the ratio is in excess of this value, then there is
+            assumed to be diffuse background flux in the image, and zero is
+            assumed to be the background level. Some excess flux is expected as
+            there is a real distribution of faint flux.
 
         Returns
         -------
@@ -877,57 +888,61 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         mask = image < maxLikely
         initial_std = (image[mask] - maxLikely).std()
 
+        # new estimate
+        sub_image = image[image < initial_std + 3 * initial_std]
+
+        center = mode(np.round(sub_image, 2)).mode
+
         # Don't do anything if there are no pixels to check
         if np.any(mask):
             # use a minimizer to determine best mu and sigma for a Gaussian
             # given only samples below the mean of the Gaussian.
-            mu_hat, sigma_hat = halfnorm.fit(np.abs(image[mask] - maxLikely))
+            mu_hat, sigma_hat = halfnorm.fit(np.abs(image[image < center] - center))
+            mu_hat += center
             # mu_hat = maxLikely
         else:
             mu_hat, sigma_hat = (maxLikely, 2 * initial_std)
 
-        # create a new masking threshold that is the determined
+        new_cut = image[image < (mu_hat + 3 * sigma_hat)]
+        positivity_ratio = np.sum(new_cut > mu_hat) / np.sum(new_cut < mu_hat)
+
+        if positivity_ratio > max_flux_imbalance:
+            # This means there is an excess flux, possibly diffuse source,
+            # only estimate around zero.
+            mu_hat, sigma_hat = halfnorm.fit(np.abs(image[image < 0]))
+
+        # create a new masking threshold that's the determined
         # mean plus std from the fit
         threshhold = mu_hat + pos_sigma_mult * sigma_hat
         image_mask = (image < threshhold) * (image > (mu_hat - 5 * sigma_hat))
         return image_mask
 
-    def fixBackground(self, image, detection_mask=None):
-        """Estimate and subtract the background from an image.
-
-        This function estimates the background level in an image using a median-based
-        approach combined with Gaussian fitting and radial basis function interpolation.
-        It aims to provide a more accurate background estimation than a simple median
-        filter, especially in images with varying background levels.
-
-        Parameters
-        ----------
-        image : `numpy.ndarray`
-            The input image as a NumPy array.
-
-        Returns
-        -------
-        numpy.ndarray
-            An array representing the estimated background level across the image.
-        """
-        if detection_mask is None:
-            image_mask = self.findBackgroundPixels(image, self.config.pos_sigma_multiplier)
+    def _findControlPoints(self, exposure: Exposure, origin: Point2I, make_detection_mask: bool = True):
+        if make_detection_mask:
+            image_mask = self.findBackgroundPixels(exposure.image.array, self.config.pos_sigma_multiplier)
         else:
-            image_mask = detection_mask
-
-        # create python slices that tile the image.
-        tiles = self._tile_slices(image, self.config.num_background_bins, self.config.num_background_bins)
+            mask_plane_dict = exposure.mask.getMaskPlaneDict()
+            image_mask = ~(exposure.mask.array & 2 ** mask_plane_dict["DETECTED"])
+        tiles = self._tile_slices(
+            exposure.image.array, self.config.num_background_bins, self.config.num_background_bins
+        )
 
         yloc = []
         xloc = []
         values = []
+
+        # adjust for the offset of the origin
+        this_origin: Point2I = exposure.getBBox().getBegin()
+        offset: Extent2I = this_origin - origin
+        x_offset = offset.getX()
+        y_offset = offset.getY()
 
         # for each box find the middle position and the median background
         # value in the window.
         for xslice, yslice in tiles:
             ypos = (yslice.stop - yslice.start) / 2 + yslice.start
             xpos = (xslice.stop - xslice.start) / 2 + xslice.start
-            window = image[yslice, xslice][image_mask[yslice, xslice]]
+            window = exposure.image.array[yslice, xslice][image_mask[yslice, xslice]]
             # make sure each bin is at least 1% filled
             min_fill = int((yslice.stop - yslice.start) ** 2 * self.config.min_bin_fraction)
             if window.size > min_fill:
@@ -935,12 +950,35 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             else:
                 continue
             values.append(value)
-            yloc.append(ypos)
-            xloc.append(xpos)
+            yloc.append(ypos + y_offset)
+            xloc.append(xpos + x_offset)
 
-        # At least 15 points are requred for TPS with 4th order polynomial
-        if len(yloc) < 15:
-            return np.zeros(image.shape)
+        return values, yloc, xloc
+
+    def fixBackground(self, image, yloc: list[float], xloc: list[float], values: list[float]):
+        """Estimate and subtract the background from an image.
+
+        This function estimates the background level in an image using supplied control
+        values using Gaussian fitting and radial basis function interpolation.
+        It aims to provide a more accurate background estimation than a simple median
+        filter, especially in images with varying background levels.
+
+        Parameters
+        ----------
+        image : `numpy.ndarray`
+            The input image as a NumPy array.
+        yloc : `list` of `float`
+            The list of y control points
+        xloc : `list` of `float`
+            The list of x control points
+        values : `list` of `float`
+            The list of the values at the control points
+
+        Returns
+        -------
+        numpy.ndarray
+            An array representing the estimated background level across the image.
+        """
 
         # create an interpolant for the background and interpolate over the image.
         inter = RBFInterpolator(
@@ -956,13 +994,16 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
         return backgrounds
 
-    def run(self, inputCoadd: Exposure):
+    def run(self, inputCoadd: Exposure, neighbors: list[Exposure] | None = None):
         """Estimate a background for an input Exposure and remove it.
 
         Parameters
         ----------
         inputCoadd : `Exposure`
             The exposure the background will be removed from.
+        neighbors : `list` of `Exposure`
+            Neighboring `Exposure` objects that can be used to constrain
+            backgrounds across boundaries.
 
         Returns
         -------
@@ -971,16 +1012,59 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             This `Struct` will have an attribute named ``outputCoadd``.
 
         """
-        if self.config.use_detection_mask:
-            mask_plane_dict = inputCoadd.mask.getMaskPlaneDict()
-            detection_mask = ~(inputCoadd.mask.array & 2 ** mask_plane_dict["DETECTED"])
-        else:
-            detection_mask = None
-        background = self.fixBackground(inputCoadd.image.array, detection_mask=detection_mask)
+        origin = inputCoadd.getBBox().getBegin()
+        input_y_dim, input_x_dim = inputCoadd.image.array.shape
+        input_rad = np.sqrt((input_y_dim / 2) ** 2 + (input_x_dim / 2) ** 2)
+        inside_rad = input_rad + self.config.extra_pixel_rad
+        center_x = origin.getX() + input_x_dim / 2
+        center_y = origin.getY() + input_y_dim / 2
+        values, yloc, xloc = self._findControlPoints(inputCoadd, origin, self.config.use_detection_mask)
+
+        if neighbors:
+            for n_exp in neighbors:
+                tmp_values, tmp_yloc, tmp_xloc = self._findControlPoints(
+                    n_exp, origin, self.config.use_detection_mask
+                )
+                for value, y_pos, x_pos in zip(tmp_values, tmp_yloc, tmp_xloc):
+                    if np.sqrt((y_pos - center_y) ** 2 + (x_pos - center_x) ** 2) < inside_rad:
+                        values.append(value)
+                        yloc.append(y_pos)
+                        xloc.append(x_pos)
+
+        # At least 15 points are requred for TPS with 4th order polynomial
+        if len(yloc) < 15:
+            return Struct(outputCoadd=inputCoadd)
+
+        background = self.fixBackground(inputCoadd.image.array, yloc, xloc, values)
+
         # create a copy to mutate
         output = ExposureF(inputCoadd, deep=True)
         output.image.array -= background
         return Struct(outputCoadd=output)
+
+    def runQuantum(
+        self,
+        butlerQC: QuantumContext,
+        inputRefs: InputQuantizedConnection,
+        outputRefs: OutputQuantizedConnection,
+    ) -> None:
+        quantum_patch = butlerQC.quantum.dataId["patch"]
+        primary_ref = None
+        neighbor_refs = []
+        for ref in inputRefs.inputCoadd:
+            if quantum_patch == ref.dataId["patch"]:
+                primary_ref = ref
+            else:
+                neighbor_refs.append(ref)
+        if primary_ref is None:
+            # This should be unreachable
+            raise RuntimeError("There is a major problem input ref associated with quantum cant be found")
+        inputCoadd = butlerQC.get(primary_ref)
+        neighbors = []
+        for n_ref in neighbor_refs:
+            neighbors.append(butlerQC.get(n_ref))
+        results = self.run(inputCoadd, neighbors=neighbors if neighbors else None)
+        butlerQC.put(results, outputRefs)
 
 
 class PrettyPictureStarFixerConnections(
