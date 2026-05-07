@@ -959,6 +959,8 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             )
         else:
             threshhold_pos, threshhold_neg = threshold_pair
+        if np.isinf(threshhold_pos):
+            return None
         # mean plus std from the fit
         image_mask = (image < threshhold_pos) * (image > threshhold_neg)
         return image_mask
@@ -975,13 +977,17 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             image_mask = ~(exposure.mask.array & 2 ** mask_plane_dict["DETECTED"])
         else:
             image_mask = self.findBackgroundPixels(exposure.image.array, threshold_pair=threshhold_pair)
-        tiles = self._tile_slices(
-            exposure.image.array, self.config.num_background_bins, self.config.num_background_bins
-        )
 
         yloc = []
         xloc = []
         values = []
+
+        if image_mask is None:
+            return values, yloc, xloc
+
+        tiles = self._tile_slices(
+            exposure.image.array, self.config.num_background_bins, self.config.num_background_bins
+        )
 
         # adjust for the offset of the origin
         this_origin: Point2I = exposure.getBBox().getBegin()
@@ -1088,8 +1094,9 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             print(f"####################### {joint_thresh}")
             # There is no background to be found, return early
             if np.isinf(joint_thresh[0]):
-                output = ExposureF(inputCoadd, deep=True)
-                return Struct(outputCoadd=output)
+                # output = ExposureF(inputCoadd, deep=True)
+                # return Struct(outputCoadd=output)
+                joint_thresh = None
 
         else:
             joint_thresh = None
@@ -1097,6 +1104,10 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         values, yloc, xloc = self._findControlPoints(
             inputCoadd, origin, self.config.use_detection_mask, joint_thresh
         )
+
+        if len(values) == 0:
+            output = ExposureF(inputCoadd, deep=True)
+            return Struct(outputCoadd=output)
 
         if neighbors:
             for n_exp in neighbors:
