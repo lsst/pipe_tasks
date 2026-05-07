@@ -983,6 +983,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         values = []
 
         if image_mask is None:
+            self.log.debug("returning early from _findControlPoints")
             return values, yloc, xloc
 
         tiles = self._tile_slices(
@@ -1091,7 +1092,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
                 self.config.max_flux_imbalance,
                 self.config.max_search_flux,
             )
-            print(f"####################### {joint_thresh}")
+            self.log.info(f"####################### {joint_thresh}")
             # There is no background to be found, return early
             if np.isinf(joint_thresh[0]):
                 # output = ExposureF(inputCoadd, deep=True)
