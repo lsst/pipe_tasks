@@ -462,7 +462,7 @@ class PrettyPictureTask(PipelineTask):
 
         for band, image in channels.items():
             if band not in self.config.channelConfig:
-                logging.info(f"{band} image found but not requested in RGB image, skipping")
+                logger.info(f"{band} image found but not requested in RGB image, skipping")
                 continue
             mix = self.config.channelConfig[band]
             if mix.r:
@@ -985,7 +985,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         values = []
 
         if image_mask is None:
-            logging.info("returning early from _findControlPoints")
+            logger.info("returning early from _findControlPoints")
             return values, yloc, xloc
 
         tiles = self._tile_slices(
@@ -1094,7 +1094,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
                 self.config.max_flux_imbalance,
                 self.config.max_search_flux,
             )
-            logging.info(f"####################### {joint_thresh}")
+            logger.info(f"####################### {joint_thresh}")
             # There is no background to be found, return early
             if np.isinf(joint_thresh[0]):
                 # output = ExposureF(inputCoadd, deep=True)
