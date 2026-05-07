@@ -172,7 +172,7 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         doc=(
             "Flux threshold below which most flux will be considered noise, used to estimate noise properties"
         ),
-        default=5,
+        default=2,
     )
     maxNoiseImbalance = Field[float](
         doc=(
