@@ -1222,8 +1222,10 @@ class PrettyMosaicConnections(PipelineTaskConnections, dimensions=("tract", "sky
 
 
 class PrettyMosaicConfig(PipelineTaskConfig, pipelineConnections=PrettyMosaicConnections):
-    binFactor = Field[int](doc="The factor to bin by when producing the mosaic")
-    doDCID65Convert = Field[bool]("Force the output to be converted from display p3 to DCI-D65 colorspace.")
+    binFactor = Field[int](doc="The factor to bin by when producing the mosaic", default=1)
+    doDCID65Convert = Field[bool](
+        "Force the output to be converted from display p3 to DCI-D65 colorspace.", default=False
+    )
     useLocalTemp = Field[bool](doc="Use the current directory when creating local temp files.", default=False)
 
 
@@ -1358,7 +1360,7 @@ class PrettyMosaicTask(PipelineTask):
                 )
                 mask_array = rgbMask.array[:: self.config.binFactor, :: self.config.binFactor]
                 rgbMask = Mask(*(mask_array.shape[::-1]))
-            mosaic_maker.add_to_image(consolidatedImage, rgb, newBox, box)
+            mosaic_maker.add_to_image(consolidatedImage, rgb, newBox, box, reverse=False)
 
             consolidatedMask[*box.slices] = np.bitwise_or(consolidatedMask[*box.slices], rgbMask.array)
 
