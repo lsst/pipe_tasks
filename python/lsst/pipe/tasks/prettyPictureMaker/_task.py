@@ -1360,7 +1360,7 @@ class PrettyMosaicTask(PipelineTask):
                 )
                 mask_array = rgbMask.array[:: self.config.binFactor, :: self.config.binFactor]
                 rgbMask = Mask(*(mask_array.shape[::-1]))
-            mosaic_maker.add_to_image(consolidatedImage, rgb, newBox, box)
+            mosaic_maker.add_to_image(consolidatedImage, rgb, newBox, box, reverse=False)
 
             consolidatedMask[*box.slices] = np.bitwise_or(consolidatedMask[*box.slices], rgbMask.array)
 
