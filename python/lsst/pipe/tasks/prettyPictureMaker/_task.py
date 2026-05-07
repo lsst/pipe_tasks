@@ -750,6 +750,11 @@ class PrettyPictureBackgroundFixerConfig(
         ),
         default=2000,
     )
+    max_flux_imbalance = Field[float](
+        doc="When determining background, if the ratio of counts of positive pixels, to negative pixesl passes "
+        "this threhsold, consider there to be extened low flux and only estimate noise below zero.",
+        default=1.7,
+    )
     max_search_flux = Field[float](
         doc="Pixels above this value should never be considered background", default=3
     )
@@ -846,7 +851,71 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         return tiles
 
     @staticmethod
-    def findBackgroundPixels(image, pos_sigma_mult=1, max_flux_imbalance=1.7, max_search_flux=3):
+    def _findImageStatistics(image, pos_sigma_mult=1, max_flux_imbalance=1.7, max_search_flux=3):
+        """Find pixels that are likely to be background based on image statistics.
+
+        This method estimates background pixels by analyzing the distribution of
+        pixel values in the image. It uses the median as an estimate of the background
+        level and fits a half-normal distribution to values below the median to
+        determine the background sigma. Pixels below a threshold (mean + sigma) are
+        classified as background.
+
+        Parameters
+        ----------
+        image : `numpy.ndarray`
+            Input image array for which to find background pixels.
+        pos_sigma_mult : `float`
+            How many sigma to consider as background in the positive direction
+        max_flux_imbalance : `float`
+            Limit on the ratio of the area below the determined average to that
+            above. If the ratio is in excess of this value, then there is
+            assumed to be diffuse background flux in the image, and zero is
+            assumed to be the background level. Some excess flux is expected as
+            there is a real distribution of faint flux.
+        max_serach_flux : `float`
+            Pixels above this value should never be considered background
+        """
+        # Find the median value in the image, which is likely to be
+        # close to average background. Note this doesn't work well
+        # in fields with high density or diffuse flux.
+        maxLikely = np.median(image[image < max_search_flux], axis=None)
+
+        # find all the pixels that are fainter than this
+        # and find the std. This is just used as an initialization
+        # parameter and doesn't need to be accurate.
+        mask = image < maxLikely
+        initial_std = (image[mask] - maxLikely).std()
+
+        # new estimate
+        sub_image = image[image < max(initial_std + 3 * initial_std, max_search_flux)]
+
+        center = mode(np.round(sub_image, 2)).mode
+
+        # Don't do anything if there are no pixels to check
+        if np.any(mask):
+            # use a minimizer to determine best mu and sigma for a Gaussian
+            # given only samples below the mean of the Gaussian.
+            mu_hat, sigma_hat = halfnorm.fit(np.abs(image[image < center] - center))
+            mu_hat += center
+            # mu_hat = maxLikely
+        else:
+            mu_hat, sigma_hat = (maxLikely, 2 * initial_std)
+
+        new_cut = image[image < (mu_hat + 3 * sigma_hat)]
+        positivity_ratio = np.sum(new_cut > mu_hat) / np.sum(new_cut < mu_hat)
+
+        if positivity_ratio > max_flux_imbalance:
+            # This means there is an excess flux, possibly diffuse source,
+            # assume all flux is diffuse
+            return np.inf, -np.inf
+
+        # create a new masking threshold that's the determined
+        # mean plus std from the fit
+        threshhold_pos = max(mu_hat + pos_sigma_mult * sigma_hat, max_search_flux)
+        threshhold_neg = max(mu_hat - pos_sigma_mult * sigma_hat, max_search_flux)
+        return threshhold_pos, threshhold_neg
+
+    def findBackgroundPixels(self, image, threshold_pair=None):
         """Find pixels that are likely to be background based on image statistics.
 
         This method estimates background pixels by analyzing the distribution of
@@ -881,54 +950,31 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         not perform well in fields with high density or diffuse flux, as noted in
         the implementation comments.
         """
-        # Find the median value in the image, which is likely to be
-        # close to average background. Note this doesn't work well
-        # in fields with high density or diffuse flux.
-        maxLikely = np.median(image[image < max_search_flux], axis=None)
-
-        # find all the pixels that are fainter than this
-        # and find the std. This is just used as an initialization
-        # parameter and doesn't need to be accurate.
-        mask = image < maxLikely
-        initial_std = (image[mask] - maxLikely).std()
-
-        # new estimate
-        sub_image = image[image < max(initial_std + 3 * initial_std, max_search_flux)]
-
-        center = mode(np.round(sub_image, 2)).mode
-
-        # Don't do anything if there are no pixels to check
-        if np.any(mask):
-            # use a minimizer to determine best mu and sigma for a Gaussian
-            # given only samples below the mean of the Gaussian.
-            mu_hat, sigma_hat = halfnorm.fit(np.abs(image[image < center] - center))
-            mu_hat += center
-            # mu_hat = maxLikely
+        if threshold_pair is None:
+            threshhold_pos, threshhold_neg = self._findImageStatistics(
+                image,
+                self.config.pos_sigma_multiplier,
+                self.config.max_flux_imbalance,
+                self.config.max_search_flux,
+            )
         else:
-            mu_hat, sigma_hat = (maxLikely, 2 * initial_std)
-
-        new_cut = image[image < (mu_hat + 3 * sigma_hat)]
-        positivity_ratio = np.sum(new_cut > mu_hat) / np.sum(new_cut < mu_hat)
-
-        if positivity_ratio > max_flux_imbalance:
-            # This means there is an excess flux, possibly diffuse source,
-            # assume all flux is diffuse
-            return np.zeros(image.shape, dtype=bool)
-
-        # create a new masking threshold that's the determined
+            threshhold_pos, threshhold_neg = threshold_pair
         # mean plus std from the fit
-        threshhold = max(mu_hat + pos_sigma_mult * sigma_hat, max_search_flux)
-        image_mask = (image < threshhold) * (image > (mu_hat - 5 * sigma_hat))
+        image_mask = (image < threshhold_pos) * (image > threshhold_neg)
         return image_mask
 
-    def _findControlPoints(self, exposure: Exposure, origin: Point2I, use_detection_mask: bool = False):
+    def _findControlPoints(
+        self,
+        exposure: Exposure,
+        origin: Point2I,
+        use_detection_mask: bool = False,
+        threshhold_pair: tuple[float, float] | None = None,
+    ):
         if use_detection_mask:
             mask_plane_dict = exposure.mask.getMaskPlaneDict()
             image_mask = ~(exposure.mask.array & 2 ** mask_plane_dict["DETECTED"])
         else:
-            image_mask = self.findBackgroundPixels(
-                exposure.image.array, self.config.pos_sigma_multiplier, self.config.max_search_flux
-            )
+            image_mask = self.findBackgroundPixels(exposure.image.array, threshold_pair=threshhold_pair)
         tiles = self._tile_slices(
             exposure.image.array, self.config.num_background_bins, self.config.num_background_bins
         )
@@ -1024,12 +1070,32 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         inside_rad = input_rad + self.config.extra_pixel_rad
         center_x = input_x_dim / 2
         center_y = input_y_dim / 2
-        values, yloc, xloc = self._findControlPoints(inputCoadd, origin, self.config.use_detection_mask)
+
+        # calculate joint statistics
+        if self.config.use_detection_mask is False:
+            background_pixels = inputCoadd.image.array[inputCoadd.image.array < self.config.max_search_flux]
+            if neighbors:
+                for n_exp in neighbors:
+                    background_pixels = background_pixels.append(
+                        n_exp.image.array[n_exp.image.array < self.config.max_search_flux]
+                    )
+            joint_thresh = self._findImageStatistics(
+                background_pixels,
+                self.config.pos_sigma_multiplier,
+                self.config.max_flux_imbalance,
+                self.config.max_search_flux,
+            )
+        else:
+            joint_thresh = None
+
+        values, yloc, xloc = self._findControlPoints(
+            inputCoadd, origin, self.config.use_detection_mask, joint_thresh
+        )
 
         if neighbors:
             for n_exp in neighbors:
                 tmp_values, tmp_yloc, tmp_xloc = self._findControlPoints(
-                    n_exp, origin, self.config.use_detection_mask
+                    n_exp, origin, self.config.use_detection_mask, joint_thresh
                 )
                 for value, y_pos, x_pos in zip(tmp_values, tmp_yloc, tmp_xloc):
                     if np.sqrt((y_pos - center_y) ** 2 + (x_pos - center_x) ** 2) < inside_rad:
