@@ -694,7 +694,7 @@ class PrettyPictureBackgroundFixerConnections(
             # We need to load the skyMap to turn single-int patch_id IDs into
             # grid (x, y) pairs, so we can offset those to find neighbors.
             skyMap = adjuster.butler.get("skyMap", skymap=skymap_name)
-            for (tract_id, band), patches in data_ids_for_skymap.items():
+            for (band, tract_id), patches in data_ids_for_skymap.items():
                 tract_info = skyMap[tract_id]
                 base_data_id = DataCoordinate.standardize(
                     skymap=skymap_name,
