@@ -1222,8 +1222,10 @@ class PrettyMosaicConnections(PipelineTaskConnections, dimensions=("tract", "sky
 
 
 class PrettyMosaicConfig(PipelineTaskConfig, pipelineConnections=PrettyMosaicConnections):
-    binFactor = Field[int](doc="The factor to bin by when producing the mosaic")
-    doDCID65Convert = Field[bool]("Force the output to be converted from display p3 to DCI-D65 colorspace.")
+    binFactor = Field[int](doc="The factor to bin by when producing the mosaic", default=1)
+    doDCID65Convert = Field[bool](
+        "Force the output to be converted from display p3 to DCI-D65 colorspace.", default=False
+    )
     useLocalTemp = Field[bool](doc="Use the current directory when creating local temp files.", default=False)
 
 
