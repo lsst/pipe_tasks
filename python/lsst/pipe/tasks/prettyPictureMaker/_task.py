@@ -1117,6 +1117,10 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
                 tmp_values, tmp_yloc, tmp_xloc = self._findControlPoints(
                     n_exp, origin, self.config.use_detection_mask, joint_thresh
                 )
+                if len(tmp_values) == 0:
+                    output = ExposureF(inputCoadd, deep=True)
+                    return Struct(outputCoadd=output)
+
                 for value, y_pos, x_pos in zip(tmp_values, tmp_yloc, tmp_xloc):
                     if np.sqrt((y_pos - center_y) ** 2 + (x_pos - center_x) ** 2) < inside_rad:
                         values.append(value)
