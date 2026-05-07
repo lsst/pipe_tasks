@@ -1076,8 +1076,8 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             background_pixels = inputCoadd.image.array[inputCoadd.image.array < self.config.max_search_flux]
             if neighbors:
                 for n_exp in neighbors:
-                    background_pixels = background_pixels.append(
-                        n_exp.image.array[n_exp.image.array < self.config.max_search_flux]
+                    background_pixels = np.append(
+                        background_pixels, n_exp.image.array[n_exp.image.array < self.config.max_search_flux]
                     )
             joint_thresh = self._findImageStatistics(
                 background_pixels,
