@@ -911,7 +911,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
         # create a new masking threshold that's the determined
         # mean plus std from the fit
-        threshhold_pos = max(mu_hat + pos_sigma_mult * sigma_hat, max_search_flux)
+        threshhold_pos = min(mu_hat + pos_sigma_mult * sigma_hat, max_search_flux)
         threshhold_neg = mu_hat - pos_sigma_mult * sigma_hat
         return threshhold_pos, threshhold_neg
 
