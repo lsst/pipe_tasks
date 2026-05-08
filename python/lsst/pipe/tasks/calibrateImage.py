@@ -38,6 +38,7 @@ import lsst.meas.algorithms.installGaussianPsf
 import lsst.meas.algorithms.measureApCorr
 import lsst.meas.algorithms.setPrimaryFlags
 from lsst.meas.algorithms.adaptive_thresholds import AdaptiveThresholdDetectionTask
+from lsst.meas.algorithms.computeRoughPsfShapelets import ComputeRoughPsfShapeletsTask
 import lsst.meas.base
 import lsst.meas.astrom
 import lsst.meas.deblender
@@ -54,12 +55,13 @@ from . import measurePsf, repair, photoCal, computeExposureSummaryStats, snapCom
 class AllCentroidsFlaggedError(pipeBase.AlgorithmError):
     """Raised when there are no valid centroids during psf fitting.
     """
-    def __init__(self, n_sources, psf_shape_ixx, psf_shape_iyy, psf_shape_ixy, psf_size):
+    def __init__(self, shapelets_score, n_sources, psf_shape_ixx, psf_shape_iyy, psf_shape_ixy, psf_size):
         msg = (f"All source centroids (out of {n_sources}) flagged during PSF fitting. "
                "Original image PSF is likely unusable; best-fit PSF shape parameters: "
                f"Ixx={psf_shape_ixx}, Iyy={psf_shape_iyy}, Ixy={psf_shape_ixy}, size={psf_size}"
                )
         super().__init__(msg)
+        self.shapelets_score = shapelets_score
         self.n_sources = n_sources
         self.psf_shape_ixx = psf_shape_ixx
         self.psf_shape_iyy = psf_shape_iyy
@@ -68,7 +70,8 @@ class AllCentroidsFlaggedError(pipeBase.AlgorithmError):
 
     @property
     def metadata(self):
-        return {"n_sources": self.n_sources,
+        return {"shapelets_score": self.shapelets_score,
+                "n_sources": self.n_sources,
                 "psf_shape_ixx": self.psf_shape_ixx,
                 "psf_shape_iyy": self.psf_shape_iyy,
                 "psf_shape_ixy": self.psf_shape_ixy,
@@ -278,6 +281,16 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         target=lsst.meas.algorithms.installGaussianPsf.InstallGaussianPsfTask,
         doc="Task to install a simple PSF model into the input exposure to use "
             "when detecting bright sources for PSF estimation.",
+    )
+    psf_star_compute_shapelets = pexConfig.ConfigurableField(
+        target=ComputeRoughPsfShapeletsTask,
+        doc="Task to computes a rough shapelet expansion of the PSF from a set "
+            "of high S/N detections.",
+    )
+    do_compute_psf_star_shapelets = pexConfig.Field(
+        dtype=bool,
+        default=True,
+        doc="Compute a rough shapelet expansion of the PSF stars?",
     )
     psf_repair = pexConfig.ConfigurableField(
         target=repair.RepairTask,
@@ -748,6 +761,11 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             doc="PSF max value.",
         )
         afwTable.CoordKey.addErrorFields(self.psf_schema)
+        # This is to ensure the shapelets metrics make it into the exposure
+        # summary stats even if all calibrations fail.
+        self.initial_summary = None
+        if self.config.do_compute_psf_star_shapelets:
+            self.makeSubtask("psf_star_compute_shapelets", schema=self.psf_schema)
         self.makeSubtask("psf_detection", schema=self.psf_schema)
         self.makeSubtask("psf_source_measurement", schema=self.psf_schema)
         self.makeSubtask("psf_adaptive_threshold_detection")
@@ -1009,6 +1027,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         result.background = None
         result.background_to_photometric_ratio = None
         summary_stat_catalog = None
+
         # Some exposure components are set to initial placeholder objects
         # while we try to bootstrap them.  If we fail before we fit for them,
         # we want to reset those components to None so the placeholders don't
@@ -1022,12 +1041,23 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 background_flat,
                 illumination_correction,
             )
-
-            result.psf_stars_footprints, _, adaptive_det_res_struct = self._compute_psf(
+            compute_psf_struct = self._compute_psf(
                 result,
                 id_generator,
             )
+            result.psf_stars_footprints = compute_psf_struct.detections_sources
+            adaptive_det_res_struct = compute_psf_struct.adaptive_det_res_struct
+
             have_fit_psf = True
+
+            if self.config.do_adaptive_threshold_detection:
+                metadata_name = "psf_adaptive_threshold_value"
+                result.exposure.metadata[metadata_name.upper()] = adaptive_det_res_struct.thresholdValue
+                self.metadata[metadata_name] = adaptive_det_res_struct.thresholdValue
+                metadata_name = "psf_adaptive_include_threshold_multiplier"
+                result.exposure.metadata[metadata_name.upper()] = \
+                    adaptive_det_res_struct.includeThresholdMultiplier
+                self.metadata[metadata_name] = adaptive_det_res_struct.includeThresholdMultiplier
 
             # Check if all centroids have been flagged. This should happen
             # after the PSF is fit and recorded because even a junky PSF
@@ -1035,6 +1065,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             if result.psf_stars_footprints["slot_Centroid_flag"].all():
                 psf_shape = result.exposure.psf.computeShape(result.exposure.psf.getAveragePosition())
                 raise AllCentroidsFlaggedError(
+                    shapelets_score=self.initial_summary.shapeletsScore,
                     n_sources=len(result.psf_stars_footprints),
                     psf_shape_ixx=psf_shape.getIxx(),
                     psf_shape_iyy=psf_shape.getIyy(),
@@ -1047,6 +1078,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
             self._measure_aperture_correction(result.exposure, result.psf_stars_footprints)
             result.psf_stars = result.psf_stars_footprints.asAstropy()
+
             # Run astrometry using PSF candidate stars.
             # Update "the psf_stars" source coordinates with the current wcs.
             afwTable.updateSourceCoords(
@@ -1136,10 +1168,12 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             # So we run them after we succeed or if we get an AlgorithmError.
             # We intentionally don't use 'finally' here because we don't
             # want to run them if we get some other kind of error.
-            self._summarize(result.exposure, summary_stat_catalog, result.background)
+            self._summarize(result.exposure, summary_stat_catalog, result.background,
+                            summary=self.initial_summary)
             raise
         else:
-            self._summarize(result.exposure, summary_stat_catalog, result.background)
+            self._summarize(result.exposure, summary_stat_catalog, result.background,
+                            summary=self.initial_summary)
 
         # Output post-subtraction background stats to task metadata:
         # Specify the pixels flags to ignore, starting with those ignored
@@ -1338,6 +1372,18 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         self.metadata["initial_psf_positive_peak_count"] = detections.numPosPeaks
         self.metadata["initial_psf_negative_peak_count"] = detections.numNegPeaks
         self.psf_source_measurement.run(detections.sources, result.exposure)
+
+        if self.config.do_compute_psf_star_shapelets:
+            # Compute rough shapelets on the PSF stars to assess focus (IQ).
+            self.log.info("Computing rough shapelet decomposition for PSF star candidates.")
+            seed = id_generator.catalog_id & 0xFFFFFFFF
+            shapelet_result = self.psf_star_compute_shapelets.run(
+                masked_image=result.exposure.getMaskedImage(), catalog=detections.sources, seed=seed
+            )
+            self.initial_summary = shapelet_result.shapelet_summary
+            result.exposure.info.setSummaryStats(self.initial_summary)
+            detections.sources = shapelet_result.catalog
+
         psf_result = self.psf_measure_psf.run(exposure=result.exposure, sources=detections.sources)
 
         # This 2nd round of PSF fitting has been deemed unnecessary (and
@@ -1383,7 +1429,11 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         # PSF is set on exposure; candidates are returned to use for
         # calibration flux normalization and aperture corrections.
-        return detections.sources, psf_result.cellSet, adaptive_det_res_struct
+        return pipeBase.Struct(
+            detections_sources=detections.sources,
+            psf_result_cellSet=psf_result.cellSet,
+            adaptive_det_res_struct=adaptive_det_res_struct,
+        )
 
     def _measure_aperture_correction(self, exposure, bright_sources):
         """Measure and set the ApCorrMap on the Exposure, using
@@ -1744,7 +1794,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             binned_image = bg[0].getStatsImage()
             binned_image *= photo_calib.getCalibrationMean()
 
-    def _summarize(self, exposure, stars, background):
+    def _summarize(self, exposure, stars, background, summary=None):
         """Compute summary statistics on the exposure and update in-place the
         calibrations attached to it.
 
@@ -1761,7 +1811,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             Background that was fit to the exposure during detection of the
             above stars.  Should be in instrumental units.
         """
-        summary = self.compute_summary_stats.run(exposure, stars, background)
+        summary = self.compute_summary_stats.run(exposure, stars, background, summary=summary)
         exposure.info.setSummaryStats(summary)
 
     def _recordMaskedPixelFractions(self, exposure):

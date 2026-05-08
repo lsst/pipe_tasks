@@ -298,7 +298,7 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         self.makeSubtask("starSelector")
 
     @timeMethod
-    def run(self, exposure, sources, background):
+    def run(self, exposure, sources, background, summary=None):
         """Measure exposure statistics from the exposure, sources, and
         background.
 
@@ -307,6 +307,9 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         exposure : `lsst.afw.image.ExposureF`
         sources : `lsst.afw.table.SourceCatalog`
         background : `lsst.afw.math.BackgroundList`
+        summary : `lsst.afw.image.ExposureSummary`, optional
+            Summary object to be appended to if not `None`.  If `None` a new
+            summary opject will be created.
 
         Returns
         -------
@@ -314,7 +317,8 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         """
         self.log.info("Measuring exposure statistics")
 
-        summary = afwImage.ExposureSummaryStats()
+        if summary is None:
+            summary = afwImage.ExposureSummaryStats()
 
         # Set exposure time.
         exposureTime = exposure.getInfo().getVisitInfo().getExposureTime()
