@@ -224,7 +224,15 @@ class HighOrderHipsTask(PipelineTask):
 
                 # Update the output array with valid (non-NaN) values
                 are_warpped = np.isfinite(warpped.array)
-                existing[warpped_box_slices][are_warpped] = warpped.array[are_warpped]
+                # where this existing array is not nan, there is already data
+                pre_populated = np.isfinite(existing[warpped_box_slices])
+                new_info = np.logical_not(pre_populated)
+                new_and_warp = np.logical_and(new_info, are_warpped)
+                pre_and_warp = np.logical_and(pre_populated, are_warpped)
+                existing[warpped_box_slices][new_and_warp] = warpped.array[new_and_warp]
+                existing[warpped_box_slices][pre_and_warp] = (
+                    warpped.array[pre_and_warp] + existing[warpped_box_slices][pre_and_warp]
+                ) * 0.5
 
         # Replace any remaining NaN values with zeros
         output_array_hpx[np.isnan(output_array_hpx)] = 0
@@ -345,7 +353,8 @@ class HighOrderHipsTask(PipelineTask):
 
                 image = handle.get()
                 mosaic_maker.add_to_image(new_array, image.array, tmp_new_box, tmpBox, reverse=False)
-                boxes.append((new_array, skyWcs, new_box))
+            # skywcs is the same for all patches in a tract, share the appending here
+            boxes.append((new_array, skyWcs, new_box))
         return boxes
 
     def runQuantum(
