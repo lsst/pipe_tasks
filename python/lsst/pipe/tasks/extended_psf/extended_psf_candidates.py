@@ -102,6 +102,19 @@ class ExtendedPsfCandidateSerializationModel[P: BaseModel](MaskedImageSerializat
     )
     star_info: ExtendedPsfCandidateInfo = Field(description="Information about the star in the cutout.")
 
+    def deserialize(self, archive: InputArchive[Any], *, bbox: Box | None = None) -> ExtendedPsfCandidate:
+        masked_image = super().deserialize(archive, bbox=bbox)
+        psf_kernel_image = (
+            self.psf_kernel_image.deserialize(archive) if self.psf_kernel_image is not None else None
+        )
+        return ExtendedPsfCandidate(
+            masked_image.image,
+            mask=masked_image.mask,
+            variance=masked_image.variance,
+            psf_kernel_image=psf_kernel_image,
+            star_info=self.star_info,
+        )._finish_deserialize(self)
+
 
 class ExtendedPsfCandidatesSerializationModel[P: BaseModel](ArchiveTree):
     """A Pydantic model to represent serialized `ExtendedPsfCandidates`."""
@@ -110,6 +123,12 @@ class ExtendedPsfCandidatesSerializationModel[P: BaseModel](ArchiveTree):
         default_factory=list,
         description="The candidate cutouts in this collection.",
     )
+
+    def deserialize(self, archive: InputArchive[Any]) -> ExtendedPsfCandidates:
+        return ExtendedPsfCandidates(
+            [candidate_model.deserialize(archive) for candidate_model in self.candidates],
+            metadata=self.metadata,
+        )
 
 
 class ExtendedPsfCandidate(MaskedImage):
@@ -242,25 +261,6 @@ class ExtendedPsfCandidate(MaskedImage):
     ) -> type[ExtendedPsfCandidateSerializationModel[P]]:
         return ExtendedPsfCandidateSerializationModel[pointer_type]
 
-    @staticmethod
-    def deserialize(
-        model: ExtendedPsfCandidateSerializationModel[Any],
-        archive: InputArchive[Any],
-        *,
-        bbox: Box | None = None,
-    ) -> ExtendedPsfCandidate:
-        masked_image = MaskedImage.deserialize(model, archive, bbox=bbox)
-        psf_kernel_image = (
-            Image.deserialize(model.psf_kernel_image, archive) if model.psf_kernel_image is not None else None
-        )
-        return ExtendedPsfCandidate(
-            masked_image.image,
-            mask=masked_image.mask,
-            variance=masked_image.variance,
-            psf_kernel_image=psf_kernel_image,
-            star_info=model.star_info,
-        )._finish_deserialize(model)
-
 
 class ExtendedPsfCandidates(Sequence[ExtendedPsfCandidate]):
     """A collection of star cutouts.
@@ -349,19 +349,6 @@ class ExtendedPsfCandidates(Sequence[ExtendedPsfCandidate]):
                 for index, candidate in enumerate(self._candidates)
             ],
             metadata=self._metadata,
-        )
-
-    @staticmethod
-    def deserialize(
-        model: ExtendedPsfCandidatesSerializationModel[Any],
-        archive: InputArchive[Any],
-    ) -> ExtendedPsfCandidates:
-        return ExtendedPsfCandidates(
-            [
-                ExtendedPsfCandidate.deserialize(candidate_model, archive)
-                for candidate_model in model.candidates
-            ],
-            metadata=model.metadata,
         )
 
     @staticmethod
