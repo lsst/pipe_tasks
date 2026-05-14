@@ -22,6 +22,8 @@
 __all__ = ["CalibrateImageTask", "CalibrateImageConfig", "NoPsfStarsToStarsMatchError",
            "AllCentroidsFlaggedError"]
 
+from astropy.coordinates import SkyCoord
+import astropy.units as u
 import math
 import numpy as np
 import requests
@@ -32,6 +34,7 @@ from lsst.afw.geom import SpanSet
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
+import lsst.geom as geom
 from lsst.ip.diffim.utils import evaluateMaskFraction, populate_sattle_visit_cache
 import lsst.meas.algorithms
 import lsst.meas.algorithms.installGaussianPsf
@@ -1021,6 +1024,23 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         elif exposure_record is not None:
             self._update_wcs_to_exposure_record(result.exposure, exposure_record)
 
+        load_result = None
+        ref_cat_source_density = None
+        if self.astrometry.refObjLoader is not None:
+            load_result = self.astrometry.load_reference_catalog(
+                result.exposure,
+                exposure_region=exposure_region
+            )
+            ref_cat = load_result.refCat
+            ref_cat_trimmed = ref_cat[(np.isfinite(ref_cat["coord_ra"])
+                                       & np.isfinite(ref_cat["coord_dec"]))].copy(deep=True)
+            ref_cat_trimmed = ref_cat_trimmed.asAstropy()
+
+            ref_cat_source_density = self._compute_ref_cat_source_density(ref_cat_trimmed, result.exposure)
+            metadata_name = "ref_cat_source_density"
+            result.exposure.metadata[metadata_name.upper()] = ref_cat_source_density
+            self.metadata[metadata_name] = ref_cat_source_density
+
         result.background = None
         result.background_to_photometric_ratio = None
         summary_stat_catalog = None
@@ -1040,6 +1060,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             compute_psf_struct = self._compute_psf(
                 result,
                 id_generator,
+                ref_cat_source_density=ref_cat_source_density,
             )
             result.psf_stars_footprints = compute_psf_struct.detections_sources
             adaptive_det_res_struct = compute_psf_struct.adaptive_det_res_struct
@@ -1082,7 +1103,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 include_covariance=self.config.do_include_astrometric_errors,
             )
             astrometry_matches, astrometry_meta = self._fit_astrometry(
-                result.exposure, result.psf_stars_footprints, exposure_region=exposure_region
+                result.exposure, result.psf_stars_footprints, exposure_region=exposure_region,
+                load_result=load_result
             )
             num_astrometry_matches = len(astrometry_matches)
             if "astrometry_matches" in self.config.optional_outputs:
@@ -1266,7 +1288,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
         return background_to_photometric_ratio
 
-    def _compute_psf(self, result, id_generator):
+    def _compute_psf(self, result, id_generator, ref_cat_source_density=None):
         """Find bright sources detected on an exposure and fit a PSF model to
         them, repairing likely cosmic rays before detection.
 
@@ -1289,6 +1311,14 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 background-flattened image.
         id_generator : `lsst.meas.base.IdGenerator`
             Object that generates source IDs and provides random seeds.
+        ref_cat_source_density : `float` or `None`, optional
+            A rough estimate of the source density (in number per deg^2) in
+            the region of the exposure as measured from the loaded reference
+            catalog.
+            TODO DM-54929: If not `None` use the source denstiy as an improved
+            initial estimate for the adaptive thresholding with the goal of
+            reducing the number of iterations required (namely, by increasing
+            it for more crowded fields).
 
         Returns
         -------
@@ -1695,7 +1725,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         stars['psf_id'][idx_stars] = psf_stars['id'][idx_psf_stars]
         stars['psf_max_value'][idx_stars] = psf_stars['psf_max_value'][idx_psf_stars]
 
-    def _fit_astrometry(self, exposure, stars, exposure_region=None):
+    def _fit_astrometry(self, exposure, stars, exposure_region=None, load_result=None):
         """Fit an astrometric model to the data and return the reference
         matches used in the fit, and the fitted WCS.
 
@@ -1711,6 +1741,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             The exposure region to use for the reference catalog filtering.
             If `None`, this region will be set as a padded bbox + current WCS
             of the exposure.
+        load_result : `lsst.pipe.base.Struct`, optional
+           A pre-loaded reference catalog struct (so that the catalog does not
+           get re-loaded in the astrometry task).
 
         Returns
         -------
@@ -1718,7 +1751,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             Reference/stars matches used in the fit.
         """
         initialWcs = exposure.wcs
-        result = self.astrometry.run(stars, exposure, exposure_region=exposure_region)
+        result = self.astrometry.run(stars, exposure, exposure_region=exposure_region,
+                                     load_result=load_result)
 
         # Record astrometry stats to metadata
         self.metadata["astrometry_matches_count"] = len(result.matches)
@@ -2327,3 +2361,50 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             mask &= ~mask.getPlaneBitMask(detected_mask_planes)
 
         return result
+
+    def _compute_ref_cat_source_density(self, ref_cat, exposure):
+        """Compute a rough source density (per deg^2) in the exposure region
+        from the reference catalog.
+
+        Parameters
+        ----------
+        ref_cat: `lsst.afw.table.SimpleCatalog`
+            The reference catalog from which to compute the rough source
+            density of the region overlapping the ``exposure``.
+        exposure : `lsst.afw.image.Exposure`
+            The exposure for which to calculate the source density of the
+            overlapping reference catalog.  Must have a valid WCS (but it can
+            be "rough") in order to convert detector boundaries to RA/Dec.
+
+        Returns
+        -------
+        ref_cat_source_density: `float`
+            Rough source density (in deg^2) of the reference catalog in the
+            region overlapping the exposure.
+        """
+        bbox = exposure.getBBox()
+        wcs = exposure.wcs
+        if wcs is not None:
+            pixelScale = exposure.wcs.getPixelScale(bbox.getCenter()).asArcseconds()
+            radius = 0.5*np.sqrt(bbox.getWidth()**2.0 + bbox.getHeight()**2.0)*pixelScale/3600.0
+        else:
+            radius = 0.2  # degrees
+        pt = geom.Point2D(bbox.getCenter())
+        center_x = exposure.wcs.pixelToSky(pt)[0].asDegrees()
+        center_y = exposure.wcs.pixelToSky(pt)[1].asDegrees()
+        in_circle = []
+        c1 = SkyCoord(center_x*u.deg, center_y*u.deg, unit="deg", frame="icrs")
+        c2 = SkyCoord(np.rad2deg(ref_cat["coord_ra"].value)*u.deg,
+                      np.rad2deg(ref_cat["coord_dec"].value)*u.deg,
+                      unit="deg", frame="icrs")
+        sep = c1.separation(c2)
+        sep_deg = sep.deg
+        in_circle = sep_deg < radius
+        ref_cat_trim = ref_cat[in_circle].copy()
+        ref_cat_source_density = len(ref_cat_trim)/(np.pi*radius**2.0)
+        self.log.info("Source density from the %s reference catalog: %.4f per deg^2 using a radius "
+                      "of %.4f deg centered on the detector center: (RA, Dec) = (%.4f, %.4f) deg",
+                      self.config.connections.astrometry_ref_cat, ref_cat_source_density,
+                      radius, exposure.wcs.pixelToSky(bbox.getCenter())[0].asDegrees(),
+                      exposure.wcs.pixelToSky(bbox.getCenter())[1].asDegrees())
+        return ref_cat_source_density
