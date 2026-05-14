@@ -21,13 +21,13 @@
 
 from __future__ import annotations
 
-__all__ = [
+__all__ = (
     "ExtendedPsfCandidateInfo",
     "ExtendedPsfCandidateSerializationModel",
     "ExtendedPsfCandidatesSerializationModel",
     "ExtendedPsfCandidate",
     "ExtendedPsfCandidates",
-]
+)
 
 import functools
 from collections.abc import Sequence
@@ -99,7 +99,9 @@ class ExtendedPsfCandidateSerializationModel[P: BaseModel](MaskedImageSerializat
         exclude_if=is_none,
         description="Kernel image of the PSF at the cutout center.",
     )
-    star_info: ExtendedPsfCandidateInfo = Field(description="Information about the star in the cutout.")
+    star_info: ExtendedPsfCandidateInfo = Field(
+        description="Information about the star in the cutout.",
+    )
 
     def deserialize(self, archive: InputArchive[Any], *, bbox: Box | None = None) -> ExtendedPsfCandidate:
         masked_image = super().deserialize(archive, bbox=bbox)
