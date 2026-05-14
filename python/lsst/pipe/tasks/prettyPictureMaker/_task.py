@@ -178,8 +178,8 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
     )
     maxNoiseImbalance = Field[float](
         doc=(
-            "When recentering noise, if the ratio of counts of positive pixels, to negative pixesl passes "
-            "this threhsold, consider there to be extened low flux and only estimate noise below zero."
+            "When recentering noise, if the ratio of counts of positive pixels, to negative pixels passes "
+            "this threshold, consider there to be extended low flux and only estimate noise below zero."
         ),
         default=1.5,
     )
@@ -335,8 +335,8 @@ class PrettyPictureTask(PipelineTask):
 
         try:
             # Fit half-normal distribution to absolute negative values
-            mu, sigma = halfnorm.fit(np.abs(values_neg - center))
-            mu += center
+            _, sigma = halfnorm.fit(np.abs(values_neg - center), floc=0)
+            mu = center
         except (ValueError, RuntimeError):
             # Handle fitting failures (e.g., constant data, optimization issues)
             return 0, np.inf
@@ -348,7 +348,7 @@ class PrettyPictureTask(PipelineTask):
         if positivity_ratio > self.config.maxNoiseImbalance:
             # This means there is an excess flux, possibly diffuse source,
             # only estimate around zero.
-            mu, sigma = halfnorm.fit(np.abs(values_noise[values_noise < 0]))
+            mu, sigma = halfnorm.fit(np.abs(values_noise[values_noise < 0]), floc=0)
 
         return mu, sigma
 
@@ -698,6 +698,7 @@ class PrettyPictureBackgroundFixerConnections(
             skyMap = adjuster.butler.get("skyMap", skymap=skymap_name)
             for (band, tract_id), patches in data_ids_for_skymap.items():
                 tract_info = skyMap[tract_id]
+                num_x, num_y = tract_info.num_patches.x, tract_info.num_patches.y
                 base_data_id = DataCoordinate.standardize(
                     skymap=skymap_name,
                     tract=tract_id,
@@ -713,8 +714,18 @@ class PrettyPictureBackgroundFixerConnections(
                             # Skip the input that matches the quantum data ID;
                             # it's already got an edge to this quantum.
                             continue
+
+                        proposed_patch_x = patch_index.x + offset_x
+                        proposed_patch_y = patch_index.y + offset_y
+                        if (
+                            proposed_patch_x < 0
+                            or proposed_patch_x > num_x
+                            or proposed_patch_y < 0
+                            or proposed_patch_y > num_y
+                        ):
+                            continue
                         neighbor_patch_id = tract_info.getSequentialPatchIndexFromPair(
-                            Index2D(x=patch_index.x + offset_x, y=patch_index.y + offset_y)
+                            Index2D(x=proposed_patch_x, y=proposed_patch_y)
                         )
                         neighbor_data_id = DataCoordinate.standardize(base_data_id, patch=neighbor_patch_id)
                         if neighbor_data_id not in flat_data_ids:
@@ -753,7 +764,7 @@ class PrettyPictureBackgroundFixerConfig(
         default=2000,
     )
     max_flux_imbalance = Field[float](
-        doc="When determining background, if the ratio of counts of positive pixels, to negative pixesl"
+        doc="When determining background, if the ratio of counts of positive pixels, to negative pixels"
         " passes this threhsold, consider there to be extened low flux and only estimate noise below zero.",
         default=1.7,
     )
@@ -874,7 +885,7 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             assumed to be diffuse background flux in the image, and zero is
             assumed to be the background level. Some excess flux is expected as
             there is a real distribution of faint flux.
-        max_serach_flux : `float`
+        max_search_flux : `float`
             Pixels above this value should never be considered background
         """
         # Find the median value in the image, which is likely to be
@@ -889,19 +900,18 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         initial_std = (image[mask] - maxLikely).std()
 
         # new estimate
-        sub_image = image[image < max(initial_std + 3 * initial_std, max_search_flux)]
+        sub_image = image[image < max(maxLikely + 3 * initial_std, max_search_flux)]
 
         center = mode(np.round(sub_image, 2)).mode
 
         # Don't do anything if there are no pixels to check
         if np.any(mask):
-            # use a minimizer to determine best mu and sigma for a Gaussian
-            # given only samples below the mean of the Gaussian.
-            mu_hat, sigma_hat = halfnorm.fit(np.abs(image[image < center] - center))
-            mu_hat += center
-            # mu_hat = maxLikely
+            # use a minimizer to determine best sigma for a Gaussian
+            # given only samples below the mean of the Gaussian.            #
+            _, sigma_hat = halfnorm.fit(np.abs(image[image < center] - center), floc=0)
+            mu_hat = center
         else:
-            mu_hat, sigma_hat = (maxLikely, 2 * initial_std)
+            mu_hat, sigma_hat = (maxLikely, 3 * initial_std)
 
         new_cut = image[image < (mu_hat + 3 * sigma_hat)]
         positivity_ratio = np.sum(new_cut > mu_hat) / np.sum(new_cut < mu_hat)
@@ -913,9 +923,21 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
         # create a new masking threshold that's the determined
         # mean plus std from the fit
-        threshhold_pos = min(mu_hat + pos_sigma_mult * sigma_hat, max_search_flux)
-        threshhold_neg = mu_hat - pos_sigma_mult * sigma_hat
-        return threshhold_pos, threshhold_neg
+        threshold_pos = min(mu_hat + pos_sigma_mult * sigma_hat, max_search_flux)
+
+        # The reason a lower threshold is needed is that occasionally for some
+        # reason we have images with a few random pixels that are REALLY negative.
+        # We generate control points for background fixing from bins of the pixels we
+        # consider background. When there are a few pixels that are so negative, it brings
+        # the estimate way way down, and the control point then drags the background
+        # unrealistically high. By excluding them we get a more realistic estimate, and
+        # the only consequence is that these pixels that were excluded will still end up
+        # negative, and be clipped to black. In principle we could add a lower clipped
+        # boundary too, but it would not change the results much at all as the estimation
+        # of the sigma at the low side is robust and we do not expect contaminating flux
+        # from the low side (by construction of the algorithm).
+        threshold_neg = mu_hat - pos_sigma_mult * sigma_hat
+        return threshold_pos, threshold_neg
 
     def findBackgroundPixels(self, image, threshold_pair=None):
         """Find pixels that are likely to be background based on image statistics.
@@ -930,16 +952,10 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
         ----------
         image : `numpy.ndarray`
             Input image array for which to find background pixels.
-        pos_sigma_mult : `float`
-            How many sigma to consider as background in the positive direction
-        max_flux_imbalance : `float`
-            Limit on the ratio of the area below the determined average to that
-            above. If the ratio is in excess of this value, then there is
-            assumed to be diffuse background flux in the image, and zero is
-            assumed to be the background level. Some excess flux is expected as
-            there is a real distribution of faint flux.
-        max_serach_flux : `float`
-            Pixels above this value should never be considered background
+        threshold_pair : `tuple` of `float`, `float` or None
+            A tuple representing the bottom and top values for which all pixels inside
+            these bounds should be considered background. If `None` theses bounds are
+            determined from the image statistics.
 
         Returns
         -------
@@ -1096,8 +1112,6 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
             )
             # There is no background to be found, return early
             if np.isinf(joint_thresh[0]):
-                # output = ExposureF(inputCoadd, deep=True)
-                # return Struct(outputCoadd=output)
                 joint_thresh = None
 
         else:
@@ -1109,6 +1123,10 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
         if len(values) == 0:
             output = ExposureF(inputCoadd, deep=True)
+            logger.warning(
+                "No control points could be determined, likely due to extended flux, leaving background"
+                " unmodified."
+            )
             return Struct(outputCoadd=output)
 
         if neighbors:
@@ -1116,9 +1134,6 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
                 tmp_values, tmp_yloc, tmp_xloc = self._findControlPoints(
                     n_exp, origin, self.config.use_detection_mask, joint_thresh
                 )
-                # if len(tmp_values) == 0:
-                #     output = ExposureF(inputCoadd, deep=True)
-                #     return Struct(outputCoadd=output)
 
                 for value, y_pos, x_pos in zip(tmp_values, tmp_yloc, tmp_xloc):
                     if np.sqrt((y_pos - center_y) ** 2 + (x_pos - center_x) ** 2) < inside_rad:
@@ -1128,6 +1143,10 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
 
         # At least 15 points are requred for TPS with 4th order polynomial
         if len(yloc) < 15:
+            logger.warning(
+                "Not enough control points could be determined, likely due to extended flux, leaving"
+                " background unmodified."
+            )
             return Struct(outputCoadd=inputCoadd)
 
         background = self.fixBackground(inputCoadd.image.array, yloc, xloc, values)
@@ -1153,7 +1172,9 @@ class PrettyPictureBackgroundFixerTask(PipelineTask):
                 neighbor_refs.append(ref)
         if primary_ref is None:
             # This should be unreachable
-            raise RuntimeError("There is a major problem input ref associated with quantum cant be found")
+            raise RuntimeError(
+                "There is a major problem, the input ref associated with this quantum can't be found."
+            )
         inputCoadd = butlerQC.get(primary_ref)
         neighbors = []
         for n_ref in neighbor_refs:
