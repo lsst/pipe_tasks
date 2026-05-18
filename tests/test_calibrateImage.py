@@ -275,7 +275,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         calibrate = CalibrateImageTask(config=self.config)
         calibrate.astrometry.setRefObjLoader(self.ref_loader)
         calibrate.photometry.match.setRefObjLoader(self.ref_loader)
-        result = calibrate.run(exposures=self.exposure)
+        result = calibrate.run(exposures=self.exposure)  #noqa
 
         # self._check_run(calibrate, result, do_shapelet_check=True)
 
