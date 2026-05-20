@@ -28,6 +28,7 @@ __all__ = ["init_fromDict", "Functor", "CompositeFunctor", "mag_aware_eval",
            "ComputePixelScale", "ConvertPixelToArcseconds",
            "ConvertPixelSqToArcsecondsSq",
            "ConvertDetectorAngleToPositionAngle",
+           "ConvertDetectorAngleErrToPositionAngleErr",
            "ReferenceBand", "Photometry",
            "NanoJansky", "NanoJanskyErr", "LocalPhotometry", "LocalNanojansky",
            "LocalNanojanskyErr", "LocalDipoleMeanFlux",
@@ -1552,6 +1553,28 @@ class ConvertDetectorAngleToPositionAngle(LocalWcs):
             df[self.colCD_2_1],
             df[self.colCD_2_2]
         )
+
+
+class ConvertDetectorAngleErrToPositionAngleErr(Functor):
+    """Convert a detector angle error to a position angle error.
+
+    Returns
+    -------
+    position angle error : degrees
+    """
+
+    name = "PositionAngleErr"
+
+    def __init__(self, theta_err_col, **kwargs):
+        self.theta_err_col = theta_err_col
+        super().__init__(**kwargs)
+
+    @property
+    def columns(self):
+        return [self.theta_err_col]
+
+    def _func(self, df):
+        return np.rad2deg(df[self.theta_err_col])
 
 
 class ReferenceBand(Functor):
