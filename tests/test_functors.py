@@ -53,8 +53,8 @@ from lsst.pipe.tasks.functors import (CompositeFunctor, CustomFunctor, Column, R
                                       MomentsG1Sky, MomentsG2Sky, MomentsTraceSky,
                                       CorrelationIuuSky, CorrelationIvvSky, CorrelationIuvSky,
                                       SemimajorAxisFromCorrelation, SemiminorAxisFromCorrelation,
-                                      PositionAngleFromCorrelation
-                                      )
+                                      PositionAngleFromCorrelation,
+                                      ConvertDetectorAngleErrToPositionAngleErr)
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
@@ -762,6 +762,19 @@ class FunctorTestCase(lsst.utils.tests.TestCase):
                         coord_diff.append(diff)
 
                     np.testing.assert_allclose(coord_diff, 0, rtol=0, atol=5e-6)
+
+    # Test position angle error
+    def testConvertDetectorAngleErrToPositionAngleErr(self):
+        """Test conversion of detector angle error in radians to position angle error in degrees."""
+        theta_err_values = np.random.uniform(0, np.pi / 4, size=self.nRecords)
+        self.dataDict["theta_err"] = theta_err_values
+        df = self.getSimpleDataFrame(self.dataDict)
+
+        func = ConvertDetectorAngleErrToPositionAngleErr("theta_err")
+        val = self._funcVal(func, df)
+
+        expected = np.rad2deg(theta_err_values)
+        np.testing.assert_allclose(val.values, expected, rtol=0, atol=1e-13)
 
     def testConvertPixelToArcseconds(self):
         """Test calculations of the pixel scale, conversions of pixel to
