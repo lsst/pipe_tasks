@@ -1592,7 +1592,6 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
             if filterLabel is None:
                 filterLabel = dataRef.get(component="filter")
             summaryStats = dataRef.get(component="summaryStats")
-            detector = dataRef.get(component="detector")
             wcs = dataRef.get(component="wcs")
             photoCalib = dataRef.get(component="photoCalib")
             bbox = dataRef.get(component="bbox")
@@ -1612,7 +1611,7 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
 
             rec["physical_filter"] = filterLabel.physicalLabel if filterLabel.hasPhysicalLabel() else ""
             rec["band"] = filterLabel.bandLabel if filterLabel.hasBandLabel() else ""
-            rec.setId(detector.getId())
+            rec.setId(dataRef.dataId["detector"])
             summaryStats.update_record(rec)
 
         if not cat:
