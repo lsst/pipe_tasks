@@ -38,6 +38,7 @@ __all__ = ["WriteObjectTableConfig", "WriteObjectTableTask",
            ]
 
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 import dataclasses
 from deprecated.sphinx import deprecated
 import functools
@@ -1483,6 +1484,14 @@ class ConsolidateVisitSummaryConfig(pipeBase.PipelineTaskConfig,
         dtype=bool,
         default=True,
     )
+    n_io_workers = pexConfig.Field(
+        "Number of parallel worker threads to use when reading per-detector input components. "
+        "The default of 1 preserves the original serial behavior. Increase to overlap I/O on "
+        "filesystems where per-read latency dominates wall time (e.g. slow object stores).",
+        dtype=int,
+        default=1,
+        check=lambda x: x >= 1,
+    )
 
     def validate(self):
         super().validate()
@@ -1581,27 +1590,54 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
 
         cat["visit"] = visit
 
-        for i, dataRef in enumerate(handles):
-            visitInfo = dataRef.get(component="visitInfo")
-            filterLabel = dataRef.get(component="filter")
-            summaryStats = dataRef.get(component="summaryStats")
-            detector = dataRef.get(component="detector")
-            wcs = dataRef.get(component="wcs")
-            photoCalib = dataRef.get(component="photoCalib")
-            bbox = dataRef.get(component="bbox")
-            validPolygon = dataRef.get(component="validPolygon")
+        full = self.config.full
+
+        def readComponents(dataRef):
+            components = {
+                "visitInfo": dataRef.get(component="visitInfo"),
+                "filter": dataRef.get(component="filter"),
+                "summaryStats": dataRef.get(component="summaryStats"),
+                "detector": dataRef.get(component="detector"),
+                "wcs": dataRef.get(component="wcs"),
+                "photoCalib": dataRef.get(component="photoCalib"),
+                "bbox": dataRef.get(component="bbox"),
+                "validPolygon": dataRef.get(component="validPolygon"),
+            }
+            if full:
+                components["psf"] = dataRef.get(component="psf")
+                components["apCorrMap"] = dataRef.get(component="apCorrMap")
+                components["transmissionCurve"] = dataRef.get(component="transmissionCurve")
+            return components
+
+        n_workers = self.config.n_io_workers
+        if n_workers > 1 and len(handles) > 1:
+            workers = min(n_workers, len(handles))
+            self.log.info(
+                "Reading components for %d handles using %d I/O worker threads.",
+                len(handles),
+                workers,
+            )
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                readResults = list(executor.map(readComponents, handles))
+        else:
+            readResults = [readComponents(dataRef) for dataRef in handles]
+
+        for i, components in enumerate(readResults):
+            filterLabel = components["filter"]
+            detector = components["detector"]
+            summaryStats = components["summaryStats"]
 
             rec = cat[i]
-            rec.setBBox(bbox)
-            rec.setVisitInfo(visitInfo)
-            rec.setWcs(wcs)
-            rec.setPhotoCalib(photoCalib)
-            rec.setValidPolygon(validPolygon)
+            rec.setBBox(components["bbox"])
+            rec.setVisitInfo(components["visitInfo"])
+            rec.setWcs(components["wcs"])
+            rec.setPhotoCalib(components["photoCalib"])
+            rec.setValidPolygon(components["validPolygon"])
 
-            if self.config.full:
-                rec.setPsf(dataRef.get(component="psf"))
-                rec.setApCorrMap(dataRef.get(component="apCorrMap"))
-                rec.setTransmissionCurve(dataRef.get(component="transmissionCurve"))
+            if full:
+                rec.setPsf(components["psf"])
+                rec.setApCorrMap(components["apCorrMap"])
+                rec.setTransmissionCurve(components["transmissionCurve"])
 
             rec["physical_filter"] = filterLabel.physicalLabel if filterLabel.hasPhysicalLabel() else ""
             rec["band"] = filterLabel.bandLabel if filterLabel.hasBandLabel() else ""
