@@ -1581,9 +1581,16 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
 
         cat["visit"] = visit
 
+        # These are common for all detectors and should not
+        # be read in more than once.
+        visitInfo = None
+        filterLabel = None
+
         for i, dataRef in enumerate(handles):
-            visitInfo = dataRef.get(component="visitInfo")
-            filterLabel = dataRef.get(component="filter")
+            if visitInfo is None:
+                visitInfo = dataRef.get(component="visitInfo")
+            if filterLabel is None:
+                filterLabel = dataRef.get(component="filter")
             summaryStats = dataRef.get(component="summaryStats")
             detector = dataRef.get(component="detector")
             wcs = dataRef.get(component="wcs")
