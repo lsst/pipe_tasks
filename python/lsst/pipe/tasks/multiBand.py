@@ -272,6 +272,11 @@ class DetectCoaddSourcesTask(PipelineTask):
         ) as e:
             if self.config.writeEmptyBackgrounds:
                 butlerQC.put(self._makeEmptyBackground(exposure, patchInfo), outputRefs.outputBackgrounds)
+            # Detection failed, so clear any leftover the detected mask planes.
+            for maskName in ["DETECTED", "DETECTED_NEGATIVE"]:
+                if maskName in exposure.mask.getMaskPlaneDict().keys():
+                    detectedMask = exposure.mask.getMaskPlane(maskName)
+                    exposure.mask.clearMaskPlane(detectedMask)
             butlerQC.put(exposure, outputRefs.outputExposure)
             error = AnnotatedPartialOutputsError.annotate(
                 e,
