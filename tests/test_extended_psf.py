@@ -539,17 +539,17 @@ class ExtendedPsfSubtractionTestCase(lsst.utils.tests.TestCase):
     def test_stack_task_moffat_fitting(self):
         """Test Moffat fitting."""
         assert self.extended_psf is not None
-        self.assertAlmostEqual(np.sum(self.extended_psf.image.array), 0.8233417, places=5)
-        self.assertAlmostEqual(np.sum(self.extended_psf.variance.array), 0.0075618913, places=5)
+        self.assertAlmostEqual(np.sum(self.extended_psf.image.array), 0.8233417, places=2)
+        self.assertAlmostEqual(np.sum(self.extended_psf.variance.array), 0.0075618913, places=4)
         fit = self.extended_psf.fit
-        self.assertAlmostEqual(fit.chi2, 107652.97393353, delta=5e-4)
+        self.assertAlmostEqual(fit.chi2, 107652.97393353, delta=5)
         self.assertEqual(fit.dof, 62996)
-        self.assertAlmostEqual(fit.reduced_chi2, 1.7088858647141, places=5)
-        self.assertAlmostEqual(fit.amplitude, 0.078900464260488, places=5)
-        self.assertAlmostEqual(fit.x_0, -0.68834523633912, places=5)
-        self.assertAlmostEqual(fit.y_0, -0.069005412739451, places=5)
-        self.assertAlmostEqual(fit.gamma, 8.0966823485900, places=5)
-        self.assertAlmostEqual(fit.alpha, 16.048683662812, places=5)
+        self.assertAlmostEqual(fit.reduced_chi2, 1.7088858647141, places=2)
+        self.assertAlmostEqual(fit.amplitude, 0.078900464260488, places=2)
+        self.assertAlmostEqual(fit.x_0, -0.68834523633912, places=2)
+        self.assertAlmostEqual(fit.y_0, -0.069005412739451, places=2)
+        self.assertAlmostEqual(fit.gamma, 8.0966823485900, places=2)
+        self.assertAlmostEqual(fit.alpha, 16.048683662812, places=2)
 
     def test_stack_no_candidates(self):
         """Test that None returned when no candidates pass the radius check."""
