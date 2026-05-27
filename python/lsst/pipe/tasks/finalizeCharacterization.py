@@ -39,6 +39,7 @@ import astropy.units as u
 import numpy as np
 import esutil
 from smatch.matcher import Matcher
+from photutils.aperture import ApertureStats, CircularAnnulus
 
 import lsst.geom as geom
 from lsst.geom import LinearTransform
@@ -228,6 +229,19 @@ class FinalizeCharacterizationConfigBase(
         dtype=str,
         default=['g', 'r', 'i', 'z', 'y'],
         doc="List of bands to include for FGCM photometry (telescope-dependent).",
+    )
+    background_annulus_inner = pexConfig.Field(
+        dtype=float,
+        default=15.0,
+        doc=("Inner radius (pixels) of the annulus used to estimate the local "
+             "background (electrons/pixel) around each PSF candidate. "
+             "Should be larger than the PSF size."),
+    )
+    background_annulus_outer = pexConfig.Field(
+        dtype=float,
+        default=25.0,
+        doc=("Outer radius (pixels) of the annulus used to estimate the local "
+             "background (electrons/pixel) around each PSF candidate."),
     )
 
     def setDefaults(self):
@@ -454,6 +468,11 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             doc="Color used in PSF fit."
         )
         output_schema.addField(
+            'psf_background_value',
+            type=np.float32,
+            doc="Local background estimate (electrons/pixel) used in PSF fit."
+        )
+        output_schema.addField(
             'psf_max_value',
             type=np.float32,
             doc="Maximum value in the star image used to train PSF.",
@@ -580,6 +599,11 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             type=str,
             size=10,
             doc="Color used in PSF fit."
+        )
+        selection_schema.addField(
+            'psf_background_value',
+            type=np.float32,
+            doc="Local background estimate (electrons/pixel) used in PSF fit."
         )
         selection_schema.addField(
             'psf_max_value',
@@ -928,6 +952,32 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
                 for idSrc, idFgcm in zip(idxSrcCat, idxFgcmCat):
                     srcCat[idSrc][output_col] = fgcmCat[mag_col][idFgcm]
 
+    def add_src_backgrounds(self, srcCat, exposure):
+        """Estimate the local background (electrons/pixel) around each source.
+
+        For each source, ``photutils`` is used to compute the median in a
+        circular annulus around the source centroid. The result is written
+        to the ``psf_background_value`` field. The exposure is assumed to
+        already be in electrons.
+        """
+        inner = float(self.config.background_annulus_inner)
+        outer = float(self.config.background_annulus_outer)
+
+        bbox = exposure.getBBox()
+        x0 = bbox.getMinX()
+        y0 = bbox.getMinY()
+        imageArray = exposure.image.array
+
+        for record in srcCat:
+            xc = record['slot_Centroid_x']
+            yc = record['slot_Centroid_y']
+            x_local = xc - x0
+            y_local = yc - y0
+
+            annulus = CircularAnnulus([(x_local, y_local)], r_in=inner, r_out=outer)
+            annulus_stats = ApertureStats(imageArray, annulus)
+            record['psf_background_value'] = float(annulus_stats.median[0])
+
     def compute_psf_and_ap_corr_map(self, visit, detector, exposure, src,
                                     isolated_source_table, fgcm_standard_star_cat):
         """Compute psf model and aperture correction map for a single exposure.
@@ -1016,6 +1066,8 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             band = None
         self.add_src_colors(selected_src, fgcm_standard_star_cat, band)
         self.add_src_colors(measured_src, fgcm_standard_star_cat, band)
+        self.add_src_backgrounds(selected_src, exposure)
+        self.add_src_backgrounds(measured_src, exposure)
 
         # Add FGCM photometry for all bands to the output catalog
         if self.config.do_add_fgcm_photometry:
