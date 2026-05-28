@@ -225,6 +225,11 @@ class FinalizeCharacterizationConfigBase(
         default=False,
         doc="Add FGCM photometry for all bands to the output table.",
     )
+    compute_hsm_moment_stamp_size_psf = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Comp HSM using same stamp size of PSF to do apple to apple comp.",
+    )
     fgcmPhotometryBands = pexConfig.ListField(
         dtype=str,
         default=['g', 'r', 'i', 'z', 'y'],
@@ -382,6 +387,12 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         self.isPsfDeterminerPiff = False
         if isinstance(self.psf_determiner, lsst.meas.extensions.piff.piffPsfDeterminer.PiffPsfDeterminerTask):
             self.isPsfDeterminerPiff = True
+
+        if self.config.compute_hsm_moment_stamp_size_psf:
+            print('SET IN finalize')
+            self.measurement.plugins["ext_shapeHSM_HsmSourceMoments"].usePsfStampSize = True
+        else:
+            print('NOT SET IN finalize')
 
     def _make_output_schema_mapper(self, input_schema):
         """Make the schema mapper from the input schema to the output schema.
