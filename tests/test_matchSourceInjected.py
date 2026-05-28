@@ -22,7 +22,6 @@
 #
 
 import numpy as np
-import pandas as pd
 import unittest
 
 from astropy.table import Table
@@ -106,7 +105,7 @@ class BaseTestMatchInjected(lsst.utils.tests.TestCase):
         )
 
         # only 4 injected sources are associated
-        self.assocDiaSources = pd.DataFrame(
+        self.assocDiaSources = Table(
             {
                 "diaSourceId": [101, 102, 103, 201, 202, 205, 207],
                 "band": np.repeat("r", 7),
