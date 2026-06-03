@@ -32,7 +32,7 @@ __all__ = (
 import functools
 from collections.abc import Sequence
 from types import EllipsisType
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field
 
@@ -94,6 +94,10 @@ class ExtendedPsfCandidateInfo(BaseModel):
 class ExtendedPsfCandidateSerializationModel[P: BaseModel](MaskedImageSerializationModel[P]):
     """A Pydantic model to represent a serialized `ExtendedPsfCandidate`."""
 
+    SCHEMA_NAME: ClassVar[str] = "extended_psf_candidate"
+    SCHEMA_VERSION: ClassVar[str] = "1.0.0"
+    MIN_READ_VERSION: ClassVar[int] = 1
+
     psf_kernel_image: ImageSerializationModel[P] | None = Field(
         default=None,
         exclude_if=is_none,
@@ -119,6 +123,10 @@ class ExtendedPsfCandidateSerializationModel[P: BaseModel](MaskedImageSerializat
 
 class ExtendedPsfCandidatesSerializationModel[P: BaseModel](ArchiveTree):
     """A Pydantic model to represent serialized `ExtendedPsfCandidates`."""
+
+    SCHEMA_NAME: ClassVar[str] = "extended_psf_candidates"
+    SCHEMA_VERSION: ClassVar[str] = "1.0.0"
+    MIN_READ_VERSION: ClassVar[int] = 1
 
     candidates: list[ExtendedPsfCandidateSerializationModel[P]] = Field(
         default_factory=list,

@@ -29,7 +29,7 @@ __all__ = (
 
 import functools
 from types import EllipsisType
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 from astropy.units import UnitBase
@@ -61,6 +61,10 @@ class ExtendedPsfImageInfo(BaseModel):
 
 class ExtendedPsfImageSerializationModel[P: BaseModel](ArchiveTree):
     """A Pydantic model used to represent a serialized `ExtendedPsfImage`."""
+
+    SCHEMA_NAME: ClassVar[str] = "extended_psf_image"
+    SCHEMA_VERSION: ClassVar[str] = "1.0.0"
+    MIN_READ_VERSION: ClassVar[int] = 1
 
     image: ImageSerializationModel[P] = Field(
         description="The main data image.",
