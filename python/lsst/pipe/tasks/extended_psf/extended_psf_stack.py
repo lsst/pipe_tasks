@@ -76,13 +76,13 @@ class ExtendedPsfStackConfig(
         doc="Mask planes that identify excluded (masked) pixels.",
         default=[
             "BAD",
-            "CR",
+            "COSMIC_RAY",
             "CROSSTALK",
-            "EDGE",
+            "DETECTION_EDGE",
             "NO_DATA",
-            "SAT",
+            "SATURATED",
             "SUSPECT",
-            "UNMASKEDNAN",
+            "UNMASKED_NAN",
             NEIGHBOR_MASK_PLANE,
         ],
     )

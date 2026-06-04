@@ -45,7 +45,7 @@ from lsst.geom import (
     floor,
     radians,
 )
-from lsst.images import GeneralFrame, Image, Mask, Projection
+from lsst.images import GeneralFrame, Image, Mask, MaskPlane, Projection, get_legacy_visit_image_mask_planes
 from lsst.meas.algorithms import (
     LoadReferenceObjectsConfig,
     ReferenceObjectLoader,
@@ -481,10 +481,15 @@ class ExtendedPsfCutoutTask(PipelineTask):
                 focal_plane_angle=candidate["angle_radians"] * u.rad,
             )
 
+            plane_map = get_legacy_visit_image_mask_planes()
+            plane_map["NEIGHBOR"] = MaskPlane(
+                "NEIGHBOR", "Flux in pixel is attributed to a neighboring source detection footprint."
+            )
+
             # Generate an extended PSF candidate and store outputs
             cutout = ExtendedPsfCandidate(
                 image=Image.from_legacy(cutout_MI.image),
-                mask=Mask.from_legacy(cutout_MI.mask),
+                mask=Mask.from_legacy(cutout_MI.mask, plane_map=plane_map),
                 variance=Image.from_legacy(cutout_MI.variance),
                 projection=projection,
                 psf_kernel_image=psf_kernel_image,
