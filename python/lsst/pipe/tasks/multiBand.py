@@ -576,6 +576,7 @@ class MeasureMergedCoaddSourcesConnections(
         if not config.doPropagateFlags:
             del self.sourceTableHandles
             del self.finalizedSourceTableHandles
+            del self.finalVisitSummaryHandles
         else:
             # Check for types of flags required.
             if not config.propagateFlags.source_flags:
@@ -870,24 +871,21 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             bbox=patchInfo.getOuterBBox()
         )
 
+        sourceTableHandleDict = None
+        finalizedSourceTableHandleDict = None
+        finalVisitSummaryHandleDict = None
         if self.config.doPropagateFlags:
             if "sourceTableHandles" in inputs:
                 sourceTableHandles = inputs.pop("sourceTableHandles")
                 sourceTableHandleDict = {handle.dataId["visit"]: handle for handle in sourceTableHandles}
-            else:
-                sourceTableHandleDict = None
             if "finalizedSourceTableHandles" in inputs:
                 finalizedSourceTableHandles = inputs.pop("finalizedSourceTableHandles")
                 finalizedSourceTableHandleDict = {handle.dataId["visit"]: handle
                                                   for handle in finalizedSourceTableHandles}
-            else:
-                finalizedSourceTableHandleDict = None
             if "finalVisitSummaryHandles" in inputs:
                 finalVisitSummaryHandles = inputs.pop("finalVisitSummaryHandles")
                 finalVisitSummaryHandleDict = {handle.dataId["visit"]: handle
                                                for handle in finalVisitSummaryHandles}
-            else:
-                finalVisitSummaryHandleDict = None
 
         assert not inputs, "runQuantum got more inputs than expected."
         outputs = self.run(
