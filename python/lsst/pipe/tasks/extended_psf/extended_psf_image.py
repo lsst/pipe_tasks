@@ -59,51 +59,6 @@ class ExtendedPsfImageInfo(BaseModel):
     __repr__ = __str__
 
 
-class ExtendedPsfImageSerializationModel[P: BaseModel](ArchiveTree):
-    """A Pydantic model used to represent a serialized `ExtendedPsfImage`."""
-
-    SCHEMA_NAME: ClassVar[str] = "extended_psf_image"
-    SCHEMA_VERSION: ClassVar[str] = "1.0.0"
-    MIN_READ_VERSION: ClassVar[int] = 1
-
-    image: ImageSerializationModel[P] = Field(
-        description="The main data image.",
-    )
-    variance: ImageSerializationModel[P] = Field(
-        description="Per-pixel variance estimates for the main image."
-    )
-    info: ExtendedPsfImageInfo = Field(
-        description="Additional information about the extended PSF image.",
-    )
-    fit: ExtendedPsfMoffatFit | ExtendedPsfFit = Field(
-        description="The results of an extended PSF fit to the image.",
-    )
-
-    @property
-    def bbox(self) -> Box:
-        """The bounding box of the image."""
-        return self.image.bbox
-
-    def deserialize(self, archive: InputArchive[Any], *, bbox: Box | None = None) -> ExtendedPsfImage:
-        """Deserialize an image from an input archive.
-
-        Parameters
-        ----------
-        archive
-            Archive to read from.
-        bbox
-            Bounding box of a subimage to read instead.
-        """
-        image = self.image.deserialize(archive, bbox=bbox)
-        variance = self.variance.deserialize(archive, bbox=bbox)
-        return ExtendedPsfImage(
-            image,
-            variance=variance,
-            info=self.info,
-            fit=self.fit,
-        )._finish_deserialize(self)
-
-
 class ExtendedPsfImage(GeneralizedImage):
     """A multi-plane image with data (image) and variance planes, and the
     results of a profile fit to the image.
@@ -309,3 +264,49 @@ class ExtendedPsfImage(GeneralizedImage):
         type that uses the given pointer type.
         """
         return ExtendedPsfImageSerializationModel[pointer_type]  # type: ignore
+
+
+class ExtendedPsfImageSerializationModel[P: BaseModel](ArchiveTree):
+    """A Pydantic model used to represent a serialized `ExtendedPsfImage`."""
+
+    SCHEMA_NAME: ClassVar[str] = "extended_psf_image"
+    SCHEMA_VERSION: ClassVar[str] = "1.0.0"
+    MIN_READ_VERSION: ClassVar[int] = 1
+    PUBLIC_TYPE: ClassVar[type] = ExtendedPsfImage
+
+    image: ImageSerializationModel[P] = Field(
+        description="The main data image.",
+    )
+    variance: ImageSerializationModel[P] = Field(
+        description="Per-pixel variance estimates for the main image."
+    )
+    info: ExtendedPsfImageInfo = Field(
+        description="Additional information about the extended PSF image.",
+    )
+    fit: ExtendedPsfMoffatFit | ExtendedPsfFit = Field(
+        description="The results of an extended PSF fit to the image.",
+    )
+
+    @property
+    def bbox(self) -> Box:
+        """The bounding box of the image."""
+        return self.image.bbox
+
+    def deserialize(self, archive: InputArchive[Any], *, bbox: Box | None = None) -> ExtendedPsfImage:
+        """Deserialize an image from an input archive.
+
+        Parameters
+        ----------
+        archive
+            Archive to read from.
+        bbox
+            Bounding box of a subimage to read instead.
+        """
+        image = self.image.deserialize(archive, bbox=bbox)
+        variance = self.variance.deserialize(archive, bbox=bbox)
+        return ExtendedPsfImage(
+            image,
+            variance=variance,
+            info=self.info,
+            fit=self.fit,
+        )._finish_deserialize(self)
