@@ -718,7 +718,11 @@ class DecColumn(CoordColumn):
 
 
 class RAErrColumn(CoordColumn):
-    """Uncertainty in Right Ascension, in degrees."""
+    """Angular uncertainty in Right Ascension, in degrees.
+
+    Note that ``coord_raErr`` is the uncertainty on RA·cos(Dec),
+    i.e. an arc-length on the sky in the RA direction.
+    """
     name = 'RAErr'
     _defaultNoDup = True
 
@@ -736,7 +740,11 @@ class DecErrColumn(CoordColumn):
 
 
 class RADecCovColumn(Column):
-    """Coordinate covariance column, in degrees."""
+    """Tangent-plane angular covariance, in degrees^2.
+
+    As with the RA error, this is the covariance between RA·cos(Dec) and Dec,
+    Cov(xi, eta) = Cov(RA*cos(Dec), Dec).
+    """
     _radians = True
     name = 'RADecCov'
     _defaultNoDup = True
