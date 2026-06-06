@@ -228,9 +228,9 @@ class MatchTractCatalogConfig(
     """Configure a MatchTractCatalogTask, including a configurable matching subtask.
     """
     coord_unit = pexConfig.Field[str](
-        doc="lsst.geom unit of the coordinate columns. Only used to determine"
-            " the tract for rows in non-tract-sharded catalogs "
-            " without a tract column.",
+        doc="lsst.geom unit (or astropy equivalent) of the coordinate columns."
+            "Only used to determine the tract for rows in non-tract-sharded "
+            "catalogs without a tract column.",
         optional=True,
     )
     diff_matched_catalog = pexConfig.ConfigurableField(
@@ -503,13 +503,16 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
             if compute_tract_ref:
                 cats_add.append((ref_c, catalog_ref, "ref", compute_tract_ref, compute_patch_ref))
             for cat_c, catalog_add, name_c, compute_tract, compute_patch in cats_add:
-                unit = getattr(catalog_add[cat_c.column_coord1], "unit", self.config.coord_unit)
-                if unit is None:
-                    raise RuntimeError(
-                        f"Must specify coord_unit since {name_c} column={cat_c.column_coord1}"
-                        f" has no units"
-                    )
-                unit = getattr(lsst.geom, unit_dict[str(unit)])
+                if (unit := getattr(catalog_add[cat_c.column_coord1], "unit")) is None:
+                    unit = self.config.coord_unit
+                    if unit is None:
+                        raise RuntimeError(
+                            f"Must specify coord_unit since {name_c} column={cat_c.column_coord1}"
+                            f" has no units"
+                        )
+                    unit = getattr(lsst.geom, unit, getattr(lsst.geom, unit_dict[str(unit)]))
+                else:
+                    unit = getattr(lsst.geom, unit_dict[str(unit)])
                 coords = [SpherePoint(ra, dec, unit) for ra, dec in zip(cat_c.coord1, cat_c.coord2)]
                 if compute_tract:
                     catalog_add["tract"] = np.array([skymap.findTract(coord).getId() for coord in coords])
