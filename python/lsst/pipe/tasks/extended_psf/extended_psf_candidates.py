@@ -91,55 +91,6 @@ class ExtendedPsfCandidateInfo(BaseModel):
     __repr__ = __str__
 
 
-class ExtendedPsfCandidateSerializationModel[P: BaseModel](MaskedImageSerializationModel[P]):
-    """A Pydantic model to represent a serialized `ExtendedPsfCandidate`."""
-
-    SCHEMA_NAME: ClassVar[str] = "extended_psf_candidate"
-    SCHEMA_VERSION: ClassVar[str] = "1.0.0"
-    MIN_READ_VERSION: ClassVar[int] = 1
-
-    psf_kernel_image: ImageSerializationModel[P] | None = Field(
-        default=None,
-        exclude_if=is_none,
-        description="Kernel image of the PSF at the cutout center.",
-    )
-    star_info: ExtendedPsfCandidateInfo = Field(
-        description="Information about the star in the cutout.",
-    )
-
-    def deserialize(self, archive: InputArchive[Any], *, bbox: Box | None = None) -> ExtendedPsfCandidate:
-        masked_image = super().deserialize(archive, bbox=bbox)
-        psf_kernel_image = (
-            self.psf_kernel_image.deserialize(archive) if self.psf_kernel_image is not None else None
-        )
-        return ExtendedPsfCandidate(
-            masked_image.image,
-            mask=masked_image.mask,
-            variance=masked_image.variance,
-            psf_kernel_image=psf_kernel_image,
-            star_info=self.star_info,
-        )._finish_deserialize(self)
-
-
-class ExtendedPsfCandidatesSerializationModel[P: BaseModel](ArchiveTree):
-    """A Pydantic model to represent serialized `ExtendedPsfCandidates`."""
-
-    SCHEMA_NAME: ClassVar[str] = "extended_psf_candidates"
-    SCHEMA_VERSION: ClassVar[str] = "1.0.0"
-    MIN_READ_VERSION: ClassVar[int] = 1
-
-    candidates: list[ExtendedPsfCandidateSerializationModel[P]] = Field(
-        default_factory=list,
-        description="The candidate cutouts in this collection.",
-    )
-
-    def deserialize(self, archive: InputArchive[Any]) -> ExtendedPsfCandidates:
-        return ExtendedPsfCandidates(
-            [candidate_model.deserialize(archive) for candidate_model in self.candidates],
-            metadata=self.metadata,
-        )
-
-
 class ExtendedPsfCandidate(MaskedImage):
     """A cutout centered on a star, with associated metadata.
 
@@ -267,6 +218,37 @@ class ExtendedPsfCandidate(MaskedImage):
         return ExtendedPsfCandidateSerializationModel[pointer_type]
 
 
+class ExtendedPsfCandidateSerializationModel[P: BaseModel](MaskedImageSerializationModel[P]):
+    """A Pydantic model to represent a serialized `ExtendedPsfCandidate`."""
+
+    SCHEMA_NAME: ClassVar[str] = "extended_psf_candidate"
+    SCHEMA_VERSION: ClassVar[str] = "1.0.0"
+    MIN_READ_VERSION: ClassVar[int] = 1
+    PUBLIC_TYPE: ClassVar[type] = ExtendedPsfCandidate
+
+    psf_kernel_image: ImageSerializationModel[P] | None = Field(
+        default=None,
+        exclude_if=is_none,
+        description="Kernel image of the PSF at the cutout center.",
+    )
+    star_info: ExtendedPsfCandidateInfo = Field(
+        description="Information about the star in the cutout.",
+    )
+
+    def deserialize(self, archive: InputArchive[Any], *, bbox: Box | None = None) -> ExtendedPsfCandidate:
+        masked_image = super().deserialize(archive, bbox=bbox)
+        psf_kernel_image = (
+            self.psf_kernel_image.deserialize(archive) if self.psf_kernel_image is not None else None
+        )
+        return ExtendedPsfCandidate(
+            masked_image.image,
+            mask=masked_image.mask,
+            variance=masked_image.variance,
+            psf_kernel_image=psf_kernel_image,
+            star_info=self.star_info,
+        )._finish_deserialize(self)
+
+
 class ExtendedPsfCandidates(Sequence[ExtendedPsfCandidate]):
     """A collection of star cutouts.
 
@@ -361,3 +343,23 @@ class ExtendedPsfCandidates(Sequence[ExtendedPsfCandidate]):
         pointer_type: type[P],
     ) -> type[ExtendedPsfCandidatesSerializationModel[P]]:
         return ExtendedPsfCandidatesSerializationModel[pointer_type]
+
+
+class ExtendedPsfCandidatesSerializationModel[P: BaseModel](ArchiveTree):
+    """A Pydantic model to represent serialized `ExtendedPsfCandidates`."""
+
+    SCHEMA_NAME: ClassVar[str] = "extended_psf_candidates"
+    SCHEMA_VERSION: ClassVar[str] = "1.0.0"
+    MIN_READ_VERSION: ClassVar[int] = 1
+    PUBLIC_TYPE: ClassVar[type] = ExtendedPsfCandidates
+
+    candidates: list[ExtendedPsfCandidateSerializationModel[P]] = Field(
+        default_factory=list,
+        description="The candidate cutouts in this collection.",
+    )
+
+    def deserialize(self, archive: InputArchive[Any]) -> ExtendedPsfCandidates:
+        return ExtendedPsfCandidates(
+            [candidate_model.deserialize(archive) for candidate_model in self.candidates],
+            metadata=self.metadata,
+        )

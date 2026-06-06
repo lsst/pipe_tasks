@@ -4,4 +4,9 @@ name = "lsst-pipe-tasks"
 [project.entry-points.'butler.cli']
 pipe_tasks = "lsst.pipe.tasks.cli:get_cli_subcommands"
 
+[project.entry-points."lsst.images.schemas"]
+extended_psf_image = "lsst.pipe.tasks.extended_psf.extended_psf_image:ExtendedPsfImageSerializationModel"
+extended_psf_candidate = "lsst.pipe.tasks.extended_psf.extended_psf_candidates:ExtendedPsfCandidateSerializationModel"
+extended_psf_candidates = "lsst.pipe.tasks.extended_psf.extended_psf_candidates:ExtendedPsfCandidatesSerializationModel"
+
 [tool.pytest.ini_options]
