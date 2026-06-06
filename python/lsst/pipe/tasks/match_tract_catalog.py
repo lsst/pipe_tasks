@@ -352,39 +352,10 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
         )
 
         if self.config.match_multiple_target:
-            name_tract_ref_in = "tract"
-            diff_prefix_ref = self.config.diff_matched_catalog.value.column_matched_prefix_ref
-            diff_prefix_target = self.config.diff_matched_catalog.value.column_matched_prefix_target
-            name_tract_ref = f"{diff_prefix_ref}tract"
-            name_tract_target = f"{diff_prefix_target}tract"
-            name_patch_ref = f"{diff_prefix_ref}patch"
-            name_patch_target = f"{diff_prefix_target}patch"
-            # Avoid collisions if, for example, both prefixes are ''
-            if name_tract_ref == name_tract_target:
-                prefix_new = {'ref' if diff_prefix_ref != 'ref' else 'refcat'}
-                name_new = f"{prefix_new}_tract"
-                catalog_ref.rename_column(name_tract_ref, name_new)
-                name_tract_ref = name_new
-                name_tract_ref_in = name_new
-                if name_patch_ref in catalog_ref.colnames:
-                    name_new = f"{prefix_new}_patch"
-                    catalog_ref.rename_column(name_patch_ref, name_new)
-                    name_patch_ref = name_new
-
-        if self.config.output_matched_catalog:
-            outputs_new = self.diff_matched_catalog.run(
-                catalog_ref=catalog_ref,
-                catalog_target=catalog_target,
-                catalog_match_ref=outputs.cat_output_ref,
-                catalog_match_target=outputs.cat_output_target,
-            )
-            outputs = pipeBase.Struct(**outputs.getDict(), cat_output_matched=outputs_new.cat_matched)
-
-        if self.config.match_multiple_target:
             outputs_new = {}
 
             for name, catalog_in, name_tract in (
-                ("cat_output_ref", catalog_ref, name_tract_ref_in),
+                ("cat_output_ref", catalog_ref, outputs.name_tract_ref_in),
                 ("cat_output_target", catalog_target, "tract"),
             ):
                 catalogs_out = []
@@ -397,21 +368,23 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
             if self.config.output_matched_catalog:
                 cat_matched = outputs.cat_output_matched
                 catalogs_out = []
-                tract_target = cat_matched[name_tract_target]
-                patch_target = cat_matched[name_patch_target]
+                tract_target = cat_matched[outputs.name_tract_target]
+                patch_target = cat_matched[outputs.name_patch_target]
                 masked_target = tract_target.mask == True  # noqa: E712
 
-                tract_ref = cat_matched[name_tract_ref]
+                tract_ref = cat_matched[outputs.name_tract_ref]
                 tract_out = np.array(tract_target)
                 tract_out[masked_target] = tract_ref[masked_target]
                 cat_matched["tract"] = tract_out
-                cat_matched["tract"].description = f"{name_tract_target} if available else {name_tract_ref}"
-                patch_ref = cat_matched[name_patch_ref]
+                cat_matched["tract"].description = (f"{outputs.name_tract_target} if available"
+                                                    f" else {outputs.name_tract_ref}")
+                patch_ref = cat_matched[outputs.name_patch_ref]
                 patch_out = np.array(patch_target)
                 # The patch and target masks should be identical
                 patch_out[masked_target] = patch_ref[masked_target]
                 cat_matched["patch"] = patch_out
-                cat_matched["patch"].description = f"{name_patch_target} if available else {name_patch_ref}"
+                cat_matched["patch"].description = (f"{outputs.name_patch_target} if available"
+                                                    f" else {outputs.name_patch_ref}")
 
                 for outputRef in outputRefs.cat_output_matched:
                     tract = outputRef.dataId["tract"]
@@ -447,13 +420,53 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
         -------
         retStruct : `lsst.pipe.base.Struct`
             A struct with output_ref and output_target attribute containing the
-            output matched catalogs.
+            output matched catalogs. If self.config.output_matched_catalog is
+            True, cat_output_matched is also returned, along with the names of
+            the tract/patch columns, which may have been changed to avoid
+            collisions.
         """
         output = self.match_tract_catalog.run(catalog_ref, catalog_target, wcs=wcs)
         if output.exceptions:
             self.log.warning('Exceptions: %s', output.exceptions)
         retStruct = pipeBase.Struct(cat_output_ref=output.cat_output_ref,
                                     cat_output_target=output.cat_output_target)
+
+        if self.config.output_matched_catalog:
+            name_tract_ref_in = "tract"
+            diff_prefix_ref = self.config.diff_matched_catalog.value.column_matched_prefix_ref
+            diff_prefix_target = self.config.diff_matched_catalog.value.column_matched_prefix_target
+            name_tract_ref = f"{diff_prefix_ref}tract"
+            name_tract_target = f"{diff_prefix_target}tract"
+            name_patch_ref = f"{diff_prefix_ref}patch"
+            name_patch_target = f"{diff_prefix_target}patch"
+            # Avoid collisions if, for example, both prefixes are ''
+            if name_tract_ref == name_tract_target:
+                prefix_new = {'ref' if diff_prefix_ref != 'ref' else 'refcat'}
+                name_new = f"{prefix_new}_tract"
+                catalog_ref.rename_column(name_tract_ref, name_new)
+                name_tract_ref = name_new
+                name_tract_ref_in = name_new
+                if name_patch_ref in catalog_ref.colnames:
+                    name_new = f"{prefix_new}_patch"
+                    catalog_ref.rename_column(name_patch_ref, name_new)
+                    name_patch_ref = name_new
+
+            outputs_new = self.diff_matched_catalog.run(
+                catalog_ref=catalog_ref,
+                catalog_target=catalog_target,
+                catalog_match_ref=retStruct.cat_output_ref,
+                catalog_match_target=retStruct.cat_output_target,
+            )
+            retStruct = pipeBase.Struct(
+                **retStruct.getDict(),
+                cat_output_matched=outputs_new.cat_matched,
+                name_tract_ref=name_tract_ref,
+                name_tract_ref_in=name_tract_ref_in,
+                name_tract_target=name_tract_target,
+                name_patch_ref=name_patch_ref,
+                name_patch_target=name_patch_target,
+            )
+
         return retStruct
 
     def _add_tract_column_to_catalogs(self, catalog_ref, catalog_target, skymap, add_patch: bool = True):
