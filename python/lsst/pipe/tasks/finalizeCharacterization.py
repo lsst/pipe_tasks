@@ -734,7 +734,7 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
 
         return iuu, ivv, iuv
 
-    def _fit_polynomial_2d(self, x, y, z, order):
+    def _fit_polynomial_2d(self, x, y, z, order, fit_mask=None):
         """Fit a 2D polynomial to data and return evaluated values.
 
         Parameters
@@ -747,6 +747,9 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             Values to fit.
         order : `int`
             Polynomial order.
+        fit_mask : `numpy.ndarray` or None
+            Boolean mask indicating which points to use for fitting.
+            If None, all valid points are used.
 
         Returns
         -------
@@ -764,8 +767,10 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         # Build Vandermonde matrix for 2D polynomial
         vander = polyvander2d(x_norm, y_norm, [order, order])
 
-        # Fit using least squares
+        # Fit using least squares on selected points only
         valid = np.isfinite(z)
+        if fit_mask is not None:
+            valid = valid & fit_mask
         if np.sum(valid) < vander.shape[1]:
             return np.full_like(z, np.nan)
 
@@ -1240,9 +1245,12 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
 
             # Mock shape sky moments (for validation studies)
             # Source mocks drawn from Gaussian(mean, std) of real moments
-            # PSF mocks from polynomial fit to source mocks (same order as PSF model)
+            # PSF mocks from polynomial fit to source mocks on used stars only
             if self.config.do_add_mock_sky_moments:
                 rng = np.random.default_rng()
+
+                # Get the used star mask for fitting
+                psf_used_mask = np.array(measured_src['calib_psf_used'], dtype=bool)
 
                 # Source mock moments in pixel coordinates
                 mean_shape_xx = np.nanmean(shape_xx)
@@ -1253,10 +1261,10 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
                 mock_shape_yy = rng.normal(mean_shape_yy, std_shape_yy, len(shape_yy))
                 mock_shape_xy = np.zeros_like(mock_shape_xx)
 
-                # PSF mock moments from polynomial fit to source mocks
+                # PSF mock moments from polynomial fit to source mocks (fit on used, eval on all)
                 order = self.config.mock_polynomial_order
-                mock_psf_xx = self._fit_polynomial_2d(x, y, mock_shape_xx, order)
-                mock_psf_yy = self._fit_polynomial_2d(x, y, mock_shape_yy, order)
+                mock_psf_xx = self._fit_polynomial_2d(x, y, mock_shape_xx, order, fit_mask=psf_used_mask)
+                mock_psf_yy = self._fit_polynomial_2d(x, y, mock_shape_yy, order, fit_mask=psf_used_mask)
                 mock_psf_xy = np.zeros_like(mock_psf_xx)
 
                 # Transform to sky coordinates
