@@ -297,10 +297,10 @@ class ExtendedPsfImageTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(roundtripped.fit, self.extended_psf_image.fit)
         self.assertEqual(roundtripped.metadata["EPSF_TEST_KEY"], "EPSF_TEST VALUE")
 
-    def test_unit_projection_bbox_properties(self):
-        """Test ExtendedPsfImage properties: unit, projection, and bbox."""
+    def test_unit_sky_projection_bbox_properties(self):
+        """Test ExtendedPsfImage properties: unit, sky_projection, and bbox."""
         self.assertEqual(self.extended_psf_image.unit, u.nJy)
-        self.assertIsNone(self.extended_psf_image.projection)
+        self.assertIsNone(self.extended_psf_image.sky_projection)
         self.assertEqual(self.extended_psf_image.bbox, self.extended_psf_image.image.bbox)
 
     def test_copy_independence(self):

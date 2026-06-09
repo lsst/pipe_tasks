@@ -44,7 +44,7 @@ from lsst.images import (
     MaskedImage,
     MaskedImageSerializationModel,
     MaskSchema,
-    Projection,
+    SkyProjection,
     fits,
 )
 from lsst.images.serialization import ArchiveTree, InputArchive, MetadataValue, OutputArchive, Quantity
@@ -104,7 +104,7 @@ class ExtendedPsfCandidate(MaskedImage):
         Per-pixel variance estimates for the image.
     mask_schema : `~lsst.images.MaskSchema`, optional
         Schema for the mask, required if a mask is provided.
-    projection : `~lsst.images.Projection`, optional
+    sky_projection : `~lsst.images.SkyProjection`, optional
         Projection to map pixels to the sky.
     metadata : `dict` [`str`, `MetadataValue`], optional
         Additional metadata to associate with this cutout.
@@ -128,7 +128,7 @@ class ExtendedPsfCandidate(MaskedImage):
         mask: Mask | None = None,
         variance: Image | None = None,
         mask_schema: MaskSchema | None = None,
-        projection: Projection | None = None,
+        sky_projection: SkyProjection | None = None,
         metadata: dict[str, MetadataValue] | None = None,
         psf_kernel_image: Image | None = None,
         star_info: ExtendedPsfCandidateInfo | None = None,
@@ -138,7 +138,7 @@ class ExtendedPsfCandidate(MaskedImage):
             mask=mask,
             variance=variance,
             mask_schema=mask_schema,
-            projection=projection,
+            sky_projection=sky_projection,
             metadata=metadata,
         )
 
