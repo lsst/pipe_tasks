@@ -223,9 +223,14 @@ class FinalizeCharacterizationConfigBase(
     do_add_mock_sky_moments = pexConfig.Field(
         dtype=bool,
         default=False,
-        doc=("Add mock second moments in sky coordinates. Mock pixel moments are drawn "
-             "from Gaussian(0, std) where std is the nanstd of the real pixel moments, "
-             "then transformed to sky coordinates. Requires do_add_sky_moments=True."),
+        doc=("Add mock second moments in sky coordinates. Source mock pixel moments are drawn "
+             "from Gaussian(mean, std) of the real moments. PSF mock moments are obtained by "
+             "fitting a 2D polynomial to the source mocks. Requires do_add_sky_moments=True."),
+    )
+    mock_polynomial_order = pexConfig.Field(
+        dtype=int,
+        default=4,
+        doc="Polynomial order for fitting PSF mock moments from source mock moments.",
     )
     do_add_fgcm_photometry = pexConfig.Field(
         dtype=bool,
@@ -564,17 +569,32 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             output_schema.addField(
                 'shape_Iuu_mock',
                 type=np.float32,
-                doc="Mock second moment along RA axis in sky coordinates (arcsec^2).",
+                doc="Mock source second moment along RA axis in sky coordinates (arcsec^2).",
             )
             output_schema.addField(
                 'shape_Ivv_mock',
                 type=np.float32,
-                doc="Mock second moment along Dec axis in sky coordinates (arcsec^2).",
+                doc="Mock source second moment along Dec axis in sky coordinates (arcsec^2).",
             )
             output_schema.addField(
                 'shape_Iuv_mock',
                 type=np.float32,
-                doc="Mock cross-term second moment in sky coordinates (arcsec^2).",
+                doc="Mock source cross-term second moment in sky coordinates (arcsec^2).",
+            )
+            output_schema.addField(
+                'psfShape_Iuu_mock',
+                type=np.float32,
+                doc="Mock PSF second moment along RA axis in sky coordinates (arcsec^2).",
+            )
+            output_schema.addField(
+                'psfShape_Ivv_mock',
+                type=np.float32,
+                doc="Mock PSF second moment along Dec axis in sky coordinates (arcsec^2).",
+            )
+            output_schema.addField(
+                'psfShape_Iuv_mock',
+                type=np.float32,
+                doc="Mock PSF cross-term second moment in sky coordinates (arcsec^2).",
             )
 
         if self.config.do_add_fgcm_photometry:
@@ -713,6 +733,48 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             iuv[i] *= deg2_to_arcsec2
 
         return iuu, ivv, iuv
+
+    def _fit_polynomial_2d(self, x, y, z, order):
+        """Fit a 2D polynomial to data and return evaluated values.
+
+        Parameters
+        ----------
+        x : `numpy.ndarray`
+            X coordinates.
+        y : `numpy.ndarray`
+            Y coordinates.
+        z : `numpy.ndarray`
+            Values to fit.
+        order : `int`
+            Polynomial order.
+
+        Returns
+        -------
+        z_fit : `numpy.ndarray`
+            Fitted values at each (x, y) position.
+        """
+        from numpy.polynomial.polynomial import polyvander2d
+
+        # Normalize coordinates for numerical stability
+        x_mean, x_std = np.mean(x), np.std(x)
+        y_mean, y_std = np.mean(y), np.std(y)
+        x_norm = (x - x_mean) / x_std if x_std > 0 else x - x_mean
+        y_norm = (y - y_mean) / y_std if y_std > 0 else y - y_mean
+
+        # Build Vandermonde matrix for 2D polynomial
+        vander = polyvander2d(x_norm, y_norm, [order, order])
+
+        # Fit using least squares
+        valid = np.isfinite(z)
+        if np.sum(valid) < vander.shape[1]:
+            return np.full_like(z, np.nan)
+
+        coeffs, _, _, _ = np.linalg.lstsq(vander[valid], z[valid], rcond=None)
+
+        # Evaluate the polynomial at all positions
+        z_fit = vander @ coeffs
+
+        return z_fit
 
     def _rotate_moments_to_altaz(self, iuu, ivv, iuv, parallactic_angle):
         """Rotate second moments from RA/Dec to Alt/Az coordinates.
@@ -1177,19 +1239,40 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             measured_src['shape_Iuv'] = shape_iuv
 
             # Mock shape sky moments (for validation studies)
+            # Source mocks drawn from Gaussian(mean, std) of real moments
+            # PSF mocks from polynomial fit to source mocks (same order as PSF model)
             if self.config.do_add_mock_sky_moments:
-                std_xx = np.nanstd(shape_xx)
-                std_yy = np.nanstd(shape_yy)
                 rng = np.random.default_rng()
-                mock_xx = rng.normal(0.0, std_xx, len(shape_xx))
-                mock_yy = rng.normal(0.0, std_yy, len(shape_yy))
-                mock_xy = np.zeros_like(mock_xx)
-                mock_iuu, mock_ivv, mock_iuv = self._compute_sky_moments(
-                    wcs, x, y, mock_xx, mock_yy, mock_xy
+
+                # Source mock moments in pixel coordinates
+                mean_shape_xx = np.nanmean(shape_xx)
+                mean_shape_yy = np.nanmean(shape_yy)
+                std_shape_xx = np.nanstd(shape_xx)
+                std_shape_yy = np.nanstd(shape_yy)
+                mock_shape_xx = rng.normal(mean_shape_xx, std_shape_xx, len(shape_xx))
+                mock_shape_yy = rng.normal(mean_shape_yy, std_shape_yy, len(shape_yy))
+                mock_shape_xy = np.zeros_like(mock_shape_xx)
+
+                # PSF mock moments from polynomial fit to source mocks
+                order = self.config.mock_polynomial_order
+                mock_psf_xx = self._fit_polynomial_2d(x, y, mock_shape_xx, order)
+                mock_psf_yy = self._fit_polynomial_2d(x, y, mock_shape_yy, order)
+                mock_psf_xy = np.zeros_like(mock_psf_xx)
+
+                # Transform to sky coordinates
+                mock_shape_iuu, mock_shape_ivv, mock_shape_iuv = self._compute_sky_moments(
+                    wcs, x, y, mock_shape_xx, mock_shape_yy, mock_shape_xy
                 )
-                measured_src['shape_Iuu_mock'] = mock_iuu
-                measured_src['shape_Ivv_mock'] = mock_ivv
-                measured_src['shape_Iuv_mock'] = mock_iuv
+                measured_src['shape_Iuu_mock'] = mock_shape_iuu
+                measured_src['shape_Ivv_mock'] = mock_shape_ivv
+                measured_src['shape_Iuv_mock'] = mock_shape_iuv
+
+                mock_psf_iuu, mock_psf_ivv, mock_psf_iuv = self._compute_sky_moments(
+                    wcs, x, y, mock_psf_xx, mock_psf_yy, mock_psf_xy
+                )
+                measured_src['psfShape_Iuu_mock'] = mock_psf_iuu
+                measured_src['psfShape_Ivv_mock'] = mock_psf_ivv
+                measured_src['psfShape_Iuv_mock'] = mock_psf_iuv
 
             # PSF shape sky moments
             psf_xx = np.array(measured_src['slot_PsfShape_xx'])
