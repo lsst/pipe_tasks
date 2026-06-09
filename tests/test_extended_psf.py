@@ -24,10 +24,11 @@ import unittest
 from typing import cast
 
 import astropy.units as u
-import lsst.images.tests
-import lsst.utils.tests
 import numpy as np
 from astropy.table import Table
+
+import lsst.images.tests
+import lsst.utils.tests
 from lsst.afw.cameraGeom import FOCAL_PLANE, PIXELS
 from lsst.afw.cameraGeom.testUtils import CameraWrapper
 from lsst.afw.geom import makeCdMatrix, makeSkyWcs
@@ -222,7 +223,7 @@ class ExtendedPsfImageTestCase(lsst.utils.tests.TestCase):
     def setUp(self):
         image = Image(
             np.arange(30, dtype=np.float32).reshape(5, 6),
-            start=(10, -3),
+            yx0=(10, -3),
             unit=u.nJy,
         )
         variance = Image(
@@ -297,10 +298,10 @@ class ExtendedPsfImageTestCase(lsst.utils.tests.TestCase):
         self.assertEqual(roundtripped.fit, self.extended_psf_image.fit)
         self.assertEqual(roundtripped.metadata["EPSF_TEST_KEY"], "EPSF_TEST VALUE")
 
-    def test_unit_projection_bbox_properties(self):
-        """Test ExtendedPsfImage properties: unit, projection, and bbox."""
+    def test_unit_sky_projection_bbox_properties(self):
+        """Test ExtendedPsfImage properties: unit, sky_projection, and bbox."""
         self.assertEqual(self.extended_psf_image.unit, u.nJy)
-        self.assertIsNone(self.extended_psf_image.projection)
+        self.assertIsNone(self.extended_psf_image.sky_projection)
         self.assertEqual(self.extended_psf_image.bbox, self.extended_psf_image.image.bbox)
 
     def test_copy_independence(self):
@@ -316,7 +317,7 @@ class ExtendedPsfImageTestCase(lsst.utils.tests.TestCase):
 
     def test_setitem_subregion_assignment(self):
         """Test __setitem__ writes image and variance into a subregion."""
-        target = ExtendedPsfImage(Image(np.zeros((5, 6), dtype=np.float32), start=(10, -3), unit=u.nJy))
+        target = ExtendedPsfImage(Image(np.zeros((5, 6), dtype=np.float32), yx0=(10, -3), unit=u.nJy))
         subbox = Box.from_shape((3, 3), start=(11, -1))
         target[subbox] = self.extended_psf_image[subbox]
         np.testing.assert_array_equal(

@@ -45,7 +45,14 @@ from lsst.geom import (
     floor,
     radians,
 )
-from lsst.images import GeneralFrame, Image, Mask, MaskPlane, Projection, get_legacy_visit_image_mask_planes
+from lsst.images import (
+    GeneralFrame,
+    Image,
+    Mask,
+    MaskPlane,
+    SkyProjection,
+    get_legacy_visit_image_mask_planes,
+)
 from lsst.meas.algorithms import (
     LoadReferenceObjectsConfig,
     ReferenceObjectLoader,
@@ -463,7 +470,7 @@ class ExtendedPsfCutoutTask(PipelineTask):
 
             # Define a WCS for the cutout consistent with the warping
             cutout_wcs = makeModifiedWcs(pixels_to_cutout_frame, input_exposure.wcs, False)
-            projection = Projection.from_legacy(cutout_wcs, GeneralFrame(unit=u.pixel))
+            sky_projection = SkyProjection.from_legacy(cutout_wcs, GeneralFrame(unit=u.pixel))
 
             # Compute the kernel image of the PSF at the cutout center
             psf_warped = WarpedPsf(input_exposure.getPsf(), pixels_to_cutout_frame, warp_control)
@@ -491,7 +498,7 @@ class ExtendedPsfCutoutTask(PipelineTask):
                 image=Image.from_legacy(cutout_MI.image),
                 mask=Mask.from_legacy(cutout_MI.mask, plane_map=plane_map),
                 variance=Image.from_legacy(cutout_MI.variance),
-                projection=projection,
+                sky_projection=sky_projection,
                 psf_kernel_image=psf_kernel_image,
                 star_info=star_info,
             )

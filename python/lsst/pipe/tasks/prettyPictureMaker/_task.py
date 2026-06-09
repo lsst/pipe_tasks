@@ -51,7 +51,7 @@ from skimage.restoration import inpaint_biharmonic
 
 from lsst.daf.butler import Butler, DataCoordinate, DeferredDatasetHandle
 from lsst.daf.butler import DatasetRef
-from lsst.images import ColorImage, Projection, Box, TractFrame
+from lsst.images import ColorImage, SkyProjection, Box, TractFrame
 from lsst.pex.config import Field, Config, ConfigDictField, ListField, ChoiceField
 from lsst.pex.config.configurableActions import ConfigurableActionField
 from lsst.pipe.base import (
@@ -402,7 +402,7 @@ class PrettyPictureTask(PipelineTask):
     def run(
         self,
         images: Mapping[str, Exposure],
-        image_wcs: Projection[Any] | None = None,
+        image_wcs: SkyProjection[Any] | None = None,
         image_box: Box | None = None,
     ) -> Struct:
         """Turns the input arguments in arguments into an RGB array.
@@ -411,7 +411,7 @@ class PrettyPictureTask(PipelineTask):
         ----------
         images : `Mapping` of `str` to `Exposure`
             A mapping of input images and the band they correspond to.
-        image_wcs : `~lsst.images.Projection`, optional
+        image_wcs : `~lsst.images.SkyProjection`, optional
             A projection describing the sky coordinate of each pixel.
         image_box : `~lsst.images.Box`, optional
             A box that defines this image as part of a larger region.
@@ -546,7 +546,7 @@ class PrettyPictureTask(PipelineTask):
         lsstMask = Mask(width=jointMask.shape[1], height=jointMask.shape[0], planeDefs=maskDict)
         lsstMask.array = jointMask  # type: ignore
         return Struct(
-            outputRGB=ColorImage(colorImage.astype(dtype), bbox=image_box, projection=image_wcs),
+            outputRGB=ColorImage(colorImage.astype(dtype), bbox=image_box, sky_projection=image_wcs),
             outputRGBMask=lsstMask,
         )  # type: ignore
 
@@ -569,7 +569,7 @@ class PrettyPictureTask(PipelineTask):
         patchInfo = tractInfo[quantumDataId["patch"]]
         outputs = self.run(
             images=sortedImages,
-            image_wcs=Projection.from_legacy(
+            image_wcs=SkyProjection.from_legacy(
                 patchInfo.wcs,
                 TractFrame(
                     skymap=quantumDataId["skymap"],
