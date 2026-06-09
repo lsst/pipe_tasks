@@ -1207,6 +1207,10 @@ class PrettyPictureStarFixerConfig(PipelineTaskConfig, pipelineConnections=Prett
     brightnessThresh = Field[float](
         doc="The flux value below which pixels with SAT or NO_DATA bits will be ignored"
     )
+    estimateMaskedValues = Field[bool](
+        doc="Estimate masked values when determining brightness cutoff instead of using existing values",
+        default=False,
+    )
 
 
 class PrettyPictureStarFixerTask(PipelineTask):
@@ -1256,8 +1260,16 @@ class PrettyPictureStarFixerTask(PipelineTask):
         no_data_bit = maskDict["NO_DATA"]
         together = (jointMask & 2**sat_bit).astype(bool) | (jointMask & 2**no_data_bit).astype(bool)
 
+        if self.config.estimateMaskedValues:
+            struct = np.array(((0, 1, 0), (1, 1, 1), (0, 1, 0)), dtype=bool)
+            expanded = binary_dilation(together, struct, iterations=4).astype(bool)
+
+            exposure_array = inpaint_biharmonic(imageExposure.image.array, expanded, split_into_regions=True)
+        else:
+            exposure_array = imageExposure.image.array
+
         # use the last imageExposure as it is likely close enough across all bands
-        bright_mask = imageExposure.image.array > self.config.brightnessThresh
+        bright_mask = exposure_array > self.config.brightnessThresh
 
         # dilate the mask a bit, this helps get a bit fainter mask without starting
         # to include pixels in an irregular shape, as only the star cores should be
@@ -1270,7 +1282,10 @@ class PrettyPictureStarFixerTask(PipelineTask):
         results = {}
         for band, imageExposure in inputs.items():
             if np.sum(both) > 0:
-                inpainted = inpaint_biharmonic(imageExposure.image.array, both, split_into_regions=True)
+                # ensure no nans when inpainting
+                no_nans = np.copy(imageExposure.image.array)
+                no_nans[np.isnan(no_nans)] = 0.0
+                inpainted = inpaint_biharmonic(no_nans, both, split_into_regions=True)
                 imageExposure.image.array[both] = inpainted[both]
             results[band] = imageExposure
         return Struct(results=results)
