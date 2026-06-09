@@ -28,6 +28,7 @@ setupRequired(sphgeom)
 setupRequired(utils)
 setupRequired(verify)
 setupRequired(rubinoxide)
+setupRequired(cell_coadds)
 
 envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
 envPrepend(PATH, ${PRODUCT_DIR}/bin)
