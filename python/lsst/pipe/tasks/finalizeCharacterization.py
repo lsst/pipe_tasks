@@ -220,6 +220,13 @@ class FinalizeCharacterizationConfigBase(
         default=False,
         doc="Add second moments in sky (RA/Dec) and alt/az coordinates to the output table.",
     )
+    do_add_mock_sky_moments = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc=("Add mock second moments in sky coordinates. Mock pixel moments are drawn "
+             "from Gaussian(0, std) where std is the nanstd of the real pixel moments, "
+             "then transformed to sky coordinates. Requires do_add_sky_moments=True."),
+    )
     do_add_fgcm_photometry = pexConfig.Field(
         dtype=bool,
         default=False,
@@ -388,12 +395,6 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         if isinstance(self.psf_determiner, lsst.meas.extensions.piff.piffPsfDeterminer.PiffPsfDeterminerTask):
             self.isPsfDeterminerPiff = True
 
-        if self.config.compute_hsm_moment_stamp_size_psf:
-            print('SET IN finalize')
-            self.measurement.plugins["ext_shapeHSM_HsmSourceMoments"].usePsfStampSize = True
-        else:
-            print('NOT SET IN finalize')
-
     def _make_output_schema_mapper(self, input_schema):
         """Make the schema mapper from the input schema to the output schema.
 
@@ -557,6 +558,23 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
                 'psfShape_Ialtaz',
                 type=np.float32,
                 doc="Cross-term of PSF shape second moments in alt/az coordinates (arcsec^2).",
+            )
+
+        if self.config.do_add_mock_sky_moments:
+            output_schema.addField(
+                'shape_Iuu_mock',
+                type=np.float32,
+                doc="Mock second moment along RA axis in sky coordinates (arcsec^2).",
+            )
+            output_schema.addField(
+                'shape_Ivv_mock',
+                type=np.float32,
+                doc="Mock second moment along Dec axis in sky coordinates (arcsec^2).",
+            )
+            output_schema.addField(
+                'shape_Iuv_mock',
+                type=np.float32,
+                doc="Mock cross-term second moment in sky coordinates (arcsec^2).",
             )
 
         if self.config.do_add_fgcm_photometry:
@@ -1157,6 +1175,21 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             measured_src['shape_Iuu'] = shape_iuu
             measured_src['shape_Ivv'] = shape_ivv
             measured_src['shape_Iuv'] = shape_iuv
+
+            # Mock shape sky moments (for validation studies)
+            if self.config.do_add_mock_sky_moments:
+                std_xx = np.nanstd(shape_xx)
+                std_yy = np.nanstd(shape_yy)
+                rng = np.random.default_rng()
+                mock_xx = rng.normal(0.0, std_xx, len(shape_xx))
+                mock_yy = rng.normal(0.0, std_yy, len(shape_yy))
+                mock_xy = np.zeros_like(mock_xx)
+                mock_iuu, mock_ivv, mock_iuv = self._compute_sky_moments(
+                    wcs, x, y, mock_xx, mock_yy, mock_xy
+                )
+                measured_src['shape_Iuu_mock'] = mock_iuu
+                measured_src['shape_Ivv_mock'] = mock_ivv
+                measured_src['shape_Iuv_mock'] = mock_iuv
 
             # PSF shape sky moments
             psf_xx = np.array(measured_src['slot_PsfShape_xx'])
