@@ -88,13 +88,6 @@ class ExtendedPsfImage(GeneralizedImage):
     variance : `~lsst.images.Image`
         The per-pixel uncertainty of the main image as an image of variance
         values.
-    bbox : `~lsst.images.Box`
-        The bounding box shared by both image planes.
-    unit : `astropy.units.Unit` or `None`
-        The units of the image plane, or `None` if the image is dimensionless.
-    projection : `None`
-        The projection that maps the pixel grid to the sky. Always `None` for
-        `ExtendedPsfImage`.
     info : `ExtendedPsfImageInfo`
         Additional information about how the extended PSF image was
         constructed.
