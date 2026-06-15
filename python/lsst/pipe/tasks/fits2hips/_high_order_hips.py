@@ -198,7 +198,7 @@ class HighOrderFitsHipsTask(PipelineTask):
             self.log.info("Generating tiles for hxp level %d", hips_level)
             if zoom:
                 size = 4096 // zoom
-                binned_array = cv2.resize(output_array_hpx, (size, size), interpolation=cv2.INTER_LANCZOS4)
+                binned_array = cv2.resize(output_array_hpx, (size, size), interpolation=cv2.INTER_AREA)
             else:
                 binned_array = output_array_hpx
             # always create blocks of 512x512 as that is native shift order 9 size

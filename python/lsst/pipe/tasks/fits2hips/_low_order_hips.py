@@ -176,7 +176,7 @@ class LowOrderFitsHipsTask(PipelineTask):
                 size_counter += 1
 
                 # resample the image to a smaller grid and store it for the next order
-                zoomed = cv2.resize(hpx_next_array, (256, 256), interpolation=cv2.INTER_LANCZOS4)
+                zoomed = cv2.resize(hpx_next_array, (256, 256), interpolation=cv2.INTER_AREA)
 
                 hpx_next_container.append((zoomed, hpx_next_id))
             hpx_container = hpx_next_container
