@@ -25,7 +25,6 @@ __all__ = [
 ]
 
 from abc import ABC, abstractmethod
-from typing import Tuple, Set
 
 import astropy.table
 import numpy as np
@@ -170,12 +169,20 @@ class MatchTractCatalogSubConfig(pexConfig.Config):
     """
     @property
     @abstractmethod
-    def columns_in_ref(self) -> Set[str]:
+    def columns_in_ref(self) -> set[str]:
+        raise NotImplementedError()
+
+    @property
+    def columns_ordered_in_ref(self) -> dict[str, None]:
         raise NotImplementedError()
 
     @property
     @abstractmethod
-    def columns_in_target(self) -> Set[str]:
+    def columns_in_target(self) -> set[str]:
+        raise NotImplementedError()
+
+    @property
+    def columns_ordered_in_target(self) -> dict[str, None]:
         raise NotImplementedError()
 
 
@@ -261,8 +268,17 @@ class MatchTractCatalogConfig(
         default="tract",
     )
 
-    def get_columns_in(self) -> Tuple[Set, Set]:
+    def get_columns_in(self) -> tuple[set, set]:
         """Get the set of input columns required for matching.
+
+        This function exists for backward compatibility and simply returns
+        the results of get_columns_ordered_in cast to sets.
+        """
+        columns_ref, columns_target = self.get_columns_ordered_in()
+        return set(columns_ref.keys()), set(columns_target.keys())
+
+    def get_columns_ordered_in(self) -> tuple[dict[str, None], dict[str, None]]:
+        """Get the ordered set of input columns required for matching.
 
         Returns
         -------
@@ -272,15 +288,17 @@ class MatchTractCatalogConfig(
             The set of required target catalog column names.
         """
         try:
-            columns_ref, columns_target = (set(self.match_tract_catalog.columns_in_ref),
-                                           set(self.match_tract_catalog.columns_in_target))
+            columns_ref, columns_target = (
+                self.match_tract_catalog.columns_ordered_in_ref,
+                self.match_tract_catalog.columns_ordered_in_target,
+            )
         except AttributeError as err:
             raise RuntimeError(f'{__class__}.match_tract_catalog must have columns_in_ref and'
                                f' columns_in_target attributes: {err}') from None
         if self.output_matched_catalog:
             config_diff = self.diff_matched_catalog.value
-            columns_ref.update(config_diff.columns_in_ref)
-            columns_target.update(config_diff.columns_in_target)
+            columns_ref.update({k: None for k in config_diff.columns_in_ref})
+            columns_target.update({k: None for k in config_diff.columns_in_target})
         return columns_ref, columns_target
 
 
@@ -303,7 +321,7 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
-        columns_ref, columns_target = self.config.get_columns_in()
+        columns_ref, columns_target = (tuple(columns) for columns in self.config.get_columns_ordered_in())
         skymap = inputs.pop("skymap") if (self.config.refcat_sharding_type != 'none') or (
             self.config.target_sharding_type != 'none') else None
         is_refcat_per_tract = self.config.refcat_sharding_type == 'tract'
@@ -432,6 +450,9 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
                                     cat_output_target=output.cat_output_target)
 
         if self.config.output_matched_catalog:
+            # TODO: Consider making this a config parameter
+            # Making it optional is probably preferable than quietly
+            # checking a hardcoded column name
             name_tract_ref_in = "tract"
             diff_prefix_ref = self.config.diff_matched_catalog.value.column_matched_prefix_ref
             diff_prefix_target = self.config.diff_matched_catalog.value.column_matched_prefix_target
@@ -440,14 +461,14 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
             name_patch_ref = f"{diff_prefix_ref}patch"
             name_patch_target = f"{diff_prefix_target}patch"
             # Avoid collisions if, for example, both prefixes are ''
-            if name_tract_ref == name_tract_target:
-                prefix_new = {'ref' if diff_prefix_ref != 'ref' else 'refcat'}
-                name_new = f"{prefix_new}_tract"
+            if (name_tract_ref_in in catalog_ref.colnames) and (name_tract_ref == name_tract_target):
+                prefix_new = "ref_" if diff_prefix_ref != "ref_" else "refcat_"
+                name_new = f"{prefix_new}tract"
                 catalog_ref.rename_column(name_tract_ref, name_new)
                 name_tract_ref = name_new
                 name_tract_ref_in = name_new
                 if name_patch_ref in catalog_ref.colnames:
-                    name_new = f"{prefix_new}_patch"
+                    name_new = f"{prefix_new}patch"
                     catalog_ref.rename_column(name_patch_ref, name_new)
                     name_patch_ref = name_new
 
