@@ -29,8 +29,9 @@ import astropy.units
 
 import lsst.pipe.base.connectionTypes as cT
 from lsst.afw.image import PhotoCalib
+from lsst.afw.math import BackgroundList
 from lsst.images import DifferenceImage
-from lsst.images.fields import field_from_legacy_photo_calib
+from lsst.images.fields import field_from_legacy_background, field_from_legacy_photo_calib
 from lsst.pex.config import Field
 from lsst.pipe.base import (
     InputQuantizedConnection,
@@ -65,6 +66,12 @@ class RewriteDifferenceImageConnections(
         dimensions={"visit"},
         doc="A visit summary catalog with the PhotoCalib that was already applied to the image's pixels.",
     )
+    background = cT.Input(
+        "difference_image_background",
+        storageClass="Background",
+        dimensions={"visit", "detector"},
+        doc="The background model that was subtracted from this image.",
+    )
     future_difference_image = cT.Output(
         "{future_prefix}difference_image",
         storageClass="DifferenceImage",
@@ -73,6 +80,11 @@ class RewriteDifferenceImageConnections(
     )
 
     config: RewriteDifferenceImageConfig
+
+    def __init__(self, config: RewriteDifferenceImageConfig):
+        super().__init__(config=config)
+        if self.config.background_description is None:
+            del self.background
 
 
 class RewriteDifferenceImageConfig(
@@ -83,6 +95,13 @@ class RewriteDifferenceImageConfig(
         "Unit for instrumental flux pixels (i.e. uncalibrated side of a PhotoCalib).",
         dtype=str,
         default="electron",
+    )
+    background_description = Field(
+        "Description of the subtracted background, to be stored with the image. "
+        "If None, no background will be attached.",
+        dtype=str,
+        optional=True,
+        default=None,
     )
 
 
@@ -104,9 +123,24 @@ class RewriteDifferenceImageTask(PipelineTask):
         outputs = self.run(difference_image, photo_calib=photo_calib, **inputs)
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, difference_image: DifferenceImage, *, photo_calib: PhotoCalib) -> Struct:
+    def run(
+        self,
+        difference_image: DifferenceImage,
+        *,
+        photo_calib: PhotoCalib,
+        background: BackgroundList | None = None,
+    ) -> Struct:
         instrumental_unit = astropy.units.Unit(self.config.instrumental_unit)
         difference_image.photometric_scaling = field_from_legacy_photo_calib(
             photo_calib, bounds=difference_image.bbox, instrumental_unit=instrumental_unit
         )
+        if background is not None and self.config.background_description:
+            difference_image.backgrounds.add(
+                "subtracted",
+                field_from_legacy_background(
+                    background, bounds=difference_image.bbox, unit=difference_image.unit
+                ),
+                self.config.background_description,
+                is_subtracted=True,
+            )
         return Struct(future_difference_image=difference_image)
