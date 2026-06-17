@@ -29,8 +29,9 @@ import astropy.units
 
 import lsst.pipe.base.connectionTypes as cT
 from lsst.afw.image import PhotoCalib
-from lsst.afw.math import BackgroundList
+from lsst.afw.math import BackgroundList, Kernel
 from lsst.images import DifferenceImage
+from lsst.images.convolution_kernels import ImageBasisConvolutionKernel
 from lsst.images.fields import field_from_legacy_background, field_from_legacy_photo_calib
 from lsst.pex.config import Field
 from lsst.pipe.base import (
@@ -65,6 +66,12 @@ class RewriteDifferenceImageConnections(
         storageClass="ExposureCatalog",
         dimensions={"visit"},
         doc="A visit summary catalog with the PhotoCalib that was already applied to the image's pixels.",
+    )
+    difference_kernel = cT.Input(
+        "difference_kernel",
+        storageClass="MatchingKernel",
+        dimensions={"visit", "detector"},
+        doc="The kernel used to match the template to the science image.",
     )
     background = cT.Input(
         "difference_image_background",
@@ -129,6 +136,7 @@ class RewriteDifferenceImageTask(PipelineTask):
         *,
         photo_calib: PhotoCalib,
         background: BackgroundList | None = None,
+        difference_kernel: Kernel,
     ) -> Struct:
         instrumental_unit = astropy.units.Unit(self.config.instrumental_unit)
         difference_image.photometric_scaling = field_from_legacy_photo_calib(
@@ -143,4 +151,5 @@ class RewriteDifferenceImageTask(PipelineTask):
                 self.config.background_description,
                 is_subtracted=True,
             )
+        difference_image.kernel = ImageBasisConvolutionKernel.from_legacy(difference_kernel)
         return Struct(future_difference_image=difference_image)
