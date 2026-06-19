@@ -288,6 +288,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         config.psf_adaptive_threshold_detection.minFootprint = 4
         config.psf_adaptive_threshold_detection.minIsolated = 4
         config.psf_adaptive_threshold_detection.sufficientIsolated = 4
+        config.psf_detection.includeThresholdMultiplier = 2.0
         config.psf_detection.reEstimateBackground = False
         config.star_detection.reEstimateBackground = False
 
