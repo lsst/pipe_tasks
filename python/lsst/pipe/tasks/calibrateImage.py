@@ -1187,11 +1187,23 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             # want to run them if we get some other kind of error.
             self._summarize(result.exposure, summary_stat_catalog, result.background,
                             summary=result.exposure.info.getSummaryStats())
+            exp_summary = result.exposure.info.getSummaryStats()
+            momentsScore = (3.0 * (exp_summary.starComa1Median ** 2 + exp_summary.starComa2Median ** 2)
+                            + (exp_summary.starTrefoil1Median ** 2 + exp_summary.starTrefoil2Median ** 2))
+            self.log.info("shapeletsIqScore: %.5f; starEMedian: %.4f; starUnNormalizedEMedian: %.2f",
+                          exp_summary.shapeletsIqScore, exp_summary.starEMedian,
+                          exp_summary.starUnNormalizedEMedian)
             raise
         else:
             self._summarize(result.exposure, summary_stat_catalog, result.background,
                             summary=result.exposure.info.getSummaryStats())
 
+        exp_summary = result.exposure.info.getSummaryStats()
+        momentsScore = (3.0 * (exp_summary.starComa1Median ** 2 + exp_summary.starComa2Median ** 2)
+                        + (exp_summary.starTrefoil1Median ** 2 + exp_summary.starTrefoil2Median ** 2))
+        self.log.info("shapeletsIqScore: %.5f; momentsScore: %.5f; starEMedian: %.4f; "
+                      "starUnNormalizedEMedian: %.2f", exp_summary.shapeletsIqScore, momentsScore,
+                      exp_summary.starEMedian, exp_summary.starUnNormalizedEMedian)
         # Output post-subtraction background stats to task metadata:
         # Specify the pixels flags to ignore, starting with those ignored
         # by the subtraction.
@@ -1369,7 +1381,21 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             backgroundToPhotometricRatio=result.background_to_photometric_ratio,
         ).background
         log_psf("Initial PSF:")
-        self.psf_repair.run(exposure=result.exposure, keepCRs=True)
+        if not self.config.do_adaptive_threshold_detection:
+            self.psf_repair.run(exposure=result.exposure, keepCRs=True)
+        else:
+            adaptivePsfRepairConfig = repair.RepairConfig()
+            adaptiveRepairMinDn = self.config.psf_repair.cosmicray.min_DN
+            adaptiveRepairMinDnMultiplier = 1.0
+            if ref_cat_source_density > 5000.0:
+                adaptiveRepairMinDnMultiplier = 7.0e-6*ref_cat_source_density + 1.05
+                adaptiveRepairMinDn *= adaptiveRepairMinDnMultiplier
+                adaptivePsfRepairConfig.cosmicray.min_DN = adaptiveRepairMinDn
+            self.log.warning("ref_cat_source_density: %.1f; adaptiveRepairMinDn: %.2f; "
+                             "adaptiveRepairMinDnMultiplier: %.2f",
+                             ref_cat_source_density, adaptiveRepairMinDn, adaptiveRepairMinDnMultiplier)
+            adaptivePsfRepairTask = repair.RepairTask(config=adaptivePsfRepairConfig)
+            adaptivePsfRepairTask.run(exposure=result.exposure, keepCRs=True)
 
         table = afwTable.SourceTable.make(self.psf_schema, id_generator.make_table_id_factory())
         if not self.config.do_adaptive_threshold_detection:
@@ -1389,6 +1415,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 table, result.exposure,
                 initialThreshold=initialThreshold,
                 initialThresholdMultiplier=initialThresholdMultiplier,
+                refCatSourceDensity=ref_cat_source_density,
             )
             detections = adaptive_det_res_struct.detections
 
@@ -1468,7 +1495,10 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         log_psf("Final PSF:", addToMetadata=True)
 
         # Final repair with final PSF, removing cosmic rays this time.
-        self.psf_repair.run(exposure=result.exposure)
+        if not self.config.do_adaptive_threshold_detection:
+            self.psf_repair.run(exposure=result.exposure)
+        else:
+            adaptivePsfRepairTask.run(exposure=result.exposure)
         # Final measurement with the CRs removed.
         self.psf_source_measurement.run(detections.sources, result.exposure)
 
