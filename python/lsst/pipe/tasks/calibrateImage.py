@@ -898,14 +898,24 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 exposure_region=exposure_region,
             )
         except pipeBase.AlgorithmError as e:
-            error = pipeBase.AnnotatedPartialOutputsError.annotate(
-                e,
-                self,
-                result.exposure,
-                result.psf_stars_footprints,
-                result.stars_footprints,
-                log=self.log
-            )
+            if result.exposure.info.getSummaryStats() is not None:
+                shapelets_iq_score = result.exposure.info.getSummaryStats().shapeletsIqScore
+            else:
+                shapelets_iq_score = -9.9
+            if shapelets_iq_score < 0.01:
+                error = pipeBase.AnnotatedPartialOutputsError.annotate(
+                    e,
+                    self,
+                    result.exposure,
+                    result.psf_stars_footprints,
+                    result.stars_footprints,
+                    log=self.log
+                )
+            else:
+                self.log.warning("Error caught was: %s, but shapelets_iq_score is %.5f (>= 0.01), "
+                                 "so considering this detector as unprocessable.", e, shapelets_iq_score)
+                raise pipeBase.UnprocessableDataError("Image IQ is bad enough to qualify this detector "
+                                                      "as unfit for further consideration")
             butlerQC.put(result, outputRefs)
             raise error from e
 
