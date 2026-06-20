@@ -295,6 +295,14 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         default=True,
         doc="Compute a rough shapelet expansion of the PSF stars?",
     )
+    max_shapelets_iq_score = pexConfig.Field(
+        dtype=float,
+        default=0.01,
+        doc="The maximum value of the shapelets IQ score for an exposure to be considered "
+            "worth continuing processing. Exposures with shapelets IQ scores larger than this "
+            "value are considered to have too low IQ for further consideraiton and raise an "
+            "UnprocessableDataError.",
+    )
     psf_repair = pexConfig.ConfigurableField(
         target=repair.RepairTask,
         doc="Task to repair cosmic rays on the exposure before PSF determination.",
@@ -898,14 +906,24 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 exposure_region=exposure_region,
             )
         except pipeBase.AlgorithmError as e:
-            error = pipeBase.AnnotatedPartialOutputsError.annotate(
-                e,
-                self,
-                result.exposure,
-                result.psf_stars_footprints,
-                result.stars_footprints,
-                log=self.log
-            )
+            if result.exposure.info.getSummaryStats() is not None:
+                shapelets_iq_score = result.exposure.info.getSummaryStats().shapeletsIqScore
+            else:
+                shapelets_iq_score = -9.9
+            if shapelets_iq_score <= self.config.max_shapelets_iq_score:
+                error = pipeBase.AnnotatedPartialOutputsError.annotate(
+                    e,
+                    self,
+                    result.exposure,
+                    result.psf_stars_footprints,
+                    result.stars_footprints,
+                    log=self.log
+                )
+            else:
+                self.log.warning("Error caught was: %s, but shapelets_iq_score is %.5f (> 0.01), "
+                                 "so considering this detector as unprocessable.", e, shapelets_iq_score)
+                raise pipeBase.UnprocessableDataError("Image IQ is bad enough to qualify this detector "
+                                                      "as unfit for further consideration")
             butlerQC.put(result, outputRefs)
             raise error from e
 
