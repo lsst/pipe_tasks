@@ -366,8 +366,8 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     )
     star_background_peak_fraction = pexConfig.Field(
         dtype=float,
-        default=0.01,
-        doc="The minimum number of footprints in the detection mask for star_background measurement. "
+        default=0.002,
+        doc="The minimum number of footprints in the detection mask for star_background measurement "
             "gets set to the maximum of this fraction of the detected peaks and the value set in "
             "config.star_background_min_footprints. If the number of footprints is less than the "
             "current minimum set, the detection threshold is iteratively increased until the "
@@ -2078,8 +2078,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                     if n_no_zero_det_amps > 2:
                         no_zero_det_amps = False
                         break
-                highest_detected_fraction_per_amp = max(detected_fraction_amp,
-                                                        highest_detected_fraction_per_amp)
+                highest_detected_fraction_per_amp = np.nanmax([detected_fraction_amp,
+                                                               highest_detected_fraction_per_amp])
                 if highest_detected_fraction_per_amp > min(0.998, max(0.8, 3.0*detected_fraction)):
                     n_above_max_per_amp += 1
                     if n_above_max_per_amp > 2:
@@ -2202,6 +2202,12 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 minFootprints = max(self.config.star_background_min_footprints,
                                     int(self.config.star_background_peak_fraction*tempDetections.numPosPeaks))
                 minFootprints = min(200, minFootprints)
+                # The following is to accommodate a relatively hopeless fully
+                # saturated field (e.g center of 47Tuc).
+                if starBackgroundDetectionConfig.thresholdValue > 1500:
+                    minFootprints = 2
+                if starBackgroundDetectionConfig.thresholdValue > 2000:
+                    minFootprints = 1
                 nZeroEncountered += 1
                 if nFootprintTemp >= minFootprints:
                     detected_fraction = self._compute_mask_fraction(result.exposure.mask,
@@ -2223,15 +2229,20 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                         nFootprintTemp = 0
                     continue
             if detected_fraction > maxDetFracForFinalBg or nFootprintTemp <= minFootprints:
-                starBackgroundDetectionConfig.thresholdValue = 1.07*currentThresh
-                if nFootprintTemp < minFootprints and detected_fraction > 0.9*maxDetFracForFinalBg:
-                    if nFootprintTemp == 1:
-                        starBackgroundDetectionConfig.thresholdValue = 1.4*currentThresh
-                    else:
-                        starBackgroundDetectionConfig.thresholdValue = 1.2*currentThresh
+                newThreshTemp = 1.1*currentThresh
+                if detected_fraction > maxDetFracForFinalBg:
+                    newThreshTemp *= 1.15
+                if detected_fraction > 0.98:
+                    newThreshTemp *= 1.1
+                if nFootprintTemp <= minFootprints:
+                    newThreshTemp *= 1.15
+                if nFootprintTemp <= 1:
+                    newThreshTemp *= 1.1
+                starBackgroundDetectionConfig.thresholdValue = newThreshTemp
+            else:
+                if n_above_max_per_amp > 1:
+                    starBackgroundDetectionConfig.thresholdValue = 1.1*currentThresh
 
-            if n_above_max_per_amp > 1:
-                starBackgroundDetectionConfig.thresholdValue = 1.1*currentThresh
             if detected_fraction < minDetFracForFinalBg:
                 starBackgroundDetectionConfig.thresholdValue = 0.8*currentThresh
             starBackgroundDetectionTask = lsst.meas.algorithms.SourceDetectionTask(
