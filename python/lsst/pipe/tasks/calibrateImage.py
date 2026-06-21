@@ -2215,15 +2215,26 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                         nFootprintTemp = 0
                     continue
             if detected_fraction > maxDetFracForFinalBg or nFootprintTemp <= minFootprints:
-                starBackgroundDetectionConfig.thresholdValue = 1.07*currentThresh
+                newThreshTemp = 1.07*currentThresh
+                # starBackgroundDetectionConfig.thresholdValue
+                # = 1.07*currentThresh
+                if nFootprintTemp == 1:
+                    # starBackgroundDetectionConfig.thresholdValue
+                    # = 1.6*currentThresh
+                    newThreshTemp *= 1.6
                 if nFootprintTemp < minFootprints and detected_fraction > 0.9*maxDetFracForFinalBg:
-                    if nFootprintTemp == 1:
-                        starBackgroundDetectionConfig.thresholdValue = 1.4*currentThresh
-                    else:
-                        starBackgroundDetectionConfig.thresholdValue = 1.2*currentThresh
+                    # if nFootprintTemp == 1:
+                    #     starBackgroundDetectionConfig.thresholdValue
+                    #     = 1.6*currentThresh
+                    # else:
+                    # starBackgroundDetectionConfig.thresholdValue
+                    #  = 1.2*currentThresh
+                    newThreshTemp *= 1.2
+                starBackgroundDetectionConfig.thresholdValue = newThreshTemp
+            else:
+                if n_above_max_per_amp > 1:
+                    starBackgroundDetectionConfig.thresholdValue = 1.1*currentThresh
 
-            if n_above_max_per_amp > 1:
-                starBackgroundDetectionConfig.thresholdValue = 1.1*currentThresh
             if detected_fraction < minDetFracForFinalBg:
                 starBackgroundDetectionConfig.thresholdValue = 0.8*currentThresh
             starBackgroundDetectionTask = lsst.meas.algorithms.SourceDetectionTask(
