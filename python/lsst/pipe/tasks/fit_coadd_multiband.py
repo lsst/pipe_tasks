@@ -100,6 +100,7 @@ class CoaddMultibandFitInputConnections(
         storageClass="ArrowAstropy",
         dimensions=("tract", "patch", "band", "skymap"),
         multiple=True,
+        deferLoad=True,
     )
     models_scarlet = pipeBase.connectionTypes.Input(
         doc="Multiband scarlet models produced by the deblender",
@@ -374,7 +375,20 @@ class CoaddMultibandFitBase:
                 exps[data_id] = exposure
         else:
             exps = inputs_sorted["coadds"]
-        models_psf = inputs_sorted["models_psf"] if has_psf_models else None
+
+        # Ensure that psf models are loaded with full metadata.
+        if has_psf_models:
+            ref0 = list(inputs_sorted["models_psf"].values())[0]
+            parameters = None
+            if ref0.ref.datasetType.storageClass_name == "ArrowAstropy":
+                parameters = {"strip_astropy_meta_yaml": False}
+            models_psf = {
+                key: ref.get(parameters=parameters)
+                for key, ref in inputs_sorted["models_psf"].items()
+            }
+        else:
+            models_psf = None
+
         dataIds = set(cats).union(set(exps))
         models_scarlet = inputs["models_scarlet"]
         catexp_dict = {}
