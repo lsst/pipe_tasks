@@ -268,7 +268,7 @@ flags:
 flag_rename_rules:
     # Taken from db-meas-forced
     - ['ext_photometryKron_', '']
-      #- ['base_Local', 'local']
+    - ['base_Local', 'local']
     - ['base_PixelFlags_flag', 'pixelFlags']
     - ['base_ClassificationE', 'e']
     - ['base_ClassificationS', 's']
