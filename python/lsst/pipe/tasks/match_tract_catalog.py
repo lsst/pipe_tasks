@@ -292,9 +292,15 @@ class MatchTractCatalogConfig(
                 self.match_tract_catalog.columns_ordered_in_ref,
                 self.match_tract_catalog.columns_ordered_in_target,
             )
-        except AttributeError as err:
-            raise RuntimeError(f'{__class__}.match_tract_catalog must have columns_in_ref and'
-                               f' columns_in_target attributes: {err}') from None
+        except AttributeError:
+            try:
+                columns_ref, columns_target = (
+                    self.match_tract_catalog.columns_in_ref,
+                    self.match_tract_catalog.columns_in_target,
+                )
+            except AttributeError as err:
+                raise RuntimeError(f'{__class__}.match_tract_catalog must have columns_in_ref and'
+                                   f' columns_in_target attributes: {err}') from None
         if self.output_matched_catalog:
             config_diff = self.diff_matched_catalog.value
             columns_ref.update({k: None for k in config_diff.columns_in_ref})
@@ -450,12 +456,14 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
                                     cat_output_target=output.cat_output_target)
 
         if self.config.output_matched_catalog:
+            task_diff = self.diff_matched_catalog
+            task_diff_config = task_diff.config
             # TODO: Consider making this a config parameter
             # Making it optional is probably preferable than quietly
             # checking a hardcoded column name
             name_tract_ref_in = "tract"
-            diff_prefix_ref = self.config.diff_matched_catalog.value.column_matched_prefix_ref
-            diff_prefix_target = self.config.diff_matched_catalog.value.column_matched_prefix_target
+            diff_prefix_ref = task_diff_config.column_matched_prefix_ref
+            diff_prefix_target = task_diff_config.column_matched_prefix_target
             name_tract_ref = f"{diff_prefix_ref}tract"
             name_tract_target = f"{diff_prefix_target}tract"
             name_patch_ref = f"{diff_prefix_ref}patch"
@@ -472,11 +480,12 @@ class MatchTractCatalogTask(pipeBase.PipelineTask):
                     catalog_ref.rename_column(name_patch_ref, name_new)
                     name_patch_ref = name_new
 
-            outputs_new = self.diff_matched_catalog.run(
+            outputs_new = task_diff.run(
                 catalog_ref=catalog_ref,
                 catalog_target=catalog_target,
                 catalog_match_ref=retStruct.cat_output_ref,
                 catalog_match_target=retStruct.cat_output_target,
+                wcs=wcs,
             )
             retStruct = pipeBase.Struct(
                 **retStruct.getDict(),

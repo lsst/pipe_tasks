@@ -32,21 +32,15 @@ from .match_tract_catalog import MatchTractCatalogSubConfig, MatchTractCatalogSu
 
 import astropy.table
 import pandas as pd
-from typing import Set
 
 
 class MatchTractCatalogProbabilisticConfig(MatchProbabilisticConfig, MatchTractCatalogSubConfig):
-    """Config class for the MatchTractCatalogSubTask to define methods returning
-    values that depend on multiple config settings.
+    """Config class for the MatchTractCatalogProbabilisticTask.
+
+    MatchProbabilisticConfig implements the interface of
+    MatchTractCatalogSubConfig but is defined in the lower-level meas_astrom
+    package, so it can't be imported there.
     """
-
-    @property
-    def columns_in_ref(self) -> Set[str]:
-        return super().columns_in_ref
-
-    @property
-    def columns_in_target(self) -> Set[str]:
-        return super().columns_in_target
 
 
 class MatchTractCatalogProbabilisticTask(MatchProbabilisticTask, MatchTractCatalogSubTask):

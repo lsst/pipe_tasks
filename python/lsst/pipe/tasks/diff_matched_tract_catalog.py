@@ -171,9 +171,19 @@ class DiffMatchedTractCatalogBaseConfig(pexConfig.Config):
             ' that were used for matching',
         optional=True,
     )
+    column_match_prefix = pexConfig.Field[str](
+        default='',
+        doc='The prefix for match columns like match_distance',
+    )
     column_matched_prefix_ref = pexConfig.Field[str](
         default='refcat_',
         doc='The prefix for matched columns copied from the reference catalog',
+    )
+    column_matched_prefix_ref_added = pexConfig.Field[str](
+        default='',
+        doc='The prefix for matched columns added to the reference catalog.'
+            'Should only be specified if column_matched_prefix_ref is empty '
+            'and a prefix is needed for the match_candidate column.',
     )
     column_matched_prefix_target = pexConfig.Field[str](
         default='',
@@ -396,13 +406,19 @@ class DiffMatchedTractCatalogTaskBase(pipeBase.Task):
         cat_target = target.catalog
         n_target = len(cat_target)
 
+        prefix_ref = config.column_matched_prefix_ref or ""
+        prefix_target = config.column_matched_prefix_target or ""
+
         if not config.filter_on_match_candidate:
-            for cat_add, cat_match, column in (
-                (cat_ref, catalog_match_ref, config.column_match_candidate_ref),
-                (cat_target, catalog_match_target, config.column_match_candidate_target),
+            for cat_add, cat_match, column, prefix in (
+                (
+                    cat_ref, catalog_match_ref, config.column_match_candidate_ref,
+                    config.column_matched_prefix_ref_added if not prefix_ref else "",
+                ),
+                (cat_target, catalog_match_target, config.column_match_candidate_target, ""),
             ):
                 if column is not None:
-                    cat_add[column] = cat_match[column]
+                    cat_add[f'{prefix}{column}'] = cat_match[column]
 
         match_row = catalog_match_ref['match_row']
         matched_ref = match_row >= 0
@@ -412,7 +428,8 @@ class DiffMatchedTractCatalogTaskBase(pipeBase.Task):
 
         # Add/compute distance columns
         coord1_target_err, coord2_target_err = config.columns_target_coord_err
-        column_dist, column_dist_err = 'match_distance', 'match_distanceErr'
+        column_dist = f'{config.column_match_prefix}match_distance'
+        column_dist_err = f'{config.column_match_prefix}match_distanceErr'
         dist = np.full(n_target, np.nan)
 
         target_match_c1, target_match_c2 = (
@@ -441,16 +458,18 @@ class DiffMatchedTractCatalogTaskBase(pipeBase.Task):
         # Create a matched table, preserving the target catalog's named index (if it has one)
         cat_left = cat_target[matched_row]
         cat_right = cat_ref[matched_ref]
-        if config.column_matched_prefix_target:
-            cat_left.rename_columns(
-                list(cat_left.columns),
-                new_names=[f'{config.column_matched_prefix_target}{col}' for col in cat_left.columns],
-            )
-        if config.column_matched_prefix_ref:
-            cat_right.rename_columns(
-                list(cat_right.columns),
-                new_names=[f'{config.column_matched_prefix_ref}{col}' for col in cat_right.columns],
-            )
+        if prefix_target:
+            prefixes = {
+                column_dist: "",
+                column_dist_err: "",
+            }
+            names_target_new = [f'{prefixes.get(col, prefix_target)}{col}' for col in cat_left.columns]
+            cat_left.rename_columns(cat_left.colnames, new_names=names_target_new)
+
+        if prefix_ref:
+            names_ref_new = [f'{prefix_ref}{col}' for col in cat_right.colnames]
+            cat_right.rename_columns(cat_right.colnames, new_names=names_ref_new)
+
         cat_matched = astropy.table.hstack((cat_left, cat_right))
 
         if config.include_unmatched:
@@ -460,16 +479,12 @@ class DiffMatchedTractCatalogTaskBase(pipeBase.Task):
             cat_right = astropy.table.Table(
                 cat_ref[~matched_ref & select_ref]
             )
-            cat_right.rename_columns(
-                cat_right.colnames,
-                [f"{config.column_matched_prefix_ref}{col}" for col in cat_right.colnames],
-            )
+            if prefix_ref:
+                cat_right.rename_columns(cat_right.colnames, names_ref_new)
             match_row_target = catalog_match_target['match_row']
             cat_left = cat_target[~(match_row_target >= 0) & select_target]
-            cat_left.rename_columns(
-                cat_left.colnames,
-                [f"{config.column_matched_prefix_target}{col}" for col in cat_left.colnames],
-            )
+            if prefix_target:
+                cat_left.rename_columns(cat_left.colnames, names_target_new)
             # This may be slower than pandas but will, for example, create
             # masked columns for booleans, which pandas does not support.
             # See https://github.com/pandas-dev/pandas/issues/46662
