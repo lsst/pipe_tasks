@@ -23,14 +23,21 @@ from __future__ import annotations
 
 __all__ = ("RewriteDifferenceImageConnections", "RewriteDifferenceImageTask", "RewriteDifferenceImageConfig")
 
+import uuid
+from collections.abc import Mapping
 from typing import ClassVar
 
 import astropy.units
 
 import lsst.pipe.base.connectionTypes as cT
 from lsst.afw.image import PhotoCalib
-from lsst.images import DifferenceImage
-from lsst.images.fields import field_from_legacy_photo_calib
+from lsst.afw.math import BackgroundList, Kernel
+from lsst.daf.base import PropertyList
+from lsst.daf.butler import DataCoordinate
+from lsst.images import DifferenceImage, DifferenceImageTemplateInfo
+from lsst.images.convolution_kernels import ImageBasisConvolutionKernel
+from lsst.images.fields import field_from_legacy_background, field_from_legacy_photo_calib
+from lsst.meas.algorithms import CoaddPsf
 from lsst.pex.config import Field
 from lsst.pipe.base import (
     InputQuantizedConnection,
@@ -59,11 +66,47 @@ class RewriteDifferenceImageConnections(
         deferLoad=True,  # So we can pass preserve_quantization=True as a parameter.
         doc="The input image to convert.",
     )
+    template_psf = cT.Input(
+        "template_detector.psf",
+        storageClass="Psf",
+        dimensions={"visit", "detector"},
+        doc="The PSF of the detector-level template, which holds some provenance information.",
+    )
+    template_metadata = cT.Input(
+        "template_detector.metadata",
+        storageClass="PropertyList",
+        dimensions={"visit", "detector"},
+        doc="The metadata of the detector-level template, which holds some provenance information.",
+    )
+    template_coadds = cT.Input(
+        "template_coadd",
+        storageClass="ExposureF",
+        dimensions={"tract", "patch", "band"},
+        deferLoad=True,
+        multiple=True,
+        doc=(
+            "The template coadds that may have gone into the detector-level template. "
+            "This is a dummy input that is not actually loaded; it is needed only to connect "
+            "data IDs to butler dataset IDs."
+        ),
+    )
     visit_summary = cT.Input(
         "visit_summary",
         storageClass="ExposureCatalog",
         dimensions={"visit"},
         doc="A visit summary catalog with the PhotoCalib that was already applied to the image's pixels.",
+    )
+    difference_kernel = cT.Input(
+        "difference_kernel",
+        storageClass="MatchingKernel",
+        dimensions={"visit", "detector"},
+        doc="The kernel used to match the template to the science image.",
+    )
+    background = cT.Input(
+        "difference_image_background",
+        storageClass="Background",
+        dimensions={"visit", "detector"},
+        doc="The background model that was subtracted from this image.",
     )
     future_difference_image = cT.Output(
         "{future_prefix}difference_image",
@@ -74,6 +117,11 @@ class RewriteDifferenceImageConnections(
 
     config: RewriteDifferenceImageConfig
 
+    def __init__(self, config: RewriteDifferenceImageConfig):
+        super().__init__(config=config)
+        if self.config.background_description is None:
+            del self.background
+
 
 class RewriteDifferenceImageConfig(
     PipelineTaskConfig,
@@ -83,6 +131,13 @@ class RewriteDifferenceImageConfig(
         "Unit for instrumental flux pixels (i.e. uncalibrated side of a PhotoCalib).",
         dtype=str,
         default="electron",
+    )
+    background_description = Field(
+        "Description of the subtracted background, to be stored with the image. "
+        "If None, no background will be attached.",
+        dtype=str,
+        optional=True,
+        default=None,
     )
 
 
@@ -100,13 +155,42 @@ class RewriteDifferenceImageTask(PipelineTask):
         inputs = butlerQC.get(inputRefs)
         difference_image = inputs.pop("legacy_exposure").get(parameters={"preserve_quantization": True})
         visit_summary = inputs.pop("visit_summary")
+        coadd_data_ids_by_uuid = {h.ref.id: h.ref.dataId for h in inputs.pop("template_coadds")}
         photo_calib: PhotoCalib = visit_summary.find(butlerQC.quantum.dataId["detector"]).getPhotoCalib()
-        outputs = self.run(difference_image, photo_calib=photo_calib, **inputs)
+        outputs = self.run(
+            difference_image, photo_calib=photo_calib, **inputs, coadd_data_ids_by_uuid=coadd_data_ids_by_uuid
+        )
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, difference_image: DifferenceImage, *, photo_calib: PhotoCalib) -> Struct:
+    def run(
+        self,
+        difference_image: DifferenceImage,
+        *,
+        photo_calib: PhotoCalib,
+        background: BackgroundList | None = None,
+        difference_kernel: Kernel,
+        template_psf: CoaddPsf,
+        template_metadata: PropertyList,
+        coadd_data_ids_by_uuid: Mapping[uuid.UUID, DataCoordinate],
+    ) -> Struct:
         instrumental_unit = astropy.units.Unit(self.config.instrumental_unit)
         difference_image.photometric_scaling = field_from_legacy_photo_calib(
             photo_calib, bounds=difference_image.bbox, instrumental_unit=instrumental_unit
+        )
+        if background is not None and self.config.background_description:
+            difference_image.backgrounds.add(
+                "subtracted",
+                field_from_legacy_background(
+                    background, bounds=difference_image.bbox, unit=difference_image.unit
+                ),
+                self.config.background_description,
+                is_subtracted=True,
+            )
+        difference_image.kernel = ImageBasisConvolutionKernel.from_legacy(difference_kernel)
+        difference_image.templates = DifferenceImageTemplateInfo.from_legacy(
+            difference_image.sky_projection.pixel_frame,
+            template_psf,
+            template_metadata,
+            coadd_data_ids_by_uuid,
         )
         return Struct(future_difference_image=difference_image)
