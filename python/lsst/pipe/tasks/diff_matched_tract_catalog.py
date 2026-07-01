@@ -158,10 +158,7 @@ class MatchedCatalogFluxesConfig(pexConfig.Config):
         return columns
 
 
-class DiffMatchedTractCatalogConfig(
-    pipeBase.PipelineTaskConfig,
-    pipelineConnections=DiffMatchedTractCatalogConnections,
-):
+class DiffMatchedTractCatalogBaseConfig(pexConfig.Config):
     column_match_candidate_ref = pexConfig.Field[str](
         default='match_candidate',
         doc='The column name for the boolean field identifying reference objects'
@@ -249,6 +246,7 @@ class DiffMatchedTractCatalogConfig(
     )
     columns_target_coord_err = pexConfig.ListField[str](
         doc='Target table coordinate columns with standard errors (sigma)',
+        default=["coord_raErr", "coord_decErr"],
         listCheck=lambda x: (len(x) == 2) and (x[0] != x[1]),
     )
     columns_target_copy = pexConfig.ListField[str](
@@ -262,12 +260,12 @@ class DiffMatchedTractCatalogConfig(
     )
     columns_target_select_true = pexConfig.ListField[str](
         doc='Target table columns to require to be True for selecting sources',
-        default=('detect_isPrimary',),
+        default=[],
         listCheck=is_sequence_set,
     )
     columns_target_select_false = pexConfig.ListField[str](
         doc='Target table columns to require to be False for selecting sources',
-        default=('merge_peak_sky',),
+        default=[],
         listCheck=is_sequence_set,
     )
     coord_format = pexConfig.ConfigField[ConvertCatalogCoordinatesConfig](
@@ -309,34 +307,27 @@ class DiffMatchedTractCatalogConfig(
             raise ValueError("\n".join(errors))
 
 
-class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
+class DiffMatchedTractCatalogConfig(
+    DiffMatchedTractCatalogBaseConfig,
+    pipeBase.PipelineTaskConfig,
+    pipelineConnections=DiffMatchedTractCatalogConnections,
+):
+    refcat_sharding_type = pexConfig.ChoiceField[str](
+        doc="The type of sharding (spatial splitting) for the reference catalog",
+        allowed={"tract": "Tract-based shards", "none": "No sharding at all"},
+        default="tract",
+    )
+    target_sharding_type = pexConfig.ChoiceField[str](
+        doc="The type of sharding (spatial splitting) for the target catalog",
+        allowed={"tract": "Tract-based shards", "none": "No sharding at all"},
+        default="tract",
+    )
+
+
+class DiffMatchedTractCatalogTaskBase(pipeBase.Task):
     """Load subsets of matched catalogs and output a merged catalog of matched sources.
     """
-    ConfigClass = DiffMatchedTractCatalogConfig
-    _DefaultName = "DiffMatchedTractCatalog"
-
-    def runQuantum(self, butlerQC, inputRefs, outputRefs):
-        inputs = butlerQC.get(inputRefs)
-        skymap = inputs.pop("skymap")
-
-        columns_match_ref = ['match_row']
-        if (column := self.config.column_match_candidate_ref) is not None:
-            columns_match_ref.append(column)
-
-        columns_match_target = ['match_row']
-        if (column := self.config.column_match_candidate_target) is not None and (
-            column in inputs['columns_match_target']
-        ):
-            columns_match_target.append(column)
-
-        outputs = self.run(
-            catalog_ref=inputs['cat_ref'].get(parameters={'columns': self.config.columns_in_ref}),
-            catalog_target=inputs['cat_target'].get(parameters={'columns': self.config.columns_in_target}),
-            catalog_match_ref=inputs['cat_match_ref'].get(parameters={'columns': columns_match_ref}),
-            catalog_match_target=inputs['cat_match_target'].get(parameters={'columns': columns_match_target}),
-            wcs=skymap[butlerQC.quantum.dataId["tract"]].wcs,
-        )
-        butlerQC.put(outputs, outputRefs)
+    ConfigClass = DiffMatchedTractCatalogBaseConfig
 
     def run(
         self,
@@ -424,8 +415,10 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
         column_dist, column_dist_err = 'match_distance', 'match_distanceErr'
         dist = np.full(n_target, np.nan)
 
-        target_match_c1, target_match_c2 = (coord[matched_row] for coord in (target.coord1, target.coord2))
-        target_ref_c1, target_ref_c2 = (coord[matched_ref] for coord in (ref.coord1, ref.coord2))
+        target_match_c1, target_match_c2 = (
+            np.array(coord[matched_row]) for coord in (target.coord1, target.coord2)
+        )
+        target_ref_c1, target_ref_c2 = (np.array(coord[matched_ref]) for coord in (ref.coord1, ref.coord2))
 
         dist_err = np.full(n_target, np.nan)
         dist[matched_row] = sphdist(
@@ -526,9 +519,38 @@ class DiffMatchedTractCatalogTask(pipeBase.PipelineTask):
                     cat_matched[column_coord_best] = values
                     cat_matched[column_coord_best].unit = unit
                     cat_matched[column_coord_best].description = (
-                        f"Best {columns_coord_best} value from {column_full_ref} if available"
+                        f"Best {column_coord_best} value from {column_full_ref} if available"
                         f" else {column_full_target}"
                     )
 
         retStruct = pipeBase.Struct(cat_matched=cat_matched)
         return retStruct
+
+
+class DiffMatchedTractCatalogTask(DiffMatchedTractCatalogTaskBase, pipeBase.PipelineTask):
+    """PipelineTask version of DiffMatchedTractCatalogTaskBase."""
+    ConfigClass = DiffMatchedTractCatalogConfig
+    _DefaultName = "DiffMatchedTractCatalog"
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        inputs = butlerQC.get(inputRefs)
+        skymap = inputs.pop("skymap")
+
+        columns_match_ref = ['match_row']
+        if (column := self.config.column_match_candidate_ref) is not None:
+            columns_match_ref.append(column)
+
+        columns_match_target = ['match_row']
+        if (column := self.config.column_match_candidate_target) is not None and (
+            column in inputs['columns_match_target']
+        ):
+            columns_match_target.append(column)
+
+        outputs = self.run(
+            catalog_ref=inputs['cat_ref'].get(parameters={'columns': self.config.columns_in_ref}),
+            catalog_target=inputs['cat_target'].get(parameters={'columns': self.config.columns_in_target}),
+            catalog_match_ref=inputs['cat_match_ref'].get(parameters={'columns': columns_match_ref}),
+            catalog_match_target=inputs['cat_match_target'].get(parameters={'columns': columns_match_target}),
+            wcs=skymap[butlerQC.quantum.dataId["tract"]].wcs,
+        )
+        butlerQC.put(outputs, outputRefs)
