@@ -146,9 +146,7 @@ class ExtendedPsfCandidate(MaskedImage):
         self._star_info = star_info or ExtendedPsfCandidateInfo()
 
     def __getitem__(self, bbox: Box | EllipsisType) -> ExtendedPsfCandidate:
-        if bbox is ...:
-            return self
-        super().__getitem__(bbox)
+        bbox, _ = self._handle_getitem_args(bbox)
         return self._transfer_metadata(
             ExtendedPsfCandidate(
                 # Projection propagates from the image.

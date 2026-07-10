@@ -123,7 +123,7 @@ class ExtendedPsfCandidatesTestCase(lsst.utils.tests.TestCase):
         """Test that ExtendedPsfCandidates can be serialized/deserialized."""
 
         with lsst.images.tests.RoundtripFits(
-            self, self.extended_psf_candidates, storage_class="ExtendedPsfCandidates"
+            self.extended_psf_candidates, storage_class="ExtendedPsfCandidates"
         ) as roundtrip:
             pass
         extended_psf_candidates = roundtrip.result
@@ -258,7 +258,6 @@ class ExtendedPsfImageTestCase(lsst.utils.tests.TestCase):
     def test_fits_roundtrip(self):
         """Test that ExtendedPsfImage can be serialized/deserialized."""
         with lsst.images.tests.RoundtripFits(
-            self,
             self.extended_psf_image,
             storage_class="ExtendedPsfImage",
         ) as roundtrip:

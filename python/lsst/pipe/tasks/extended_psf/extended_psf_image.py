@@ -173,9 +173,7 @@ class ExtendedPsfImage(GeneralizedImage):
         return self._fit
 
     def __getitem__(self, bbox: Box | EllipsisType) -> ExtendedPsfImage:
-        super().__getitem__(bbox)
-        if bbox is ...:
-            return self
+        bbox, _ = self._handle_getitem_args(bbox)
         return self._transfer_metadata(
             ExtendedPsfImage(
                 self.image[bbox],
