@@ -352,6 +352,11 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
     def __init__(self, initInputs=None, **kwargs):
         super().__init__(initInputs=initInputs, **kwargs)
 
+        # Number of AIPSF latent-space columns in the output tables
+        # (0 unless the PSF determiner is piff with the AIPSF model, in which
+        # case the size is read from the configured checkpoint).
+        self.aipsf_latent_dim = self._get_aipsf_latent_dim()
+
         self.schema_mapper, self.schema = self._make_output_schema_mapper(
             initInputs['src_schema'].schema
         )
@@ -369,6 +374,31 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         self.isPsfDeterminerPiff = False
         if isinstance(self.psf_determiner, lsst.meas.extensions.piff.piffPsfDeterminer.PiffPsfDeterminerTask):
             self.isPsfDeterminerPiff = True
+
+    def _get_aipsf_latent_dim(self):
+        """Get the AIPSF latent-space size, or 0 if the AIPSF model is not used.
+
+        The latent dimension is read from the checkpoint file configured for
+        the PSF determiner, so the number of latent columns always matches the
+        network actually used.
+
+        Returns
+        -------
+        latent_dim : `int`
+            The latent-space size, or 0 when the PSF determiner is not piff
+            with the AIPSF model.
+        """
+        if self.config.psf_determiner.name != 'piff':
+            return 0
+        piff_config = self.config.psf_determiner['piff']
+        # modelType only exists on meas_extensions_piff branches with AIPSF
+        # support (DM-53831).
+        if getattr(piff_config, 'modelType', None) != 'aipsf':
+            return 0
+        # Torch is only needed (and imported) when the AIPSF model is in use.
+        import torch
+        checkpoint = torch.load(piff_config.aipsfModelFile, map_location='cpu')
+        return int(checkpoint['latent_dim'])
 
     def _make_output_schema_mapper(self, input_schema):
         """Make the schema mapper from the input schema to the output schema.
@@ -460,14 +490,30 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             doc="Maximum value in the star image used to train PSF.",
             doReplace=True,
         )
-        # add latent space for AI PSF
-        for i in range(16):
+        # AIPSF latent space and per-star nuisance parameters; these columns
+        # only exist when the AIPSF model is used.
+        for i in range(self.aipsf_latent_dim):
             output_schema.addField(
                 f'z_{i+1}',
                 type=np.float32,
-                doc="Maximum value in the star image used to train PSF.",
+                doc=f"AIPSF latent-space component {i+1} of the PSF star encoding.",
                 doReplace=True,
-                )
+            )
+        if self.aipsf_latent_dim > 0:
+            output_schema.addField(
+                'aipsf_a',
+                type=np.float32,
+                doc="Per-star amplitude of the AIPSF a*psf + b fit at PSF "
+                    "determination (image counts). NaN for stars not fit.",
+                doReplace=True,
+            )
+            output_schema.addField(
+                'aipsf_b',
+                type=np.float32,
+                doc="Per-star local background of the AIPSF a*psf + b fit at "
+                    "PSF determination (image counts). NaN for stars not fit.",
+                doReplace=True,
+            )
 
         if self.config.do_add_sky_moments:
             # Sky coordinate moments for source shape (arcsec^2)
@@ -597,14 +643,30 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             doReplace=True,
         )
 
-        # add latent space for AI PSF
-        for i in range(16):
+        # AIPSF latent space and per-star nuisance parameters; these columns
+        # only exist when the AIPSF model is used.
+        for i in range(self.aipsf_latent_dim):
             selection_schema.addField(
                 f'z_{i+1}',
                 type=np.float32,
-                doc="Maximum value in the star image used to train PSF.",
+                doc=f"AIPSF latent-space component {i+1} of the PSF star encoding.",
                 doReplace=True,
-                )
+            )
+        if self.aipsf_latent_dim > 0:
+            selection_schema.addField(
+                'aipsf_a',
+                type=np.float32,
+                doc="Per-star amplitude of the AIPSF a*psf + b fit at PSF "
+                    "determination (image counts). NaN for stars not fit.",
+                doReplace=True,
+            )
+            selection_schema.addField(
+                'aipsf_b',
+                type=np.float32,
+                doc="Per-star local background of the AIPSF a*psf + b fit at "
+                    "PSF determination (image counts). NaN for stars not fit.",
+                doReplace=True,
+            )
 
         return mapper, selection_schema
 
@@ -946,15 +1008,50 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
                 for idSrc, idFgcm in zip(idxSrcCat, idxFgcmCat):
                     srcCat[idSrc][output_col] = fgcmCat[mag_col][idFgcm]
 
-    def add_src_lattent_space(self, measured_src, psf_model):
+    def add_src_latent_space(self, measured_src, psf_model):
+        """Add the AIPSF latent-space encodings and per-star (a, b) nuisance
+        parameters to the measured source catalog.
 
-        for i in range(len(measured_src['slot_Centroid_x'])):
-            for s in psf_model._piffResult.stars:
-                if measured_src[i]['slot_Centroid_x'] == s.x \
-                and measured_src[i]['slot_Centroid_y'] == s.y:
-                    for j in range(16):
-                        measured_src[i][f'z_{j+1}'] = s.fit.params[j]
-                    del s.fit.params
+        The PSF stars are matched to the sources by id (the piff stars carry
+        the source id as the 'starId' property).  Sources without a fitted PSF
+        star (including reserve stars) get NaN.
+
+        Parameters
+        ----------
+        measured_src : `lsst.afw.table.SourceCatalog`
+            Catalog to fill; must have the z_* and aipsf_* columns.
+        psf_model : `lsst.meas.extensions.piff.PiffPsf`
+            The fitted PSF model.
+        """
+        n = self.aipsf_latent_dim
+        if n == 0:
+            return
+
+        params_by_id = {}
+        for s in psf_model._piffResult.stars:
+            params = getattr(s.fit, 'params', None)
+            if params is None:
+                continue
+            params_by_id[s.data.properties['starId']] = (
+                params,
+                s.data.properties.get('aipsf_a', np.nan),
+                s.data.properties.get('aipsf_b', np.nan),
+            )
+
+        latents = np.full((len(measured_src), n), np.nan, dtype=np.float32)
+        amplitude = np.full(len(measured_src), np.nan, dtype=np.float32)
+        background = np.full(len(measured_src), np.nan, dtype=np.float32)
+        for row, src_id in enumerate(measured_src['id']):
+            match = params_by_id.get(src_id)
+            if match is not None:
+                latents[row] = match[0][:n]
+                amplitude[row] = match[1]
+                background[row] = match[2]
+
+        for j in range(n):
+            measured_src[f'z_{j+1}'] = latents[:, j]
+        measured_src['aipsf_a'] = amplitude
+        measured_src['aipsf_b'] = background
 
     def compute_psf_and_ap_corr_map(self, visit, detector, exposure, src,
                                     isolated_source_table, fgcm_standard_star_cat):
@@ -1076,8 +1173,10 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             self.log.exception('Failed to determine PSF for visit %d, detector %d: %s',
                                visit, detector, e)
             return None, None, measured_src
+        if self.aipsf_latent_dim > 0:
+            self.add_src_latent_space(measured_src, psf)
+
         # Verify that the PSF is usable by downstream tasks
-        self.add_src_lattent_space(measured_src, psf)
         sigma = psf.computeShape(psf.getAveragePosition(), psf.getAverageColor()).getDeterminantRadius()
         if np.isnan(sigma):
             self.log.warning('Failed to determine psf for visit %d, detector %d: '
