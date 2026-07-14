@@ -75,6 +75,7 @@ class DrpDiaCalculationPipeConfig(
     )
 
     def setDefaults(self):
+        super().setDefaults()
         self.diaCalculation.plugins = ["ap_meanPosition",
                                        "ap_diaObjectFlag",
                                        "ap_meanFlux",
