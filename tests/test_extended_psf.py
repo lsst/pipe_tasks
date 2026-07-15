@@ -24,11 +24,10 @@ import unittest
 from typing import cast
 
 import astropy.units as u
-import numpy as np
-from astropy.table import Table
-
 import lsst.images.tests
 import lsst.utils.tests
+import numpy as np
+from astropy.table import Table
 from lsst.afw.cameraGeom import FOCAL_PLANE, PIXELS
 from lsst.afw.cameraGeom.testUtils import CameraWrapper
 from lsst.afw.geom import makeCdMatrix, makeSkyWcs
@@ -40,7 +39,15 @@ from lsst.afw.image import (
     VisitInfo,
     makePhotoCalibFromCalibZeroPoint,
 )
-from lsst.afw.math import FixedKernel
+from lsst.afw.math import (
+    REDUCE_INTERP_ORDER,
+    ApproximateControl,
+    BackgroundControl,
+    BackgroundList,
+    FixedKernel,
+    Interpolate,
+    makeBackground,
+)
 from lsst.geom import Box2I, Extent2I, Point2D, Point2I, SpherePoint, arcseconds, degrees
 from lsst.images import Box, Image, Mask, MaskedImage, MaskSchema
 from lsst.meas.algorithms import KernelPsf
@@ -56,6 +63,8 @@ from lsst.pipe.tasks.extended_psf import (
     ExtendedPsfMoffatFit,
     ExtendedPsfStackConfig,
     ExtendedPsfStackTask,
+    ExtendedPsfSubtractConfig,
+    ExtendedPsfSubtractTask,
 )
 
 
@@ -394,12 +403,14 @@ class ExtendedPsfSubtractionTestCase(lsst.utils.tests.TestCase):
         ny, nx = cls.exposure.image.array.shape
         grid_y, grid_x = np.mgrid[(-ny + 1) // 2 : ny // 2 + 1, (-nx + 1) // 2 : nx // 2 + 1]
         cls.exposure.image.array[:] += rng.normal(scale=sigma, size=cls.exposure.image.array.shape)
-        cls.exposure.image.array += pedestal
-        cls.exposure.image.array += coef_x * grid_x
-        cls.exposure.image.array += coef_y * grid_y
-        cls.exposure.image.array += coef_x2 * grid_x * grid_x
-        cls.exposure.image.array += coef_xy * grid_x * grid_y
-        cls.exposure.image.array += coef_y2 * grid_y * grid_y
+        cls.background_array = np.zeros_like(cls.exposure.image.array)
+        cls.background_array += pedestal
+        cls.background_array += coef_x * grid_x
+        cls.background_array += coef_y * grid_y
+        cls.background_array += coef_x2 * grid_x * grid_x
+        cls.background_array += coef_xy * grid_x * grid_y
+        cls.background_array += coef_y2 * grid_y * grid_y
+        cls.exposure.image.array += cls.background_array
         cls.exposure.info.setVisitInfo(VisitInfo(id=12345))
         camera = CameraWrapper().camera
         detector = camera[10]
@@ -417,6 +428,26 @@ class ExtendedPsfSubtractionTestCase(lsst.utils.tests.TestCase):
         ]:
             _ = cls.exposure.mask.addMaskPlane(mask_plane)
         cls.exposure.variance.array.fill(1.0)
+
+        # Make a background list
+        background_image = ImageF(cls.exposure.getBBox())
+        background_image.array[:] = cls.background_array
+        background_control = BackgroundControl(Interpolate.NATURAL_SPLINE)
+        background_control.setNxSample(background_image.getWidth())
+        background_control.setNySample(background_image.getHeight())
+        background_model = makeBackground(background_image, background_control)
+        cls.background = BackgroundList()
+        cls.background.append(
+            (
+                background_model,
+                Interpolate.NATURAL_SPLINE,
+                REDUCE_INTERP_ORDER,
+                ApproximateControl.UNKNOWN,
+                0,
+                0,
+                False,
+            )
+        )
 
         # Make a table of extended PSF candidate stars
         corners = cls.exposure.wcs.pixelToSky([Point2D(x) for x in cls.exposure.getBBox().getCorners()])
@@ -464,6 +495,7 @@ class ExtendedPsfSubtractionTestCase(lsst.utils.tests.TestCase):
 
         # Add synthetic stars to the exposure
         footprints = ImageF(cls.exposure.getBBox())
+        cls.injected_stars_array = np.zeros_like(cls.exposure.image.array)
         for candidate_id, candidate in enumerate(cls.extended_psf_candidate_table):
             bbox_star = Box2I(Point2I(candidate["pixel_x"], candidate["pixel_y"]), Extent2I(1, 1)).dilatedBy(
                 cutout_radius
@@ -478,6 +510,9 @@ class ExtendedPsfSubtractionTestCase(lsst.utils.tests.TestCase):
             _ = candidate_im.mask.addMaskPlane("DETECTED")
             candidate_im.mask.array[detected] |= candidate_im.mask.getPlaneBitMask("DETECTED")
             candidate_im.variance.array.fill(1.0)
+            y_slice = slice(bbox_star_clipped.getMinY(), bbox_star_clipped.getMaxY() + 1)
+            x_slice = slice(bbox_star_clipped.getMinX(), bbox_star_clipped.getMaxX() + 1)
+            cls.injected_stars_array[y_slice, x_slice] += candidate_im.image.array
             cls.exposure.maskedImage[bbox_star_clipped] += candidate_im
         cls.footprints = footprints.array
 
@@ -500,6 +535,9 @@ class ExtendedPsfSubtractionTestCase(lsst.utils.tests.TestCase):
     @classmethod
     def tearDownClass(cls):
         del cls.exposure
+        del cls.background
+        del cls.background_array
+        del cls.injected_stars_array
         del cls.extended_psf_candidate_table
         del cls.footprints
         del cls.extended_psf_candidates
@@ -551,7 +589,7 @@ class ExtendedPsfSubtractionTestCase(lsst.utils.tests.TestCase):
         self.assertAlmostEqual(fit.gamma, 8.0966823485900, places=2)
         self.assertAlmostEqual(fit.alpha, 16.048683662812, places=2)
 
-    def test_stack_no_candidates(self):
+    def test_stack_task_no_candidates(self):
         """Test that None returned when no candidates pass the radius check."""
         config = ExtendedPsfStackConfig()
         config.min_focal_plane_radius = 1e6  # Excludes all candidates.
@@ -559,6 +597,48 @@ class ExtendedPsfSubtractionTestCase(lsst.utils.tests.TestCase):
         with self.assertLogs(level=logging.INFO):
             result = task.run(extended_psf_candidates=self.extended_psf_candidates)
         self.assertIsNone(result)
+
+    def test_subtract_task(self):
+        """Test subtraction task on all synthetic stars.
+
+        This test validates subtraction against known injected-star flux
+        while exercising default background restore and re-estimation.
+        """
+
+        assert self.extended_psf is not None
+
+        config = ExtendedPsfSubtractConfig()
+        config.bad_mask_planes = []
+        task = ExtendedPsfSubtractTask(config=config)
+
+        preliminary_visit_image = self.exposure.clone()
+        preliminary_visit_image.image.array -= self.background_array
+        restored_input_image = self.exposure.image.array.copy()
+
+        star_table = self.extended_psf_candidate_table
+
+        with unittest.mock.patch.object(task, "_get_subtraction_star_table", return_value=star_table):
+            result = task.run(
+                preliminary_visit_image=preliminary_visit_image,
+                preliminary_visit_image_background=self.background,
+                extended_psf=self.extended_psf,
+                ref_obj_loader=object(),
+            )
+
+        output_exposure = result.preliminary_visit_image_extended_psf_subtracted
+        output_background = result.preliminary_visit_image_extended_psf_subtracted_background
+        self.assertIsNotNone(output_background)
+
+        restored_output_image = output_exposure.image.array + output_background.getImage().array
+        removed_image = restored_input_image - restored_output_image
+        expected_flux = float(np.sum(self.injected_stars_array))
+        removed_flux = float(np.sum(removed_image))
+        self.assertFloatsAlmostEqual(removed_flux, expected_flux, rtol=0.25)
+
+        metadata = output_exposure.getMetadata()
+        n_stars = len(star_table)
+        self.assertEqual(metadata.getScalar("EPSFSUB_ATTEMPTED"), n_stars)
+        self.assertEqual(metadata.getScalar("EPSFSUB_SUBTRACTED"), n_stars)
 
 
 class MemoryTestCase(lsst.utils.tests.MemoryTestCase):
