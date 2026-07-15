@@ -25,6 +25,8 @@ __all__ = ("RewriteCellCoaddConnections", "RewriteCellCoaddTask", "RewriteCellCo
 
 from typing import Any, ClassVar
 
+import astropy.io.fits
+import astropy.time
 import astropy.units
 
 import lsst.pipe.base.connectionTypes as cT
@@ -35,6 +37,7 @@ from lsst.cell_coadds import MultipleCellCoadd as LegacyMultipleCellCoadd
 from lsst.images import Box, Mask, get_legacy_deep_coadd_mask_planes
 from lsst.images.cells import CellCoadd
 from lsst.images.fields import field_from_legacy_background
+from lsst.images.fits import ExtensionKey, FitsOpaqueMetadata
 from lsst.meas.algorithms import SubtractBackgroundTask
 from lsst.pex.config import ConfigurableField, Field
 from lsst.pipe.base import (
@@ -182,6 +185,15 @@ class RewriteCellCoaddTask(PipelineTask):
             tract_info=tract_info,
             bbox=Box.from_legacy(patch_bbox),
         )
+        if getattr(future_cell_coadd, "_opaque_metadata", None) is None:
+            future_cell_coadd._opaque_metadata = FitsOpaqueMetadata()
+        primary_header = future_cell_coadd._opaque_metadata.headers.setdefault(
+            ExtensionKey(), astropy.io.fits.Header()
+        )
+        primary_header.set("INSTRUME", "LSSTCam")
+        primary_header.set("ORIGIN", "NSF-DOE Vera C. Rubin Observatory")
+        primary_header.set("TELESCOP", "Rubin:Simonyi")
+        primary_header.set("DATE", astropy.time.Time.now().fits, "UTC date this HDU was written.")
         if object_mask is not None:
             future_cell_coadd.mask.clear()
             future_cell_coadd.mask.update(
