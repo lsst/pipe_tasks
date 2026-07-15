@@ -73,7 +73,8 @@ def lsstRGB(
     bracketing_function: BracketingFunction | None | _SentinalDefault = DEFAULT_FUNCTION,
     gamut_remapping_function: GamutRemappingFunction | None | _SentinalDefault = DEFAULT_FUNCTION,
     psf: FloatImagePlane | None = None,
-    cieWhitePoint: tuple[float, float] = (0.28, 0.28),
+    cie_white_point: tuple[float, float] = (0.28, 0.28),
+    output_white_point: tuple[float, float] = (0.31272, 0.32903),
 ) -> RGBImage:
     """Enhance the lightness and color preserving hue using perceptual methods.
 
@@ -114,10 +115,13 @@ def lsstRGB(
     psf : `FloatImagePlane` or `None`
         If this parameter is an image of a PSF kernel the luminance channel is
         deconvolved with it. Set to None to skip deconvolution.
-    cieWhitePoint : `tuple` of `float`, `float`
+    cie_white_point : `tuple` of `float`, `float`
         This is the white point of the input of the input arrays in CIE XY
         coordinates. Altering this affects the relative balance of colors
         in the input image, and therefore also the output image.
+    output_white_point : `tuple` of `float`, `float`
+        This is the white point the output image should correspond to. Defaults
+        to D65 white point.
 
     Returns
     -------
@@ -167,7 +171,7 @@ def lsstRGB(
 
     # Convert the starting image into the OK L*a*b* color space.
     # https://en.wikipedia.org/wiki/Oklab_color_space
-    Lab = rgb.RGB_to_Oklab(img, cieWhitePoint)
+    Lab = rgb.RGB_to_Oklab(img, cie_white_point)
     logger.debug("lab conversion took %.3fs", time.time() - t1)
     t1 = time.time()
     lum = Lab[:, :, 0]
@@ -181,7 +185,7 @@ def lsstRGB(
         t1 = time.time()
 
     if scale_lum is not None:
-        lum = scale_lum(lum)
+        lum = scale_lum(lum, cie_white_point)
         logger.debug("lum scale took %.3fs", time.time() - t1)
         t1 = time.time()
 
@@ -203,16 +207,12 @@ def lsstRGB(
         t1 = time.time()
     Lab[..., 0] = lum
 
-    # The target output profile whitepoint
-    cie_white_point_d65 = (0.31272, 0.32903)
+    # The target output profile white point
     if gamut_remapping_function is not None:
-        result = gamut_remapping_function(Lab, cie_white_point_d65)
+        result = gamut_remapping_function(Lab, output_white_point)
         logger.debug("gamut fixing took %.3fs", time.time() - t1)
-        t1 = time.time()
     else:
-        result = rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), cie_white_point_d65)
+        result = rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), output_white_point)
         logger.debug("RGB conversion took %.3fs", time.time() - t1)
-        t1 = time.time()
-
-    result = np.clip(result, 0, 1)
+        result = np.clip(result, 0, 1)
     return result

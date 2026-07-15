@@ -221,4 +221,4 @@ class GamutFixer(ConfigurableAction):
                 raise ValueError(f"gamut correction {self.gamutMethod} is not supported")
 
         logging.debug(f"The total number of remapped pixels is: {np.sum(outOfBounds)}")
-        return results
+        return np.clip(results, 0, 1)

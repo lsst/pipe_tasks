@@ -28,7 +28,7 @@ import numpy as np
 import logging
 
 
-from lsst.pipe.tasks.prettyPictureMaker.types import FloatImagePlane
+from lsst.pipe.tasks.prettyPictureMaker.types import FloatImagePlane, WhitePoint
 from lsst.pex.config.configurableActions import ConfigurableAction
 from lsst.pex.config import Field, ListField
 from lsst.rubinoxide import rgb
@@ -104,7 +104,7 @@ class LumCompressor(ConfigurableAction):
     )
     doDenoise = Field[bool](doc="Denoise the luminance image", default=False)
 
-    def __call__(self, intensities: FloatImagePlane) -> FloatImagePlane:
+    def __call__(self, intensities: FloatImagePlane, white_point: WhitePoint) -> FloatImagePlane:
         """Compress and enhance luminance using multi-stage processing.
 
         This method applies the configured luminance compression algorithm to
@@ -117,6 +117,8 @@ class LumCompressor(ConfigurableAction):
         intensities : `FloatImagePlane`
             Input image with pixel intensities. This FloatImagePlane should
             contain the luminance data to be compressed.
+        white_point : `WhitePoint`
+            The cie white point from which the intensities are derived.
 
         Returns
         -------
@@ -146,7 +148,7 @@ class LumCompressor(ConfigurableAction):
         # Scale the values with linear manipulation for contrast
         intensities = abs(intensities)
         nj_to_lum = rgb.RGB_to_Oklab(
-            np.array([[[self.floor, self.floor, self.floor]]], dtype=float), (0.28, 0.28)
+            np.array([[[self.floor, self.floor, self.floor]]], dtype=float), white_point
         )[0, 0, 0]
         top = np.arcsinh(self.stretch)
         bottom = (np.arcsinh(nj_to_lum * self.stretch) - 0.2 * top) / 0.8
