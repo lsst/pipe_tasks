@@ -210,7 +210,7 @@ class RewriteCellCoaddTask(PipelineTask):
 
         if self.config.do_alternate_background_fit:
             if alternate_background_coadd is not None:
-                alt_bg_diff = future_cell_coadd.to_legacy_exposure(copy=True)
+                alt_bg_diff = future_cell_coadd.to_legacy(copy=True)
                 alt_bg_diff.maskedImage -= alternate_background_coadd.getMaskedImage()
                 try:
                     alt_bg_result = self.alternate_background_fit.run(alt_bg_diff, stats=False)
