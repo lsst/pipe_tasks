@@ -311,10 +311,13 @@ class DetectCoaddSourcesTask(PipelineTask):
         result : `lsst.pipe.base.Struct`
             Results as a struct with attributes:
 
-            ``sources``
+            ``outputSources``
                 Catalog of detections (`lsst.afw.table.SourceCatalog`).
-            ``backgrounds``
+            ``outputBackgrounds``
                 List of backgrounds (`list`).
+            ``outputExposure``
+                The background-subtracted coadd image, with its mask plane
+                updated to include detections.
         """
         if self.config.forceExactBinning:
             exposure = self._cropToExactBinning(exposure, patchInfo)
