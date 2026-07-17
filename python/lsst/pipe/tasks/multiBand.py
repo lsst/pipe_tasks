@@ -23,6 +23,9 @@ __all__ = ["DetectCoaddSourcesConfig", "DetectCoaddSourcesTask",
            "MeasureMergedCoaddSourcesConfig", "MeasureMergedCoaddSourcesTask",
            ]
 
+import dataclasses
+
+import astropy.units
 import numpy as np
 
 from lsst.geom import Extent2I
@@ -34,7 +37,10 @@ from lsst.pipe.base import (
     PipelineTaskConnections
 )
 import lsst.pipe.base.connectionTypes as cT
-from lsst.pex.config import Field, ConfigurableField
+from lsst.pex.config import Field, ChoiceField, ConfigurableField
+from lsst.images import Mask, get_legacy_deep_coadd_mask_planes
+from lsst.images.cells import CellCoadd
+from lsst.images.fields import field_from_legacy_background
 from lsst.meas.algorithms import (
     DynamicDetectionTask,
     ExceedsMaxVarianceScaleError,
@@ -91,13 +97,13 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
         storageClass="SourceCatalog",
     )
     exposure = cT.Input(
-        doc="Exposure on which detections are to be performed. ",
+        doc="Exposure on which detections are to be performed (if useCellCoadd=False). ",
         name="{inputCoaddName}Coadd",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "band", "skymap")
     )
     exposure_cells = cT.Input(
-        doc="Exposure on which detections are to be performed. ",
+        doc="Exposure on which detections are to be performed (if useCellCoadd=True). ",
         name="{inputCoaddName}CoaddCell",
         storageClass="MultipleCellCoadd",
         dimensions=("tract", "patch", "band", "skymap"),
@@ -131,11 +137,17 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
         super().__init__(config=config)
         assert isinstance(config, DetectCoaddSourcesConfig)
 
+        if config.imageType == "future":
+            if config.useCellCoadds:
+                self.exposure_cells = dataclasses.replace(self.exposure_cells, storageClass="CellCoadd")
+            else:
+                self.exposure = dataclasses.replace(self.exposure, storageClass="CellCoadd")
+            self.outputExposure = dataclasses.replace(self.outputExposure, storageClass="CellCoadd")
+            del self.outputBackgrounds
         if config.useCellCoadds:
             del self.exposure
         else:
             del self.exposure_cells
-
         if not self.config.forceExactBinning:
             del self.skyMap
         if self.config.writeOnlyBackgrounds:
@@ -177,6 +189,45 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
             "backgrounds from multiple patches as input."
         )
     )
+    imageType = ChoiceField(
+        "Which image type to use for the input and output coadd. "
+        "This option only directly affects connection storage classes and hence 'runQuantum'; the 'run' "
+        "method behavior is determined by which type is actually passed in.",
+        allowed={
+            "legacy": (
+                "Read a lsst.cell_coadds.MultipleCellCoadd (if useCellCoadd) or "
+                "lsst.afw.image.Exposure (if not useCellCoadd) and write an lsst.afw.image.Exposure."
+            ),
+            "future": (
+                "Read and write lsst.images.cells.CellCoadd (useCellCoadd just "
+                "sets which of 'exposure' or 'exposure_cells' will be used for inputs). "
+                "The 'outputBackground' is deleted, writeEmptyBackgrounds is ignored, and "
+                "writeOnlyBackgrounds=True is invalid."
+            ),
+        },
+        dtype=str,
+        optional=False,
+        default="legacy",
+    )
+    backgroundName = Field(
+        "Name of the subtracted background, to be stored with the image when the input and "
+        "output images are lsst.images.cells.CellCoadd.",
+        dtype=str,
+        default="object",
+    )
+    backgroundDescription = Field(
+        "Description of the subtracted background, to be stored with the image when the input and "
+        "output images are lsst.images.cells.CellCoadd.",
+        dtype=str,
+        default=(
+            "Background subtracted from the image when generating the Object catalog. "
+            "This intentionally oversubtracts the background to reduce blending and ensure "
+            "scattered light is subtracted. "
+            "Restoring this background does not restore all original backgrounds, "
+            "as the coadd was built from background-subtracted visit images; in most "
+            "cases this background term is actually quite small."
+        ),
+    )
 
     def setDefaults(self):
         super().setDefaults()
@@ -191,6 +242,16 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
         # Include band in packed data IDs that go into object IDs (None -> "as
         # many bands as are defined", rather than the default of zero).
         self.idGenerator.packer.n_bands = None
+
+    def validate(self):
+        super().validate()
+        if self.imageType == "future":
+            if self.doScaleVariance:
+                raise ValueError("doScaleVariance=True is not compatible with imageType='future'")
+            if self.forceExactBinning:
+                raise ValueError("forceExactBinning=True is not compatible with imageType='future'")
+            if self.writeOnlyBackgrounds:
+                raise ValueError("writeOnlyBackgrounds=True is not compatible with imageType='future'")
 
 
 class DetectCoaddSourcesTask(PipelineTask):
@@ -243,7 +304,13 @@ class DetectCoaddSourcesTask(PipelineTask):
 
         if self.config.useCellCoadds:
             multiple_cell_coadd = inputs.pop("exposure_cells")
-            exposure = multiple_cell_coadd.stitch().asExposure()
+            match self.config.imageType:
+                case "legacy":
+                    exposure = multiple_cell_coadd.stitch().asExposure()
+                case "future":
+                    exposure = multiple_cell_coadd  # conversion deferred to run().
+                case _:
+                    raise AssertionError(f"Invalid choice {self.config.imageType!r} for imageType.")
         else:
             exposure = inputs.pop("exposure")
 
@@ -270,11 +337,20 @@ class DetectCoaddSourcesTask(PipelineTask):
         ) as e:
             if self.config.writeEmptyBackgrounds:
                 butlerQC.put(self._makeEmptyBackground(exposure, patchInfo), outputRefs.outputBackgrounds)
-            # Detection failed, so clear any leftover the detected mask planes.
-            for maskName in ["DETECTED", "DETECTED_NEGATIVE"]:
-                if maskName in exposure.mask.getMaskPlaneDict().keys():
-                    detectedMask = exposure.mask.getMaskPlane(maskName)
-                    exposure.mask.clearMaskPlane(detectedMask)
+            # Detection failed, so clear any leftover detected mask planes.
+            if isinstance(exposure, CellCoadd):
+                # If we passed a CellCoadd in, it won't be modified until 'run'
+                # is about to exit, and hence it can't have picked up a
+                # DETECTED_NEGATIVE plane, which can only be temporary here.
+                # But it might have a preexisting DETECTED plane (i.e. a union
+                # of the DETECTED plane from the warps) that we'd still want to
+                # clear.
+                exposure.mask.clear("DETECTED")
+            else:
+                for maskName in ["DETECTED", "DETECTED_NEGATIVE"]:
+                    if maskName in exposure.mask.getMaskPlaneDict().keys():
+                        detectedMask = exposure.mask.getMaskPlane(maskName)
+                        exposure.mask.clearMaskPlane(detectedMask)
             error = AnnotatedPartialOutputsError.annotate(
                 e,
                 self,
@@ -295,7 +371,7 @@ class DetectCoaddSourcesTask(PipelineTask):
 
         Parameters
         ----------
-        exposure : `lsst.afw.image.Exposure`
+        exposure : `lsst.afw.image.Exposure` or `lsst.images.cells.CellCoadd`.
             Exposure on which to detect (may be background-subtracted and scaled,
             depending on configuration).
         idFactory : `lsst.afw.table.IdFactory`
@@ -317,11 +393,20 @@ class DetectCoaddSourcesTask(PipelineTask):
                 List of backgrounds (`list`).
             ``outputExposure``
                 The background-subtracted coadd image, with its mask plane
-                updated to include detections.
+                updated to include detections.  This will have the same type
+                as ``exposure``.
         """
+        cell_coadd = None
+        if isinstance(exposure, CellCoadd):
+            cell_coadd = exposure
+            exposure = cell_coadd.to_legacy()
         if self.config.forceExactBinning:
+            if cell_coadd is not None:
+                raise ValueError("forceExactBinning=True is not compatible with CellCoadd inputs")
             exposure = self._cropToExactBinning(exposure, patchInfo)
         if self.config.doScaleVariance:
+            if cell_coadd is not None:
+                raise ValueError("doScaleVariance=True is not compatible with CellCoadd inputs")
             varScale = self.scaleVariance.run(exposure.maskedImage)
             exposure.getMetadata().add("VARIANCE_SCALE", varScale)
         backgrounds = afwMath.BackgroundList()
@@ -336,7 +421,19 @@ class DetectCoaddSourcesTask(PipelineTask):
             # inability to persist empty BackgroundList.
             emptyBg = self._makeEmptyBackground(exposure, patchInfo)
             backgrounds.append(emptyBg)
-
+        if cell_coadd is not None:
+            cell_coadd.image.array[...] = exposure.image.array
+            cell_coadd.mask = Mask.from_legacy(
+                exposure.mask, plane_map=get_legacy_deep_coadd_mask_planes()
+            ).view(sky_projection=cell_coadd.sky_projection)
+            if backgrounds:
+                cell_coadd.backgrounds.add(
+                    self.config.backgroundName,
+                    field_from_legacy_background(backgrounds, unit=astropy.units.nJy),
+                    self.config.backgroundDescription,
+                    is_subtracted=True,
+                )
+            exposure = cell_coadd
         return Struct(outputSources=sources, outputBackgrounds=backgrounds, outputExposure=exposure)
 
     def _cropToExactBinning(self, exposure, patchInfo):
