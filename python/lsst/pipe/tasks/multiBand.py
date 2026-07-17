@@ -275,13 +275,13 @@ class DetectCoaddSourcesTask(PipelineTask):
                 if maskName in exposure.mask.getMaskPlaneDict().keys():
                     detectedMask = exposure.mask.getMaskPlane(maskName)
                     exposure.mask.clearMaskPlane(detectedMask)
-            butlerQC.put(exposure, outputRefs.outputExposure)
             error = AnnotatedPartialOutputsError.annotate(
                 e,
                 self,
                 exposure,
                 log=self.log,
             )
+            butlerQC.put(exposure, outputRefs.outputExposure)
             raise error from e
 
         butlerQC.put(outputs, outputRefs)
