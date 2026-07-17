@@ -468,15 +468,6 @@ class MeasureMergedCoaddSourcesConnections(
         storageClass="SkyMap",
         dimensions=("skymap",),
     )
-    # TODO[DM-47424]: remove this deprecated connection.
-    visitCatalogs = cT.Input(
-        doc="Deprecated and unused.",
-        name="src",
-        dimensions=("instrument", "visit", "detector"),
-        storageClass="SourceCatalog",
-        multiple=True,
-        deprecated="Deprecated and unused.  Will be removed after v29.",
-    )
     sourceTableHandles = cT.Input(
         doc=("Source tables that are derived from the ``CalibrateTask`` sources. "
              "These tables contain astrometry and photometry flags, and optionally "
@@ -525,7 +516,6 @@ class MeasureMergedCoaddSourcesConnections(
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
-        del self.visitCatalogs
         if not config.doPropagateFlags:
             del self.sourceTableHandles
             del self.finalizedSourceTableHandles
