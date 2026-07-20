@@ -419,7 +419,7 @@ def localContrast(
     ).astype(image.dtype)
 
     # build a list of intensities
-    gamma = np.linspace(0, 1, numGamma)
+    gamma = np.linspace(0, gammaMax, numGamma)
 
     # make gaussian pyramid
     pyramid = makeGaussianPyramid(imagePadded, padY_amounts, padX_amounts, None)
