@@ -193,6 +193,12 @@ class LocalContrastEnhancer(ConfigurableAction):
     diffusionFunction = ConfigurableActionField[DiffusionFunction](
         doc="Diffusion function to enhance local contrast",
     )
+    numGamma = Field[int](
+        doc="The number of brightness steps used in determining contrast adjustments", default=20
+    )
+    gammaMax = Field[float](
+        doc="The maximum brightness level below which local contrast is enhanced", default=1
+    )
 
     def setDefaults(self) -> None:
         self.diffusionFunction.iterations = 2
@@ -245,6 +251,8 @@ class LocalContrastEnhancer(ConfigurableAction):
             clarity=self.clarity,
             maxLevel=self.maxLevel,
             skipLevels=self.skipLevels,
+            numGamma=self.numGamma,
+            gammaMax=self.gammaMax,
         )
         if self.doDiffusion:
             intensities = self.diffusionFunction(intensities)

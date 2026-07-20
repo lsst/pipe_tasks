@@ -332,6 +332,7 @@ def localContrast(
     maxLevel: int | None = None,
     numGamma: int = 20,
     skipLevels: int = 0,
+    gammaMax=10,
 ) -> NDArray:
     """Enhance the local contrast of an input image.
 
@@ -363,6 +364,8 @@ def localContrast(
     skipLevels : `int`
         When calculating the local contrast skip the specified number of levels
         starting at the lowest level.
+    gammaMax : `float`
+        The maximum brightness level below which local contrast is enhanced.
 
     Returns
     -------
