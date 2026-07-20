@@ -21,12 +21,82 @@
 
 from __future__ import annotations
 
+__all__ = ("FeatheredMosaicCreator", "write_array_png", "write_array_exr", "write_array_hdr_avif")
+
 import numpy as np
+import imagecodecs
 from typing import TYPE_CHECKING
+
+from .types import RGBImage
+
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
     from lsst.geom import Box2I
+
+
+def _linear_to_pq(linear_data, lum_norm=1000.0):
+    """Converts linear data (where 1.0 is diffuse white) into PQ space."""
+    # Convert linear data to nits and normalize to [0, 1]
+    Y = (linear_data * 1) / lum_norm
+    if Y.max() > 1.0:
+        raise RuntimeError("The normalized data excedes a value of 1")
+
+    # SMPTE ST 2084 constants
+    m1 = 2610 / 4096 / 4
+    m2 = 2523 / 4096 * 128
+    c1 = 3424 / 4096
+    c2 = 2413 / 4096 * 32
+    c3 = 2392 / 4096 * 32
+
+    Y_pow = np.power(Y, m1)
+    numerator = c1 + c2 * Y_pow
+    denominator = 1 + c3 * Y_pow
+
+    return np.round(np.power(numerator / denominator, m2) * 1023).astype(np.uint16)
+
+
+def write_array_png(location: str, array: RGBImage) -> None:
+    if not location.endswith(".png"):
+        raise ValueError("Output location should have png extension")
+    if not (array.dtype == np.uint8 or array.dtype == np.uint16):
+        raise TypeError("Png image must be 8 bit or 16 bit int")
+    imagecodecs.imwrite(location, array)
+
+
+def write_array_exr(location: str, array: RGBImage) -> None:
+    if not location.endswith(".exr"):
+        raise ValueError("Output location should have exr extension")
+    if not (array.dtype == np.float32):
+        raise TypeError("EXR image must be 32bit float")
+
+    exr_bytes = imagecodecs.exr_encode(array, compression="ZIP")
+
+    with open(location, "wb") as f:
+        f.write(exr_bytes)
+
+
+def write_array_hdr_avif(location: str, array: RGBImage, clamp_values: float | None = None) -> None:
+    if not location.endswith(".avif"):
+        raise ValueError("Output location should have avif extension")
+
+    if clamp_values is not None:
+        array = np.clip(array, 0, clamp_values)
+
+    pq_data = _linear_to_pq(array, 120)
+    encoded_avif = imagecodecs.avif_encode(
+        pq_data,
+        primaries=9,
+        transfer=16,
+        matrix=9,
+        bitspersample=10,
+        level=80,
+        speed=4,
+        numthreads=3,
+        pixelformat=2,
+    )
+    with open(location, "wb") as f:
+        f.write(encoded_avif)
 
 
 class FeatheredMosaicCreator:
