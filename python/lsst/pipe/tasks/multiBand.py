@@ -38,6 +38,7 @@ from lsst.pipe.base import (
 )
 import lsst.pipe.base.connectionTypes as cT
 from lsst.pex.config import Field, ChoiceField, ConfigurableField
+from lsst.cell_coadds import MultipleCellCoadd
 from lsst.images import Mask, get_legacy_deep_coadd_mask_planes
 from lsst.images.cells import CellCoadd
 from lsst.images.fields import field_from_legacy_background
@@ -628,8 +629,11 @@ class MeasureMergedCoaddSourcesConnections(
                 del self.finalizedSourceTableHandles
         if not config.doAddFootprints:
             del self.scarletModels
-
-        if config.useCellCoadds:
+        if self.config.imageType == "future":
+            self.exposure = dataclasses.replace(self.exposure, storageClass="CellCoadd")
+            del self.exposure_cells
+            del self.background
+        elif self.config.useCellCoadds:
             del self.exposure
         else:
             del self.exposure_cells
@@ -693,6 +697,23 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
         doc="Should be set to True if fake sources have been inserted into the input data."
     )
     idGenerator = SkyMapIdGeneratorConfig.make_field()
+    imageType = ChoiceField(
+        "Which image type to expect for the input coadd. "
+        "This option only directly affects connection storage classes and hence 'runQuantum'; the 'run' "
+        "method behavior is determined by which type is actually passed in.",
+        allowed={
+            "legacy": (
+                "Read a lsst.cell_coadds.MultipleCellCoadd via 'exposure_cells` and restore 'background' "
+                "(if useCellCoadd) or lsst.afw.image.Exposure via `exposure` (if not useCellCoadd)."
+            ),
+            "future": (
+                "Read lsst.images.cells.CellCoadd via the 'exposure' connection.  useCellCoadd is ignored."
+            ),
+        },
+        dtype=str,
+        optional=False,
+        default="legacy",
+    )
 
     def setDefaults(self):
         super().setDefaults()
@@ -772,25 +793,37 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
 
-        if self.config.useCellCoadds:
-            multiple_cell_coadd = inputs.pop("exposure_cells")
-            stitched_coadd = multiple_cell_coadd.stitch()
-            exposure = stitched_coadd.asExposure()
-            background = inputs.pop("background")
-            exposure.image -= background.getImage()
-
-            ccdInputs = stitched_coadd.ccds
-            apCorrMap = stitched_coadd.ap_corr_map
+        if self.config.imageType == "future":
+            coadd = inputs.pop("exposure")
+            band = inputRefs.exposure.dataId["band"]
+            # Instead of going directly from lsst.images.cells.CellCoadd to
+            # Exposure, it's cleaner for now to go through MultipleCellCoadd
+            # because the apCorrMap and ccdInputs need special handling - the
+            # cell-based versions can't be attached to Exposure.  Eventually
+            # we'll rewrite the lower-level code to use the lsst.images
+            # equivalents natively.
+            coadd = coadd.to_legacy_cell_coadd()
+        elif self.config.useCellCoadds:
+            coadd = inputs.pop("exposure_cells")
             band = inputRefs.exposure_cells.dataId["band"]
         else:
-            exposure = inputs.pop("exposure")
-            # Set psfcache
-            # move this to run after gen2 deprecation
+            coadd = inputs.pop("exposure")
+            band = inputRefs.exposure.dataId["band"]
+        if isinstance(coadd, MultipleCellCoadd):
+            stitched_coadd = coadd.stitch()
+            exposure = stitched_coadd.asExposure()
+            if self.config.imageType == "legacy":
+                background = inputs.pop("background")
+                exposure.image -= background.getImage()
+            ccdInputs = stitched_coadd.ccds
+            apCorrMap = stitched_coadd.ap_corr_map
+        else:
+            exposure = coadd
+            # Set psfcache only when we don't have a cell-based coadd.
             exposure.getPsf().setCacheCapacity(self.config.psfCache)
 
             ccdInputs = exposure.getInfo().getCoaddInputs().ccds
             apCorrMap = exposure.getInfo().getApCorrMap()
-            band = inputRefs.exposure.dataId["band"]
 
         # Get unique integer ID for IdFactory and RNG seeds; only the latter
         # should really be used as the IDs all come from the input catalog.
@@ -877,7 +910,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
 
         Parameters
         ----------
-        exposure : `lsst.afw.exposure.Exposure`
+        exposure : `lsst.afw.image.Exposure`
             The input exposure on which measurements are to be performed.
         sources :  `lsst.afw.table.SourceCatalog`
             A catalog built from the results of merged detections, or
