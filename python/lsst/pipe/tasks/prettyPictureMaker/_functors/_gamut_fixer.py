@@ -29,7 +29,7 @@ import logging
 
 
 from lsst.cpputils import fixGamutOK
-from lsst.pipe.tasks.prettyPictureMaker.types import LABImage, RGBImage
+from lsst.pipe.tasks.prettyPictureMaker.types import LABImage, RGBImage, WhitePoint
 from lsst.pex.config.configurableActions import ConfigurableAction
 from lsst.pex.config import ChoiceField, Field
 from lsst.rubinoxide import rgb
@@ -156,7 +156,7 @@ class GamutFixer(ConfigurableAction):
     )
     max_size = Field[int](doc="Maximum number of contiguous pixels that will be fixed", default=10000)
 
-    def __call__(self, Lab: LABImage, xyz_whitepoint: tuple[float, float]) -> RGBImage:
+    def __call__(self, Lab: LABImage, input_whitepoint, output_whitepoint: WhitePoint) -> RGBImage:
         """Remap colors that fall outside an RGB color gamut back into it.
 
         When gamutMethod is 'heal', regions larger than the configured max_size
@@ -179,7 +179,7 @@ class GamutFixer(ConfigurableAction):
         ValueError
             Raise if the gamut method is not one of the supported methods.
         """
-        rgb_prime = rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), xyz_whitepoint)
+        rgb_prime = rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), output_whitepoint)
 
         if self.gamutMethod == "none":
             return rgb_prime
@@ -214,7 +214,7 @@ class GamutFixer(ConfigurableAction):
             case "mapping":
                 results = fixGamutOK(Lab[outOfBounds])
                 Lab[outOfBounds] = results
-                results = rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), xyz_whitepoint)
+                results = rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), output_whitepoint)
             case "heal":
                 results = heal_gamut(Lab, outOfBounds, xyz_whitepoint)
             case _:

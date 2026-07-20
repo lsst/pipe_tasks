@@ -30,4 +30,4 @@ ScaleColorFunction: TypeAlias = Callable[
 ]
 RemapBoundsFunction: type = Callable[[RGBImage], RGBImage]
 BracketingFunction: type = Callable[[FloatImagePlane], FloatImagePlane]
-GamutRemappingFunction: type = Callable[[LABImage, WhitePoint], RGBImage]
+GamutRemappingFunction: type = Callable[[LABImage, WhitePoint, WhitePoint], RGBImage]

@@ -209,7 +209,7 @@ def lsstRGB(
 
     # The target output profile white point
     if gamut_remapping_function is not None:
-        result = gamut_remapping_function(Lab, output_white_point)
+        result = gamut_remapping_function(Lab, cie_white_point, output_white_point)
         logger.debug("gamut fixing took %.3fs", time.time() - t1)
     else:
         result = rgb.Oklab_to_RGB(np.ascontiguousarray(Lab), output_white_point)
