@@ -744,17 +744,11 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         merge_cat_counter = 0
         merge_source_counter = 0
 
-        handle = isolated_star_cat_dict[list(isolated_star_cat_dict.keys())[0]]
-        all_source_columns = handle.get(component='columns')
         source_columns = [self.config.id_column, 'obj_index']
-        # visit can be used if it is in the input catalog.
-        if visit is not None and visit in all_source_columns:
+        if visit is not None:
             source_columns.append('visit')
             if detector is not None:
                 source_columns.append('detector')
-        else:
-            visit = None
-            detector = None
 
         for tract in isolated_star_cat_dict:
             astropy_cat = isolated_star_cat_dict[tract].get()
