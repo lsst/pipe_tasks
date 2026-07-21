@@ -63,6 +63,9 @@ class MockFinalizeCharacterizationTask(FinalizeCharacterizationTask):
     def __init__(self, **kwargs):
         pipeBase.PipelineTask.__init__(self, **kwargs)
 
+        # This ensures that the schema-loading isn't triggered on run.
+        self.schema = afwTable.SourceTable.makeMinimalSchema()
+
         self.makeSubtask('reserve_selection')
         self.makeSubtask('source_selector')
 
@@ -89,6 +92,8 @@ class MockFinalizeCharacterizationDetectorTask(FinalizeCharacterizationDetectorT
     """
     def __init__(self, **kwargs):
         pipeBase.PipelineTask.__init__(self, **kwargs)
+
+        self.schema = afwTable.SourceTable.makeMinimalSchema()
 
         self.makeSubtask('reserve_selection')
         self.makeSubtask('source_selector')

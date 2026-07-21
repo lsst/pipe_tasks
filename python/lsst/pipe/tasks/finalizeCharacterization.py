@@ -62,11 +62,6 @@ class FinalizeCharacterizationConnectionsBase(
     dimensions=('instrument', 'visit',),
     defaultTemplates={},
 ):
-    src_schema = pipeBase.connectionTypes.InitInput(
-        doc='Input schema used for src catalogs.',
-        name='src_schema',
-        storageClass='SourceCatalog',
-    )
     isolated_star_cats = pipeBase.connectionTypes.Input(
         doc=('Catalog of isolated stars with average positions, number of associated '
              'sources, and indexes to the isolated_star_sources catalogs.'),
@@ -348,20 +343,19 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
     ConfigClass = FinalizeCharacterizationConfigBase
     _DefaultName = 'finalize_characterization_base'
 
-    def __init__(self, initInputs=None, **kwargs):
-        super().__init__(initInputs=initInputs, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
-        self.schema_mapper, self.schema = self._make_output_schema_mapper(
-            initInputs['src_schema'].schema
-        )
+        # We defer setting the schema and subtasks until
+        # the run method to save I/O pressure on one schema file
+        # that otherwise needs to be loaded by thousands of tasks
+        # simultaneously.
+        self.schema = None
 
         self.makeSubtask('reserve_selection')
         self.makeSubtask('source_selector')
         self.makeSubtask('make_psf_candidates')
         self.makeSubtask('psf_determiner')
-        self.makeSubtask('measurement', schema=self.schema)
-        self.makeSubtask('measure_ap_corr', schema=self.schema)
-        self.makeSubtask('apply_ap_corr', schema=self.schema)
 
         # Only log warning and fatal errors from the source_selector
         self.source_selector.log.setLevel(self.source_selector.log.WARN)
@@ -1289,6 +1283,14 @@ class FinalizeCharacterizationTask(FinalizeCharacterizationTaskBase):
             src = src_dict[detector].get()
             exposure = calexp_dict[detector].get()
 
+            # Initialize schema, mappers, and subtasks if necessary.
+            if self.schema is None:
+                self.schema_mapper, self.schema = self._make_output_schema_mapper(src.schema)
+
+                self.makeSubtask("measurement", schema=self.schema)
+                self.makeSubtask("measure_ap_corr", schema=self.schema)
+                self.makeSubtask("apply_ap_corr", schema=self.schema)
+
             psf, ap_corr_map, measured_src = self.compute_psf_and_ap_corr_map(
                 visit,
                 detector,
@@ -1411,6 +1413,14 @@ class FinalizeCharacterizationDetectorTask(FinalizeCharacterizationTaskBase):
         NoWorkFound
             Raised if the selector returns no good sources.
         """
+        # Initialize schema, mappers, and subtasks if necessary.
+        if self.schema is None:
+            self.schema_mapper, self.schema = self._make_output_schema_mapper(src.schema)
+
+            self.makeSubtask("measurement", schema=self.schema)
+            self.makeSubtask("measure_ap_corr", schema=self.schema)
+            self.makeSubtask("apply_ap_corr", schema=self.schema)
+
         # We do not need the isolated star table in this task.
         # However, it is used in tests to confirm consistency of indexes.
         _, isolated_source_table = self.concat_isolated_star_cats(
