@@ -133,9 +133,7 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
             config=config_det,
         )
 
-        self.isolated_star_cat_dict, self.isolated_star_source_dict, self.fgcm_cat = self._make_isocats()
-
-    def _make_isocats(self):
+    def _make_isocats(self, visit=0, detectors=[0, 0, 0]):
         """Make test isolated star catalogs.
 
         Returns
@@ -144,6 +142,10 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
             Per-"tract" dict of isolated star catalogs.
         isolate_star_source_dict : `dict`
             Per-"tract" dict of isolated source catalogs.
+        visit : `int`, optional
+            Visit to set in the source catalogs.
+        detectors : `list` [`int`], optional
+            Detectors to set in the source catalogs; should be 3 items.
         """
         dtype_cat = [('isolated_star_id', 'i8'),
                      ('ra', 'f8'),
@@ -158,8 +160,12 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
                      ('source_cat_index_z', 'i4'),
                      ('nsource_z', 'i4')]
 
-        dtype_source = [('sourceId', 'i8'),
-                        ('obj_index', 'i4')]
+        dtype_source = [
+            ('sourceId', 'i8'),
+            ('obj_index', 'i4'),
+            ('visit', 'i8'),
+            ('detector', 'i4'),
+        ]
 
         dtype_fgcm = [
             ('ra', 'f8'),
@@ -214,7 +220,7 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
                     cat['nsource'][i] = nsource_per_band_per_star
                     bands = ['z']
 
-                for band in bands:
+                for j, band in enumerate(bands):
                     cat[f'source_cat_index_{band}'][i] = counter
                     cat[f'nsource_{band}'][i] = nsource_per_band_per_star
                     source_cat = np.zeros(nsource_per_band_per_star, dtype=dtype_source)
@@ -223,6 +229,9 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
                         tract*nstar + counter + nsource_per_band_per_star
                     )
                     source_cat['obj_index'] = i
+
+                    source_cat['visit'] = visit
+                    source_cat['detector'] = detectors[j]
 
                     source_cats.append(source_cat)
 
@@ -249,11 +258,13 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
         """Test concatenation and reservation of the isolated star catalogs.
         """
 
+        isolated_star_cat_dict, isolated_star_source_dict, fgcm_cat = self._make_isocats()
+
         for band in ['r', 'i']:
             iso, iso_src = self.finalizeCharacterizationTask.concat_isolated_star_cats(
                 band,
-                self.isolated_star_cat_dict,
-                self.isolated_star_source_dict
+                isolated_star_cat_dict,
+                isolated_star_source_dict
             )
 
             # There are two tracts, so double everything.
@@ -292,10 +303,13 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
 
     def test_concat_isolate_star_cats_no_sources(self):
         """Test concatenation when there are no sources in a tract."""
+
+        isolated_star_cat_dict, isolated_star_source_dict, fgcm_cat = self._make_isocats()
+
         iso, iso_src = self.finalizeCharacterizationTask.concat_isolated_star_cats(
             'z',
-            self.isolated_star_cat_dict,
-            self.isolated_star_source_dict
+            isolated_star_cat_dict,
+            isolated_star_source_dict
         )
 
         self.assertGreater(len(iso), 0)
@@ -336,6 +350,12 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
         detector0 = 0
         detector1 = 1
         band = 'r'
+
+        isolated_star_cat_dict, isolated_star_source_dict, fgcm_cat = self._make_isocats(
+            visit=visit,
+            detectors=[detector0, detector1, detector1],
+        )
+
         # src_dict should be a dictionary keyed by detector, with src handles.
         # calexp_dict should be a dictionary keyed by detector, with calexp handles.
         # These can be dummy objects.
@@ -357,11 +377,11 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
         results = self.finalizeCharacterizationTask.run(
             visit,
             band,
-            self.isolated_star_cat_dict,
-            self.isolated_star_source_dict,
+            isolated_star_cat_dict,
+            isolated_star_source_dict,
             src_dict,
             calexp_dict,
-            fgcm_standard_star_dict=self.fgcm_cat,
+            fgcm_standard_star_dict=fgcm_cat,
         )
 
         # Get the dummy values.
@@ -385,6 +405,11 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
         detector1 = 1
         band = 'r'
 
+        isolated_star_cat_dict, isolated_star_source_dict, fgcm_cat = self._make_isocats(
+            visit=visit,
+            detectors=[detector0, detector1, detector1],
+        )
+
         src0 = afwTable.SourceCatalog(afwTable.SourceTable.makeMinimalSchema())
         src1 = afwTable.SourceCatalog(afwTable.SourceTable.makeMinimalSchema())
         calexp0 = afwImage.ExposureF()
@@ -394,22 +419,22 @@ class FinalizeCharacterizationTestCase(lsst.utils.tests.TestCase):
             visit,
             band,
             detector0,
-            self.isolated_star_cat_dict,
-            self.isolated_star_source_dict,
+            isolated_star_cat_dict,
+            isolated_star_source_dict,
             src0,
             calexp0,
-            fgcm_standard_star_dict=self.fgcm_cat,
+            fgcm_standard_star_dict=fgcm_cat,
         )
 
         results1 = self.finalizeCharacterizationDetectorTask.run(
             visit,
             band,
             detector1,
-            self.isolated_star_cat_dict,
-            self.isolated_star_source_dict,
+            isolated_star_cat_dict,
+            isolated_star_source_dict,
             src1,
             calexp1,
-            fgcm_standard_star_dict=self.fgcm_cat,
+            fgcm_standard_star_dict=fgcm_cat,
         )
 
         # Get the dummy values.
