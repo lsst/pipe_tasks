@@ -180,7 +180,7 @@ class RewriteCellCoaddTask(PipelineTask):
     ) -> Struct:
         tract_info = sky_map[legacy_cell_coadd.identifiers.tract]
         patch_bbox = tract_info[legacy_cell_coadd.identifiers.patch].getOuterBBox()
-        future_cell_coadd = CellCoadd.from_legacy(
+        future_cell_coadd = CellCoadd.from_legacy_cell_coadd(
             legacy_cell_coadd,
             tract_info=tract_info,
             bbox=Box.from_legacy(patch_bbox),
