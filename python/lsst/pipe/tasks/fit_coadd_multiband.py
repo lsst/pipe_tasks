@@ -34,6 +34,7 @@ import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
 
 import astropy.table
+import dataclasses
 from abc import ABC, abstractmethod
 from pydantic import Field
 from pydantic.dataclasses import dataclass
@@ -210,7 +211,11 @@ class CoaddMultibandFitInputConnections(
         if config.drop_psf_connection:
             del self.models_psf
 
-        if config.use_cell_coadds:
+        if config.image_type == "future":
+            self.coadds = dataclasses.replace(self.coadds, storageClass="CellCoadd")
+            del self.coadds_cell
+            del self.backgrounds
+        elif config.use_cell_coadds:
             del self.coadds
         else:
             del self.coadds_cell
@@ -316,6 +321,23 @@ class CoaddMultibandFitBaseConfig(
         default=False,
     )
     idGenerator = SkyMapIdGeneratorConfig.make_field()
+    image_type = pexConfig.ChoiceField(
+        "Which image type to expect for the input coadd. "
+        "This option only directly affects connection storage classes and hence 'runQuantum'; the 'run' "
+        "method behavior is determined by which type is actually passed in.",
+        allowed={
+            "legacy": (
+                "Read a lsst.cell_coadds.MultipleCellCoadd via 'coadds_cell` and restore 'background' "
+                "(if use_cell_coadd) or lsst.afw.image.Exposure via `coadds` (if not use_cell_coadd)."
+            ),
+            "future": (
+                "Read lsst.images.cells.CellCoadd via the 'coadds' connection.  use_cell_coadd is ignored."
+            ),
+        },
+        dtype=str,
+        optional=False,
+        default="legacy",
+    )
 
     def get_band_sets(self):
         """Get the set of bands required by the fit_coadd_multiband subtask.
@@ -352,7 +374,7 @@ class CoaddMultibandFitBase:
     def build_catexps(self, butlerQC, inputRefs, inputs) -> list[CatalogExposureInputs]:
         id_tp = self.config.idGenerator.apply(butlerQC.quantum.dataId).catalog_id
         # This is a roundabout way of ensuring all inputs get sorted and matched
-        if self.config.use_cell_coadds:
+        if self.config.use_cell_coadds and self.config.image_type == "legacy":
             keys = ["cats_meas", "coadds_cell", "backgrounds"]
         else:
             keys = ["cats_meas", "coadds"]
@@ -365,7 +387,9 @@ class CoaddMultibandFitBase:
             for key, (refs, objs) in input_refs_objs.items()
         }
         cats = inputs_sorted["cats_meas"]
-        if self.config.use_cell_coadds:
+        if self.config.image_type == "future":
+            exps = {data_id: coadd.to_legacy() for data_id, coadd in inputs_sorted["coadds"].items()}
+        elif self.config.use_cell_coadds:
             exps = {}
             for data_id, background in inputs_sorted["backgrounds"].items():
                 mcc = inputs_sorted["coadds_cell"][data_id]

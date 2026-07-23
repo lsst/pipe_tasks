@@ -24,6 +24,7 @@ __all__ = [
     "CoaddPsfFitSubConfig", "CoaddPsfFitSubTask", "CoaddPsfFitTask",
 ]
 
+
 from .fit_multiband import CatalogExposure, CatalogExposureConfig
 from lsst.geom import Point2D
 from lsst.meas.base import SkyMapIdGeneratorConfig
@@ -31,6 +32,7 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.pipe.base.connectionTypes as cT
 
+import dataclasses
 from abc import ABC, abstractmethod
 from pydantic.dataclasses import dataclass
 
@@ -93,7 +95,11 @@ class CoaddPsfFitConnections(
         if config is None:
             return
 
-        if config.use_cell_coadds:
+        if config.image_type == "future":
+            self.coadd = dataclasses.replace(self.coadd, storageClass="CellCoadd")
+            del self.coadd_cell
+            del self.background
+        elif config.use_cell_coadds:
             del self.coadd
         else:
             del self.coadd_cell
@@ -168,6 +174,23 @@ class CoaddPsfFitConfig(
         doc="Task to fit PSF models for a single coadd",
     )
     idGenerator = SkyMapIdGeneratorConfig.make_field()
+    image_type = pexConfig.ChoiceField(
+        "Which image type to expect for the input coadd. "
+        "This option only directly affects connection storage classes and hence 'runQuantum'; the 'run' "
+        "method behavior is determined by which type is actually passed in.",
+        allowed={
+            "legacy": (
+                "Read a lsst.cell_coadds.MultipleCellCoadd via 'coadd_cell` and restore 'background' "
+                "(if use_cell_coadd) or lsst.afw.image.Exposure via `coadd` (if not use_cell_coadd)."
+            ),
+            "future": (
+                "Read lsst.images.cells.CellCoadd via the 'coadd' connection.  use_cell_coadd is ignored."
+            ),
+        },
+        dtype=str,
+        optional=False,
+        default="legacy",
+    )
 
 
 class CoaddPsfFitTask(pipeBase.PipelineTask):
@@ -191,7 +214,10 @@ class CoaddPsfFitTask(pipeBase.PipelineTask):
         id_tp = self.config.idGenerator.apply(butlerQC.quantum.dataId).catalog_id
         dataId = inputRefs.cat_meas.dataId
 
-        if self.config.use_cell_coadds:
+        if self.config.image_type == "future":
+            coaddDataRef = inputRefs.coadd
+            exposure = inputs.pop('coadd').to_legacy()
+        elif self.config.use_cell_coadds:
             coaddDataRef = inputRefs.coadd_cell
             multiple_cell_coadd = inputs.pop('coadd_cell')
             background = inputs.pop('background')
