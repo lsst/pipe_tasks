@@ -1093,6 +1093,8 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             for maskPlane in self.config.measurement.plugins["base_PixelFlags"].masksFpCenter:
                 exposure.mask.addMaskPlane(maskPlane)
 
+        self._ensureMaskPlanes()
+
         self.measurement.run(sources, exposure, exposureId=exposureId)
 
         if self.config.doApCorr:
@@ -1146,3 +1148,22 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
 
         results.outputSources = sources
         return results
+
+    def _ensureMaskPlanes(self):
+        """Ensure the global mask dictionary has all of the mask planes
+        needed for PixelFlags algorithms.
+
+        When mask planes are added, this essentially guarantees that the
+        corresponding PixelFlags columns will be wholly False, and usually
+        we'd prefer to remove them from the configuration.  But those config
+        changes imply a schema changes, and that's not always viable (e.g. on
+        a release branch).
+        """
+        needed = set(self.measurement.plugins["base_PixelFlags"].config.masksFpCenter)
+        needed.update(self.measurement.plugins["base_PixelFlags"].config.masksFpAnywhere)
+        existing = afwImage.MaskX().getMaskPlaneDict().keys()
+        for plane in sorted(needed - existing):
+            self.log.warning(
+                "Adding mask plane %r with no pixel set to satisfy PixelFlags configuration.", plane
+            )
+            afwImage.MaskX.addMaskPlane(plane)
