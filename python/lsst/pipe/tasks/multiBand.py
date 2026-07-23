@@ -952,6 +952,8 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
             for maskPlane in self.config.measurement.plugins["base_PixelFlags"].masksFpCenter:
                 exposure.mask.addMaskPlane(maskPlane)
 
+        self._ensureMaskPlanes()
+
         self.measurement.run(sources, exposure, exposureId=exposureId)
 
         if self.config.doApCorr:
@@ -986,3 +988,13 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
         results = Struct()
         results.outputSources = sources
         return results
+
+    def _ensureMaskPlanes(self):
+        needed = set(self.measurement.plugins["base_PixelFlags"].config.masksFpCenter)
+        needed.update(self.measurement.plugins["base_PixelFlags"].config.masksFpAnywhere)
+        existing = afwImage.MaskX().getMaskPlaneDict().keys()
+        for plane in sorted(needed - existing):
+            self.log.warning(
+                "Adding mask plane %r with no pixel set to satisfy PixelFlags configuration.", plane
+            )
+            afwImage.MaskX.addMaskPlane(plane)
