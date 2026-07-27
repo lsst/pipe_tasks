@@ -38,49 +38,54 @@ import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 import lsst.geom
 import lsst.afw.geom as afwGeom
-from lsst.daf.butler import Formatter
+from lsst.daf.butler import FormatterV2
 from lsst.skymap import BaseSkyMap
 from lsst.utils.timer import timeMethod
 from .healSparseMappingProperties import (BasePropertyMap, BasePropertyMapConfig,
                                           PropertyMapMap, compute_approx_psf_size_and_shape)
 
 
-class HealSparseMapFormatter(Formatter):
+class HealSparseMapFormatter(FormatterV2):
     """Interface for reading and writing healsparse.HealSparseMap files."""
-    unsupportedParameters = frozenset()
-    supportedExtensions = frozenset({".hsp", ".fit", ".fits"})
-    extension = '.hsp'
 
-    def read(self, component=None):
-        # Docstring inherited from Formatter.read.
-        path = self.fileDescriptor.location.path
+    default_extension = ".hsp"
+    supported_extensions = frozenset({".fit", ".fits"})
+    can_read_from_uri = True
+    can_read_from_local_file = True
 
-        if component == 'coverage':
+    def can_accept(self, in_memory_dataset):
+        return isinstance(in_memory_dataset, hsp.HealSparseMap)
+
+    def read_from_uri(self, uri, component=None, expected_size=-1):
+        if component == "coverage":
             try:
-                data = hsp.HealSparseCoverage.read(path)
+                data = hsp.HealSparseCoverage.read(str(uri))
             except (OSError, RuntimeError):
-                raise ValueError(f"Unable to read healsparse map with URI {self.fileDescriptor.location.uri}")
+                raise ValueError(f"Unable to read healsparse map with URI {uri}")
 
             return data
 
-        if self.fileDescriptor.parameters is None:
+        if self.file_descriptor.parameters is None:
             pixels = None
             degrade_nside = None
         else:
-            pixels = self.fileDescriptor.parameters.get('pixels', None)
-            degrade_nside = self.fileDescriptor.parameters.get('degrade_nside', None)
+            pixels = self.file_descriptor.parameters.get("pixels", None)
+            degrade_nside = self.file_descriptor.parameters.get("degrade_nside", None)
+
         try:
-            data = hsp.HealSparseMap.read(path, pixels=pixels, degrade_nside=degrade_nside)
+            data = hsp.HealSparseMap.read(str(uri), pixels=pixels, degrade_nside=degrade_nside)
         except (OSError, RuntimeError):
-            raise ValueError(f"Unable to read healsparse map with URI {self.fileDescriptor.location.uri}")
+            raise ValueError(f"Unable to read healsparse map with URI {uri}")
 
         return data
 
-    def write(self, inMemoryDataset):
-        # Docstring inherited from Formatter.write.
+    def read_from_local_file(self, path, component=None, expected_size=-1):
+        return self.read_from_uri(path, component=component, expected_size=expected_size)
+
+    def write_local_file(self, in_memory_dataset, uri):
+        # Docstring inherited from FormatterV2.write.
         # Update the location with the formatter-preferred file extension
-        self.fileDescriptor.location.updateExtension(self.extension)
-        inMemoryDataset.write(self.fileDescriptor.location.path, clobber=True)
+        in_memory_dataset.write(uri.ospath, clobber=True)
 
 
 def _is_power_of_two(value):
