@@ -33,6 +33,7 @@ import numbers
 import numpy as np
 import hpgeom as hpg
 import healsparse as hsp
+from packaging.version import parse
 
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
@@ -50,13 +51,17 @@ class HealSparseMapFormatter(FormatterV2):
 
     default_extension = ".hsp"
     supported_extensions = frozenset({".fit", ".fits"})
-    can_read_from_uri = True
+
+    if parse(hsp.__version__) >= parse("1.14.0"):
+        can_read_from_uri = True
+
     can_read_from_local_file = True
 
     def can_accept(self, in_memory_dataset):
         return isinstance(in_memory_dataset, hsp.HealSparseMap)
 
     def read_from_uri(self, uri, component=None, expected_size=-1):
+
         if component == "coverage":
             try:
                 data = hsp.HealSparseCoverage.read(str(uri))
