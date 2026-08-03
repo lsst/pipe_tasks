@@ -1744,7 +1744,9 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
             summaryTable = visitSummary.asAstropy()
             selectColumns = ["id", "visit", "physical_filter", "band", "ra", "dec",
                              "pixelScale", "zenithDistance",
-                             "expTime", "zeroPoint", "psfSigma", "skyBg", "skyNoise",
+                             "expTime", "zeroPoint", "psfSigma",
+                             "psfArea", "psfIxx", "psfIyy", "psfIxy",
+                             "skyBg", "skyNoise",
                              "psfAdaptiveThresholdValue", "psfAdaptiveIncludeThresholdMultiplier",
                              "nShapeletsStar", "shapeletsOnlyIqScore", "shapeletsIqScore",
                              "centroidDiffShapeletsVsSlotMedian",
