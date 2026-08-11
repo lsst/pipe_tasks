@@ -1744,7 +1744,9 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
             summaryTable = visitSummary.asAstropy()
             selectColumns = ["id", "visit", "physical_filter", "band", "ra", "dec",
                              "pixelScale", "zenithDistance",
-                             "expTime", "zeroPoint", "psfSigma", "skyBg", "skyNoise",
+                             "expTime", "zeroPoint", "psfSigma",
+                             "psfArea", "psfIxx", "psfIyy", "psfIxy",
+                             "skyBg", "skyNoise",
                              "psfAdaptiveThresholdValue", "psfAdaptiveIncludeThresholdMultiplier",
                              "nShapeletsStar", "shapeletsOnlyIqScore", "shapeletsIqScore",
                              "centroidDiffShapeletsVsSlotMedian",
@@ -1914,6 +1916,9 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
             visitEntry["obsStart"] = visitEntry["expMidpt"] - 0.5 * np.timedelta64(int(expTime * 1E9), "ns")
             expTime_days = expTime / (60*60*24)
             visitEntry["obsStartMJD"] = visitEntry["expMidptMJD"] - 0.5 * expTime_days
+
+            # Note that these are computed per-visit and stored identically
+            # in each row, so we can use the first row values.
             visitEntry["psfTE1e1"] = visitRow["psfTE1e1"]
             visitEntry["psfTE1e2"] = visitRow["psfTE1e2"]
             visitEntry["psfTE1ex"] = visitRow["psfTE1ex"]
@@ -1926,6 +1931,7 @@ class MakeVisitTableTask(pipeBase.PipelineTask):
             visitEntry["psfTE4e1"] = visitRow["psfTE4e1"]
             visitEntry["psfTE4e2"] = visitRow["psfTE4e2"]
             visitEntry["psfTE4ex"] = visitRow["psfTE4ex"]
+
             visitEntries.append(visitEntry)
 
             # TODO: DM-30623, Add programId, exposureType, cameraTemp,
