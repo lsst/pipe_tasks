@@ -200,6 +200,7 @@ class LocalContrastEnhancer(LocalContrastProtocol):
     gammaMax = Field[float](
         doc="The maximum brightness level below which local contrast is enhanced", default=1
     )
+    maxLum = Field[float](doc="Scale output so it does not excede this value, Optional", optional=True)
 
     def setDefaults(self) -> None:
         self.diffusionFunction.iterations = 2
@@ -257,4 +258,7 @@ class LocalContrastEnhancer(LocalContrastProtocol):
         )
         if self.doDiffusion:
             intensities = self.diffusionFunction(intensities)
+        if self.maxLum is not None:
+            intensities = highlight_taper(intensities, max_value=self.maxLum)
+
         return intensities

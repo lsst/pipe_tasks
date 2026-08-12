@@ -213,3 +213,93 @@ class FeatheredMosaicCreator:
         patch = mixer * patch
 
         image[*box.slices] += patch[::-1, :, :] if reverse else patch
+
+
+def highlight_taper(
+    x: np.ndarray, max_val: float = 1.0, knee_ratio: float = 0.9, width: float = 0.1
+) -> np.ndarray:
+    """
+    Applies a highlight roll-off (taper) to input values, smoothly compressing
+    values above a configurable threshold towards a maximum limit.
+
+    This function is designed to handle both Standard Dynamic Range (SDR) and
+    High Dynamic Range (HDR) workflows. It preserves linearity below a specified
+    "knee" point and applies a rational function to smoothly asymptote towards
+    `max_val` for values exceeding that point.
+
+    Parameters
+    ----------
+    x : array_like
+        Input pixel values Values can exceed `max_val` (e.g., HDR data), but
+        the output will be capped at `max_val`.
+    max_val : float, optional
+        The target maximum value.
+        - For SDR (0-1 range): typically `1.0`.
+        - For HDR (e.g., 0-1000 nits): e.g., `10.0`.
+        Default is 1.0.
+    knee_ratio : float, optional
+        The fraction of `max_val` where the tapering begins.
+        The absolute knee point is calculated as `max_val * knee_ratio`.
+        - `0.9`: Tapering starts late (highlights remain bright longer).
+        - `0.7`: Tapering starts earlier (more aggressive compression).
+        Must be between 0.0 and 1.0. Default is 0.9.
+    width : float, optional
+        Controls the steepness (smoothness) of the transition curve.
+        - Small values (e.g., 0.01) create a sharp, near-hard clip.
+        - Larger values (e.g., 0.5) create a smooth, gradual roll-off.
+        This is an absolute value, not a ratio. Default is 0.1.
+
+    Returns
+    -------
+    np.ndarray
+        The tapered output values with the same shape as `x`.
+        Values will be in the range `[min(x), max_val]`.
+
+    Raises
+    ------
+    ValueError
+        If `knee_ratio` is not between 0.0 and 1.0, or if `max_val` or `width`
+        are non-positive.
+
+    Notes
+    -----
+    The function uses the following logic:
+    1. If `x <= knee`, output `y = x` (Linear).
+    2. If `x > knee`, output `y = knee + (max_val - knee) * (excess / (excess + width))`,
+       where `excess = x - knee`.
+
+    This rational function ensures that as `x` approaches infinity, `y` approaches
+    `max_val` asymptotically, preventing hard clipping artifacts.
+
+    """
+    # Validate inputs
+    if not 0.0 < knee_ratio <= 1.0:
+        raise ValueError("knee_ratio must be between 0.0 (exclusive) and 1.0 (inclusive).")
+    if max_val <= 0:
+        raise ValueError("max_val must be positive.")
+    if width <= 0:
+        raise ValueError("width must be positive.")
+
+    # Convert input to numpy array for vectorization
+    x = np.asarray(x, dtype=float)
+
+    # Calculate the absolute knee point
+    knee = max_val * knee_ratio
+
+    # Initialize output array
+    y = np.empty_like(x)
+
+    # Create a mask for values above the knee
+    mask = x > knee
+
+    # Apply linear mapping for values below or equal to knee
+    y[~mask] = x[~mask]
+
+    # Apply rational taper for values above knee
+    if np.any(mask):
+        excess = x[mask] - knee
+        # Formula: knee + (max_val - knee) * (excess / (excess + width))
+        # As excess -> infinity, the fraction -> 1, so y -> max_val
+        y[mask] = knee + (max_val - knee) * (excess / (excess + width))
+
+    return y

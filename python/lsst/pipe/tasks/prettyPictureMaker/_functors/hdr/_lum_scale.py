@@ -547,6 +547,7 @@ class HDRLumCompressor(ScaleLumProtocol):
             intensities = np.clip(intensities, 0, self.max)
             intensities = tone_equalizer(intensities, self.toneAdjustment, self.toneWidth, 10, 5)
 
-        intensities = np.clip(intensities, 0, self.max)
+        intensities[intensities < 0] = 0.0
+        intensities = highlight_taper(intensities, self.max)
 
         return intensities
