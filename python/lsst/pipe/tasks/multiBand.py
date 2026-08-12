@@ -21,6 +21,7 @@
 
 __all__ = ["DetectCoaddSourcesConfig", "DetectCoaddSourcesTask",
            "MeasureMergedCoaddSourcesConfig", "MeasureMergedCoaddSourcesTask",
+           "DEEP_COADD_BACKGROUND_DOCSTRING",
            ]
 
 import dataclasses
@@ -91,6 +92,18 @@ the mergeDet, meas, and ref dataset Footprints:
 
 
 ##############################################################################################################
+
+# The default for DetectCoaddSourcesConfig.backgroundDescription:
+DEEP_COADD_BACKGROUND_DOCSTRING = (
+    "Background subtracted from the image when generating the Object catalog. "
+    "This intentionally oversubtracts the background to reduce blending and ensure "
+    "scattered light is subtracted. "
+    "Restoring this background does not restore all original backgrounds, "
+    "as the coadd was built from background-subtracted visit images; in most "
+    "cases this background term is actually quite small "
+)
+
+
 class DetectCoaddSourcesConnections(PipelineTaskConnections,
                                     dimensions=("tract", "patch", "band", "skymap"),
                                     defaultTemplates={"inputCoaddName": "deep", "outputCoaddName": "deep"}):
@@ -222,14 +235,7 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
         "Description of the subtracted background, to be stored with the image when the input and "
         "output images are lsst.images.cells.CellCoadd.",
         dtype=str,
-        default=(
-            "Background subtracted from the image when generating the Object catalog. "
-            "This intentionally oversubtracts the background to reduce blending and ensure "
-            "scattered light is subtracted. "
-            "Restoring this background does not restore all original backgrounds, "
-            "as the coadd was built from background-subtracted visit images; in most "
-            "cases this background term is actually quite small."
-        ),
+        default=DEEP_COADD_BACKGROUND_DOCSTRING,
     )
 
     def setDefaults(self):
