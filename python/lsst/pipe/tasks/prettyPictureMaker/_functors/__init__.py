@@ -25,3 +25,4 @@ from ._exposure_fusion import *
 from ._gamut_fixer import *
 from ._local_contrast import *
 from ._lum_scale import *
+from . import hdr

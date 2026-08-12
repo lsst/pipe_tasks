@@ -21,7 +21,7 @@
 
 from __future__ import annotations
 
-__all__ = ("GamutFixer",)
+__all__ = ("HDRRec2020Gammut",)
 
 import skimage
 import numpy as np
