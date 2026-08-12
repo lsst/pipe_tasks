@@ -531,7 +531,7 @@ class PrettyPictureTask(PipelineTask):
                 self.config.exposureBracketerConfig if self.config.doExposureBrackets else None
             ),
             gamut_remapping_function=self.config.gamutMapperConfig if self.config.doRemapGamut else None,
-            cieWhitePoint=tuple(self.config.cieWhitePoint),  # type: ignore
+            cie_white_point=tuple(self.config.cieWhitePoint),  # type: ignore
             psf=psf if self.config.doPsfDeconvolve else None,
         )
 

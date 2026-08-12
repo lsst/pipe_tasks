@@ -194,6 +194,10 @@ def lsstRGB(
         logger.debug("local_contrast took %.3fs", time.time() - t1)
         t1 = time.time()
 
+    # negative lum makes no sense and can break down stream. Top end is not checked because this might be
+    # hdr processing
+    lum[lum < 0] = 0
+
     if psf is not None:
         lum = skimage.restoration.richardson_lucy(lum, psf=psf, clip=False, num_iter=2)
         logger.debug("psf took %.3fs", time.time() - t1)

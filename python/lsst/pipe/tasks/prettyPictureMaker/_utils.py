@@ -83,15 +83,15 @@ def write_array_hdr_avif(location: str, array: RGBImage, clamp_values: float | N
     if clamp_values is not None:
         array = np.clip(array, 0, clamp_values)
 
-    pq_data = _linear_to_pq(array, 120)
+    pq_data = _linear_to_pq(array, 100)
     encoded_avif = imagecodecs.avif_encode(
         pq_data,
         primaries=9,
         transfer=16,
         matrix=9,
         bitspersample=10,
-        level=80,
-        speed=4,
+        level=90,
+        speed=8,
         numthreads=3,
         pixelformat=2,
     )

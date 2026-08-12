@@ -106,9 +106,13 @@ class ColorScaler(ScaleColorProtocol):
         sinHue[chromaMask] = 0
         cosHue[chromaMask] = 0
 
+        # Need to be sure old_lum is not zero as this can cause downstream divide by zero
+        old_lum_2 = old_lum**2
+        old_lum_2[old_lum_2 == 0] = 1e-10
+
         # Compute a divisor for saturation calculation, adding 1 to avoid division
         # by zero.
-        div = chroma1_2 + old_lum**2
+        div = chroma1_2 + old_lum_2
         div[div <= 0] = 1
 
         # Calculate the square of the new chroma based on desired saturation
