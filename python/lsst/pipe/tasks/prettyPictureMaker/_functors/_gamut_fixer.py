@@ -29,8 +29,7 @@ import logging
 
 
 from lsst.cpputils import fixGamutOK
-from lsst.pipe.tasks.prettyPictureMaker.types import LABImage, RGBImage, WhitePoint
-from lsst.pex.config.configurableActions import ConfigurableAction
+from ..types import LABImage, RGBImage, WhitePoint, GamutRemappingProtocol
 from lsst.pex.config import ChoiceField, Field
 from lsst.rubinoxide import rgb
 from scipy.ndimage import label, find_objects, binary_dilation
@@ -136,7 +135,7 @@ def heal_gamut(
     return rgb.Oklab_to_RGB(np.ascontiguousarray(lab_image), xyz_whitepoint)
 
 
-class GamutFixer(ConfigurableAction):
+class GamutFixer(GamutRemappingProtocol):
     """Fix out-of-gamut colors in images by remapping them back into the RGB gamut.
 
     This class provides multiple methods for handling colors that fall outside

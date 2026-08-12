@@ -23,7 +23,8 @@ from __future__ import annotations
 
 __all__ = ("DiffusionFunction", "LocalContrastEnhancer")
 
-from lsst.pipe.tasks.prettyPictureMaker.types import FloatImagePlane
+from ..types import FloatImagePlane, LocalContrastProtocol
+from .._utils import highlight_taper
 from lsst.pex.config.configurableActions import ConfigurableAction, ConfigurableActionField
 from lsst.pex.config import Field
 from lsst.rubinoxide import rgb
@@ -150,7 +151,7 @@ class DiffusionFunction(ConfigurableAction):
         )
 
 
-class LocalContrastEnhancer(ConfigurableAction):
+class LocalContrastEnhancer(LocalContrastProtocol):
     """Multi-stage local contrast enhancement processor.
 
     Notes

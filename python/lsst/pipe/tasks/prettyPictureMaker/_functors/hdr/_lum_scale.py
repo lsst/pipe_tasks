@@ -30,8 +30,8 @@ from functools import partial
 from scipy.optimize import brentq
 
 
-from lsst.pipe.tasks.prettyPictureMaker.types import FloatImagePlane, WhitePoint
-from lsst.pex.config.configurableActions import ConfigurableAction
+from ...types import FloatImagePlane, WhitePoint, ScaleLumProtocol
+from ..._utils import highlight_taper
 from lsst.pex.config import Field, ListField
 from lsst.rubinoxide import rgb
 
@@ -377,7 +377,7 @@ def smooth_arcsinh_exponential_controlled(
     return y
 
 
-class HDRLumCompressor(ConfigurableAction):
+class HDRLumCompressor(ScaleLumProtocol):
     """Compress and enhance luminance using multi-stage processing.
 
     This class implements luminance compression for RGB image generation using

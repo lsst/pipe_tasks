@@ -26,8 +26,7 @@ __all__ = ("ExposureBracketer",)
 import numpy as np
 import cv2
 
-from lsst.pipe.tasks.prettyPictureMaker.types import FloatImagePlane
-from lsst.pex.config.configurableActions import ConfigurableAction
+from ..types import FloatImagePlane, BracketingProtocol
 from lsst.pex.config import ListField
 
 from .._localContrast import levelPadder, makeGaussianPyramid, makeLapPyramid
@@ -132,7 +131,7 @@ def _fuseExposureLum(
     return output[:-support, :-support]
 
 
-class ExposureBracketer(ConfigurableAction):
+class ExposureBracketer(BracketingProtocol):
     exposureBrackets = ListField[float](
         doc=(
             "Exposure scaling factors used in creating multiple exposures with different scalings which will "

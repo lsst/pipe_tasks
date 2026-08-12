@@ -25,14 +25,13 @@ __all__ = ("ColorScaler",)
 
 import numpy as np
 
-from lsst.pipe.tasks.prettyPictureMaker.types import FloatImagePlane
-from lsst.pex.config.configurableActions import ConfigurableAction
+from ..types import FloatImagePlane, ScaleColorProtocol
 from lsst.pex.config import Field, ListField
 
 from .._equalizers import contrast_equalizer
 
 
-class ColorScaler(ConfigurableAction):
+class ColorScaler(ScaleColorProtocol):
     saturation = Field[float](
         doc=(
             "The overall saturation factor with the scaled luminance between zero and one. "

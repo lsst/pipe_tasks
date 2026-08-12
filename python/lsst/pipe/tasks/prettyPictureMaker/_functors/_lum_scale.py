@@ -28,8 +28,7 @@ import numpy as np
 import logging
 
 
-from lsst.pipe.tasks.prettyPictureMaker.types import FloatImagePlane, WhitePoint
-from lsst.pex.config.configurableActions import ConfigurableAction
+from ..types import FloatImagePlane, WhitePoint, ScaleLumProtocol
 from lsst.pex.config import Field, ListField
 from lsst.rubinoxide import rgb
 
@@ -38,7 +37,7 @@ from .._equalizers import contrast_equalizer, tone_equalizer
 logger = logging.getLogger(__name__)
 
 
-class LumCompressor(ConfigurableAction):
+class LumCompressor(ScaleLumProtocol):
     """Compress and enhance luminance using multi-stage processing.
 
     This class implements luminance compression for RGB image generation using

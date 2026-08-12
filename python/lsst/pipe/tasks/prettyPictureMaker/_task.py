@@ -71,6 +71,14 @@ from lsst.geom import Box2I, Point2I, Extent2I
 from lsst.afw.image import Exposure, Mask
 from lsst.skymap import Index2D
 
+from .types import (
+    ScaleLumProtocol,
+    RemapBoundsProtocol,
+    BracketingProtocol,
+    ScaleColorProtocol,
+    GamutRemappingProtocol,
+    LocalContrastProtocol,
+)
 from ._plugins import plugins
 from ._colorMapper import lsstRGB
 from ._utils import FeatheredMosaicCreator
@@ -200,26 +208,28 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
     )
     doLocalContrast = Field[bool](doc="Apply local contrast optimizations to luminance.", default=True)
 
-    imageRemappingConfig = ConfigurableActionField[BoundsRemapper](
-        doc="Action controlling normalization process"
+    imageRemappingConfig = ConfigurableActionField[RemapBoundsProtocol](
+        doc="Action controlling normalization process", default=BoundsRemapper
     )
-    luminanceConfig = ConfigurableActionField[LumCompressor](
-        doc="Action controlling luminance scaling when making an RGB image"
+    luminanceConfig = ConfigurableActionField[ScaleLumProtocol](
+        doc="Action controlling luminance scaling when making an RGB image", default=LumCompressor
     )
-    localContrastConfig = ConfigurableActionField[LocalContrastEnhancer](
-        doc="Action controlling the local contrast correction in RGB image production"
+    localContrastConfig = ConfigurableActionField[LocalContrastProtocol](
+        doc="Action controlling the local contrast correction in RGB image production",
+        default=LocalContrastEnhancer,
     )
-    colorConfig = ConfigurableActionField[ColorScaler](
-        doc="Action to control the color scaling process in RGB image production"
+    colorConfig = ConfigurableActionField[ScaleColorProtocol](
+        doc="Action to control the color scaling process in RGB image production", default=ColorScaler
     )
-    exposureBracketerConfig = ConfigurableActionField[ExposureBracketer](
+    exposureBracketerConfig = ConfigurableActionField[BracketingProtocol](
         doc=(
             "Exposure scaling action used in creating multiple exposures with different scalings which will "
             "then be fused into a final image"
         ),
+        default=ExposureBracketer,
     )
-    gamutMapperConfig = ConfigurableActionField[GamutFixer](
-        doc="Action to fix pixels which lay outside RGB color gamut"
+    gamutMapperConfig = ConfigurableActionField[GamutRemappingProtocol](
+        doc="Action to fix pixels which lay outside RGB color gamut", default=GamutFixer
     )
 
     exposureBrackets = ListField[float](
@@ -267,16 +277,20 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         - ``doPSFDeconcovlve`` -> ``doPsfDeconvolve``
         """
         # check if gamutMethod is set
-        if len(self._history["gamutMethod"]) > 1:
+        if len(self._history["gamutMethod"]) > 1 and isinstance(self.gamutMapperConfig, GamutFixer):
             # This has been set in config, update it in the new location
             self.gamutMapperConfig.gamutMethod = self.gamutMethod
 
-        if len(self._history["exposureBrackets"]) > 1:
+        if len(self._history["exposureBrackets"]) > 1 and isinstance(
+            self.exposureBracketerConfig, ExposureBracketer
+        ):
             self.exposureBracketerConfig.exposureBrackets = self.exposureBrackets
             if self.exposureBrackets is None:
                 self.doExposureBrackets = False
 
-        if len(self.localContrastConfig._history["doLocalContrast"]) > 1:
+        if len(self.localContrastConfig._history["doLocalContrast"]) > 1 and isinstance(
+            self.localContrastConfig, LocalContrastEnhancer
+        ):
             self.doLocalContrast = self.localContrastConfig.doLocalContrast
 
         # Handle doPsfDeconcovlve typo fix

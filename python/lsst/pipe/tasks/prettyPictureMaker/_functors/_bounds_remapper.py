@@ -25,12 +25,11 @@ __all__ = ("BoundsRemapper",)
 
 import numpy as np
 
-from lsst.pipe.tasks.prettyPictureMaker.types import RGBImage
-from lsst.pex.config.configurableActions import ConfigurableAction
+from ..types import RGBImage, RemapBoundsProtocol
 from lsst.pex.config import Field
 
 
-class BoundsRemapper(ConfigurableAction):
+class BoundsRemapper(RemapBoundsProtocol):
     """Remaps input images to a known range of values.
 
     Often input images are not mapped to any defined range of values
@@ -52,7 +51,7 @@ class BoundsRemapper(ConfigurableAction):
         optional=True,
     )
 
-    def __call__(self, img: RGBImage) -> RGBImage:
+    def __call__(self, image: RGBImage) -> RGBImage:
         """Bound images to a range between zero and one.
 
         Some images supplied aren't properly bounded with a maximum value of 1.
@@ -64,7 +63,7 @@ class BoundsRemapper(ConfigurableAction):
 
         Parameters
         ----------
-        img : `RGBImage`
+        image : `RGBImage`
             Input RGB image array with dimensions (height, width, 3) in RGB order.
 
         Returns
@@ -72,12 +71,12 @@ class BoundsRemapper(ConfigurableAction):
         result : `RGBImage`
             The remapped image with values clipped to the range [0, 1].
         """
-        if np.max(img) == 1:
-            return img
+        if np.max(image) == 1:
+            return image
 
-        r = img[:, :, 0]
-        g = img[:, :, 1]
-        b = img[:, :, 2]
+        r = image[:, :, 0]
+        g = image[:, :, 1]
+        b = image[:, :, 2]
 
         if self.absMax is not None:
             scale = self.absMax
@@ -88,7 +87,7 @@ class BoundsRemapper(ConfigurableAction):
             turnover = np.max((r_quant, g_quant, b_quant))
             scale = turnover * self.quant
 
-        image = np.copy(img)
+        image = np.copy(image)
         image /= scale
 
         # Clip values that exceed the bound to ensure all values are within [0, absMax]
