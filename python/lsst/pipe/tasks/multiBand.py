@@ -21,8 +21,12 @@
 
 __all__ = ["DetectCoaddSourcesConfig", "DetectCoaddSourcesTask",
            "MeasureMergedCoaddSourcesConfig", "MeasureMergedCoaddSourcesTask",
+           "DEEP_COADD_BACKGROUND_DOCSTRING",
            ]
 
+import dataclasses
+
+import astropy.units
 import numpy as np
 
 from lsst.geom import Extent2I
@@ -34,7 +38,11 @@ from lsst.pipe.base import (
     PipelineTaskConnections
 )
 import lsst.pipe.base.connectionTypes as cT
-from lsst.pex.config import Field, ConfigurableField, ChoiceField
+from lsst.pex.config import Field, ChoiceField, ConfigurableField
+from lsst.cell_coadds import MultipleCellCoadd
+from lsst.images import Mask, get_legacy_deep_coadd_mask_planes
+from lsst.images.cells import CellCoadd
+from lsst.images.fields import field_from_legacy_background
 from lsst.meas.algorithms import (
     DynamicDetectionTask,
     ExceedsMaxVarianceScaleError,
@@ -84,6 +92,18 @@ the mergeDet, meas, and ref dataset Footprints:
 
 
 ##############################################################################################################
+
+# The default for DetectCoaddSourcesConfig.backgroundDescription:
+DEEP_COADD_BACKGROUND_DOCSTRING = (
+    "Background subtracted from the image when generating the Object catalog. "
+    "This intentionally oversubtracts the background to reduce blending and ensure "
+    "scattered light is subtracted. "
+    "Restoring this background does not restore all original backgrounds, "
+    "as the coadd was built from background-subtracted visit images; in most "
+    "cases this background term is actually quite small "
+)
+
+
 class DetectCoaddSourcesConnections(PipelineTaskConnections,
                                     dimensions=("tract", "patch", "band", "skymap"),
                                     defaultTemplates={"inputCoaddName": "deep", "outputCoaddName": "deep"}):
@@ -93,13 +113,13 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
         storageClass="SourceCatalog",
     )
     exposure = cT.Input(
-        doc="Exposure on which detections are to be performed. ",
+        doc="Exposure on which detections are to be performed (if useCellCoadd=False). ",
         name="{inputCoaddName}Coadd",
         storageClass="ExposureF",
         dimensions=("tract", "patch", "band", "skymap")
     )
     exposure_cells = cT.Input(
-        doc="Exposure on which detections are to be performed. ",
+        doc="Exposure on which detections are to be performed (if useCellCoadd=True). ",
         name="{inputCoaddName}CoaddCell",
         storageClass="MultipleCellCoadd",
         dimensions=("tract", "patch", "band", "skymap"),
@@ -133,11 +153,17 @@ class DetectCoaddSourcesConnections(PipelineTaskConnections,
         super().__init__(config=config)
         assert isinstance(config, DetectCoaddSourcesConfig)
 
+        if config.imageType == "future":
+            if config.useCellCoadds:
+                self.exposure_cells = dataclasses.replace(self.exposure_cells, storageClass="CellCoadd")
+            else:
+                self.exposure = dataclasses.replace(self.exposure, storageClass="CellCoadd")
+            self.outputExposure = dataclasses.replace(self.outputExposure, storageClass="CellCoadd")
+            del self.outputBackgrounds
         if config.useCellCoadds:
             del self.exposure
         else:
             del self.exposure_cells
-
         if not self.config.forceExactBinning:
             del self.skyMap
         if self.config.writeOnlyBackgrounds:
@@ -179,6 +205,38 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
             "backgrounds from multiple patches as input."
         )
     )
+    imageType = ChoiceField(
+        "Which image type to use for the input and output coadd. "
+        "This option only directly affects connection storage classes and hence 'runQuantum'; the 'run' "
+        "method behavior is determined by which type is actually passed in.",
+        allowed={
+            "legacy": (
+                "Read a lsst.cell_coadds.MultipleCellCoadd (if useCellCoadd) or "
+                "lsst.afw.image.Exposure (if not useCellCoadd) and write an lsst.afw.image.Exposure."
+            ),
+            "future": (
+                "Read and write lsst.images.cells.CellCoadd (useCellCoadd just "
+                "sets which of 'exposure' or 'exposure_cells' will be used for inputs). "
+                "The 'outputBackground' is deleted, writeEmptyBackgrounds is ignored, and "
+                "writeOnlyBackgrounds=True is invalid."
+            ),
+        },
+        dtype=str,
+        optional=False,
+        default="legacy",
+    )
+    backgroundName = Field(
+        "Name of the subtracted background, to be stored with the image when the input and "
+        "output images are lsst.images.cells.CellCoadd.",
+        dtype=str,
+        default="object",
+    )
+    backgroundDescription = Field(
+        "Description of the subtracted background, to be stored with the image when the input and "
+        "output images are lsst.images.cells.CellCoadd.",
+        dtype=str,
+        default=DEEP_COADD_BACKGROUND_DOCSTRING,
+    )
 
     def setDefaults(self):
         super().setDefaults()
@@ -193,6 +251,16 @@ class DetectCoaddSourcesConfig(PipelineTaskConfig, pipelineConnections=DetectCoa
         # Include band in packed data IDs that go into object IDs (None -> "as
         # many bands as are defined", rather than the default of zero).
         self.idGenerator.packer.n_bands = None
+
+    def validate(self):
+        super().validate()
+        if self.imageType == "future":
+            if self.doScaleVariance:
+                raise ValueError("doScaleVariance=True is not compatible with imageType='future'")
+            if self.forceExactBinning:
+                raise ValueError("forceExactBinning=True is not compatible with imageType='future'")
+            if self.writeOnlyBackgrounds:
+                raise ValueError("writeOnlyBackgrounds=True is not compatible with imageType='future'")
 
 
 class DetectCoaddSourcesTask(PipelineTask):
@@ -245,7 +313,13 @@ class DetectCoaddSourcesTask(PipelineTask):
 
         if self.config.useCellCoadds:
             multiple_cell_coadd = inputs.pop("exposure_cells")
-            exposure = multiple_cell_coadd.stitch().asExposure()
+            match self.config.imageType:
+                case "legacy":
+                    exposure = multiple_cell_coadd.stitch().asExposure()
+                case "future":
+                    exposure = multiple_cell_coadd  # conversion deferred to run().
+                case _:
+                    raise AssertionError(f"Invalid choice {self.config.imageType!r} for imageType.")
         else:
             exposure = inputs.pop("exposure")
 
@@ -272,18 +346,27 @@ class DetectCoaddSourcesTask(PipelineTask):
         ) as e:
             if self.config.writeEmptyBackgrounds:
                 butlerQC.put(self._makeEmptyBackground(exposure, patchInfo), outputRefs.outputBackgrounds)
-            # Detection failed, so clear any leftover the detected mask planes.
-            for maskName in ["DETECTED", "DETECTED_NEGATIVE"]:
-                if maskName in exposure.mask.getMaskPlaneDict().keys():
-                    detectedMask = exposure.mask.getMaskPlane(maskName)
-                    exposure.mask.clearMaskPlane(detectedMask)
-            butlerQC.put(exposure, outputRefs.outputExposure)
+            # Detection failed, so clear any leftover detected mask planes.
+            if isinstance(exposure, CellCoadd):
+                # If we passed a CellCoadd in, it won't be modified until 'run'
+                # is about to exit, and hence it can't have picked up a
+                # DETECTED_NEGATIVE plane, which can only be temporary here.
+                # But it might have a preexisting DETECTED plane (i.e. a union
+                # of the DETECTED plane from the warps) that we'd still want to
+                # clear.
+                exposure.mask.clear("DETECTED")
+            else:
+                for maskName in ["DETECTED", "DETECTED_NEGATIVE"]:
+                    if maskName in exposure.mask.getMaskPlaneDict().keys():
+                        detectedMask = exposure.mask.getMaskPlane(maskName)
+                        exposure.mask.clearMaskPlane(detectedMask)
             error = AnnotatedPartialOutputsError.annotate(
                 e,
                 self,
                 exposure,
                 log=self.log,
             )
+            butlerQC.put(exposure, outputRefs.outputExposure)
             raise error from e
 
         butlerQC.put(outputs, outputRefs)
@@ -297,7 +380,7 @@ class DetectCoaddSourcesTask(PipelineTask):
 
         Parameters
         ----------
-        exposure : `lsst.afw.image.Exposure`
+        exposure : `lsst.afw.image.Exposure` or `lsst.images.cells.CellCoadd`.
             Exposure on which to detect (may be background-subtracted and scaled,
             depending on configuration).
         idFactory : `lsst.afw.table.IdFactory`
@@ -313,14 +396,26 @@ class DetectCoaddSourcesTask(PipelineTask):
         result : `lsst.pipe.base.Struct`
             Results as a struct with attributes:
 
-            ``sources``
+            ``outputSources``
                 Catalog of detections (`lsst.afw.table.SourceCatalog`).
-            ``backgrounds``
+            ``outputBackgrounds``
                 List of backgrounds (`list`).
+            ``outputExposure``
+                The background-subtracted coadd image, with its mask plane
+                updated to include detections.  This will have the same type
+                as ``exposure``.
         """
+        cell_coadd = None
+        if isinstance(exposure, CellCoadd):
+            cell_coadd = exposure
+            exposure = cell_coadd.to_legacy()
         if self.config.forceExactBinning:
+            if cell_coadd is not None:
+                raise ValueError("forceExactBinning=True is not compatible with CellCoadd inputs")
             exposure = self._cropToExactBinning(exposure, patchInfo)
         if self.config.doScaleVariance:
+            if cell_coadd is not None:
+                raise ValueError("doScaleVariance=True is not compatible with CellCoadd inputs")
             varScale = self.scaleVariance.run(exposure.maskedImage)
             exposure.getMetadata().add("VARIANCE_SCALE", varScale)
         backgrounds = afwMath.BackgroundList()
@@ -335,7 +430,19 @@ class DetectCoaddSourcesTask(PipelineTask):
             # inability to persist empty BackgroundList.
             emptyBg = self._makeEmptyBackground(exposure, patchInfo)
             backgrounds.append(emptyBg)
-
+        if cell_coadd is not None:
+            cell_coadd.image.array[...] = exposure.image.array
+            cell_coadd.mask = Mask.from_legacy(
+                exposure.mask, plane_map=get_legacy_deep_coadd_mask_planes()
+            ).view(sky_projection=cell_coadd.sky_projection)
+            if backgrounds:
+                cell_coadd.backgrounds.add(
+                    self.config.backgroundName,
+                    field_from_legacy_background(backgrounds, unit=astropy.units.nJy),
+                    self.config.backgroundDescription,
+                    is_subtracted=True,
+                )
+            exposure = cell_coadd
         return Struct(outputSources=sources, outputBackgrounds=backgrounds, outputExposure=exposure)
 
     def _cropToExactBinning(self, exposure, patchInfo):
@@ -599,7 +706,11 @@ class MeasureMergedCoaddSourcesConnections(
         if not config.doWriteMatchesDenormalized:
             del self.denormMatches
 
-        if config.useCellCoadds:
+        if self.config.imageType == "future":
+            self.exposure = dataclasses.replace(self.exposure, storageClass="CellCoadd")
+            del self.exposure_cells
+            del self.background
+        elif self.config.useCellCoadds:
             del self.exposure
         else:
             del self.exposure_cells
@@ -693,6 +804,23 @@ class MeasureMergedCoaddSourcesConfig(PipelineTaskConfig,
         doc="Should be set to True if fake sources have been inserted into the input data."
     )
     idGenerator = SkyMapIdGeneratorConfig.make_field()
+    imageType = ChoiceField(
+        "Which image type to expect for the input coadd. "
+        "This option only directly affects connection storage classes and hence 'runQuantum'; the 'run' "
+        "method behavior is determined by which type is actually passed in.",
+        allowed={
+            "legacy": (
+                "Read a lsst.cell_coadds.MultipleCellCoadd via 'exposure_cells` and restore 'background' "
+                "(if useCellCoadd) or lsst.afw.image.Exposure via `exposure` (if not useCellCoadd)."
+            ),
+            "future": (
+                "Read lsst.images.cells.CellCoadd via the 'exposure' connection.  useCellCoadd is ignored."
+            ),
+        },
+        dtype=str,
+        optional=False,
+        default="legacy",
+    )
 
     @property
     def refObjLoader(self):
@@ -803,26 +931,37 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
                                                  config=self.config.refObjLoader,
                                                  log=self.log)
             self.match.setRefObjLoader(refObjLoader)
-
-        if self.config.useCellCoadds:
-            multiple_cell_coadd = inputs.pop("exposure_cells")
-            stitched_coadd = multiple_cell_coadd.stitch()
-            exposure = stitched_coadd.asExposure()
-            background = inputs.pop("background")
-            exposure.image -= background.getImage()
-
-            ccdInputs = stitched_coadd.ccds
-            apCorrMap = stitched_coadd.ap_corr_map
+        if self.config.imageType == "future":
+            coadd = inputs.pop("exposure")
+            band = inputRefs.exposure.dataId["band"]
+            # Instead of going directly from lsst.images.cells.CellCoadd to
+            # Exposure, it's cleaner for now to go through MultipleCellCoadd
+            # because the apCorrMap and ccdInputs need special handling - the
+            # cell-based versions can't be attached to Exposure.  Eventually
+            # we'll rewrite the lower-level code to use the lsst.images
+            # equivalents natively.
+            coadd = coadd.to_legacy_cell_coadd()
+        elif self.config.useCellCoadds:
+            coadd = inputs.pop("exposure_cells")
             band = inputRefs.exposure_cells.dataId["band"]
         else:
-            exposure = inputs.pop("exposure")
-            # Set psfcache
-            # move this to run after gen2 deprecation
+            coadd = inputs.pop("exposure")
+            band = inputRefs.exposure.dataId["band"]
+        if isinstance(coadd, MultipleCellCoadd):
+            stitched_coadd = coadd.stitch()
+            exposure = stitched_coadd.asExposure()
+            if self.config.imageType == "legacy":
+                background = inputs.pop("background")
+                exposure.image -= background.getImage()
+            ccdInputs = stitched_coadd.ccds
+            apCorrMap = stitched_coadd.ap_corr_map
+        else:
+            exposure = coadd
+            # Set psfcache only when we don't have a cell-based coadd.
             exposure.getPsf().setCacheCapacity(self.config.psfCache)
 
             ccdInputs = exposure.getInfo().getCoaddInputs().ccds
             apCorrMap = exposure.getInfo().getApCorrMap()
-            band = inputRefs.exposure.dataId["band"]
 
         # Get unique integer ID for IdFactory and RNG seeds; only the latter
         # should really be used as the IDs all come from the input catalog.
@@ -916,7 +1055,7 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
 
         Parameters
         ----------
-        exposure : `lsst.afw.exposure.Exposure`
+        exposure : `lsst.afw.image.Exposure`
             The input exposure on which measurements are to be performed.
         sources :  `lsst.afw.table.SourceCatalog`
             A catalog built from the results of merged detections, or
@@ -959,6 +1098,8 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
                 exposure.mask.addMaskPlane(maskPlane)
             for maskPlane in self.config.measurement.plugins["base_PixelFlags"].masksFpCenter:
                 exposure.mask.addMaskPlane(maskPlane)
+
+        self._ensureMaskPlanes()
 
         self.measurement.run(sources, exposure, exposureId=exposureId)
 
@@ -1013,3 +1154,22 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
 
         results.outputSources = sources
         return results
+
+    def _ensureMaskPlanes(self):
+        """Ensure the global mask dictionary has all of the mask planes
+        needed for PixelFlags algorithms.
+
+        When mask planes are added, this essentially guarantees that the
+        corresponding PixelFlags columns will be wholly False, and usually
+        we'd prefer to remove them from the configuration.  But those config
+        changes imply a schema changes, and that's not always viable (e.g. on
+        a release branch).
+        """
+        needed = set(self.measurement.plugins["base_PixelFlags"].config.masksFpCenter)
+        needed.update(self.measurement.plugins["base_PixelFlags"].config.masksFpAnywhere)
+        existing = afwImage.MaskX().getMaskPlaneDict().keys()
+        for plane in sorted(needed - existing):
+            self.log.warning(
+                "Adding mask plane %r with no pixel set to satisfy PixelFlags configuration.", plane
+            )
+            afwImage.MaskX.addMaskPlane(plane)
