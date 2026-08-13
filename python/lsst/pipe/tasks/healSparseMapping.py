@@ -27,6 +27,7 @@ __all__ = ["HealSparseInputMapTask", "HealSparseInputMapConfig",
            "ConsolidateHealSparsePropertyMapTask"]
 
 from collections import defaultdict
+import astropy.units
 import esutil
 import warnings
 import numbers
@@ -706,8 +707,9 @@ class HealSparsePropertyMapTask(pipeBase.PipelineTask):
                                  band, tract, patch)
                 continue
 
-            coadd_photo_calib = coadd_dict[patch].get(component="photoCalib")
-            coadd_zeropoint = 2.5*np.log10(coadd_photo_calib.getInstFluxAtZeroMagnitude())
+            # LSST coadds are now always in nJy, and the lsst.images formats
+            # don't even have a PhotoCalib anymore.
+            coadd_zeropoint = float((1.0 * astropy.units.nJy).to_value(astropy.units.ABmag))
 
             # Crop input_map to the inner polygon of the patch
             poly_vertices = patch_info.getInnerSkyPolygon(tract_info.getWcs()).getVertices()

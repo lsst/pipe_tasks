@@ -21,17 +21,21 @@
 
 __all__ = ["DeblendCoaddSourcesMultiConfig", "DeblendCoaddSourcesMultiTask"]
 
+import dataclasses
+
 import numpy as np
 
 from lsst.pipe.base import PipelineTask, PipelineTaskConfig, PipelineTaskConnections
 import lsst.pipe.base.connectionTypes as cT
 
-from lsst.pex.config import ConfigurableField, Field
+from lsst.pex.config import ChoiceField, ConfigurableField, Field
 from lsst.meas.base import SkyMapIdGeneratorConfig
 from lsst.meas.extensions.scarlet import ScarletDeblendTask
 
 import lsst.afw.image as afwImage
 import lsst.afw.table as afwTable
+import lsst.images as imgs
+from lsst.images.cells import CellCoadd
 
 from .coaddBase import reorderRefs
 
@@ -112,12 +116,16 @@ class DeblendCoaddSourcesMultiConnections(PipelineTaskConnections,
 
     def __init__(self, *, config=None):
         super().__init__(config=config)
-        if config:
-            if config.useCellCoadds:
-                del self.coadds
-            else:
-                del self.coadds_cell
-                del self.backgrounds
+        if self.config.imageType == "future":
+            self.coadds = dataclasses.replace(self.coadds, storageClass="CellCoadd")
+            self.deconvolvedCoadds = dataclasses.replace(self.deconvolvedCoadds, storageClass="MaskedImageV2")
+            del self.coadds_cell
+            del self.backgrounds
+        elif self.config.useCellCoadds:
+            del self.coadds
+        else:
+            del self.coadds_cell
+            del self.backgrounds
 
 
 class DeblendCoaddSourcesMultiConfig(PipelineTaskConfig,
@@ -131,6 +139,25 @@ class DeblendCoaddSourcesMultiConfig(PipelineTaskConfig,
         doc="Task to deblend an images in multiple bands"
     )
     idGenerator = SkyMapIdGeneratorConfig.make_field()
+    imageType = ChoiceField(
+        "Which image type to expect for the input coadds. "
+        "This option only directly affects connection storage classes and hence 'runQuantum'; the 'run' "
+        "method behavior is determined by which type is actually passed in.",
+        allowed={
+            "legacy": (
+                "Read a lsst.cell_coadds.MultipleCellCoadd via 'coadds_cells` and restore 'background' "
+                "(if useCellCoadd) or lsst.afw.image.Exposure via `coadds` (if not useCellCoadd), and read "
+                "lsst.afw.image.Exposure via 'deconvolvedCoadds'."
+            ),
+            "future": (
+                "Read lsst.images.cells.CellCoadd via 'coadds' and lsst.images.MaskedImage via "
+                "'deconvolvedCoadds'.  The useCellCoadds options is ignored."
+            ),
+        },
+        dtype=str,
+        optional=False,
+        default="legacy",
+    )
 
 
 class DeblendCoaddSourcesMultiTask(PipelineTask):
@@ -160,17 +187,25 @@ class DeblendCoaddSourcesMultiTask(PipelineTask):
         inputs = butlerQC.get(inputRefs)
         bands = [dRef.dataId["band"] for dRef in deconvolvedRefs]
         mergedDetections = inputs.pop("mergedDetections")
-        if self.config.useCellCoadds:
-            exposures = [mcc.stitch().asExposure() for mcc in inputs.pop("coadds_cell")]
-            backgrounds = inputs.pop("backgrounds")
-            for exposure, background in zip(exposures, backgrounds):
-                exposure.image -= background.getImage()
-            coadds = exposures
-        else:
-            coadds = inputs.pop("coadds")
+        match self.config.imageType:
+            case "legacy":
+                if self.config.useCellCoadds:
+                    exposures = [mcc.stitch().asExposure() for mcc in inputs.pop("coadds_cell")]
+                    backgrounds = inputs.pop("backgrounds")
+                    for exposure, background in zip(exposures, backgrounds):
+                        exposure.image -= background.getImage()
+                    coadds = exposures
+                    coaddRefs = inputRefs.coadds_cell
+                else:
+                    coadds = inputs.pop("coadds")
+                    coaddRefs = inputRefs.coadds
+            case "future":
+                coadds = inputs.pop("coadds")  # conversion deferred to run().
+                coaddRefs = inputRefs.coadds
+            case _:
+                raise AssertionError(f"Invalid choice {self.config.imageType!r} for imageType.")
 
         # Ensure that the coadd bands and deconvolved coadd bands match
-        coaddRefs = inputRefs.coadds_cell if self.config.useCellCoadds else inputRefs.coadds
         coaddBands = [dRef.dataId["band"] for dRef in coaddRefs]
         if bands != coaddBands:
             self.log.error("Coadd bands %s != deconvolved coadd bands %s", bands, coaddBands)
@@ -194,11 +229,46 @@ class DeblendCoaddSourcesMultiTask(PipelineTask):
         butlerQC.put(outputs, outputRefs)
 
     def run(self, coadds, bands, mergedDetections, deconvolvedCoadds, idFactory):
+        """Deblend coadds from multiple bands together.
+
+        Parameters
+        ----------
+        coadds : `list` [`lsst.afw.image.Exposure` | \
+                `lsst.images.cells.CellCoadd`]
+            Coadds to deblend.
+        bands : `list` [`str`]
+            Names or the bands for ``coadds`` (zip-iteration compatible).
+        mergedDetections : `lsst.afw.table.SourceCatalog`
+            Input catalog of detections, already merged across bands.
+        deconvolvedCoadds : `list` [`lsst.afw.image.Exposure` | \
+                `lsst.images.MaskedImage`]
+            Deconvolved versions of ``coadds`` (zip-iteration compatible).
+        idFactory : `lsst.afw.table.IdFactory`
+            Factory used to generate output source IDs.
+
+        Returns
+        -------
+        struct : `lsst.pipe.base.Struct`
+            Unmodified outputs of the ``multibandDeblend`` subtask.
+        """
+        coadds = [c.to_legacy() if isinstance(c, CellCoadd) else c for c in coadds]
+        deconvolvedCoadds = [self._coerceDeconvolvedInput(d, c) for d, c in zip(deconvolvedCoadds, coadds)]
         sources = self._makeSourceCatalog(mergedDetections, idFactory)
         multiExposure = afwImage.MultibandExposure.fromExposures(bands, coadds)
         mDeconvolved = afwImage.MultibandExposure.fromExposures(bands, deconvolvedCoadds)
         result = self.multibandDeblend.run(multiExposure, mDeconvolved, sources)
         return result
+
+    def _coerceDeconvolvedInput(
+        self, deconvolved: afwImage.Exposure | imgs.MaskedImage, coadd: afwImage.Exposure
+    ) -> afwImage.Exposure:
+        if isinstance(deconvolved, imgs.MaskedImage):
+            deconvolved = afwImage.Exposure(
+                maskedImage=deconvolved.to_legacy(plane_map=imgs.get_legacy_deep_coadd_mask_planes()),
+                exposureInfo=coadd.getInfo(),
+                dtype=deconvolved.image.array.dtype,
+            )
+        return deconvolved
 
     def _makeSourceCatalog(self, mergedDetections, idFactory):
         # There may be gaps in the mergeDet catalog, which will cause the
