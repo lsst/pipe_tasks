@@ -58,9 +58,6 @@ funcs:
             - base_CircularApertureFlux_9_0_instFlux
             - base_CircularApertureFlux_9_0_instFluxErr
             - base_LocalPhotoCalib
-    ap09Flux_flag:
-        functor: Column
-        args: base_CircularApertureFlux_9_0_flag
     ap12Flux:
         functor: LocalNanojansky
         args:
@@ -73,9 +70,6 @@ funcs:
             - base_CircularApertureFlux_12_0_instFlux
             - base_CircularApertureFlux_12_0_instFluxErr
             - base_LocalPhotoCalib
-    ap12Flux_flag:
-        functor: Column
-        args: base_CircularApertureFlux_12_0_flag
     ap25Flux:
         functor: LocalNanojansky
         args:
@@ -88,9 +82,6 @@ funcs:
             - base_CircularApertureFlux_25_0_instFlux
             - base_CircularApertureFlux_25_0_instFluxErr
             - base_LocalPhotoCalib
-    ap25Flux_flag:
-        functor: Column
-        args: base_CircularApertureFlux_25_0_flag
     # TODO: When DM-25019 is complete, these should be
     # changed to use the local value of the background
     # model, rather than the residual of the background
@@ -190,9 +181,9 @@ funcs:
         functor: SinglePrecisionFloatColumn
         args: base_ClassificationSizeExtendedness_value
 flags:
+   - base_CircularApertureFlux_9_0_flag
    - base_CircularApertureFlux_12_0_flag
-   - base_CircularApertureFlux_12_0_flag_apertureTruncated
-   - base_CircularApertureFlux_12_0_flag_sincCoeffsTruncated
+   - base_CircularApertureFlux_25_0_flag
    - base_NormalizedCompensatedTophatFlux_flag
    - base_NormalizedCompensatedTophatFlux_instFlux
    - base_NormalizedCompensatedTophatFlux_instFluxErr
@@ -256,6 +247,9 @@ flags:
 flag_rename_rules:
     # Taken from db-meas-forced
     - ['ext_photometryKron_', '']
+    - ['base_CircularApertureFlux_9_0_flag', 'ap09Flux_flag']
+    - ['base_CircularApertureFlux_12_0_flag', 'ap12Flux_flag']
+    - ['base_CircularApertureFlux_25_0_flag', 'ap25Flux_flag']
     - ['base_Local', 'local']
     - ['base_PixelFlags_flag', 'pixelFlags']
     - ['base_ClassificationE', 'e']

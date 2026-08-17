@@ -30,6 +30,7 @@ import unittest
 
 import numpy as np
 from astropy.table import Table
+import importlib.resources
 
 import lsst.utils.tests
 from lsst.utils import getPackageDir
@@ -40,7 +41,7 @@ from lsst.pipe.tasks.split_primary import SplitPrimaryTask
 
 FUNCTOR_FILE = os.path.join(getPackageDir("pipe_tasks"), "schemas", "prompt_source.yaml")
 
-SCHEMA_FILE = os.path.join("${SDM_SCHEMAS_DIR}", "yml", "lsstcam.yaml")
+SCHEMA_FILE = importlib.resources.files("lsst.sdm.schemas") / "ap_extra.yaml"
 TABLE_NAME = "PromptSource"
 
 
@@ -58,7 +59,7 @@ class PromptSourceSchemaTestCase(lsst.utils.tests.TestCase):
 
         schema = readSdmSchemaFile(schemaFile)
         if TABLE_NAME not in schema:
-            raise ValueError(f"Table {TABLE_NAME!r} not in {schemaFile}; skipping conformance check.")
+            raise ValueError(f"Table {TABLE_NAME!r} not in {schemaFile}.")
 
         cls.schemaColumns = {column.name for column in schema[TABLE_NAME].columns}
 
@@ -67,7 +68,8 @@ class PromptSourceSchemaTestCase(lsst.utils.tests.TestCase):
         transformTask = TransformSourceTableTask(config=config)
         producedColumns = set(transformTask.funcs.funcDict) | set(config.columnsFromDataId)
 
-        # Run the real splitPromptSource step to check the final set of columns
+        # The final prompt_source table is output by splitPromptSource, which is configured
+        # in the pipeline to drop sky sources and remove the corresponding column.
         splitConfig = SplitPrimaryTask.ConfigClass()
         splitConfig.discard_primary_columns = ["sky_source"]
         splitTask = SplitPrimaryTask(config=splitConfig)
