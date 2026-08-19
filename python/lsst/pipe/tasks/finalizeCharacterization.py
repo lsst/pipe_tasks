@@ -490,7 +490,17 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             output_schema.addField(
                 f'z_{i+1}',
                 type=np.float32,
-                doc=f"AIPSF latent-space component {i+1} of the PSF star encoding.",
+                doc=f"AIPSF latent-space component {i+1}, interpolated by the "
+                    "focal-plane interpolation at the star position.",
+                doReplace=True,
+            )
+        for i in range(self.aipsf_latent_dim):
+            output_schema.addField(
+                f'z_meas_{i+1}',
+                type=np.float32,
+                doc=f"AIPSF measured latent-space component {i+1} (direct "
+                    "encoder output for the star stamp), before focal-plane "
+                    "interpolation.",
                 doReplace=True,
             )
         if self.aipsf_latent_dim > 0:
@@ -643,7 +653,17 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
             selection_schema.addField(
                 f'z_{i+1}',
                 type=np.float32,
-                doc=f"AIPSF latent-space component {i+1} of the PSF star encoding.",
+                doc=f"AIPSF latent-space component {i+1}, interpolated by the "
+                    "focal-plane interpolation at the star position.",
+                doReplace=True,
+            )
+        for i in range(self.aipsf_latent_dim):
+            selection_schema.addField(
+                f'z_meas_{i+1}',
+                type=np.float32,
+                doc=f"AIPSF measured latent-space component {i+1} (direct "
+                    "encoder output for the star stamp), before focal-plane "
+                    "interpolation.",
                 doReplace=True,
             )
         if self.aipsf_latent_dim > 0:
@@ -1000,14 +1020,22 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
         """Add the AIPSF latent-space encodings and per-star (a, b) nuisance
         parameters to the measured source catalog.
 
+        Two latent vectors are stored per star: z_{i} is the interpolated
+        latent vector (the focal-plane interpolation evaluated at the star
+        position, i.e. ``star.fit.params`` after the Piff fit), and z_meas_{i}
+        is the measured latent vector (the direct encoder output for the star
+        stamp, preserved by Piff in the 'aipsf_zmeas_{i}' star properties).
+        Comparing the two diagnoses the latent-space interpolation.
+
         The PSF stars are matched to the sources by id (the piff stars carry
         the source id as the 'starId' property).  Sources without a fitted PSF
-        star (including reserve stars) get NaN.
+        star (including reserve stars) get NaN.  Stars fit with a Piff version
+        that predates the 'aipsf_zmeas_{i}' properties get NaN for z_meas_{i}.
 
         Parameters
         ----------
         measured_src : `lsst.afw.table.SourceCatalog`
-            Catalog to fill; must have the z_* and aipsf_* columns.
+            Catalog to fill; must have the z_*, z_meas_* and aipsf_* columns.
         psf_model : `lsst.meas.extensions.piff.PiffPsf`
             The fitted PSF model.
         """
@@ -1022,22 +1050,26 @@ class FinalizeCharacterizationTaskBase(pipeBase.PipelineTask):
                 continue
             params_by_id[s.data.properties['starId']] = (
                 params,
+                [s.data.properties.get(f'aipsf_zmeas_{j}', np.nan) for j in range(n)],
                 s.data.properties.get('aipsf_a', np.nan),
                 s.data.properties.get('aipsf_b', np.nan),
             )
 
         latents = np.full((len(measured_src), n), np.nan, dtype=np.float32)
+        measured_latents = np.full((len(measured_src), n), np.nan, dtype=np.float32)
         amplitude = np.full(len(measured_src), np.nan, dtype=np.float32)
         background = np.full(len(measured_src), np.nan, dtype=np.float32)
         for row, src_id in enumerate(measured_src['id']):
             match = params_by_id.get(src_id)
             if match is not None:
                 latents[row] = match[0][:n]
-                amplitude[row] = match[1]
-                background[row] = match[2]
+                measured_latents[row] = match[1]
+                amplitude[row] = match[2]
+                background[row] = match[3]
 
         for j in range(n):
             measured_src[f'z_{j+1}'] = latents[:, j]
+            measured_src[f'z_meas_{j+1}'] = measured_latents[:, j]
         measured_src['aipsf_a'] = amplitude
         measured_src['aipsf_b'] = background
 
