@@ -8,8 +8,8 @@ from collections.abc import Iterable, Mapping
 from lsst.afw.image import Exposure, ExposureF
 from lsst.rubinoxide import rgb
 from ._task import ChannelRGBConfig
-from ._functors import ColorScaler, BoundsRemapper
-from .types import ScaleColorProtocol, RemapBoundsProtocol
+from stellaRGB.functors import ColorScaler, BoundsRemapper
+from stellaRGB.types import ScaleColorProtocol, RemapBoundsProtocol
 
 from lsst.pipe.base import (
     PipelineTaskConfig,
@@ -74,22 +74,22 @@ class PrettyPictureStarFixerConfig(PipelineTaskConfig, pipelineConnections=Prett
         doc="Fluxes above this value will be considered possibly saturated and will be filled, set to None to disable",
         optional=True,
     )
-    channelConfig = ConfigDictField(
+    channel_config = ConfigDictField(
         doc="A dictionary that maps band names to their rgb channel configurations",
         keytype=str,
         itemtype=ChannelRGBConfig,
         default={},
     )
-    imageRemappingConfig = ConfigurableActionField[RemapBoundsProtocol](
+    image_remapping_config = ConfigurableActionField[RemapBoundsProtocol](
         doc="Action controlling normalization process", default=BoundsRemapper
     )
 
     growth = Field[float](doc="how fast the constructed stelar profile should grow", default=0.02)
 
     def setDefaults(self):
-        self.channelConfig["i"] = ChannelRGBConfig(r=1, g=0, b=0)
-        self.channelConfig["r"] = ChannelRGBConfig(r=0, g=1, b=0)
-        self.channelConfig["g"] = ChannelRGBConfig(r=0, g=0, b=1)
+        self.channel_config["i"] = ChannelRGBConfig(r=1, g=0, b=0)
+        self.channel_config["r"] = ChannelRGBConfig(r=0, g=1, b=0)
+        self.channel_config["g"] = ChannelRGBConfig(r=0, g=0, b=1)
         return super().setDefaults()
 
 
@@ -160,10 +160,10 @@ class PrettyPictureStarFixerTask(PipelineTask):
         imageBArray = input_rgb[..., 2]
 
         for band, image in inputs.items():
-            if band not in self.config.channelConfig:
+            if band not in self.config.channel_config:
                 logger.info(f"{band} image found but not requested in RGB image, skipping")
                 continue
-            mix = self.config.channelConfig[band]
+            mix = self.config.channel_config[band]
             if mix.r:
                 imageRArray += mix.r * image.image.array
             if mix.g:
@@ -174,10 +174,10 @@ class PrettyPictureStarFixerTask(PipelineTask):
         # now need to find the ratio each color contributes
         ratios = {}
         for band, image in inputs.items():
-            if band not in self.config.channelConfig:
+            if band not in self.config.channel_config:
                 logger.info(f"{band} image found but not requested in RGB image, skipping")
                 continue
-            mix = self.config.channelConfig[band]
+            mix = self.config.channel_config[band]
             if mix.r > 0.0:
                 rRatio = imageRArray[0, 0] / (mix.r * image.image.array[0, 0])
             else:
@@ -192,7 +192,7 @@ class PrettyPictureStarFixerTask(PipelineTask):
                 bRatio = 0.0
             ratios[band] = (rRatio, gRatio, bRatio)
 
-        remapped = self.config.imageRemappingConfig(input_rgb)
+        remapped = self.config.image_remapping_config(input_rgb)
         avg_scale = np.nanmax(remapped / input_rgb)
         Lab = rgb.RGB_to_Oklab(remapped.astype(np.float64), (0.31, 0.32))
 
@@ -238,10 +238,10 @@ class PrettyPictureStarFixerTask(PipelineTask):
         imageGArray = new_rgb[..., 1]
         imageBArray = new_rgb[..., 2]
         for band, image in inputs.items():
-            if band not in self.config.channelConfig:
+            if band not in self.config.channel_config:
                 logger.info(f"{band} image found but not requested in RGB image, skipping")
                 continue
-            mix = self.config.channelConfig[band]
+            mix = self.config.channel_config[band]
             match np.argmax(ratios[band]):
                 case 0:
                     image.image.array = imageRArray / ratios[band][0] / mix.r

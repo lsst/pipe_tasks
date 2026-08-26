@@ -64,25 +64,8 @@ from lsst.pipe.base import (
     QuantaAdjuster,
 )
 from lsst.rubinoxide import rbf_interpolator
-import cv2
-
-from lsst.pipe.base.connectionTypes import Input, Output
-from lsst.geom import Box2I, Point2I, Extent2I
-from lsst.afw.image import Exposure, Mask
-from lsst.skymap import Index2D
-
-from .types import (
-    ScaleLumProtocol,
-    RemapBoundsProtocol,
-    BracketingProtocol,
-    ScaleColorProtocol,
-    GamutRemappingProtocol,
-    LocalContrastProtocol,
-)
-from ._plugins import plugins
-from ._colorMapper import lsstRGB
-from ._utils import FeatheredMosaicCreator
-from ._functors import (
+from stellaRGB import stellaRGB
+from stellaRGB.functors import (
     BoundsRemapper,
     ColorScaler,
     LumCompressor,
@@ -90,6 +73,23 @@ from ._functors import (
     GamutFixer,
     LocalContrastEnhancer,
 )
+from stellaRGB.types import (
+    ScaleLumProtocol,
+    RemapBoundsProtocol,
+    BracketingProtocol,
+    ScaleColorProtocol,
+    GamutRemappingProtocol,
+    LocalContrastProtocol,
+)
+import cv2
+
+from lsst.pipe.base.connectionTypes import Input, Output
+from lsst.geom import Box2I, Point2I, Extent2I
+from lsst.afw.image import Exposure, Mask
+from lsst.skymap import Index2D
+
+from ._plugins import plugins
+from ._utils import FeatheredMosaicCreator
 
 import logging
 import tempfile
@@ -154,16 +154,24 @@ class ChannelRGBConfig(Config):
 
 
 class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureConnections):
-    channelConfig = ConfigDictField(
+    channel_config = ConfigDictField(
         doc="A dictionary that maps band names to their rgb channel configurations",
         keytype=str,
         itemtype=ChannelRGBConfig,
         default={},
     )
-    cieWhitePoint = ListField[float](
+    input_whitepoint = ListField[float](
         doc="The white point of the input arrays in ciexz coordinates", maxLength=2, default=[0.28, 0.28]
     )
-    arrayType = ChoiceField[str](
+    working_whitepoint = ListField[float](
+        doc="The white point of the Oklab working space the image is converted into for processing",
+        maxLength=2,
+        default=[0.31272, 0.32903],
+    )
+    output_whitepoint = ListField[float](
+        doc="The white point the output image should correspond to", maxLength=2, default=[0.31272, 0.32903]
+    )
+    array_type = ChoiceField[str](
         doc="The dataset type for the output image array",
         default="uint8",
         allowed={
@@ -173,135 +181,73 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
             "float": "Use 32 bit float arrays, 1 max",
         },
     )
-    recenterNoise = Field[float](
+    recenter_noise = Field[float](
         doc="Recenter the noise away from zero. Supplied value is in units of sigma",
         optional=True,
         default=None,
     )
-    noiseSearchThreshold = Field[float](
+    noise_search_threshold = Field[float](
         doc=(
             "Flux threshold below which most flux will be considered noise, used to estimate noise properties"
         ),
         default=2,
     )
-    maxNoiseImbalance = Field[float](
+    max_noise_imbalance = Field[float](
         doc=(
             "When recentering noise, if the ratio of counts of positive pixels, to negative pixels passes "
             "this threshold, consider there to be extended low flux and only estimate noise below zero."
         ),
         default=1.5,
     )
-    doPsfDeconvolve = Field[bool](
+    do_psf_deconvolve = Field[bool](
         doc="Use the PSF in a Richardson-Lucy deconvolution on the luminance channel.", default=False
     )
-    doPSFDeconcovlve = Field[bool](
-        doc="Use the PSF in a Richardson-Lucy deconvolution on the luminance channel.",
-        default=False,
-        deprecated="This field will be removed in v32. Use doPsfDeconvolve instead.",
-        optional=True,
-    )
-    doRemapGamut = Field[bool](
+    do_remap_gamut = Field[bool](
         doc="Apply a color correction to unrepresentable colors; if False, clip them.", default=True
     )
-    doExposureBrackets = Field[bool](
+    do_exposure_brackets = Field[bool](
         doc="Apply exposure bracketing to aid in dynamic range compression", default=True
     )
-    doLocalContrast = Field[bool](doc="Apply local contrast optimizations to luminance.", default=True)
+    do_local_contrast = Field[bool](doc="Apply local contrast optimizations to luminance.", default=True)
+    is_hdr = Field[bool](
+        doc=(
+            "Produce a High Dynamic Range output image. WARNING: This should only be set to True if the "
+            "corresponding HDR functors (e.g. the HDR luminance scaling and gamma correction) are also "
+            "configured on this task's config; enabling it alone will not produce an HDR image. "
+            "Reconfiguring this task for HDR is the responsibility of the pipeline."
+        ),
+        default=False,
+    )
 
-    imageRemappingConfig = ConfigurableActionField[RemapBoundsProtocol](
+    image_remapping_config = ConfigurableActionField[RemapBoundsProtocol](
         doc="Action controlling normalization process", default=BoundsRemapper
     )
-    luminanceConfig = ConfigurableActionField[ScaleLumProtocol](
+    luminance_config = ConfigurableActionField[ScaleLumProtocol](
         doc="Action controlling luminance scaling when making an RGB image", default=LumCompressor
     )
-    localContrastConfig = ConfigurableActionField[LocalContrastProtocol](
+    local_contrast_config = ConfigurableActionField[LocalContrastProtocol](
         doc="Action controlling the local contrast correction in RGB image production",
         default=LocalContrastEnhancer,
     )
-    colorConfig = ConfigurableActionField[ScaleColorProtocol](
+    color_config = ConfigurableActionField[ScaleColorProtocol](
         doc="Action to control the color scaling process in RGB image production", default=ColorScaler
     )
-    exposureBracketerConfig = ConfigurableActionField[BracketingProtocol](
+    exposure_bracketer_config = ConfigurableActionField[BracketingProtocol](
         doc=(
             "Exposure scaling action used in creating multiple exposures with different scalings which will "
             "then be fused into a final image"
         ),
         default=ExposureBracketer,
     )
-    gamutMapperConfig = ConfigurableActionField[GamutRemappingProtocol](
+    gamut_mapper_config = ConfigurableActionField[GamutRemappingProtocol](
         doc="Action to fix pixels which lay outside RGB color gamut", default=GamutFixer
     )
 
-    exposureBrackets = ListField[float](
-        doc=(
-            "Exposure scaling factors used in creating multiple exposures with different scalings which will "
-            "then be fused into a final image"
-        ),
-        optional=True,
-        default=[1.25, 1, 0.75],
-        deprecated=(
-            "This field will stop working in v31 and be removed in v32, "
-            "please set exposureBracketerConfig.exposureBrackets"
-        ),
-    )
-    gamutMethod = ChoiceField[str](
-        doc="If doRemapGamut is True this determines the method",
-        default="inpaint",
-        allowed={
-            "mapping": "Use a mapping function",
-            "inpaint": "Use surrounding pixels to determine likely value",
-        },
-        deprecated="This field will stop working in v31 and be removed in v32, please set gamutMapperConfig",
-    )
-
     def setDefaults(self):
-        self.channelConfig["i"] = ChannelRGBConfig(r=1, g=0, b=0)
-        self.channelConfig["r"] = ChannelRGBConfig(r=0, g=1, b=0)
-        self.channelConfig["g"] = ChannelRGBConfig(r=0, g=0, b=1)
+        self.channel_config["i"] = ChannelRGBConfig(r=1, g=0, b=0)
+        self.channel_config["r"] = ChannelRGBConfig(r=0, g=1, b=0)
+        self.channel_config["g"] = ChannelRGBConfig(r=0, g=0, b=1)
         return super().setDefaults()
-
-    def _handle_deprecated(self):
-        """Handle deprecated configuration migration.
-
-        This method migrates deprecated configuration fields to their new
-        locations in sub-configurations. It checks the configuration history
-        to determine if deprecated fields were explicitly set and updates
-        the new configuration locations accordingly.
-
-        Notes
-        -----
-        The following deprecated fields are migrated:
-        - ``gamutMethod`` -> ``gamutMapperConfig.gamutMethod``
-        - ``exposureBrackets`` -> ``exposureBracketerConfig.exposureBrackets``
-        - ``doLocalContrast`` -> ``localContrastConfig.doLocalContrast``
-        - ``doPSFDeconcovlve`` -> ``doPsfDeconvolve``
-        """
-        # check if gamutMethod is set
-        if len(self._history["gamutMethod"]) > 1 and isinstance(self.gamutMapperConfig, GamutFixer):
-            # This has been set in config, update it in the new location
-            self.gamutMapperConfig.gamutMethod = self.gamutMethod
-
-        if len(self._history["exposureBrackets"]) > 1 and isinstance(
-            self.exposureBracketerConfig, ExposureBracketer
-        ):
-            self.exposureBracketerConfig.exposureBrackets = self.exposureBrackets
-            if self.exposureBrackets is None:
-                self.doExposureBrackets = False
-
-        if len(self.localContrastConfig._history["doLocalContrast"]) > 1 and isinstance(
-            self.localContrastConfig, LocalContrastEnhancer
-        ):
-            self.doLocalContrast = self.localContrastConfig.doLocalContrast
-
-        # Handle doPsfDeconcovlve typo fix
-        if len(self._history["doPSFDeconcovlve"]) > 1:
-            self.doPsfDeconvolve = self.doPSFDeconcovlve
-
-    def freeze(self):
-        # ensure this is not already frozen
-        if self._frozen is not True:
-            self._handle_deprecated()
-        super().freeze()
 
 
 class PrettyPictureTask(PipelineTask):
@@ -335,7 +281,7 @@ class PrettyPictureTask(PipelineTask):
             - Half-normal fitting fails
         """
         # Extract negative values efficiently
-        values_noise = array[array < self.config.noiseSearchThreshold]
+        values_noise = array[array < self.config.noise_search_threshold]
 
         # find the mode
         center = mode(np.round(values_noise, 2)).mode
@@ -359,7 +305,7 @@ class PrettyPictureTask(PipelineTask):
         new_cut = array[array < (mu + 3 * sigma)]
         positivity_ratio = np.sum(new_cut > mu) / np.sum(new_cut < mu)
 
-        if positivity_ratio > self.config.maxNoiseImbalance:
+        if positivity_ratio > self.config.max_noise_imbalance:
             # This means there is an excess flux, possibly diffuse source,
             # only estimate around zero.
             mu, sigma = halfnorm.fit(np.abs(values_noise[values_noise < 0]), floc=0)
@@ -475,10 +421,10 @@ class PrettyPictureTask(PipelineTask):
         imageBArray = np.zeros(shape, dtype=np.float32)
 
         for band, image in channels.items():
-            if band not in self.config.channelConfig:
+            if band not in self.config.channel_config:
                 logger.info(f"{band} image found but not requested in RGB image, skipping")
                 continue
-            mix = self.config.channelConfig[band]
+            mix = self.config.channel_config[band]
             if mix.r:
                 imageRArray += mix.r * image
             if mix.g:
@@ -494,9 +440,9 @@ class PrettyPictureTask(PipelineTask):
         except Exception:
             psf = None
 
-        if self.config.recenterNoise:
+        if self.config.recenter_noise:
             self._match_sigmas_and_recenter(
-                imageRArray, imageGArray, imageBArray, factor=self.config.recenterNoise
+                imageRArray, imageGArray, imageBArray, factor=self.config.recenter_noise
             )
 
         # assert for typing reasons
@@ -509,35 +455,30 @@ class PrettyPictureTask(PipelineTask):
         for plug in plugins.partial():
             colorImage = plug(colorImage, jointMask, maskDict, self.config)
 
-        # Filter the local contrast parameters for diffusion that are None
-        # This is so we only apply key word overrides that are specifically set.
-        local_contrast_config = self.config.localContrastConfig.toDict()
-        to_remove = []
-        for k, v in local_contrast_config["diffusionFunction"].items():
-            if v is None:
-                to_remove.append(k)
-        for item in to_remove:
-            local_contrast_config["diffusionControl"].pop(item)
-
-        colorImage = lsstRGB(
+        colorImage = stellaRGB(
             colorImage[:, :, 0],
             colorImage[:, :, 1],
             colorImage[:, :, 2],
-            local_contrast=self.config.localContrastConfig if self.config.doLocalContrast else None,
-            scale_lum=self.config.luminanceConfig,
-            scale_color=self.config.colorConfig,
-            remap_bounds=self.config.imageRemappingConfig,
+            local_contrast=self.config.local_contrast_config if self.config.do_local_contrast else None,
+            scale_lum=self.config.luminance_config,
+            scale_color=self.config.color_config,
+            remap_bounds=self.config.image_remapping_config,
             bracketing_function=(
-                self.config.exposureBracketerConfig if self.config.doExposureBrackets else None
+                self.config.exposure_bracketer_config if self.config.do_exposure_brackets else None
             ),
-            gamut_remapping_function=self.config.gamutMapperConfig if self.config.doRemapGamut else None,
-            cie_white_point=tuple(self.config.cieWhitePoint),  # type: ignore
-            psf=psf if self.config.doPsfDeconvolve else None,
+            gamut_remapping_function=self.config.gamut_mapper_config if self.config.do_remap_gamut else None,
+            input_whitepoint=tuple(self.config.input_whitepoint),  # type: ignore
+            working_whitepoint=tuple(self.config.working_whitepoint),  # type: ignore
+            output_whitepoint=tuple(self.config.output_whitepoint),  # type: ignore
+            psf=psf if self.config.do_psf_deconvolve else None,
+            is_hdr=self.config.is_hdr,
+            bbox=image_box,
+            sky_projection=image_wcs,
         )
 
         # Find the dataset type and thus the maximum values as well
         maxVal: int | float
-        match self.config.arrayType:
+        match self.config.array_type:
             case "uint8":
                 dtype = np.uint8
                 maxVal = 255
@@ -553,14 +494,17 @@ class PrettyPictureTask(PipelineTask):
             case _:
                 assert True, "This code path should be unreachable"
 
-        # lsstRGB returns an image in 0-1 scale it to the maximum value
-        colorImage *= maxVal  # type: ignore
+        # stellaRGB returns an image in 0-1 scale it to the maximum value and
+        # cast to the requested array type in one step.
+        output_array = (colorImage.array * maxVal).astype(dtype)  # type: ignore
 
         # pack the joint mask back into a mask object
         lsstMask = Mask(width=jointMask.shape[1], height=jointMask.shape[0], planeDefs=maskDict)
         lsstMask.array = jointMask  # type: ignore
         return Struct(
-            outputRGB=ColorImage(colorImage.astype(dtype), bbox=image_box, sky_projection=image_wcs),
+            outputRGB=ColorImage(
+                output_array, bbox=colorImage.bbox, sky_projection=colorImage.sky_projection
+            ),
             outputRGBMask=lsstMask,
         )  # type: ignore
 
@@ -573,7 +517,7 @@ class PrettyPictureTask(PipelineTask):
         imageRefs: list[DatasetRef] = inputRefs.inputCoadds
         sortedImages = self.makeInputsFromRefs(imageRefs, butlerQC)
         if not sortedImages:
-            requested = ", ".join(self.config.channelConfig.keys())
+            requested = ", ".join(self.config.channel_config.keys())
             raise NoWorkFound(f"No input images of band(s) {requested}")
 
         # get the patch tract bounding box and wcs
@@ -1484,7 +1428,9 @@ class PrettyMosaicTask(PipelineTask):
                 )
                 mask_array = rgbMask.array[:: self.config.binFactor, :: self.config.binFactor]
                 rgbMask = Mask(*(mask_array.shape[::-1]))
-            mosaic_maker.add_to_image(consolidatedImage, rgb, newBox, box, reverse=False)
+            mosaic_maker.add_to_image(
+                consolidatedImage, rgb, Box.from_legacy(newBox), Box.from_legacy(box), reverse=False
+            )
 
             consolidatedMask[*box.slices] = np.bitwise_or(consolidatedMask[*box.slices], rgbMask.array)
 

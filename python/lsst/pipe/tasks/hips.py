@@ -1003,7 +1003,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                 Q=self.config.png_gray_asinh_softening,
             )
         else:
-            match self.config.rgbStyle:
+            match self.config.rgb_style:
                 case "lupton":
                     png_color_mapping = AsinhMapping(
                         self.config.png_color_asinh_minimum,
@@ -1096,7 +1096,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
                         # Make a color png.
                         lupton_args = {}
                         lsstRGB_args = {}
-                        match self.config.rgbStyle:
+                        match self.config.rgb_style:
                             case "lupton":
                                 lupton_args["image_red"] = exposures[
                                     (self.config.red_channel_band, order)
@@ -1290,7 +1290,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
         hips_dir = hips_base_path.join(f"Norder{order}", forceDirectory=True).join(
             f"Dir{dir_number}", forceDirectory=True
         )
-        match self.config.rgbStyle:
+        match self.config.rgb_style:
             case "lupton":
                 # We need to convert nans to the minimum values in the mapping.
                 png_mapping = lupton_args["png_mapping"]
@@ -1749,7 +1749,7 @@ class GenerateColorHipsConfig(GenerateHipsConfig, pipelineConnections=GenerateCo
     rgbGenerator = pexConfig.ConfigurableField[PrettyPictureTask](
         doc="The task to use to generate an RGB image", target=PrettyPictureTask
     )
-    rgbStyle = pexConfig.ChoiceField[str](
+    rgb_style = pexConfig.ChoiceField[str](
         doc="The rgb mapping style, must be one of lsstRGB or lupton",
         allowed={
             "lupton": "Use the lupton algorithm for RGB images",
@@ -1761,19 +1761,18 @@ class GenerateColorHipsConfig(GenerateHipsConfig, pipelineConnections=GenerateCo
     def setDefaults(self):
         super().setDefaults()
         self.rgbGenerator: PrettyPictureConfig
-        self.rgbGenerator.imageRemappingConfig.absMax = 550
-        self.rgbGenerator.luminanceConfig.Q = 0.7
-        self.rgbGenerator.doPSFDeconcovlve = False
-        self.rgbGenerator.exposureBrackets = None
-        self.rgbGenerator.localContrastConfig.doLocalContrast = False
-        self.rgbGenerator.luminanceConfig.stretch = 250
-        self.rgbGenerator.luminanceConfig.max = 100
-        self.rgbGenerator.luminanceConfig.highlight = 0.905882
-        self.rgbGenerator.luminanceConfig.shadow = 0.12
-        self.rgbGenerator.luminanceConfig.midtone = 0.25
-        self.rgbGenerator.colorConfig.maxChroma = 80
-        self.rgbGenerator.colorConfig.saturation = 0.6
-        self.rgbGenerator.cieWhitePoint = (0.28, 0.28)
+        self.rgbGenerator.image_remapping_config.abs_max = 550
+        self.rgbGenerator.luminance_config.Q = 0.7
+        self.rgbGenerator.exposure_bracketer_config.exposure_brackets = None
+        self.rgbGenerator.local_contrast_config.do_local_contrast = False
+        self.rgbGenerator.luminance_config.stretch = 250
+        self.rgbGenerator.luminance_config.max = 100
+        self.rgbGenerator.luminance_config.highlight = 0.905882
+        self.rgbGenerator.luminance_config.shadow = 0.12
+        self.rgbGenerator.luminance_config.midtone = 0.25
+        self.rgbGenerator.color_config.max_chroma = 80
+        self.rgbGenerator.color_config.saturation = 0.6
+        self.rgbGenerator.input_whitepoint = (0.28, 0.28)
 
         return
 
@@ -1807,7 +1806,7 @@ class GenerateColorHipsTask(GenerateHipsTask):
         if len(data_bands) == 0:
             raise RuntimeError("GenerateColorHipsTask must have data from at least one band.")
 
-        match self.config.rgbStyle:
+        match self.config.rgb_style:
             case "lupton":
                 if self.config.blue_channel_band not in data_bands:
                     self.log.warning(
@@ -1834,7 +1833,7 @@ class GenerateColorHipsTask(GenerateHipsTask):
                 # bgr order according to the hue specified for each astrophysical band.
                 band_names = []
                 band_values = []
-                for band_name, config in self.config.rgbGenerator.channelConfig.items():
+                for band_name, config in self.config.rgbGenerator.channel_config.items():
                     band_names.append(band_name)
                     band_values.append((config.r, config.g, config.b))
                 # convert to a space where it is easy to calcualte the hue

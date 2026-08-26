@@ -41,6 +41,7 @@ from lsst.pipe.base.connectionTypes import Input, Output
 from lsst.skymap import BaseSkyMap
 from lsst.afw.geom import SkyWcs
 from lsst.geom import Box2I, Point2I, Extent2I
+from lsst.images import Box
 from lsst.afw.math import Warper
 from lsst.daf.butler import DeferredDatasetHandle
 from lsst.afw.image import ImageF
@@ -352,7 +353,13 @@ class HighOrderHipsTask(PipelineTask):
                 tmp_new_box = Box2I(Point2I(x=0, y=0), Extent2I(x=new_box.getWidth(), y=new_box.getHeight()))
 
                 image = handle.get()
-                mosaic_maker.add_to_image(new_array, image.array, tmp_new_box, tmpBox, reverse=False)
+                mosaic_maker.add_to_image(
+                    new_array,
+                    image.array,
+                    Box.from_legacy(tmp_new_box),
+                    Box.from_legacy(tmpBox),
+                    reverse=False,
+                )
             # skywcs is the same for all patches in a tract, share the appending here
             boxes.append((new_array, skyWcs, new_box))
         return boxes
