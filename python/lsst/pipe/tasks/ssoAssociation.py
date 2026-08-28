@@ -319,19 +319,24 @@ class SolarSystemAssociationTask(pipeBase.Task):
         unAssocObjectMask = np.logical_not(maskedObjects['associated'].value)
         dtypes = [float if d is np.ma.core.MaskedConstant else type(d)
                   for d in maskedObjects[0][all_cols].values()]
-        ssSourceData = np.ma.filled(np.array(ssSourceData), None)
+
         colnames = ["designation", "phaseAngle", "helioRange", "topoRange"]
         colnames += stateVectorColumns + mpcorbColumns
         colnames += ["ephRa", "ephDec", "ephRateRa", "ephRateDec", "ephVmag", "topoRangeRate"]
-        ssSourceData = Table(ssSourceData, names=colnames, dtype=dtypes)
+        ssSourceData = Table(rows=ssSourceData, names=colnames, dtype=dtypes)
+
         if 'MPCORB_created_at' in ssSourceData.columns:
             ssSourceData['MPCORB_created_at'] = 0
             ssSourceData['MPCORB_updated_at'] = 0
             ssSourceData['MPCORB_fitting_datetime'] = 0
-            for c in ['MPCORB_created_at', 'MPCORB_updated_at', 'MPCORB_fitting_datetime',
-                      'MPCORB_u_param']:
-                ssSourceData[c] = ssSourceData[c].astype(np.float64).astype(np.int64)
             ssSourceData['MPCORB_orbit_type_int'] = -1  # TODO: DM-54214. Mixed string and nan types.
+
+            if hasattr(ssSourceData['MPCORB_orbit_type_int'], 'filled'):
+                ssSourceData['MPCORB_orbit_type_int'] = ssSourceData['MPCORB_orbit_type_int'].filled(-1)
+
+        if hasattr(ssSourceData['ephVmag'], 'filled'):
+            ssSourceData['ephVmag'] = ssSourceData['ephVmag'].filled(np.nan).astype(float)
+
             ssSourceData['MPCORB_orbit_type_int'] = ssSourceData['MPCORB_orbit_type_int'].astype(np.int64)
         ssSourceData['ssObjectId'] = Column(data=ssObjectIds, dtype=int)
         ssSourceData["ra"] = ras
@@ -395,7 +400,6 @@ class SolarSystemAssociationTask(pipeBase.Task):
 
             # Join on diaSourceId, keeping all rows of ssSourceData
             ssSourceData = join(ssSourceData, dia, keys=source_column, join_type="left", uniq_col_name="")
-
         return pipeBase.Struct(
             ssoAssocDiaSources=diaSourceCatalog[assocSourceMask],
             unAssocDiaSources=diaSourceCatalog[~assocSourceMask],
