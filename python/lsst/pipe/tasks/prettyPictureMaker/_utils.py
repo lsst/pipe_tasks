@@ -115,7 +115,13 @@ class FeatheredMosaicCreator:
         ]
 
     def add_to_image(
-        self, image: NDArray, patch: NDArray, new_box: Box, box: Box, reverse: bool = True
+        self,
+        image: NDArray,
+        patch: NDArray,
+        new_box: Box,
+        box: Box,
+        reverse: bool = True,
+        weight: NDArray | None = None,
     ) -> None:
         """Add a patch to an image with feathering at the edges.
 
@@ -123,6 +129,8 @@ class FeatheredMosaicCreator:
         ----------
         image : `NDArray`
             Target image to which the patch will be added. Modified in-place.
+            When ``weight`` is provided this holds the un-normalized weighted sum
+            of the contributions; call :meth:`finalize` to normalize it.
         patch : `NDArray`
             Patch array to be added to the image.
         new_box : `lsst.images.Box`
@@ -132,6 +140,12 @@ class FeatheredMosaicCreator:
         reverse : `bool`, optional
             If True, reverse the patch along the first axis before adding.
             Default is True.
+        weight : `NDArray`, optional
+            Same-shaped accumulator that receives the feather weight of each
+            contribution. When provided, pixels of ``patch`` that are NaN are
+            excluded (their data contributes 0 and their weight contributes 0)
+            so a NaN in one patch does not corrupt the blend. Must be zero
+            initialized by the caller. Default is None (plain feathered sum).
 
         Notes
         -----
@@ -140,6 +154,9 @@ class FeatheredMosaicCreator:
         feathering is applied based on which edges of the patch differ between
         `box` and `new_box`. The patch is multiplied by a mixer array that gradually
         transitions from 0 to 1 across the feathering region.
+
+        When ``weight`` is given, call :meth:`finalize` after all contributions
+        have been added to obtain the normalized (NaN-reweighted) blend.
         """
         base_shape = patch.shape if patch.ndim == 2 else patch.shape[:2]
         mixer = np.ones(base_shape)
@@ -158,6 +175,40 @@ class FeatheredMosaicCreator:
         if image.ndim > 2:
             mixer = np.repeat(np.expand_dims(mixer, 2), 3, axis=2)
 
-        patch = mixer * patch
+        slice_ = (slice(box.y.start, box.y.stop), slice(box.x.start, box.x.stop))
+        if reverse:
+            slice_ += (slice(None),) if image.ndim > 2 else ()
 
-        image[box.y.start : box.y.stop, box.x.start : box.x.stop] += patch[::-1, :, :] if reverse else patch
+        if weight is None:
+            image[slice_] += (mixer * patch)[::-1] if reverse else mixer * patch
+            return
+
+        finite = np.isfinite(patch)
+        clean = np.where(finite, patch, 0.0)
+        image[slice_] += (mixer * clean)[::-1] if reverse else mixer * clean
+        weight[slice_] += (mixer * finite)[::-1] if reverse else mixer * finite
+
+    @staticmethod
+    def finalize(image: NDArray, weight: NDArray) -> NDArray:
+        """Normalize a weighted-sum image into a NaN-reweighted blend.
+
+        Each pixel becomes ``sum(weight_i * data_i) / sum(weight_i)``. Pixels with
+        no valid contribution (total weight zero) are set to NaN, the missing-data
+        marker.
+
+        Parameters
+        ----------
+        image : `NDArray`
+            The weighted-sum image built by :meth:`add_to_image`. Modified in-place.
+        weight : `NDArray`
+            The weight accumulator built by :meth:`add_to_image`.
+
+        Returns
+        -------
+        image : `NDArray`
+            The normalized image.
+        """
+        mask = weight > 0
+        image[mask] /= weight[mask]
+        image[~mask] = np.nan
+        return image
