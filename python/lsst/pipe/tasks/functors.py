@@ -58,6 +58,7 @@ import yaml
 from astropy.coordinates import SkyCoord
 from lsst.daf.butler import DeferredDatasetHandle
 from lsst.pipe.base import InMemoryDatasetHandle
+from lsst.resources import ResourcePath
 from lsst.utils import doImport
 from lsst.utils.introspection import get_full_type_name
 
@@ -548,7 +549,7 @@ class CompositeFunctor(Functor):
     def from_file(cls, filename, **kwargs):
         # Allow environment variables in the filename.
         filename = os.path.expandvars(filename)
-        with open(filename) as f:
+        with ResourcePath(filename).open("r") as f:
             translationDefinition = yaml.safe_load(f)
 
         return cls.from_yaml(translationDefinition, **kwargs)
