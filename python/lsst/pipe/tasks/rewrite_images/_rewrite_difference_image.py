@@ -192,5 +192,6 @@ class RewriteDifferenceImageTask(PipelineTask):
             template_psf,
             template_metadata,
             coadd_data_ids_by_uuid,
+            log=self.log,
         )
         return Struct(future_difference_image=difference_image)
