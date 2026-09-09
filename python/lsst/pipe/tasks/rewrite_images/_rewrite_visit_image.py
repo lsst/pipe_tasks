@@ -84,6 +84,7 @@ class RewriteVisitImageConnections(
         storageClass="Background",
         dimensions={"visit", "detector"},
         doc="A different background model that was not subtracted from the image.",
+        minimum=0,
     )
     future_visit_image = cT.Output(
         "{future_prefix}visit_image",
