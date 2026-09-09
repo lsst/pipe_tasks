@@ -78,12 +78,14 @@ class RewriteVisitImageConnections(
         storageClass="Background",
         dimensions={"visit", "detector"},
         doc="The background model that was subtracted from this image.",
+        minimum=0,
     )
     alternate_background = cT.Input(
         "skyCorr",
         storageClass="Background",
         dimensions={"visit", "detector"},
         doc="A different background model that was not subtracted from the image.",
+        minimum=0,
     )
     future_visit_image = cT.Output(
         "{future_prefix}visit_image",
@@ -199,7 +201,7 @@ class RewriteVisitImageTask(PipelineTask):
         visit_image: VisitImage,
         *,
         photo_calib: PhotoCalib | None = None,
-        subtracted_background: BackgroundList,
+        subtracted_background: BackgroundList | None = None,
         alternate_background: BackgroundList | None = None,
     ) -> Struct:
         instrumental_unit = astropy.units.Unit(self.config.instrumental_unit)
@@ -207,14 +209,18 @@ class RewriteVisitImageTask(PipelineTask):
             visit_image.photometric_scaling = field_from_legacy_photo_calib(
                 photo_calib, bounds=visit_image.bbox, instrumental_unit=instrumental_unit
             )
-        visit_image.backgrounds.add(
-            "subtracted",
-            field_from_legacy_background(
-                subtracted_background, bounds=visit_image.bbox, unit=instrumental_unit
-            ),
-            self.config.subtracted_background_description,
-            is_subtracted=True,
-        )
+        if subtracted_background is not None:
+            # TODO[DM-56044]: this ideally wouldn't be possible - we'd write
+            # out the background whenever we write out a visit_image, even if
+            # there's a write-partial-outputs failure.
+            visit_image.backgrounds.add(
+                "subtracted",
+                field_from_legacy_background(
+                    subtracted_background, bounds=visit_image.bbox, unit=instrumental_unit
+                ),
+                self.config.subtracted_background_description,
+                is_subtracted=True,
+            )
         if alternate_background is not None:
             assert self.config.alternate_background_name is not None, (
                 "Configuration and arguments are inconsistent."
@@ -223,6 +229,10 @@ class RewriteVisitImageTask(PipelineTask):
                 case "independent":
                     pass
                 case "differential_composed":
+                    if subtracted_background is None:
+                        # We can't add the alternate background here either,
+                        # because we don't have its baseline.
+                        return Struct(future_visit_image=visit_image)
                     for (subtracted_term, *_), (alternate_term, *_) in zip(
                         subtracted_background, alternate_background
                     ):
@@ -238,6 +248,10 @@ class RewriteVisitImageTask(PipelineTask):
                         ]
                     )
                 case "differential_fit":
+                    if subtracted_background is None:
+                        # We can't add the alternate background here either,
+                        # because we don't have its baseline.
+                        return Struct(future_visit_image=visit_image)
                     alternate_background = BackgroundList(*subtracted_background, *alternate_background)
             visit_image.backgrounds.add(
                 self.config.alternate_background_name,
