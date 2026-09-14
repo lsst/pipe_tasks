@@ -2,6 +2,7 @@ import numpy as np
 
 from lsst.geom import Box2I
 from lsst.images import Box
+from lsst.pipe.tasks.prettyPictureMaker._task import PrettyPictureConfig
 from lsst.pipe.tasks.prettyPictureMaker._utils import FeatheredMosaicCreator
 
 
@@ -122,3 +123,35 @@ class TestFeatheredMosaicCreator:
         creator.add_to_image(image, patch, new_box, box, reverse=True)
 
         assert image.shape == (50, 50, 3)
+
+
+class TestImageRemappingContract:
+    def test_image_remapping_returns_flux_transform(self):
+        """Verify the remap contract: a fitted FluxTransform, not an image.
+
+        PrettyPictureTask passes ``config.image_remapping_config`` (a
+        stellaRGB BoundsRemapper) to ``stellaRGB()``, which applies the
+        returned transform to the pixels and the scene fluxes itself. A
+        consumer that invoked the remapper directly (e.g.
+        ``_new_star_fix.PrettyPictureStarFixerTask.run``) must therefore apply
+        the returned object -- this test pins the receipt shape so a change
+        back to (or a third-party implementation of) the old "remapper returns
+        the image" behavior fails here.
+        """
+        config = PrettyPictureConfig()
+        rng = np.random.default_rng(42)
+        img = (rng.uniform(0.0, 1000.0, (16, 16, 3)) + 1.0).astype(np.float64)
+
+        transform = config.image_remapping_config(img)
+
+        assert callable(transform)
+        assert transform.normalized_top == 1.0
+
+        normalized = transform(img)
+        assert isinstance(normalized, np.ndarray)
+        assert normalized.shape == img.shape
+        assert normalized.min() >= 0.0
+        assert normalized.max() <= 1.0
+
+        assert transform.applied_stats is not None
+        assert "mode" in transform.applied_stats

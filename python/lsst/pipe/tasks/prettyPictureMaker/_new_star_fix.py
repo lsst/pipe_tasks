@@ -192,7 +192,8 @@ class PrettyPictureStarFixerTask(PipelineTask):
                 bRatio = 0.0
             ratios[band] = (rRatio, gRatio, bRatio)
 
-        remapped = self.config.image_remapping_config(input_rgb)
+        transform = self.config.image_remapping_config(input_rgb)
+        remapped = transform(input_rgb)
         avg_scale = np.nanmax(remapped / input_rgb)
         Lab = rgb.RGB_to_Oklab(remapped.astype(np.float64), (0.31, 0.32))
 
