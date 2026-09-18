@@ -1029,7 +1029,7 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
                             fillValue = self.config.integerFillValue
                     else:
                         fillValue = self.config.floatFillValue
-                    dfTemp[col].values[:] = fillValue
+                    dfTemp.loc[col, :] = fillValue
                 dfDict[filt] = dfTemp
 
         # This makes a multilevel column index, with band as first level
