@@ -1,15 +1,13 @@
 import numpy as np
 import logging
-from scipy.ndimage import binary_dilation, distance_transform_edt, binary_erosion, binary_closing, label
+from scipy.ndimage import binary_dilation, label
 from typing import cast
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 
 
 from lsst.afw.image import Exposure, ExposureF
-from lsst.rubinoxide import rgb
 from ._task import ChannelRGBConfig
-from stellaRGB.functors import ColorScaler, BoundsRemapper
-from stellaRGB.types import ScaleColorProtocol, RemapBoundsProtocol
+from stellaRGB import Chromaticity, SceneDefinition, reconstruct_saturated_stars
 
 from lsst.pipe.base import (
     PipelineTaskConfig,
@@ -21,12 +19,15 @@ from lsst.pipe.base import (
     OutputQuantizedConnection,
 )
 from lsst.pex.config import Field, ConfigDictField
-from lsst.pex.config.configurableActions import ConfigurableActionField
-from lsst.skymap import BaseSkyMap
 
 from lsst.pipe.base.connectionTypes import Input, Output
 
 logger = logging.getLogger(__name__)
+
+# The (0.31, 0.32) input-chromaticity convention the star engine always used,
+# kept literal by maintainer decision rather than promoted to a config field;
+# built once because it is pure photometric identity, never mutated.
+_STAR_ENGINE_SCENE = SceneDefinition(input_whitepoint=Chromaticity(x=0.31, y=0.32))
 
 
 def _disk(r):
@@ -71,7 +72,10 @@ class PrettyPictureStarFixerConnections(
 
 class PrettyPictureStarFixerConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureStarFixerConnections):
     brightnessThresh = Field[float](
-        doc="Fluxes above this value will be considered possibly saturated and will be filled, set to None to disable",
+        doc=(
+            "Fluxes above this value will be considered possibly saturated "
+            "and will be filled, set to None to disable"
+        ),
         optional=True,
     )
     channel_config = ConfigDictField(
@@ -80,10 +84,6 @@ class PrettyPictureStarFixerConfig(PipelineTaskConfig, pipelineConnections=Prett
         itemtype=ChannelRGBConfig,
         default={},
     )
-    image_remapping_config = ConfigurableActionField[RemapBoundsProtocol](
-        doc="Action controlling normalization process", default=BoundsRemapper
-    )
-
     growth = Field[float](doc="how fast the constructed stelar profile should grow", default=0.02)
 
     def setDefaults(self):
@@ -113,6 +113,18 @@ class PrettyPictureStarFixerTask(PipelineTask):
         relies on supplying all bands and fixing pixels that are marked
         as having a defect in any band even if within one band there  is
         no issue.
+
+        The repair itself is delegated to
+        `stellaRGB.reconstruct_saturated_stars`, which owns the
+        normalization and the flux-unit restoration: it rebuilds the core
+        in an Oklab space anchored at the engine's (0.31, 0.32) input
+        whitepoint convention and returns the reconstructed region to the
+        input's flux units through an internal scalar working scale (a
+        division/multiplication pair that cannot clip). Pixels under the
+        masked region may be NaN or garbage; the engine sanitizes that
+        region itself, and pixels outside the repaired region are returned
+        untouched, so the exposures keep their original flux units
+        everywhere.
 
         Parameters
         ----------
@@ -192,47 +204,24 @@ class PrettyPictureStarFixerTask(PipelineTask):
                 bRatio = 0.0
             ratios[band] = (rRatio, gRatio, bRatio)
 
-        transform = self.config.image_remapping_config(input_rgb)
-        remapped = transform(input_rgb)
-        avg_scale = np.nanmax(remapped / input_rgb)
-        Lab = rgb.RGB_to_Oklab(remapped.astype(np.float64), (0.31, 0.32))
-
-        lum_copy = np.copy(Lab[..., 0])
-
         # create circularized mask, as most bright stars look like footballs. Only use
         # this mask for the L channel.
         both_lum = _circular_mask(both)
 
-        # Inpaint the luminance channel
-        lum_copy = rgb.inpaint_mask(
-            lum_copy, both_lum, init_method="radial_rise", peak_amp=self.config.growth, radius=15
+        # stellaRGB owns the normalization and the flux-unit restoration: an
+        # internal scalar working scale (a division/multiplication pair that
+        # cannot clip, replacing the old avg_scale approximation) puts the
+        # reconstructed region back in the exposures' flux units, the engine
+        # sanitizes NaN/garbage under the masked region itself, and cores now
+        # get their curve built in the (0.31, 0.32) convention.
+        repaired = reconstruct_saturated_stars(
+            input_rgb,
+            mask=both,
+            lum_mask=both_lum,
+            scene=_STAR_ENGINE_SCENE,
+            growth=self.config.growth,
         )
-
-        # reconstruct the color (a, b channels) of the saturated star by looking at the suraounding
-        # area
-        new_a, new_b = rgb.reconstruct_star_color(
-            lum_copy,
-            Lab[..., 1],
-            Lab[..., 2],
-            both,
-            radius=90.0,
-            bg_inner=200.0,
-            bg_outer=300.0,
-            blend=2.0,
-            linear_rgb=remapped.astype(np.float64),
-        )
-
-        Lab[..., 0] = lum_copy
-        Lab[..., 1] = new_a
-        Lab[..., 2] = new_b
-
-        rgb_back = rgb.Oklab_to_RGB(Lab, (0.31, 0.32))
-
-        # Need to set the fluxes back to the original scale of the exposures instead of the normalized
-        # units used in Lab conversion
-
-        # scale it up by the average scale
-        new_rgb = (rgb_back / avg_scale).astype(np.float32)
+        new_rgb = repaired.astype(np.float32)
 
         # need to split apart the ratios for the individual arrays
         imageRArray = new_rgb[..., 0]
