@@ -1821,6 +1821,7 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
                 "wcs_visit_pointing_residual": "wcsVisitPointingResidual",
                 "preliminary_wcs_detector_pointing_residual": "wcsPreliminaryDetectorPointingResidual",
                 "preliminary_wcs_visit_pointing_residual": "wcsPreliminaryVisitPointingResidual",
+                "wcs_sip_delta_sky": "wcsSIPDeltaSky",
             }.items():
                 if inName in summaryTable.columns:
                     inCol = summaryTable[inName]
@@ -1828,6 +1829,9 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
                         (np.asarray(inCol) * inCol.unit).to_value(astropy.units.arcsec),
                         unit=astropy.units.arcsec
                     )
+            if "wcs_sip_delta_pixel" in summaryTable.columns:
+                ccdEntry["wcsSIPDeltaPixel"] = summaryTable["wcs_sip_delta_pixel"]
+
             # TODO: DM-30618, Add raftName, nExposures, ccdTemp, binX, binY,
             # and flags, and decide if WCS, and llcx, llcy, ulcx, ulcy, etc.
             # values are actually wanted.
