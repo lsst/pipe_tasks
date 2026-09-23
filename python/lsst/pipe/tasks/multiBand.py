@@ -19,12 +19,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 __all__ = ["DetectCoaddSourcesConfig", "DetectCoaddSourcesTask",
            "MeasureMergedCoaddSourcesConfig", "MeasureMergedCoaddSourcesTask",
+           "MultiBandDetectionConfig", "MultiBandDetectionTask",
            "DEEP_COADD_BACKGROUND_DOCSTRING",
            ]
 
 import dataclasses
+from typing import Any
 
 import astropy.units
 import numpy as np
@@ -47,6 +51,7 @@ from lsst.meas.algorithms import (
     DynamicDetectionTask,
     ExceedsMaxVarianceScaleError,
     InsufficientSourcesError,
+    MultiResolutionDetectionTask,
     PsfGenerationError,
     ScaleVarianceTask,
     SetPrimaryFlagsTask,
@@ -68,6 +73,7 @@ from lsst.daf.base import PropertyList
 from lsst.skymap import BaseSkyMap
 
 # NOTE: these imports are a convenience so multiband users only have to import this file.
+from .coaddBase import reorderRefs
 from .mergeDetections import MergeDetectionsConfig, MergeDetectionsTask  # noqa: F401
 from .mergeMeasurements import MergeMeasurementsConfig, MergeMeasurementsTask  # noqa: F401
 from .multiBandUtils import CullPeaksConfig  # noqa: F401
@@ -1013,3 +1019,255 @@ class MeasureMergedCoaddSourcesTask(PipelineTask):
                 "Adding mask plane %r with no pixel set to satisfy PixelFlags configuration.", plane
             )
             afwImage.MaskX.addMaskPlane(plane)
+
+
+class MultiBandDetectionConnections(
+    PipelineTaskConnections,
+    dimensions=("tract", "patch", "skymap"),
+    defaultTemplates={"inputCoaddName": "deep", "outputCoaddName": "deep"},
+):
+    detectionSchema = cT.InitOutput(
+        doc="Schema of the detection catalog.",
+        name="{outputCoaddName}Coadd_det_schema",
+        storageClass="SourceCatalog",
+    )
+    exposures = cT.Input(
+        doc="Per-band coadds on which detection is to be performed (if useCellCoadds=False).",
+        name="{inputCoaddName}Coadd",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "band", "skymap"),
+        multiple=True,
+    )
+    exposures_cells = cT.Input(
+        doc="Per-band coadds on which detection is to be performed (if useCellCoadds=True).",
+        name="{inputCoaddName}CoaddCell",
+        storageClass="MultipleCellCoadd",
+        dimensions=("tract", "patch", "band", "skymap"),
+        multiple=True,
+    )
+    outputCatalog = cT.Output(
+        doc="Detected sources catalog, merged across bands.",
+        name="object_detection_merged",
+        storageClass="SourceCatalog",
+        dimensions=("tract", "patch", "skymap"),
+    )
+    peaks = cT.Output(
+        doc="Table of the final detected peaks, one row per source.",
+        name="object_detection_peaks",
+        storageClass="ArrowAstropy",
+        dimensions=("tract", "patch", "skymap"),
+    )
+    candidates = cT.Output(
+        doc="Table of the peak candidates, before grouping into peaks.",
+        name="object_detection_candidates",
+        storageClass="ArrowAstropy",
+        dimensions=("tract", "patch", "skymap"),
+    )
+    positions = cT.Output(
+        doc="Table of the unique candidate positions, before linking into peaks.",
+        name="object_detection_positions",
+        storageClass="ArrowAstropy",
+        dimensions=("tract", "patch", "skymap"),
+    )
+    outputExposures = cT.Output(
+        doc="Per-band coadds after detection, with the DETECTED mask planes set.",
+        name="{outputCoaddName}Coadd_calexp",
+        storageClass="ExposureF",
+        dimensions=("tract", "patch", "band", "skymap"),
+        multiple=True,
+    )
+
+    def __init__(self, *, config=None):
+        super().__init__(config=config)
+        if config.imageType == "future":
+            self.exposures = dataclasses.replace(self.exposures, storageClass="CellCoadd")
+        if config.useCellCoadds:
+            del self.exposures
+        else:
+            del self.exposures_cells
+
+
+class MultiBandDetectionConfig(PipelineTaskConfig, pipelineConnections=MultiBandDetectionConnections):
+    """Configuration parameters for the MultiBandDetectionTask.
+    """
+    detection = ConfigurableField(
+        target=MultiResolutionDetectionTask, doc="Multi-resolution source detection"
+    )
+    coaddName = Field(dtype=str, default="deep", doc="Name of coadd")
+    useCellCoadds = Field(dtype=bool, default=False, doc="Whether to use cell coadds?")
+    hasFakes = Field(
+        dtype=bool,
+        default=False,
+        doc="Should be set to True if fake sources have been inserted into the input data.",
+    )
+    idGenerator = SkyMapIdGeneratorConfig.make_field()
+    imageType = ChoiceField(
+        "Which image type to expect for the input coadds. "
+        "This option only directly affects connection storage classes and hence 'runQuantum'; the 'run' "
+        "method behavior is determined by which type is actually passed in.",
+        allowed={
+            "legacy": (
+                "Read a lsst.cell_coadds.MultipleCellCoadd (if useCellCoadd) or "
+                "lsst.afw.image.Exposure (if not useCellCoadd)."
+            ),
+            "future": (
+                "Read lsst.images.cells.CellCoadd (useCellCoadd is ignored)."
+            ),
+        },
+        dtype=str,
+        optional=False,
+        default="legacy",
+    )
+
+    def setDefaults(self):
+        super().setDefaults()
+        # Include band in packed data IDs that go into object IDs (None -> "as
+        # many bands as are defined", rather than the default of zero).
+        self.idGenerator.packer.n_bands = None
+
+
+class MultiBandDetectionTask(PipelineTask):
+    """Detect sources on a set of per-band coadds simultaneously.
+
+    This task runs `~lsst.meas.algorithms.MultiResolutionDetectionTask` on a
+    `~lsst.afw.image.MultibandExposure` assembled from per-band coadds. Because
+    the multi-resolution algorithm detects across all bands at once, its output
+    footprints are already merged across bands, so this task replaces both
+    `DetectCoaddSourcesTask` and `MergeDetectionsTask` for multi-band
+    processing.
+
+    Parameters
+    ----------
+    schema:
+        Initial schema for the output catalog, modified in place to include all
+        fields set by this task. If `None`, the source minimal schema is used.
+    **kwargs:
+        Additional keyword arguments.
+    """
+
+    _DefaultName = "multiBandDetection"
+    ConfigClass = MultiBandDetectionConfig
+
+    def __init__(self, schema: afwTable.Schema | None = None, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        if schema is None:
+            schema = afwTable.SourceTable.makeMinimalSchema()
+        self.schema = schema
+        self.makeSubtask("detection", schema=self.schema)
+        self.detectionSchema = afwTable.SourceCatalog(self.schema)
+
+    def runQuantum(self, butlerQC, inputRefs, outputRefs):
+        # Sort the per-band inputs into a deterministic band order, and reorder
+        # every multiple-input and multiple-output connection to match, so that
+        # the per-band output exposures line up with the input bands.
+        connectionName = "exposures_cells" if self.config.useCellCoadds else "exposures"
+        exposureRefs = getattr(inputRefs, connectionName)
+        bands = sorted(ref.dataId["band"] for ref in exposureRefs)
+        inputRefs = reorderRefs(inputRefs, bands, dataIdKey="band")
+        outputRefs = reorderRefs(outputRefs, bands, dataIdKey="band")
+
+        inputs = butlerQC.get(inputRefs)
+        idGenerator = self.config.idGenerator.apply(butlerQC.quantum.dataId)
+
+        coadds = inputs.pop(connectionName)
+        if self.config.useCellCoadds:
+            match self.config.imageType:
+                case "legacy":
+                    coadds = [mcc.stitch().asExposure() for mcc in coadds]
+                case "future":
+                    pass  # conversion deferred to run().
+                case _:
+                    raise AssertionError(f"Invalid choice {self.config.imageType!r} for imageType.")
+
+        assert not inputs, "runQuantum got more inputs than expected."
+
+        outputs = self.run(
+            coadds=coadds,
+            bands=bands,
+            idFactory=idGenerator.make_table_id_factory(),
+            expId=idGenerator.catalog_id,
+        )
+        butlerQC.put(outputs, outputRefs)
+
+    def run(
+        self,
+        coadds: list[afwImage.Exposure | CellCoadd],
+        bands: list[str],
+        idFactory: afwTable.IdFactory,
+        expId: int,
+    ) -> Struct:
+        """Detect sources on per-band coadds simultaneously.
+
+        Parameters
+        ----------
+        coadds:
+            Per-band coadds to detect on, in the same order as ``bands``.
+        bands:
+            Names of the bands for ``coadds``.
+        idFactory:
+            Factory used to set source identifiers.
+        expId:
+            Exposure identifier for RNG seeds.
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            Results as a struct with attributes:
+
+            ``outputCatalog``
+                Catalog of detections, merged across bands.
+                (`lsst.afw.table.SourceCatalog`)
+            ``peaks``
+                Table of the final detected peaks. (`astropy.table.Table`)
+            ``candidates``
+                Table of the peak candidates. (`astropy.table.Table`)
+            ``positions``
+                Table of the unique candidate positions.
+                (`astropy.table.Table`)
+            ``outputExposures``
+                The per-band coadds with their DETECTED mask planes set, in the
+                same order as ``bands``. Only the mask plane differs from the
+                input coadds. (`list` [`lsst.afw.image.Exposure`])
+        """
+        coadds = [c.to_legacy() if isinstance(c, CellCoadd) else c for c in coadds]
+        mExposure = afwImage.MultibandExposure.fromExposures(bands, coadds)
+        table = afwTable.SourceTable.make(self.schema, idFactory)
+        detections = self.detection.run(table, mExposure, expId=expId)
+
+        # MultibandExposure.fromExposures copies its inputs, so detection sets
+        # the mask planes on mExposure rather than on the input coadds, and the
+        # copies do not carry the WCS or photometric calibration. Transfer just
+        # the detection mask planes back onto the original coadds, which are
+        # otherwise untouched, and output those.
+        self._transferDetectionMasks(mExposure, coadds)
+
+        return Struct(
+            outputCatalog=detections.sources,
+            peaks=detections.peaks,
+            candidates=detections.candidates,
+            positions=detections.positions,
+            outputExposures=coadds,
+        )
+
+    @staticmethod
+    def _transferDetectionMasks(
+        mExposure: afwImage.MultibandExposure,
+        coadds: list[afwImage.Exposure],
+    ) -> None:
+        """Copy the detection mask planes onto the original coadds.
+
+        Parameters
+        ----------
+        mExposure:
+            The multi-band exposure that detection was run on; its per-band
+            mask planes carry the detection bits.
+        coadds:
+            The original per-band coadds, in the same band order as
+            ``mExposure``; their mask planes are updated in place, while their
+            image and variance planes are left untouched.
+        """
+        for single, coadd in zip(mExposure.singles, coadds):
+            for planeName in ("DETECTED", "DETECTED_NEGATIVE"):
+                bit = single.mask.getPlaneBitMask(planeName)
+                detected = (single.mask.array & bit) > 0
+                coadd.mask.array[detected] |= bit
