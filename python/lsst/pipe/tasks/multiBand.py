@@ -1225,49 +1225,26 @@ class MultiBandDetectionTask(PipelineTask):
                 Table of the unique candidate positions.
                 (`astropy.table.Table`)
             ``outputExposures``
-                The per-band coadds with their DETECTED mask planes set, in the
-                same order as ``bands``. Only the mask plane differs from the
-                input coadds. (`list` [`lsst.afw.image.Exposure`])
+                The per-band coadds after detection, with their DETECTED mask
+                planes set and their background re-estimated, in the same order
+                as ``bands``. (`list` [`lsst.afw.image.Exposure`])
         """
         coadds = [c.to_legacy() if isinstance(c, CellCoadd) else c for c in coadds]
         mExposure = afwImage.MultibandExposure.fromExposures(bands, coadds)
         table = afwTable.SourceTable.make(self.schema, idFactory)
         detections = self.detection.run(table, mExposure, expId=expId)
 
-        # MultibandExposure.fromExposures copies its inputs, so detection sets
-        # the mask planes on mExposure rather than on the input coadds, and the
-        # copies do not carry the WCS or photometric calibration. Transfer just
-        # the detection mask planes back onto the original coadds, which are
-        # otherwise untouched, and output those.
-        self._transferDetectionMasks(mExposure, coadds)
+        # Detection modifies the pixels of mExposure, not of the input coadds,
+        # since fromExposures copies them. It also drops everything in the
+        # ExposureInfo but the PSF, so pair the detected pixels back up with
+        # the WCS and calibrations of the coadd they came from.
+        outputExposures = [coadd.Factory(single.maskedImage, exposureInfo=coadd.getInfo())
+                           for coadd, single in zip(coadds, mExposure.singles)]
 
         return Struct(
             outputCatalog=detections.sources,
             peaks=detections.peaks,
             candidates=detections.candidates,
             positions=detections.positions,
-            outputExposures=coadds,
+            outputExposures=outputExposures,
         )
-
-    @staticmethod
-    def _transferDetectionMasks(
-        mExposure: afwImage.MultibandExposure,
-        coadds: list[afwImage.Exposure],
-    ) -> None:
-        """Copy the detection mask planes onto the original coadds.
-
-        Parameters
-        ----------
-        mExposure:
-            The multi-band exposure that detection was run on; its per-band
-            mask planes carry the detection bits.
-        coadds:
-            The original per-band coadds, in the same band order as
-            ``mExposure``; their mask planes are updated in place, while their
-            image and variance planes are left untouched.
-        """
-        for single, coadd in zip(mExposure.singles, coadds):
-            for planeName in ("DETECTED", "DETECTED_NEGATIVE"):
-                bit = single.mask.getPlaneBitMask(planeName)
-                detected = (single.mask.array & bit) > 0
-                coadd.mask.array[detected] |= bit
