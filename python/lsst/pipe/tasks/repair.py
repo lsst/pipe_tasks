@@ -81,6 +81,7 @@ class RepairConfig(pexConfig.Config):
     )
 
     def setDefaults(self):
+        super().setDefaults()
         self.interp.useFallbackValueAtEdge = True
         self.interp.fallbackValueType = "MEANCLIP"
         self.interp.negativeFallbackAllowed = True
