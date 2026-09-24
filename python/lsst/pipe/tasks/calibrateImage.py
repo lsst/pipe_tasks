@@ -24,6 +24,7 @@ __all__ = ["CalibrateImageTask", "CalibrateImageConfig", "NoPsfStarsToStarsMatch
 
 from astropy.coordinates import SkyCoord
 import astropy.units as u
+import dataclasses
 import math
 import numpy as np
 import requests
@@ -34,7 +35,10 @@ from lsst.afw.geom import SpanSet
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
+from lsst.daf.butler import DataCoordinate
 import lsst.geom as geom
+from lsst.images import VisitImage
+from lsst.images.fields import field_from_legacy_background, field_from_legacy_photo_calib
 from lsst.ip.diffim.utils import evaluateMaskFraction, populate_sattle_visit_cache
 import lsst.meas.algorithms
 import lsst.meas.algorithms.installGaussianPsf
@@ -162,8 +166,10 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
     # it obvious which components had failed to be computed/persisted.
     exposure = connectionTypes.Output(
         doc="Photometrically calibrated, background-subtracted exposure with fitted calibrations and "
-            "summary statistics. To recover the original exposure, first add the background "
-            "(`initial_pvi_background`), and then uncalibrate (divide by `initial_photoCalib_detector`).",
+            "summary statistics. To recover the original exposure, first add the background, and then "
+            "uncalibrate (divide by `initial_photoCalib_detector`). With output_image_type='legacy' the "
+            "background is the separate `initial_pvi_background` dataset; with 'future' it is attached "
+            "to this dataset as its 'subtracted' background.",
         name="initial_pvi",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
@@ -184,14 +190,16 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
     applied_photo_calib = connectionTypes.Output(
         doc=(
             "Photometric calibration that was applied to exposure's pixels. "
-            "This connection is disabled when do_calibrate_pixels=False."
+            "This connection is disabled when do_calibrate_pixels=False, or "
+            "when output_image_type='future'."
         ),
         name="initial_photoCalib_detector",
         storageClass="PhotoCalib",
         dimensions=("instrument", "visit", "detector"),
     )
     background = connectionTypes.Output(
-        doc="Background models estimated during calibration task; calibrated to be in nJy units.",
+        doc="Background models estimated during calibration task; calibrated to be in nJy units. "
+            "This connection is disabled when output_image_type='future'.",
         name="initial_pvi_background",
         storageClass="Background",
         dimensions=("instrument", "visit", "detector"),
@@ -251,7 +259,9 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
             del self.photometry_matches
         if "mask" not in config.optional_outputs:
             del self.mask
-        if not config.do_calibrate_pixels:
+        if not config.do_calibrate_pixels or config.output_image_type == "future":
+            # In future mode the applied calibration is the
+            # `photometric_scaling` component of the output image.
             del self.applied_photo_calib
         if not config.do_illumination_correction:
             del self.background_flat
@@ -259,6 +269,9 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
             del self.background_to_photometric_ratio
         if not config.useButlerCamera:
             del self.camera_model
+        if config.output_image_type == "future":
+            self.exposure = dataclasses.replace(self.exposure, storageClass="VisitImage")
+            del self.background
 
 
 class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=CalibrateImageConnections):
@@ -520,6 +533,26 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
         dtype=str,
         default="base_CircularApertureFlux_12_0_flux",
         doc="Column used to generate post-subtracted background stats."
+    )
+    instrumental_unit = pexConfig.Field(
+        dtype=str,
+        default="electron",
+        doc="Units of the input postISRCCD."
+            " Not used when output_image_type='legacy'",
+    )
+    output_image_type = pexConfig.ChoiceField[str](
+        "Which image type to use for the output visit image."
+        " In 'future' mode the background and the applied photometric"
+        " calibration are components of the image instead of being written as"
+        " their own datasets. 'future' only takes effect in a repository"
+        " where initial_pvi is freshly registered with the VisitImage storage"
+        " class, because the registered storage class wins on write.",
+        allowed={
+            "legacy": "Write as a lsst.afw.image.Exposure.",
+            "future": "Write as a lsst.images.VisitImage.",
+        },
+        optional=False,
+        default="legacy",
     )
 
     def setDefaults(self):
@@ -878,13 +911,14 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # This should not happen with a properly configured execution context.
         assert not inputs, "runQuantum got more inputs than expected"
 
-        # Specify the fields that `annotate` needs below, to ensure they
-        # exist, even as None.
+        # Specify the fields that `annotate` and `convert_outputs_to_future`
+        # need below, to ensure they exist, even as None.
         result = pipeBase.Struct(
             exposure=None,
             stars_footprints=None,
             psf_stars_footprints=None,
             background_to_photometric_ratio=None,
+            applied_photo_calib=None,
         )
         try:
             self.run(
@@ -906,8 +940,21 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                 result.stars_footprints,
                 log=self.log
             )
+            if self.config.output_image_type == "future" and result.exposure is not None:
+                # Writing a partial-outputs image as an `lsst.images` type
+                # is unsupported, so drop the image here. `put` skips an
+                # output that is `None`, so the catalogs and the other
+                # partial outputs are still written.
+                self.log.warning(
+                    "Cannot write a partial-outputs image in 'future' mode, so the image will not be "
+                    "written; the other partial outputs still will be."
+                )
+                result.exposure = None
             butlerQC.put(result, outputRefs)
             raise error from e
+
+        if self.config.output_image_type == "future":
+            self.convert_outputs_to_future(result, butlerQC.quantum.dataId)
 
         butlerQC.put(result, outputRefs)
 
@@ -962,7 +1009,9 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             Results as a struct with attributes:
 
             ``exposure``
-                Calibrated exposure, with pixels in nJy units.
+                Calibrated exposure, with pixels in nJy units if
+                `do_calibrate_pixels` is set, and in the units given by
+                `instrumental_unit` otherwise.
                 (`lsst.afw.image.Exposure`)
             ``stars``
                 Stars that were used to calibrate the exposure, with
@@ -2408,3 +2457,67 @@ class CalibrateImageTask(pipeBase.PipelineTask):
                       radius, exposure.wcs.pixelToSky(bbox.getCenter())[0].asDegrees(),
                       exposure.wcs.pixelToSky(bbox.getCenter())[1].asDegrees())
         return ref_cat_source_density
+
+    def convert_outputs_to_future(
+        self,
+        result: pipeBase.Struct,
+        data_id: DataCoordinate,
+    ) -> None:
+        """Convert an output struct to use `lsst.images` types.
+
+        This replaces ``result.exposure`` with an `lsst.images.VisitImage`
+        that carries the background and the photometric calibration, and
+        deletes ``result.background`` and ``result.applied_photo_calib``,
+        which have no datasets of their own in future mode.
+
+        Parameters
+        ----------
+        result : `lsst.pipe.base.Struct`
+            Output struct to read and modify in place.
+        data_id : `lsst.daf.butler.DataCoordinate`
+            The data ID of the image.
+
+        Raises
+        ------
+        ValueError
+            Raised if the exposure is missing a PSF, a WCS or a detector,
+            all of which `lsst.images.VisitImage` requires. This is why
+            `runQuantum` skips the image on the partial-outputs path, where
+            `run` nulls the calibrations it could not fit.
+        """
+        instrumental_unit = u.Unit(self.config.instrumental_unit)
+        if result.applied_photo_calib is not None:
+            unit = u.nJy
+            photo_calib = result.applied_photo_calib
+        else:
+            unit = instrumental_unit
+            photo_calib = result.exposure.getPhotoCalib()
+        result.exposure = VisitImage.from_legacy(
+            result.exposure,
+            unit=unit,
+            instrument=data_id["instrument"],
+            visit=data_id["visit"],
+        )
+        result.exposure.photometric_scaling = field_from_legacy_photo_calib(
+            photo_calib, bounds=result.exposure.bbox, instrumental_unit=instrumental_unit
+        )
+        legacy_background = getattr(result, "background", None)
+        if legacy_background is not None:
+            if len(legacy_background) > 0:
+                # `_apply_photometry` calibrates the background alongside the
+                # pixels, so the background is always in the same units as
+                # the image. This differs from ReprocessVisitImageTask,
+                # where the background stays in instrumental units.
+                result.exposure.backgrounds.add(
+                    "subtracted",
+                    field_from_legacy_background(legacy_background, unit=unit),
+                    description="Background subtracted from the image when generating the Source catalog.",
+                    is_subtracted=True,
+                )
+            else:
+                # An empty BackgroundList cannot be converted to a field, and
+                # means no background was subtracted, so leave the image with
+                # an empty background map.
+                self.log.warning("No background model to attach to the output image.")
+            del result.background
+        del result.applied_photo_calib
