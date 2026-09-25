@@ -114,6 +114,12 @@ class RewriteDifferenceImageConnections(
         dimensions={"visit", "detector"},
         doc="The output difference image.",
     )
+    exposure_record_proxy = cT.Input(
+        "raw",
+        storageClass="ExposureF",
+        dimensions={"exposure", "detector"},
+        doc="An arbitrary input used to provide an 'exposure' dimension record."
+    )
 
     config: RewriteDifferenceImageConfig
 
@@ -152,8 +158,12 @@ class RewriteDifferenceImageTask(PipelineTask):
         inputRefs: InputQuantizedConnection,
         outputRefs: OutputQuantizedConnection,
     ) -> None:
+        exposure_record = inputRefs.exposure_record_proxy.dataId.records["exposure"]
+        del inputRefs.exposure_record_proxy
         inputs = butlerQC.get(inputRefs)
-        difference_image = inputs.pop("legacy_exposure").get(parameters={"preserve_quantization": True})
+        difference_image = inputs.pop("legacy_exposure").get(
+            parameters={"preserve_quantization": True, "exposure_record": exposure_record}
+        )
         visit_summary = inputs.pop("visit_summary")
         coadd_data_ids_by_uuid = {h.ref.id: h.ref.dataId for h in inputs.pop("template_coadds")}
         photo_calib: PhotoCalib = visit_summary.find(butlerQC.quantum.dataId["detector"]).getPhotoCalib()
