@@ -93,6 +93,12 @@ class RewriteVisitImageConnections(
         dimensions={"visit", "detector"},
         doc="The output VisitImage.",
     )
+    exposure_record_proxy = cT.Input(
+        "raw",
+        storageClass="ExposureF",
+        dimensions={"exposure", "detector"},
+        doc="An arbitrary input used to provide an 'exposure' dimension record."
+    )
 
     config: RewriteVisitImageConfig
 
@@ -182,8 +188,12 @@ class RewriteVisitImageTask(PipelineTask):
         inputRefs: InputQuantizedConnection,
         outputRefs: OutputQuantizedConnection,
     ) -> None:
+        exposure_record = inputRefs.exposure_record_proxy.dataId.records["exposure"]
+        del inputRefs.exposure_record_proxy
         inputs = butlerQC.get(inputRefs)
-        visit_image = inputs.pop("legacy_exposure").get(parameters={"preserve_quantization": True})
+        visit_image = inputs.pop("legacy_exposure").get(
+            parameters={"preserve_quantization": True, "exposure_record": exposure_record}
+        )
         photo_calib: PhotoCalib | None
         match self.config.photo_calib_source:
             case "attached":
