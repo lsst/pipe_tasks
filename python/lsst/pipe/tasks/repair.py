@@ -40,13 +40,16 @@ class TooManyCosmicRays(pipeBase.AlgorithmError):
     ----------
     maxCosmicRays : `int`
         Maximum number of cosmic rays allowed.
+    maxCosmicRaySpans : `int`
+        Maximum number of cosmic ray spans allowed.
     """
-    def __init__(self, maxCosmicRays, **kwargs):
+    def __init__(self, maxCosmicRays, maxCosmicRaySpans=-1, **kwargs):
         msg = f"Cosmic ray task found more than {maxCosmicRays} cosmics."
         self.msg = msg
         self._metadata = kwargs
         super().__init__(msg, **kwargs)
         self._metadata["maxCosmicRays"] = maxCosmicRays
+        self._metadata["maxCosmicRaySpans"] = maxCosmicRaySpans
 
     def __str__(self):
         # Exception doesn't handle **kwargs, so we need a custom str.
@@ -231,7 +234,10 @@ class RepairTask(pipeBase.Task):
                     keepCRs,
                 )
             except LengthError:
-                raise TooManyCosmicRays(self.config.cosmicray.nCrPixelMax) from None
+                raise TooManyCosmicRays(
+                    self.config.cosmicray.nCrPixelMax,
+                    maxCosmicRaySpans=self.config.cosmicray.nCrSpanMax,
+                ) from None
 
             if modelBg:
                 # Add back background image
