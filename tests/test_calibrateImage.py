@@ -55,6 +55,41 @@ import lsst.utils.tests
 from utils import makeTestVisitInfo
 
 
+def make_exposure_record(exposure, instrument="testCam"):
+    """Return an ``exposure`` dimension record that describes a test exposure.
+
+    Parameters
+    ----------
+    exposure : `lsst.afw.image.Exposure`
+        Exposure to take the observation metadata from.
+    instrument : `str`, optional
+        Name of the instrument to record.
+
+    Returns
+    -------
+    record : `lsst.daf.butler.DimensionRecord`
+        Record holding the observation metadata that
+        `lsst.images.VisitImage.from_legacy` reads.
+    """
+    visit_info = exposure.visitInfo
+    begin = visit_info.date.toAstropy()
+    universe = lsst.daf.butler.DimensionUniverse()
+    return universe["exposure"].RecordClass(
+        instrument=instrument,
+        id=visit_info.id,
+        obs_id=f"test_{visit_info.id}",
+        group=str(visit_info.id),
+        physical_filter=exposure.filter.physicalLabel,
+        day_obs=int(begin.strftime("%Y%m%d")),
+        exposure_time=visit_info.exposureTime,
+        seq_num=1,
+        seq_start=1,
+        seq_end=1,
+        can_see_sky=True,
+        timespan=lsst.daf.butler.Timespan(begin=begin, end=begin + visit_info.exposureTime*u.s),
+    )
+
+
 class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
 
     def setUp(self):
@@ -323,8 +358,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         """
         calibrate, result = self._run_legacy_for_future(config)
         self.applied_photo_calib = result.applied_photo_calib
-        data_id = {"instrument": "testCam", "visit": self.exposure.visitInfo.id}
-        calibrate.convert_outputs_to_future(result, data_id)
+        calibrate.convert_outputs_to_future(result, make_exposure_record(self.exposure))
         return result
 
     def test_convert_outputs_to_future(self):
@@ -379,26 +413,23 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
         calibrate, result = self._run_legacy_for_future(config)
         result.background = afwMath.BackgroundList()
 
-        data_id = {"instrument": "testCam", "visit": self.exposure.visitInfo.id}
         with self.assertLogs("lsst.calibrateImage", level="WARNING") as cm:
-            calibrate.convert_outputs_to_future(result, data_id)
+            calibrate.convert_outputs_to_future(result, make_exposure_record(self.exposure))
         self.assertIn("No background model to attach", "\n".join(cm.output))
         self.assertEqual(len(result.exposure.backgrounds), 0)
         self.assertFalse(hasattr(result, "background"))
 
     def test_convert_outputs_to_future_partial_outputs_struct(self):
-        """Test that conversion works on the struct that ``runQuantum``
-        seeds for partial outputs, which does not have
-        ``applied_photo_calib`` set by ``run()``.
+        """Test conversion of a struct with only the fields ``runQuantum``
+        seeds before calling ``run``: no ``background``, and
+        ``applied_photo_calib`` set to `None`.
         """
         config = copy.copy(self.config)
-        # A partial-outputs exposure never reaches the pixel calibration
-        # step, so it is still in instrumental units.
+        # Leave the pixels uncalibrated, to match applied_photo_calib=None.
         config.do_calibrate_pixels = False
         calibrate, run_result = self._run_legacy_for_future(config)
 
-        # Same fields, in the same state, as the struct runQuantum builds
-        # before calling run().
+        # Same fields, in the same state, as the struct runQuantum seeds.
         partial = pipeBase.Struct(
             exposure=run_result.exposure,
             stars_footprints=None,
@@ -406,8 +437,7 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
             background_to_photometric_ratio=None,
             applied_photo_calib=None,
         )
-        data_id = {"instrument": "testCam", "visit": self.exposure.visitInfo.id}
-        calibrate.convert_outputs_to_future(partial, data_id)
+        calibrate.convert_outputs_to_future(partial, make_exposure_record(self.exposure))
         self.assertIsInstance(partial.exposure, lsst.images.VisitImage)
 
     def test_run(self):
@@ -1231,10 +1261,8 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         self.assertNotIn("applied_photo_calib", connections.outputs)
 
     def test_runQuantum_partial_outputs_struct(self):
-        """Test that the struct runQuantum seeds for partial outputs has
-        every field that `convert_outputs_to_future` reads, so that a
-        failing quantum does not raise `AttributeError` instead of writing
-        its partial outputs.
+        """Test that the result struct runQuantum passes to run() has
+        ``applied_photo_calib`` seeded as `None`.
         """
         task = CalibrateImageTask()
 
@@ -1351,10 +1379,6 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
     def test_runQuantum_partial_outputs_future(self):
         """Test that a failed quantum in 'future' mode skips the image and
         still writes the rest of the annotated partial outputs.
-
-        The mocked exposure here is one that could be converted, to show that
-        the image is skipped because partial outputs are not supported in
-        this mode, not because this particular image was unconvertible.
         """
         config = CalibrateImageTask.ConfigClass()
         config.output_image_type = "future"
@@ -1390,12 +1414,12 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
             exposure_record=None,
             exposure_region=None,
         ):
-            """Mock a failure that leaves a convertible exposure, as `run`
-            does when the aperture correction fit fails.
+            """Mock a failure of the aperture correction fit, after `run`
+            has set the exposure and the PSF star catalog.
             """
             exposure = afwImage.ExposureF(10, 10)
-            # lsst.images needs these to convert; `run` would have set them
-            # from the post-ISR image long before any fit could fail.
+            # `run` sets these from the post-ISR image before any fit can
+            # fail.
             exposure.setDetector(list(CameraWrapper().camera)[0])
             exposure.setFilter(afwImage.FilterLabel(physical="test-r", band="r"))
             exposure.info.setVisitInfo(makeTestVisitInfo(id=self.visit_id["visit"]))
