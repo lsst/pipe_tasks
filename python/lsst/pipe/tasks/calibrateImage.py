@@ -35,7 +35,7 @@ from lsst.afw.geom import SpanSet
 import lsst.afw.table as afwTable
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
-from lsst.daf.butler import DataCoordinate
+from lsst.daf.butler import DimensionRecord
 import lsst.geom as geom
 from lsst.images import VisitImage
 from lsst.images.fields import field_from_legacy_background, field_from_legacy_photo_calib
@@ -166,10 +166,8 @@ class CalibrateImageConnections(pipeBase.PipelineTaskConnections,
     # it obvious which components had failed to be computed/persisted.
     exposure = connectionTypes.Output(
         doc="Photometrically calibrated, background-subtracted exposure with fitted calibrations and "
-            "summary statistics. To recover the original exposure, first add the background, and then "
-            "uncalibrate (divide by `initial_photoCalib_detector`). With output_image_type='legacy' the "
-            "background is the separate `initial_pvi_background` dataset; with 'future' it is attached "
-            "to this dataset as its 'subtracted' background.",
+            "summary statistics. To recover the original exposure, first add the background, and then, "
+            "if do_calibrate_pixels=True, divide by the applied photometric calibration.",
         name="initial_pvi",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
@@ -537,8 +535,9 @@ class CalibrateImageConfig(pipeBase.PipelineTaskConfig, pipelineConnections=Cali
     instrumental_unit = pexConfig.Field(
         dtype=str,
         default="electron",
-        doc="Units of the input postISRCCD."
-            " Not used when output_image_type='legacy'",
+        doc="Units of the input postISRCCD pixels, used for the output photometric_scaling and, if"
+            " do_calibrate_pixels=False, the output image."
+            " Used only when output_image_type='future'.",
     )
     output_image_type = pexConfig.ChoiceField[str](
         "Which image type to use for the output visit image."
@@ -911,8 +910,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         # This should not happen with a properly configured execution context.
         assert not inputs, "runQuantum got more inputs than expected"
 
-        # Specify the fields that `annotate` and `convert_outputs_to_future`
-        # need below, to ensure they exist, even as None.
+        # Specify the fields that `annotate` needs below to ensure they
+        # exist, even as None.
         result = pipeBase.Struct(
             exposure=None,
             stars_footprints=None,
@@ -954,7 +953,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
             raise error from e
 
         if self.config.output_image_type == "future":
-            self.convert_outputs_to_future(result, butlerQC.quantum.dataId)
+            self.convert_outputs_to_future(result, exposure_record)
 
         butlerQC.put(result, outputRefs)
 
@@ -1010,8 +1009,8 @@ class CalibrateImageTask(pipeBase.PipelineTask):
 
             ``exposure``
                 Calibrated exposure, with pixels in nJy units if
-                `do_calibrate_pixels` is set, and in the units given by
-                `instrumental_unit` otherwise.
+                ``config.do_calibrate_pixels`` is `True`, and in the units of
+                the input exposure otherwise.
                 (`lsst.afw.image.Exposure`)
             ``stars``
                 Stars that were used to calibrate the exposure, with
@@ -2461,7 +2460,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
     def convert_outputs_to_future(
         self,
         result: pipeBase.Struct,
-        data_id: DataCoordinate,
+        exposure_record: DimensionRecord,
     ) -> None:
         """Convert an output struct to use `lsst.images` types.
 
@@ -2474,16 +2473,16 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         ----------
         result : `lsst.pipe.base.Struct`
             Output struct to read and modify in place.
-        data_id : `lsst.daf.butler.DataCoordinate`
-            The data ID of the image.
+        exposure_record : `lsst.daf.butler.DimensionRecord`
+            The ``exposure`` dimension record of this observation, which
+            supplies the observation metadata.
 
         Raises
         ------
         ValueError
             Raised if the exposure is missing a PSF, a WCS or a detector,
-            all of which `lsst.images.VisitImage` requires. This is why
-            `runQuantum` skips the image on the partial-outputs path, where
-            `run` nulls the calibrations it could not fit.
+            all of which `lsst.images.VisitImage` requires, or if its
+            ``BUNIT`` header disagrees with the output unit.
         """
         instrumental_unit = u.Unit(self.config.instrumental_unit)
         if result.applied_photo_calib is not None:
@@ -2495,8 +2494,7 @@ class CalibrateImageTask(pipeBase.PipelineTask):
         result.exposure = VisitImage.from_legacy(
             result.exposure,
             unit=unit,
-            instrument=data_id["instrument"],
-            visit=data_id["visit"],
+            exposure_record=exposure_record,
         )
         result.exposure.photometric_scaling = field_from_legacy_photo_calib(
             photo_calib, bounds=result.exposure.bbox, instrumental_unit=instrumental_unit
