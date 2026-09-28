@@ -52,42 +52,7 @@ from lsst.pipe.tasks.calibrateImage import CalibrateImageTask, \
 import lsst.pex.config as pexConfig
 import lsst.utils.tests
 
-from utils import makeTestVisitInfo
-
-
-def make_exposure_record(exposure, instrument="testCam"):
-    """Return an ``exposure`` dimension record that describes a test exposure.
-
-    Parameters
-    ----------
-    exposure : `lsst.afw.image.Exposure`
-        Exposure to take the observation metadata from.
-    instrument : `str`, optional
-        Name of the instrument to record.
-
-    Returns
-    -------
-    record : `lsst.daf.butler.DimensionRecord`
-        Record holding the observation metadata that
-        `lsst.images.VisitImage.from_legacy` reads.
-    """
-    visit_info = exposure.visitInfo
-    begin = visit_info.date.toAstropy()
-    universe = lsst.daf.butler.DimensionUniverse()
-    return universe["exposure"].RecordClass(
-        instrument=instrument,
-        id=visit_info.id,
-        obs_id=f"test_{visit_info.id}",
-        group=str(visit_info.id),
-        physical_filter=exposure.filter.physicalLabel,
-        day_obs=int(begin.strftime("%Y%m%d")),
-        exposure_time=visit_info.exposureTime,
-        seq_num=1,
-        seq_start=1,
-        seq_end=1,
-        can_see_sky=True,
-        timespan=lsst.daf.butler.Timespan(begin=begin, end=begin + visit_info.exposureTime*u.s),
-    )
+from utils import makeTestVisitInfo, make_exposure_record
 
 
 class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
