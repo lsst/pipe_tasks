@@ -60,8 +60,11 @@ from lsst.daf.butler.formatters.parquet import pandas_to_astropy
 from lsst.pex.config.configurableActions import ConfigurableAction, ConfigurableActionStructField
 from lsst.pipe.base import NoWorkFound, UpstreamFailureNoWorkFound, connectionTypes
 import lsst.afw.table as afwTable
-from lsst.afw.image import ExposureSummaryStats, ExposureF
+from lsst.afw.image import ExposureSummaryStats, ExposureF, FilterLabel
+from lsst.images import Polygon
+from lsst.images.fields import BaseField
 from lsst.meas.base import SingleFrameMeasurementTask, DetectorVisitIdGeneratorConfig
+from lsst.obs.base.makeRawVisitInfoViaObsInfo import MakeRawVisitInfoViaObsInfo
 from lsst.obs.base.utils import strip_provenance_from_fits_header, TableVStack
 from lsst.meas.astrom.refit_pointing import RefitPointingTask
 
@@ -1412,7 +1415,8 @@ class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
         isCalibration=True,
     )
     calexp = connectionTypes.Input(
-        doc="Processed exposures used for metadata",
+        doc="Processed exposures used for metadata. These are legacy Exposures "
+            "or lsst.images.VisitImages depending on input_image_type.",
         name="calexp",
         storageClass="ExposureF",
         dimensions=("instrument", "visit", "detector"),
@@ -1449,6 +1453,8 @@ class ConsolidateVisitSummaryConnections(pipeBase.PipelineTaskConnections,
             del self.camera
         if not self.config.do_write_visit_geometry:
             del self.visit_geometry
+        if self.config.input_image_type == "future":
+            self.calexp = dataclasses.replace(self.calexp, storageClass="VisitImage")
 
 
 class ConsolidateVisitSummaryConfig(pipeBase.PipelineTaskConfig,
@@ -1483,11 +1489,23 @@ class ConsolidateVisitSummaryConfig(pipeBase.PipelineTaskConfig,
         dtype=bool,
         default=True,
     )
+    input_image_type = pexConfig.ChoiceField[str](
+        "Which image type to read the per-detector metadata from.",
+        allowed={
+            "legacy": "Read components of an lsst.afw.image.Exposure.",
+            "future": "Read components of an lsst.images.VisitImage.",
+        },
+        optional=False,
+        default="legacy",
+    )
 
     def validate(self):
         super().validate()
         if self.do_write_visit_geometry and not self.do_refit_pointing:
             raise ValueError("Cannot write visit_geometry without refitting the pointing.")
+        if self.full and self.input_image_type == "future":
+            raise ValueError("full=True requires input_image_type='legacy', because an "
+                             "lsst.images.VisitImage has no transmission curve.")
 
     def setDefaults(self):
         super().setDefaults()
@@ -1558,7 +1576,9 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
         visit : `int`
             Visit identification number.
         handles : `list` of `lsst.daf.butler.DeferredDatasetHandle`
-            List of handles in visit.
+            List of handles in visit, to `lsst.afw.image.Exposure` or
+            `lsst.images.VisitImage` datasets depending on
+            ``config.input_image_type``.
         camera : `lsst.afw.cameraGeom.Camera`, optional
             Camera geometry.  Required if and only if
             ``do_refit_pointing=True``.
@@ -1587,22 +1607,21 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
         filterLabel = None
 
         for i, dataRef in enumerate(handles):
+            if self.config.input_image_type == "future":
+                components = self._readFutureComponents(dataRef, readVisitInfo=visitInfo is None)
+            else:
+                components = self._readLegacyComponents(dataRef, readVisitInfo=visitInfo is None)
             if visitInfo is None:
-                visitInfo = dataRef.get(component="visitInfo")
-            if filterLabel is None:
-                filterLabel = dataRef.get(component="filter")
-            summaryStats = dataRef.get(component="summaryStats")
-            wcs = dataRef.get(component="wcs")
-            photoCalib = dataRef.get(component="photoCalib")
-            bbox = dataRef.get(component="bbox")
-            validPolygon = dataRef.get(component="validPolygon")
+                visitInfo = components.visitInfo
+                filterLabel = components.filterLabel
+            summaryStats = components.summaryStats
 
             rec = cat[i]
-            rec.setBBox(bbox)
+            rec.setBBox(components.bbox)
             rec.setVisitInfo(visitInfo)
-            rec.setWcs(wcs)
-            rec.setPhotoCalib(photoCalib)
-            rec.setValidPolygon(validPolygon)
+            rec.setWcs(components.wcs)
+            rec.setPhotoCalib(components.photoCalib)
+            rec.setValidPolygon(components.validPolygon)
 
             if self.config.full:
                 rec.setPsf(dataRef.get(component="psf"))
@@ -1636,6 +1655,79 @@ class ConsolidateVisitSummaryTask(pipeBase.PipelineTask):
             result.visit_geometry = refitPointingResult.regions
 
         return result
+
+    @staticmethod
+    def _readLegacyComponents(handle, readVisitInfo):
+        """Read the metadata of one detector from an
+        `lsst.afw.image.Exposure`.
+
+        Parameters
+        ----------
+        handle : `lsst.daf.butler.DeferredDatasetHandle`
+            Handle to the exposure.
+        readVisitInfo : `bool`
+            Whether to read the visit info and filter label, which are the same
+            for every detector in a visit.
+
+        Returns
+        -------
+        components : `lsst.pipe.base.Struct`
+            Struct with ``visitInfo``, ``filterLabel`` (`None` unless
+            ``readVisitInfo``), ``summaryStats``, ``wcs``, ``photoCalib``,
+            ``bbox`` and ``validPolygon`` attributes.
+        """
+        return pipeBase.Struct(
+            visitInfo=handle.get(component="visitInfo") if readVisitInfo else None,
+            filterLabel=handle.get(component="filter") if readVisitInfo else None,
+            summaryStats=handle.get(component="summaryStats"),
+            wcs=handle.get(component="wcs"),
+            photoCalib=handle.get(component="photoCalib"),
+            bbox=handle.get(component="bbox"),
+            validPolygon=handle.get(component="validPolygon"),
+        )
+
+    @staticmethod
+    def _readFutureComponents(handle, readVisitInfo):
+        """Read the metadata of one detector from an `lsst.images.VisitImage`
+        and convert it to legacy types.
+
+        Parameters
+        ----------
+        handle : `lsst.daf.butler.DeferredDatasetHandle`
+            Handle to the visit image.
+        readVisitInfo : `bool`
+            Whether to read the visit info and filter label, which are the same
+            for every detector in a visit.
+
+        Returns
+        -------
+        components : `lsst.pipe.base.Struct`
+            Struct with the same attributes as `_readLegacyComponents`.
+        """
+        names = ["summary_stats", "sky_projection", "photometric_scaling", "unit", "bbox", "bounds"]
+        if readVisitInfo:
+            names.append("obs_info")
+        # One multi-component read opens the file once and skips the pixels.
+        read = handle.get(component="components", parameters={"components": names})
+        if read["photometric_scaling"] is not None:
+            photoCalib = read["photometric_scaling"].to_legacy_photo_calib(read["unit"])
+        else:
+            photoCalib = BaseField.make_legacy_photo_calib(read["unit"])
+        visitInfo = None
+        filterLabel = None
+        if readVisitInfo:
+            visitInfo = MakeRawVisitInfoViaObsInfo.observationInfo2visitInfo(read["obs_info"])
+            filterLabel = FilterLabel(band=handle.dataId["band"], physical=handle.dataId["physical_filter"])
+        bounds = read["bounds"]
+        return pipeBase.Struct(
+            visitInfo=visitInfo,
+            filterLabel=filterLabel,
+            summaryStats=read["summary_stats"].to_legacy(),
+            wcs=read["sky_projection"].to_legacy(),
+            photoCalib=photoCalib,
+            bbox=read["bbox"].to_legacy(),
+            validPolygon=bounds.to_legacy() if isinstance(bounds, Polygon) else None,
+        )
 
 
 class ConsolidateSourceTableConnections(pipeBase.PipelineTaskConnections,
