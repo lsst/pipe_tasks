@@ -459,6 +459,9 @@ class MetaMosaicTask(PipelineTask):
                 d65.whitepoint = dp3.whitepoint
                 d65.whitepoint_name = dp3.whitepoint_name
 
+            input_metadata: dict = {}
+            is_hdr = False
+            dci_skip_warned = False
             # Feather at full resolution: binning is applied only as the final
             # whole-mosaic resize below, so pass bin_factor=1 to the featherer.
             mosaic_maker = FeatheredMosaicCreator(patch_grow)
@@ -474,9 +477,15 @@ class MetaMosaicTask(PipelineTask):
                     )
 
                     if (i, j) in ref_content:
-                        content = self._to_float32(ref_content[(i, j)].get().array)
-                        if self.config.do_dci_d65_convert:
+                        rgb_image = ref_content[(i, j)].get()
+                        input_metadata = dict(getattr(rgb_image, "metadata", None) or {})
+                        is_hdr = bool(input_metadata.get("is_hdr"))
+                        content = self._to_float32(rgb_image.array)
+                        if self.config.do_dci_d65_convert and not is_hdr:
                             content = colour.RGB_to_RGB(np.clip(content, 0, 1), dp3, d65)
+                        elif self.config.do_dci_d65_convert and not dci_skip_warned:
+                            self.log.warning("Skipping DCI-D65 conversion for HDR (is_hdr) input.")
+                            dci_skip_warned = True
                     else:
                         cell_box = Box2I(
                             Point2I(grid_origin.getX() + i * pitch_x, grid_origin.getY() + j * pitch_y),
@@ -484,9 +493,15 @@ class MetaMosaicTask(PipelineTask):
                         )
                         stack = []
                         for handle, patch_info in foreign_contributors[(i, j)]:
-                            rgb = self._to_float32(handle.get().array)
-                            if self.config.do_dci_d65_convert:
+                            rgb_image = handle.get()
+                            input_metadata = dict(getattr(rgb_image, "metadata", None) or {})
+                            is_hdr = bool(input_metadata.get("is_hdr"))
+                            rgb = self._to_float32(rgb_image.array)
+                            if self.config.do_dci_d65_convert and not is_hdr:
                                 rgb = colour.RGB_to_RGB(np.clip(rgb, 0, 1), dp3, d65)
+                            elif self.config.do_dci_d65_convert and not dci_skip_warned:
+                                self.log.warning("Skipping DCI-D65 conversion for HDR (is_hdr) input.")
+                                dci_skip_warned = True
                             warped = self._warp_patch_onto_cell(
                                 rgb, patch_info.getWcs(), ref_wcs, cell_box, patch_info.getOuterBBox()
                             )
@@ -528,7 +543,10 @@ class MetaMosaicTask(PipelineTask):
                 sky_proj = ref_proj
             result = Struct(
                 outputRGBMosaic=ColorImage(
-                    out_array, bbox=Box.from_legacy(out_box), sky_projection=sky_proj
+                    out_array,
+                    bbox=Box.from_legacy(out_box),
+                    sky_projection=sky_proj,
+                    metadata=input_metadata,
                 )
             )
         except BaseException:

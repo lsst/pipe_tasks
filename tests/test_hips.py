@@ -211,3 +211,33 @@ class HipsTestCase(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ColorHipsTestCase(unittest.TestCase):
+    def test_color_hips_config_builds(self):
+        """Regression: ``GenerateColorHipsConfig.setDefaults()`` configured
+        functor fields that the stellaRGB port removed (``Q``, per-action
+        ``do_local_contrast``), so constructing it raised AttributeError."""
+        from lsst.pipe.tasks.hips import GenerateColorHipsConfig
+
+        config = GenerateColorHipsConfig()
+        scene = config.rgbGenerator.scene
+        self.assertEqual((scene.input_whitepoint.x, scene.input_whitepoint.y), (0.28, 0.28))
+        self.assertEqual(config.rgbGenerator.luminance_config.stretch, 250)
+
+    def test_high_order_hips_rejects_hdr(self):
+        """HDR (is_hdr) ColorImages would be silently clipped to [0, 1] by the
+        HiPS tiling; the task must refuse them outright instead."""
+        from lsst.pipe.base import InMemoryDatasetHandle
+        from lsst.images import ColorImage
+        from lsst.geom import Box2I
+        from lsst.pipe.tasks.rgb2hips._high_order_hips import HighOrderHipsTask
+
+        config = HighOrderHipsTask.ConfigClass()
+        config.hips_base_uri = "/tmp/hips_hdr_guard_test"
+        config.color_ordering = "gri"
+        task = HighOrderHipsTask(config=config)
+        image = ColorImage(np.zeros((4, 4, 3), dtype=np.float32), metadata={"is_hdr": True})
+        handle = InMemoryDatasetHandle(inMemoryDataset=image)
+        with self.assertRaises(ValueError):
+            task._assemble_sub_region({1: [(handle, None, Box2I())]}, 0)

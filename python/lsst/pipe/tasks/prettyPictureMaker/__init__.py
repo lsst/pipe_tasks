@@ -22,4 +22,9 @@
 from __future__ import annotations
 
 from ._task import *
+from ._new_star_fix import (
+    PrettyPictureStarFixerConfig,
+    PrettyPictureStarFixerConnections,
+    PrettyPictureStarFixerTask,
+)
 from ._utils import *

@@ -353,6 +353,11 @@ class HighOrderHipsTask(PipelineTask):
                 tmp_new_box = Box2I(Point2I(x=0, y=0), Extent2I(x=new_box.getWidth(), y=new_box.getHeight()))
 
                 image = handle.get()
+                if getattr(image, "metadata", None) and image.metadata.get("is_hdr"):
+                    raise ValueError(
+                        "rgb2hips received an is_hdr ColorImage, but HiPS delivery assumes SDR [0, 1] "
+                        "data and would destroy the HDR signal. Deliver an SDR rendering to this task."
+                    )
                 mosaic_maker.add_to_image(
                     new_array,
                     image.array,

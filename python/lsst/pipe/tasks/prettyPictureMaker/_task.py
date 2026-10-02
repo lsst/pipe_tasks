@@ -52,7 +52,15 @@ from skimage.restoration import inpaint_biharmonic
 from lsst.daf.butler import Butler, DataCoordinate, DeferredDatasetHandle
 from lsst.daf.butler import DatasetRef
 from lsst.images import ColorImage, SkyProjection, Box, TractFrame
-from lsst.pex.config import Field, Config, ConfigDictField, ListField, ChoiceField
+from lsst.pex.config import (
+    Field,
+    Config,
+    ConfigDictField,
+    ConfigField,
+    FieldValidationError,
+    ListField,
+    ChoiceField,
+)
 from lsst.pex.config.configurableActions import ConfigurableActionField
 from lsst.pipe.base import (
     PipelineTask,
@@ -64,22 +72,26 @@ from lsst.pipe.base import (
     QuantaAdjuster,
 )
 from lsst.rubinoxide import rbf_interpolator
-from stellaRGB import stellaRGB
+from stellaRGB import Primary, SceneDefinition, stellaRGB
 from stellaRGB.functors import (
+    BackgroundMatcher,
     BoundsRemapper,
     ColorScaler,
     LumCompressor,
     ExposureBracketer,
     GamutFixer,
     LocalContrastEnhancer,
+    NonFiniteHandler,
 )
 from stellaRGB.types import (
-    ScaleLumProtocol,
-    RemapBoundsProtocol,
+    BackgroundMatchProtocol,
     BracketingProtocol,
-    ScaleColorProtocol,
     GamutRemappingProtocol,
     LocalContrastProtocol,
+    NonFiniteHandlerProtocol,
+    RemapBoundsProtocol,
+    ScaleColorProtocol,
+    ScaleLumProtocol,
 )
 import cv2
 
@@ -160,8 +172,14 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         itemtype=ChannelRGBConfig,
         default={},
     )
-    input_whitepoint = ListField[float](
-        doc="The white point of the input arrays in ciexz coordinates", maxLength=2, default=[0.28, 0.28]
+    scene = ConfigField[SceneDefinition](
+        doc=(
+            "Physical scene definition (input primaries and whitepoint, sky and reference white fluxes in "
+            "nJy) forwarded to the stellaRGB pipeline. The default matches the pipeline's scene-less "
+            "fallback constants; leave ``sky_flux`` unset to have the sky estimated per-frame (with a "
+            "warning), or set it explicitly for survey-grade batch consistency."
+        ),
+        default=SceneDefinition,
     )
     working_whitepoint = ListField[float](
         doc="The white point of the Oklab working space the image is converted into for processing",
@@ -181,24 +199,6 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
             "float": "Use 32 bit float arrays, 1 max",
         },
     )
-    recenter_noise = Field[float](
-        doc="Recenter the noise away from zero. Supplied value is in units of sigma",
-        optional=True,
-        default=None,
-    )
-    noise_search_threshold = Field[float](
-        doc=(
-            "Flux threshold below which most flux will be considered noise, used to estimate noise properties"
-        ),
-        default=2,
-    )
-    max_noise_imbalance = Field[float](
-        doc=(
-            "When recentering noise, if the ratio of counts of positive pixels, to negative pixels passes "
-            "this threshold, consider there to be extended low flux and only estimate noise below zero."
-        ),
-        default=1.5,
-    )
     do_psf_deconvolve = Field[bool](
         doc="Use the PSF in a Richardson-Lucy deconvolution on the luminance channel.", default=False
     )
@@ -209,6 +209,13 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
         doc="Apply exposure bracketing to aid in dynamic range compression", default=True
     )
     do_local_contrast = Field[bool](doc="Apply local contrast optimizations to luminance.", default=True)
+    do_background_match = Field[bool](
+        doc="Match channel background noise statistics before processing.", default=True
+    )
+    do_non_finite_handler = Field[bool](
+        doc="Sanitize non-finite pixels before processing; if False, pass them through.", default=True
+    )
+
     is_hdr = Field[bool](
         doc=(
             "Produce a High Dynamic Range output image. WARNING: This should only be set to True if the "
@@ -242,12 +249,39 @@ class PrettyPictureConfig(PipelineTaskConfig, pipelineConnections=PrettyPictureC
     gamut_mapper_config = ConfigurableActionField[GamutRemappingProtocol](
         doc="Action to fix pixels which lay outside RGB color gamut", default=GamutFixer
     )
+    background_match = ConfigurableActionField[BackgroundMatchProtocol](
+        doc="Action matching channel background noise statistics before processing",
+        default=BackgroundMatcher,
+    )
+    non_finite_handler = ConfigurableActionField[NonFiniteHandlerProtocol](
+        doc="Action replacing non-finite pixels (NaN/inf) before processing",
+        default=NonFiniteHandler,
+    )
 
     def setDefaults(self):
         self.channel_config["i"] = ChannelRGBConfig(r=1, g=0, b=0)
         self.channel_config["r"] = ChannelRGBConfig(r=0, g=1, b=0)
         self.channel_config["g"] = ChannelRGBConfig(r=0, g=0, b=1)
+
+        self.scene.sky_flux = 4.5
+        self.scene.white_flux = 200
+        self.scene.input_primaries["g"] = Primary(x=0.178, y=0.7174)
+        self.scene.input_primaries["b"] = Primary(x=0.1, y=0.009)
+
+        self.scene.reference_white.x = 0.275
+        self.scene.reference_white.y = 0.285
+
         return super().setDefaults()
+
+    def validate(self):
+        super().validate()
+        if self.is_hdr and self.array_type != "float":
+            raise FieldValidationError(
+                PrettyPictureConfig.array_type,
+                self,
+                "array_type must be 'float' when is_hdr is set (HDR output is linear nits/100).",
+            )
+        return self
 
 
 class PrettyPictureTask(PipelineTask):
@@ -257,107 +291,6 @@ class PrettyPictureTask(PipelineTask):
     ConfigClass = PrettyPictureConfig
 
     config: ConfigClass
-
-    def _find_normal_stats(self, array):
-        """Calculate standard deviation from negative values using half-normal distribution.
-
-        Raises
-        ------
-        ValueError
-            Array dimension validation fails.
-
-        Parameters
-        ----------
-        array : `numpy.array`
-            Input array of numerical values.
-
-        Returns
-        -------
-        mean : `float`
-            The central moment of the distribution
-        sigma : `float`
-            Estimated standard deviation from negative values. Returns np.inf if:
-            - No negative values exist in the array
-            - Half-normal fitting fails
-        """
-        # Extract negative values efficiently
-        values_noise = array[array < self.config.noise_search_threshold]
-
-        # find the mode
-        center = mode(np.round(values_noise, 2)).mode
-
-        # extract the negative values
-        values_neg = array[array < center]
-
-        # Return infinity if no negative values found
-        if values_neg.size == 0:
-            return 0, np.inf
-
-        try:
-            # Fit half-normal distribution to absolute negative values
-            _, sigma = halfnorm.fit(np.abs(values_neg - center), floc=0)
-            mu = center
-        except (ValueError, RuntimeError):
-            # Handle fitting failures (e.g., constant data, optimization issues)
-            return 0, np.inf
-
-        # examine for excess positive flux, this means there is contaminating signal
-        new_cut = array[array < (mu + 3 * sigma)]
-        positivity_ratio = np.sum(new_cut > mu) / np.sum(new_cut < mu)
-
-        if positivity_ratio > self.config.max_noise_imbalance:
-            # This means there is an excess flux, possibly diffuse source,
-            # only estimate around zero.
-            mu, sigma = halfnorm.fit(np.abs(values_noise[values_noise < 0]), floc=0)
-
-        return mu, sigma
-
-    def _match_sigmas_and_recenter(self, *arrays, factor=1):
-        """Scale array values to match minimum standard deviation across arrays
-        and recenter noise.
-
-        Adjusts values below each array's sigma by scaling and shifting them to
-        align with the minimum sigma value across all input arrays. This operates
-        in-place for efficiency.
-
-        Parameters
-        ----------
-        *arrays : any number of `numpy.array`
-            Variable number of input arrays to process.
-        factor : float, optional
-            Scaling factor for adjustments (default: 1).
-
-        """
-        # Calculate standard deviations for all arrays
-        sigmas = []
-        mus = []
-        for arr in arrays:
-            m, s = self._find_normal_stats(arr)
-            mus.append(m)
-            sigmas.append(s)
-        mus = np.array(mus)
-        sigmas = np.array(sigmas)
-
-        # If no sigmas could be determined, return the original
-        # arrays.
-        if not np.any(np.isfinite(sigmas)):
-            return
-
-        min_sig = np.min(sigmas)
-
-        for mu, sigma, array in zip(mus, sigmas, arrays):
-            # Identify values below the array's sigma threshold
-            lower_pos = (array - mu) < sigma
-
-            # Skip processing if sigma is invalid
-            if not np.isfinite(sigma):
-                continue
-
-            # Calculate scaling ratio relative to minimum sigma
-            sigma_ratio = min_sig / sigma
-
-            # Apply adjustment to qualifying values
-            array[lower_pos] = (array[lower_pos] - mu) * sigma_ratio + min_sig * factor
 
     def run(
         self,
@@ -440,11 +373,6 @@ class PrettyPictureTask(PipelineTask):
         except Exception:
             psf = None
 
-        if self.config.recenter_noise:
-            self._match_sigmas_and_recenter(
-                imageRArray, imageGArray, imageBArray, factor=self.config.recenter_noise
-            )
-
         # assert for typing reasons
         assert jointMask is not None
         # Run any image level correction plugins
@@ -463,15 +391,18 @@ class PrettyPictureTask(PipelineTask):
             scale_lum=self.config.luminance_config,
             scale_color=self.config.color_config,
             remap_bounds=self.config.image_remapping_config,
+            background_match=self.config.background_match if self.config.do_background_match else None,
+            non_finite_handler=self.config.non_finite_handler if self.config.do_non_finite_handler else None,
             bracketing_function=(
                 self.config.exposure_bracketer_config if self.config.do_exposure_brackets else None
             ),
             gamut_remapping_function=self.config.gamut_mapper_config if self.config.do_remap_gamut else None,
-            input_whitepoint=tuple(self.config.input_whitepoint),  # type: ignore
             working_whitepoint=tuple(self.config.working_whitepoint),  # type: ignore
             output_whitepoint=tuple(self.config.output_whitepoint),  # type: ignore
             psf=psf if self.config.do_psf_deconvolve else None,
             is_hdr=self.config.is_hdr,
+            scene=self.config.scene,
+            validate_callables=False,  # pex Config.validate() already checked the actions.
             bbox=image_box,
             sky_projection=image_wcs,
         )
@@ -495,15 +426,23 @@ class PrettyPictureTask(PipelineTask):
                 assert True, "This code path should be unreachable"
 
         # stellaRGB returns an image in 0-1 scale it to the maximum value and
-        # cast to the requested array type in one step.
-        output_array = (colorImage.array * maxVal).astype(dtype)  # type: ignore
+        # cast to the requested array type in one step. HDR output is linear
+        # nits/100 relative to a 100-nit white and may exceed 1, so it is kept
+        # unscaled in float32.
+        if self.config.is_hdr:
+            output_array = colorImage.array.astype(np.float32)  # type: ignore
+        else:
+            output_array = (colorImage.array * maxVal).astype(dtype)  # type: ignore
 
         # pack the joint mask back into a mask object
         lsstMask = Mask(width=jointMask.shape[1], height=jointMask.shape[0], planeDefs=maskDict)
         lsstMask.array = jointMask  # type: ignore
         return Struct(
             outputRGB=ColorImage(
-                output_array, bbox=colorImage.bbox, sky_projection=colorImage.sky_projection
+                output_array,
+                bbox=colorImage.bbox,
+                sky_projection=colorImage.sky_projection,
+                metadata=colorImage.metadata,
             ),
             outputRGBMask=lsstMask,
         )  # type: ignore
@@ -1392,12 +1331,20 @@ class PrettyMosaicTask(PipelineTask):
 
         # Actually assemble the mosaic
         maskDict = {}
+        input_metadata: dict = {}
+        dci_skip_warned = False
         mosaic_maker = FeatheredMosaicCreator(patch_grow, self.config.binFactor)
         for box, handle, handleMask, tractInfo in zip(boxes, inputRGB, inputRGBMask, tractMaps):
-            rgb = handle.get().array
-            # convert to the dci-d65 colorspace
-            if self.config.doDCID65Convert:
+            rgb_image = handle.get()
+            rgb = rgb_image.array
+            input_metadata = dict(getattr(rgb_image, "metadata", None) or {})
+            # convert to the dci-d65 colorspace; HDR (linear nits/100) input
+            # must not be clipped to [0, 1].
+            if self.config.doDCID65Convert and not input_metadata.get("is_hdr"):
                 rgb = colour.RGB_to_RGB(np.clip(rgb, 0, 1), dp3, d65)
+            elif self.config.doDCID65Convert and not dci_skip_warned:
+                self.log.warning("Skipping DCI-D65 conversion for HDR (is_hdr) input.")
+                dci_skip_warned = True
             rgbMask = handleMask.get()
             maskDict = rgbMask.getMaskPlaneDict()
             # allocate the memory for the mosaic
@@ -1442,7 +1389,7 @@ class PrettyMosaicTask(PipelineTask):
         if consolidatedImage is None:
             consolidatedImage = np.zeros((0, 0, 0), dtype=np.uint8)
 
-        return Struct(outputRGBMosaic=ColorImage(consolidatedImage))
+        return Struct(outputRGBMosaic=ColorImage(consolidatedImage, metadata=input_metadata))
 
     def runQuantum(
         self,

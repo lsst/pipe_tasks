@@ -67,6 +67,8 @@ import lsst.geom as geom
 from lsst.afw.geom import makeHpxWcs
 from lsst.resources import ResourcePath
 
+from stellaRGB import Chromaticity
+
 from .healSparseMapping import _is_power_of_two
 from .prettyPictureMaker import PrettyPictureTask, PrettyPictureConfig
 
@@ -1303,7 +1305,7 @@ class GenerateHipsTask(pipeBase.PipelineTask):
 
                 image_array = png_mapping.make_rgb_image(arr_red, arr_green, arr_blue)
             case "lsstRGB":
-                image_array = self.rgbGenerator.run(lsstRGB_args["band_mapping"]).outputRGB
+                image_array = self.rgbGenerator.run(lsstRGB_args["band_mapping"]).outputRGB.array
 
         im = Image.fromarray(image_array[::-1, :, :], mode="RGB")
 
@@ -1762,9 +1764,7 @@ class GenerateColorHipsConfig(GenerateHipsConfig, pipelineConnections=GenerateCo
         super().setDefaults()
         self.rgbGenerator: PrettyPictureConfig
         self.rgbGenerator.image_remapping_config.abs_max = 550
-        self.rgbGenerator.luminance_config.Q = 0.7
         self.rgbGenerator.exposure_bracketer_config.exposure_brackets = None
-        self.rgbGenerator.local_contrast_config.do_local_contrast = False
         self.rgbGenerator.luminance_config.stretch = 250
         self.rgbGenerator.luminance_config.max = 100
         self.rgbGenerator.luminance_config.highlight = 0.905882
@@ -1772,7 +1772,7 @@ class GenerateColorHipsConfig(GenerateHipsConfig, pipelineConnections=GenerateCo
         self.rgbGenerator.luminance_config.midtone = 0.25
         self.rgbGenerator.color_config.max_chroma = 80
         self.rgbGenerator.color_config.saturation = 0.6
-        self.rgbGenerator.input_whitepoint = (0.28, 0.28)
+        self.rgbGenerator.scene.input_whitepoint = Chromaticity(x=0.28, y=0.28)
 
         return
 

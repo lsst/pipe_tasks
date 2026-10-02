@@ -1,18 +1,23 @@
 import inspect
 
 import numpy as np
+import pytest
 from scipy.ndimage import binary_dilation
 
 from lsst.afw.image import ExposureF
 from lsst.geom import Box2I
 from lsst.images import Box
+from lsst.pex.config import FieldValidationError
+from lsst.pipe.tasks.prettyPictureMaker import PrettyPictureConfig, PrettyPictureTask
 from lsst.pipe.tasks.prettyPictureMaker._new_star_fix import (
     PrettyPictureStarFixerConfig,
     PrettyPictureStarFixerTask,
     _circular_mask,
 )
 from lsst.pipe.tasks.prettyPictureMaker._utils import FeatheredMosaicCreator
-from stellaRGB import reconstruct_saturated_stars
+from stellaRGB import SceneDefinition, reconstruct_saturated_stars, stellaRGB
+from stellaRGB.functors import BackgroundMatcher, NonFiniteHandler
+from stellaRGB.functors.hdr import HDRRec2020Gamut, HDRLumCompressor
 
 
 class TestFeatheredMosaicCreator:
@@ -365,3 +370,109 @@ class TestStarFixerReconstruction:
             maxima[growth] = array[both].max()
 
         assert maxima[0.01] < maxima[0.02] < maxima[0.05], f"measured maxima: {maxima}"
+
+
+class TestPrettyPictureTaskParity:
+    """Config/run wiring against the installed stellaRGB API.
+
+    Guards against the class of breakage this branch already suffered once:
+    the task calling ``stellaRGB()`` with stale kwargs, silently dropping the
+    ``is_hdr``/settings metadata on the way out, or losing the linear HDR
+    output under the SDR ``[0, 1]`` array-type scaling.
+    """
+
+    def _hdr_config(self):
+        config = PrettyPictureConfig()
+        config.is_hdr = True
+        config.array_type = "float"
+        config.image_remapping_config.abs_max = 75500
+        config.scene.sky_flux = 3.4318
+        config.scene.white_flux = 200.0
+        config.luminance_config = HDRLumCompressor()
+        config.gamut_mapper_config = HDRRec2020Gamut()
+        return config
+
+    def test_run_kwargs_match_stellarub_signature(self, monkeypatch):
+        """Every kwarg the task passes is a real stellaRGB() parameter, and
+        the stage pass-throughs (scene, background_match, non_finite_handler,
+        validate_callables) carry the configured objects."""
+        import lsst.pipe.tasks.prettyPictureMaker._task as task_mod
+
+        real = task_mod.stellaRGB
+        captured = {}
+
+        def spy(*args, **kwargs):
+            captured.update(kwargs)
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(task_mod, "stellaRGB", spy)
+        exposures, _ = _make_star_exposures()
+        task = PrettyPictureTask(config=PrettyPictureConfig())
+        result = task.run(images=exposures)
+
+        assert set(captured) <= set(inspect.signature(stellaRGB).parameters)
+        assert isinstance(captured["scene"], SceneDefinition)
+        assert isinstance(captured["background_match"], BackgroundMatcher)
+        assert isinstance(captured["non_finite_handler"], NonFiniteHandler)
+        assert captured["validate_callables"] is False
+        assert result.outputRGB.metadata["is_hdr"] is False
+        assert result.outputRGB.array.dtype == np.uint8
+
+    def test_background_match_gate_passes_none(self, monkeypatch):
+        """do_background_match=False bypasses the stage entirely."""
+        import lsst.pipe.tasks.prettyPictureMaker._task as task_mod
+
+        real = task_mod.stellaRGB
+        captured = {}
+
+        def spy(*args, **kwargs):
+            captured.update(kwargs)
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(task_mod, "stellaRGB", spy)
+        exposures, _ = _make_star_exposures()
+        config = PrettyPictureConfig()
+        config.do_background_match = False
+        task = PrettyPictureTask(config=config)
+        task.run(images=exposures)
+        assert captured["background_match"] is None
+
+    def test_run_hdr_preserves_float_and_metadata(self):
+        """is_hdr output keeps the linear nits/100 float signal and the
+        metadata the EXR/AVIF writers gate on."""
+        exposures, _ = _make_star_exposures()
+        task = PrettyPictureTask(config=self._hdr_config())
+        result = task.run(images=exposures)
+        assert result.outputRGB.metadata["is_hdr"] is True
+        assert result.outputRGB.array.dtype == np.float32
+        assert np.max(result.outputRGB.array) > 1.0
+
+    def test_is_hdr_requires_float_output(self):
+        config = PrettyPictureConfig()
+        config.is_hdr = True
+        with pytest.raises(FieldValidationError):
+            config.validate()
+        config.array_type = "float"
+        config.validate()
+
+    def test_scene_survives_yaml_roundtrip(self, tmp_path):
+        config = PrettyPictureConfig()
+        config.scene.sky_flux = 3.4318
+        config.scene.white_flux = 200.0
+        config.scene.input_whitepoint.x = 0.28
+        config.scene.input_whitepoint.y = 0.28
+        filename = tmp_path / "pretty_picture.yaml"
+        config.save(str(filename))
+        loaded = PrettyPictureConfig()
+        loaded.load(str(filename))
+        assert loaded.scene.sky_flux == 3.4318
+        assert loaded.scene.white_flux == 200.0
+        assert (loaded.scene.input_whitepoint.x, loaded.scene.input_whitepoint.y) == (0.28, 0.28)
+
+
+def test_star_fixer_public_export_is_engine_backed():
+    """The public name must be the engine-backed star fixer, not the retired
+    biharmonic-inpaint implementation still living in _task."""
+    from lsst.pipe.tasks.prettyPictureMaker import PrettyPictureStarFixerTask as PublicTask
+
+    assert PublicTask is PrettyPictureStarFixerTask
