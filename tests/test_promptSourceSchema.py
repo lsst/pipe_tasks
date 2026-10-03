@@ -33,13 +33,13 @@ from astropy.table import Table
 import importlib.resources
 
 import lsst.utils.tests
-from lsst.utils import getPackageDir
+from lsst.resources import ResourcePath
 
 from lsst.pipe.tasks.postprocess import TransformSourceTableTask, TransformSourceTableConfig
 from lsst.pipe.tasks.schemaUtils import readSdmSchemaFile
 from lsst.pipe.tasks.split_primary import SplitPrimaryTask
 
-FUNCTOR_FILE = os.path.join(getPackageDir("pipe_tasks"), "schemas", "prompt_source.yaml")
+FUNCTOR_FILE = ResourcePath("eups://pipe_tasks/schemas/prompt_source.yaml")
 
 SCHEMA_FILE = importlib.resources.files("lsst.sdm.schemas") / "ap_extra.yaml"
 TABLE_NAME = "PromptSource"
@@ -64,8 +64,9 @@ class PromptSourceSchemaTestCase(lsst.utils.tests.TestCase):
         cls.schemaColumns = {column.name for column in schema[TABLE_NAME].columns}
 
         config = TransformSourceTableConfig()
-        config.functorFile = FUNCTOR_FILE
-        transformTask = TransformSourceTableTask(config=config)
+        with FUNCTOR_FILE.as_local() as local:
+            config.functorFile = local.ospath
+            transformTask = TransformSourceTableTask(config=config)
         producedColumns = set(transformTask.funcs.funcDict) | set(config.columnsFromDataId)
 
         # The final prompt_source table is output by splitPromptSource, which is configured
