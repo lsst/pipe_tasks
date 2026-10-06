@@ -434,6 +434,7 @@ class DetectCoaddSourcesTask(PipelineTask):
                 exposure.mask, plane_map=get_legacy_deep_coadd_mask_planes()
             ).view(sky_projection=cell_coadd.sky_projection)
             if backgrounds:
+                cell_coadd.backgrounds._backgrounds.clear()
                 cell_coadd.backgrounds.add(
                     self.config.backgroundName,
                     field_from_legacy_background(backgrounds, unit=astropy.units.nJy),
