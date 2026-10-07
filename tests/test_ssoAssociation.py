@@ -49,6 +49,10 @@ SEC_PER_DAY = 86400.0
 # arm64 vs Linux x86) differ by ~1e-10 deg; the epoch shifts tested here move
 # positions by >~1e-5 deg.
 EPH_ATOL_DEG = 1e-8
+# Same for state vectors: positions (au; 1e-11 au = 1.5 m) and velocities
+# (relative).  The epoch shifts tested here move objects by >~10 km.
+POS_ATOL_AU = 1e-11
+VEL_RTOL = 1e-10
 
 
 def _makeWcsAndBox():
@@ -751,8 +755,8 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
         np.testing.assert_allclose(dec, decs, rtol=0, atol=EPH_ATOL_DEG)
         sss = none.associatedSsSources
         order = np.argsort(sss['ssObjectId'])
-        np.testing.assert_array_equal(sss['helio_x'][order], obj.to_value(u.au)[:, 0])
-        np.testing.assert_array_equal(sss['helio_vz'][order], objV.to_value(u.km/u.s)[:, 2])
+        np.testing.assert_allclose(sss['helio_x'][order], obj.to_value(u.au)[:, 0], rtol=0, atol=POS_ATOL_AU)
+        np.testing.assert_allclose(sss['helio_vz'][order], objV.to_value(u.km/u.s)[:, 2], rtol=VEL_RTOL)
 
     def testConstantOffset(self):
         """A constant Δt moves every prediction to the Chebyshev evaluated at
@@ -778,10 +782,10 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
             topo = [chebval(tRef, row[f'obj_{c}_poly']) - chebval(tRef, row[f'obs_{c}_poly']) for c in 'xyz']
             k = order[i]
             np.testing.assert_allclose([sss['helio_x'][k], sss['helio_y'][k], sss['helio_z'][k]], helio,
-                                       rtol=0, atol=1e-14)
+                                       rtol=0, atol=POS_ATOL_AU)
             np.testing.assert_allclose([sss['topo_x'][k], sss['topo_y'][k], sss['topo_z'][k]], topo,
-                                       rtol=0, atol=1e-14)
-            self.assertAlmostEqual(sss['topoRange'][k], np.linalg.norm(topo), places=13)
+                                       rtol=0, atol=POS_ATOL_AU)
+            self.assertAlmostEqual(sss['topoRange'][k], np.linalg.norm(topo), delta=POS_ATOL_AU)
             # Velocities are the Chebyshev derivatives at the same epoch.
             kmPerSecPerAuPerDay = (1*u.au/u.d).to_value(u.km/u.s)
             helioV = [chebval(tRef, Chebyshev(row[f'obj_{c}_poly']).deriv().coef)*kmPerSecPerAuPerDay
@@ -790,11 +794,11 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
                       - chebval(tRef, Chebyshev(row[f'obs_{c}_poly']).deriv().coef))*kmPerSecPerAuPerDay
                      for c in 'xyz']
             np.testing.assert_allclose([sss['helio_vx'][k], sss['helio_vy'][k], sss['helio_vz'][k]], helioV,
-                                       rtol=1e-14, atol=0)
+                                       rtol=VEL_RTOL, atol=0)
             np.testing.assert_allclose([sss['topo_vx'][k], sss['topo_vy'][k], sss['topo_vz'][k]], topoV,
-                                       rtol=1e-13, atol=0)
+                                       rtol=VEL_RTOL, atol=0)
             self.assertAlmostEqual(sss['helioRangeRate'][k], np.dot(helioV, helio)/np.linalg.norm(helio),
-                                   places=12)
+                                   delta=VEL_RTOL*np.linalg.norm(helioV))
         # Offsets are measured from the shifted prediction.
         np.testing.assert_allclose(sss['ephOffsetDec'], (sss['dec'] - sss['ephDec'])*3600, atol=1e-9)
         self.assertEqual(task.metadata['nSsoShutterEpochs'], len(ssObjects))
