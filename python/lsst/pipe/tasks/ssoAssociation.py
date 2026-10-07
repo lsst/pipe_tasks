@@ -36,6 +36,7 @@ from lsst.afw.image.exposure.exposureUtils import bbox_contains_sky_coords
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.utils.timer import timeMethod
+from lsst.ip.isr.shutterTiming import ShutterTimingStatus
 from lsst.pipe.tasks.associationUtils import obj_id_to_ss_object_id
 
 from .ssp.ssobject import DIA_COLUMNS, DIA_DTYPES
@@ -59,6 +60,28 @@ class SolarSystemAssociationConfig(pexConfig.Config):
         default=100,
         min=0,
     )
+    shutterTimingMaxDateOffset = pexConfig.RangeField(
+        doc="Largest allowed difference (seconds) between the header midpoint "
+            "recorded in a ``shutterTiming`` passed to ``run`` "
+            "(``headerMidMjdTai``) and ``visitInfo.date``. Both are the header "
+            "midpoint of the same exposure, so a larger difference means the "
+            "timing belongs to another exposure; it is then ignored with a "
+            "warning and every prediction stays at ``visitInfo.date``.",
+        dtype=float,
+        default=1.0,
+        min=0.0,
+    )
+    shutterTimingMaxFocalPlaneOffset = pexConfig.RangeField(
+        doc="Largest allowed difference (seconds) between the timing's "
+            "focal-plane mid-exposure time (``focalPlaneMjdTai``) and "
+            "``visitInfo.date``; used only when the timing has no header "
+            "midpoint. Generous because a late readout can move the header "
+            "midpoint (and so ``visitInfo.date``) several minutes after the "
+            "true mid-exposure time.",
+        dtype=float,
+        default=1000.0,
+        min=0.0,
+    )
 
 
 class SolarSystemAssociationTask(pipeBase.Task):
@@ -71,7 +94,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
     _DefaultName = "ssoAssociation"
 
     @timeMethod
-    def run(self, diaSourceCatalog, ssObjects, visitInfo, bbox, wcs):
+    def run(self, diaSourceCatalog, ssObjects, visitInfo, bbox, wcs, shutterTiming=None):
         """Create a searchable tree of unassociated DiaSources and match
         to the nearest ssoObject.
 
@@ -88,7 +111,26 @@ class SolarSystemAssociationTask(pipeBase.Task):
         bbox : `lsst.geom.Box2I`
             bbox of exposure used for masking
         wcs : `lsst.afw.geom.SkyWcs`
-            wcs of exposure used for masking
+            wcs of exposure used for masking, and for mapping predicted
+            positions to pixels when ``shutterTiming`` is given.
+        shutterTiming : `lsst.ip.isr.shutterTiming.ShutterTiming`, optional
+            Per-pixel shutter-corrected mid-exposure times of this detector.
+            If given, each object's prediction is evaluated at the time of
+            the pixel where it is first predicted at ``visitInfo.date``
+            (Chebyshev ephemerides are re-evaluated; precomputed Sorcha
+            positions are moved along their sky rates from their
+            ``fieldMJD_TAI``, or from ``visitInfo.date`` if the table has no
+            such column).  Objects whose
+            per-source status is UNAVAILABLE, or whose time is not finite,
+            keep ``visitInfo.date``.  If `None` (default), every prediction
+            is at ``visitInfo.date``.  The times are computed by
+            `lsst.ip.isr.shutterTiming.computeShutterTiming` from the shutter
+            motion cards of this exposure's metadata.  A timing that does not
+            belong to this exposure and detector (see
+            ``config.shutterTimingMaxDateOffset``,
+            ``config.shutterTimingMaxFocalPlaneOffset`` and the ``detector``
+            column of ``diaSourceCatalog``, if present) is ignored with a
+            warning.
 
         Returns
         -------
@@ -103,6 +145,16 @@ class SolarSystemAssociationTask(pipeBase.Task):
             - ``nAssociatedSsObjects`` : Number of SolarSystemObjects
               that were associated with DiaSources. (`int`)
             - ``ssSourceData`` : ssSource table data. (`Astropy.table.Table`)
+
+        Notes
+        -----
+        The task metadata always gets ``nSsoShutterEpochs`` (number of
+        predictions moved to a shutter-corrected time) and
+        ``ssoShutterEpochMaxShift`` (largest shift from ``visitInfo.date``,
+        seconds), and ``ssoShutterTimingRejected`` (whether a supplied
+        ``shutterTiming`` was ignored as belonging to another exposure or
+        detector).  Without a usable timing they are 0, 0.0 and `False`, so
+        the metadata has the same keys whether or not timing is supplied.
         """
 
         # TODO DM-53699: the source_column should be made consistent, and
@@ -114,6 +166,13 @@ class SolarSystemAssociationTask(pipeBase.Task):
             source_column = 'id'
             source_columns[source_columns.index('diaSourceId')] = source_column
         nSolarSystemObjects = len(ssObjects)
+        # Always written (0 / 0.0 / False without a usable timing), so the
+        # metadata keys do not depend on whether a timing is supplied.
+        self.metadata['nSsoShutterEpochs'] = 0
+        self.metadata['ssoShutterEpochMaxShift'] = 0.0
+        self.metadata['ssoShutterTimingRejected'] = False
+        if shutterTiming is not None:
+            shutterTiming = self._checkShutterTiming(shutterTiming, visitInfo, diaSourceCatalog)
 
         if nSolarSystemObjects <= 0:
             return self._return_empty(diaSourceCatalog, ssObjects, source_column=source_column)
@@ -125,33 +184,34 @@ class SolarSystemAssociationTask(pipeBase.Task):
         exposure_midpoint = visitInfo.date.toAstropy()
         if 'obs_x_poly' in ssObjects.columns:  # mpSky ephemeris
             # tmin, tmax are mjd. All tmin should be identical, so just take the first.
-            ref_time = exposure_midpoint.tai.mjd - ssObjects["tmin"].quantity.to_value(u.d)[0]
+            tmin = ssObjects["tmin"].quantity.to_value(u.d)[0]
+            ref_time = exposure_midpoint.tai.mjd - tmin
             # *_poly are Chebyshev polynomials encoding the observer and object positions.
             # Positions are received in equatorial, cartesian au. Velocities are in au/d.
-            ssObjects['obs_position'] = [
-                np.array([chebval(ref_time, row['obs_x_poly']),
-                          chebval(ref_time, row['obs_y_poly']),
-                          chebval(ref_time, row['obs_z_poly'])])
-                for row in ssObjects] * u.au
-            ssObjects['obs_velocity'] = [
-                np.array([chebval(ref_time, Chebyshev(row['obs_x_poly']).deriv().coef),
-                          chebval(ref_time, Chebyshev(row['obs_y_poly']).deriv().coef),
-                          chebval(ref_time, Chebyshev(row['obs_z_poly']).deriv().coef)])
-                for row in ssObjects] * u.au/u.d
-            ssObjects['obj_position'] = [
-                np.array([chebval(ref_time, row['obj_x_poly']),
-                          chebval(ref_time, row['obj_y_poly']),
-                          chebval(ref_time, row['obj_z_poly'])])
-                for row in ssObjects] * u.au
-            ssObjects['obj_velocity'] = [
-                np.array([chebval(ref_time, Chebyshev(row['obj_x_poly']).deriv().coef),
-                          chebval(ref_time, Chebyshev(row['obj_y_poly']).deriv().coef),
-                          chebval(ref_time, Chebyshev(row['obj_z_poly']).deriv().coef)])
-                for row in ssObjects] * u.au/u.d
+            states = self._evaluateChebyshevStates(ssObjects, np.full(len(ssObjects), ref_time))
+            if shutterTiming is not None:
+                # Second pass: re-evaluate each object (and the observer) at
+                # the shutter-corrected mid-exposure time of the pixel where
+                # the first pass predicts it.  Everything derived below
+                # (ephRa/ephDec, hence matching and ephOffset*; the helio,
+                # topo and observer state vectors; ranges, phase angle,
+                # elongation, helioRangeRate) is then at that epoch.
+                ras, decs = self._topocentricRaDec(states[2] - states[0])
+                epochs, reevaluate = self._shutterEpochs(ras, decs, wcs, exposure_midpoint.tai.mjd,
+                                                         shutterTiming)
+                if np.any(reevaluate):
+                    newStates = self._evaluateChebyshevStates(ssObjects[reevaluate],
+                                                              epochs[reevaluate] - tmin)
+                    for state, newState in zip(states, newStates):
+                        state[reevaluate] = newState
+            obs_position, obs_velocity, obj_position, obj_velocity = states
+            ssObjects['obs_position'] = obs_position * u.au
+            ssObjects['obs_velocity'] = obs_velocity * u.au/u.d
+            ssObjects['obj_position'] = obj_position * u.au
+            ssObjects['obj_velocity'] = obj_velocity * u.au/u.d
 
-            vector = np.vstack(ssObjects['obj_position'].quantity.to_value(u.au)
-                               - ssObjects['obs_position'].quantity.to_value(u.au))
-            ras, decs = np.vstack(hp.vec2ang(vector, lonlat=True))
+            ras, decs = self._topocentricRaDec(ssObjects['obj_position'].quantity.to_value(u.au)
+                                               - ssObjects['obs_position'].quantity.to_value(u.au))
             # Angles in degrees
             ssObjects['ephRa'] = ras * u.deg
             ssObjects['ephDec'] = decs * u.deg
@@ -231,12 +291,40 @@ class SolarSystemAssociationTask(pipeBase.Task):
 
             ssObjects['designation'] = ssObjects['ObjID']
 
+            if shutterTiming is not None:
+                # Sorcha supplies RA/Dec and their rates (RARateCosDec_deg_day,
+                # DecRate_deg_day; both also copied to SSSource below) at its
+                # field time, fieldMJD_TAI (visitInfo.date if that column is
+                # absent or not finite), so move each prediction linearly from
+                # there to its pixel's mid-exposure time.  The state vectors,
+                # ranges and phase angle stay at the field time: over the
+                # <~0.5 s shift they change by a few km.
+                visitMjdTai = exposure_midpoint.tai.mjd
+                ephRa = np.array(ssObjects['ephRa'], dtype=float)
+                ephDec = np.array(ssObjects['ephDec'], dtype=float)
+                if 'fieldMJD_TAI' in ssObjects.colnames:
+                    fieldMjdTai = np.array(ssObjects['fieldMJD_TAI'], dtype=float)
+                    fieldMjdTai = np.where(np.isfinite(fieldMjdTai), fieldMjdTai, visitMjdTai)
+                else:
+                    fieldMjdTai = np.full(len(ssObjects), visitMjdTai)
+                epochs, reevaluate = self._shutterEpochs(ephRa, ephDec, wcs, visitMjdTai, shutterTiming)
+                if np.any(reevaluate):
+                    dt = epochs[reevaluate] - fieldMjdTai[reevaluate]  # days
+                    raRate = np.array(ssObjects['RARateCosDec_deg_day'], dtype=float)[reevaluate]
+                    decRate = np.array(ssObjects['DecRate_deg_day'], dtype=float)[reevaluate]
+                    cosDec = np.cos(np.radians(ephDec[reevaluate]))
+                    ephRa[reevaluate] = (ephRa[reevaluate] + raRate*dt/cosDec) % 360.0
+                    ephDec[reevaluate] += decRate*dt
+                    ssObjects['ephRa'][:] = ephRa
+                    ssObjects['ephDec'][:] = ephDec
+
             marginArcsec = 1.0  # TODO: justify
 
             columns_to_drop = ['FieldID', 'fieldMJD_TAI', 'fieldJD_TDB',
                                'Obs_Sun_x_km', 'Obs_Sun_y_km', 'Obs_Sun_z_km',
                                'Obs_Sun_vx_km_s', 'Obs_Sun_vy_km_s', 'Obs_Sun_vz_km_s',
                                'Obs_Sun_x_au', 'Obs_Sun_y_au', 'Obs_Sun_z_au']
+            columns_to_drop = [c for c in columns_to_drop if c in ssObjects.colnames]
 
         stateVectorColumns = ['helio_x', 'helio_y', 'helio_z', 'helio_vx',
                               'helio_vy', 'helio_vz', 'topo_x', 'topo_y',
@@ -403,6 +491,145 @@ class SolarSystemAssociationTask(pipeBase.Task):
             nAssociatedSsObjects=nFound,
             associatedSsSources=ssSourceData,
             unassociatedSsObjects=unassociatedObjects)
+
+    def _checkShutterTiming(self, shutterTiming, visitInfo, diaSourceCatalog):
+        """Return ``shutterTiming`` if it belongs to this exposure and
+        detector, else `None` (with a warning).
+
+        Parameters
+        ----------
+        shutterTiming : `lsst.ip.isr.shutterTiming.ShutterTiming`
+            The supplied timing.
+        visitInfo : `lsst.afw.image.VisitInfo`
+            Visit information of the exposure; ``date`` is its header
+            midpoint.
+        diaSourceCatalog : `astropy.table.Table`
+            DiaSources of the exposure; its ``detector`` column, if present,
+            must match ``shutterTiming.detectorId``.
+
+        Returns
+        -------
+        shutterTiming : `lsst.ip.isr.shutterTiming.ShutterTiming` or `None`
+            The timing, or `None` if it was rejected.  A rejection sets the
+            task metadata ``ssoShutterTimingRejected`` to `True`.
+
+        Notes
+        -----
+        The time check compares the timing's header midpoint
+        (``headerMidMjdTai``, from the same MJD-BEG/MJD-END cards as
+        ``visitInfo.date``) with ``visitInfo.date``, within
+        ``config.shutterTimingMaxDateOffset``.  If the timing has no header
+        midpoint, it compares the focal-plane mid-exposure time
+        (``focalPlaneMjdTai``) within the much wider
+        ``config.shutterTimingMaxFocalPlaneOffset``, since the two can differ
+        legitimately by minutes after a late readout.  If neither is finite
+        (an UNAVAILABLE timing without cards), the time is not checked:
+        such a timing moves no prediction.
+        """
+        visitMjdTai = visitInfo.date.toAstropy().tai.mjd
+        reason = None
+        headerMid = float(getattr(shutterTiming, 'headerMidMjdTai', np.nan))
+        focalPlane = float(getattr(shutterTiming, 'focalPlaneMjdTai', np.nan))
+        if np.isfinite(headerMid):
+            offset = abs(headerMid - visitMjdTai)*86400.0
+            if offset > self.config.shutterTimingMaxDateOffset:
+                reason = (f"its header midpoint differs from visitInfo.date by {offset:.3f} s "
+                          f"(> {self.config.shutterTimingMaxDateOffset} s)")
+        elif np.isfinite(focalPlane):
+            offset = abs(focalPlane - visitMjdTai)*86400.0
+            if offset > self.config.shutterTimingMaxFocalPlaneOffset:
+                reason = (f"its focal-plane time differs from visitInfo.date by {offset:.3f} s "
+                          f"(> {self.config.shutterTimingMaxFocalPlaneOffset} s)")
+        detectorId = getattr(shutterTiming, 'detectorId', None)
+        if reason is None and detectorId is not None and 'detector' in diaSourceCatalog.columns \
+                and len(diaSourceCatalog) > 0:
+            detectors = np.unique(np.asarray(diaSourceCatalog['detector']))
+            if np.any(detectors != detectorId):
+                reason = (f"it is for detector {detectorId} but the DiaSources are from "
+                          f"detector(s) {detectors.tolist()}")
+        if reason is None:
+            return shutterTiming
+        self.log.warning("Ignoring the supplied shutter timing: %s. All solar system predictions "
+                         "stay at visitInfo.date.", reason)
+        self.metadata['ssoShutterTimingRejected'] = True
+        return None
+
+    @staticmethod
+    def _evaluateChebyshevStates(ssObjects, refTimes):
+        """Evaluate the mpSky Chebyshev ephemerides of each object.
+
+        Parameters
+        ----------
+        ssObjects : `astropy.table.Table`
+            Objects with ``obs_[xyz]_poly`` and ``obj_[xyz]_poly`` columns.
+        refTimes : `numpy.ndarray`
+            Per-object evaluation time, days since ``tmin``.
+
+        Returns
+        -------
+        obsPosition, obsVelocity, objPosition, objVelocity : `numpy.ndarray`
+            (N, 3) observer and object positions (au) and velocities (au/d).
+        """
+        def evaluate(prefix, deriv):
+            values = []
+            for refTime, row in zip(refTimes, ssObjects):
+                coefs = [row[f'{prefix}_{c}_poly'] for c in 'xyz']
+                if deriv:
+                    coefs = [Chebyshev(coef).deriv().coef for coef in coefs]
+                values.append(np.array([chebval(refTime, coef) for coef in coefs]))
+            return np.array(values, dtype=float).reshape(len(values), 3)
+
+        return (evaluate('obs', False), evaluate('obs', True),
+                evaluate('obj', False), evaluate('obj', True))
+
+    @staticmethod
+    def _topocentricRaDec(vector):
+        """RA, Dec (degrees) of (N, 3) topocentric vectors."""
+        return np.vstack(hp.vec2ang(np.vstack(vector), lonlat=True))
+
+    def _shutterEpochs(self, ras, decs, wcs, visitMjdTai, shutterTiming):
+        """Per-object shutter-corrected mid-exposure times.
+
+        Parameters
+        ----------
+        ras, decs : `numpy.ndarray`
+            Predicted positions at the visit time (degrees).
+        wcs : `lsst.afw.geom.SkyWcs`
+            Maps the predictions to pixels.
+        visitMjdTai : `float`
+            ``visitInfo.date`` (MJD TAI).
+        shutterTiming : `lsst.ip.isr.shutterTiming.ShutterTiming`
+            Per-pixel times of this detector.
+
+        Returns
+        -------
+        epochs : `numpy.ndarray`
+            Per-object time (MJD TAI); ``visitMjdTai`` where not
+            re-evaluated.
+        reevaluate : `numpy.ndarray` [`bool`]
+            Objects to re-evaluate at ``epochs``: per-source status not
+            UNAVAILABLE and a finite time.
+
+        Notes
+        -----
+        Sets the task metadata ``nSsoShutterEpochs`` (number of objects
+        re-evaluated) and ``ssoShutterEpochMaxShift`` (largest
+        ``|epoch - visitMjdTai|``, seconds).
+        """
+        ras = np.asarray(ras, dtype=float)
+        decs = np.asarray(decs, dtype=float)
+        x, y = wcs.skyToPixelArray(ras, decs, degrees=True)
+        times = np.asarray(shutterTiming.tMidMjdTai(x, y), dtype=float)
+        status = np.asarray(shutterTiming.sourceStatus(x, y))
+        reevaluate = (status != ShutterTimingStatus.UNAVAILABLE) & np.isfinite(times)
+        epochs = np.where(reevaluate, times, visitMjdTai)
+        nShifted = int(np.count_nonzero(reevaluate))
+        maxShift = float(np.max(np.abs(epochs - visitMjdTai))) * 86400.0 if nShifted else 0.0
+        self.metadata['nSsoShutterEpochs'] = nShifted
+        self.metadata['ssoShutterEpochMaxShift'] = maxShift
+        self.log.debug("Shutter timing: %d / %d solar system predictions moved to their pixel's "
+                       "mid-exposure time (max |shift| %.3f s).", nShifted, len(ras), maxShift)
+        return epochs, reevaluate
 
     def _maskToCcdRegion(self, ssObjects, bbox, wcs, marginArcsec):
         """Mask the input SolarSystemObjects to only those in the exposure
