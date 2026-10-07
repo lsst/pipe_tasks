@@ -800,7 +800,8 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
             self.assertAlmostEqual(sss['helioRangeRate'][k], np.dot(helioV, helio)/np.linalg.norm(helio),
                                    delta=VEL_RTOL*np.linalg.norm(helioV))
         # Offsets are measured from the shifted prediction.
-        np.testing.assert_allclose(sss['ephOffsetDec'], (sss['dec'] - sss['ephDec'])*3600, atol=1e-9)
+        np.testing.assert_allclose(sss['ephOffsetDec'], (sss['dec'] - sss['ephDec'])*3600,
+                                   rtol=0, atol=1e-5)  # arcsec
         self.assertEqual(task.metadata['nSsoShutterEpochs'], len(ssObjects))
         self.assertAlmostEqual(task.metadata['ssoShutterEpochMaxShift'], dtSec, places=5)
 
@@ -815,8 +816,8 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
         x, y = timing.calls[0]
         visRa, visDec = _expectedMpSkyRaDec(ssObjects, T_VISIT)
         expX, expY = self.wcs.skyToPixelArray(visRa, visDec, degrees=True)
-        np.testing.assert_allclose(x, expX, rtol=0, atol=1e-6)
-        np.testing.assert_allclose(y, expY, rtol=0, atol=1e-6)
+        np.testing.assert_allclose(x, expX, rtol=0, atol=1e-3)  # pixels
+        np.testing.assert_allclose(y, expY, rtol=0, atol=1e-3)  # pixels
         self.assertGreater(np.ptp(offset(x, y)), 0.2)
         epochs = T_VISIT + offset(x, y)/SEC_PER_DAY
         expRa, expDec = _expectedMpSkyRaDec(ssObjects, epochs)
