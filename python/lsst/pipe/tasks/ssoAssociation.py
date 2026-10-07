@@ -96,7 +96,9 @@ class SolarSystemAssociationTask(pipeBase.Task):
             If given, each object's prediction is evaluated at the time of
             the pixel where it is first predicted at ``visitInfo.date``
             (Chebyshev ephemerides are re-evaluated; precomputed Sorcha
-            positions are moved along their sky rates).  Objects whose
+            positions are moved along their sky rates from their
+            ``fieldMJD_TAI``, or from ``visitInfo.date`` if the table has no
+            such column).  Objects whose
             per-source status is UNAVAILABLE, or whose time is not finite,
             keep ``visitInfo.date``.  If `None` (default), every prediction
             is at ``visitInfo.date``.
@@ -247,17 +249,23 @@ class SolarSystemAssociationTask(pipeBase.Task):
 
             if shutterTiming is not None:
                 # Sorcha supplies RA/Dec and their rates (RARateCosDec_deg_day,
-                # DecRate_deg_day; both also copied to SSSource below) at the
-                # visit time, so move each prediction linearly to its pixel's
-                # mid-exposure time.  The state vectors, ranges and phase angle
-                # stay at the visit time: over the <~0.5 s shift they change
-                # by a few km.
+                # DecRate_deg_day; both also copied to SSSource below) at its
+                # field time, fieldMJD_TAI (visitInfo.date if that column is
+                # absent or not finite), so move each prediction linearly from
+                # there to its pixel's mid-exposure time.  The state vectors,
+                # ranges and phase angle stay at the field time: over the
+                # <~0.5 s shift they change by a few km.
                 visitMjdTai = exposure_midpoint.tai.mjd
                 ephRa = np.array(ssObjects['ephRa'], dtype=float)
                 ephDec = np.array(ssObjects['ephDec'], dtype=float)
+                if 'fieldMJD_TAI' in ssObjects.colnames:
+                    fieldMjdTai = np.array(ssObjects['fieldMJD_TAI'], dtype=float)
+                    fieldMjdTai = np.where(np.isfinite(fieldMjdTai), fieldMjdTai, visitMjdTai)
+                else:
+                    fieldMjdTai = np.full(len(ssObjects), visitMjdTai)
                 epochs, reevaluate = self._shutterEpochs(ephRa, ephDec, wcs, visitMjdTai, shutterTiming)
                 if np.any(reevaluate):
-                    dt = epochs[reevaluate] - visitMjdTai  # days
+                    dt = epochs[reevaluate] - fieldMjdTai[reevaluate]  # days
                     raRate = np.array(ssObjects['RARateCosDec_deg_day'], dtype=float)[reevaluate]
                     decRate = np.array(ssObjects['DecRate_deg_day'], dtype=float)[reevaluate]
                     cosDec = np.cos(np.radians(ephDec[reevaluate]))
@@ -272,6 +280,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
                                'Obs_Sun_x_km', 'Obs_Sun_y_km', 'Obs_Sun_z_km',
                                'Obs_Sun_vx_km_s', 'Obs_Sun_vy_km_s', 'Obs_Sun_vz_km_s',
                                'Obs_Sun_x_au', 'Obs_Sun_y_au', 'Obs_Sun_z_au']
+            columns_to_drop = [c for c in columns_to_drop if c in ssObjects.colnames]
 
         stateVectorColumns = ['helio_x', 'helio_y', 'helio_z', 'helio_vx',
                               'helio_vy', 'helio_vz', 'topo_x', 'topo_y',

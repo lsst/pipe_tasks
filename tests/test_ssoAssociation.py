@@ -900,6 +900,50 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
         sep = SkyCoord(ra0*u.deg, dec0*u.deg).separation(SkyCoord(ra*u.deg, dec*u.deg)).deg
         np.testing.assert_allclose(sep, rate*dtSec/SEC_PER_DAY, rtol=1e-6)
 
+    def _sorchaExpected(self, ssObjects, dtSec):
+        """Sorcha positions moved linearly by ``dtSec`` (scalar or per
+        object), ordered as `_ephByObject`.
+        """
+        order = np.argsort(ssObjects['ObjID'])
+        dt = np.asarray(dtSec)/SEC_PER_DAY
+        ra0 = np.array(ssObjects['RATrue_deg'])
+        dec0 = np.array(ssObjects['DecTrue_deg'])
+        expRa = ra0 + np.array(ssObjects['RARateCosDec_deg_day'])*dt/np.cos(np.radians(dec0))
+        expDec = dec0 + np.array(ssObjects['DecRate_deg_day'])*dt
+        return expRa[order], expDec[order]
+
+    def testSorchaFieldTime(self):
+        """Sorcha positions are moved from their own ``fieldMJD_TAI``, not
+        from ``visitInfo.date``.
+        """
+        dtSec = 0.45
+        fieldOffsetSec = np.array([-2.0, -1.0, 0.5, 1.5])
+        ssObjects = _makeSorchaObjects(self.wcs)
+        ssObjects['fieldMJD_TAI'] = T_VISIT + fieldOffsetSec/SEC_PER_DAY
+        task, result = self._run(ssObjects, FakeShutterTiming(lambda x, y: dtSec))
+        expRa, expDec = self._sorchaExpected(ssObjects, dtSec - fieldOffsetSec)
+        ids, ra, dec = self._ephByObject(result)
+        # MJD rounding limits the agreement to ~1e-11 deg; the field-time
+        # offsets themselves move the NEA by ~1e-4 deg.
+        np.testing.assert_allclose(ra, expRa, rtol=0, atol=1e-10)
+        np.testing.assert_allclose(dec, expDec, rtol=0, atol=1e-10)
+        # The shift metadata is still relative to visitInfo.date.
+        self.assertAlmostEqual(task.metadata['ssoShutterEpochMaxShift'], dtSec, places=5)
+
+    def testSorchaWithoutFieldTime(self):
+        """Without ``fieldMJD_TAI`` Sorcha positions are moved from
+        ``visitInfo.date``.
+        """
+        dtSec = 0.45
+        ssObjects = _makeSorchaObjects(self.wcs)
+        ssObjects.remove_column('fieldMJD_TAI')
+        task, result = self._run(ssObjects, FakeShutterTiming(lambda x, y: dtSec))
+        expRa, expDec = self._sorchaExpected(ssObjects, dtSec)
+        ids, ra, dec = self._ephByObject(result)
+        np.testing.assert_allclose(ra, expRa, rtol=0, atol=1e-11)
+        np.testing.assert_allclose(dec, expDec, rtol=0, atol=1e-11)
+        self.assertEqual(task.metadata['nSsoShutterEpochs'], len(ssObjects))
+
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
     pass
