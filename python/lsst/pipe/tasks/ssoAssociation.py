@@ -60,6 +60,28 @@ class SolarSystemAssociationConfig(pexConfig.Config):
         default=100,
         min=0,
     )
+    shutterTimingMaxDateOffset = pexConfig.RangeField(
+        doc="Largest allowed difference (seconds) between the header midpoint "
+            "recorded in a ``shutterTiming`` passed to ``run`` "
+            "(``headerMidMjdTai``) and ``visitInfo.date``. Both are the header "
+            "midpoint of the same exposure, so a larger difference means the "
+            "timing belongs to another exposure; it is then ignored with a "
+            "warning and every prediction stays at ``visitInfo.date``.",
+        dtype=float,
+        default=1.0,
+        min=0.0,
+    )
+    shutterTimingMaxFocalPlaneOffset = pexConfig.RangeField(
+        doc="Largest allowed difference (seconds) between the timing's "
+            "focal-plane mid-exposure time (``focalPlaneMjdTai``) and "
+            "``visitInfo.date``; used only when the timing has no header "
+            "midpoint. Generous because a late readout can move the header "
+            "midpoint (and so ``visitInfo.date``) several minutes after the "
+            "true mid-exposure time.",
+        dtype=float,
+        default=1000.0,
+        min=0.0,
+    )
 
 
 class SolarSystemAssociationTask(pipeBase.Task):
@@ -101,7 +123,14 @@ class SolarSystemAssociationTask(pipeBase.Task):
             such column).  Objects whose
             per-source status is UNAVAILABLE, or whose time is not finite,
             keep ``visitInfo.date``.  If `None` (default), every prediction
-            is at ``visitInfo.date``.
+            is at ``visitInfo.date``.  The times are computed by
+            `lsst.ip.isr.shutterTiming.computeShutterTiming` from the shutter
+            motion cards of this exposure's metadata.  A timing that does not
+            belong to this exposure and detector (see
+            ``config.shutterTimingMaxDateOffset``,
+            ``config.shutterTimingMaxFocalPlaneOffset`` and the ``detector``
+            column of ``diaSourceCatalog``, if present) is ignored with a
+            warning.
 
         Returns
         -------
@@ -116,6 +145,16 @@ class SolarSystemAssociationTask(pipeBase.Task):
             - ``nAssociatedSsObjects`` : Number of SolarSystemObjects
               that were associated with DiaSources. (`int`)
             - ``ssSourceData`` : ssSource table data. (`Astropy.table.Table`)
+
+        Notes
+        -----
+        The task metadata always gets ``nSsoShutterEpochs`` (number of
+        predictions moved to a shutter-corrected time) and
+        ``ssoShutterEpochMaxShift`` (largest shift from ``visitInfo.date``,
+        seconds), and ``ssoShutterTimingRejected`` (whether a supplied
+        ``shutterTiming`` was ignored as belonging to another exposure or
+        detector).  Without a usable timing they are 0, 0.0 and `False`, so
+        the metadata has the same keys whether or not timing is supplied.
         """
 
         # TODO DM-53699: the source_column should be made consistent, and
@@ -127,8 +166,13 @@ class SolarSystemAssociationTask(pipeBase.Task):
             source_column = 'id'
             source_columns[source_columns.index('diaSourceId')] = source_column
         nSolarSystemObjects = len(ssObjects)
+        # Always written (0 / 0.0 / False without a usable timing), so the
+        # metadata keys do not depend on whether a timing is supplied.
         self.metadata['nSsoShutterEpochs'] = 0
         self.metadata['ssoShutterEpochMaxShift'] = 0.0
+        self.metadata['ssoShutterTimingRejected'] = False
+        if shutterTiming is not None:
+            shutterTiming = self._checkShutterTiming(shutterTiming, visitInfo, diaSourceCatalog)
 
         if nSolarSystemObjects <= 0:
             return self._return_empty(diaSourceCatalog, ssObjects, source_column=source_column)
@@ -447,6 +491,68 @@ class SolarSystemAssociationTask(pipeBase.Task):
             nAssociatedSsObjects=nFound,
             associatedSsSources=ssSourceData,
             unassociatedSsObjects=unassociatedObjects)
+
+    def _checkShutterTiming(self, shutterTiming, visitInfo, diaSourceCatalog):
+        """Return ``shutterTiming`` if it belongs to this exposure and
+        detector, else `None` (with a warning).
+
+        Parameters
+        ----------
+        shutterTiming : `lsst.ip.isr.shutterTiming.ShutterTiming`
+            The supplied timing.
+        visitInfo : `lsst.afw.image.VisitInfo`
+            Visit information of the exposure; ``date`` is its header
+            midpoint.
+        diaSourceCatalog : `astropy.table.Table`
+            DiaSources of the exposure; its ``detector`` column, if present,
+            must match ``shutterTiming.detectorId``.
+
+        Returns
+        -------
+        shutterTiming : `lsst.ip.isr.shutterTiming.ShutterTiming` or `None`
+            The timing, or `None` if it was rejected.  A rejection sets the
+            task metadata ``ssoShutterTimingRejected`` to `True`.
+
+        Notes
+        -----
+        The time check compares the timing's header midpoint
+        (``headerMidMjdTai``, from the same MJD-BEG/MJD-END cards as
+        ``visitInfo.date``) with ``visitInfo.date``, within
+        ``config.shutterTimingMaxDateOffset``.  If the timing has no header
+        midpoint, it compares the focal-plane mid-exposure time
+        (``focalPlaneMjdTai``) within the much wider
+        ``config.shutterTimingMaxFocalPlaneOffset``, since the two can differ
+        legitimately by minutes after a late readout.  If neither is finite
+        (an UNAVAILABLE timing without cards), the time is not checked:
+        such a timing moves no prediction.
+        """
+        visitMjdTai = visitInfo.date.toAstropy().tai.mjd
+        reason = None
+        headerMid = float(getattr(shutterTiming, 'headerMidMjdTai', np.nan))
+        focalPlane = float(getattr(shutterTiming, 'focalPlaneMjdTai', np.nan))
+        if np.isfinite(headerMid):
+            offset = abs(headerMid - visitMjdTai)*86400.0
+            if offset > self.config.shutterTimingMaxDateOffset:
+                reason = (f"its header midpoint differs from visitInfo.date by {offset:.3f} s "
+                          f"(> {self.config.shutterTimingMaxDateOffset} s)")
+        elif np.isfinite(focalPlane):
+            offset = abs(focalPlane - visitMjdTai)*86400.0
+            if offset > self.config.shutterTimingMaxFocalPlaneOffset:
+                reason = (f"its focal-plane time differs from visitInfo.date by {offset:.3f} s "
+                          f"(> {self.config.shutterTimingMaxFocalPlaneOffset} s)")
+        detectorId = getattr(shutterTiming, 'detectorId', None)
+        if reason is None and detectorId is not None and 'detector' in diaSourceCatalog.columns \
+                and len(diaSourceCatalog) > 0:
+            detectors = np.unique(np.asarray(diaSourceCatalog['detector']))
+            if np.any(detectors != detectorId):
+                reason = (f"it is for detector {detectorId} but the DiaSources are from "
+                          f"detector(s) {detectors.tolist()}")
+        if reason is None:
+            return shutterTiming
+        self.log.warning("Ignoring the supplied shutter timing: %s. All solar system predictions "
+                         "stay at visitInfo.date.", reason)
+        self.metadata['ssoShutterTimingRejected'] = True
+        return None
 
     @staticmethod
     def _evaluateChebyshevStates(ssObjects, refTimes):
