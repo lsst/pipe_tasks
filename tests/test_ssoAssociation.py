@@ -45,6 +45,10 @@ AU_KM = 1.496e8
 T_VISIT = 61000.25      # MJD TAI of visitInfo.date
 T_MIN = 61000.0         # Chebyshev reference epoch (mpSky ``tmin``)
 SEC_PER_DAY = 86400.0
+# Agreement of predicted positions (deg).  Different platforms (e.g. macOS
+# arm64 vs Linux x86) differ by ~1e-10 deg; the epoch shifts tested here move
+# positions by >~1e-5 deg.
+EPH_ATOL_DEG = 1e-8
 
 
 def _makeWcsAndBox():
@@ -743,8 +747,8 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
         ras, decs = np.vstack(hp.vec2ang(np.vstack(obj.to_value(u.au) - obs.to_value(u.au)), lonlat=True))
         ids, ra, dec = self._ephByObject(none)
         np.testing.assert_array_equal(ids, ssObjects['ssObjectId'])
-        np.testing.assert_array_equal(ra, ras)
-        np.testing.assert_array_equal(dec, decs)
+        np.testing.assert_allclose(ra, ras, rtol=0, atol=EPH_ATOL_DEG)
+        np.testing.assert_allclose(dec, decs, rtol=0, atol=EPH_ATOL_DEG)
         sss = none.associatedSsSources
         order = np.argsort(sss['ssObjectId'])
         np.testing.assert_array_equal(sss['helio_x'][order], obj.to_value(u.au)[:, 0])
@@ -759,8 +763,8 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
         task, result = self._run(ssObjects, FakeShutterTiming(lambda x, y: dtSec))
         expRa, expDec = _expectedMpSkyRaDec(ssObjects, T_VISIT + dtSec/SEC_PER_DAY)
         ids, ra, dec = self._ephByObject(result)
-        np.testing.assert_allclose(ra, expRa, rtol=0, atol=1e-10)
-        np.testing.assert_allclose(dec, expDec, rtol=0, atol=1e-10)
+        np.testing.assert_allclose(ra, expRa, rtol=0, atol=EPH_ATOL_DEG)
+        np.testing.assert_allclose(dec, expDec, rtol=0, atol=EPH_ATOL_DEG)
         # Not at the visit time (the NEA moves ~0.15" in 0.37 s).
         visRa, visDec = _expectedMpSkyRaDec(ssObjects, T_VISIT)
         self.assertGreater(np.max(np.abs(ra - visRa)*3600), 0.05)
@@ -813,8 +817,8 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
         epochs = T_VISIT + offset(x, y)/SEC_PER_DAY
         expRa, expDec = _expectedMpSkyRaDec(ssObjects, epochs)
         ids, ra, dec = self._ephByObject(result)
-        np.testing.assert_allclose(ra, expRa, rtol=0, atol=1e-10)
-        np.testing.assert_allclose(dec, expDec, rtol=0, atol=1e-10)
+        np.testing.assert_allclose(ra, expRa, rtol=0, atol=EPH_ATOL_DEG)
+        np.testing.assert_allclose(dec, expDec, rtol=0, atol=EPH_ATOL_DEG)
         self.assertAlmostEqual(task.metadata['ssoShutterEpochMaxShift'],
                                np.max(np.abs(offset(x, y))), places=5)
 
@@ -829,10 +833,10 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
         epochs = np.where(bad, T_VISIT, T_VISIT + 0.4/SEC_PER_DAY)
         expRa, expDec = _expectedMpSkyRaDec(ssObjects, epochs)
         ids, ra, dec = self._ephByObject(result)
-        np.testing.assert_allclose(ra, expRa, rtol=0, atol=1e-10)
-        np.testing.assert_allclose(dec, expDec, rtol=0, atol=1e-10)
+        np.testing.assert_allclose(ra, expRa, rtol=0, atol=EPH_ATOL_DEG)
+        np.testing.assert_allclose(dec, expDec, rtol=0, atol=EPH_ATOL_DEG)
         visRa, visDec = _expectedMpSkyRaDec(ssObjects, T_VISIT)
-        np.testing.assert_array_equal(ra[bad], visRa[bad])
+        np.testing.assert_allclose(ra[bad], visRa[bad], rtol=0, atol=EPH_ATOL_DEG)
         self.assertEqual(task.metadata['nSsoShutterEpochs'], np.count_nonzero(~bad))
 
         # A status of UNAVAILABLE with a finite time also keeps the visit time.
@@ -874,8 +878,8 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
         dec0 = np.array(ssObjects['DecTrue_deg'])
         expRa = ra0 + np.array(ssObjects['RARateCosDec_deg_day'])*dt/np.cos(np.radians(dec0))
         expDec = dec0 + np.array(ssObjects['DecRate_deg_day'])*dt
-        np.testing.assert_allclose(ra, expRa[order], rtol=0, atol=1e-11)
-        np.testing.assert_allclose(dec, expDec[order], rtol=0, atol=1e-11)
+        np.testing.assert_allclose(ra, expRa[order], rtol=0, atol=EPH_ATOL_DEG)
+        np.testing.assert_allclose(dec, expDec[order], rtol=0, atol=EPH_ATOL_DEG)
         self.assertEqual(task.metadata['nSsoShutterEpochs'], len(ssObjects))
 
     def testSorchaRaWrap(self):
@@ -907,7 +911,7 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
         self.assertLess(ra[0], 1.0)
         self.assertGreater(ra[1], 359.0)
         sep = SkyCoord(ra0*u.deg, dec0*u.deg).separation(SkyCoord(ra*u.deg, dec*u.deg)).deg
-        np.testing.assert_allclose(sep, rate*dtSec/SEC_PER_DAY, rtol=1e-6)
+        np.testing.assert_allclose(sep, rate*dtSec/SEC_PER_DAY, rtol=0, atol=EPH_ATOL_DEG)
 
     def _sorchaExpected(self, ssObjects, dtSec):
         """Sorcha positions moved linearly by ``dtSec`` (scalar or per
@@ -934,8 +938,8 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
         ids, ra, dec = self._ephByObject(result)
         # MJD rounding limits the agreement to ~1e-11 deg; the field-time
         # offsets themselves move the NEA by ~1e-4 deg.
-        np.testing.assert_allclose(ra, expRa, rtol=0, atol=1e-10)
-        np.testing.assert_allclose(dec, expDec, rtol=0, atol=1e-10)
+        np.testing.assert_allclose(ra, expRa, rtol=0, atol=EPH_ATOL_DEG)
+        np.testing.assert_allclose(dec, expDec, rtol=0, atol=EPH_ATOL_DEG)
         # The shift metadata is still relative to visitInfo.date.
         self.assertAlmostEqual(task.metadata['ssoShutterEpochMaxShift'], dtSec, places=5)
 
@@ -949,8 +953,8 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
         task, result = self._run(ssObjects, FakeShutterTiming(lambda x, y: dtSec))
         expRa, expDec = self._sorchaExpected(ssObjects, dtSec)
         ids, ra, dec = self._ephByObject(result)
-        np.testing.assert_allclose(ra, expRa, rtol=0, atol=1e-11)
-        np.testing.assert_allclose(dec, expDec, rtol=0, atol=1e-11)
+        np.testing.assert_allclose(ra, expRa, rtol=0, atol=EPH_ATOL_DEG)
+        np.testing.assert_allclose(dec, expDec, rtol=0, atol=EPH_ATOL_DEG)
         self.assertEqual(task.metadata['nSsoShutterEpochs'], len(ssObjects))
 
     def _assertIgnored(self, ssObjects, timing, detector=None):
