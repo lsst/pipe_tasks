@@ -34,7 +34,7 @@ import lsst.geom
 from lsst.ip.isr.shutterTiming import ShutterTimingStatus
 import healpy as hp
 import lsst.utils.tests
-from lsst.pipe.tasks.ssoAssociation import SolarSystemAssociationTask
+from lsst.pipe.tasks.ssoAssociation import SolarSystemAssociationConfig, SolarSystemAssociationTask
 
 AU_KM = 1.496e8
 
@@ -203,9 +203,14 @@ class FakeShutterTiming:
     ``unavailable(x, y)`` is true.
     """
 
-    def __init__(self, offset, unavailable=None):
+    def __init__(self, offset, unavailable=None, headerMidMjdTai=T_VISIT, focalPlaneMjdTai=T_VISIT,
+                 detectorId=None):
         self.offset = offset
         self.unavailable = unavailable
+        self.headerMidMjdTai = headerMidMjdTai
+        self.focalPlaneMjdTai = focalPlaneMjdTai
+        if detectorId is not None:
+            self.detectorId = detectorId
         self.calls = []
 
     def _bad(self, x, y):
@@ -669,7 +674,7 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
         self.bbox, self.wcs = _makeWcsAndBox()
         self.visitInfo = _makeVisitInfo()
 
-    def _run(self, ssObjects, shutterTiming=..., diaRaDec=None, wcs=None):
+    def _run(self, ssObjects, shutterTiming=..., diaRaDec=None, wcs=None, detector=None):
         if diaRaDec is None:
             if 'obs_x_poly' in ssObjects.columns:
                 diaRaDec = _expectedMpSkyRaDec(ssObjects, T_VISIT)
@@ -677,7 +682,10 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
                 diaRaDec = (np.array(ssObjects['RATrue_deg']), np.array(ssObjects['DecTrue_deg']))
         task = SolarSystemAssociationTask()
         kwargs = {} if shutterTiming is ... else {'shutterTiming': shutterTiming}
-        result = task.run(_makeDiaSources(*diaRaDec), ssObjects.copy(), self.visitInfo, self.bbox,
+        diaSources = _makeDiaSources(*diaRaDec)
+        if detector is not None:
+            diaSources['detector'] = np.full(len(diaSources), detector, dtype=np.int16)
+        result = task.run(diaSources, ssObjects.copy(), self.visitInfo, self.bbox,
                           self.wcs if wcs is None else wcs, **kwargs)
         return task, result
 
@@ -719,7 +727,8 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
             self.assertEqual(task.metadata['nSsoShutterEpochs'], 0)
             self.assertEqual(none.nAssociatedSsObjects, len(ssObjects))
 
-        # The pre-change mpSky evaluation, verbatim.
+        # The mpSky evaluation at visitInfo.date as written before shutter
+        # timing was added, as an independent reference.
         ssObjects = _makeMpSkyObjects(self.wcs)
         _, none = self._run(ssObjects, None)
         ref_time = self.visitInfo.date.toAstropy().tai.mjd - ssObjects["tmin"].quantity.to_value(u.d)[0]
@@ -899,6 +908,110 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
         self.assertGreater(ra[1], 359.0)
         sep = SkyCoord(ra0*u.deg, dec0*u.deg).separation(SkyCoord(ra*u.deg, dec*u.deg)).deg
         np.testing.assert_allclose(sep, rate*dtSec/SEC_PER_DAY, rtol=1e-6)
+
+    def _sorchaExpected(self, ssObjects, dtSec):
+        """Sorcha positions moved linearly by ``dtSec`` (scalar or per
+        object), ordered as `_ephByObject`.
+        """
+        order = np.argsort(ssObjects['ObjID'])
+        dt = np.asarray(dtSec)/SEC_PER_DAY
+        ra0 = np.array(ssObjects['RATrue_deg'])
+        dec0 = np.array(ssObjects['DecTrue_deg'])
+        expRa = ra0 + np.array(ssObjects['RARateCosDec_deg_day'])*dt/np.cos(np.radians(dec0))
+        expDec = dec0 + np.array(ssObjects['DecRate_deg_day'])*dt
+        return expRa[order], expDec[order]
+
+    def testSorchaFieldTime(self):
+        """Sorcha positions are moved from their own ``fieldMJD_TAI``, not
+        from ``visitInfo.date``.
+        """
+        dtSec = 0.45
+        fieldOffsetSec = np.array([-2.0, -1.0, 0.5, 1.5])
+        ssObjects = _makeSorchaObjects(self.wcs)
+        ssObjects['fieldMJD_TAI'] = T_VISIT + fieldOffsetSec/SEC_PER_DAY
+        task, result = self._run(ssObjects, FakeShutterTiming(lambda x, y: dtSec))
+        expRa, expDec = self._sorchaExpected(ssObjects, dtSec - fieldOffsetSec)
+        ids, ra, dec = self._ephByObject(result)
+        # MJD rounding limits the agreement to ~1e-11 deg; the field-time
+        # offsets themselves move the NEA by ~1e-4 deg.
+        np.testing.assert_allclose(ra, expRa, rtol=0, atol=1e-10)
+        np.testing.assert_allclose(dec, expDec, rtol=0, atol=1e-10)
+        # The shift metadata is still relative to visitInfo.date.
+        self.assertAlmostEqual(task.metadata['ssoShutterEpochMaxShift'], dtSec, places=5)
+
+    def testSorchaWithoutFieldTime(self):
+        """Without ``fieldMJD_TAI`` Sorcha positions are moved from
+        ``visitInfo.date``.
+        """
+        dtSec = 0.45
+        ssObjects = _makeSorchaObjects(self.wcs)
+        ssObjects.remove_column('fieldMJD_TAI')
+        task, result = self._run(ssObjects, FakeShutterTiming(lambda x, y: dtSec))
+        expRa, expDec = self._sorchaExpected(ssObjects, dtSec)
+        ids, ra, dec = self._ephByObject(result)
+        np.testing.assert_allclose(ra, expRa, rtol=0, atol=1e-11)
+        np.testing.assert_allclose(dec, expDec, rtol=0, atol=1e-11)
+        self.assertEqual(task.metadata['nSsoShutterEpochs'], len(ssObjects))
+
+    def _assertIgnored(self, ssObjects, timing, detector=None):
+        _, none = self._run(ssObjects, None, detector=detector)
+        task, result = self._run(ssObjects, timing, detector=detector)
+        self._compareResults(none, result)
+        self.assertTrue(task.metadata['ssoShutterTimingRejected'])
+        self.assertEqual(task.metadata['nSsoShutterEpochs'], 0)
+        self.assertEqual(task.metadata['ssoShutterEpochMaxShift'], 0.0)
+        self.assertEqual(timing.calls, [])
+
+    def _assertUsed(self, ssObjects, timing, detector=None):
+        task, _ = self._run(ssObjects, timing, detector=detector)
+        self.assertFalse(task.metadata['ssoShutterTimingRejected'])
+        self.assertEqual(task.metadata['nSsoShutterEpochs'], len(ssObjects))
+
+    def testTimingOfAnotherExposureIgnored(self):
+        """A timing whose header midpoint is not ``visitInfo.date`` is
+        ignored with a warning.
+        """
+        for make in (_makeMpSkyObjects, _makeSorchaObjects):
+            ssObjects = make(self.wcs)
+            with self.assertLogs(level='WARNING') as cm:
+                self._assertIgnored(ssObjects, FakeShutterTiming(lambda x, y: 0.3,
+                                                                 headerMidMjdTai=T_VISIT + 35/SEC_PER_DAY))
+            self.assertIn("header midpoint", "\n".join(cm.output))
+            # Within the tolerance: used.
+            self._assertUsed(ssObjects, FakeShutterTiming(lambda x, y: 0.3,
+                                                          headerMidMjdTai=T_VISIT + 0.5/SEC_PER_DAY))
+
+    def testFocalPlaneTimeCheck(self):
+        """Without a header midpoint, the focal-plane time is checked within
+        a window wide enough for late readouts.
+        """
+        ssObjects = _makeMpSkyObjects(self.wcs)
+        # A late readout: visitInfo.date 600 s after the shutter time.
+        self._assertUsed(ssObjects, FakeShutterTiming(lambda x, y: 0.3, headerMidMjdTai=np.nan,
+                                                      focalPlaneMjdTai=T_VISIT - 600/SEC_PER_DAY))
+        self._assertIgnored(ssObjects, FakeShutterTiming(lambda x, y: 0.3, headerMidMjdTai=np.nan,
+                                                         focalPlaneMjdTai=T_VISIT - 3600/SEC_PER_DAY))
+        # Configurable.
+        task = SolarSystemAssociationTask(config=SolarSystemAssociationConfig(
+            shutterTimingMaxFocalPlaneOffset=100.0))
+        timing = FakeShutterTiming(lambda x, y: 0.3, headerMidMjdTai=np.nan,
+                                   focalPlaneMjdTai=T_VISIT - 600/SEC_PER_DAY)
+        self.assertIsNone(task._checkShutterTiming(timing, self.visitInfo, _makeDiaSources([150.0], [10.0])))
+        self.assertTrue(task.metadata['ssoShutterTimingRejected'])
+        # Neither time known (UNAVAILABLE without cards): not rejected.
+        timing = FakeShutterTiming(lambda x, y: 0.3, headerMidMjdTai=np.nan, focalPlaneMjdTai=np.nan)
+        self.assertIs(task._checkShutterTiming(timing, self.visitInfo, _makeDiaSources([150.0], [10.0])),
+                      timing)
+
+    def testTimingOfAnotherDetectorIgnored(self):
+        """A timing for another detector than the DiaSources' is ignored."""
+        ssObjects = _makeMpSkyObjects(self.wcs)
+        with self.assertLogs(level='WARNING') as cm:
+            self._assertIgnored(ssObjects, FakeShutterTiming(lambda x, y: 0.3, detectorId=94), detector=93)
+        self.assertIn("detector 94", "\n".join(cm.output))
+        self._assertUsed(ssObjects, FakeShutterTiming(lambda x, y: 0.3, detectorId=94), detector=94)
+        # No detector column: not checked.
+        self._assertUsed(ssObjects, FakeShutterTiming(lambda x, y: 0.3, detectorId=94))
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
