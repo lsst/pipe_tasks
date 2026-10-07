@@ -669,7 +669,7 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
         self.bbox, self.wcs = _makeWcsAndBox()
         self.visitInfo = _makeVisitInfo()
 
-    def _run(self, ssObjects, shutterTiming=..., diaRaDec=None):
+    def _run(self, ssObjects, shutterTiming=..., diaRaDec=None, wcs=None):
         if diaRaDec is None:
             if 'obs_x_poly' in ssObjects.columns:
                 diaRaDec = _expectedMpSkyRaDec(ssObjects, T_VISIT)
@@ -678,7 +678,7 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
         task = SolarSystemAssociationTask()
         kwargs = {} if shutterTiming is ... else {'shutterTiming': shutterTiming}
         result = task.run(_makeDiaSources(*diaRaDec), ssObjects.copy(), self.visitInfo, self.bbox,
-                          self.wcs, **kwargs)
+                          self.wcs if wcs is None else wcs, **kwargs)
         return task, result
 
     @staticmethod
@@ -769,6 +769,19 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
             np.testing.assert_allclose([sss['topo_x'][k], sss['topo_y'][k], sss['topo_z'][k]], topo,
                                        rtol=0, atol=1e-14)
             self.assertAlmostEqual(sss['topoRange'][k], np.linalg.norm(topo), places=13)
+            # Velocities are the Chebyshev derivatives at the same epoch.
+            kmPerSecPerAuPerDay = (1*u.au/u.d).to_value(u.km/u.s)
+            helioV = [chebval(tRef, Chebyshev(row[f'obj_{c}_poly']).deriv().coef)*kmPerSecPerAuPerDay
+                      for c in 'xyz']
+            topoV = [(chebval(tRef, Chebyshev(row[f'obj_{c}_poly']).deriv().coef)
+                      - chebval(tRef, Chebyshev(row[f'obs_{c}_poly']).deriv().coef))*kmPerSecPerAuPerDay
+                     for c in 'xyz']
+            np.testing.assert_allclose([sss['helio_vx'][k], sss['helio_vy'][k], sss['helio_vz'][k]], helioV,
+                                       rtol=1e-14, atol=0)
+            np.testing.assert_allclose([sss['topo_vx'][k], sss['topo_vy'][k], sss['topo_vz'][k]], topoV,
+                                       rtol=1e-13, atol=0)
+            self.assertAlmostEqual(sss['helioRangeRate'][k], np.dot(helioV, helio)/np.linalg.norm(helio),
+                                   places=12)
         # Offsets are measured from the shifted prediction.
         np.testing.assert_allclose(sss['ephOffsetDec'], (sss['dec'] - sss['ephDec'])*3600, atol=1e-9)
         self.assertEqual(task.metadata['nSsoShutterEpochs'], len(ssObjects))
@@ -855,6 +868,37 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
         np.testing.assert_allclose(ra, expRa[order], rtol=0, atol=1e-11)
         np.testing.assert_allclose(dec, expDec[order], rtol=0, atol=1e-11)
         self.assertEqual(task.metadata['nSsoShutterEpochs'], len(ssObjects))
+
+    def testSorchaRaWrap(self):
+        """Linear shifts across RA = 0 stay in [0, 360) and move by
+        rate × Δt on the sky.
+        """
+        dtSec = 0.45
+        wcs = afwGeom.makeSkyWcs(
+            crpix=lsst.geom.Point2D(2036.0, 2000.0),
+            crval=lsst.geom.SpherePoint(0.0, 0.0, lsst.geom.degrees),
+            cdMatrix=afwGeom.makeCdMatrix(scale=0.2*lsst.geom.arcseconds),
+        )
+        ssObjects = _makeSorchaObjects(wcs, OBJECTS[:2])
+        rate = 10.0  # deg/day
+        ssObjects['RATrue_deg'] = [359.99998, 0.00002] * u.deg
+        ssObjects['DecTrue_deg'] = [0.0, 0.0] * u.deg
+        ssObjects['RARateCosDec_deg_day'] = [rate, -rate]   # east, west
+        ssObjects['DecRate_deg_day'] = [0.0, 0.0]
+        ra0 = np.array(ssObjects['RATrue_deg'])
+        dec0 = np.array(ssObjects['DecTrue_deg'])
+        task, result = self._run(ssObjects, FakeShutterTiming(lambda x, y: dtSec), wcs=wcs,
+                                 diaRaDec=(ra0, dec0))
+        self.assertEqual(task.metadata['nSsoShutterEpochs'], 2)
+        ids, ra, dec = self._ephByObject(result)
+        order = np.argsort(ssObjects['ObjID'])
+        ra0, dec0 = ra0[order], dec0[order]
+        self.assertTrue(np.all((ra >= 0.0) & (ra < 360.0)), ra)
+        # Both cross RA = 0.
+        self.assertLess(ra[0], 1.0)
+        self.assertGreater(ra[1], 359.0)
+        sep = SkyCoord(ra0*u.deg, dec0*u.deg).separation(SkyCoord(ra*u.deg, dec*u.deg)).deg
+        np.testing.assert_allclose(sep, rate*dtSec/SEC_PER_DAY, rtol=1e-6)
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
