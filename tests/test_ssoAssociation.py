@@ -727,7 +727,8 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
             self.assertEqual(task.metadata['nSsoShutterEpochs'], 0)
             self.assertEqual(none.nAssociatedSsObjects, len(ssObjects))
 
-        # The pre-change mpSky evaluation, verbatim.
+        # The mpSky evaluation at visitInfo.date as written before shutter
+        # timing was added, as an independent reference.
         ssObjects = _makeMpSkyObjects(self.wcs)
         _, none = self._run(ssObjects, None)
         ref_time = self.visitInfo.date.toAstropy().tai.mjd - ssObjects["tmin"].quantity.to_value(u.d)[0]
