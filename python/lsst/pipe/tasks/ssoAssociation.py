@@ -483,7 +483,8 @@ class SolarSystemAssociationTask(pipeBase.Task):
         linearly: the sky position by its rates, the state vectors by their
         velocities, and the range by its rate.  The phase angle moves by its
         change between the two geometries.  Velocities, rates and the
-        magnitude are kept: over seconds they change by mm/s and < 1e-5 mag.
+        magnitude are kept: over a few seconds they change by < 0.1 m/s
+        (mostly the observer's diurnal motion) and < 1e-5 mag.
         """
         ra = np.array(ssObjects['ephRa'], dtype=float)
         dec = np.array(ssObjects['ephDec'], dtype=float)
