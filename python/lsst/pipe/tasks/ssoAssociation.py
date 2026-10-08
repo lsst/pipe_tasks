@@ -33,12 +33,22 @@ from numpy.polynomial.chebyshev import Chebyshev, chebval
 from scipy.spatial import cKDTree
 
 from lsst.afw.image.exposure.exposureUtils import bbox_contains_sky_coords
+import lsst.geom
 import lsst.pex.config as pexConfig
 import lsst.pipe.base as pipeBase
 from lsst.utils.timer import timeMethod
 from lsst.pipe.tasks.associationUtils import obj_id_to_ss_object_id
 
 from .ssp.ssobject import DIA_COLUMNS, DIA_DTYPES
+
+
+def _phaseAngleDeg(helio, observer):
+    """Compute the phase angle (degrees) of objects at heliocentric
+    positions ``helio`` seen from ``observer`` (both (n, 3), same units).
+    """
+    topo = helio - observer
+    cosPhase = np.sum(helio*topo, axis=1)/np.linalg.norm(helio, axis=1)/np.linalg.norm(topo, axis=1)
+    return np.degrees(np.arccos(cosPhase))
 
 
 class SolarSystemAssociationConfig(pexConfig.Config):
@@ -71,7 +81,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
     _DefaultName = "ssoAssociation"
 
     @timeMethod
-    def run(self, diaSourceCatalog, ssObjects, visitInfo, bbox, wcs):
+    def run(self, diaSourceCatalog, ssObjects, visitInfo, bbox, wcs, shutterTiming=None):
         """Create a searchable tree of unassociated DiaSources and match
         to the nearest ssoObject.
 
@@ -89,6 +99,14 @@ class SolarSystemAssociationTask(pipeBase.Task):
             bbox of exposure used for masking
         wcs : `lsst.afw.geom.SkyWcs`
             wcs of exposure used for masking
+        shutterTiming : `lsst.ip.isr.shutterTiming.ShutterTiming`, optional
+            Shutter-corrected mid-exposure times of this detector.  If given,
+            every predicted quantity of an object (position, state vectors,
+            ranges, phase angle) is moved from the ephemeris epoch
+            (``visitInfo.date``, or ``fieldMJD_TAI`` for Sorcha ephemerides)
+            to the time of the pixel it is predicted at.  Objects without such
+            a time (NaN, or off the detector) are not moved.  The epoch of
+            each unassociated prediction is in its ``midpointMjdTai`` column.
 
         Returns
         -------
@@ -125,33 +143,22 @@ class SolarSystemAssociationTask(pipeBase.Task):
         exposure_midpoint = visitInfo.date.toAstropy()
         if 'obs_x_poly' in ssObjects.columns:  # mpSky ephemeris
             # tmin, tmax are mjd. All tmin should be identical, so just take the first.
-            ref_time = exposure_midpoint.tai.mjd - ssObjects["tmin"].quantity.to_value(u.d)[0]
             # *_poly are Chebyshev polynomials encoding the observer and object positions.
             # Positions are received in equatorial, cartesian au. Velocities are in au/d.
-            ssObjects['obs_position'] = [
-                np.array([chebval(ref_time, row['obs_x_poly']),
-                          chebval(ref_time, row['obs_y_poly']),
-                          chebval(ref_time, row['obs_z_poly'])])
-                for row in ssObjects] * u.au
-            ssObjects['obs_velocity'] = [
-                np.array([chebval(ref_time, Chebyshev(row['obs_x_poly']).deriv().coef),
-                          chebval(ref_time, Chebyshev(row['obs_y_poly']).deriv().coef),
-                          chebval(ref_time, Chebyshev(row['obs_z_poly']).deriv().coef)])
-                for row in ssObjects] * u.au/u.d
-            ssObjects['obj_position'] = [
-                np.array([chebval(ref_time, row['obj_x_poly']),
-                          chebval(ref_time, row['obj_y_poly']),
-                          chebval(ref_time, row['obj_z_poly'])])
-                for row in ssObjects] * u.au
-            ssObjects['obj_velocity'] = [
-                np.array([chebval(ref_time, Chebyshev(row['obj_x_poly']).deriv().coef),
-                          chebval(ref_time, Chebyshev(row['obj_y_poly']).deriv().coef),
-                          chebval(ref_time, Chebyshev(row['obj_z_poly']).deriv().coef)])
-                for row in ssObjects] * u.au/u.d
+            refMjdTai = exposure_midpoint.tai.mjd
+            refTime = np.full(len(ssObjects), refMjdTai - ssObjects["tmin"].quantity.to_value(u.d)[0])
+            self._evaluateMpSky(ssObjects, refTime)
+            ras, decs = self._mpSkyRaDec(ssObjects)
+            ssObjects['midpointMjdTai'] = np.full(len(ssObjects), refMjdTai)
 
-            vector = np.vstack(ssObjects['obj_position'].quantity.to_value(u.au)
-                               - ssObjects['obs_position'].quantity.to_value(u.au))
-            ras, decs = np.vstack(hp.vec2ang(vector, lonlat=True))
+            if shutterTiming is not None:
+                # Evaluate each object again at the shutter-corrected time of its predicted pixel;
+                # objects that do not move (off the detector, or no time) keep their values.
+                dt = self._shutterOffsets(ras, decs, wcs, bbox, refMjdTai, shutterTiming)
+                self._evaluateMpSky(ssObjects, refTime + dt/86400.0, selected=dt != 0.0)
+                ras, decs = self._mpSkyRaDec(ssObjects)
+                ssObjects['midpointMjdTai'] = refMjdTai + dt/86400.0
+
             # Angles in degrees
             ssObjects['ephRa'] = ras * u.deg
             ssObjects['ephDec'] = decs * u.deg
@@ -217,6 +224,12 @@ class SolarSystemAssociationTask(pipeBase.Task):
                 ssObjects[col] = ssObjects[col].quantity.to_value(u.km/u.s)
 
             ssObjects['ssObjectId'] = [obj_id_to_ss_object_id(v) for v in ssObjects['packed_desig']]
+            ssObjects['designation'] = ssObjects['ObjID']
+            ssObjects['midpointMjdTai'] = np.array(ssObjects['fieldMJD_TAI'], dtype=float)
+
+            if shutterTiming is not None:
+                self._shiftSorcha(ssObjects, wcs, bbox, shutterTiming)
+
             for substring1, substring2 in [('x', 'x_au'), ('y', 'y_au'), ('z', 'z_au'),
                                            ('vx', 'vx_km_s'), ('vy', 'vy_km_s'), ('vz', 'vz_km_s')]:
                 topoName = 'topo_' + substring1
@@ -228,8 +241,6 @@ class SolarSystemAssociationTask(pipeBase.Task):
                 np.sqrt(ssObjects['helio_x']**2 + ssObjects['helio_y']**2
                         + ssObjects['helio_z']**2)
             )
-
-            ssObjects['designation'] = ssObjects['ObjID']
 
             marginArcsec = 1.0  # TODO: justify
 
@@ -403,6 +414,142 @@ class SolarSystemAssociationTask(pipeBase.Task):
             nAssociatedSsObjects=nFound,
             associatedSsSources=ssSourceData,
             unassociatedSsObjects=unassociatedObjects)
+
+    @staticmethod
+    def _evaluateMpSky(ssObjects, refTime, selected=None):
+        """Evaluate the mpSky Chebyshev polynomials of each object.
+
+        Parameters
+        ----------
+        ssObjects : `astropy.table.Table`
+            mpSky ephemerides; the observer and object positions (au) and
+            velocities (au/d) are written to its ``obs_position``,
+            ``obs_velocity``, ``obj_position`` and ``obj_velocity`` columns.
+        refTime : `numpy.ndarray`
+            Time (days since ``tmin``) at which to evaluate each object.
+        selected : `numpy.ndarray` [`bool`], optional
+            Objects to evaluate again; the others keep their values.  By
+            default all objects are evaluated and the columns created.
+        """
+        if selected is None:
+            rows = list(zip(ssObjects, refTime))
+        else:
+            index = np.flatnonzero(selected)
+            rows = [(ssObjects[i], refTime[i]) for i in index]
+
+        for name in ('obs', 'obj'):
+            position = [
+                np.array([chebval(t, row[f'{name}_{c}_poly']) for c in 'xyz'])
+                for row, t in rows] * u.au
+            velocity = [
+                np.array([chebval(t, Chebyshev(row[f'{name}_{c}_poly']).deriv().coef) for c in 'xyz'])
+                for row, t in rows] * u.au/u.d
+            if selected is None:
+                ssObjects[f'{name}_position'] = position
+                ssObjects[f'{name}_velocity'] = velocity
+            elif len(rows):
+                ssObjects[f'{name}_position'][index] = position
+                ssObjects[f'{name}_velocity'][index] = velocity
+
+    @staticmethod
+    def _mpSkyRaDec(ssObjects):
+        """Compute the topocentric RA, Dec (degrees) of the evaluated mpSky
+        positions.
+        """
+        vector = np.vstack(ssObjects['obj_position'].quantity.to_value(u.au)
+                           - ssObjects['obs_position'].quantity.to_value(u.au))
+        ras, decs = np.vstack(hp.vec2ang(vector, lonlat=True))
+        return ras, decs
+
+    def _shiftSorcha(self, ssObjects, wcs, bbox, shutterTiming):
+        """Move Sorcha predictions from their field time to the
+        shutter-corrected time of their predicted pixel.
+
+        Parameters
+        ----------
+        ssObjects : `astropy.table.Table`
+            Sorcha ephemerides, with positions in au and velocities in km/s;
+            modified in place, including ``midpointMjdTai``.
+        wcs : `lsst.afw.geom.SkyWcs`
+            WCS of the exposure.
+        bbox : `lsst.geom.Box2I`
+            Bounding box of the exposure.
+        shutterTiming : `lsst.ip.isr.shutterTiming.ShutterTiming`
+            Shutter-corrected times of this detector.
+
+        Notes
+        -----
+        Sorcha gives first derivatives only, so every quantity moves
+        linearly: the sky position by its rates, the state vectors by their
+        velocities, and the range by its rate.  The phase angle moves by its
+        change between the two geometries.  Velocities, rates and the
+        magnitude are kept: over seconds they change by mm/s and < 1e-5 mag.
+        """
+        ra = np.array(ssObjects['ephRa'], dtype=float)
+        dec = np.array(ssObjects['ephDec'], dtype=float)
+        fieldMjdTai = np.array(ssObjects['midpointMjdTai'], dtype=float)
+        dt = self._shutterOffsets(ra, dec, wcs, bbox, fieldMjdTai, shutterTiming)
+        ssObjects['midpointMjdTai'] = fieldMjdTai + dt/86400.0
+
+        # Sky position.
+        dtDays = dt/86400.0
+        raRate = np.array(ssObjects['RARateCosDec_deg_day'], dtype=float)/np.cos(np.radians(dec))
+        ssObjects['ephRa'][:] = (ra + raRate*dtDays) % 360.0
+        ssObjects['ephDec'][:] = dec + np.array(ssObjects['DecRate_deg_day'], dtype=float)*dtDays
+
+        # State vectors (au) and range (au), by their velocities (km/s).
+        dtAu = dt*(1.0*u.km).to_value(u.au)   # km/s * dtAu = au
+        helio0 = np.column_stack([np.array(ssObjects[f'helio_{c}'], dtype=float) for c in 'xyz'])
+        observer0 = np.column_stack([np.array(ssObjects[f'Obs_Sun_{c}_au'], dtype=float) for c in 'xyz'])
+        for c in 'xyz':
+            ssObjects[f'helio_{c}'][:] += np.array(ssObjects[f'helio_v{c}'], dtype=float)*dtAu
+            ssObjects[f'Obs_Sun_{c}_au'][:] += np.array(ssObjects[f'Obs_Sun_v{c}_km_s'], dtype=float)*dtAu
+        ssObjects['topoRange'][:] += np.array(ssObjects['RangeRate_LTC_km_s'], dtype=float)*dtAu
+
+        # Phase angle: Sorcha's value plus its change between the geometries.
+        helio = np.column_stack([np.array(ssObjects[f'helio_{c}'], dtype=float) for c in 'xyz'])
+        observer = np.column_stack([np.array(ssObjects[f'Obs_Sun_{c}_au'], dtype=float) for c in 'xyz'])
+        dPhase = _phaseAngleDeg(helio, observer) - _phaseAngleDeg(helio0, observer0)
+        ssObjects['phaseAngle'][:] = np.array(ssObjects['phaseAngle'], dtype=float) + dPhase
+
+    def _shutterOffsets(self, ras, decs, wcs, bbox, refMjdTai, shutterTiming):
+        """Compute the time from a reference epoch to the shutter-corrected
+        mid-exposure time at each predicted position.
+
+        Parameters
+        ----------
+        ras, decs : `numpy.ndarray`
+            Predicted positions (degrees).
+        wcs : `lsst.afw.geom.SkyWcs`
+            WCS of the exposure.
+        bbox : `lsst.geom.Box2I`
+            Bounding box of the exposure.
+        refMjdTai : `float` or `numpy.ndarray`
+            Epoch of the predictions (MJD TAI).
+        shutterTiming : `lsst.ip.isr.shutterTiming.ShutterTiming`
+            Shutter-corrected times of this detector.
+
+        Returns
+        -------
+        dt : `numpy.ndarray`
+            Time (s) from ``refMjdTai`` to the corrected time at each
+            position; 0 where there is no corrected time, or the position is
+            beyond the largest masking margin (those objects are dropped).
+        """
+        x, y = wcs.skyToPixelArray(ras, decs, degrees=True)
+        dt = (shutterTiming.midpointMjdTai(x, y) - refMjdTai)*86400.0
+
+        # Predictions without a corrected time stay at the reference epoch,
+        # and the detector's timing is not extrapolated far beyond it.
+        nearby = lsst.geom.Box2D(bbox)
+        nearby.grow(self.config.maxPixelMargin)
+        shifted = np.isfinite(dt) & nearby.contains(x, y)
+        dt = np.where(shifted, dt, 0.0)
+
+        self.log.debug("Shutter timing: %d / %d solar system predictions moved, max |dt| %.3f s.",
+                       np.count_nonzero(shifted), len(dt), np.max(np.abs(dt), initial=0.0))
+
+        return dt
 
     def _maskToCcdRegion(self, ssObjects, bbox, wcs, marginArcsec):
         """Mask the input SolarSystemObjects to only those in the exposure
