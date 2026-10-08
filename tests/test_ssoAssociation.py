@@ -617,7 +617,7 @@ class FakeShutterTiming:
     def __init__(self, offset=None):
         self.offset = offset
 
-    def tMidMjdTai(self, x, y):
+    def midpointMjdTai(self, x, y):
         """Times (MJD TAI) at pixel positions ``x``, ``y`` (arrays)."""
         if self.offset is None:
             return np.full(np.broadcast(x, y).shape, np.nan)

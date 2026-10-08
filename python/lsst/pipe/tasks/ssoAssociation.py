@@ -458,7 +458,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
             position; 0 where there is no corrected time.
         """
         x, y = wcs.skyToPixelArray(ras, decs, degrees=True)
-        dt = (shutterTiming.tMidMjdTai(x, y) - refMjdTai)*86400.0
+        dt = (shutterTiming.midpointMjdTai(x, y) - refMjdTai)*86400.0
 
         # Predictions without a corrected time stay at the reference epoch.
         shifted = np.isfinite(dt)
