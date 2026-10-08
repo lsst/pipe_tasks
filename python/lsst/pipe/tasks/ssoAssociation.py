@@ -152,9 +152,10 @@ class SolarSystemAssociationTask(pipeBase.Task):
             ssObjects['midpointMjdTai'] = np.full(len(ssObjects), refMjdTai)
 
             if shutterTiming is not None:
-                # Evaluate each object again at the shutter-corrected time of its predicted pixel.
+                # Evaluate each object again at the shutter-corrected time of its predicted pixel;
+                # objects that do not move (off the detector, or no time) keep their values.
                 dt = self._shutterOffsets(ras, decs, wcs, bbox, refMjdTai, shutterTiming)
-                self._evaluateMpSky(ssObjects, refTime + dt/86400.0)
+                self._evaluateMpSky(ssObjects, refTime + dt/86400.0, selected=dt != 0.0)
                 ras, decs = self._mpSkyRaDec(ssObjects)
                 ssObjects['midpointMjdTai'] = refMjdTai + dt/86400.0
 
@@ -415,7 +416,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
             unassociatedSsObjects=unassociatedObjects)
 
     @staticmethod
-    def _evaluateMpSky(ssObjects, refTime):
+    def _evaluateMpSky(ssObjects, refTime, selected=None):
         """Evaluate the mpSky Chebyshev polynomials of each object.
 
         Parameters
@@ -426,15 +427,29 @@ class SolarSystemAssociationTask(pipeBase.Task):
             ``obs_velocity``, ``obj_position`` and ``obj_velocity`` columns.
         refTime : `numpy.ndarray`
             Time (days since ``tmin``) at which to evaluate each object.
+        selected : `numpy.ndarray` [`bool`], optional
+            Objects to evaluate again; the others keep their values.  By
+            default all objects are evaluated and the columns created.
         """
-        rows = list(zip(ssObjects, refTime))
+        if selected is None:
+            rows = list(zip(ssObjects, refTime))
+        else:
+            index = np.flatnonzero(selected)
+            rows = [(ssObjects[i], refTime[i]) for i in index]
+
         for name in ('obs', 'obj'):
-            ssObjects[f'{name}_position'] = [
+            position = [
                 np.array([chebval(t, row[f'{name}_{c}_poly']) for c in 'xyz'])
                 for row, t in rows] * u.au
-            ssObjects[f'{name}_velocity'] = [
+            velocity = [
                 np.array([chebval(t, Chebyshev(row[f'{name}_{c}_poly']).deriv().coef) for c in 'xyz'])
                 for row, t in rows] * u.au/u.d
+            if selected is None:
+                ssObjects[f'{name}_position'] = position
+                ssObjects[f'{name}_velocity'] = velocity
+            elif len(rows):
+                ssObjects[f'{name}_position'][index] = position
+                ssObjects[f'{name}_velocity'][index] = velocity
 
     @staticmethod
     def _mpSkyRaDec(ssObjects):
