@@ -157,6 +157,7 @@ class SolarSystemAssociationTask(pipeBase.Task):
             vector = np.vstack(ssObjects['obj_position'].quantity.to_value(u.au)
                                - ssObjects['obs_position'].quantity.to_value(u.au))
             ras, decs = np.vstack(hp.vec2ang(vector, lonlat=True))
+
             if shutterTiming is not None:
                 # Move object and observer linearly to the time of the object's pixel; over
                 # |dt| <= 0.5 s the neglected acceleration term is < 5 mm.
@@ -165,9 +166,12 @@ class SolarSystemAssociationTask(pipeBase.Task):
                     ssObjects[f'{name}_position'] = (ssObjects[f'{name}_position'].quantity
                                                      + ssObjects[f'{name}_velocity'].quantity
                                                      * dt[:, np.newaxis]*u.s)
+
+                # Recompute the predicted positions.
                 vector = np.vstack(ssObjects['obj_position'].quantity.to_value(u.au)
                                    - ssObjects['obs_position'].quantity.to_value(u.au))
                 ras, decs = np.vstack(hp.vec2ang(vector, lonlat=True))
+
             # Angles in degrees
             ssObjects['ephRa'] = ras * u.deg
             ssObjects['ephDec'] = decs * u.deg
@@ -252,8 +256,9 @@ class SolarSystemAssociationTask(pipeBase.Task):
                 # its pixel.  The state vectors stay at the field time (km-level difference).
                 ra = np.array(ssObjects['ephRa'], dtype=float)
                 dec = np.array(ssObjects['ephDec'], dtype=float)
-                dt = self._shutterOffsets(ra, dec, wcs, np.array(ssObjects['fieldMJD_TAI'], dtype=float),
-                                          shutterTiming)/86400.0
+                fieldMjdTai = np.array(ssObjects['fieldMJD_TAI'], dtype=float)
+                dt = self._shutterOffsets(ra, dec, wcs, fieldMjdTai, shutterTiming)/86400.0
+
                 raRate = ssObjects['RARateCosDec_deg_day']/np.cos(np.radians(dec))
                 ssObjects['ephRa'][:] = (ra + raRate*dt) % 360.0
                 ssObjects['ephDec'][:] = dec + ssObjects['DecRate_deg_day']*dt
@@ -432,16 +437,36 @@ class SolarSystemAssociationTask(pipeBase.Task):
             unassociatedSsObjects=unassociatedObjects)
 
     def _shutterOffsets(self, ras, decs, wcs, refMjdTai, shutterTiming):
-        """Return the time (seconds) from ``refMjdTai`` to the
-        shutter-corrected mid-exposure time at each predicted position
-        (``ras``, ``decs`` in degrees); 0 where that time is NaN.
+        """Compute the time from a reference epoch to the shutter-corrected
+        mid-exposure time at each predicted position.
+
+        Parameters
+        ----------
+        ras, decs : `numpy.ndarray`
+            Predicted positions (degrees).
+        wcs : `lsst.afw.geom.SkyWcs`
+            WCS of the exposure.
+        refMjdTai : `float` or `numpy.ndarray`
+            Epoch of the predictions (MJD TAI).
+        shutterTiming : `lsst.ip.isr.shutterTiming.ShutterTiming`
+            Shutter-corrected times of this detector.
+
+        Returns
+        -------
+        dt : `numpy.ndarray`
+            Time (s) from ``refMjdTai`` to the corrected time at each
+            position; 0 where there is no corrected time.
         """
         x, y = wcs.skyToPixelArray(ras, decs, degrees=True)
-        dt = (np.asarray(shutterTiming.tMidMjdTai(x, y)) - refMjdTai)*86400.0
+        dt = (shutterTiming.tMidMjdTai(x, y) - refMjdTai)*86400.0
+
+        # Predictions without a corrected time stay at the reference epoch.
         shifted = np.isfinite(dt)
         dt = np.where(shifted, dt, 0.0)
+
         self.log.debug("Shutter timing: %d / %d solar system predictions moved, max |dt| %.3f s.",
                        np.count_nonzero(shifted), len(dt), np.max(np.abs(dt), initial=0.0))
+
         return dt
 
     def _maskToCcdRegion(self, ssObjects, bbox, wcs, marginArcsec):
