@@ -1069,6 +1069,18 @@ class MultiBandDetectionConnections(
         storageClass="ArrowAstropy",
         dimensions=("tract", "patch", "skymap"),
     )
+    pairs = cT.Output(
+        doc="Table of the pairs of candidate positions close enough to be linked into one peak.",
+        name="object_detection_pairs",
+        storageClass="ArrowAstropy",
+        dimensions=("tract", "patch", "skymap"),
+    )
+    components = cT.Output(
+        doc="Table of the connected components of the graph of linked candidate positions.",
+        name="object_detection_components",
+        storageClass="ArrowAstropy",
+        dimensions=("tract", "patch", "skymap"),
+    )
     outputExposures = cT.Output(
         doc="Per-band coadds after detection, with the DETECTED mask planes set.",
         name="{outputCoaddName}Coadd_calexp",
@@ -1224,6 +1236,12 @@ class MultiBandDetectionTask(PipelineTask):
             ``positions``
                 Table of the unique candidate positions.
                 (`astropy.table.Table`)
+            ``pairs``
+                Table of the pairs of candidate positions within the
+                largest link radius. (`astropy.table.Table`)
+            ``components``
+                Table of the connected components of the candidate position
+                graph. (`astropy.table.Table`)
             ``outputExposures``
                 The per-band coadds after detection, with their DETECTED mask
                 planes set and their background re-estimated, in the same order
@@ -1246,5 +1264,7 @@ class MultiBandDetectionTask(PipelineTask):
             peaks=detections.peaks,
             candidates=detections.candidates,
             positions=detections.positions,
+            pairs=detections.pairs,
+            components=detections.components,
             outputExposures=outputExposures,
         )
