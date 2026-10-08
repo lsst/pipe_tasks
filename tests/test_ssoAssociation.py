@@ -24,7 +24,12 @@ import numpy as np
 from numpy.polynomial.chebyshev import chebval, Chebyshev
 from scipy.spatial import cKDTree
 from astropy.coordinates import SkyCoord
+from astropy.table import Table
 import astropy.units as u
+import lsst.afw.geom as afwGeom
+import lsst.afw.image as afwImage
+import lsst.daf.base as dafBase
+import lsst.geom
 import lsst.utils.tests
 from lsst.pipe.tasks.ssoAssociation import SolarSystemAssociationTask
 
@@ -455,6 +460,324 @@ class TestSorchaPath(lsst.utils.tests.TestCase):
         self.assertAlmostEqual(
             dist_km / AU_KM, dist_au, places=10
         )
+
+
+# ---------------------------------------------------------------
+# Shutter-corrected epochs (``run(..., shutterTiming=...)``)
+# ---------------------------------------------------------------
+T_VISIT = 61000.25      # MJD TAI of visitInfo.date
+T_MIN = 61000.0         # Chebyshev reference epoch (mpSky ``tmin``)
+SEC_PER_DAY = 86400.0
+# Tolerances: platforms differ at the ~1e-10 deg / bit level (Jenkins); the
+# shifts tested move positions by >~1e-5 deg and >~10 km.
+EPH_ATOL_DEG = 1e-8
+POS_ATOL_AU = 1e-11     # 1.5 m
+VEL_RTOL = 1e-10
+MJD_ATOL = 2e-11       # 2 us; MJD 61000 has a 1.4e-11 d ulp
+KM_PER_AU = 1.495978707e8
+
+# Objects: pixel position at the visit time, topocentric distance (au),
+# sky rate (deg/day) and position angle of the motion (deg, E of N).
+OBJECTS = [
+    # x,      y,      rho,  rate, pa
+    (300.0, 400.0, 1.3, 0.25, 30.0),
+    (3800.0, 3600.0, 2.5, 0.10, 200.0),
+    (2000.0, 2000.0, 0.05, 10.0, 75.0),   # fast-moving NEA
+    (3500.0, 500.0, 0.8, 1.0, 300.0),
+]
+
+
+def _makeWcs(ra=150.0, dec=10.0):
+    """Make a TAN WCS with 0.2"/px for an LSSTCam-sized detector."""
+    return afwGeom.makeSkyWcs(crpix=lsst.geom.Point2D(2036.0, 2000.0),
+                              crval=lsst.geom.SpherePoint(ra, dec, lsst.geom.degrees),
+                              cdMatrix=afwGeom.makeCdMatrix(scale=0.2*lsst.geom.arcseconds))
+
+
+def _unit(ra, dec):
+    ra, dec = np.radians(ra), np.radians(dec)
+    return np.array([np.cos(dec)*np.cos(ra), np.cos(dec)*np.sin(ra), np.sin(dec)])
+
+
+def _makeMpSkyObjects(wcs):
+    """Make mpSky-style ``ssObjects``: Chebyshev coefficients in (t - tmin)
+    days of the observer and object positions (au).
+    """
+    tRef = T_VISIT - T_MIN
+    obs = np.array([[0.9, 0.017, 1e-4], [-0.4, 0.0155, -2e-4], [-0.17, 0.0067, 5e-5]])
+
+    objs, ras, decs = [], [], []
+    for i, (x, y, rho, rate, pa) in enumerate(OBJECTS):
+        # Direction and sky velocity (au/d) at the visit time.
+        sp = wcs.pixelToSky(x, y)
+        ra, dec = sp.getRa().asDegrees(), sp.getDec().asDegrees()
+        e = _unit(ra, dec)
+        east = np.array([-np.sin(np.radians(ra)), np.cos(np.radians(ra)), 0.0])
+        north = np.cross(e, east)
+        vel = rho*np.radians(rate)*(np.sin(np.radians(pa))*east + np.cos(np.radians(pa))*north)
+
+        # Object = observer + rho e at the visit time, moving with vel.
+        obj = obs.copy()
+        obj[:, 0] += rho*e - vel*tRef
+        obj[:, 1] += vel
+        obj[:, 2] += 1e-6*(i + 1)
+
+        objs.append(obj)
+        ras.append(ra)
+        decs.append(dec)
+
+    n = len(OBJECTS)
+    names = [f"2026 A{i:02d}" for i in range(n)]
+    table = Table({
+        'ObjID': names, 'ra': ras * u.deg, 'dec': decs * u.deg,
+        'tmin': np.full(n, T_MIN) * u.d, 'tmax': np.full(n, T_MIN + 1) * u.d,
+        'trailedSourceMagTrue': np.full(n, 20.0) * u.mag,
+        'Err(arcsec)': np.full(n, 2.0) * u.arcsec,
+        'ssObjectId': np.arange(1, n + 1, dtype=np.int64) * 1000,
+        'MPCORB_unpacked_primary_provisional_designation': names,
+    })
+    for i, c in enumerate('xyz'):
+        table[f'obj_{c}_poly'] = [obj[i] for obj in objs]
+        table[f'obs_{c}_poly'] = [obs[i]]*n
+
+    return table
+
+
+def _expectedMpSkyRaDec(ssObjects, mjdTai):
+    """Compute the topocentric RA, Dec (deg) directly from the Chebyshev
+    coefficients at ``mjdTai`` (scalar or per object).
+    """
+    vec = np.array([[chebval(t - T_MIN, row[f'obj_{c}_poly']) - chebval(t - T_MIN, row[f'obs_{c}_poly'])
+                     for c in 'xyz']
+                    for row, t in zip(ssObjects, np.broadcast_to(mjdTai, (len(ssObjects),)))])
+    ra = np.degrees(np.arctan2(vec[:, 1], vec[:, 0])) % 360
+    dec = np.degrees(np.arctan2(vec[:, 2], np.hypot(vec[:, 0], vec[:, 1])))
+    return ra, dec
+
+
+def _makeSorchaObjects(wcs, objects=OBJECTS):
+    """Make Sorcha-style ``ssObjects``: RA/Dec and sky rates at the visit time,
+    plus heliocentric state vectors.
+    """
+    n = len(objects)
+    sky = [wcs.pixelToSky(x, y) for x, y, *_ in objects]
+    km = 1.495978707e8
+    t = Table({
+        'ObjID': [f"S{i:03d}" for i in range(n)],
+        'packed_desig': [f"K26A{i:02d}A" for i in range(n)],
+        'FieldID': np.zeros(n, dtype=int),
+        'fieldMJD_TAI': np.full(n, T_VISIT),
+        'fieldJD_TDB': np.full(n, T_VISIT + 2400000.5),
+        'RATrue_deg': [sp.getRa().asDegrees() for sp in sky] * u.deg,
+        'DecTrue_deg': [sp.getDec().asDegrees() for sp in sky] * u.deg,
+        'RARateCosDec_deg_day': [o[3]*np.sin(np.radians(o[4])) for o in objects],
+        'DecRate_deg_day': [o[3]*np.cos(np.radians(o[4])) for o in objects],
+        'RangeRate_LTC_km_s': np.full(n, 3.0),
+        'phase_deg': np.full(n, 20.0),
+        'Range_LTC_km': np.array([o[2] for o in objects])*km * u.km,
+        'trailedSourceMagTrue': np.full(n, 21.0),
+    })
+    for i, c in enumerate('xyz'):
+        t[f'Obj_Sun_{c}_LTC_km'] = np.full(n, (1.5 + 0.1*i)*km) * u.km
+        t[f'Obj_Sun_v{c}_LTC_km_s'] = np.full(n, 10.0 + i) * u.km/u.s
+        t[f'Obs_Sun_{c}_km'] = np.full(n, (0.9 - 0.3*i)*km) * u.km
+        t[f'Obs_Sun_v{c}_km_s'] = np.full(n, 20.0 - i) * u.km/u.s
+
+    return t
+
+
+def _sorchaExpected(ssObjects, dtSec):
+    """Move Sorcha positions linearly by ``dtSec`` (scalar or per object),
+    in the order of `TestShutterTimingEpochs._ephByObject`.
+    """
+    dt = np.asarray(dtSec)/SEC_PER_DAY
+    ra0, dec0 = np.array(ssObjects['RATrue_deg']), np.array(ssObjects['DecTrue_deg'])
+    ra = (ra0 + np.array(ssObjects['RARateCosDec_deg_day'])*dt/np.cos(np.radians(dec0))) % 360
+    dec = dec0 + np.array(ssObjects['DecRate_deg_day'])*dt
+
+    order = np.argsort(ssObjects['ObjID'])
+    return ra[order], dec[order]
+
+
+def _makeDiaSources(ras, decs, offsetArcsec=0.05):
+    """Make DiaSources a little off each predicted position, plus an
+    unrelated one.
+    """
+    ras = np.append(np.asarray(ras, dtype=float), 150.01)
+    decs = np.append(np.asarray(decs, dtype=float) + offsetArcsec/3600, 10.01)
+    n = len(ras)
+    return Table({
+        'diaSourceId': np.arange(1, n + 1, dtype=np.int64), 'midpointMjdTai': np.full(n, T_VISIT),
+        'ra': ras, 'dec': decs, 'extendedness': np.zeros(n), 'band': ['r']*n,
+        'psfFlux': np.full(n, 1000.0), 'psfFluxErr': np.full(n, 10.0),
+    })
+
+
+class FakeShutterTiming:
+    """Stand-in for `lsst.ip.isr.shutterTiming.ShutterTiming`: time
+    ``T_VISIT + offset(x, y)`` seconds, or NaN everywhere (an UNAVAILABLE
+    detector) if ``offset`` is `None`.
+    """
+
+    def __init__(self, offset=None):
+        self.offset = offset
+
+    def midpointMjdTai(self, x, y):
+        """Return times (MJD TAI) at pixel positions ``x``, ``y``
+        (arrays).
+        """
+        if self.offset is None:
+            return np.full(np.broadcast(x, y).shape, np.nan)
+        return T_VISIT + np.broadcast_to(self.offset(x, y), x.shape)/SEC_PER_DAY
+
+
+class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
+    """Per-object ephemeris epochs from a shutter timing."""
+
+    def setUp(self):
+        self.wcs = _makeWcs()
+        self.bbox = lsst.geom.Box2I(lsst.geom.Point2I(0, 0), lsst.geom.Extent2I(4072, 4000))
+        self.visitInfo = afwImage.VisitInfo(date=dafBase.DateTime(T_VISIT, dafBase.DateTime.MJD,
+                                                                  dafBase.DateTime.TAI))
+
+    def _run(self, ssObjects, shutterTiming=None, wcs=None, offsetArcsec=0.05):
+        """Run the task with DiaSources ``offsetArcsec`` from the visit-time
+        predictions (beyond the matching radius, nothing associates).
+        """
+        if 'obs_x_poly' in ssObjects.columns:
+            diaRaDec = _expectedMpSkyRaDec(ssObjects, T_VISIT)
+        else:
+            diaRaDec = (ssObjects['RATrue_deg'], ssObjects['DecTrue_deg'])
+        diaSources = _makeDiaSources(*diaRaDec, offsetArcsec=offsetArcsec)
+
+        return SolarSystemAssociationTask().run(diaSources, ssObjects.copy(), self.visitInfo,
+                                                self.bbox, wcs or self.wcs, shutterTiming=shutterTiming)
+
+    def testChebyshevShift(self):
+        """Check that every predicted quantity of an mpSky object is at the
+        time of its own predicted pixel, and that unassociated predictions
+        record that time.
+        """
+        def offset(x, y):
+            return 0.25*(x - 2036.0)/2036.0 - 0.1*y/4000.0
+
+        ssObjects = _makeMpSkyObjects(self.wcs)
+        timing = FakeShutterTiming(offset)
+
+        # Each object's time; the offsets differ between objects.
+        x, y = self.wcs.skyToPixelArray(*_expectedMpSkyRaDec(ssObjects, T_VISIT), degrees=True)
+        dtSec = offset(x, y)
+        self.assertGreater(np.ptp(dtSec), 0.2)
+        tObj = T_VISIT + dtSec/SEC_PER_DAY
+
+        # Unassociated predictions: the time, position, state vectors and
+        # range, all from the Chebyshev at that time.
+        unassociated = self._run(ssObjects, timing, offsetArcsec=100.0).unassociatedSsObjects
+        unassociated.sort('ssObjectId')
+        self.assertEqual(len(unassociated), len(ssObjects))
+        np.testing.assert_allclose(unassociated['midpointMjdTai'], tObj, rtol=0, atol=MJD_ATOL)
+
+        expRa, expDec = _expectedMpSkyRaDec(ssObjects, tObj)
+        np.testing.assert_allclose(unassociated['ephRa'], expRa, rtol=0, atol=EPH_ATOL_DEG)
+        np.testing.assert_allclose(unassociated['ephDec'], expDec, rtol=0, atol=EPH_ATOL_DEG)
+
+        for k, row in enumerate(ssObjects):
+            t = tObj[k] - T_MIN
+            helio = np.array([chebval(t, row[f'obj_{c}_poly']) for c in 'xyz'])
+            topo = helio - [chebval(t, row[f'obs_{c}_poly']) for c in 'xyz']
+            helioV = np.array([chebval(t, Chebyshev(row[f'obj_{c}_poly']).deriv().coef) for c in 'xyz'])
+            topoV = helioV - [chebval(t, Chebyshev(row[f'obs_{c}_poly']).deriv().coef) for c in 'xyz']
+            got = unassociated[k]
+            np.testing.assert_allclose([got[f'helio_{c}'] for c in 'xyz'], helio, rtol=0, atol=POS_ATOL_AU)
+            np.testing.assert_allclose([got[f'topo_{c}'] for c in 'xyz'], topo, rtol=0, atol=POS_ATOL_AU)
+            np.testing.assert_allclose([got[f'helio_v{c}'] for c in 'xyz'], helioV*KM_PER_AU/SEC_PER_DAY,
+                                       rtol=VEL_RTOL)
+            np.testing.assert_allclose([got[f'topo_v{c}'] for c in 'xyz'], topoV*KM_PER_AU/SEC_PER_DAY,
+                                       rtol=VEL_RTOL)
+            self.assertAlmostEqual(got['topoRange'], np.linalg.norm(topo), delta=POS_ATOL_AU)
+
+        # Associated: offsets are measured from the shifted prediction.
+        sss = self._run(ssObjects, timing).associatedSsSources
+        self.assertEqual(len(sss), len(ssObjects))
+        np.testing.assert_allclose(sss['ephOffsetDec'], (sss['dec'] - sss['ephDec'])*3600,
+                                   rtol=0, atol=1e-5)  # arcsec
+
+    def testSorchaShift(self):
+        """Check that Sorcha predictions move linearly from their own
+        ``fieldMJD_TAI`` (RA staying in [0, 360) across RA = 0), with their
+        state vectors, range and phase angle, and record their time.
+        """
+        wcs = _makeWcs(0.0, 0.0)
+        ssObjects = _makeSorchaObjects(wcs, OBJECTS[:2])
+        ssObjects['RATrue_deg'] = [359.99998, 0.00002] * u.deg
+        ssObjects['DecTrue_deg'] = [0.0, 0.0] * u.deg
+        ssObjects['RARateCosDec_deg_day'] = [10.0, -10.0]   # east, west
+        ssObjects['DecRate_deg_day'] = [0.0, 0.0]
+        fieldOffsetSec = np.array([-1.0, -0.5])
+        ssObjects['fieldMJD_TAI'] = T_VISIT + fieldOffsetSec/SEC_PER_DAY
+        dtSec = 0.45 - fieldOffsetSec
+
+        result = self._run(ssObjects, FakeShutterTiming(lambda x, y: 0.45), wcs=wcs, offsetArcsec=100.0)
+        unassociated = result.unassociatedSsObjects
+        unassociated.sort('ObjID')
+        self.assertEqual(len(unassociated), 2)
+        np.testing.assert_allclose(unassociated['midpointMjdTai'], T_VISIT + 0.45/SEC_PER_DAY,
+                                   rtol=0, atol=MJD_ATOL)
+
+        # Sky position.
+        expRa, expDec = _sorchaExpected(ssObjects, dtSec)
+        self.assertTrue(expRa[0] < 1.0 and expRa[1] > 359.0)   # both cross RA = 0
+        np.testing.assert_allclose(unassociated['ephRa'], expRa, rtol=0, atol=EPH_ATOL_DEG)
+        np.testing.assert_allclose(unassociated['ephDec'], expDec, rtol=0, atol=EPH_ATOL_DEG)
+
+        # State vectors and range, moved by their velocities.
+        def vectors(prefix, suffix, dt):
+            pos = np.column_stack([np.array(ssObjects[f'{prefix}{c}{suffix}']) for c in 'xyz'])
+            vel = np.column_stack([np.array(ssObjects[f'{prefix}v{c}{suffix}_s']) for c in 'xyz'])
+            return (pos + vel*dt[:, np.newaxis])/KM_PER_AU
+
+        helio0 = vectors('Obj_Sun_', '_LTC_km', np.zeros(2))
+        observer0 = vectors('Obs_Sun_', '_km', np.zeros(2))
+        helio = vectors('Obj_Sun_', '_LTC_km', dtSec)
+        observer = vectors('Obs_Sun_', '_km', dtSec)
+        np.testing.assert_allclose(np.column_stack([unassociated[f'helio_{c}'] for c in 'xyz']), helio,
+                                   rtol=0, atol=POS_ATOL_AU)
+        np.testing.assert_allclose(np.column_stack([unassociated[f'topo_{c}'] for c in 'xyz']),
+                                   helio - observer, rtol=0, atol=POS_ATOL_AU)
+        rangeKm = np.array(ssObjects['Range_LTC_km']) + np.array(ssObjects['RangeRate_LTC_km_s'])*dtSec
+        np.testing.assert_allclose(unassociated['topoRange'], rangeKm/KM_PER_AU, rtol=0, atol=POS_ATOL_AU)
+
+        # Phase angle: Sorcha's value plus its change between the geometries.
+        def phase(h, o):
+            topo = h - o
+            cos = np.sum(h*topo, axis=1)/np.linalg.norm(h, axis=1)/np.linalg.norm(topo, axis=1)
+            return np.degrees(np.arccos(cos))
+
+        np.testing.assert_allclose(unassociated['phaseAngle'],
+                                   20.0 + phase(helio, observer) - phase(helio0, observer0),
+                                   rtol=0, atol=1e-10)
+
+    def testUnavailableKeepsVisitTime(self):
+        """Check that a detector without corrected times gives exactly the
+        result without timing, for both ephemeris sources, and that
+        unassociated predictions record the ephemeris epoch.
+        """
+        for make in (_makeMpSkyObjects, _makeSorchaObjects):
+            ssObjects = make(self.wcs)
+            for offsetArcsec in (0.05, 100.0):
+                none = self._run(ssObjects, offsetArcsec=offsetArcsec)
+                unav = self._run(ssObjects, FakeShutterTiming(), offsetArcsec=offsetArcsec)
+
+                for name in ['ssoAssocDiaSources', 'unAssocDiaSources', 'associatedSsSources',
+                             'unassociatedSsObjects']:
+                    a, b = getattr(none, name), getattr(unav, name)
+                    self.assertEqual(a.colnames, b.colnames)
+                    for c in a.colnames:
+                        self.assertEqual(np.asarray(a[c]).tobytes(), np.asarray(b[c]).tobytes(), c)
+
+            # With nothing associated, every prediction is at T_VISIT.
+            self.assertEqual(len(none.unassociatedSsObjects), len(ssObjects))
+            np.testing.assert_array_equal(none.unassociatedSsObjects['midpointMjdTai'], T_VISIT)
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
