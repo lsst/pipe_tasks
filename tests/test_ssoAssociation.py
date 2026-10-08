@@ -488,7 +488,7 @@ OBJECTS = [
 
 
 def _makeWcs(ra=150.0, dec=10.0):
-    """A TAN WCS with 0.2"/px for an LSSTCam-sized detector."""
+    """Make a TAN WCS with 0.2"/px for an LSSTCam-sized detector."""
     return afwGeom.makeSkyWcs(crpix=lsst.geom.Point2D(2036.0, 2000.0),
                               crval=lsst.geom.SpherePoint(ra, dec, lsst.geom.degrees),
                               cdMatrix=afwGeom.makeCdMatrix(scale=0.2*lsst.geom.arcseconds))
@@ -500,7 +500,7 @@ def _unit(ra, dec):
 
 
 def _makeMpSkyObjects(wcs):
-    """mpSky-style ``ssObjects``: Chebyshev coefficients in (t - tmin)
+    """Make mpSky-style ``ssObjects``: Chebyshev coefficients in (t - tmin)
     days of the observer and object positions (au).
     """
     tRef = T_VISIT - T_MIN
@@ -544,7 +544,7 @@ def _makeMpSkyObjects(wcs):
 
 
 def _expectedMpSkyRaDec(ssObjects, mjdTai):
-    """Topocentric RA, Dec (deg) evaluated directly from the Chebyshev
+    """Compute the topocentric RA, Dec (deg) directly from the Chebyshev
     coefficients at ``mjdTai`` (scalar or per object).
     """
     vec = np.array([[chebval(t - T_MIN, row[f'obj_{c}_poly']) - chebval(t - T_MIN, row[f'obs_{c}_poly'])
@@ -556,7 +556,7 @@ def _expectedMpSkyRaDec(ssObjects, mjdTai):
 
 
 def _makeSorchaObjects(wcs, objects=OBJECTS):
-    """Sorcha-style ``ssObjects``: RA/Dec and sky rates at the visit time,
+    """Make Sorcha-style ``ssObjects``: RA/Dec and sky rates at the visit time,
     plus heliocentric state vectors.
     """
     n = len(objects)
@@ -587,7 +587,7 @@ def _makeSorchaObjects(wcs, objects=OBJECTS):
 
 
 def _sorchaExpected(ssObjects, dtSec):
-    """Sorcha positions moved linearly by ``dtSec`` (scalar or per object),
+    """Move Sorcha positions linearly by ``dtSec`` (scalar or per object),
     in the order of `TestShutterTimingEpochs._ephByObject`.
     """
     dt = np.asarray(dtSec)/SEC_PER_DAY
@@ -600,7 +600,9 @@ def _sorchaExpected(ssObjects, dtSec):
 
 
 def _makeDiaSources(ras, decs, offsetArcsec=0.05):
-    """DiaSources a little off each predicted position, plus an unrelated one."""
+    """Make DiaSources a little off each predicted position, plus an
+    unrelated one.
+    """
     ras = np.append(np.asarray(ras, dtype=float), 150.01)
     decs = np.append(np.asarray(decs, dtype=float) + offsetArcsec/3600, 10.01)
     n = len(ras)
@@ -621,7 +623,9 @@ class FakeShutterTiming:
         self.offset = offset
 
     def midpointMjdTai(self, x, y):
-        """Times (MJD TAI) at pixel positions ``x``, ``y`` (arrays)."""
+        """Return times (MJD TAI) at pixel positions ``x``, ``y``
+        (arrays).
+        """
         if self.offset is None:
             return np.full(np.broadcast(x, y).shape, np.nan)
         return T_VISIT + np.broadcast_to(self.offset(x, y), x.shape)/SEC_PER_DAY
@@ -650,8 +654,9 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
                                                 self.bbox, wcs or self.wcs, shutterTiming=shutterTiming)
 
     def testChebyshevShift(self):
-        """Every predicted quantity of an mpSky object is at the time of its
-        own predicted pixel, and unassociated predictions record that time.
+        """Check that every predicted quantity of an mpSky object is at the
+        time of its own predicted pixel, and that unassociated predictions
+        record that time.
         """
         def offset(x, y):
             return 0.25*(x - 2036.0)/2036.0 - 0.1*y/4000.0
@@ -698,9 +703,9 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
                                    rtol=0, atol=1e-5)  # arcsec
 
     def testSorchaShift(self):
-        """Sorcha predictions move linearly from their own ``fieldMJD_TAI``
-        (RA staying in [0, 360) across RA = 0), with their state vectors,
-        range and phase angle, and record their time.
+        """Check that Sorcha predictions move linearly from their own
+        ``fieldMJD_TAI`` (RA staying in [0, 360) across RA = 0), with their
+        state vectors, range and phase angle, and record their time.
         """
         wcs = _makeWcs(0.0, 0.0)
         ssObjects = _makeSorchaObjects(wcs, OBJECTS[:2])
@@ -753,9 +758,9 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
                                    rtol=0, atol=1e-10)
 
     def testUnavailableKeepsVisitTime(self):
-        """A detector without corrected times gives exactly the result
-        without timing, for both ephemeris sources; unassociated predictions
-        record the ephemeris epoch.
+        """Check that a detector without corrected times gives exactly the
+        result without timing, for both ephemeris sources, and that
+        unassociated predictions record the ephemeris epoch.
         """
         for make in (_makeMpSkyObjects, _makeSorchaObjects):
             ssObjects = make(self.wcs)

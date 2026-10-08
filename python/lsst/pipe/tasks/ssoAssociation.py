@@ -43,8 +43,8 @@ from .ssp.ssobject import DIA_COLUMNS, DIA_DTYPES
 
 
 def _phaseAngleDeg(helio, observer):
-    """Phase angle (degrees) of objects at heliocentric positions ``helio``
-    seen from ``observer`` (both (n, 3), same units).
+    """Compute the phase angle (degrees) of objects at heliocentric
+    positions ``helio`` seen from ``observer`` (both (n, 3), same units).
     """
     topo = helio - observer
     cosPhase = np.sum(helio*topo, axis=1)/np.linalg.norm(helio, axis=1)/np.linalg.norm(topo, axis=1)
@@ -453,7 +453,9 @@ class SolarSystemAssociationTask(pipeBase.Task):
 
     @staticmethod
     def _mpSkyRaDec(ssObjects):
-        """Topocentric RA, Dec (degrees) of the evaluated mpSky positions."""
+        """Compute the topocentric RA, Dec (degrees) of the evaluated mpSky
+        positions.
+        """
         vector = np.vstack(ssObjects['obj_position'].quantity.to_value(u.au)
                            - ssObjects['obs_position'].quantity.to_value(u.au))
         ras, decs = np.vstack(hp.vec2ang(vector, lonlat=True))
