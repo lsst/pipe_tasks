@@ -29,7 +29,6 @@ __all__ = (
 
 import copy
 import tempfile
-import warnings
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
@@ -42,7 +41,7 @@ from lsst.afw.image import ImageF
 from lsst.afw.math import Warper
 from lsst.daf.butler import DeferredDatasetHandle
 from lsst.geom import Box2I, Extent2I, Point2D, Point2I
-from lsst.images import Box, ColorImage, SkyProjection, TractFrame
+from lsst.images import Box, SkyProjection, TractFrame
 from lsst.pex.config import ConfigField, Field
 from lsst.pipe.base import (
     InputQuantizedConnection,
@@ -56,11 +55,13 @@ from lsst.pipe.base import (
 )
 from lsst.pipe.base.connectionTypes import Input, Output
 from lsst.skymap import BaseSkyMap
+from stellaRGB.types import ColorImage
 
 from ._utils import FeatheredMosaicCreator
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+    from lsst.afw.geom import SkyWcs
     from lsst.skymap import TractInfo, PatchInfo
 
 
@@ -127,12 +128,13 @@ class MetaMosaicTask(PipelineTask):
     tract, so its patches overlap just like ordinary LSST patches.
 
     Every reference-tract patch is placed 1:1 into its matching virtual patch
-    exactly (no resampling) and feathered against its neighbours at the mosaic
-    level. Every other virtual patch gathers the foreign-tract patches that
-    overlap it, warps each onto that patch's grid, and combines them with a
-    nan-mean coaddition. All virtual patches are then blended into the output
-    mosaic with a NaN-reweighted feather (``FeatheredMosaicCreator``) so that a
-    NaN in one contributor does not corrupt the overlap region.
+    exactly (no resampling). Every foreign-tract patch is decoded once, warped
+    once onto the box enclosing the virtual patches it overlaps, and each
+    cell-sized slice of that warp is added separately. Every contributor is then
+    feather-weighted directly into a single mosaic accumulation pass with a
+    NaN-reweighted feather (``FeatheredMosaicCreator``) against a per-pixel
+    weight accumulator, so a NaN in one contributor does not corrupt the
+    overlap region; there is no per-cell pre-average.
 
     Missing data is left as NaN during assembly and replaced with zero only at the
     very end. No mask and no plugins.
@@ -381,8 +383,11 @@ class MetaMosaicTask(PipelineTask):
             j = round((bbox.getBeginY() - grid_origin.getY()) / pitch_y)
             ref_content[(i, j)] = handle
 
-        # For each "other" virtual patch, collect the foreign patches overlapping it.
-        foreign_contributors: dict[tuple[int, int], list] = {}
+        # For each foreign tract patch, collect the virtual patches (cells) it
+        # overlaps that have no reference-tract content. Each patch is kept as one
+        # record so it is later decoded and warped exactly once for all of its
+        # cells.
+        foreign_records: list[tuple[DeferredDatasetHandle, PatchInfo, SkyWcs, list[tuple[int, int]]]] = []
         for tract, handles in inputs_by_tract.items():
             if tract == ref_tract:
                 continue
@@ -405,12 +410,16 @@ class MetaMosaicTask(PipelineTask):
                 i1 = int(np.floor((mapped.getEndX() - 1 - grid_origin.getX()) / pitch_x))
                 j0 = int(np.floor((mapped.getBeginY() - grid_origin.getY() - cell_h) / pitch_y)) + 1
                 j1 = int(np.floor((mapped.getEndY() - 1 - grid_origin.getY()) / pitch_y))
-                for i in range(i0, i1 + 1):
-                    for j in range(j0, j1 + 1):
-                        if (i, j) not in ref_content:
-                            foreign_contributors.setdefault((i, j), []).append((handle, patch_info))
+                cells = [
+                    (i, j)
+                    for i in range(i0, i1 + 1)
+                    for j in range(j0, j1 + 1)
+                    if (i, j) not in ref_content
+                ]
+                if cells:
+                    foreign_records.append((handle, patch_info, patch_wcs, cells))
 
-        positions = set(ref_content) | set(foreign_contributors)
+        positions = set(ref_content) | {cell for _, _, _, cells in foreign_records for cell in cells}
         if not positions:
             raise NoWorkFound("No valid RGB images to mosaic")
 
@@ -436,18 +445,11 @@ class MetaMosaicTask(PipelineTask):
         weight = np.memmap(
             self.weightHandle.name,
             mode="w+",
-            shape=(mosaic_h, mosaic_w, 3),
+            shape=(mosaic_h, mosaic_w),
             dtype=np.float32,
         )
         weight[...] = 0.0
         self.log.info("Mosaic %d x %d virtual patches (%d x %d px)", ncx, ncy, mosaic_w, mosaic_h)
-
-        # Setup color space conversion in case it is used.
-        if self.config.do_dci_d65_convert:
-            d65 = copy.deepcopy(colour.models.RGB_COLOURSPACE_DCI_P3)
-            dp3 = copy.deepcopy(colour.models.RGB_COLOURSPACE_DISPLAY_P3)
-            d65.whitepoint = dp3.whitepoint
-            d65.whitepoint_name = dp3.whitepoint_name
 
         # Assembly happens in a try block so the temp-file handles are closed on
         # failure (the output memmap must stay open on success).
@@ -466,56 +468,75 @@ class MetaMosaicTask(PipelineTask):
             # whole-mosaic resize below, so pass bin_factor=1 to the featherer.
             mosaic_maker = FeatheredMosaicCreator(patch_grow)
             full_box = Box.from_legacy(Box2I(Point2I(0, 0), Extent2I(mosaic_w, mosaic_h)))
-            for i in range(min_i, max_i + 1):
-                for j in range(min_j, max_j + 1):
-                    if (i, j) not in positions:
-                        continue
-                    local_x = (i - min_i) * pitch_x
-                    local_y = (j - min_j) * pitch_y
-                    box_local = Box.from_legacy(
-                        Box2I(Point2I(local_x, local_y), Extent2I(cell_w, cell_h))
-                    )
 
-                    if (i, j) in ref_content:
-                        rgb_image = ref_content[(i, j)].get()
-                        input_metadata = dict(getattr(rgb_image, "metadata", None) or {})
-                        is_hdr = bool(input_metadata.get("is_hdr"))
-                        content = self._to_float32(rgb_image.array)
-                        if self.config.do_dci_d65_convert and not is_hdr:
-                            content = colour.RGB_to_RGB(np.clip(content, 0, 1), dp3, d65)
-                        elif self.config.do_dci_d65_convert and not dci_skip_warned:
-                            self.log.warning("Skipping DCI-D65 conversion for HDR (is_hdr) input.")
-                            dci_skip_warned = True
-                    else:
-                        cell_box = Box2I(
-                            Point2I(grid_origin.getX() + i * pitch_x, grid_origin.getY() + j * pitch_y),
+            # Reference-tract patches are placed 1:1 into their matching virtual
+            # patch (no resampling) and feather-weighted into the mosaic.
+            for (i, j), handle in ref_content.items():
+                local_x = (i - min_i) * pitch_x
+                local_y = (j - min_j) * pitch_y
+                box_local = Box.from_legacy(
+                    Box2I(Point2I(local_x, local_y), Extent2I(cell_w, cell_h))
+                )
+                rgb_image = handle.get()
+                input_metadata = dict(getattr(rgb_image, "metadata", None) or {})
+                is_hdr = bool(input_metadata.get("is_hdr"))
+                content = self._to_float32(rgb_image.array)
+                if self.config.do_dci_d65_convert and not is_hdr:
+                    content = colour.RGB_to_RGB(np.clip(content, 0, 1), dp3, d65)
+                elif self.config.do_dci_d65_convert and not dci_skip_warned:
+                    self.log.warning("Skipping DCI-D65 conversion for HDR (is_hdr) input.")
+                    dci_skip_warned = True
+                mosaic_maker.add_to_image(mosaic, content, full_box, box_local, reverse=False, weight=weight)
+
+            # Each foreign patch is decoded and warped exactly once onto the box
+            # enclosing all of its cells, then each cell's slice of that single
+            # warp is feather-weighted into the mosaic. The warp never lives
+            # longer than one foreign patch; the mosaic memmap is the only
+            # accumulator.
+            for handle, patch_info, patch_wcs, cells in foreign_records:
+                rgb_image = handle.get()
+                input_metadata = dict(getattr(rgb_image, "metadata", None) or {})
+                is_hdr = bool(input_metadata.get("is_hdr"))
+                rgb = self._to_float32(rgb_image.array)
+                if self.config.do_dci_d65_convert and not is_hdr:
+                    rgb = colour.RGB_to_RGB(np.clip(rgb, 0, 1), dp3, d65)
+                elif self.config.do_dci_d65_convert and not dci_skip_warned:
+                    self.log.warning("Skipping DCI-D65 conversion for HDR (is_hdr) input.")
+                    dci_skip_warned = True
+                cell_boxes = [
+                    Box2I(
+                        Point2I(grid_origin.getX() + i * pitch_x, grid_origin.getY() + j * pitch_y),
+                        Extent2I(cell_w, cell_h),
+                    )
+                    for (i, j) in cells
+                ]
+                # Box2I begin/end are INCLUSIVE; include() grows the box to cover.
+                dest_box = Box2I(cell_boxes[0])
+                for cbox in cell_boxes[1:]:
+                    dest_box.include(cbox)
+                warped = self._warp_patch_onto_cell(
+                    rgb, patch_wcs, ref_wcs, dest_box, patch_info.getOuterBBox()
+                )
+                for (i, j), cbox in zip(cells, cell_boxes, strict=True):
+                    x0 = cbox.getMinX() - dest_box.getMinX()
+                    y0 = cbox.getMinY() - dest_box.getMinY()
+                    # Box2I max is INCLUSIVE: slice end is max+1.
+                    content = warped[y0 : y0 + cbox.getHeight(), x0 : x0 + cbox.getWidth()]
+                    box_local = Box.from_legacy(
+                        Box2I(
+                            Point2I((i - min_i) * pitch_x, (j - min_j) * pitch_y),
                             Extent2I(cell_w, cell_h),
                         )
-                        stack = []
-                        for handle, patch_info in foreign_contributors[(i, j)]:
-                            rgb_image = handle.get()
-                            input_metadata = dict(getattr(rgb_image, "metadata", None) or {})
-                            is_hdr = bool(input_metadata.get("is_hdr"))
-                            rgb = self._to_float32(rgb_image.array)
-                            if self.config.do_dci_d65_convert and not is_hdr:
-                                rgb = colour.RGB_to_RGB(np.clip(rgb, 0, 1), dp3, d65)
-                            elif self.config.do_dci_d65_convert and not dci_skip_warned:
-                                self.log.warning("Skipping DCI-D65 conversion for HDR (is_hdr) input.")
-                                dci_skip_warned = True
-                            warped = self._warp_patch_onto_cell(
-                                rgb, patch_info.getWcs(), ref_wcs, cell_box, patch_info.getOuterBBox()
-                            )
-                            stack.append(warped)
-                        with warnings.catch_warnings():
-                            warnings.simplefilter("ignore", category=RuntimeWarning)
-                            content = np.nanmean(np.stack(stack, axis=0), axis=0)
-
+                    )
                     mosaic_maker.add_to_image(
                         mosaic, content, full_box, box_local, reverse=False, weight=weight
                     )
 
             FeatheredMosaicCreator.finalize(mosaic, weight)
-            mosaic[np.isnan(mosaic)] = 0.0
+            # Replace the NaN missing-data marker with zero in row bands (views
+            # write through to the memmap; no full-array boolean temporary).
+            for y0 in range(0, mosaic.shape[0], 4096):
+                np.nan_to_num(mosaic[y0 : y0 + 4096], copy=False, nan=0.0)
             mosaic.flush()
             self.weightHandle.close()
             del weight

@@ -89,23 +89,23 @@ class FeatheredMosaicCreator:
         extent = self.patch_grow * 2
         if self.bin_factor != 1:
             extent = int(np.floor(extent / self.bin_factor))
-        ramp = np.linspace(0, 1, extent)
+        ramp = np.linspace(0, 1, extent, dtype=np.float32)
         # Replace the exact zero at the outer edge of the feathering ramp. The
         # ramp is used as a multiplicative mask (see `add_to_image`), so a hard
         # 0 would blend the boundary pixel to pure black, producing a visible
         # seam. A tiny nonzero keeps that pixel effectively transparent while
         # avoiding the exact-zero value.
         ramp[0] = 1e-17
-        top = np.ones(dimensions)
+        top = np.ones(dimensions, dtype=np.float32)
         top[:extent, :] = np.repeat(np.expand_dims(ramp, 1), top.shape[1], axis=1)
 
-        bottom = np.ones(dimensions)
+        bottom = np.ones(dimensions, dtype=np.float32)
         bottom[-1 * extent :, :] = np.repeat(np.expand_dims(1 - ramp, 1), bottom.shape[1], axis=1)
 
-        left = np.ones(dimensions)
+        left = np.ones(dimensions, dtype=np.float32)
         left[:, :extent] = np.repeat(np.expand_dims(ramp, 0), left.shape[0], axis=0)
 
-        right = np.ones(dimensions)
+        right = np.ones(dimensions, dtype=np.float32)
         right[:, -1 * extent :] = np.repeat(np.expand_dims(1 - ramp, 0), right.shape[0], axis=0)
         self.featherings = [
             top,
@@ -141,11 +141,13 @@ class FeatheredMosaicCreator:
             If True, reverse the patch along the first axis before adding.
             Default is True.
         weight : `NDArray`, optional
-            Same-shaped accumulator that receives the feather weight of each
-            contribution. When provided, pixels of ``patch`` that are NaN are
-            excluded (their data contributes 0 and their weight contributes 0)
-            so a NaN in one patch does not corrupt the blend. Must be zero
-            initialized by the caller. Default is None (plain feathered sum).
+            Two-dimensional ``(height, width)`` accumulator, matching the spatial
+            shape of ``image``, that receives the feather weight of each
+            contribution. A pixel of ``patch`` counts as valid (and adds its
+            feather weight to ``weight``) only when all of its channels are
+            finite; invalid pixels contribute neither data nor weight, so a NaN
+            in one patch does not corrupt the blend. Must be zero initialized by
+            the caller. Default is None (plain feathered sum).
 
         Notes
         -----
@@ -159,7 +161,7 @@ class FeatheredMosaicCreator:
         have been added to obtain the normalized (NaN-reweighted) blend.
         """
         base_shape = patch.shape if patch.ndim == 2 else patch.shape[:2]
-        mixer = np.ones(base_shape)
+        mixer = np.ones(base_shape, dtype=np.float32)
         if self.featherings is None:
             self._make_featherings(base_shape)
         assert self.featherings is not None
@@ -172,43 +174,60 @@ class FeatheredMosaicCreator:
         if box.x.stop != new_box.x.stop:
             mixer *= self.featherings[3]
 
-        if image.ndim > 2:
-            mixer = np.repeat(np.expand_dims(mixer, 2), 3, axis=2)
+        # Broadcast view over the channel axis instead of a 3x channel-expansion
+        # temporary.
+        mixer_b = mixer[..., None] if image.ndim > 2 else mixer
 
         slice_ = (slice(box.y.start, box.y.stop), slice(box.x.start, box.x.stop))
         if reverse:
             slice_ += (slice(None),) if image.ndim > 2 else ()
 
         if weight is None:
-            image[slice_] += (mixer * patch)[::-1] if reverse else mixer * patch
+            image[slice_] += (mixer_b * patch)[::-1] if reverse else mixer_b * patch
             return
 
-        finite = np.isfinite(patch)
-        clean = np.where(finite, patch, 0.0)
-        image[slice_] += (mixer * clean)[::-1] if reverse else mixer * clean
-        weight[slice_] += (mixer * finite)[::-1] if reverse else mixer * finite
+        # A pixel is valid only if all of its channels are finite; the 2-D
+        # weight accumulator records one weight per pixel (no channel axis, so
+        # it ignores the reversed-patch channel-slice entry).
+        finite = np.isfinite(patch).all(axis=-1) if patch.ndim == 3 else np.isfinite(patch)
+        finite_b = finite[..., None] if patch.ndim == 3 else finite
+        clean = np.where(finite_b, patch, 0.0)
+        image[slice_] += (mixer_b * clean)[::-1] if reverse else mixer_b * clean
+        weight[slice_[:2]] += (mixer * finite)[::-1] if reverse else mixer * finite
 
     @staticmethod
-    def finalize(image: NDArray, weight: NDArray) -> NDArray:
+    def finalize(image: NDArray, weight: NDArray, band_rows: int = 4096) -> NDArray:
         """Normalize a weighted-sum image into a NaN-reweighted blend.
 
-        Each pixel becomes ``sum(weight_i * data_i) / sum(weight_i)``. Pixels with
-        no valid contribution (total weight zero) are set to NaN, the missing-data
-        marker.
+        Each pixel becomes ``sum(weight_i * data_i) / sum(weight_i)`` using the
+        per-pixel weight accumulator. Pixels with no valid contribution (total
+        weight zero) are set to NaN, the missing-data marker. The normalization
+        runs in row bands so no full-height boolean or gather temporary is
+        materialized when ``image`` and ``weight`` are memmap-backed.
 
         Parameters
         ----------
         image : `NDArray`
-            The weighted-sum image built by :meth:`add_to_image`. Modified in-place.
+            The weighted-sum image built by :meth:`add_to_image`. Modified
+            in-place.
         weight : `NDArray`
-            The weight accumulator built by :meth:`add_to_image`.
+            The per-pixel two-dimensional ``(height, width)`` weight accumulator
+            built by :meth:`add_to_image`.
+        band_rows : `int`, optional
+            Number of rows processed per band. Default is 4096.
 
         Returns
         -------
         image : `NDArray`
             The normalized image.
         """
-        mask = weight > 0
-        image[mask] /= weight[mask]
-        image[~mask] = np.nan
+        for y0 in range(0, image.shape[0], band_rows):
+            y1 = min(y0 + band_rows, image.shape[0])
+            img_band = image[y0:y1]  # View; writes through to a memmap.
+            w_band = np.asarray(weight[y0:y1])  # 2-D (h, w).
+            valid = w_band > 0
+            where = valid[..., None] if img_band.ndim == 3 else valid
+            w = w_band[..., None] if img_band.ndim == 3 else w_band
+            np.divide(img_band, w, out=img_band, where=where)
+            img_band[~valid] = np.nan
         return image

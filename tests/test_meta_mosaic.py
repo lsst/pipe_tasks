@@ -106,7 +106,8 @@ class TestFeatheredMosaicNaN:
         out_w = 60
         full = self._box(0, 0, out_w, h)
         sum_img = np.zeros((h, out_w, 3), dtype=np.float32)
-        weight = np.zeros_like(sum_img)
+        # Per-pixel (all-channels-finite) weight accumulator: one value per pixel.
+        weight = np.zeros((h, out_w), dtype=np.float32)
         # A: constant 1 over x in [0, 40), but NaN on its right quarter (x in [30, 40)).
         a = np.ones((h, 40, 3), dtype=np.float32)
         a[:, 30:, :] = np.nan
@@ -285,7 +286,8 @@ class TestRunEndToEnd:
         np.testing.assert_allclose(array[ay, ax, :], [1.0, 0.0, 0.0], atol=1e-2)
 
     def test_overlapping_patches_are_averaged(self):
-        """Two foreign patches overlapping one cell should be combined by nan-mean."""
+        """Two foreign patches overlapping one cell should be combined by
+        the NaN-reweighted feather (weighted mean where both are valid)."""
         skymap = _make_skymap()
         task = _make_run_task(reference_tract=0)
 
