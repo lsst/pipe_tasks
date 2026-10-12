@@ -1054,31 +1054,25 @@ class MultiBandDetectionConnections(
     )
     peaks = cT.Output(
         doc="Table of the final detected peaks, one row per source.",
-        name="object_detection_peaks",
+        name="object_detection_merged_peaks",
         storageClass="ArrowAstropy",
         dimensions=("tract", "patch", "skymap"),
     )
     candidates = cT.Output(
         doc="Table of the peak candidates, before grouping into peaks.",
-        name="object_detection_candidates",
+        name="object_detection_merged_candidates",
         storageClass="ArrowAstropy",
         dimensions=("tract", "patch", "skymap"),
     )
     positions = cT.Output(
         doc="Table of the unique candidate positions, before linking into peaks.",
-        name="object_detection_positions",
-        storageClass="ArrowAstropy",
-        dimensions=("tract", "patch", "skymap"),
-    )
-    pairs = cT.Output(
-        doc="Table of the pairs of candidate positions close enough to be linked into one peak.",
-        name="object_detection_pairs",
+        name="object_detection_merged_positions",
         storageClass="ArrowAstropy",
         dimensions=("tract", "patch", "skymap"),
     )
     components = cT.Output(
         doc="Table of the connected components of the graph of linked candidate positions.",
-        name="object_detection_components",
+        name="object_detection_merged_components",
         storageClass="ArrowAstropy",
         dimensions=("tract", "patch", "skymap"),
     )
@@ -1237,9 +1231,6 @@ class MultiBandDetectionTask(PipelineTask):
             ``positions``
                 Table of the unique candidate positions.
                 (`astropy.table.Table`)
-            ``pairs``
-                Table of the pairs of candidate positions within the
-                largest link radius. (`astropy.table.Table`)
             ``components``
                 Table of the connected components of the candidate position
                 graph. (`astropy.table.Table`)
@@ -1265,7 +1256,6 @@ class MultiBandDetectionTask(PipelineTask):
             peaks=detections.peaks,
             candidates=detections.candidates,
             positions=detections.positions,
-            pairs=detections.pairs,
             components=detections.components,
             outputExposures=outputExposures,
         )
