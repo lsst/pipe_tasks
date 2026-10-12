@@ -19,11 +19,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["makeTestVisitInfo", ]
+__all__ = ["makeTestVisitInfo", "make_exposure_record"]
+
+import astropy.units as u
 
 from lsst.afw.coord import Observatory
 import lsst.afw.image as afwImage
 import lsst.daf.base as dafBase
+import lsst.daf.butler
 import lsst.geom as geom
 
 
@@ -37,3 +40,38 @@ def makeTestVisitInfo(id=1):
                               boresightRotAngle=73.2*geom.degrees,
                               rotType=afwImage.RotType.SKY,
                               observatory=Observatory(11.1*geom.degrees, 22.2*geom.degrees, 0.333))
+
+
+def make_exposure_record(exposure, instrument="testCam"):
+    """Return an ``exposure`` dimension record that describes a test exposure.
+
+    Parameters
+    ----------
+    exposure : `lsst.afw.image.Exposure`
+        Exposure to take the observation metadata from.
+    instrument : `str`, optional
+        Name of the instrument to record.
+
+    Returns
+    -------
+    record : `lsst.daf.butler.DimensionRecord`
+        Record holding the observation metadata that
+        `lsst.images.VisitImage.from_legacy` reads.
+    """
+    visit_info = exposure.visitInfo
+    begin = visit_info.date.toAstropy()
+    universe = lsst.daf.butler.DimensionUniverse()
+    return universe["exposure"].RecordClass(
+        instrument=instrument,
+        id=visit_info.id,
+        obs_id=f"test_{visit_info.id}",
+        group=str(visit_info.id),
+        physical_filter=exposure.filter.physicalLabel,
+        day_obs=int(begin.strftime("%Y%m%d")),
+        exposure_time=visit_info.exposureTime,
+        seq_num=1,
+        seq_start=1,
+        seq_end=1,
+        can_see_sky=True,
+        timespan=lsst.daf.butler.Timespan(begin=begin, end=begin + visit_info.exposureTime*u.s),
+    )

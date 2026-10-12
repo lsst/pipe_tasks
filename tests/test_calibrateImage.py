@@ -34,10 +34,12 @@ import requests
 import lsst.afw.image as afwImage
 import lsst.afw.math as afwMath
 import lsst.afw.table as afwTable
+from lsst.afw.cameraGeom.testUtils import CameraWrapper
 import lsst.daf.base
 import lsst.daf.butler
 import lsst.daf.butler.tests as butlerTests
 import lsst.geom
+import lsst.images
 import lsst.meas.algorithms
 from lsst.meas.algorithms import testUtils
 import lsst.meas.extensions.psfex
@@ -50,7 +52,7 @@ from lsst.pipe.tasks.calibrateImage import CalibrateImageTask, \
 import lsst.pex.config as pexConfig
 import lsst.utils.tests
 
-from utils import makeTestVisitInfo
+from utils import makeTestVisitInfo, make_exposure_record
 
 
 class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
@@ -268,6 +270,126 @@ class CalibrateImageTaskTests(lsst.utils.tests.TestCase):
             self.assertFloatsAlmostEqual(result.astrometry_matches["src_slot_Centroid_x"][matches[0]],
                                          result.photometry_matches["src_slot_Centroid_x"][matches[1]],
                                          atol=3e-4)
+
+    def _run_legacy_for_future(self, config):
+        """Run the task configured for the `lsst.images` output type, and
+        return what it produced, without converting it.
+
+        Parameters
+        ----------
+        config : `lsst.pipe.tasks.calibrateImage.CalibrateImageConfig`
+            Configuration to run with; ``output_image_type`` is set to
+            "future" here.
+
+        Returns
+        -------
+        calibrate : `lsst.pipe.tasks.calibrateImage.CalibrateImageTask`
+            The task that was run, to convert the result with.
+        result : `lsst.pipe.base.Struct`
+            The legacy output struct.
+        """
+        # lsst.images needs raw amplifier geometry and a FIELD_ANGLE
+        # transform, which the trivial test detectors do not have.
+        self.exposure.setDetector(list(CameraWrapper().camera)[0])
+        config.output_image_type = "future"
+        calibrate = CalibrateImageTask(config=config)
+        calibrate.astrometry.setRefObjLoader(self.ref_loader)
+        calibrate.photometry.match.setRefObjLoader(self.ref_loader)
+        result = calibrate.run(exposures=self.exposure)
+        # run() always produces legacy types, whatever output_image_type is.
+        self.assertIsInstance(result.exposure, afwImage.Exposure)
+        return calibrate, result
+
+    def _run_future(self, config):
+        """Run the task with an `lsst.images` output type, and convert the
+        result.
+
+        Parameters
+        ----------
+        config : `lsst.pipe.tasks.calibrateImage.CalibrateImageConfig`
+            Configuration to run with; ``output_image_type`` is set to
+            "future" here.
+
+        Returns
+        -------
+        result : `lsst.pipe.base.Struct`
+            The converted output struct.
+
+        Notes
+        -----
+        The conversion removes ``applied_photo_calib`` from the struct, so
+        the value `run` produced is saved as ``self.applied_photo_calib``
+        for tests that need to compare against it.
+        """
+        calibrate, result = self._run_legacy_for_future(config)
+        self.applied_photo_calib = result.applied_photo_calib
+        calibrate.convert_outputs_to_future(result, make_exposure_record(self.exposure))
+        return result
+
+    def test_convert_outputs_to_future(self):
+        """Test that the output exposure is converted to a VisitImage with
+        the photometric calibration and background attached.
+        """
+        config = copy.copy(self.config)
+        result = self._run_future(config)
+
+        self.assertIsInstance(result.exposure, lsst.images.VisitImage)
+        # Pixels were calibrated, so both image and background are in nJy.
+        self.assertEqual(result.exposure.unit, u.nJy)
+        self.assertEqual(result.exposure.backgrounds["subtracted"].field.unit, u.nJy)
+        self.assertEqual(result.exposure.backgrounds.subtracted.name, "subtracted")
+
+        # photometric_scaling is the calibration that was applied, not the
+        # identity that is left attached to the calibrated exposure.
+        self.assertIsNotNone(result.exposure.photometric_scaling)
+        self.assertEqual(result.exposure.photometric_scaling.unit, u.nJy/u.electron)
+        round_tripped = result.exposure.photometric_scaling.to_legacy_photo_calib(u.electron)
+        self.assertFloatsAlmostEqual(round_tripped.getCalibrationMean(),
+                                     self.applied_photo_calib.getCalibrationMean(),
+                                     rtol=1e-14)
+
+        # The background and the applied calibration were moved onto the
+        # image, so the separate outputs are gone; both connections are
+        # deleted in this mode.
+        self.assertFalse(hasattr(result, "background"))
+        self.assertFalse(hasattr(result, "applied_photo_calib"))
+
+    def test_convert_outputs_to_future_no_calibrate_pixels(self):
+        """Test the conversion when the pixels are left in instrumental
+        units, so that the photometric calibration has not been applied.
+        """
+        config = copy.copy(self.config)
+        config.do_calibrate_pixels = False
+        result = self._run_future(config)
+
+        self.assertIsNone(self.applied_photo_calib)
+        instrumental_unit = u.Unit(config.instrumental_unit)
+        self.assertEqual(result.exposure.unit, instrumental_unit)
+        self.assertEqual(result.exposure.backgrounds["subtracted"].field.unit, instrumental_unit)
+        self.assertEqual(result.exposure.photometric_scaling.unit, u.nJy/instrumental_unit)
+        self.assertFalse(hasattr(result, "background"))
+        self.assertFalse(hasattr(result, "applied_photo_calib"))
+
+    def test_convert_outputs_to_future_partial_outputs_struct(self):
+        """Test conversion of a struct with only the fields ``runQuantum``
+        seeds before calling ``run``: no ``background``, and
+        ``applied_photo_calib`` set to `None`.
+        """
+        config = copy.copy(self.config)
+        # Leave the pixels uncalibrated, to match applied_photo_calib=None.
+        config.do_calibrate_pixels = False
+        calibrate, run_result = self._run_legacy_for_future(config)
+
+        # Same fields, in the same state, as the struct runQuantum seeds.
+        partial = pipeBase.Struct(
+            exposure=run_result.exposure,
+            stars_footprints=None,
+            psf_stars_footprints=None,
+            background_to_photometric_ratio=None,
+            applied_photo_calib=None,
+        )
+        calibrate.convert_outputs_to_future(partial, make_exposure_record(self.exposure))
+        self.assertIsInstance(partial.exposure, lsst.images.VisitImage)
 
     def test_run(self):
         """Test that run() returns reasonable values to be butler put.
@@ -1067,6 +1189,59 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         Connections = CalibrateImageTask.ConfigClass.ConnectionsClass
         lsst.pipe.base.testUtils.lintConnections(Connections)
 
+    def test_connections_future_image_type(self):
+        """Test that the future image type changes the exposure storage class
+        and removes the separate background output, which is attached to the
+        image instead.
+        """
+        Connections = CalibrateImageTask.ConfigClass.ConnectionsClass
+        config = CalibrateImageTask.ConfigClass()
+
+        connections = Connections(config=config)
+        self.assertEqual(connections.exposure.storageClass, "ExposureF")
+        self.assertIn("background", connections.outputs)
+        self.assertIn("applied_photo_calib", connections.outputs)
+
+        config.output_image_type = "future"
+        connections = Connections(config=config)
+        self.assertEqual(connections.exposure.storageClass, "VisitImage")
+        # The dataset name is unchanged; only its storage class differs.
+        self.assertEqual(connections.exposure.name, "initial_pvi")
+        # Both of these are carried on the image itself in this mode.
+        self.assertNotIn("background", connections.outputs)
+        self.assertNotIn("applied_photo_calib", connections.outputs)
+
+    def test_runQuantum_partial_outputs_struct(self):
+        """Test that the result struct runQuantum passes to run() has
+        ``applied_photo_calib`` seeded as `None`.
+        """
+        task = CalibrateImageTask()
+
+        quantum = lsst.pipe.base.testUtils.makeQuantum(
+            task, self.butler, self.visit_id,
+            {"exposures": [self.exposure0_id],
+             "astrometry_ref_cat": [self.htm_id],
+             "photometry_ref_cat": [self.htm_id],
+             "background_flat": self.flat_id,
+             "illumination_correction": self.flat_id,
+             # outputs
+             "exposure": self.visit_id,
+             "stars": self.visit_id,
+             "stars_footprints": self.visit_id,
+             "background": self.visit_id,
+             "psf_stars": self.visit_id,
+             "psf_stars_footprints": self.visit_id,
+             "applied_photo_calib": self.visit_id,
+             "initial_pvi_background": self.visit_id,
+             "astrometry_matches": self.visit_id,
+             "photometry_matches": self.visit_id,
+             "mask": self.visit_id,
+             })
+        mock_run = lsst.pipe.base.testUtils.runTestQuantum(task, self.butler, quantum)
+
+        result = mock_run.call_args.kwargs["result"]
+        self.assertIsNone(result.applied_photo_calib)
+
     def test_runQuantum_exception(self):
         """Test exception handling in runQuantum.
         """
@@ -1151,6 +1326,75 @@ class CalibrateImageTaskRunQuantumTests(lsst.utils.tests.TestCase):
         # ... but not the un-produced outputs.
         with self.assertRaises(FileNotFoundError):
             self.butler.get("initial_stars_footprints_detector", self.visit_id)
+
+    def test_runQuantum_partial_outputs_future(self):
+        """Test that a failed quantum in 'future' mode skips the image and
+        still writes the rest of the annotated partial outputs.
+        """
+        config = CalibrateImageTask.ConfigClass()
+        config.output_image_type = "future"
+        task = CalibrateImageTask(config=config)
+
+        quantum = lsst.pipe.base.testUtils.makeQuantum(
+            task, self.butler, self.visit_id,
+            {"exposures": [self.exposure0_id],
+             "astrometry_ref_cat": [self.htm_id],
+             "photometry_ref_cat": [self.htm_id],
+             "background_flat": self.flat_id,
+             "illumination_correction": self.flat_id,
+             # outputs
+             "exposure": self.visit_id,
+             "stars": self.visit_id,
+             "stars_footprints": self.visit_id,
+             "psf_stars": self.visit_id,
+             "psf_stars_footprints": self.visit_id,
+             "astrometry_matches": self.visit_id,
+             "photometry_matches": self.visit_id,
+             "mask": self.visit_id,
+             })
+
+        error = lsst.meas.algorithms.MeasureApCorrError(name="test", nSources=100, ndof=101)
+
+        def mock_run(
+            exposures,
+            result=None,
+            id_generator=None,
+            background_flat=None,
+            illumination_correction=None,
+            camera_model=None,
+            exposure_record=None,
+            exposure_region=None,
+        ):
+            """Mock a failure of the aperture correction fit, after `run`
+            has set the exposure and the PSF star catalog.
+            """
+            exposure = afwImage.ExposureF(10, 10)
+            # `run` sets these from the post-ISR image before any fit can
+            # fail.
+            exposure.setDetector(list(CameraWrapper().camera)[0])
+            exposure.setFilter(afwImage.FilterLabel(physical="test-r", band="r"))
+            exposure.info.setVisitInfo(makeTestVisitInfo(id=self.visit_id["visit"]))
+            result.exposure = exposure
+            result.psf_stars_footprints = afwTable.SourceCatalog()
+            result.psf_stars = afwTable.SourceCatalog().asAstropy()
+            result.background = afwMath.BackgroundList()
+            raise error
+
+        with (
+            mock.patch.object(task, "run", side_effect=mock_run),
+            self.assertRaises(lsst.pipe.base.AnnotatedPartialOutputsError),
+            self.assertLogs("lsst.calibrateImage", level="WARNING") as cm,
+        ):
+            lsst.pipe.base.testUtils.runTestQuantum(task, self.butler, quantum, mockRun=False)
+
+        self.assertIn("Cannot write a partial-outputs image in 'future' mode", "\n".join(cm.output))
+        # The image was skipped ...
+        with self.assertRaises(FileNotFoundError):
+            self.butler.get("initial_pvi", self.visit_id)
+        # ... but the catalog that `run` did produce was written, with the
+        # failure annotation on it.
+        stars = self.butler.get("initial_psf_stars_footprints_detector", self.visit_id)
+        self.assertIn("Unable to measure aperture correction", stars.metadata["failure.message"])
 
 
 class MockResponse:
