@@ -90,23 +90,24 @@ class FeatheredMosaicCreator:
         if self.bin_factor != 1:
             extent = int(np.floor(extent / self.bin_factor))
         ramp = np.linspace(0, 1, extent, dtype=np.float32)
-        # Replace the exact zero at the outer edge of the feathering ramp. The
-        # ramp is used as a multiplicative mask (see `add_to_image`), so a hard
-        # 0 would blend the boundary pixel to pure black, producing a visible
-        # seam. A tiny nonzero keeps that pixel effectively transparent while
-        # avoiding the exact-zero value.
+        # Guard the exact zero at the outer edge of both ramp directions. The
+        # ramps are used as multiplicative masks (see `add_to_image`), so a hard
+        # 0 would give that boundary pixel zero weight (a black, data-less
+        # seam). The descending ramp must be built directly rather than derived
+        # as ``1 - ramp``, because ``1 - 1e-17`` rounds back to 1.0 in float32.
         ramp[0] = 1e-17
+        ramp_desc = np.linspace(1.0, 1e-17, extent, dtype=np.float32)
         top = np.ones(dimensions, dtype=np.float32)
         top[:extent, :] = np.repeat(np.expand_dims(ramp, 1), top.shape[1], axis=1)
 
         bottom = np.ones(dimensions, dtype=np.float32)
-        bottom[-1 * extent :, :] = np.repeat(np.expand_dims(1 - ramp, 1), bottom.shape[1], axis=1)
+        bottom[-1 * extent :, :] = np.repeat(np.expand_dims(ramp_desc, 1), bottom.shape[1], axis=1)
 
         left = np.ones(dimensions, dtype=np.float32)
         left[:, :extent] = np.repeat(np.expand_dims(ramp, 0), left.shape[0], axis=0)
 
         right = np.ones(dimensions, dtype=np.float32)
-        right[:, -1 * extent :] = np.repeat(np.expand_dims(1 - ramp, 0), right.shape[0], axis=0)
+        right[:, -1 * extent :] = np.repeat(np.expand_dims(ramp_desc, 0), right.shape[0], axis=0)
         self.featherings = [
             top,
             bottom,

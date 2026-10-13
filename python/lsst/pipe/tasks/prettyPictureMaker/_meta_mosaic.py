@@ -112,6 +112,10 @@ class MetaMosaicConfig(PipelineTaskConfig, pipelineConnections=MetaMosaicConnect
         optional=True,
         default=None,
     )
+    crop_output = Field[bool](
+        doc="Crop the output raster to the bounding box of pixels that received data.",
+        default=True,
+    )
     warp = ConfigField[Warper.ConfigClass](doc="Warper configuration")
 
     def setDefaults(self):
@@ -138,6 +142,10 @@ class MetaMosaicTask(PipelineTask):
 
     Missing data is left as NaN during assembly and replaced with zero only at the
     very end. No mask and no plugins.
+
+    The output raster is cropped to the footprint of the pixels that actually
+    received data (unless ``crop_output`` is disabled); interior holes between
+    rotated footprints remain zero-filled.
     """
 
     _DefaultName = "metaMosaic"
@@ -324,6 +332,63 @@ class MetaMosaicTask(PipelineTask):
             warped = self.warper.warpImage(ref_wcs, tmp, patch_wcs, destBBox=cell_box)
             channels.append(warped.array)
         return np.stack(channels, axis=-1)
+
+    def _data_bbox(
+        self, mosaic_shape: tuple[int, int], weight: np.ndarray, band_rows: int = 4096
+    ) -> Box2I | None:
+        """Find the bounding box of the mosaic pixels that received data.
+
+        The single-channel ``weight`` array is scanned in row bands so no
+        full-array boolean temporary is materialized when it is memmap-backed.
+        A pixel counts as having data when its accumulated weight is strictly
+        positive (the same validity rule :meth:`FeatheredMosaicCreator.finalize`
+        normalizes on).
+
+        Parameters
+        ----------
+        mosaic_shape : `tuple` of `int`
+            The full-resolution mosaic shape, ``(height, width)``.
+        weight : `numpy.ndarray`
+            Two-dimensional ``(height, width)`` weight accumulator.
+        band_rows : `int`, optional
+            Number of rows processed per band. Default is 4096.
+
+        Returns
+        -------
+        bbox : `lsst.geom.Box2I` | `None`
+            The enclosing box in mosaic-local pixel coordinates (inclusive), or
+            `None` if no pixel has weight anywhere (a fully empty mosaic); the
+            caller then skips cropping.
+        """
+        n_rows, n_cols = mosaic_shape
+        min_row: int | None = None
+        max_row: int | None = None
+        min_col: int | None = None
+        max_col: int | None = None
+        for y0 in range(0, n_rows, band_rows):
+            band = np.asarray(weight[y0 : min(y0 + band_rows, n_rows)])
+            valid = band > 0
+            rows = np.flatnonzero(valid.any(axis=1))
+            if rows.size == 0:
+                continue
+            if min_row is None:
+                min_row = y0 + int(rows[0])
+            max_row = y0 + int(rows[-1])
+            cols = np.flatnonzero(valid.any(axis=0))
+            if min_col is None:
+                min_col = int(cols[0])
+                max_col = int(cols[-1])
+            else:
+                min_col = min(min_col, int(cols[0]))
+                max_col = max(max_col, int(cols[-1]))
+        if min_row is None:
+            self.log.warning("Mosaic has no weighted pixels; skipping the output crop.")
+            return None
+        assert min_col is not None and max_col is not None
+        return Box2I(
+            Point2I(min_col, min_row),
+            Extent2I(max_col - min_col + 1, max_row - min_row + 1),
+        )
 
     def run(
         self,
@@ -522,6 +587,11 @@ class MetaMosaicTask(PipelineTask):
                     y0 = cbox.getMinY() - dest_box.getMinY()
                     # Box2I max is INCLUSIVE: slice end is max+1.
                     content = warped[y0 : y0 + cbox.getHeight(), x0 : x0 + cbox.getWidth()]
+                    # Skip cells the warp did not cover at all (the slice is
+                    # RAM-resident): they would add no data and no weight, only
+                    # inflating the mosaic extent with zero-weight (black) cells.
+                    if not np.isfinite(content).any():
+                        continue
                     box_local = Box.from_legacy(
                         Box2I(
                             Point2I((i - min_i) * pitch_x, (j - min_j) * pitch_y),
@@ -533,35 +603,69 @@ class MetaMosaicTask(PipelineTask):
                     )
 
             FeatheredMosaicCreator.finalize(mosaic, weight)
+            # The data extent must be measured from the weight accumulator while
+            # it is still valid, i.e. before the NaN-to-zero pass below.
+            crop_box = self._data_bbox((mosaic_h, mosaic_w), weight) if self.config.crop_output else None
+            # The crop box is inclusive in full-resolution mosaic coordinates;
+            # without one the full rectangle is used unchanged.
+            if crop_box is not None:
+                cx0, cy0 = crop_box.getMinX(), crop_box.getMinY()
+                cx1, cy1 = crop_box.getMaxX(), crop_box.getMaxY()
+            else:
+                cx0 = cy0 = 0
+                cx1 = mosaic_w - 1
+                cy1 = mosaic_h - 1
+            crop_w = cx1 - cx0 + 1
+            crop_h = cy1 - cy0 + 1
             # Replace the NaN missing-data marker with zero in row bands (views
             # write through to the memmap; no full-array boolean temporary).
-            for y0 in range(0, mosaic.shape[0], 4096):
-                np.nan_to_num(mosaic[y0 : y0 + 4096], copy=False, nan=0.0)
+            # Only the rows kept by the crop need conversion; rows outside the
+            # crop window are discarded anyway. Every pixel of the output view
+            # lies within these rows, so interior holes still become zero.
+            for y0 in range(cy0, cy1 + 1, 4096):
+                np.nan_to_num(mosaic[y0 : min(y0 + 4096, cy1 + 1)], copy=False, nan=0.0)
             mosaic.flush()
             self.weightHandle.close()
             del weight
 
-            # Assemble the output (optionally binned) and its WCS metadata.
+            # Assemble the output (optionally cropped and binned) and its WCS
+            # metadata.
             bin_factor = self.config.bin_factor
             if bin_factor > 1:
-                new_w = int(np.floor(mosaic_w / bin_factor))
-                new_h = int(np.floor(mosaic_h / bin_factor))
-                out_array = cv2.resize(mosaic, (new_w, new_h), interpolation=cv2.INTER_AREA)
+                new_w = int(np.floor(crop_w / bin_factor))
+                new_h = int(np.floor(crop_h / bin_factor))
+                if new_w < 1 or new_h < 1:
+                    raise ValueError(
+                        f"bin_factor {bin_factor} exceeds cropped output dimensions "
+                        f"{crop_w} x {crop_h} px; the binned output would be empty."
+                    )
+                # Crop first, then resize the cropped view.
+                cropped = mosaic[cy0 : cy1 + 1, cx0 : cx1 + 1]
+                out_array = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_AREA)
                 out_origin = Point2I(0, 0)
                 out_box = Box2I(out_origin, Extent2I(new_w, new_h))
                 full_origin = Point2D(
-                    grid_origin.getX() + min_i * pitch_x, grid_origin.getY() + min_j * pitch_y
+                    grid_origin.getX() + min_i * pitch_x + cx0,
+                    grid_origin.getY() + min_j * pitch_y + cy0,
                 )
                 sky_proj = self._scaled_projection(
                     ref_wcs, ref_tract, skymap_name, full_origin, bin_factor, out_box
                 )
             else:
-                out_array = mosaic
+                # A memmap view of the mosaic; same lifetime contract as before
+                # (the image handle stays open until runQuantum.put completes).
+                out_array = mosaic[cy0 : cy1 + 1, cx0 : cx1 + 1]
                 out_origin = Point2I(
-                    grid_origin.getX() + min_i * pitch_x, grid_origin.getY() + min_j * pitch_y
+                    grid_origin.getX() + min_i * pitch_x + cx0,
+                    grid_origin.getY() + min_j * pitch_y + cy0,
                 )
                 out_box = Box2I(out_origin, Extent2I(out_array.shape[1], out_array.shape[0]))
+                # The projection is the reference WCS; only the array bbox shifts,
+                # and SkyProjection.from_legacy's TractFrame bbox describes the
+                # tract, not the output array.
                 sky_proj = ref_proj
+            if crop_w != mosaic_w or crop_h != mosaic_h:
+                self.log.info("Cropped output to %dx%d of %dx%d px", crop_w, crop_h, mosaic_w, mosaic_h)
             result = Struct(
                 outputRGBMosaic=ColorImage(
                     out_array,
