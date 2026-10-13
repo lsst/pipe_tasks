@@ -60,6 +60,7 @@ class MakeDiscreteSkyMapConfig(pexConfig.Config):
     )
 
     def setDefaults(self):
+        super().setDefaults()
         self.skyMap.tractOverlap = 0.0
 
 
