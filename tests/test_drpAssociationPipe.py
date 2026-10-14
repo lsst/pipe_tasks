@@ -23,8 +23,15 @@
 import numpy as np
 import pandas as pd
 import unittest
+from unittest.mock import patch
 
+import astropy.table
+
+import lsst.afw.table as afwTable
 import lsst.geom as geom
+import lsst.pipe.base as pipeBase
+from lsst.afw.image import ExposureSummaryStats
+from lsst.ip.isr.shutterTiming import ShutterTiming
 from lsst.pipe.tasks.coaddBase import makeSkyInfo
 from lsst.pipe.tasks.drpAssociationPipe import DrpAssociationPipeTask
 import lsst.skymap as skyMap
@@ -92,6 +99,36 @@ class TestDrpAssociationPipe(lsst.utils.tests.TestCase):
                                         self.skyInfo.wcs,
                                         innerTractSkyRegion=self.innerTractSkyRegion)),
             0)
+
+    def testShutterTiming(self):
+        """Test that solar system association gets the shutter-corrected
+        times of the detector's visit-summary row.
+        """
+        # A visit summary with the times of detector 5.
+        schema = afwTable.ExposureTable.makeMinimalSchema()
+        ExposureSummaryStats.update_schema(schema)
+        visitSummary = afwTable.ExposureCatalog(schema)
+        row = visitSummary.addNew()
+        row.setId(5)
+        timing = ShutterTiming(centerMidpointMjdTai=61000.5, chebyshevCoefficients=np.arange(6.0),
+                               chebyshevYCenter=1999.5, chebyshevYHalfRange=2000.0)
+        summary = ExposureSummaryStats()
+        timing.updateSummaryStats(summary)
+        summary.update_record(row)
+
+        config = DrpAssociationPipeTask.ConfigClass()
+        config.doShutterTiming = True
+        task = DrpAssociationPipeTask(config=config)
+        empty = astropy.table.Table({"diaSourceId": np.array([], dtype=int), "ra": [], "dec": []})
+        result = pipeBase.Struct(associatedSsSources=empty, ssoAssocDiaSources=empty,
+                                 unassociatedSsObjects=empty, unAssocDiaSources=empty)
+        with patch.object(task.solarSystemAssociator, "run", return_value=result) as mockRun:
+            task.runSolarSystemAssociation(None, None, visitSummary, self.innerPatchBox, self.skyInfo.wcs,
+                                           self.innerTractSkyRegion, detector=5, visit=1)
+
+        received = mockRun.call_args.kwargs["shutterTiming"]
+        y = np.array([0.0, 1000.0, 3999.0])
+        self.assertFloatsEqual(received.midpointMjdTai(y, y), timing.midpointMjdTai(y, y))
 
 
 def setup_module(module):

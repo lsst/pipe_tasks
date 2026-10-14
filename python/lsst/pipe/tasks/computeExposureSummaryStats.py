@@ -338,6 +338,13 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     - effTimeSkyBgScale
     - effTimeZeroPointScale
     - magLim
+
+    These quantities are copied from the shutter-corrected times that ISR
+    records in the metadata (`lsst.ip.isr.shutterTiming`), if any:
+    - detectorMidpointMjdTai
+    - shutterChebyshevCoefficients
+    - shutterChebyshevYCenter
+    - shutterChebyshevYHalfRange
     """
     ConfigClass = ComputeExposureSummaryStatsConfig
     _DefaultName = "computeExposureSummaryStats"
@@ -411,6 +418,9 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         if "SFM_ASTROM_OFFSET_MEAN" in md:
             summary.astromOffsetMean = md["SFM_ASTROM_OFFSET_MEAN"]
             summary.astromOffsetStd = md["SFM_ASTROM_OFFSET_STD"]
+        shutterTiming = ipIsr.ShutterTiming.fromMetadata(md)
+        if shutterTiming is not None:
+            shutterTiming.updateSummaryStats(summary)
 
         return summary
 

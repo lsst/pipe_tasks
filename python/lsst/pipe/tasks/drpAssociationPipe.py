@@ -33,6 +33,8 @@ import numpy as np
 import pandas as pd
 
 
+from lsst.afw.image import ExposureSummaryStats
+from lsst.ip.isr.shutterTiming import ShutterTiming
 from lsst.pipe.tasks.ssoAssociation import SolarSystemAssociationTask
 import lsst.geom as geom
 import lsst.pex.config as pexConfig
@@ -148,6 +150,13 @@ class DrpAssociationPipeConfig(
         dtype=bool,
         default=True,
         doc="Process SolarSystem objects through the pipeline.",
+    )
+    doShutterTiming = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Predict solar system objects at the shutter-corrected time of the pixel each falls on "
+            "(lsst.ip.isr.shutterTiming, from the detector's visit summary); if the detector has none, "
+            "at the header midpoint (visitInfo.date).",
     )
     doUseSchema = pexConfig.Field(
         dtype=bool,
@@ -445,12 +454,17 @@ class DrpAssociationPipeTask(pipeBase.PipelineTask):
                 (`astropy.table.Table`).
         """
         # Get the exposure metadata from the detector's row in the visitSummary table.
+        row = visitSummary.find(detector)
+        shutterTiming = None
+        if self.config.doShutterTiming:
+            shutterTiming = ShutterTiming.fromSummaryStats(ExposureSummaryStats.from_record(row))
         ssoAssocResult = self.solarSystemAssociator.run(
             diaCat,
             ssCat,
-            visitInfo=visitSummary.find(detector).visitInfo,
-            bbox=visitSummary.find(detector).getBBox(),
-            wcs=visitSummary.find(detector).wcs,
+            visitInfo=row.visitInfo,
+            bbox=row.getBBox(),
+            wcs=row.wcs,
+            shutterTiming=shutterTiming,
         )
 
         ssInTractPatch = self._trimToPatch(ssoAssocResult.associatedSsSources.to_pandas(),

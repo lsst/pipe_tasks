@@ -1855,7 +1855,8 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
                              "starKurtosisMedian", "starE41Median", "starE42Median",
                              "effTime", "effTimePsfSigmaScale",
                              "effTimeSkyBgScale", "effTimeZeroPointScale",
-                             "magLim"]
+                             "magLim", "detectorMidpointMjdTai", "shutterChebyshevYCenter",
+                             "shutterChebyshevYHalfRange"]
             ccdEntry = summaryTable[selectColumns]
             # 'visit' is the human readable visit number.
             # 'visitId' is the key to the visitId table. They are the same.
@@ -1904,6 +1905,9 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
             ccdEntry["urcdec"] = summaryTable["decCorners"][:, 2]
             ccdEntry["lrcra"] = summaryTable["raCorners"][:, 3]
             ccdEntry["lrcdec"] = summaryTable["decCorners"][:, 3]
+            shutterChebyshev = summaryTable["shutterChebyshevCoefficients"]
+            for k in range(shutterChebyshev.shape[1]):
+                ccdEntry[f"shutterChebyshevCoefficient{k}"] = shutterChebyshev[:, k]
             # These columns are only added on certain updateVisitSummary
             # configurations, and we want to rename them to camelCase and
             # convert to arcseconds here.
