@@ -74,8 +74,7 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         exposure.setDetector(detector)
         # Shutter-corrected times recorded by ISR.
         shutterTiming = ShutterTiming(centerMidpointMjdTai=61000.5, chebyshevCoefficients=np.arange(6.0),
-                                      chebyshevYCenter=49.5, chebyshevYHalfRange=50.0, reanchored=False,
-                                      source="header")
+                                      chebyshevYCenter=49.5, chebyshevYHalfRange=50.0)
         shutterTiming.toMetadata(metadata)
         exposure.setMetadata(metadata)
 

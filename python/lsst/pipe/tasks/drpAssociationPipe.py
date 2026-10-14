@@ -155,8 +155,8 @@ class DrpAssociationPipeConfig(
         dtype=bool,
         default=False,
         doc="Predict solar system objects at the shutter-corrected time of the pixel each falls on "
-            "(lsst.ip.isr.shutterTiming, from the detector's visit summary), instead of the header "
-            "midpoint (visitInfo.date).",
+            "(lsst.ip.isr.shutterTiming, from the detector's visit summary); if the detector has none, "
+            "at the header midpoint (visitInfo.date).",
     )
     doUseSchema = pexConfig.Field(
         dtype=bool,
