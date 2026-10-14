@@ -588,8 +588,8 @@ def _makeDiaSources(ra, dec, offsetArcsec):
 
 class FakeShutterTiming:
     """Stand-in for `lsst.ip.isr.shutterTiming.ShutterTiming`: the time
-    ``midpointMjdTai`` everywhere, or NaN everywhere (a detector without
-    corrected times) by default.
+    ``midpointMjdTai`` everywhere, or NaN everywhere (no position has a
+    time) by default.
     """
 
     def __init__(self, midpointMjdTai=np.nan):
@@ -698,9 +698,9 @@ class TestShutterTimingEpochs(lsst.utils.tests.TestCase):
             with self.subTest(obj["name"]):
                 self._assertMatchesTruth(obj, _makeSorchaObjects, _tolerances(obj["sorchaLinearError"]))
 
-    def testUnavailableKeepsVisitTime(self):
-        """Check that a detector without corrected times gives exactly the
-        result without timing, for both ephemeris sources, and that
+    def testNoTimeKeepsVisitTime(self):
+        """Check that predictions without a corrected time (NaN) give exactly
+        the result without timing, for both ephemeris sources, and that
         unassociated predictions record the ephemeris epoch.
         """
         for obj in self.objects:
