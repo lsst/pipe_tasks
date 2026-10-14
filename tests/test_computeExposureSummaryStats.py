@@ -33,6 +33,7 @@ from lsst.daf.base import DateTime, PropertyList
 from lsst.afw.coord import Observatory
 from lsst.afw.geom import makeCdMatrix, makeSkyWcs
 from lsst.afw.cameraGeom.testUtils import DetectorWrapper
+from lsst.ip.isr.shutterTiming import ShutterTiming
 from lsst.pipe.tasks.computeExposureSummaryStats import ComputeExposureSummaryStatsTask
 from lsst.pipe.tasks.computeExposureSummaryStats import ComputeExposureSummaryStatsConfig
 from lsst.pipe.tasks.computeExposureSummaryStats import compute_magnitude_limit
@@ -71,6 +72,11 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
             metadata.add(f"LSST ISR READNOISE {amp.getName()}", readNoise)
             metadata.add(f"LSST ISR GAIN {amp.getName()}", gain)
         exposure.setDetector(detector)
+        # Shutter-corrected times recorded by ISR.
+        shutterTiming = ShutterTiming(centerMidpointMjdTai=61000.5, chebyshevCoefficients=np.arange(6.0),
+                                      chebyshevYCenter=49.5, chebyshevYHalfRange=50.0,
+                                      centerExposureTime=30.001, reanchored=False, source="header")
+        shutterTiming.toMetadata(metadata)
         exposure.setMetadata(metadata)
 
         skyMean = 100.0
@@ -190,6 +196,13 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         # Effective exposure time and depth
         self.assertFloatsAlmostEqual(summary.magLim, config.fiducialMagLim[band], rtol=1e-3)
         self.assertFloatsAlmostEqual(summary.effTime, expTime, rtol=1e-3)
+
+        # Shutter-corrected times
+        self.assertEqual(summary.shutterMidpointMjdTai, shutterTiming.centerMidpointMjdTai)
+        self.assertEqual(summary.shutterChebyshevCoefficients, [0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+        self.assertEqual(summary.shutterChebyshevYCenter, 49.5)
+        self.assertEqual(summary.shutterChebyshevYHalfRange, 50.0)
+        self.assertEqual(summary.shutterExposureTime, 30.001)
 
     def testComputeMagnitudeLimit(self):
         """Test the magnitude limit calculation using fiducials from SMTN-002

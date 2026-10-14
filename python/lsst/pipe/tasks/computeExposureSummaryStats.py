@@ -38,6 +38,7 @@ from lsst.meas.algorithms import ScienceSourceSelectorTask
 from lsst.meas.algorithms.computeExPsf import ComputeExPsfTask
 from lsst.utils.timer import timeMethod
 import lsst.ip.isr as ipIsr
+from lsst.ip.isr.shutterTiming import ShutterTiming
 
 
 class ComputeExposureSummaryStatsConfig(pexConfig.Config):
@@ -338,6 +339,14 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
     - effTimeSkyBgScale
     - effTimeZeroPointScale
     - magLim
+
+    These quantities are copied from the shutter-corrected times that ISR
+    records in the metadata (`lsst.ip.isr.shutterTiming`), if any:
+    - shutterMidpointMjdTai
+    - shutterChebyshevCoefficients
+    - shutterChebyshevYCenter
+    - shutterChebyshevYHalfRange
+    - shutterExposureTime
     """
     ConfigClass = ComputeExposureSummaryStatsConfig
     _DefaultName = "computeExposureSummaryStats"
@@ -411,6 +420,9 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
         if "SFM_ASTROM_OFFSET_MEAN" in md:
             summary.astromOffsetMean = md["SFM_ASTROM_OFFSET_MEAN"]
             summary.astromOffsetStd = md["SFM_ASTROM_OFFSET_STD"]
+        shutterTiming = ShutterTiming.fromMetadata(md)
+        if shutterTiming is not None:
+            shutterTiming.updateSummaryStats(summary)
 
         return summary
 
