@@ -74,8 +74,8 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         exposure.setDetector(detector)
         # Shutter-corrected times recorded by ISR.
         shutterTiming = ShutterTiming(centerMidpointMjdTai=61000.5, chebyshevCoefficients=np.arange(6.0),
-                                      chebyshevYCenter=49.5, chebyshevYHalfRange=50.0,
-                                      centerExposureTime=30.001, reanchored=False, source="header")
+                                      chebyshevYCenter=49.5, chebyshevYHalfRange=50.0, reanchored=False,
+                                      source="header")
         shutterTiming.toMetadata(metadata)
         exposure.setMetadata(metadata)
 
@@ -198,11 +198,10 @@ class ComputeExposureSummaryTestCase(lsst.utils.tests.TestCase):
         self.assertFloatsAlmostEqual(summary.effTime, expTime, rtol=1e-3)
 
         # Shutter-corrected times
-        self.assertEqual(summary.shutterMidpointMjdTai, shutterTiming.centerMidpointMjdTai)
+        self.assertEqual(summary.detectorMidpointMjdTai, shutterTiming.centerMidpointMjdTai)
         self.assertEqual(summary.shutterChebyshevCoefficients, [0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
         self.assertEqual(summary.shutterChebyshevYCenter, 49.5)
         self.assertEqual(summary.shutterChebyshevYHalfRange, 50.0)
-        self.assertEqual(summary.shutterExposureTime, 30.001)
 
     def testComputeMagnitudeLimit(self):
         """Test the magnitude limit calculation using fiducials from SMTN-002

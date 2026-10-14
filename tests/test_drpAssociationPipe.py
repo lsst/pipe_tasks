@@ -111,8 +111,8 @@ class TestDrpAssociationPipe(lsst.utils.tests.TestCase):
         row = visitSummary.addNew()
         row.setId(5)
         timing = ShutterTiming(centerMidpointMjdTai=61000.5, chebyshevCoefficients=np.arange(6.0),
-                               chebyshevYCenter=1999.5, chebyshevYHalfRange=2000.0,
-                               centerExposureTime=30.001, reanchored=False, source="header")
+                               chebyshevYCenter=1999.5, chebyshevYHalfRange=2000.0, reanchored=False,
+                               source="header")
         summary = ExposureSummaryStats()
         timing.updateSummaryStats(summary)
         summary.update_record(row)

@@ -342,11 +342,10 @@ class ComputeExposureSummaryStatsTask(pipeBase.Task):
 
     These quantities are copied from the shutter-corrected times that ISR
     records in the metadata (`lsst.ip.isr.shutterTiming`), if any:
-    - shutterMidpointMjdTai
+    - detectorMidpointMjdTai
     - shutterChebyshevCoefficients
     - shutterChebyshevYCenter
     - shutterChebyshevYHalfRange
-    - shutterExposureTime
     """
     ConfigClass = ComputeExposureSummaryStatsConfig
     _DefaultName = "computeExposureSummaryStats"

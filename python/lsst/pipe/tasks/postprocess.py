@@ -1855,8 +1855,8 @@ class MakeCcdVisitTableTask(pipeBase.PipelineTask):
                              "starKurtosisMedian", "starE41Median", "starE42Median",
                              "effTime", "effTimePsfSigmaScale",
                              "effTimeSkyBgScale", "effTimeZeroPointScale",
-                             "magLim", "shutterMidpointMjdTai", "shutterChebyshevYCenter",
-                             "shutterChebyshevYHalfRange", "shutterExposureTime"]
+                             "magLim", "detectorMidpointMjdTai", "shutterChebyshevYCenter",
+                             "shutterChebyshevYHalfRange"]
             ccdEntry = summaryTable[selectColumns]
             # 'visit' is the human readable visit number.
             # 'visitId' is the key to the visitId table. They are the same.
