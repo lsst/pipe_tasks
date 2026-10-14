@@ -48,11 +48,11 @@ def _make_handle(skymap, tract, patch, value, metadata=None):
     return InMemoryDatasetHandle(inMemoryDataset=image, skymap="test", tract=tract, patch=patch)
 
 
-def _make_run_task(reference_tract=0, bin_factor=1, crop_output=True):
+def _make_run_task(reference_tract=0, bin_factor=1, crop_mode="full_coverage"):
     config = MetaMosaicConfig()
     config.reference_tract = reference_tract
     config.bin_factor = bin_factor
-    config.crop_output = crop_output
+    config.crop_mode = crop_mode
     return MetaMosaicTask(config=config)
 
 
@@ -210,7 +210,7 @@ class TestScaledProjection:
 class TestRunEndToEnd:
     def test_mosaic_shape_and_placement(self):
         skymap = _make_skymap()
-        task = _make_run_task(reference_tract=0)
+        task = _make_run_task(reference_tract=0, crop_mode="data_extent")
         ref_bbox = skymap[0][0].getOuterBBox()
 
         handles = [
@@ -294,9 +294,14 @@ class TestRunEndToEnd:
 
     def test_overlapping_patches_are_averaged(self):
         """Two foreign patches overlapping one cell should be combined by
-        the NaN-reweighted feather (weighted mean where both are valid)."""
+        the NaN-reweighted feather (weighted mean where both are valid).
+
+        Run with crop_mode="data_extent": warped parallelogram margins leave
+        holes in every claimed cell, so "full_coverage" would (correctly)
+        refuse to crop this mosaic at all; this test is about blending.
+        """
         skymap = _make_skymap()
-        task = _make_run_task(reference_tract=0)
+        task = _make_run_task(reference_tract=0, crop_mode="data_extent")
 
         # Two adjacent foreign-tract patches (0 and 1) of different colors.
         handles = [
@@ -343,11 +348,11 @@ class TestRunEndToEnd:
     def test_bin_factor_halves_dimensions(self):
         """A bin factor of 2 must halve each output dimension.
 
-        Cropping is disabled so the base rectangle is the full touched-cells
-        grid and the pure binning math is exercised.
+        Cropping is disabled (crop_mode="none") so the base rectangle is the
+        full touched-cells grid and the pure binning math is exercised.
         """
         skymap = _make_skymap()
-        task = _make_run_task(reference_tract=0, crop_output=False)
+        task = _make_run_task(reference_tract=0, crop_mode="none")
         handles = [
             _make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]),
             _make_handle(skymap, 1, 0, [0.0, 0.0, 1.0]),
@@ -363,7 +368,7 @@ class TestRunEndToEnd:
         config = MetaMosaicConfig()
         config.bin_factor = 2
         config.reference_tract = 0
-        config.crop_output = False
+        config.crop_mode = "none"
         binned = MetaMosaicTask(config=config)
         try:
             result = binned.run(inputRGB=handles, skyMap=skymap)
@@ -377,8 +382,9 @@ class TestRunEndToEnd:
         assert array.shape[0] == fshape[0] // 2
 
     def test_crops_empty_margin(self):
-        """The output is cropped to the data footprint, not the touched-cells
-        rectangle: corner cells the foreign patch only inflates into are dropped.
+        """With crop_mode="data_extent" the output is cropped to the data
+        footprint, not the touched-cells rectangle: corner cells the foreign
+        patch only inflates into are dropped.
         """
         skymap = _make_skymap()
         ref_bbox = skymap[0][0].getOuterBBox()
@@ -387,7 +393,7 @@ class TestRunEndToEnd:
             _make_handle(skymap, 1, 0, [0.0, 0.0, 1.0]),  # foreign tract: blue
         ]
 
-        task = _make_run_task(reference_tract=0)  # crop_output defaults to True
+        task = _make_run_task(reference_tract=0, crop_mode="data_extent")
         try:
             cropped = task.run(inputRGB=list(handles), skyMap=skymap)
         finally:
@@ -395,7 +401,7 @@ class TestRunEndToEnd:
                 if hasattr(task, attr):
                     getattr(task, attr).close()
 
-        full_task = _make_run_task(reference_tract=0, crop_output=False)
+        full_task = _make_run_task(reference_tract=0, crop_mode="none")
         try:
             uncropped = full_task.run(inputRGB=list(handles), skyMap=skymap)
         finally:
@@ -432,7 +438,8 @@ class TestRunEndToEnd:
         The foreign patch is placed far enough along the tract-1 row that two
         fully unclaimed (gap) cells separate it from the reference patch, so
         the reference cell's feathered seam has no neighbor covering it and
-        sits strictly inside the output raster.
+        sits strictly inside the output raster (data_extent mode keeps the
+        raster spanning the gap and the outlier).
         """
         skymap = _make_skymap()
         ref_bbox = skymap[0][0].getOuterBBox()
@@ -440,7 +447,7 @@ class TestRunEndToEnd:
             _make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]),  # reference tract: red
             _make_handle(skymap, 1, 5, [0.0, 0.0, 1.0]),  # foreign tract: blue, 5 cells away
         ]
-        task = _make_run_task(reference_tract=0)
+        task = _make_run_task(reference_tract=0, crop_mode="data_extent")
         try:
             result = task.run(inputRGB=handles, skyMap=skymap)
         finally:
@@ -545,6 +552,458 @@ class TestRunEndToEnd:
                     getattr(task, attr).close()
 
 
+class TestCropModes:
+    """End-to-end tests for the ``crop_mode`` options ("none",
+    "full_coverage", "data_extent"). Fixtures are fully deterministic (no RNG).
+    """
+
+    @staticmethod
+    def _projections(skymap):
+        ref_proj = SkyProjection.from_legacy(
+            skymap[0].getWcs(),
+            TractFrame(skymap="test", tract=0, bbox=Box.from_legacy(skymap[0].bbox)),
+        )
+        patch_proj = SkyProjection.from_legacy(
+            skymap[1].getWcs(),
+            TractFrame(skymap="test", tract=1, bbox=Box.from_legacy(skymap[1].bbox)),
+        )
+        return ref_proj, patch_proj
+
+    @pytest.mark.parametrize("crop_mode", ["full_coverage", "data_extent"])
+    def test_no_data_raises_when_cropping(self, crop_mode):
+        """An input whose pixels are all NaN leaves no weighted pixel: both
+        crop modes must fail with a clear ValueError instead of emitting an
+        all-black mosaic (crop_mode="none" keeps the old no-crop behavior).
+        """
+        skymap = _make_skymap()
+        bbox = skymap[0][0].getOuterBBox()
+        nan_rgb = np.full((bbox.getHeight(), bbox.getWidth(), 3), np.nan, dtype=np.float32)
+        handles = [
+            InMemoryDatasetHandle(
+                inMemoryDataset=ColorImage(nan_rgb, bbox=Box.from_legacy(bbox)),
+                skymap="test",
+                tract=0,
+                patch=0,
+            ),
+        ]
+        task = _make_run_task(reference_tract=0, crop_mode=crop_mode)
+        try:
+            with pytest.raises(ValueError, match="no pixels that received data"):
+                task.run(inputRGB=handles, skyMap=skymap)
+        finally:
+            for attr in ("imageHandle", "weightHandle"):
+                if hasattr(task, attr):
+                    getattr(task, attr).close()
+
+    def test_data_extent_retains_outlier(self):
+        """data_extent keeps data that full_coverage-style dense cropping would
+        leave stranded: an outlier foreign patch separated from the reference
+        by gap cells must remain inside the output raster, non-black.
+        """
+        skymap = _make_skymap()
+        handles = [
+            _make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]),  # reference tract: red
+            _make_handle(skymap, 1, 5, [0.0, 0.0, 1.0]),  # foreign tract: blue outlier
+        ]
+        task = _make_run_task(reference_tract=0, crop_mode="data_extent")
+        try:
+            result = task.run(inputRGB=list(handles), skyMap=skymap)
+        finally:
+            for attr in ("imageHandle", "weightHandle"):
+                if hasattr(task, attr):
+                    getattr(task, attr).close()
+        image = result.outputRGBMosaic
+        array = image.array
+        assert np.all(np.isfinite(array))
+
+        # The mosaic covers the outlier: its mapped center is inside the
+        # output box, and a sample of far-right outlier pixels is non-black.
+        ref_proj, patch_proj = self._projections(skymap)
+        mapped = task._map_patch_box_to_ref(patch_proj, skymap[1][5].getOuterBBox(), ref_proj)
+        out_box = image.bbox.to_legacy()
+        assert out_box.contains(Point2I(mapped.getCenter()))
+        assert np.any(array[..., -100:, 2] > 0.5)
+        # The reference data is still intact at its 1:1 location.
+        ref_bbox = skymap[0][0].getOuterBBox()
+        ax = int(ref_bbox.getCenterX() - out_box.getMinX())
+        ay = int(ref_bbox.getCenterY() - out_box.getMinY())
+        np.testing.assert_allclose(array[ay, ax, :], [1.0, 0.0, 0.0], atol=1e-2)
+
+    def test_data_extent_contains_full_coverage(self):
+        """The data_extent rectangle must contain the full_coverage one for
+        the same inputs (data_extent trims no more than full_coverage).
+        """
+        skymap = _make_skymap()
+        handles = [
+            _make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]),
+            _make_handle(skymap, 1, 5, [0.0, 0.0, 1.0]),
+        ]
+        boxes = {}
+        for mode in ("full_coverage", "data_extent"):
+            task = _make_run_task(reference_tract=0, crop_mode=mode)
+            try:
+                result = task.run(inputRGB=list(handles), skyMap=skymap)
+            finally:
+                for attr in ("imageHandle", "weightHandle"):
+                    if hasattr(task, attr):
+                        getattr(task, attr).close()
+            boxes[mode] = result.outputRGBMosaic.bbox.to_legacy()
+        assert boxes["data_extent"].contains(boxes["full_coverage"])
+
+    def test_data_extent_interior_hole_and_data_edges_survive(self):
+        """data_extent trims only entirely empty outer rows/columns: the
+        output bbox starts/ends at the first/last row/column containing any
+        data, and interior black holes survive inside the raster.
+        """
+        skymap = _make_skymap()
+        handles = [
+            _make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]),  # reference tract: red
+            _make_handle(skymap, 1, 0, [0.0, 0.0, 1.0]),  # foreign tract: blue
+        ]
+        task = _make_run_task(reference_tract=0, crop_mode="data_extent")
+        try:
+            result = task.run(inputRGB=list(handles), skyMap=skymap)
+        finally:
+            for attr in ("imageHandle", "weightHandle"):
+                if hasattr(task, attr):
+                    getattr(task, attr).close()
+        image = result.outputRGBMosaic
+        array = image.array
+        assert np.all(np.isfinite(array))
+
+        # Edge-only trimming: expected origin/shape derived independently from
+        # an uncropped run of the same inputs, by first/last rows/columns with
+        # any non-black pixel (the solid colors normalize to 1.0 in at least
+        # one channel wherever weight > 0; empty pixels are exactly 0).
+        none_task = _make_run_task(reference_tract=0, crop_mode="none")
+        try:
+            none_res = none_task.run(inputRGB=list(handles), skyMap=skymap)
+        finally:
+            for attr in ("imageHandle", "weightHandle"):
+                if hasattr(none_task, attr):
+                    getattr(none_task, attr).close()
+        none_box = none_res.outputRGBMosaic.bbox.to_legacy()
+        nonblack = np.any(np.asarray(none_res.outputRGBMosaic.array) > 0.5, axis=-1)
+        rr = np.flatnonzero(nonblack.any(axis=1))
+        cc = np.flatnonzero(nonblack.any(axis=0))
+        expected = Box2I(
+            Point2I(none_box.getMinX() + int(cc[0]), none_box.getMinY() + int(rr[0])),
+            Extent2I(int(cc[-1]) - int(cc[0]) + 1, int(rr[-1]) - int(rr[0]) + 1),
+        )
+        assert image.bbox.to_legacy() == expected
+
+        # Interior holes: strictly-interior black pixels survive, and the
+        # rows/columns through them still cross real data (so they were
+        # legitimately kept, not trimmable outer rows/columns).
+        interior_black = np.all(array[5:-5, 5:-5] == 0.0, axis=-1)
+        assert interior_black.any()
+        hole_y, hole_x = (np.argwhere(interior_black)[0] + 5).astype(int)
+        assert np.any(array[hole_y] > 0.5)
+        assert np.any(array[:, hole_x] > 0.5)
+
+    def test_data_extent_with_binning(self):
+        """data_extent and binning compose: crop to the data extent first,
+        then halve the cropped rectangle (rounded down).
+        """
+        skymap = _make_skymap()
+        handles = [
+            _make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]),
+            _make_handle(skymap, 1, 5, [0.0, 0.0, 1.0]),
+        ]
+        base = _make_run_task(reference_tract=0, crop_mode="data_extent")
+        try:
+            full_res = base.run(inputRGB=list(handles), skyMap=skymap)
+        finally:
+            for attr in ("imageHandle", "weightHandle"):
+                if hasattr(base, attr):
+                    getattr(base, attr).close()
+        crop_h, crop_w = full_res.outputRGBMosaic.array.shape[:2]
+
+        binned = _make_run_task(reference_tract=0, bin_factor=2, crop_mode="data_extent")
+        try:
+            result = binned.run(inputRGB=list(handles), skyMap=skymap)
+        finally:
+            for attr in ("imageHandle", "weightHandle"):
+                if hasattr(binned, attr):
+                    getattr(binned, attr).close()
+        image = result.outputRGBMosaic
+        array = image.array
+        assert np.all(np.isfinite(array))
+        # Cropped-binned dims are half (floored) of the cropped full-res dims,
+        # at the binned-box origin (0, 0).
+        assert array.shape[1] == crop_w // 2
+        assert array.shape[0] == crop_h // 2
+        binned_box = image.bbox.to_legacy()
+        assert binned_box.getMinX() == 0 and binned_box.getMinY() == 0
+        assert binned_box.getWidth() == crop_w // 2
+        assert binned_box.getHeight() == crop_h // 2
+        # Both tracts' colors survive crop+bin.
+        assert np.any(array[..., 2] > 0.5)
+        assert np.any(array[..., 0] > 0.5)
+
+    def test_full_coverage_drops_outlier_cluster(self):
+        """full_coverage (the default) crops to fully covered virtual-patch
+        cells only: a far outlier patch whose warped parallelogram leaves
+        holes in its cells falls outside the crop entirely.
+        """
+        skymap = _make_skymap()
+        ref_bbox = skymap[0][0].getOuterBBox()
+        handles = [
+            _make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]),  # reference tract: red
+            _make_handle(skymap, 1, 7, [0.0, 0.0, 1.0]),  # foreign tract: far outlier cluster
+        ]
+        task = _make_run_task(reference_tract=0)  # crop_mode defaults to "full_coverage"
+        try:
+            result = task.run(inputRGB=list(handles), skyMap=skymap)
+        finally:
+            for attr in ("imageHandle", "weightHandle"):
+                if hasattr(task, attr):
+                    getattr(task, attr).close()
+        image = result.outputRGBMosaic
+        array = image.array
+
+        # (a) The outlier blue cluster is gone: no strong blue anywhere.
+        assert array[..., 2].max() < 0.5
+        # (b) The crop is NaN-free and never black: finite everywhere with
+        # every pixel carrying (red) data.
+        assert np.all(np.isfinite(array))
+        assert (array.sum(axis=-1) > 0).all()
+        # (c) The reference patch survives 1:1 at its center.
+        out_box = image.bbox.to_legacy()
+        ax = int(ref_bbox.getCenterX() - out_box.getMinX())
+        ay = int(ref_bbox.getCenterY() - out_box.getMinY())
+        np.testing.assert_allclose(array[ay, ax, :], [1.0, 0.0, 0.0], atol=1e-2)
+        # (d) Strictly smaller than the uncropped raster.
+        none_task = _make_run_task(reference_tract=0, crop_mode="none")
+        try:
+            none_res = none_task.run(inputRGB=list(handles), skyMap=skymap)
+        finally:
+            for attr in ("imageHandle", "weightHandle"):
+                if hasattr(none_task, attr):
+                    getattr(none_task, attr).close()
+        none_shape = none_res.outputRGBMosaic.array.shape
+        assert array.shape[0] < none_shape[0]
+        assert array.shape[1] < none_shape[1]
+
+    def test_full_coverage_retains_fully_covered_region(self):
+        """The standard adjacent two-tract fixture keeps both tracts inside
+        the full_coverage crop (the foreign parallelogram overlaps the
+        reference cell, which is the fully covered region), and it excludes
+        the inflated corner cells (strictly smaller than "none").
+        """
+        skymap = _make_skymap()
+        handles = [
+            _make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]),  # reference tract: red
+            _make_handle(skymap, 1, 0, [0.0, 0.0, 1.0]),  # foreign tract: blue, adjacent
+        ]
+        task = _make_run_task(reference_tract=0)  # crop_mode defaults to "full_coverage"
+        try:
+            result = task.run(inputRGB=list(handles), skyMap=skymap)
+        finally:
+            for attr in ("imageHandle", "weightHandle"):
+                if hasattr(task, attr):
+                    getattr(task, attr).close()
+        image = result.outputRGBMosaic
+        array = image.array
+        assert np.all(np.isfinite(array))
+        # Fully covered: no all-black pixel.
+        assert (array.sum(axis=-1) > 0).all()
+        # Both tracts present: red dominates the reference interior, and the
+        # blue channel dominates where the foreign patch overrides the
+        # reference feather weights.
+        assert np.any(array[..., 0] > 0.5)
+        assert np.any(array[..., 2] > 0.5)
+        # Strictly smaller than the uncropped rectangle (inflated corner
+        # cells with holes are excluded).
+        none_task = _make_run_task(reference_tract=0, crop_mode="none")
+        try:
+            none_res = none_task.run(inputRGB=list(handles), skyMap=skymap)
+        finally:
+            for attr in ("imageHandle", "weightHandle"):
+                if hasattr(none_task, attr):
+                    getattr(none_task, attr).close()
+        none_shape = none_res.outputRGBMosaic.array.shape
+        assert array.shape[0] < none_shape[0]
+        assert array.shape[1] < none_shape[1]
+
+    def test_full_coverage_with_binning(self):
+        """full_coverage + bin_factor=2: crop to the fully covered cell first,
+        then halve the cropped rectangle (rounded down).
+        """
+        skymap = _make_skymap()
+        handles = [
+            _make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]),
+            _make_handle(skymap, 1, 7, [0.0, 0.0, 1.0]),
+        ]
+        base = _make_run_task(reference_tract=0)
+        try:
+            full_res = base.run(inputRGB=list(handles), skyMap=skymap)
+        finally:
+            for attr in ("imageHandle", "weightHandle"):
+                if hasattr(base, attr):
+                    getattr(base, attr).close()
+        crop_h, crop_w = full_res.outputRGBMosaic.array.shape[:2]
+
+        binned = _make_run_task(reference_tract=0, bin_factor=2)
+        try:
+            result = binned.run(inputRGB=list(handles), skyMap=skymap)
+        finally:
+            for attr in ("imageHandle", "weightHandle"):
+                if hasattr(binned, attr):
+                    getattr(binned, attr).close()
+        image = result.outputRGBMosaic
+        array = image.array
+        assert np.all(np.isfinite(array))
+        assert array.shape[1] == crop_w // 2
+        assert array.shape[0] == crop_h // 2
+        binned_box = image.bbox.to_legacy()
+        assert binned_box.getMinX() == 0 and binned_box.getMinY() == 0
+        assert binned_box.getWidth() == crop_w // 2
+        assert binned_box.getHeight() == crop_h // 2
+        assert (array.sum(axis=-1) > 0).all()
+        assert np.any(array[..., 0] > 0.5)
+
+    def test_full_coverage_bin_exceeds_crop_raises(self):
+        """A bin factor beyond the full_coverage crop dims raises the clear
+        ValueError from run (same guard as the other crop modes).
+        """
+        skymap = _make_skymap()
+        handles = [
+            _make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]),
+            _make_handle(skymap, 1, 7, [0.0, 0.0, 1.0]),
+        ]
+        task = _make_run_task(reference_tract=0, bin_factor=2000)
+        try:
+            with pytest.raises(ValueError, match="bin_factor"):
+                task.run(inputRGB=list(handles), skyMap=skymap)
+        finally:
+            for attr in ("imageHandle", "weightHandle"):
+                if hasattr(task, attr):
+                    getattr(task, attr).close()
+
+
+def _cell_grid_weight(grid, cell=10):
+    """Render a boolean ``(ncy, ncx)`` cell-validity grid into a weight array
+    with pitch == cell == ``cell`` (cells exactly tile the canvas).
+    """
+    ncy, ncx = grid.shape
+    weight = np.zeros((ncy * cell, ncx * cell), dtype=np.float32)
+    for cj in range(ncy):
+        for ci in range(ncx):
+            if grid[cj, ci]:
+                weight[cj * cell : (cj + 1) * cell, ci * cell : (ci + 1) * cell] = 1.0
+    return weight
+
+
+def _brute_force_max_rect(grid, ncx, ncy, ref_cell):
+    """Brute-force cell-rectangle search with the documented ordering:
+    max area, prefer containing ref_cell, then smaller j, then smaller i."""
+    best = None
+    for ci0 in range(ncx):
+        for ci1 in range(ci0, ncx):
+            for cj0 in range(ncy):
+                for cj1 in range(cj0, ncy):
+                    if not grid[cj0 : cj1 + 1, ci0 : ci1 + 1].all():
+                        continue
+                    candidate = (ci0, ci1, cj0, cj1)
+                    if best is None:
+                        best = candidate
+                        continue
+                    bi0, bi1, bj0, bj1 = best
+                    area = (ci1 - ci0 + 1) * (cj1 - cj0 + 1)
+                    best_area = (bi1 - bi0 + 1) * (bj1 - bj0 + 1)
+                    if area != best_area:
+                        if area > best_area:
+                            best = candidate
+                        continue
+                    if ref_cell is not None:
+                        has_ref = ci0 <= ref_cell[0] <= ci1 and cj0 <= ref_cell[1] <= cj1
+                        best_has_ref = bi0 <= ref_cell[0] <= bi1 and bj0 <= ref_cell[1] <= bj1
+                        if has_ref != best_has_ref:
+                            if has_ref:
+                                best = candidate
+                            continue
+                    if cj0 != bj0:
+                        if cj0 < bj0:
+                            best = candidate
+                        continue
+                    if ci0 < bi0:
+                        best = candidate
+    return best
+
+
+class TestFullCoverageBBox:
+    """Unit tests for :meth:`MetaMosaicTask._full_coverage_bbox` on synthetic
+    weight arrays with explicit (pitch == cell) cell geometry."""
+
+    @staticmethod
+    def _bbox(grid, cell=10, ref_cell=None):
+        ncy, ncx = grid.shape
+        task = _make_run_task()
+        return task._full_coverage_bbox(
+            (ncy * cell, ncx * cell),
+            _cell_grid_weight(grid, cell),
+            pitch_x=cell,
+            pitch_y=cell,
+            cell_w=cell,
+            cell_h=cell,
+            ncx=ncx,
+            ncy=ncy,
+            ref_cell=ref_cell,
+        )
+
+    def test_hole_carves_out_cells(self):
+        """A single hole cell splits the grid; the max rectangle is the two
+        intact rows below it (hand-computed).
+        """
+        grid = np.ones((3, 3), dtype=bool)
+        grid[0, 1] = False  # hole in the top-middle cell
+        bbox = self._bbox(grid)
+        # Rows 1..2, cols 0..2 fully valid -> pixels x [0, 29], y [10, 29].
+        assert bbox == Box2I(Point2I(0, 10), Extent2I(30, 20))
+
+    def test_no_valid_cell_returns_none(self):
+        assert self._bbox(np.zeros((2, 2), dtype=bool)) is None
+
+    def test_tie_prefers_rectangle_containing_ref_cell(self):
+        # Two disjoint 2x2 blocks of equal area; ref_cell sits inside the
+        # lower-right one, which must win over the (otherwise later) winner.
+        grid = np.zeros((3, 4), dtype=bool)
+        grid[0:2, 0:2] = True
+        grid[1:3, 2:4] = True
+        expected = Box2I(Point2I(20, 10), Extent2I(20, 20))  # cells (2..3, 1..2)
+        assert self._bbox(grid, ref_cell=(3, 2)) == expected
+        # Without the reference anchor the tie falls to smaller j, then i:
+        # the upper-left block (j_min = 0).
+        assert self._bbox(grid, ref_cell=None) == Box2I(Point2I(0, 0), Extent2I(20, 20))
+
+    def test_tie_falls_back_to_leftmost(self):
+        # Two equal-area 1x2 strips in the same row, separated by an invalid
+        # cell: smaller i wins.
+        grid = np.zeros((2, 5), dtype=bool)
+        grid[0, 0:2] = True
+        grid[0, 3:5] = True
+        assert self._bbox(grid, ref_cell=None) == Box2I(Point2I(0, 0), Extent2I(20, 10))
+
+    @pytest.mark.parametrize("shape, seed", [((4, 5), 42), ((3, 6), 43), ((5, 4), 44)])
+    def test_random_patterns_match_brute_force(self, shape, seed):
+        """The monotone-stack search must equal a brute-force rectangle search
+        (with the documented tie-break) on seeded random cell patterns."""
+        ncy, ncx = shape
+        rng = np.random.default_rng(seed)
+        grid = rng.random((ncy, ncx)) > 0.35
+        if not grid.any():
+            pytest.skip("degenerate seed")
+        ref_cell = (ncx // 2, ncy // 2) if seed == 42 else None
+        bbox = self._bbox(grid, ref_cell=ref_cell)
+        rect = _brute_force_max_rect(grid, ncx, ncy, ref_cell)
+        ci0, ci1, cj0, cj1 = rect
+        assert bbox == Box2I(
+            Point2I(ci0 * 10, cj0 * 10),
+            Extent2I((ci1 - ci0) * 10 + 10, (cj1 - cj0) * 10 + 10),
+        )
+
+
 class TestDataBBox:
     """Unit tests for the band-wise data-extent scan on the weight array."""
 
@@ -574,8 +1033,12 @@ class TestDataBBox:
         bbox = task._data_bbox((40, 40), weight)
         assert bbox == Box2I(Point2I(2, 3), Point2I(37, 30))
 
-    def test_all_zero_returns_none(self):
+    @pytest.mark.parametrize("mode", ["full_coverage", "data_extent"])
+    def test_all_zero_returns_none(self, mode):
         task = _make_run_task()
-        assert task._data_bbox((50, 60), np.zeros((50, 60), dtype=np.float32)) is None
+        assert task._data_bbox((50, 60), np.zeros((50, 60), dtype=np.float32), mode) is None
         # Zero weight in a band beyond the rows scanned so far is still None.
-        assert task._data_bbox((50, 60), np.zeros((50, 60), dtype=np.float32), 7) is None
+        assert (
+            task._data_bbox((50, 60), np.zeros((50, 60), dtype=np.float32), mode, band_rows=7)
+            is None
+        )

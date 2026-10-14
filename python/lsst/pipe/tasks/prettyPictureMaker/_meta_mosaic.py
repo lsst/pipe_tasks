@@ -42,7 +42,7 @@ from lsst.afw.math import Warper
 from lsst.daf.butler import DeferredDatasetHandle
 from lsst.geom import Box2I, Extent2I, Point2D, Point2I
 from lsst.images import Box, SkyProjection, TractFrame
-from lsst.pex.config import ConfigField, Field
+from lsst.pex.config import ChoiceField, ConfigField, Field
 from lsst.pipe.base import (
     InputQuantizedConnection,
     NoWorkFound,
@@ -112,9 +112,20 @@ class MetaMosaicConfig(PipelineTaskConfig, pipelineConnections=MetaMosaicConnect
         optional=True,
         default=None,
     )
-    crop_output = Field[bool](
-        doc="Crop the output raster to the bounding box of pixels that received data.",
-        default=True,
+    crop_mode = ChoiceField(
+        doc="How to crop the output raster.",
+        dtype=str,
+        allowed={
+            "none": "Keep the full union rectangle, empty margins included.",
+            "full_coverage": "Crop to the largest rectangle of fully covered virtual-patch "
+            "cells; cells containing holes are excluded; outlier clusters outside it are "
+            "dropped. The default.",
+            "data_extent": "Crop to the tightest rectangle containing every input pixel: "
+            "only outer rows/columns that are entirely empty are trimmed, so partial rows "
+            "and interior holes survive as black. Intended for inspecting mosaic coverage "
+            "/ what data is missing.",
+        },
+        default="full_coverage",
     )
     warp = ConfigField[Warper.ConfigClass](doc="Warper configuration")
 
@@ -143,9 +154,14 @@ class MetaMosaicTask(PipelineTask):
     Missing data is left as NaN during assembly and replaced with zero only at the
     very end. No mask and no plugins.
 
-    The output raster is cropped to the footprint of the pixels that actually
-    received data (unless ``crop_output`` is disabled); interior holes between
-    rotated footprints remain zero-filled.
+    The output raster is cropped according to ``crop_mode``:
+    "full_coverage" (default) crops to the largest rectangle of fully-covered
+    virtual-patch cells (every pixel carries data); cells containing holes are
+    excluded and outlier clusters outside the rectangle are dropped.
+    "data_extent" crops to the tightest rectangle containing every input
+    pixel, trimming only entirely empty outer rows/columns, so partial rows
+    and interior holes between rotated footprints survive as black (useful
+    for inspecting coverage). "none" keeps the full union rectangle.
     """
 
     _DefaultName = "metaMosaic"
@@ -334,7 +350,11 @@ class MetaMosaicTask(PipelineTask):
         return np.stack(channels, axis=-1)
 
     def _data_bbox(
-        self, mosaic_shape: tuple[int, int], weight: np.ndarray, band_rows: int = 4096
+        self,
+        mosaic_shape: tuple[int, int],
+        weight: np.ndarray,
+        mode: str = "full_coverage",
+        band_rows: int = 4096,
     ) -> Box2I | None:
         """Find the bounding box of the mosaic pixels that received data.
 
@@ -342,7 +362,9 @@ class MetaMosaicTask(PipelineTask):
         full-array boolean temporary is materialized when it is memmap-backed.
         A pixel counts as having data when its accumulated weight is strictly
         positive (the same validity rule :meth:`FeatheredMosaicCreator.finalize`
-        normalizes on).
+        normalizes on); a row or column survives the reduction when it contains
+        at least one such pixel. This implements the "data_extent" crop mode;
+        "full_coverage" is computed by :meth:`_full_coverage_bbox`.
 
         Parameters
         ----------
@@ -350,6 +372,9 @@ class MetaMosaicTask(PipelineTask):
             The full-resolution mosaic shape, ``(height, width)``.
         weight : `numpy.ndarray`
             Two-dimensional ``(height, width)`` weight accumulator.
+        mode : `str`, optional
+            The crop mode (``config.crop_mode``), carried through for
+            provenance.
         band_rows : `int`, optional
             Number of rows processed per band. Default is 4096.
 
@@ -357,8 +382,8 @@ class MetaMosaicTask(PipelineTask):
         -------
         bbox : `lsst.geom.Box2I` | `None`
             The enclosing box in mosaic-local pixel coordinates (inclusive), or
-            `None` if no pixel has weight anywhere (a fully empty mosaic); the
-            caller then skips cropping.
+            `None` if no pixel has weight anywhere (a fully empty mosaic);
+            crop modes treat that as a fatal empty input (`ValueError`).
         """
         n_rows, n_cols = mosaic_shape
         min_row: int | None = None
@@ -389,6 +414,133 @@ class MetaMosaicTask(PipelineTask):
             Point2I(min_col, min_row),
             Extent2I(max_col - min_col + 1, max_row - min_row + 1),
         )
+
+    def _full_coverage_bbox(
+        self,
+        mosaic_shape: tuple[int, int],
+        weight: np.ndarray,
+        *,
+        pitch_x: int,
+        pitch_y: int,
+        cell_w: int,
+        cell_h: int,
+        ncx: int,
+        ncy: int,
+        ref_cell: tuple[int, int] | None = None,
+    ) -> Box2I | None:
+        """Find the largest cell-aligned rectangle of fully covered mosaic cells.
+
+        A virtual-patch cell with canvas-local index ``(ci, cj)`` is fully
+        covered when every pixel of its canvas-clipped window, origin
+        ``(ci * pitch_x, cj * pitch_y)`` and size ``(cell_w, cell_h)``, has
+        strictly positive weight, i.e. received data from at least one
+        contributor. A cell whose window contains any uncovered (NaN-hole)
+        pixel is excluded by construction, so the returned rectangle is
+        guaranteed NaN-free at cell granularity; the border is deliberately
+        not refined to the pixel (conservative, cell-aligned by design).
+
+        The largest all-valid rectangle on the ``ncy x ncx`` boolean cell grid
+        is found exactly with the standard histogram-of-column-heights plus
+        monotone-stack algorithm (the grid is small; plain Python is fine).
+        Rectangles of equal maximal area are tie-broken by preferring one
+        that contains ``ref_cell``, then smaller minimum ``j``, then smaller
+        minimum ``i`` (top-left).
+
+        Parameters
+        ----------
+        mosaic_shape : `tuple` of `int`
+            The full-resolution mosaic shape, ``(height, width)``.
+        weight : `numpy.ndarray`
+            Two-dimensional ``(height, width)`` weight accumulator.
+        pitch_x : `int`
+            Horizontal cell pitch.
+        pitch_y : `int`
+            Vertical cell pitch.
+        cell_w : `int`
+            Cell outer width.
+        cell_h : `int`
+            Cell outer height.
+        ncx : `int`
+            Number of virtual-patch cell columns on the canvas.
+        ncy : `int`
+            Number of virtual-patch cell rows on the canvas.
+        ref_cell : `tuple` of `int`, optional
+            Canvas-local ``(i, j)`` cell index of a reference-tract patch,
+            used to tie-break equal-area rectangles. Default is None.
+
+        Returns
+        -------
+        bbox : `lsst.geom.Box2I` | `None`
+            The cell-aligned box in mosaic-local pixel coordinates (inclusive
+            corners, matching :meth:`_data_bbox`), or `None` if no cell is
+            fully valid; crop modes treat that as a fatal empty input
+            (`ValueError`).
+        """
+        n_rows, n_cols = mosaic_shape
+        valid_cells = np.zeros((ncy, ncx), dtype=bool)
+        for cj in range(ncy):
+            y0 = cj * pitch_y
+            y1 = min(y0 + cell_h, n_rows)
+            for ci in range(ncx):
+                x0 = ci * pitch_x
+                x1 = min(x0 + cell_w, n_cols)
+                valid_cells[cj, ci] = bool((weight[y0:y1, x0:x1] > 0).all())
+        if not valid_cells.any():
+            self.log.warning("Mosaic has no fully covered cell; skipping the output crop.")
+            return None
+
+        def _contains(rect: tuple[int, int, int, int], ci: int, cj: int) -> bool:
+            ri0, ri1, rj0, rj1 = rect
+            return ri0 <= ci <= ri1 and rj0 <= cj <= rj1
+
+        def _better(candidate: tuple[int, int, int, int], incumbent: tuple[int, int, int, int]) -> bool:
+            """Apply the documented maximal-area / tie-break ordering."""
+            ci0, ci1, cj0, cj1 = candidate
+            bi0, bi1, bj0, bj1 = incumbent
+            area = (ci1 - ci0 + 1) * (cj1 - cj0 + 1)
+            best_area = (bi1 - bi0 + 1) * (bj1 - bj0 + 1)
+            if area != best_area:
+                return area > best_area
+            if ref_cell is not None:
+                has_ref = _contains(candidate, *ref_cell)
+                best_has_ref = _contains(incumbent, *ref_cell)
+                if has_ref != best_has_ref:
+                    return has_ref
+            if cj0 != bj0:
+                return cj0 < bj0
+            return ci0 < bi0
+
+        best: tuple[int, int, int, int] | None = None
+
+        def _consider(ci0: int, ci1: int, cj0: int, cj1: int) -> None:
+            nonlocal best
+            candidate = (ci0, ci1, cj0, cj1)
+            if best is None or _better(candidate, best):
+                best = candidate
+
+        # Exact largest-rectangle-in-a-boolean-grid via column heights and a
+        # monotone stack (histogram bars = consecutive valid cells per column).
+        heights = np.zeros(ncx, dtype=int)
+        for cj in range(ncy):
+            heights += 1
+            heights[~valid_cells[cj]] = 0
+            stack: list[tuple[int, int]] = []  # (start column, bar height)
+            for ci in range(ncx + 1):
+                bar = int(heights[ci]) if ci < ncx else 0
+                start = ci
+                while stack and stack[-1][1] > bar:
+                    s_start, s_height = stack.pop()
+                    _consider(s_start, ci - 1, cj - s_height + 1, cj)
+                    start = s_start
+                if not stack or stack[-1][1] < bar:
+                    stack.append((start, bar))
+        assert best is not None
+        bi0, bi1, bj0, bj1 = best
+        x0 = bi0 * pitch_x
+        y0 = bj0 * pitch_y
+        x1 = min(bi1 * pitch_x + cell_w, n_cols)
+        y1 = min(bj1 * pitch_y + cell_h, n_rows)
+        return Box2I(Point2I(x0, y0), Extent2I(x1 - x0, y1 - y0))
 
     def run(
         self,
@@ -605,7 +757,34 @@ class MetaMosaicTask(PipelineTask):
             FeatheredMosaicCreator.finalize(mosaic, weight)
             # The data extent must be measured from the weight accumulator while
             # it is still valid, i.e. before the NaN-to-zero pass below.
-            crop_box = self._data_bbox((mosaic_h, mosaic_w), weight) if self.config.crop_output else None
+            crop_mode = self.config.crop_mode
+            crop_box = None
+            if crop_mode == "data_extent":
+                crop_box = self._data_bbox((mosaic_h, mosaic_w), weight, crop_mode)
+            elif crop_mode == "full_coverage":
+                # Anchor the tie-break on the first reference-tract patch's
+                # canvas-local cell (reference content may be empty when a
+                # non-empty reference tract was forced via config).
+                ref_cell = None
+                if ref_content:
+                    ref_i, ref_j = next(iter(ref_content))
+                    ref_cell = (ref_i - min_i, ref_j - min_j)
+                crop_box = self._full_coverage_bbox(
+                    (mosaic_h, mosaic_w),
+                    weight,
+                    pitch_x=pitch_x,
+                    pitch_y=pitch_y,
+                    cell_w=cell_w,
+                    cell_h=cell_h,
+                    ncx=ncx,
+                    ncy=ncy,
+                    ref_cell=ref_cell,
+                )
+            if crop_mode != "none" and crop_box is None:
+                raise ValueError(
+                    f"Crop mode '{crop_mode}' cannot crop a mosaic with no pixels "
+                    "that received data."
+                )
             # The crop box is inclusive in full-resolution mosaic coordinates;
             # without one the full rectangle is used unchanged.
             if crop_box is not None:
@@ -617,6 +796,21 @@ class MetaMosaicTask(PipelineTask):
                 cy1 = mosaic_h - 1
             crop_w = cx1 - cx0 + 1
             crop_h = cy1 - cy0 + 1
+            if crop_w != mosaic_w or crop_h != mosaic_h:
+                self.log.info("Cropped output to %dx%d of %dx%d px", crop_w, crop_h, mosaic_w, mosaic_h)
+                # Fraction of cropped-region pixels with no finite contributor,
+                # counted in bands over the weight slice (no full-canvas float).
+                empty_pixels = 0
+                for y0 in range(cy0, cy1 + 1, 4096):
+                    band = np.asarray(weight[y0 : min(y0 + 4096, cy1 + 1), cx0 : cx1 + 1])
+                    empty_pixels += int(np.count_nonzero(band == 0.0))
+                self.log.info(
+                    "Crop mode %s: mosaic cropped to %dx%d px; retaining %.1f%% empty pixels",
+                    crop_mode,
+                    crop_w,
+                    crop_h,
+                    100.0 * empty_pixels / (crop_w * crop_h),
+                )
             # Replace the NaN missing-data marker with zero in row bands (views
             # write through to the memmap; no full-array boolean temporary).
             # Only the rows kept by the crop need conversion; rows outside the
@@ -664,8 +858,6 @@ class MetaMosaicTask(PipelineTask):
                 # and SkyProjection.from_legacy's TractFrame bbox describes the
                 # tract, not the output array.
                 sky_proj = ref_proj
-            if crop_w != mosaic_w or crop_h != mosaic_h:
-                self.log.info("Cropped output to %dx%d of %dx%d px", crop_w, crop_h, mosaic_w, mosaic_h)
             result = Struct(
                 outputRGBMosaic=ColorImage(
                     out_array,
