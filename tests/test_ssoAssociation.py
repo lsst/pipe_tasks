@@ -588,8 +588,8 @@ def _makeDiaSources(ra, dec, offsetArcsec):
 
 class FakeShutterTiming:
     """Stand-in for `lsst.ip.isr.shutterTiming.ShutterTiming`: the time
-    ``midpointMjdTai`` everywhere, or NaN everywhere (an UNAVAILABLE
-    detector) by default.
+    ``midpointMjdTai`` everywhere, or NaN everywhere (a detector without
+    corrected times) by default.
     """
 
     def __init__(self, midpointMjdTai=np.nan):
