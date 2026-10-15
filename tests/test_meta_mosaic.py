@@ -1,13 +1,18 @@
+import logging
+import re
+
+import cv2
 import numpy as np
 import pytest
 
-from lsst.geom import Box2I, Extent2I, Point2D, Point2I
+from lsst.afw.geom import makeSkyWcs
+from lsst.geom import Box2I, degrees, Extent2I, Point2D, Point2I, SpherePoint
 from lsst.images import Box, ColorImage, SkyProjection, TractFrame
 from lsst.pipe.base import InMemoryDatasetHandle
 from lsst.skymap import DiscreteSkyMap
 
 from lsst.pipe.tasks.prettyPictureMaker._meta_mosaic import MetaMosaicConfig, MetaMosaicTask
-from lsst.pipe.tasks.prettyPictureMaker._utils import FeatheredMosaicCreator
+from lsst.pipe.tasks.prettyPictureMaker._utils import FeatheredMosaicCreator, warp_maps
 
 
 def _make_task(reference_tract=None):
@@ -1042,3 +1047,254 @@ class TestDataBBox:
             task._data_bbox((50, 60), np.zeros((50, 60), dtype=np.float32), mode, band_rows=7)
             is None
         )
+
+
+def _wcs(cd=None, crpix=(0.0, 0.0), ra=10.0, dec=-30.0):
+    """Small helper: a plain TAN SkyWcs at (ra, dec)."""
+    if cd is None:
+        cd = np.array([[-1.0e-4, 0.0], [0.0, 1.0e-4]])
+    return makeSkyWcs(
+        crpix=Point2D(*crpix),
+        crval=SpherePoint(ra, dec, degrees),
+        cdMatrix=cd,
+    )
+
+
+class TestWarpMaps:
+    """Unit tests for the shared warp_maps (WCS -> cv2.remap coordinate maps)
+    helper."""
+
+    def test_identity_wcs_pair_gives_pixel_grid(self):
+        wcs = _wcs()
+        box = Box2I(Point2I(0, 0), Extent2I(32, 16))
+        map_x, map_y = warp_maps(wcs, box, wcs, box)
+        yy, xx = np.mgrid[0:16, 0:32]
+        assert map_x.dtype == np.float32 and map_y.dtype == np.float32
+        assert map_x.shape == (16, 32) and map_y.shape == (16, 32)
+        np.testing.assert_allclose(map_x, xx, atol=1e-3)
+        np.testing.assert_allclose(map_y, yy, atol=1e-3)
+
+    def test_maps_measured_from_src_bbox_min(self):
+        """Map values are source pixel indices measured from the src_bbox min
+        (cv2 array convention), even for negative origins."""
+        wcs = _wcs()
+        src_box = Box2I(Point2I(-10, -5), Extent2I(64, 40))
+        dest_box = Box2I(Point2I(0, 0), Extent2I(32, 16))
+        map_x, map_y = warp_maps(wcs, src_box, wcs, dest_box)
+        yy, xx = np.mgrid[0:16, 0:32]
+        np.testing.assert_allclose(map_x, xx + 10, atol=1e-3)
+        np.testing.assert_allclose(map_y, yy + 5, atol=1e-3)
+
+    def test_unreachable_dest_pixels_are_nan(self):
+        """A dest pixel whose sky position is unreachable from the source
+        (far side of the sphere) keeps NaN map entries."""
+        src_wcs = _wcs(ra=0.0, dec=89.0)
+        dest_wcs = _wcs(ra=180.0, dec=-89.0)
+        src_box = Box2I(Point2I(0, 0), Extent2I(10, 10))
+        dest_box = Box2I(Point2I(0, 0), Extent2I(10, 10))
+        map_x, map_y = warp_maps(src_wcs, src_box, dest_wcs, dest_box)
+        assert np.isnan(map_x).all() and np.isnan(map_y).all()
+
+    def test_nan_contract_via_remap(self):
+        """Dest pixels outside the source coverage remap to NaN with
+        borderValue=np.nan (the NaN-as-missing-data contract)."""
+        wcs = _wcs()
+        src_box = Box2I(Point2I(0, 0), Extent2I(32, 16))
+        src = np.full((16, 32), 0.25, dtype=np.float32)
+        # Dest box 50 px further along +x than the source: every dest pixel
+        # lands beyond the source array (map x in [50, 81] > 31).
+        map_x, map_y = warp_maps(wcs, src_box, wcs, Box2I(Point2I(50, 0), Extent2I(32, 16)))
+        out = cv2.remap(
+            src, map_x, map_y, cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_CONSTANT, borderValue=np.nan
+        )
+        assert np.isnan(out).all()
+        # And when part of the dest box does overlap the source, only the
+        # overlapping part carries data.
+        map_x, map_y = warp_maps(wcs, src_box, wcs, Box2I(Point2I(20, 0), Extent2I(32, 16)))
+        out = cv2.remap(
+            src, map_x, map_y, cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_CONSTANT, borderValue=np.nan
+        )
+        # Map x runs from 20 to 51: columns 0..11 sample source pixels 20..31
+        # (source x range is [0, 31]), columns >= 12 are fully outside it.
+        # The Lanczos4 kernel reaches 4 px, so a pixel is finite only when
+        # its map coordinate is >= 4 from every source-array edge (and NaN
+        # wherever a tap would fall outside it - the borderValue contract).
+        assert np.isfinite(out[4:12, :8]).all()
+        np.testing.assert_allclose(out[4, 4], 0.25, atol=1e-6)
+        assert np.isnan(out[:, 12:]).all()
+
+
+def _backends_agree_mask(skymap, ref_tract, tract_id, patches, out_box, margin=10):
+    """Pixels where the "afw" and "cv2" warp backends must agree to full
+    precision.
+
+    The two backends use different resampling kernels (lanczos5 vs
+    Lanczos4), so values may legitimately differ within a narrow ring around
+    each warped footprint (NaN band widths and kernel truncation differ at
+    the source-array edge). This mask is True everywhere except ``margin``
+    pixels around each foreign patch's warped footprint boundary (where the
+    map coordinate is within ``margin`` of leaving the patch array, or is
+    NaN).
+    """
+    ref_proj = SkyProjection.from_legacy(
+        skymap[ref_tract].getWcs(),
+        TractFrame(skymap="test", tract=ref_tract, bbox=Box.from_legacy(skymap[ref_tract].bbox)),
+    )
+    good = np.ones((out_box.getHeight(), out_box.getWidth()), dtype=bool)
+    task = _make_run_task()
+    for patch in patches:
+        patch_info = skymap[tract_id][patch]
+        patch_proj = SkyProjection.from_legacy(
+            patch_info.getWcs(),
+            TractFrame(skymap="test", tract=tract_id, bbox=Box.from_legacy(skymap[tract_id].bbox)),
+        )
+        mapped = task._map_patch_box_to_ref(patch_proj, patch_info.getOuterBBox(), ref_proj)
+        db = Box2I(
+            Point2I(mapped.getMinX() - 2, mapped.getMinY() - 2),
+            Point2I(mapped.getMaxX() + 2, mapped.getMaxY() + 2),
+        )
+        map_x, map_y = warp_maps(
+            patch_info.getWcs(), skymap[tract_id].bbox, skymap[ref_tract].getWcs(), db
+        )
+        pb = patch_info.getOuterBBox()
+        tb = skymap[tract_id].bbox
+        lo_x, hi_x = pb.getMinX() - tb.getMinX(), pb.getMaxX() - tb.getMinX()
+        lo_y, hi_y = pb.getMinY() - tb.getMinY(), pb.getMaxY() - tb.getMinY()
+        bad = (
+            ~np.isfinite(map_x)
+            | ~np.isfinite(map_y)
+            | (map_x < lo_x + margin)
+            | (map_x > hi_x - margin)
+            | (map_y < lo_y + margin)
+            | (map_y > hi_y - margin)
+        )
+        x0 = db.getMinX() - out_box.getMinX()
+        y0 = db.getMinY() - out_box.getMinY()
+        gx0, gy0 = max(0, x0), max(0, y0)
+        gx1 = min(good.shape[1], x0 + bad.shape[1])
+        gy1 = min(good.shape[0], y0 + bad.shape[0])
+        good[gy0:gy1, gx0:gx1] &= ~bad[gy0 - y0 : gy1 - y0, gx0 - x0 : gx1 - x0]
+    return good
+
+
+class TestWarpBackends:
+    """End-to-end equivalence of the "afw" (reference) and "cv2"
+    (precomputed-map) warp backends, plus the phase-timing log."""
+
+    @staticmethod
+    def _run(skymap, backend, crop_mode, handles):
+        task = _make_run_task(reference_tract=0, crop_mode=crop_mode)
+        task.config.warp_backend = backend
+        try:
+            return task.run(inputRGB=list(handles), skyMap=skymap)
+        finally:
+            for attr in ("imageHandle", "weightHandle"):
+                if hasattr(task, attr):
+                    getattr(task, attr).close()
+
+    def _standard_handles(self, skymap):
+        return [
+            _make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]),  # reference tract: red
+            _make_handle(skymap, 1, 0, [0.0, 0.0, 1.0]),  # foreign tract: blue
+        ]
+
+    @pytest.mark.parametrize("crop_mode", ["none", "full_coverage"])
+    def test_cv2_matches_afw(self, crop_mode):
+        """cv2.remap (Lanczos4) output agrees with the afwMath reference to
+        5e-3 outside a narrow kernel-ring around the foreign footprint, for
+        both an uncropped and the default-cropped raster (crop/feather
+        interactions included: identical crop boxes, feather weights are
+        backend-independent)."""
+        skymap = _make_skymap()
+        afw = self._run(skymap, "afw", crop_mode, self._standard_handles(skymap)).outputRGBMosaic
+        cv2r = self._run(skymap, "cv2", crop_mode, self._standard_handles(skymap)).outputRGBMosaic
+        assert afw.bbox == cv2r.bbox
+        a, b = afw.array, cv2r.array
+        assert np.all(np.isfinite(a)) and np.all(np.isfinite(b))
+        # The foreign color is present (not silently dropped) in both.
+        assert np.any(a[..., 2] > 0.5) and np.any(b[..., 2] > 0.5)
+        good = _backends_agree_mask(skymap, 0, 1, [0], cv2r.bbox.to_legacy())
+        assert good.mean() > 0.9
+        np.testing.assert_allclose(a[good], b[good], atol=5e-3)
+        # And a strong-agreement majority everywhere (the excluded ring is
+        # only a small band around the warped footprint edges).
+        diff = np.abs(a - b).max(axis=-1)
+        assert (diff > 5e-3).mean() < 0.05
+
+    def test_data_extent_bbox_agrees_within_kernel_width(self):
+        """data_extent crops to the outermost row/column with any weight; the
+        two backends' warp NaN bands differ by at most a couple of pixels
+        (kernel radius), so their crop boxes must agree within 3 px."""
+        skymap = _make_skymap()
+        afw = self._run(skymap, "afw", "data_extent", self._standard_handles(skymap))
+        cv2r = self._run(skymap, "cv2", "data_extent", self._standard_handles(skymap))
+        ba = afw.outputRGBMosaic.bbox.to_legacy()
+        bb = cv2r.outputRGBMosaic.bbox.to_legacy()
+        for get in (lambda b: b.getMinX(), lambda b: b.getMaxX(), lambda b: b.getMinY(),
+                    lambda b: b.getMaxY()):
+            assert abs(get(ba) - get(bb)) <= 3
+
+    def test_nan_hole_black_after_finalize_both_backends(self):
+        """NaN contract: a NaN block in a foreign patch yields zero-weight
+        (black after finalize) pixels for both backends, and the black
+        regions agree up to the kernel ring (the hole exists and is at the
+        same place in both)."""
+        skymap = _make_skymap()
+        ref_bbox = skymap[0][0].getOuterBBox()
+        blue = np.empty((ref_bbox.getHeight(), ref_bbox.getWidth(), 3), dtype=np.float32)
+        blue[...] = [0.0, 0.0, 1.0]
+        blue[:10, :10, :] = np.nan
+        foreign = InMemoryDatasetHandle(
+            inMemoryDataset=ColorImage(blue, bbox=Box.from_legacy(skymap[1][0].getOuterBBox())),
+            skymap="test",
+            tract=1,
+            patch=0,
+        )
+        handles = [_make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]), foreign]
+
+        zeros = {}
+        for backend in ("afw", "cv2"):
+            image = self._run(skymap, backend, "none", handles).outputRGBMosaic
+            array = image.array
+            assert np.all(np.isfinite(array))
+            zeros[backend] = np.all(array == 0.0, axis=-1)
+
+        def dilate(m):
+            return cv2.dilate(m.astype(np.uint8), np.ones((7, 7), np.uint8)).astype(bool)
+        # Both backends blacken the hole (and the empty canvas): non-trivial
+        # amount of black pixels...
+        assert zeros["afw"].sum() > 1000 and zeros["cv2"].sum() > 1000
+        # ... and their black sets agree modulo a 3-pixel kernel ring.
+        assert (zeros["afw"] & ~dilate(zeros["cv2"])).sum() == 0
+        assert (zeros["cv2"] & ~dilate(zeros["afw"])).sum() == 0
+
+    def test_timings_log_and_map_build_cache(self, caplog):
+        """The run always ends with a 'Timings:' line; with the cv2 backend
+        one coordinate map is built per foreign TRACT (two foreign patches of
+        tract 1 share one map build), and the afw backend builds none."""
+        skymap = _make_skymap()
+        handles = [
+            _make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]),
+            _make_handle(skymap, 1, 0, [0.0, 0.0, 1.0]),
+            _make_handle(skymap, 1, 1, [0.0, 1.0, 0.0]),
+        ]
+        for backend, expected_maps in (("cv2", 1), ("afw", 0)):
+            with caplog.at_level(logging.INFO, logger="lsst.metaMosaic"):
+                self._run(skymap, backend, "none", handles)
+            lines = [r.getMessage() for r in caplog.records if "Timings:" in r.getMessage()]
+            assert lines, "no Timings log line emitted"
+            line = lines[-1]
+            match = re.search(r"map-build=[0-9.]+s \(n=(\d+)\)", line)
+            assert match is not None, line
+            assert int(match.group(1)) == expected_maps
+            match = re.search(r"decode=[0-9.]+s \(n=(\d+)\)", line)
+            assert int(match.group(1)) == 3
+            match = re.search(r"warp=[0-9.]+s \(n=(\d+)\)", line)
+            assert int(match.group(1)) == 2
+            assert "accumulate=" in line and "finalize=" in line and "crop=" in line
+
+    def test_warp_backend_config(self):
+        config = MetaMosaicConfig()
+        assert config.warp_backend == "afw"
+        with pytest.raises(Exception):
+            config.warp_backend = "bogus"

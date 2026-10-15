@@ -21,14 +21,19 @@
 
 from __future__ import annotations
 
-__all__ = ("FeatheredMosaicCreator",)
+__all__ = ("FeatheredMosaicCreator", "warp_maps", "probe_warp_scale")
 
 import numpy as np
 from typing import TYPE_CHECKING
 
+from lsst.afw.image import ImageF
+from lsst.geom import Box2I, Extent2I, Point2I
+from lsst.images import Box, SkyProjection, TractFrame
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
-    from lsst.images import Box
+    from lsst.afw.geom import SkyWcs
+    from lsst.afw.math import Warper
 
 
 class FeatheredMosaicCreator:
@@ -232,3 +237,148 @@ class FeatheredMosaicCreator:
             np.divide(img_band, w, out=img_band, where=where)
             img_band[~valid] = np.nan
         return image
+
+
+def warp_maps(
+    src_wcs: SkyWcs,
+    src_bbox: Box2I,
+    dest_wcs: SkyWcs,
+    dest_box: Box2I,
+    band_rows: int = 4096,
+) -> tuple[NDArray, NDArray]:
+    """Build cv2.remap coordinate maps for warping from a source WCS to a
+    destination WCS.
+
+    For every pixel of ``dest_box`` the pixel is projected
+    dest pixel -> sky -> source pixel, and the source pixel coordinate is
+    returned as a floating-point map in the convention cv2.remap expects:
+    ``map_x``/``map_y`` hold the source pixel index measured **from the min
+    corner of ``src_bbox``** (i.e. ``src_pix.x - src_bbox.getMinX()``), so
+    callers must pass source arrays indexed from the ``src_bbox`` origin
+    (afw-style images whose array element ``(0, 0)`` is the pixel at
+    ``src_bbox.getMin()``).
+
+    Both bounding boxes are given in the respective WCS's **PARENT** pixel
+    coordinate frame (the frame in which the legacy ``SkyWcs`` maps pixels to
+    sky; e.g. skymap patch/tract outer bboxes). The maps are built on the
+    destination grid: element ``(y, x)`` corresponds to the parent pixel
+    ``(dest_box.getMinY() + y, dest_box.getMinX() + x)``.
+
+    Pixels whose sky position is unreachable by the transforms (either
+    projection returns NaN) keep NaN map entries. Combined with
+    ``cv2.remap(..., borderMode=cv2.BORDER_CONSTANT, borderValue=np.nan)``
+    this reproduces the NaN-as-missing-data contract used throughout the
+    mosaic tasks: unreachable destination pixels, and pixels whose kernel
+    footprint reaches outside the source array, come back as NaN rather than
+    fabricated data.
+
+    Parameters
+    ----------
+    src_wcs : `lsst.afw.geom.SkyWcs`
+        WCS of the source image (its pixel frame is the parent frame).
+    src_bbox : `lsst.geom.Box2I`
+        Bounding box of the source image in ``src_wcs`` parent coordinates;
+        the map values are measured from its min corner.
+    dest_wcs : `lsst.afw.geom.SkyWcs`
+        WCS of the destination grid.
+    dest_box : `lsst.geom.Box2I`
+        Destination box in ``dest_wcs`` parent coordinates defining the grid
+        the maps are built on.
+    band_rows : `int`, optional
+        Number of map rows computed per batch (bounds the temporaries; the
+        transforms are batched per band). Default is 4096.
+
+    Returns
+    -------
+    map_x : `numpy.ndarray`
+        Float32 ``(dest_box.getHeight(), dest_box.getWidth())`` array of
+        source x pixel indices measured from ``src_bbox.getMinX()`` (NaN
+        where unreachable).
+    map_y : `numpy.ndarray`
+        Float32 array of source y pixel indices measured from
+        ``src_bbox.getMinY()`` (NaN where unreachable).
+
+    Notes
+    -----
+    The ``TractFrame`` arguments used to build the `lsst.images.SkyProjection`
+    objects are nominal (empty skymap name, tract 0): only the bbox of the
+    respective WCS is passed as the pixel frame, and the transforms depend
+    solely on the WCS and not on the frame metadata.
+    """
+    src_proj = SkyProjection.from_legacy(
+        src_wcs, TractFrame(skymap="", tract=0, bbox=Box.from_legacy(src_bbox))
+    )
+    dest_proj = SkyProjection.from_legacy(
+        dest_wcs, TractFrame(skymap="", tract=0, bbox=Box.from_legacy(dest_box))
+    )
+    n_cols = dest_box.getWidth()
+    n_rows = dest_box.getHeight()
+    map_x = np.empty((n_rows, n_cols), dtype=np.float32)
+    map_y = np.empty((n_rows, n_cols), dtype=np.float32)
+    if n_rows <= 0 or n_cols <= 0:
+        return map_x, map_y
+    dest_x0 = float(dest_box.getMinX())
+    dest_y0 = float(dest_box.getMinY())
+    xs = np.arange(n_cols, dtype=np.float64) + dest_x0
+    src_x0 = float(src_bbox.getMinX())
+    src_y0 = float(src_bbox.getMinY())
+    for y0 in range(0, n_rows, band_rows):
+        y1 = min(y0 + band_rows, n_rows)
+        xx, yy = np.meshgrid(xs, np.arange(y0, y1, dtype=np.float64) + dest_y0)
+        sky = dest_proj.pixel_to_sky(x=xx.ravel(), y=yy.ravel())
+        pix = src_proj.sky_to_pixel(sky)
+        px = np.asarray(pix.x, dtype=np.float64)
+        py = np.asarray(pix.y, dtype=np.float64)
+        map_x[y0:y1] = (px - src_x0).reshape(y1 - y0, n_cols)
+        map_y[y0:y1] = (py - src_y0).reshape(y1 - y0, n_cols)
+    return map_x, map_y
+
+
+def probe_warp_scale(warper: Warper, src_wcs: SkyWcs, dest_wcs: SkyWcs, src_box: Box2I) -> float:
+    """Measure the pixel-area scaling that afwMath's ``Warper.warpImage``
+    applies to a given WCS pair.
+
+    ``Warper.warpImage`` resamples a source patch onto the destination grid
+    and multiplies the result by a constant (kernel-independent) factor equal
+    to the ratio of DESTINATION to SOURCE pixel areas on the sky (verified
+    empirically: destination pixels k x wider -> factor k**2, i.e. the
+    surface-brightness-per-destination-pixel convention). A precomputed-map
+    ``cv2.remap`` does no such rescaling, so the same factor must be applied
+    to its output to match the afw backend.
+
+    The factor is measured by warping a small constant-valued probe patch
+    with the real warper (cost is linear in source pixels; a 16 x 16 probe is
+    negligible) and reading the interior value.
+
+    Parameters
+    ----------
+    warper : `lsst.afw.math.Warper`
+        The warper (its configuration does not affect the scale factor).
+    src_wcs : `lsst.afw.geom.SkyWcs`
+        Source WCS of the warp pair.
+    dest_wcs : `lsst.afw.geom.SkyWcs`
+        Destination WCS of the warp pair.
+    src_box : `lsst.geom.Box2I`
+        Source bbox (parent coordinates); the probe patch is taken at its
+        center.
+
+    Returns
+    -------
+    scale : `float`
+        The multiplicative factor matching ``Warper.warpImage`` output
+        amplitudes. Returns ``1.0`` if the probe warp degenerates (empty or
+        non-finite).
+    """
+    probe_box = Box2I(
+        Point2I(src_box.getCenterX() - 8, src_box.getCenterY() - 8),
+        Extent2I(16, 16),
+    )
+    probe = ImageF(probe_box)
+    probe.array[:, :] = 1.0
+    warped = warper.warpImage(dest_wcs, probe, src_wcs)
+    if warped.getBBox().isEmpty():
+        return 1.0
+    value = np.nanmedian(warped.array)
+    if not np.isfinite(value) or value <= 0:
+        return 1.0
+    return float(value)

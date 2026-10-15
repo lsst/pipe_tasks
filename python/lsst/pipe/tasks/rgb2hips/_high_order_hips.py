@@ -40,7 +40,7 @@ from lsst.pex.config import ConfigField, Field, ChoiceField
 from lsst.pipe.base.connectionTypes import Input, Output
 from lsst.skymap import BaseSkyMap
 from lsst.afw.geom import SkyWcs
-from lsst.geom import Box2I, Point2I, Extent2I
+from lsst.geom import Box2I, Point2I, Point2D, Extent2I
 from lsst.images import Box
 from lsst.afw.math import Warper
 from lsst.daf.butler import DeferredDatasetHandle
@@ -53,7 +53,7 @@ from lsst.sphgeom import RangeSet
 import cv2
 
 from ._utils import _write_hips_image
-from ..prettyPictureMaker import FeatheredMosaicCreator
+from ..prettyPictureMaker import FeatheredMosaicCreator, probe_warp_scale, warp_maps
 
 
 class ColorChannel(Enum):
@@ -120,6 +120,14 @@ class HighOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=HighOrderH
             "half": "Use 16 bit float arrays, 1 max",
             "float": "Use 32 bit float arrays, 1 max",
         },
+    )
+    warp_backend = ChoiceField[str](
+        doc="Backend used to resample input images onto the HiPS tile WCS.",
+        allowed={
+            "afw": "afwMath Warper (default, reference)",
+            "cv2": "precomputed-map cv2.remap (Lanczos4)",
+        },
+        default="afw",
     )
 
     def setDefaults(self):
@@ -194,6 +202,8 @@ class HighOrderHipsTask(PipelineTask):
         output_array_hpx = np.zeros((4096, 4096, 3), dtype=np.float32)
         output_array_hpx[:, :, :] = np.nan
 
+        use_cv2 = self.config.warp_backend == "cv2"
+
         self.log.info("Warping input exposures and populating hpx8 super tile.")
         # Need to loop over input arrays then channel
         # Warp and combine input images into the HealPix tile
@@ -210,6 +220,20 @@ class HighOrderHipsTask(PipelineTask):
                 case np.float16:
                     in_image = in_image.astype(np.float32)
 
+            if use_cv2:
+                # Replicate the destination domain afwMath warps onto: the
+                # source footprint in target_wcs coordinates clipped to the
+                # 4096 x 4096 tile, computed conservatively (see
+                # _footprint_bbox). Empty footprints contribute nothing.
+                warped_box = self._footprint_bbox(in_wcs, in_box, target_wcs, exp_bbox)
+                if warped_box.isEmpty():
+                    continue
+                # Coordinate maps are built once per input image (over the
+                # dense footprint box) and reused for all three channels.
+                map_x, map_y = warp_maps(in_wcs, in_box, target_wcs, warped_box)
+                warp_scale = probe_warp_scale(self.warper, in_wcs, target_wcs, in_box)
+                warpped_box_slices = warped_box.slices
+
             # Process each color channel separately
             for channel in ColorChannel:
                 # existing data
@@ -217,22 +241,32 @@ class HighOrderHipsTask(PipelineTask):
 
                 # construct an Exposure object from one channel in the array
                 channel_array = in_image[..., channel.value]
-                tmp_image.array[:, :] = channel_array
-
-                # Warp the image to the target WCS
-                warpped = self.warper.warpImage(target_wcs, tmp_image, in_wcs, maxBBox=exp_bbox)
-                warpped_box_slices = warpped.getBBox().slices
+                if use_cv2:
+                    warpped_array = warp_scale * cv2.remap(
+                        np.ascontiguousarray(channel_array),
+                        map_x,
+                        map_y,
+                        cv2.INTER_LANCZOS4,
+                        borderMode=cv2.BORDER_CONSTANT,
+                        borderValue=np.nan,
+                    )
+                else:
+                    tmp_image.array[:, :] = channel_array
+                    # Warp the image to the target WCS
+                    warpped = self.warper.warpImage(target_wcs, tmp_image, in_wcs, maxBBox=exp_bbox)
+                    warpped_array = warpped.array
+                    warpped_box_slices = warpped.getBBox().slices
 
                 # Update the output array with valid (non-NaN) values
-                are_warpped = np.isfinite(warpped.array)
+                are_warpped = np.isfinite(warpped_array)
                 # where this existing array is not nan, there is already data
                 pre_populated = np.isfinite(existing[warpped_box_slices])
                 new_info = np.logical_not(pre_populated)
                 new_and_warp = np.logical_and(new_info, are_warpped)
                 pre_and_warp = np.logical_and(pre_populated, are_warpped)
-                existing[warpped_box_slices][new_and_warp] = warpped.array[new_and_warp]
+                existing[warpped_box_slices][new_and_warp] = warpped_array[new_and_warp]
                 existing[warpped_box_slices][pre_and_warp] = (
-                    warpped.array[pre_and_warp] + existing[warpped_box_slices][pre_and_warp]
+                    warpped_array[pre_and_warp] + existing[warpped_box_slices][pre_and_warp]
                 ) * 0.5
 
         # Replace any remaining NaN values with zeros
@@ -301,6 +335,71 @@ class HighOrderHipsTask(PipelineTask):
         zoomed = cv2.resize(output_array_hpx, (256, 256), interpolation=cv2.INTER_LANCZOS4)
 
         return Struct(output_hpx=zoomed)
+
+    def _footprint_bbox(
+        self, src_wcs: SkyWcs, src_box: Box2I, dest_wcs: SkyWcs, max_box: Box2I, samples: int = 64
+    ) -> Box2I:
+        """Conservative enclosing box, in ``dest_wcs`` parent coordinates, of a
+        source footprint, clipped to ``max_box``.
+
+        afwMath computes the warp destination domain from the source bbox;
+        because the sky projection is nonlinear and the grids rotate relative
+        to each other, its extent can reach slightly past a plain transform
+        of the four bbox corners. Sampling the entire perimeter densely and
+        adding a one-pixel margin therefore always covers (and may slightly
+        overestimate) the afw destination domain. Overestimation is harmless:
+        map coordinates outside the source array yield NaN (the missing-data
+        marker), which the blending block skips, exactly as it skips the NaN
+        pixels afwMath leaves outside the true footprint.
+
+        Parameters
+        ----------
+        src_wcs : `lsst.afw.geom.SkyWcs`
+            WCS of the source image.
+        src_box : `lsst.geom.Box2I`
+            Source bbox in ``src_wcs`` parent coordinates.
+        dest_wcs : `lsst.afw.geom.SkyWcs`
+            WCS of the destination grid.
+        max_box : `lsst.geom.Box2I`
+            Maximum allowed destination box (e.g. the tile); the result is
+            intersected with it.
+        samples : `int`, optional
+            Number of perimeter samples per edge. Default is 64.
+
+        Returns
+        -------
+        box : `lsst.geom.Box2I`
+            The (possibly empty) covering box in ``dest_wcs`` parent
+            coordinates, clipped to ``max_box``.
+        """
+        x0 = float(src_box.getMinX())
+        y0 = float(src_box.getMinY())
+        x1 = float(src_box.getMaxX())
+        y1 = float(src_box.getMaxY())
+        n = max(int(samples), 2)
+        t = np.linspace(0.0, 1.0, n)
+        xs = np.concatenate([x0 + (x1 - x0) * t, np.full(n, x1), x1 - (x1 - x0) * t, np.full(n, x0)])
+        ys = np.concatenate([np.full(n, y0), y0 + (y1 - y0) * t, np.full(n, y1), y1 - (y1 - y0) * t])
+        px = np.empty(xs.size)
+        py = np.empty(ys.size)
+        for index, (sx, sy) in enumerate(zip(xs, ys, strict=True)):
+            p = dest_wcs.skyToPixel(src_wcs.pixelToSky(Point2D(sx, sy)))
+            px[index] = p.getX()
+            py[index] = p.getY()
+        if not (np.isfinite(px).any() and np.isfinite(py).any()):
+            return Box2I()  # fully unreachable footprint
+        box = Box2I(
+            Point2I(int(np.floor(np.nanmin(px))) - 1, int(np.floor(np.nanmin(py))) - 1),
+            Point2I(int(np.ceil(np.nanmax(px))) + 1, int(np.ceil(np.nanmax(py))) + 1),
+        )
+        # Manual intersection (lsst.geom.Box2I has no intersectedTo).
+        x0 = max(box.getMinX(), max_box.getMinX())
+        y0 = max(box.getMinY(), max_box.getMinY())
+        x1 = min(box.getMaxX(), max_box.getMaxX())
+        y1 = min(box.getMaxY(), max_box.getMaxY())
+        if x1 < x0 or y1 < y0:
+            return Box2I()
+        return Box2I(Point2I(x0, y0), Point2I(x1, y1))
 
     def _assemble_sub_region(
         self, tract_patch: dict[int, Iterable[tuple[DeferredDatasetHandle, SkyWcs, Box2I]]], patch_grow: int

@@ -29,6 +29,7 @@ __all__ = (
 
 import copy
 import tempfile
+import time
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
@@ -57,7 +58,7 @@ from lsst.pipe.base.connectionTypes import Input, Output
 from lsst.skymap import BaseSkyMap
 from stellaRGB.types import ColorImage
 
-from ._utils import FeatheredMosaicCreator
+from ._utils import FeatheredMosaicCreator, probe_warp_scale, warp_maps
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -128,6 +129,15 @@ class MetaMosaicConfig(PipelineTaskConfig, pipelineConnections=MetaMosaicConnect
         default="full_coverage",
     )
     warp = ConfigField[Warper.ConfigClass](doc="Warper configuration")
+    warp_backend = ChoiceField(
+        doc="Backend used to resample foreign-tract patches onto the reference grid.",
+        dtype=str,
+        allowed={
+            "afw": "afwMath Warper (default, reference)",
+            "cv2": "precomputed-map cv2.remap (Lanczos4)",
+        },
+        default="afw",
+    )
 
     def setDefaults(self):
         self.warp.warpingKernelName = "lanczos5"
@@ -145,11 +155,15 @@ class MetaMosaicTask(PipelineTask):
     Every reference-tract patch is placed 1:1 into its matching virtual patch
     exactly (no resampling). Every foreign-tract patch is decoded once, warped
     once onto the box enclosing the virtual patches it overlaps, and each
-    cell-sized slice of that warp is added separately. Every contributor is then
-    feather-weighted directly into a single mosaic accumulation pass with a
-    NaN-reweighted feather (``FeatheredMosaicCreator``) against a per-pixel
-    weight accumulator, so a NaN in one contributor does not corrupt the
-    overlap region; there is no per-cell pre-average.
+    cell-sized slice of that warp is added separately. The warp backend is
+    ``config.warp_backend``: "afw" uses the afwMath Warper (reference);
+    "cv2" warps with ``cv2.remap`` over per-foreign-tract precomputed
+    coordinate maps (see ``warp_maps``), which is much faster and validated
+    to agree with the afw path. Every contributor is then feather-weighted
+    directly into a single mosaic accumulation pass with a NaN-reweighted
+    feather (``FeatheredMosaicCreator``) against a per-pixel weight
+    accumulator, so a NaN in one contributor does not corrupt the overlap
+    region; there is no per-cell pre-average.
 
     Missing data is left as NaN during assembly and replaced with zero only at the
     very end. No mask and no plugins.
@@ -604,7 +618,10 @@ class MetaMosaicTask(PipelineTask):
         # overlaps that have no reference-tract content. Each patch is kept as one
         # record so it is later decoded and warped exactly once for all of its
         # cells.
-        foreign_records: list[tuple[DeferredDatasetHandle, PatchInfo, SkyWcs, list[tuple[int, int]]]] = []
+        # One record per foreign patch: tract id, handle, patch info/WCS, the
+        # virtual patch cells it claims, the reference-frame cell boxes and
+        # their enclosing box (both warp backends warp onto that union box).
+        foreign_records: list[tuple[int, DeferredDatasetHandle, PatchInfo, SkyWcs, list, list, Box2I]] = []
         for tract, handles in inputs_by_tract.items():
             if tract == ref_tract:
                 continue
@@ -634,9 +651,24 @@ class MetaMosaicTask(PipelineTask):
                     if (i, j) not in ref_content
                 ]
                 if cells:
-                    foreign_records.append((handle, patch_info, patch_wcs, cells))
+                    cell_boxes = [
+                        Box2I(
+                            Point2I(grid_origin.getX() + i * pitch_x, grid_origin.getY() + j * pitch_y),
+                            Extent2I(cell_w, cell_h),
+                        )
+                        for (i, j) in cells
+                    ]
+                    # Box2I begin/end are INCLUSIVE; include() grows the box to cover.
+                    dest_box = Box2I(cell_boxes[0])
+                    for cbox in cell_boxes[1:]:
+                        dest_box.include(cbox)
+                    foreign_records.append(
+                        (tract, handle, patch_info, patch_wcs, cells, cell_boxes, dest_box)
+                    )
 
-        positions = set(ref_content) | {cell for _, _, _, cells in foreign_records for cell in cells}
+        positions = set(ref_content) | {
+            cell for _, _, _, _, cells, _, _ in foreign_records for cell in cells
+        }
         if not positions:
             raise NoWorkFound("No valid RGB images to mosaic")
 
@@ -668,6 +700,22 @@ class MetaMosaicTask(PipelineTask):
         weight[...] = 0.0
         self.log.info("Mosaic %d x %d virtual patches (%d x %d px)", ncx, ncy, mosaic_w, mosaic_h)
 
+        # Phase timings (wall clock, accumulated over all inputs) and, for the
+        # "cv2" warp backend, the per-foreign-tract coordinate-map cache built
+        # over the union of each tract's claimed cell dest boxes. The cache is
+        # local to this run(), so it is cleared at the start of every run.
+        use_cv2 = self.config.warp_backend == "cv2"
+        t_decode = t_warp = t_map = t_add = t_finalize = t_crop = 0.0
+        n_decode = n_warp = n_map = n_add = 0
+        tract_maps: dict[int, tuple[NDArray, NDArray, Box2I, Point2I, float]] = {}
+        tract_union: dict[int, Box2I] = {}
+        if use_cv2:
+            for tract, _, _, _, _, _, dest_box in foreign_records:
+                if tract in tract_union:
+                    tract_union[tract].include(dest_box)
+                else:
+                    tract_union[tract] = Box2I(dest_box)
+
         # Assembly happens in a try block so the temp-file handles are closed on
         # failure (the output memmap must stay open on success).
         try:
@@ -694,6 +742,7 @@ class MetaMosaicTask(PipelineTask):
                 box_local = Box.from_legacy(
                     Box2I(Point2I(local_x, local_y), Extent2I(cell_w, cell_h))
                 )
+                t0 = time.perf_counter()
                 rgb_image = handle.get()
                 input_metadata = dict(getattr(rgb_image, "metadata", None) or {})
                 is_hdr = bool(input_metadata.get("is_hdr"))
@@ -703,14 +752,20 @@ class MetaMosaicTask(PipelineTask):
                 elif self.config.do_dci_d65_convert and not dci_skip_warned:
                     self.log.warning("Skipping DCI-D65 conversion for HDR (is_hdr) input.")
                     dci_skip_warned = True
+                t_decode += time.perf_counter() - t0
+                n_decode += 1
+                t0 = time.perf_counter()
                 mosaic_maker.add_to_image(mosaic, content, full_box, box_local, reverse=False, weight=weight)
+                t_add += time.perf_counter() - t0
+                n_add += 1
 
             # Each foreign patch is decoded and warped exactly once onto the box
             # enclosing all of its cells, then each cell's slice of that single
             # warp is feather-weighted into the mosaic. The warp never lives
             # longer than one foreign patch; the mosaic memmap is the only
             # accumulator.
-            for handle, patch_info, patch_wcs, cells in foreign_records:
+            for tract, handle, patch_info, patch_wcs, cells, cell_boxes, dest_box in foreign_records:
+                t0 = time.perf_counter()
                 rgb_image = handle.get()
                 input_metadata = dict(getattr(rgb_image, "metadata", None) or {})
                 is_hdr = bool(input_metadata.get("is_hdr"))
@@ -720,20 +775,53 @@ class MetaMosaicTask(PipelineTask):
                 elif self.config.do_dci_d65_convert and not dci_skip_warned:
                     self.log.warning("Skipping DCI-D65 conversion for HDR (is_hdr) input.")
                     dci_skip_warned = True
-                cell_boxes = [
-                    Box2I(
-                        Point2I(grid_origin.getX() + i * pitch_x, grid_origin.getY() + j * pitch_y),
-                        Extent2I(cell_w, cell_h),
-                    )
-                    for (i, j) in cells
-                ]
-                # Box2I begin/end are INCLUSIVE; include() grows the box to cover.
-                dest_box = Box2I(cell_boxes[0])
-                for cbox in cell_boxes[1:]:
-                    dest_box.include(cbox)
-                warped = self._warp_patch_onto_cell(
-                    rgb, patch_wcs, ref_wcs, dest_box, patch_info.getOuterBBox()
-                )
+                t_decode += time.perf_counter() - t0
+                n_decode += 1
+                patch_bbox = patch_info.getOuterBBox()
+                if use_cv2:
+                    if tract not in tract_maps:
+                        tm0 = time.perf_counter()
+                        tract_bbox = skyMap[tract].bbox
+                        union_box = tract_union[tract]
+                        map_x, map_y = warp_maps(patch_wcs, tract_bbox, ref_wcs, union_box)
+                        # Mirror the (kernel-independent) pixel-area scaling
+                        # afwMath's Warper applies so both backends agree.
+                        scale = probe_warp_scale(self.warper, patch_wcs, ref_wcs, patch_bbox)
+                        tract_maps[tract] = (map_x, map_y, union_box, tract_bbox.getBegin(), scale)
+                        t_map += time.perf_counter() - tm0
+                        n_map += 1
+                    map_x, map_y, union_box, tract_origin, scale = tract_maps[tract]
+                    # Slice the cached tract-wide map (dest coordinates over the
+                    # union of the tract's cell boxes) down to this patch's
+                    # dest box, then shift from the tract parent frame into
+                    # this patch's array coordinates (cv2 indexes from the
+                    # source array origin, i.e. patch_bbox.getMin()).
+                    sx0 = dest_box.getMinX() - union_box.getMinX()
+                    sy0 = dest_box.getMinY() - union_box.getMinY()
+                    sx1 = sx0 + dest_box.getWidth()
+                    sy1 = sy0 + dest_box.getHeight()
+                    off_x = patch_bbox.getMinX() - tract_origin.getX()
+                    off_y = patch_bbox.getMinY() - tract_origin.getY()
+                    mx = map_x[sy0:sy1, sx0:sx1] - off_x
+                    my = map_y[sy0:sy1, sx0:sx1] - off_y
+                    t0 = time.perf_counter()
+                    warped = np.empty((dest_box.getHeight(), dest_box.getWidth(), 3), dtype=np.float32)
+                    for channel_index in range(3):
+                        warped[..., channel_index] = scale * cv2.remap(
+                            np.ascontiguousarray(rgb[..., channel_index]),
+                            mx,
+                            my,
+                            cv2.INTER_LANCZOS4,
+                            borderMode=cv2.BORDER_CONSTANT,
+                            borderValue=np.nan,
+                        )
+                    t_warp += time.perf_counter() - t0
+                    n_warp += 1
+                else:
+                    t0 = time.perf_counter()
+                    warped = self._warp_patch_onto_cell(rgb, patch_wcs, ref_wcs, dest_box, patch_bbox)
+                    t_warp += time.perf_counter() - t0
+                    n_warp += 1
                 for (i, j), cbox in zip(cells, cell_boxes, strict=True):
                     x0 = cbox.getMinX() - dest_box.getMinX()
                     y0 = cbox.getMinY() - dest_box.getMinY()
@@ -750,13 +838,19 @@ class MetaMosaicTask(PipelineTask):
                             Extent2I(cell_w, cell_h),
                         )
                     )
+                    t0 = time.perf_counter()
                     mosaic_maker.add_to_image(
                         mosaic, content, full_box, box_local, reverse=False, weight=weight
                     )
+                    t_add += time.perf_counter() - t0
+                    n_add += 1
 
+            t0 = time.perf_counter()
             FeatheredMosaicCreator.finalize(mosaic, weight)
+            t_finalize += time.perf_counter() - t0
             # The data extent must be measured from the weight accumulator while
             # it is still valid, i.e. before the NaN-to-zero pass below.
+            t0 = time.perf_counter()
             crop_mode = self.config.crop_mode
             crop_box = None
             if crop_mode == "data_extent":
@@ -819,6 +913,7 @@ class MetaMosaicTask(PipelineTask):
             for y0 in range(cy0, cy1 + 1, 4096):
                 np.nan_to_num(mosaic[y0 : min(y0 + 4096, cy1 + 1)], copy=False, nan=0.0)
             mosaic.flush()
+            t_crop += time.perf_counter() - t0
             self.weightHandle.close()
             del weight
 
@@ -874,6 +969,20 @@ class MetaMosaicTask(PipelineTask):
 
         if hasattr(self, "weightHandle"):
             self.weightHandle.close()
+        self.log.info(
+            "Timings: decode=%.1fs (n=%d), warp=%.1fs (n=%d), map-build=%.1fs (n=%d), "
+            "accumulate=%.1fs (n=%d), finalize=%.1fs, crop=%.1fs",
+            t_decode,
+            n_decode,
+            t_warp,
+            n_warp,
+            t_map,
+            n_map,
+            t_add,
+            n_add,
+            t_finalize,
+            t_crop,
+        )
         return result
 
     def runQuantum(

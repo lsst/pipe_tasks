@@ -21,6 +21,7 @@
 #
 """Test HIPS code."""
 import unittest
+import cv2
 import numpy as np
 import hpgeom as hpg
 
@@ -241,3 +242,136 @@ class ColorHipsTestCase(unittest.TestCase):
         handle = InMemoryDatasetHandle(inMemoryDataset=image)
         with self.assertRaises(ValueError):
             task._assemble_sub_region({1: [(handle, None, Box2I())]}, 0)
+
+
+class ColorHipsWarpBackendTestCase(unittest.TestCase):
+    """Equivalence of the "afw" (afwMath Warper, reference) and "cv2"
+    (precomputed-map cv2.remap) warp backends of HighOrderHipsTask."""
+
+    def _make_config(self, backend, base_uri):
+        from lsst.pipe.tasks.rgb2hips._high_order_hips import HighOrderHipsTask
+
+        config = HighOrderHipsTask.ConfigClass()
+        config.hips_base_uri = base_uri
+        config.color_ordering = "gri"
+        config.warp_backend = backend
+        return config
+
+    def _make_discrete_skymap(self):
+        """Same two-tract discrete skymap used by test_meta_mosaic (patches
+        of 640 px on a 400 px pitch at (ra, dec) ~ (10, -30))."""
+        config = lsst.skymap.DiscreteSkyMap.ConfigClass()
+        tract_builder = config.tractBuilder["cells"]
+        tract_builder.cellInnerDimensions = [100, 100]
+        tract_builder.cellBorder = 20
+        tract_builder.numCellsPerPatchInner = 4
+        tract_builder.numCellsInPatchBorder = 1
+        config.tractBuilder.name = "cells"
+        config.raList = [10.0, 10.05]
+        config.decList = [-30.0, -30.0]
+        config.radiusList = [0.15, 0.15]
+        return lsst.skymap.DiscreteSkyMap(config)
+
+    def _make_inputs(self, skymap):
+        """Two constant-color patch images from the same tract (adjacent,
+        overlapping), as run() receives them: (ndarray, SkyWcs, Box2I)."""
+        inputs = []
+        for patch in (0, 1):
+            info = skymap[0][patch]
+            bbox = info.getOuterBBox()
+            array = np.full((bbox.getHeight(), bbox.getWidth(), 3), 0.5, dtype=np.float32)
+            inputs.append((array, info.getWcs(), bbox))
+        return inputs
+
+    def test_warp_backend_choicefield_defaults_to_afw(self):
+        config = self._make_config("afw", "/tmp/hips_backend_default_test")
+        self.assertEqual(config.warp_backend, "afw")
+        allowed = {k for k in type(config).warp_backend.allowed if k is not None}
+        self.assertEqual(allowed, {"afw", "cv2"})
+
+    def test_high_order_hips_cv2_matches_afw(self):
+        """Both backends must produce the same persisted order-8 tile (the
+        returned 256x256 output_hpx) within 5e-3 on all pixels not near a
+        warped footprint edge.
+
+        The cv2 backend uses Lanczos4 while the afw config uses lanczos5, so
+        the thin ring around each footprint (different NaN-kernel bands and
+        kernel truncation) plus its smear through the 16x Lanczos downsampling
+        to 256 is excluded; the interior constant plateau must match, and it
+        is the majority of the tile.
+        """
+        import tempfile
+        from unittest import mock
+
+        from lsst.afw.geom import makeHpxWcs
+        from lsst.geom import Box2I, Extent2I, Point2I
+        from lsst.pipe.tasks.prettyPictureMaker._utils import warp_maps
+        from lsst.pipe.tasks.rgb2hips._high_order_hips import HighOrderHipsTask
+
+        skymap = self._make_discrete_skymap()
+        inputs = self._make_inputs(skymap)
+
+        # The healpix order-8 tile containing the input patches. The task's
+        # makeHpxWcs(8, id, 12, False) takes (order, pixel, shift_order,
+        # validate_pixel_id) -- sphgeom/afw use NESTED ordering throughout.
+        info = skymap[0][0]
+        center = info.getWcs().pixelToSky(info.getOuterBBox().getCenter())
+        healpix_id = hpg.angle_to_pixel(
+            256, center.getRa().asDegrees(), center.getDec().asDegrees(), nest=True
+        )
+
+        outputs = {}
+        with tempfile.TemporaryDirectory() as tmp:
+            for backend in ("afw", "cv2"):
+                config = self._make_config(backend, tmp)
+                task = HighOrderHipsTask(config=config)
+                with mock.patch(
+                    "lsst.pipe.tasks.rgb2hips._high_order_hips._write_hips_image"
+                ):
+                    outputs[backend] = task.run(list(inputs), healpix_id).output_hpx
+
+        a, b = outputs["afw"], outputs["cv2"]
+        self.assertEqual(a.shape, b.shape)
+        self.assertTrue(np.all(np.isfinite(a)) and np.all(np.isfinite(b)))
+
+        # Build the exclusion mask: ring around each footprint boundary,
+        # dilated for the 16x block + Lanczos smear of the final resize.
+        target_wcs = makeHpxWcs(8, healpix_id, 12, False)
+        exp_bbox = Box2I(corner=Point2I(0, 0), dimensions=Extent2I(2**12, 2**12))
+        bad = np.zeros((4096, 4096), dtype=bool)
+        probe = HighOrderHipsTask(config=self._make_config("afw", tmp))
+        for array, in_wcs, in_box in inputs:
+            db = probe._footprint_bbox(in_wcs, in_box, target_wcs, exp_bbox)
+            if db.isEmpty():
+                continue
+            map_x, map_y = warp_maps(in_wcs, in_box, target_wcs, db)
+            margin = 10
+            dbad = (
+                ~np.isfinite(map_x)
+                | ~np.isfinite(map_y)
+                | (map_x < margin)
+                | (map_x > in_box.getWidth() - 1 - margin)
+                | (map_y < margin)
+                | (map_y > in_box.getHeight() - 1 - margin)
+            )
+            bad[db.getMinY(): db.getMaxY() + 1, db.getMinX(): db.getMaxX() + 1] = dbad
+        # Dilate by the final 4096->256 Lanczos resize support (~8 source px
+        # per dest px = 128 px) plus the 16 px block size, so the compared
+        # 256-resolution pixels are pure interior plateau.
+        bad = cv2.dilate(bad.astype(np.uint8), np.ones((300, 300), np.uint8)).astype(bool)
+        # run() y-flips the super-tile before resampling to 256: map the
+        # (pre-flip) mask into output row orientation as well.
+        good = ~bad[::-1, ::][::16, ::16]  # 256x256 block sampling of the zoomed output
+
+        self.assertGreater(good.mean(), 0.5, "mask must keep most of the tile")
+        # Sanity: data actually landed on the tile (the mask keeps a
+        # substantial interior footprint region for both backends).
+        plateau_a = a[good][a[good] > 0]
+        plateau_b = b[good][b[good] > 0]
+        self.assertGreater(plateau_a.size, 1000, "afw backend deposited no data")
+        self.assertGreater(plateau_b.size, 1000, "cv2 backend deposited no data")
+        np.testing.assert_allclose(a[good], b[good], atol=5e-3)
+        # The constant inputs produce a non-trivial constant plateau.
+        self.assertGreater(np.median(plateau_a), 0.0)
+        # and it covers a comparable area in both backends.
+        self.assertLess(abs(plateau_a.size - plateau_b.size) / plateau_a.size, 0.05)
