@@ -24,7 +24,7 @@
 import numpy as np
 import unittest
 
-from astropy.table import Table
+from astropy.table import Table, vstack
 from lsst.afw.table import SourceCatalog, SourceTable
 from lsst.afw.image import ExposureF
 from lsst.afw.geom import makeSkyWcs
@@ -104,6 +104,24 @@ class BaseTestMatchInjected(lsst.utils.tests.TestCase):
             }
         )
 
+        # Variable sources as written by the catalog generator: parent and twin
+        # are both flagged isVariable and link to each other through twin_id.
+        # Row 0 is a parent with a matching diaSource, row 9 has none.
+        variableCat = self.injectedCat.copy()
+        variableCat["twin_id"] = np.zeros(len(variableCat), dtype=np.int64)
+        variableCat["isVariable"] = np.zeros(len(variableCat), dtype=bool)
+        variableCat["isVisitSource"] = np.ones(len(variableCat), dtype=bool)
+        variableCat["isTemplateSource"] = np.zeros(len(variableCat), dtype=bool)
+        parents = [0, 9]
+        variableCat["isVariable"][parents] = True
+        twins = variableCat[parents].copy()
+        twins["injection_id"] = [100, 101]
+        twins["twin_id"] = variableCat["injection_id"][parents]
+        twins["isVisitSource"] = False
+        twins["isTemplateSource"] = True
+        variableCat["twin_id"][parents] = [100, 101]
+        self.injectedCatVariable = vstack([variableCat, twins])
+
         # only 4 injected sources are associated
         self.assocDiaSources = Table(
             {
@@ -149,6 +167,42 @@ class TestMatchInjectedToDiaSourceTask(BaseTestMatchInjected):
         self.assertEqual(
             np.sum(np.abs(result.matchDiaSources['dist_diaSrc']) < config.matchDistanceArcseconds), 8
         )
+
+    def test_splitVariables(self):
+        config = MatchInjectedToDiaSourceConfig()
+        task = MatchInjectedToDiaSourceTask(config=config)
+
+        initial, doubles = task._splitVariables(self.injectedCatVariable)
+
+        # Parents stay with the static sources, only the twins are split out.
+        self.assertEqual(len(initial), 10)
+        self.assertEqual(sorted(doubles["injection_id"]), [100, 101])
+        self.assertIn(1, initial["injection_id"])
+        self.assertIn(49, initial["injection_id"])
+
+    def test_run_variables(self):
+        config = MatchInjectedToDiaSourceConfig()
+        config.matchDistanceArcseconds = 0.5
+        config.doMatchVisit = False
+        config.doForcedMeasurement = False
+
+        task = MatchInjectedToDiaSourceTask(config=config)
+        result = task.run(self.injectedCatVariable, self.diffIm, self.diaSources)
+        matched = result.matchDiaSources
+
+        self.assertEqual(len(matched), len(self.injectedCatVariable))
+        byId = {row["injection_id"]: row for row in matched}
+
+        # The twin of a matched parent inherits its diaSourceId.
+        self.assertGreater(byId[1]["diaSourceId"], 0)
+        self.assertEqual(byId[100]["diaSourceId"], byId[1]["diaSourceId"])
+        self.assertEqual(byId[100]["dist_diaSrc"], byId[1]["dist_diaSrc"])
+        # The twin of an unmatched parent stays unmatched.
+        self.assertEqual(byId[49]["diaSourceId"], 0)
+        self.assertEqual(byId[101]["diaSourceId"], 0)
+        self.assertEqual(byId[101]["dist_diaSrc"], -1)
+        # 8 static matches plus the one matched twin.
+        self.assertEqual(np.sum(matched["diaSourceId"] > 0), 9)
 
     def test_getVectors(self):
         config = MatchInjectedToDiaSourceConfig()

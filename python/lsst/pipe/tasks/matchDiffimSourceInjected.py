@@ -388,10 +388,13 @@ class MatchInjectedToDiaSourceTask(PipelineTask):
         if "twin_id" not in fakeCat.colnames:
             self.log.warning("No twin_id column found in fake catalog.")
             return fakeCat, None
+        if "isVariable" not in fakeCat.colnames or "isVisitSource" not in fakeCat.colnames:
+            isTwin = fakeCat["twin_id"] > 0
+        else:
+            isTwin = (fakeCat["twin_id"] > 0) & fakeCat["isVariable"] & ~fakeCat["isVisitSource"]
 
-        isVariable = fakeCat["twin_id"] > 0
-
-        return fakeCat[~isVariable], fakeCat[isVariable]
+        isTwin = (fakeCat["twin_id"] > 0) & fakeCat["isVariable"] & ~fakeCat["isVisitSource"]
+        return fakeCat[~isTwin], fakeCat[isTwin]
 
     def _add_variables_to_matched(self, matchedFakes, variableDoublesFakeCat):
         """Add variable sources back into the matched fakes catalog.
