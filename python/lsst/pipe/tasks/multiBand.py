@@ -1127,9 +1127,10 @@ class MultiBandDetectionConfig(PipelineTaskConfig, pipelineConnections=MultiBand
 
     def setDefaults(self):
         super().setDefaults()
-        # Include band in packed data IDs that go into object IDs (None -> "as
-        # many bands as are defined", rather than the default of zero).
-        self.idGenerator.packer.n_bands = None
+        # Detection is merged across bands, so the quantum data ID has no band.
+        # Keep band out of the packed object IDs; the packer requires a band
+        # value otherwise.
+        self.idGenerator.packer.n_bands = 0
 
 
 class MultiBandDetectionTask(PipelineTask):
