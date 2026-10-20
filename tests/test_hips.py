@@ -287,55 +287,30 @@ class ColorHipsWarpBackendTestCase(unittest.TestCase):
         config = self._make_config("afw", "/tmp/hips_backend_default_test")
         self.assertEqual(config.warp_backend, "afw")
         allowed = {k for k in type(config).warp_backend.allowed if k is not None}
-        self.assertEqual(allowed, {"afw", "cv2"})
+        self.assertEqual(allowed, {"afw", "cv2", "rust"})
 
-    def test_high_order_hips_cv2_matches_afw(self):
-        """Both backends must produce the same persisted order-8 tile (the
-        returned 256x256 output_hpx) within 5e-3 on all pixels not near a
-        warped footprint edge.
-
-        The cv2 backend uses Lanczos4 while the afw config uses lanczos5, so
-        the thin ring around each footprint (different NaN-kernel bands and
-        kernel truncation) plus its smear through the 16x Lanczos downsampling
-        to 256 is excluded; the interior constant plateau must match, and it
-        is the majority of the tile.
-        """
-        import tempfile
+    def _run_backend(self, backend, inputs, healpix_id, tmp):
+        """Run the task on the given inputs with one backend (tile writing
+        mocked; returns the persisted 256x256 output_hpx raster)."""
         from unittest import mock
 
+        from lsst.pipe.tasks.rgb2hips._high_order_hips import HighOrderHipsTask
+
+        config = self._make_config(backend, tmp)
+        task = HighOrderHipsTask(config=config)
+        with mock.patch("lsst.pipe.tasks.rgb2hips._high_order_hips._write_hips_image"):
+            return task.run(list(inputs), healpix_id).output_hpx
+
+    def _interior_mask(self, inputs, healpix_id, tmp):
+        """Pixels of the 256x256 output where backends must agree: ring
+        around each footprint boundary (source-edge proximity from the
+        warp_maps probe), dilated for the 4096->256 box-average support plus
+        the 16 px block size, mapped through run()'s y-flip."""
         from lsst.afw.geom import makeHpxWcs
         from lsst.geom import Box2I, Extent2I, Point2I
         from lsst.pipe.tasks.prettyPictureMaker._utils import warp_maps
         from lsst.pipe.tasks.rgb2hips._high_order_hips import HighOrderHipsTask
 
-        skymap = self._make_discrete_skymap()
-        inputs = self._make_inputs(skymap)
-
-        # The healpix order-8 tile containing the input patches. The task's
-        # makeHpxWcs(8, id, 12, False) takes (order, pixel, shift_order,
-        # validate_pixel_id) -- sphgeom/afw use NESTED ordering throughout.
-        info = skymap[0][0]
-        center = info.getWcs().pixelToSky(info.getOuterBBox().getCenter())
-        healpix_id = hpg.angle_to_pixel(
-            256, center.getRa().asDegrees(), center.getDec().asDegrees(), nest=True
-        )
-
-        outputs = {}
-        with tempfile.TemporaryDirectory() as tmp:
-            for backend in ("afw", "cv2"):
-                config = self._make_config(backend, tmp)
-                task = HighOrderHipsTask(config=config)
-                with mock.patch(
-                    "lsst.pipe.tasks.rgb2hips._high_order_hips._write_hips_image"
-                ):
-                    outputs[backend] = task.run(list(inputs), healpix_id).output_hpx
-
-        a, b = outputs["afw"], outputs["cv2"]
-        self.assertEqual(a.shape, b.shape)
-        self.assertTrue(np.all(np.isfinite(a)) and np.all(np.isfinite(b)))
-
-        # Build the exclusion mask: ring around each footprint boundary,
-        # dilated for the 16x block + Lanczos smear of the final resize.
         target_wcs = makeHpxWcs(8, healpix_id, 12, False)
         exp_bbox = Box2I(corner=Point2I(0, 0), dimensions=Extent2I(2**12, 2**12))
         bad = np.zeros((4096, 4096), dtype=bool)
@@ -355,23 +330,232 @@ class ColorHipsWarpBackendTestCase(unittest.TestCase):
                 | (map_y > in_box.getHeight() - 1 - margin)
             )
             bad[db.getMinY(): db.getMaxY() + 1, db.getMinX(): db.getMaxX() + 1] = dbad
-        # Dilate by the final 4096->256 Lanczos resize support (~8 source px
-        # per dest px = 128 px) plus the 16 px block size, so the compared
-        # 256-resolution pixels are pure interior plateau.
         bad = cv2.dilate(bad.astype(np.uint8), np.ones((300, 300), np.uint8)).astype(bool)
-        # run() y-flips the super-tile before resampling to 256: map the
+        # run() y-flips the super-tile before downsampling to 256: map the
         # (pre-flip) mask into output row orientation as well.
-        good = ~bad[::-1, ::][::16, ::16]  # 256x256 block sampling of the zoomed output
+        return ~bad[::-1, ::][::16, ::16]  # 256x256 block sampling
 
+    def _healpix_id(self, skymap):
+        """The healpix order-8 tile containing the input patches. The task's
+        makeHpxWcs(8, id, 12, False) takes (order, pixel, shift_order,
+        validate_pixel_id) -- sphgeom/afw use NESTED ordering throughout."""
+        info = skymap[0][0]
+        center = info.getWcs().pixelToSky(info.getOuterBBox().getCenter())
+        return hpg.angle_to_pixel(
+            256, center.getRa().asDegrees(), center.getDec().asDegrees(), nest=True
+        )
+
+    def _assert_backend_matches_afw(self, backend):
+        """The given backend must produce the same persisted order-8 tile
+        (the returned 256x256 output_hpx) within 5e-3 on all pixels not near
+        a warped footprint edge.
+
+        The afw config uses lanczos5 while cv2/rust use Lanczos4 (rust
+        renders through fit-verified control-grid maps with residual
+        <= 0.05 source px), so the thin ring around each footprint
+        (different NaN-kernel bands and kernel truncation) plus its smear
+        through the 16x downsampling to 256 is excluded; the interior
+        constant plateau must match, and it is the majority of the tile.
+        Measured (this harness): cv2 masked max-diff 5e-3-class, rust masked
+        max-diff 2.4e-6 -- the 5e-3 tolerance is 2000x margin for rust, not
+        a loosening.
+        """
+        import tempfile
+
+        skymap = self._make_discrete_skymap()
+        inputs = self._make_inputs(skymap)
+        healpix_id = self._healpix_id(skymap)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            a = self._run_backend("afw", inputs, healpix_id, tmp)
+            b = self._run_backend(backend, inputs, healpix_id, tmp)
+            good = self._interior_mask(inputs, healpix_id, tmp)
+
+        self.assertEqual(a.shape, b.shape)
+        self.assertTrue(np.all(np.isfinite(a)) and np.all(np.isfinite(b)))
         self.assertGreater(good.mean(), 0.5, "mask must keep most of the tile")
         # Sanity: data actually landed on the tile (the mask keeps a
         # substantial interior footprint region for both backends).
         plateau_a = a[good][a[good] > 0]
         plateau_b = b[good][b[good] > 0]
         self.assertGreater(plateau_a.size, 1000, "afw backend deposited no data")
-        self.assertGreater(plateau_b.size, 1000, "cv2 backend deposited no data")
+        self.assertGreater(plateau_b.size, 1000, f"{backend} backend deposited no data")
         np.testing.assert_allclose(a[good], b[good], atol=5e-3)
         # The constant inputs produce a non-trivial constant plateau.
         self.assertGreater(np.median(plateau_a), 0.0)
         # and it covers a comparable area in both backends.
         self.assertLess(abs(plateau_a.size - plateau_b.size) / plateau_a.size, 0.05)
+
+    def test_high_order_hips_cv2_matches_afw(self):
+        self._assert_backend_matches_afw("cv2")
+
+    def test_high_order_hips_rust_matches_afw(self):
+        self._assert_backend_matches_afw("rust")
+
+    def test_high_order_hips_rust_transform_cache(self):
+        """One fit_transform per (image, tile): two patches -> 2 fits on the
+        first run, 0 additional fits when the SAME task instance is re-run
+        (the retry scenario the memo exists for). Curvilinear HPX tiles make
+        the fit correctly return maps mode with a verified residual."""
+        import tempfile
+        from unittest import mock
+
+        from lsst.pipe.tasks.rgb2hips import _high_order_hips
+        from lsst.pipe.tasks.rgb2hips._high_order_hips import HighOrderHipsTask
+
+        skymap = self._make_discrete_skymap()
+        inputs = self._make_inputs(skymap)
+        healpix_id = self._healpix_id(skymap)
+        fits = []
+        real = _high_order_hips.fit_transform
+
+        def spy(*args, **kwargs):
+            transform = real(*args, **kwargs)
+            fits.append(transform)
+            return transform
+
+        with tempfile.TemporaryDirectory() as tmp:
+            # ONE task instance across both runs -- the cache is the task's
+            # (a butler retry reuses the task; a fresh task legitimately refits).
+            task = HighOrderHipsTask(config=self._make_config("rust", tmp))
+            with mock.patch.object(_high_order_hips, "fit_transform", spy), mock.patch(
+                "lsst.pipe.tasks.rgb2hips._high_order_hips._write_hips_image"
+            ):
+                task.run(list(inputs), healpix_id)
+                self.assertEqual(len(fits), 2, "expected one fit per (image, tile)")
+                self.assertEqual([t.mode for t in fits], ["maps", "maps"])
+                for t in fits:
+                    self.assertLessEqual(t.max_residual, 0.05)
+                    self.assertIsNotNone(t.dest_bbox)
+                task.run(list(inputs), healpix_id)
+                self.assertEqual(len(fits), 2, "second run must reuse the transform cache")
+
+    def test_high_order_hips_fit_failure_falls_back_to_afw(self):
+        """A failing fit is a per-image robustness event: one warning per
+        image, the failed fit cached (no retry on the second run), and the
+        tile is served from the afw Warper -- the output is then byte-for-byte
+        the afw backend's output and map-build never crashed the run."""
+        import tempfile
+        from unittest import mock
+
+        from lsst.pipe.tasks.rgb2hips import _high_order_hips
+        from lsst.pipe.tasks.rgb2hips._high_order_hips import HighOrderHipsTask
+
+        skymap = self._make_discrete_skymap()
+        inputs = self._make_inputs(skymap)
+        healpix_id = self._healpix_id(skymap)
+        calls = []
+
+        def broken_fit(*args, **kwargs):
+            calls.append(args)
+            raise ValueError("noninvertible/off-domain projection pair (injected)")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config = self._make_config("rust", tmp)
+            task = HighOrderHipsTask(config=config)
+            warned = []
+            with mock.patch.object(_high_order_hips, "fit_transform", broken_fit), mock.patch(
+                "lsst.pipe.tasks.rgb2hips._high_order_hips._write_hips_image"
+            ), mock.patch.object(task.log, "warning", side_effect=lambda *a: warned.append(a)):
+                rust_out = task.run(list(inputs), healpix_id).output_hpx
+                task.run(list(inputs), healpix_id)  # retry: cache suppresses re-fit
+            self.assertEqual(len(calls), 2, "one fit attempt per image, cached after")
+            self.assertEqual(len(warned), 2, "one warning per image")
+            self.assertIn("falling back to the afw Warper", warned[0][0])
+            afw_out = self._run_backend("afw", inputs, healpix_id, tmp)
+            np.testing.assert_array_equal(np.asarray(rust_out), np.asarray(afw_out))
+
+
+class ColorHipsPyramidTestCase(unittest.TestCase):
+    """The area-kernel (D10 box-average) pyramid prefilter: exactness,
+    engine equivalence on feasible (tile-sized) grids, and the aliasing
+    defect it replaces."""
+
+    @staticmethod
+    def _engine_area(src, out_hw):
+        """Engine area remap on the strided lattice (feasible only because
+        this grid is tile-sized -- see _area_downsample's feasibility note)."""
+        from stellaRGB.warp import remap
+
+        h, w = out_hw
+        fx = src.shape[1] / w
+        fy = src.shape[0] / h
+        xs = (np.arange(w, dtype=np.float32) * np.float32(fx) + np.float32((fx - 1) / 2))
+        ys = (np.arange(h, dtype=np.float32) * np.float32(fy) + np.float32((fy - 1) / 2))
+        return remap(
+            src,
+            np.repeat(xs[None, :], h, axis=0),
+            np.repeat(ys[:, None], w, axis=1),
+            kernel="area",
+        )
+
+    def test_area_downsample_matches_engine_area(self):
+        """On grids where the engine call is feasible (tile-sized, so its
+        uniform global-span tap window stays bounded), the helper reproduces
+        the engine's D10 area kernel bit-exactly (measured maxdiff 0.0 on
+        random data; f32 engine vs f64 helper)."""
+        from lsst.pipe.tasks.rgb2hips._high_order_hips import _area_downsample
+
+        rng = np.random.default_rng(3)
+        for shape, out in (((16, 16, 3), (8, 8)), ((32, 32, 3), (16, 16))):
+            src = rng.random(shape).astype(np.float32)
+            mine = _area_downsample(src, out)
+            eng = self._engine_area(src, out)
+            self.assertEqual(mine.shape, eng.shape)
+            np.testing.assert_allclose(mine, eng, atol=1e-7)
+
+    def test_area_prefilter_kills_nyquist_energy(self):
+        """A 1-pixel checkerboard is pure Nyquist energy on both axes: the
+        area prefilter returns a FLAT 0.5 level (exact), while the legacy
+        cv2.resize(INTER_LANCZOS4) -- no prefilter -- aliases it into 0.064
+        of ringing (measured). The near-Nyquist sine case is identical:
+        helper == exact 2x2 box mean (dev 0.0), legacy dev 0.146. The
+        pyramid swap is a strict aliasing improvement (defect fix)."""
+        from lsst.pipe.tasks.rgb2hips._high_order_hips import _area_downsample
+
+        grid = np.add.outer(np.arange(64), np.arange(64))
+        checker = (grid % 2).astype(np.float32)[..., None] * np.ones((1, 1, 3), np.float32)
+        flat = _area_downsample(checker, (32, 32))
+        np.testing.assert_allclose(flat, 0.5, atol=1e-6)
+        legacy = cv2.resize(checker, (32, 32), interpolation=cv2.INTER_LANCZOS4)
+        self.assertGreater(float(np.abs(legacy - 0.5).max()), 0.01)
+
+        xx = np.arange(64, dtype=np.float32)
+        sig = (0.5 + 0.5 * np.sin(2 * np.pi * 0.45 * xx))[None, :, None]
+        sig = sig * np.ones((64, 1, 3), np.float32)
+        exact = sig.reshape(64, 32, 2, 3).mean(axis=2)[::2]
+        mine = _area_downsample(sig, (32, 32))
+        np.testing.assert_allclose(mine[:, :32, :], exact, atol=1e-6)
+        legacy_s = cv2.resize(sig, (32, 32), interpolation=cv2.INTER_LANCZOS4)
+        self.assertGreater(float(np.abs(legacy_s[:, :32, :] - exact).max()), 0.05)
+
+    def test_area_downsample_exact_box_mean_vs_reference(self):
+        """Independent reference (cv2 INTER_AREA pixel-area mean): exact
+        within float noise for integer and non-integer (odd-dim) factors --
+        cv2 lanczos has no defined box semantics there; the helper matches
+        the clip-overlap definition (measured maxdiff <= 1.2e-7)."""
+        from lsst.pipe.tasks.rgb2hips._high_order_hips import _area_downsample
+
+        rng = np.random.default_rng(1)
+        src = rng.random((65, 90, 3)).astype(np.float32)
+        for out in ((30, 36), (13, 18)):
+            mine = _area_downsample(src, out)
+            ref = cv2.resize(src, (out[1], out[0]), interpolation=cv2.INTER_AREA)
+            np.testing.assert_allclose(mine, ref, atol=1e-5)
+        with self.assertRaises(ValueError):
+            _area_downsample(src, (66, 90))  # upsampling is not a downsample
+
+    def test_area_downsample_nan_local(self):
+        """NaN poisons exactly the boxes touching it (the engine's D9
+        contract), not the whole row (which a naive integral-image would
+        do); a NaN-free grid has no NaNs in any level."""
+        from lsst.pipe.tasks.rgb2hips._high_order_hips import _area_downsample
+
+        rng = np.random.default_rng(2)
+        src = rng.random((16, 16, 3)).astype(np.float32)
+        src[1, 1, :] = np.nan
+        out = _area_downsample(src, (8, 8))
+        nan_boxes = np.any(np.isnan(out), axis=-1)
+        self.assertTrue(np.all(np.isnan(out[0, 0])))
+        self.assertEqual(int(nan_boxes.sum()), 1)
+        self.assertTrue(np.all(np.isfinite(out[~nan_boxes])))

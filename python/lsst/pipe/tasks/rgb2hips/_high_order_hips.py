@@ -41,7 +41,7 @@ from lsst.pipe.base.connectionTypes import Input, Output
 from lsst.skymap import BaseSkyMap
 from lsst.afw.geom import SkyWcs
 from lsst.geom import Box2I, Point2I, Point2D, Extent2I
-from lsst.images import Box
+from lsst.images import Box, ColorImage, GeneralFrame, SkyProjection
 from lsst.afw.math import Warper
 from lsst.daf.butler import DeferredDatasetHandle
 from lsst.afw.image import ImageF
@@ -52,8 +52,135 @@ from lsst.sphgeom import RangeSet
 
 import cv2
 
+from stellaRGB.warp import WarpTransform, fit_transform, warp_into
+
 from ._utils import _write_hips_image
 from ..prettyPictureMaker import FeatheredMosaicCreator, probe_warp_scale, warp_maps
+
+# The "rust" backend's resampling kernel: mirrors the cv2 backend's effective
+# kernel (cv2.INTER_LANCZOS4; the afw reference is lanczos5 per
+# HighOrderHipsTaskConfig.setDefaults). Unlike the meta-mosaic integration
+# (skymap tracts share the reference CD matrix, |det J| = 1), HiPS tiles have
+# their own pixel scale, so the "rust" branch mirrors afwMath's pixel-area
+# normalization with probe_warp_scale exactly as the cv2 branch does.
+_RUST_KERNEL = "lanczos4"
+
+
+def _area_downsample(image: NDArray, out_hw: tuple[int, int]) -> NDArray:
+    """Exact box-average downsample via the stellaRGB.warp AREA kernel (D10).
+
+    Strict improvement over the previous ``cv2.resize(..., INTER_LANCZOS4)``
+    pyramid step, which was a defect not a preference: a Lanczos resize has
+    NO prefilter, so any energy above the output Nyquist aliases into the
+    level as ringing; the area kernel is the proper prefilter (exact
+    weighted box mean, verified against ``cv2.resize(INTER_AREA)`` and
+    bit-exact 2x2 box averages in the engine's parity suite).
+
+    Destination pixel ``(y, x)`` is the clip-overlap box mean over the
+    source box ``[fy*y - 0.5, fy*y + fy - 0.5] x [fx*x - 0.5, fx*x + fx -
+    0.5]`` — exactly what the engine's D10 AREA kernel computes for the
+    strided lattice ``map_x = fx*x + (fx-1)/2`` (whose per-axis diff-mean
+    scale is ``fx``): integer factors reduce to uniform weight 1.0 on the
+    ``f`` source pixels (touching taps carry exact 0.0 weight, the engine's
+    support-exempt structure), non-integer (odd-dim) factors get the exact
+    partial-overlap weights — cv2 lanczos has no defined box semantics
+    there at all.
+
+    ENGINE-FEASIBILITY NOTE (why the box mean is evaluated here in numpy,
+    not by calling ``stellaRGB.warp.remap(kernel="area")`` per level): the
+    engine's area tap window is the UNIFORM GLOBAL SPAN of the call
+    ("area is tile-size only" — the whole-table ``AREA_TOP_CAP`` /
+    ``AREA_WEIGHTS_CAP`` prescan). A whole-level 4096->2048 strided remap
+    has per-axis spans of the full source (4098 taps) and trips those caps
+    with ``ValueError``; at factor 8/16 it would fit the caps yet burn
+    ``O(span^2 x dest)`` work (the bench's affine-area hang lesson). The
+    pyramid therefore evaluates the IDENTICAL D10 box mean as a separable
+    integral-image reduction (float64 accumulation, cast last). D10
+    equivalence on grids where the engine call IS feasible (tile-sized)
+    is pinned by ``tests/test_hips.py`` (this helper vs the engine
+    ``remap(kernel="area")`` on the same strided lattice).
+
+    NaN source pixels poison exactly the boxes touching them (matching the
+    engine's D9 contract; ``run()`` zeroes NaN before pyramiding, so
+    production is unaffected).
+
+    Parameters
+    ----------
+    image : `numpy.ndarray`
+        ``(H, W)`` or ``(H, W, 3)`` source array (any float dtype).
+    out_hw : `tuple` of ``int``
+        Output ``(height, width)``; must not exceed the source shape.
+
+    Returns
+    -------
+    downsampled : `numpy.ndarray`
+        Float32 box-averaged array of shape ``out_hw + image.shape[2:]``.
+    """
+    src_h, src_w = image.shape[:2]
+    out_h, out_w = out_hw
+    if out_h > src_h or out_w > src_w or out_h < 1 or out_w < 1:
+        raise ValueError(
+            f"out_hw {out_hw} must be a non-empty downsample of {image.shape[:2]}"
+        )
+    out = np.empty((out_h, out_w) + image.shape[2:], dtype=np.float32)
+
+    def _reduce_axis(plane: NDArray, axis: int, out_len: int) -> NDArray:
+        """Exact D10 clip-overlap box mean along one axis, float64.
+
+        ``plane`` is 2-D; all per-destination-index vectors are broadcast
+        along ``axis`` explicitly (a bare ``(out_len,)`` vector would
+        broadcast against the LAST dimension and silently misalign the
+        axis=0 reduction whenever the grid is square).
+        """
+        n = plane.shape[axis]
+        f = n / out_len
+        pos = np.arange(out_len, dtype=np.float64)
+        lo = f * pos - 0.5
+        hi = lo + f  # == f*pos + f - 0.5, the box edges (see above)
+        # Full pixels are [ceil(lo + 0.5), floor(hi - 0.5)] inclusive; the
+        # touching partials carry the sub-pixel overhang weights (never
+        # reaching outside the array for this lattice: hi <= n - 0.5).
+        first = np.ceil(lo + 0.5).astype(np.intp)
+        last = np.floor(hi - 0.5).astype(np.intp)
+        clean = np.nan_to_num(plane)
+        pref = np.cumsum(clean, axis=axis)
+        nan_pref = np.cumsum(np.isnan(plane), axis=axis)
+
+        def _take(arr: NDArray, idx: NDArray) -> NDArray:
+            return np.take(arr, np.clip(idx, 0, n - 1), axis=axis)
+
+        def _b(vec: NDArray) -> NDArray:
+            return vec[:, None] if axis == 0 else vec[None, :]
+
+        wl = _b((first - 0.5) - lo)  # in [0, 1); partial pixel `first - 1`
+        wr = _b(hi - (last + 0.5))  # in [0, 1); partial pixel `last + 1`
+        has_l = _b(first > 0)
+        has_r = _b(last + 1 < n)
+        # sum of full pixels [first .. last] (empty window => 0):
+        s = _take(pref, last) - np.where(has_l, _take(pref, first - 1), 0.0)
+        s = s + np.where(has_l, wl * _take(clean, first - 1), 0.0)
+        s = s + np.where(has_r, wr * _take(clean, last + 1), 0.0)
+        # NaN poisons exactly the boxes whose window touched a NaN pixel.
+        nan_box = _take(nan_pref, last) - np.where(has_l, _take(nan_pref, first - 1), 0.0)
+        nan_box = nan_box + np.where(
+            has_l & (wl > 0.0),
+            _take(nan_pref, first - 1) - np.where(_b(first > 1), _take(nan_pref, first - 2), 0.0),
+            0.0,
+        ) + np.where(
+            has_r & (wr > 0.0),
+            _take(nan_pref, last + 1) - _take(nan_pref, last),
+            0.0,
+        )
+        result = s / f
+        return np.where(nan_box > 0.0, np.nan, result)
+
+    planes = image if image.ndim == 3 else image[..., None]
+    for ch in range(planes.shape[2]):
+        plane = np.ascontiguousarray(planes[..., ch], dtype=np.float64)
+        reduced = _reduce_axis(plane, axis=1, out_len=out_w)
+        reduced = _reduce_axis(np.ascontiguousarray(reduced), axis=0, out_len=out_h)
+        out[..., ch] = reduced
+    return out if image.ndim == 3 else out[..., 0]
 
 
 class ColorChannel(Enum):
@@ -122,10 +249,20 @@ class HighOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=HighOrderH
         },
     )
     warp_backend = ChoiceField[str](
-        doc="Backend used to resample input images onto the HiPS tile WCS.",
+        doc=(
+            "Backend used to resample input images onto the HiPS tile WCS. "
+            "DESIGN NOTE (rust): HiPS tiles are CURVILINEAR, so the "
+            "control-grid ``fit_transform`` of the (image WCS, tile WCS) pair "
+            "correctly returns maps mode (densified control nodes; affine "
+            "mode is taken only when the pair is residual-flat). The engine "
+            "render is fit-verified control-grid maps -- no dense per-pixel "
+            "WCS map build. A caller that already has dense maps can use the "
+            "engine's ``stellaRGB.warp.remap`` directly."
+        ),
         allowed={
             "afw": "afwMath Warper (default, reference)",
             "cv2": "precomputed-map cv2.remap (Lanczos4)",
+            "rust": "stellaRGB.warp engine via fit-verified transform maps (Lanczos4)",
         },
         default="afw",
     )
@@ -143,8 +280,9 @@ class HighOrderHipsTask(PipelineTask):
     This task takes in RGB images generated on a tract patch grid. It assembles
     them into a 4096 x 4096 image aligned with the wcs coordinates of hips
     order 8 pixels. This is then divided up into an 8x8 grid to produce 512x512
-    images at hips order 11. The images is then resampled using lanczos order 4
-    such that the image is half the size. The original image is then divided
+    images at hips order 11. The images is then resampled using an exact
+    box-average (area kernel) prefilter such that the image is half the size.
+    The original image is then divided
     into a 4x4 grid to produce hips images at order 10. The process is repeated
     to produce hips images at order 9, and finally the image is resampled down
     to 512x512 and saved out at hips order 8.
@@ -167,6 +305,12 @@ class HighOrderHipsTask(PipelineTask):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.warper = Warper.fromConfig(self.config.warp)
+
+        # Per-(image, tile) WarpTransform memo for the "rust" backend
+        # (content-keyed; values may be None = failed fit, which also
+        # suppresses per-retry warn spam). Maps-mode transforms hold only
+        # control nodes (cheap); the win is skipping re-fit on task retry.
+        self._rust_transforms: dict[tuple, WarpTransform | None] = {}
 
         # Set the base resource path that will be used for all outputs
         self.hips_base_path = ResourcePath(self.config.hips_base_uri, forceDirectory=True)
@@ -203,6 +347,7 @@ class HighOrderHipsTask(PipelineTask):
         output_array_hpx[:, :, :] = np.nan
 
         use_cv2 = self.config.warp_backend == "cv2"
+        use_rust = self.config.warp_backend == "rust"
 
         self.log.info("Warping input exposures and populating hpx8 super tile.")
         # Need to loop over input arrays then channel
@@ -220,7 +365,8 @@ class HighOrderHipsTask(PipelineTask):
                 case np.float16:
                     in_image = in_image.astype(np.float32)
 
-            if use_cv2:
+            rust_warped = None
+            if use_cv2 or use_rust:
                 # Replicate the destination domain afwMath warps onto: the
                 # source footprint in target_wcs coordinates clipped to the
                 # 4096 x 4096 tile, computed conservatively (see
@@ -228,11 +374,35 @@ class HighOrderHipsTask(PipelineTask):
                 warped_box = self._footprint_bbox(in_wcs, in_box, target_wcs, exp_bbox)
                 if warped_box.isEmpty():
                     continue
-                # Coordinate maps are built once per input image (over the
-                # dense footprint box) and reused for all three channels.
-                map_x, map_y = warp_maps(in_wcs, in_box, target_wcs, warped_box)
+                # Both non-afw backends mirror the (kernel-independent)
+                # pixel-area scaling afwMath's Warper applies (the HiPS tile
+                # scale differs materially from the tract scale, unlike the
+                # meta-mosaic |det J| ~ 1 case), and share the footprint box
+                # so the blend-block slicing is backend-independent.
                 warp_scale = probe_warp_scale(self.warper, in_wcs, target_wcs, in_box)
                 warpped_box_slices = warped_box.slices
+                if use_cv2:
+                    # Coordinate maps are built once per input image (over the
+                    # dense footprint box) and reused for all three channels.
+                    map_x, map_y = warp_maps(in_wcs, in_box, target_wcs, warped_box)
+                else:
+                    transform = self._rust_tile_transform(
+                        in_wcs, in_box, target_wcs, warped_box, healpix_id
+                    )
+                    if transform is not None:
+                        # One engine render for all three channels (the
+                        # ColorImage frame contract places the source array
+                        # at its own bbox in in_wcs parent coordinates; the
+                        # render is the contained sub-box == the transform's
+                        # dest_bbox).
+                        rust_warped = warp_scale * warp_into(
+                            ColorImage(in_image, bbox=Box.from_legacy(in_box)),
+                            transform,
+                            kernel=_RUST_KERNEL,
+                            dest_bbox=Box.from_legacy(warped_box),
+                        )
+                    # else: the fit failed (already warned once per image) --
+                    # this image falls through to the afw Warper below.
 
             # Process each color channel separately
             for channel in ColorChannel:
@@ -241,7 +411,9 @@ class HighOrderHipsTask(PipelineTask):
 
                 # construct an Exposure object from one channel in the array
                 channel_array = in_image[..., channel.value]
-                if use_cv2:
+                if rust_warped is not None:
+                    warpped_array = rust_warped[..., channel.value]
+                elif use_cv2:
                     warpped_array = warp_scale * cv2.remap(
                         np.ascontiguousarray(channel_array),
                         map_x,
@@ -275,8 +447,12 @@ class HighOrderHipsTask(PipelineTask):
         # Flip the y-axis to match HealPix indexing
         output_array_hpx = output_array_hpx[::-1, :, :]
 
-        # Generate tiles for different HealPix orders using Lanczos resampling instead of binning.
-        # This handles how intensities should change as the hips level changes.
+        # Generate tiles for different HealPix orders using an exact
+        # box-average (area-kernel) prefilter instead of binning or Lanczos.
+        # This handles how intensities should change as the hips level changes
+        # AND anti-aliases: the previous cv2.resize(INTER_LANCZOS4) had no
+        # prefilter, so energy above the level Nyquist aliased as ringing
+        # (see _area_downsample).
         #
         # what this does is take a single 4096 x 4096 image and resamples it in a courser grain such
         # that the output pixels correspond to a 4x4 grid of hips pixels at an increasingly lower scale.
@@ -290,7 +466,7 @@ class HighOrderHipsTask(PipelineTask):
             self.log.info("Generating tiles for hxp level %d", hips_level)
             if zoom:
                 size = 4096 // zoom
-                binned_array = cv2.resize(output_array_hpx, (size, size), interpolation=cv2.INTER_LANCZOS4)
+                binned_array = _area_downsample(output_array_hpx, (size, size))
             else:
                 binned_array = output_array_hpx
             # always create blocks of 512x512 as that is native shift order 9 size
@@ -332,7 +508,8 @@ class HighOrderHipsTask(PipelineTask):
 
         # Finally, bin the level 8 hpx to 256x256 (1/4 order 7) to save to the butler.
         # This makes smaller arrays to load, and saves the binning operation in the joint phase.
-        zoomed = cv2.resize(output_array_hpx, (256, 256), interpolation=cv2.INTER_LANCZOS4)
+        # Same exact box-average prefilter as the tile pyramid above.
+        zoomed = _area_downsample(output_array_hpx, (256, 256))
 
         return Struct(output_hpx=zoomed)
 
@@ -400,6 +577,88 @@ class HighOrderHipsTask(PipelineTask):
         if x1 < x0 or y1 < y0:
             return Box2I()
         return Box2I(Point2I(x0, y0), Point2I(x1, y1))
+
+    def _rust_tile_transform(
+        self,
+        in_wcs: SkyWcs,
+        in_box: Box2I,
+        target_wcs: SkyWcs,
+        warped_box: Box2I,
+        healpix_id: int,
+    ) -> WarpTransform | None:
+        """Fit (and memoize) the "rust" backend transform for one (image,
+        tile) pair.
+
+        HiPS tiles are curvilinear, so the fit will (correctly) return maps
+        mode with densified control nodes; affine mode is taken only for a
+        residual-flat pair. The fit is control-grid only — the dense
+        per-pixel WCS map build of the cv2 path never happens here.
+
+        The fit source box is grown by 2 px so an affine-mode footprint
+        (the corner-image rectangle of the source box, whose fit guard
+        requires it to contain the requested dest box) cannot be tripped by
+        the perimeter sampling's 1-px conservative margin in
+        ``_footprint_bbox`` at the tile's pixel-scale ratio.
+
+        The result is cached on the task keyed by content (healpix id, WCS
+        parameters, both boxes) — one fit per (image, tile), surviving task
+        retries; a failed fit caches ``None`` (warned once, never retried)
+        and the caller serves that image from the afw Warper.
+
+        Parameters
+        ----------
+        in_wcs : `lsst.afw.geom.SkyWcs`
+            WCS of the source image (parent pixel frame).
+        in_box : `lsst.geom.Box2I`
+            Source bbox in ``in_wcs`` parent coordinates.
+        target_wcs : `lsst.afw.geom.SkyWcs`
+            The HiPS tile WCS (this quantum's order-8 tile, oversampled).
+        warped_box : `lsst.geom.Box2I`
+            Conservative source footprint in ``target_wcs`` parent
+            coordinates (the transform's dest box).
+        healpix_id : `int`
+            The order-8 healpix id of the tile (cache key component).
+
+        Returns
+        -------
+        transform : `stellaRGB.warp.WarpTransform` | `None`
+            The fit-verified transform, or None if the fit failed (a warning
+            naming the image has been logged; the caller must fall back to
+            the afw Warper for this image).
+        """
+        cd = np.asarray(in_wcs.getCdMatrix()).ravel()
+        origin = in_wcs.getPixelOrigin()
+        sky = in_wcs.getSkyOrigin()
+        key = (
+            healpix_id,
+            float(cd[0]), float(cd[1]), float(cd[2]), float(cd[3]),
+            float(origin.getX()), float(origin.getY()),
+            sky.getRa().asDegrees(), sky.getDec().asDegrees(),
+            (in_box.getMinX(), in_box.getMinY(), in_box.getMaxX(), in_box.getMaxY()),
+            (warped_box.getMinX(), warped_box.getMinY(),
+             warped_box.getMaxX(), warped_box.getMaxY()),
+        )
+        if key not in self._rust_transforms:
+            src_box = Box2I(in_box)
+            src_box.grow(2)
+            try:
+                transform = fit_transform(
+                    SkyProjection.from_legacy(in_wcs, GeneralFrame(unit="pixel")),
+                    Box.from_legacy(src_box),
+                    SkyProjection.from_legacy(target_wcs, GeneralFrame(unit="pixel")),
+                    Box.from_legacy(warped_box),
+                )
+            except Exception as exc:
+                self.log.warning(
+                    "WarpTransform fit failed for tile %s image %s (%r); "
+                    "falling back to the afw Warper for this image.",
+                    healpix_id,
+                    in_box,
+                    exc,
+                )
+                transform = None
+            self._rust_transforms[key] = transform
+        return self._rust_transforms[key]
 
     def _assemble_sub_region(
         self, tract_patch: dict[int, Iterable[tuple[DeferredDatasetHandle, SkyWcs, Box2I]]], patch_grow: int
