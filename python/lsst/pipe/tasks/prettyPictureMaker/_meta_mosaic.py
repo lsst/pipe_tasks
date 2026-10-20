@@ -57,8 +57,18 @@ from lsst.pipe.base import (
 from lsst.pipe.base.connectionTypes import Input, Output
 from lsst.skymap import BaseSkyMap
 from stellaRGB.types import ColorImage
+from stellaRGB.warp import WarpTransform, fit_transform, warp_into
 
 from ._utils import FeatheredMosaicCreator, probe_warp_scale, warp_maps
+
+# The "rust" backend's resampling kernel. The afw reference uses lanczos5
+# (MetaMosaicConfig.setDefaults) and the rust engine has no lanczos5; "lanczos4"
+# mirrors the cv2 backend's effective kernel (cv2.INTER_LANCZOS4). The rust
+# engine applies no pixel-area scaling (unlike the afw Warper the cv2 path
+# mirrors with probe_warp_scale); skymap tracts share the reference tract's CD
+# matrix, so the transform's pixel-space Jacobian has |det| = 1 and none is
+# needed.
+_RUST_KERNEL = "lanczos4"
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -135,6 +145,8 @@ class MetaMosaicConfig(PipelineTaskConfig, pipelineConnections=MetaMosaicConnect
         allowed={
             "afw": "afwMath Warper (default, reference)",
             "cv2": "precomputed-map cv2.remap (Lanczos4)",
+            "rust": "stellaRGB.warp Rust engine (Lanczos4; per-tract fitted "
+            "WarpTransform, no dense coordinate maps)",
         },
         default="afw",
     )
@@ -159,11 +171,17 @@ class MetaMosaicTask(PipelineTask):
     ``config.warp_backend``: "afw" uses the afwMath Warper (reference);
     "cv2" warps with ``cv2.remap`` over per-foreign-tract precomputed
     coordinate maps (see ``warp_maps``), which is much faster and validated
-    to agree with the afw path. Every contributor is then feather-weighted
-    directly into a single mosaic accumulation pass with a NaN-reweighted
-    feather (``FeatheredMosaicCreator``) against a per-pixel weight
-    accumulator, so a NaN in one contributor does not corrupt the overlap
-    region; there is no per-cell pre-average.
+    to agree with the afw path; "rust" warps with the ``stellaRGB.warp``
+    engine over a per-foreign-tract ``WarpTransform`` (a control-grid fit of
+    the projection pair verified to ``fit_transform``'s tolerance — no dense
+    coordinate maps are ever built; see :meth:`_fit_tract_transform`; a tract
+    whose fit fails (off-domain or noninvertible projection pair) warns and
+    falls back to the afw Warper for that tract alone). Every
+    contributor is then feather-weighted directly into a single mosaic
+    accumulation pass by the backend-independent ``FeatheredMosaicCreator``
+    (the single holder of the masked-add/NaN-reweight contract) against a
+    per-pixel weight accumulator, so a NaN in one contributor does not
+    corrupt the overlap region; there is no per-cell pre-average.
 
     Missing data is left as NaN during assembly and replaced with zero only at the
     very end. No mask and no plugins.
@@ -328,6 +346,68 @@ class MetaMosaicTask(PipelineTask):
             y_min=float(py.min()),
             y_max=float(py.max()),
         ).to_legacy()
+
+    def _fit_tract_transform(
+        self,
+        tract_info: TractInfo,
+        tract_id: int,
+        skymap_name: str,
+        ref_proj: SkyProjection,
+        union_box: Box2I,
+        grow: int,
+    ) -> WarpTransform:
+        """Fit the "rust" backend's per-tract :class:`WarpTransform`.
+
+        The fit samples the projection pair on a control grid only (the
+        ``fit_transform`` adaptive-densification contract) — the anti-pattern
+        this backend exists to eliminate is the dense per-tract coordinate-map
+        build of the "cv2" path (measured ~303 s/tract at production scale).
+        The returned transform is cached per foreign tract and reused by
+        every patch of that tract; per-patch rendering happens at the
+        patch's own dest box via ``warp_into``'s sub-box support.
+
+        Parameters
+        ----------
+        tract_info : `lsst.skymap.TractInfo`
+            The foreign tract.
+        tract_id : `int`
+            The foreign tract id (frame label only).
+        skymap_name : `str`
+            The skymap name (frame label only).
+        ref_proj : `lsst.images.SkyProjection`
+            Reference-tract projection defining the destination pixel frame
+            (the mosaic's virtual-tract grid coordinates).
+        union_box : `lsst.geom.Box2I`
+            Union of the virtual-patch cells claimed by this tract's patches,
+            in reference pixel coordinates (the transform's destination box).
+        grow : `int`
+            Pixels to grow the source bbox by, so an affine-mode fit cannot
+            trip its D7 containment guard: the transform's affine footprint
+            is the corner-image rectangle of the source bbox, and claimed
+            cell boxes snap to the virtual-patch grid, which can overshoot
+            the mapped tract footprint by (at most) one cell width plus the
+            fit tolerance times the pixel-space Jacobian (~1 for skymap
+            tracts). ``grow`` is set to at least one cell width plus slack.
+
+        Returns
+        -------
+        transform : `stellaRGB.warp.WarpTransform`
+            Maps- or affine-mode transform (per the fit's honest residual
+            report) whose ``dest_bbox`` contains ``union_box`` (D7).
+        """
+        tract_bbox = tract_info.bbox
+        src_proj = SkyProjection.from_legacy(
+            tract_info.getWcs(),
+            TractFrame(skymap=skymap_name, tract=tract_id, bbox=Box.from_legacy(tract_bbox)),
+        )
+        src_box = Box2I(tract_bbox)
+        src_box.grow(grow)
+        return fit_transform(
+            src_proj,
+            Box.from_legacy(src_box),
+            ref_proj,
+            Box.from_legacy(union_box),
+        )
 
     def _warp_patch_onto_cell(
         self, rgb: NDArray, patch_wcs, ref_wcs, cell_box: Box2I, patch_bbox: Box2I
@@ -701,15 +781,24 @@ class MetaMosaicTask(PipelineTask):
         self.log.info("Mosaic %d x %d virtual patches (%d x %d px)", ncx, ncy, mosaic_w, mosaic_h)
 
         # Phase timings (wall clock, accumulated over all inputs) and, for the
-        # "cv2" warp backend, the per-foreign-tract coordinate-map cache built
-        # over the union of each tract's claimed cell dest boxes. The cache is
-        # local to this run(), so it is cleared at the start of every run.
+        # "cv2" warp backend, the per-foreign-tract coordinate-map cache, or
+        # for the "rust" backend the per-foreign-tract WarpTransform cache,
+        # both built over the union of each tract's claimed cell dest boxes.
+        # The cache is local to this run(), so it is cleared at the start of
+        # every run. For "rust", "map-build" times the control-grid fits
+        # (one per foreign tract, amortized ~0 vs the cv2 dense-map build);
+        # warp+feather-accumulate stay separate columns: warp_into times into
+        # "warp=", the backend-independent FeatheredMosaicCreator.add_to_image
+        # feathered masked-adds (the D12 contract holder) time into
+        # "accumulate=" exactly as for the other backends.
         use_cv2 = self.config.warp_backend == "cv2"
+        use_rust = self.config.warp_backend == "rust"
         t_decode = t_warp = t_map = t_add = t_finalize = t_crop = 0.0
         n_decode = n_warp = n_map = n_add = 0
         tract_maps: dict[int, tuple[NDArray, NDArray, Box2I, Point2I, float]] = {}
+        tract_transforms: dict[int, WarpTransform] = {}
         tract_union: dict[int, Box2I] = {}
-        if use_cv2:
+        if use_cv2 or use_rust:
             for tract, _, _, _, _, _, dest_box in foreign_records:
                 if tract in tract_union:
                     tract_union[tract].include(dest_box)
@@ -778,7 +867,54 @@ class MetaMosaicTask(PipelineTask):
                 t_decode += time.perf_counter() - t0
                 n_decode += 1
                 patch_bbox = patch_info.getOuterBBox()
-                if use_cv2:
+                if use_rust and tract not in tract_transforms:
+                    # One fit per foreign tract; a failed fit is cached as the
+                    # None sentinel so later patches of the tract neither retry
+                    # the fit nor re-warn. Fit failures (noninvertible fits,
+                    # off-domain projections, containment shortfalls) are
+                    # robustness events, not fatal ones: warn once per tract
+                    # and serve the tract from the afw Warper below.
+                    tm0 = time.perf_counter()
+                    try:
+                        transform = self._fit_tract_transform(
+                            skyMap[tract],
+                            tract,
+                            skymap_name,
+                            ref_proj,
+                            tract_union[tract],
+                            max(cell_w, cell_h) + 4,
+                        )
+                        n_map += 1
+                    except Exception as exc:
+                        self.log.warning(
+                            "WarpTransform fit failed for foreign tract %s (%r); "
+                            "falling back to the afw Warper for this tract.",
+                            tract,
+                            exc,
+                        )
+                        transform = None
+                    t_map += time.perf_counter() - tm0
+                    tract_transforms[tract] = transform
+                rust_transform = tract_transforms.get(tract)
+                if rust_transform is not None:
+                    t0 = time.perf_counter()
+                    # The source is passed as a ColorImage so the transform's
+                    # tract-pixel source frame sees the patch at its own bbox
+                    # (a bare ndarray would be declared at origin (0,0)).
+                    # warp_into renders exactly this patch's dest box (the
+                    # transform's dest_bbox is the tract-wide union box, so
+                    # this is a contained sub-box render; no dense maps and
+                    # no canvas-sized temporaries — the per-patch buffer is
+                    # dest_box-sized, the same profile as the cv2 branch).
+                    warped = warp_into(
+                        ColorImage(rgb, bbox=Box.from_legacy(patch_bbox)),
+                        rust_transform,
+                        kernel=_RUST_KERNEL,
+                        dest_bbox=Box.from_legacy(dest_box),
+                    )
+                    t_warp += time.perf_counter() - t0
+                    n_warp += 1
+                elif use_cv2:
                     if tract not in tract_maps:
                         tm0 = time.perf_counter()
                         tract_bbox = skyMap[tract].bbox

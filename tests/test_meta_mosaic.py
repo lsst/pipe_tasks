@@ -23,13 +23,14 @@ def _make_task(reference_tract=None):
     return task
 
 
-def _make_skymap():
-    """Build a two-tract DiscreteSkyMap with overlapping patch borders.
+def _make_skymap(tracts=2):
+    """Build a multi-tract DiscreteSkyMap with overlapping patch borders.
 
     Patches overlap their neighbours (outer 640 px vs 400 px pitch) and the
     feathering region (``patch_grow`` = inner cell size = 100 px) is comfortably
     smaller than the pitch, so each patch's center stays pure while the borders
-    blend.
+    blend. Tracts step 0.05 deg in RA (tract 2 at 0.10 deg, claimed-cell
+    footprints still land on the reference canvas).
     """
     config = DiscreteSkyMap.ConfigClass()
     tract_builder = config.tractBuilder["cells"]
@@ -38,9 +39,9 @@ def _make_skymap():
     tract_builder.numCellsPerPatchInner = 4
     tract_builder.numCellsInPatchBorder = 1
     config.tractBuilder.name = "cells"
-    config.raList = [10.0, 10.05]
-    config.decList = [-30.0, -30.0]
-    config.radiusList = [0.15, 0.15]
+    config.raList = [10.0 + 0.05 * i for i in range(tracts)]
+    config.decList = [-30.0] * tracts
+    config.radiusList = [0.15] * tracts
     return DiscreteSkyMap(config)
 
 
@@ -1293,8 +1294,144 @@ class TestWarpBackends:
             assert int(match.group(1)) == 2
             assert "accumulate=" in line and "finalize=" in line and "crop=" in line
 
+    @pytest.mark.parametrize("crop_mode", ["none", "full_coverage"])
+    def test_rust_matches_afw(self, crop_mode):
+        """The "rust" backend (fitted-transform warp_into, Lanczos4) agrees
+        with the afwMath (Lanczos5) reference to 5e-3 outside the same kernel
+        ring the cv2 battery uses, uncropped and default-cropped. The
+        tolerance is carried from the cv2 battery (same kernel family, same
+        flat-color scenes); measured masked max-diff is 1.6e-5 (the fitted
+        transform's verified residual is <=0.05 source px), so this is a 300x
+        margin, not a loosening."""
+        skymap = _make_skymap()
+        afw = self._run(skymap, "afw", crop_mode, self._standard_handles(skymap)).outputRGBMosaic
+        rust = self._run(skymap, "rust", crop_mode, self._standard_handles(skymap)).outputRGBMosaic
+        assert afw.bbox == rust.bbox
+        a, b = afw.array, rust.array
+        assert np.all(np.isfinite(a)) and np.all(np.isfinite(b))
+        assert np.any(a[..., 2] > 0.5) and np.any(b[..., 2] > 0.5)
+        good = _backends_agree_mask(skymap, 0, 1, [0], rust.bbox.to_legacy())
+        assert good.mean() > 0.9
+        np.testing.assert_allclose(a[good], b[good], atol=5e-3)
+        diff = np.abs(a - b).max(axis=-1)
+        assert (diff > 5e-3).mean() < 0.05
+
+    def test_rust_nan_hole_black_after_finalize(self):
+        """NaN contract for "rust": a NaN block in a foreign patch yields
+        zero-weight (black after finalize) pixels, agreeing with the afw
+        reference up to a 3-pixel kernel ring (same assertion shape as the
+        cv2/afw test; the masked-add contract lives in the shared
+        FeatheredMosaicCreator, so only the warp's NaN footprint differs)."""
+        skymap = _make_skymap()
+        ref_bbox = skymap[0][0].getOuterBBox()
+        blue = np.empty((ref_bbox.getHeight(), ref_bbox.getWidth(), 3), dtype=np.float32)
+        blue[...] = [0.0, 0.0, 1.0]
+        blue[:10, :10, :] = np.nan
+        foreign = InMemoryDatasetHandle(
+            inMemoryDataset=ColorImage(blue, bbox=Box.from_legacy(skymap[1][0].getOuterBBox())),
+            skymap="test",
+            tract=1,
+            patch=0,
+        )
+        handles = [_make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]), foreign]
+
+        zeros = {}
+        for backend in ("afw", "rust"):
+            image = self._run(skymap, backend, "none", handles).outputRGBMosaic
+            array = image.array
+            assert np.all(np.isfinite(array))
+            zeros[backend] = np.all(array == 0.0, axis=-1)
+
+        def dilate(m):
+            return cv2.dilate(m.astype(np.uint8), np.ones((7, 7), np.uint8)).astype(bool)
+        assert zeros["afw"].sum() > 1000 and zeros["rust"].sum() > 1000
+        assert (zeros["afw"] & ~dilate(zeros["rust"])).sum() == 0
+        assert (zeros["rust"] & ~dilate(zeros["afw"])).sum() == 0
+
+    def test_timings_log_and_transform_cache(self, caplog, monkeypatch):
+        """"rust" fits exactly one WarpTransform per foreign TRACT (two
+        patches of tract 1 and one of tract 2 share the tract cache: spy
+        count == 2 foreign tracts, not 3 patches), and the Timings line keeps
+        the parser format with map-build n=2. map-build times the
+        control-grid fits: <1.0 s each on this tiny scene (measured ~0.3-0.4
+        s; the guard is machine-loose — the structural anti-pattern pin is
+        the spy count and the absence of dense maps, vs the cv2 path's
+        303 s/tract dense map build at production scale)."""
+        from lsst.pipe.tasks.prettyPictureMaker import _meta_mosaic
+
+        skymap = _make_skymap(tracts=3)
+        fits = []
+        real_fit = _meta_mosaic.fit_transform
+
+        def spy(*args, **kwargs):
+            transform = real_fit(*args, **kwargs)
+            fits.append(transform)
+            return transform
+
+        monkeypatch.setattr(_meta_mosaic, "fit_transform", spy)
+        handles = [
+            _make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]),
+            _make_handle(skymap, 1, 0, [0.0, 0.0, 1.0]),
+            _make_handle(skymap, 1, 1, [0.0, 1.0, 0.0]),
+            _make_handle(skymap, 2, 0, [0.0, 1.0, 0.0]),
+        ]
+        with caplog.at_level(logging.INFO, logger="lsst.metaMosaic"):
+            self._run(skymap, "rust", "none", handles)
+        assert len(fits) == 2, "expected one fit_transform per foreign tract"
+        assert all(t.dest_bbox is not None for t in fits)  # D7 always populated
+        lines = [r.getMessage() for r in caplog.records if "Timings:" in r.getMessage()]
+        assert lines
+        line = lines[-1]
+        match = re.search(r"map-build=([0-9.]+)s \(n=(\d+)\)", line)
+        assert match is not None, line
+        assert int(match.group(2)) == 2
+        float_per_fit = float(match.group(1)) / 2
+        assert float_per_fit < 1.0, f"fit amortization regressed: {float_per_fit:.3f}s"
+        match = re.search(r"warp=[0-9.]+s \(n=(\d+)\)", line)
+        assert int(match.group(1)) == 3  # one warp_into per foreign patch
+        match = re.search(r"decode=[0-9.]+s \(n=(\d+)\)", line)
+        assert int(match.group(1)) == 4
+
+    def test_rust_fit_failure_falls_back_to_afw(self, caplog, monkeypatch):
+        """A failing fit (e.g. off-domain projection pair) is a per-tract
+        robustness event: exactly one warning names the tract, the failed fit
+        is cached (two patches -> one attempt, one warning) and the output is
+        bit-identical to the afw backend (which is literally the code path
+        that served it). map-build counts no fits."""
+        from lsst.pipe.tasks.prettyPictureMaker import _meta_mosaic
+
+        skymap = _make_skymap()
+        calls = []
+
+        def broken_fit(*args, **kwargs):
+            calls.append(args)
+            raise ValueError("noninvertible/off-domain projection pair (injected)")
+
+        monkeypatch.setattr(_meta_mosaic, "fit_transform", broken_fit)
+        handles = [
+            _make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]),
+            _make_handle(skymap, 1, 0, [0.0, 0.0, 1.0]),
+            _make_handle(skymap, 1, 1, [0.0, 1.0, 0.0]),
+        ]
+        with caplog.at_level(logging.INFO, logger="lsst.metaMosaic"):
+            rust = self._run(skymap, "rust", "none", handles)
+        warnings = [r for r in caplog.records if "falling back to the afw Warper" in r.getMessage()]
+        assert len(warnings) == 1  # once per tract, not per patch
+        assert "tract 1" in warnings[0].getMessage()
+        assert len(calls) == 1  # failed fit cached; second patch did not retry
+        afw = self._run(skymap, "afw", "none", handles)
+        assert rust.outputRGBMosaic.bbox == afw.outputRGBMosaic.bbox
+        np.testing.assert_array_equal(
+            np.asarray(rust.outputRGBMosaic.array), np.asarray(afw.outputRGBMosaic.array)
+        )
+        line = [r.getMessage() for r in caplog.records if "Timings:" in r.getMessage()][-1]
+        match = re.search(r"map-build=[0-9.]+s \(n=(\d+)\)", line)
+        assert int(match.group(1)) == 0
+
     def test_warp_backend_config(self):
         config = MetaMosaicConfig()
         assert config.warp_backend == "afw"
+        config.warp_backend = "rust"
+        assert config.warp_backend == "rust"
         with pytest.raises(Exception):
             config.warp_backend = "bogus"
