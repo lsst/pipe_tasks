@@ -236,7 +236,7 @@ class RepairTask(pipeBase.Task):
             if modelBg:
                 # Add back background image
                 img = exposure.getMaskedImage()
-                img += modelBg.getImageF()
+                img += modelBg.getImage()
                 del img
                 # Replace original image with CR subtracted image
                 exposure0.setMaskedImage(exposure.getMaskedImage())
