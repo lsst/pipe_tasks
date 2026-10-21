@@ -57,7 +57,7 @@ from lsst.pipe.base import (
 from lsst.pipe.base.connectionTypes import Input, Output
 from lsst.skymap import BaseSkyMap
 from stellaRGB.types import ColorImage
-from stellaRGB.warp import WarpTransform, fit_transform, warp_into
+from stellaRGB.warp import TanWarp, TanWcs, WarpTransform, fit_transform, warp_into
 
 from ._utils import FeatheredMosaicCreator, probe_warp_scale, warp_maps
 
@@ -69,6 +69,106 @@ from ._utils import FeatheredMosaicCreator, probe_warp_scale, warp_maps
 # matrix, so the transform's pixel-space Jacobian has |det| = 1 and none is
 # needed.
 _RUST_KERNEL = "lanczos4"
+
+
+def _is_sip_card(name: str) -> bool:
+    """True for FITS SIP metadata cards: the A/B/C/D polynomial order
+    declarations and the A_p_q/B_p_q/C_p_q/D_p_q coefficient cards (A/B
+    forward distortion, C/D its inverse)."""
+    if name in ("A_ORDER", "B_ORDER", "C_ORDER", "D_ORDER"):
+        return True
+    parts = name.split("_")
+    return (
+        len(parts) == 3
+        and parts[0] in ("A", "B", "C", "D")
+        and parts[1].isdigit()
+        and parts[2].isdigit()
+    )
+
+
+def _pure_fits_tan(wcs: SkyWcs, box: Box2I) -> bool:
+    """True when ``wcs`` is accepted as pure FITS TAN for direct mode.
+
+    This is a gate of increasing cost, not a proof:
+
+    1. ``isFits`` (a *property* in this stack, answering "FITS-metadata
+       representable" — TAN+SIP also satisfies it, SIP keywords being
+       FITS-standard metadata; ``hasFitsApproximation()`` is no use, it
+       only reports a factory approximation slot) rejects exotic
+       non-FITS representations outright.
+    2. Exact SIP-card rejection on ``getFitsMetadata()``: any A/B/C/D
+       order card or indexed A_p_q-style coefficient card vetoes the
+       WCS before any sampling. The order to matters: a numeric probe
+       can never PROVE the absence of polynomial distortion — an
+       adversarial SIP polynomial with terms chosen to vanish at every
+       sample point agrees to the probe's tolerance at all of them
+       while reaching 0.05-0.14 px between the samples. The header
+       cards are exact evidence and SIP files must carry them.
+    3. The numeric heuristic last: re-derive the TAN-only WCS from the
+       same three accessors the direct engine consumes (pixelOrigin,
+       skyOrigin, CD) and require pixel->sky agreement at a 9-point
+       lattice over ``box`` (corners, edge midpoints, center) to a
+       microarcsecond. This catches non-pure frame-dict geometries that
+       are not the plain TAN of their own reported triple (e.g. the
+       legacy azimuthal-equidistant-like DiscreteSkyMap tract WCS,
+       measured ~1.2 arcsec off gnomonic at the fixture bbox corners)
+       and NaN-origin distortion variants. A WCS that passes the cards
+       and the lattice is accepted as TAN for rendering purposes;
+       residual risk of distortion hidden between samples exists in
+       principle, mitigated by card 2 removing its realistic source.
+    """
+    if not wcs.isFits:
+        return False
+    try:
+        fits_md = wcs.getFitsMetadata()
+        if any(fits_md.get(name) is not None for name in fits_md.names() if _is_sip_card(name)):
+            return False
+        origin = wcs.getPixelOrigin()
+        sky = wcs.getSkyOrigin()
+        cd = np.asarray(wcs.getCdMatrix())
+        # Distortion-carrying WCSs report isFits==True (SIP keywords are
+        # FITS-standard metadata) yet answer NaN for the origin triple
+        # (no pixel maps exactly to crval under SIP) — reject before
+        # makeSkyWcs chokes on NaN CRPIX. Any failure here means the WCS
+        # is not provably the plain TAN its accessors claim, so the
+        # fitted-maps path (which drives the WCS's own frame dictionary)
+        # must serve it: fail closed.
+        if not (
+            np.isfinite(origin.getX())
+            and np.isfinite(origin.getY())
+            and bool(np.isfinite(cd).all())
+            and np.isfinite(sky.getRa().asRadians())
+            and np.isfinite(sky.getDec().asRadians())
+        ):
+            return False
+        tan = makeSkyWcs(crpix=origin, crval=sky, cdMatrix=cd)
+        cx = (box.getMinX() + box.getMaxX()) / 2.0
+        cy = (box.getMinY() + box.getMaxY()) / 2.0
+        for x in (box.getMinX(), cx, box.getMaxX()):
+            for y in (box.getMinY(), cy, box.getMaxY()):
+                p = Point2D(x, y)
+                # ``not (sep < tol)`` fails closed on NaN separations.
+                if not wcs.pixelToSky(p).separation(tan.pixelToSky(p)).asArcseconds() < 1e-6:
+                    return False
+    except Exception:
+        return False
+    return True
+
+
+def _tan_wcs_from_afw(wcs: SkyWcs) -> TanWcs:
+    """Map a (checked pure-FITS-TAN) afw SkyWcs onto the direct engine's
+    :class:`stellaRGB.warp.TanWcs` field-by-field (D16): ``getPixelOrigin``
+    is the 0-based pixel-center reference pixel (afw's pixel origin is
+    FITS ``CRPIX - 1``), ``getSkyOrigin`` the tangent point (degrees), and
+    ``getCdMatrix`` the degrees-per-pixel CD matrix."""
+    origin = wcs.getPixelOrigin()
+    sky = wcs.getSkyOrigin()
+    return TanWcs(
+        crpix=(origin.getX(), origin.getY()),
+        crval_deg=(sky.getRa().asDegrees(), sky.getDec().asDegrees()),
+        cd_deg_per_pix=np.asarray(wcs.getCdMatrix(), dtype=float),
+    )
+
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -145,8 +245,9 @@ class MetaMosaicConfig(PipelineTaskConfig, pipelineConnections=MetaMosaicConnect
         allowed={
             "afw": "afwMath Warper (default, reference)",
             "cv2": "precomputed-map cv2.remap (Lanczos4)",
-            "rust": "stellaRGB.warp Rust engine (Lanczos4; per-tract fitted "
-            "WarpTransform, no dense coordinate maps)",
+            "rust": "stellaRGB.warp Rust engine (Lanczos4; direct per-pixel "
+            "TAN warp for pure FITS TAN tract pairs (D16), per-tract fitted "
+            "WarpTransform otherwise; no dense coordinate maps)",
         },
         default="afw",
     )
@@ -172,9 +273,13 @@ class MetaMosaicTask(PipelineTask):
     "cv2" warps with ``cv2.remap`` over per-foreign-tract precomputed
     coordinate maps (see ``warp_maps``), which is much faster and validated
     to agree with the afw path; "rust" warps with the ``stellaRGB.warp``
-    engine over a per-foreign-tract ``WarpTransform`` (a control-grid fit of
-    the projection pair verified to ``fit_transform``'s tolerance — no dense
-    coordinate maps are ever built; see :meth:`_fit_tract_transform`; a tract
+    engine: when a foreign tract's WCS pair (reference and tract) is pure
+    FITS TAN — the production skymap case — it selects the direct
+    per-pixel TAN mode (T7.3, D16: :meth:`_direct_tan_warp`; no fit, no
+    maps, no box growth), otherwise it fits a per-foreign-tract
+    ``WarpTransform`` (a control-grid fit of the projection pair verified
+    to ``fit_transform``'s tolerance — no dense coordinate maps are ever
+    built; see :meth:`_fit_tract_transform`; a tract
     whose fit fails (off-domain or noninvertible projection pair) warns and
     falls back to the afw Warper for that tract alone). Every
     contributor is then feather-weighted directly into a single mosaic
@@ -346,6 +451,39 @@ class MetaMosaicTask(PipelineTask):
             y_min=float(py.min()),
             y_max=float(py.max()),
         ).to_legacy()
+
+    def _direct_tan_warp(
+        self,
+        tract_info: TractInfo,
+        ref_info: TractInfo,
+        ref_pure_tan: bool,
+    ) -> TanWarp | None:
+        """T7.3 (D16): the direct per-pixel TAN warp for a pure-FITS-TAN pair,
+        or None when either WCS needs the fitted-maps path.
+
+        ``ref_pure_tan`` is the reference-side ``_pure_fits_tan`` verdict
+        (accepted-as-TAN, not a proof — see that function), computed once
+        per run by the caller; only the foreign side is probed per tract.
+        Direct mode feeds the engine the two TAN frames' header numbers
+        and evaluates the gnomonic pair per destination pixel in f64 —
+        no control-grid fit, no coordinate maps, and (unlike the fitted
+        transforms' D7 containment rule) no dependence on the union box:
+        the render region is exactly what ``warp_into`` is asked for, so
+        direct tracts never grow boxes.
+        """
+        if not (ref_pure_tan and _pure_fits_tan(tract_info.getWcs(), tract_info.bbox)):
+            return None
+        try:
+            return TanWarp(
+                dest=_tan_wcs_from_afw(ref_info.getWcs()),
+                src=_tan_wcs_from_afw(tract_info.getWcs()),
+            )
+        except Exception:
+            # stellaRGB field validation (e.g. the crval declination
+            # range) or a future constructor contract rejecting the
+            # pair: fail closed to the maps ladder like the gate does —
+            # a direct-mode engine hiccup must never crash the task.
+            return None
 
     def _fit_tract_transform(
         self,
@@ -786,17 +924,27 @@ class MetaMosaicTask(PipelineTask):
         # both built over the union of each tract's claimed cell dest boxes.
         # The cache is local to this run(), so it is cleared at the start of
         # every run. For "rust", "map-build" times the control-grid fits
-        # (one per foreign tract, amortized ~0 vs the cv2 dense-map build);
+        # (one per foreign tract that needs the maps path; direct-mode
+        # tracts (T7.3/D16) perform no fit and contribute nothing to this
+        # column — a run of pure FITS TAN tracts reports map-build n=0),
+        # amortized ~0 vs the cv2 dense-map build;
         # warp+feather-accumulate stay separate columns: warp_into times into
         # "warp=", the backend-independent FeatheredMosaicCreator.add_to_image
         # feathered masked-adds (the D12 contract holder) time into
         # "accumulate=" exactly as for the other backends.
         use_cv2 = self.config.warp_backend == "cv2"
         use_rust = self.config.warp_backend == "rust"
+        # Direct-mode gate (T7.3/D16): the reference side is fixed for the
+        # whole run, so its accepted-as-TAN verdict is probed once here and
+        # reused for every foreign tract's selection.
+        ref_pure_tan = use_rust and _pure_fits_tan(ref_info.getWcs(), ref_info.bbox)
         t_decode = t_warp = t_map = t_add = t_finalize = t_crop = 0.0
         n_decode = n_warp = n_map = n_add = 0
         tract_maps: dict[int, tuple[NDArray, NDArray, Box2I, Point2I, float]] = {}
-        tract_transforms: dict[int, WarpTransform] = {}
+        # "rust" per-foreign-tract cache: a direct-mode TanWarp (T7.3/D16),
+        # a fitted WarpTransform (maps path), or None — the failed-fit
+        # sentinel routing that tract to the afw Warper.
+        tract_transforms: dict[int, WarpTransform | TanWarp | None] = {}
         tract_union: dict[int, Box2I] = {}
         if use_cv2 or use_rust:
             for tract, _, _, _, _, _, dest_box in foreign_records:
@@ -868,44 +1016,76 @@ class MetaMosaicTask(PipelineTask):
                 n_decode += 1
                 patch_bbox = patch_info.getOuterBBox()
                 if use_rust and tract not in tract_transforms:
-                    # One fit per foreign tract; a failed fit is cached as the
-                    # None sentinel so later patches of the tract neither retry
-                    # the fit nor re-warn. Fit failures (noninvertible fits,
-                    # off-domain projections, containment shortfalls) are
-                    # robustness events, not fatal ones: warn once per tract
-                    # and serve the tract from the afw Warper below.
-                    tm0 = time.perf_counter()
-                    try:
-                        transform = self._fit_tract_transform(
-                            skyMap[tract],
+                    # T7.3 (D16) mode selection, once per foreign tract at
+                    # its first patch: a pure FITS TAN pair (the production
+                    # skymap case) is served by the direct per-pixel TAN
+                    # path — no fit, no maps, no union-box work (the direct
+                    # engine renders any dest box, so nothing grows here).
+                    # Anything else (SIP or other distortion, exotic
+                    # projections — anything the pure-TAN gate declines)
+                    # takes the existing T6.1 fit/maps path below.
+                    # One fit per foreign tract; a failed fit is cached as
+                    # the None sentinel so later patches of the tract
+                    # neither retry the fit nor re-warn. Fit failures
+                    # (noninvertible fits, off-domain projections,
+                    # containment shortfalls) are robustness events, not
+                    # fatal ones: warn once per tract and serve the tract
+                    # from the afw Warper below.
+                    tanwarp = self._direct_tan_warp(skyMap[tract], ref_info, ref_pure_tan)
+                    if tanwarp is not None:
+                        tract_transforms[tract] = tanwarp
+                        self.log.info(
+                            "rust backend tract %s: rust-direct (dest box %d x %d px at first patch)",
                             tract,
-                            skymap_name,
-                            ref_proj,
-                            tract_union[tract],
-                            max(cell_w, cell_h) + 4,
+                            dest_box.getWidth(),
+                            dest_box.getHeight(),
                         )
-                        n_map += 1
-                    except Exception as exc:
-                        self.log.warning(
-                            "WarpTransform fit failed for foreign tract %s (%r); "
-                            "falling back to the afw Warper for this tract.",
-                            tract,
-                            exc,
-                        )
-                        transform = None
-                    t_map += time.perf_counter() - tm0
-                    tract_transforms[tract] = transform
+                    else:
+                        tm0 = time.perf_counter()
+                        try:
+                            transform = self._fit_tract_transform(
+                                skyMap[tract],
+                                tract,
+                                skymap_name,
+                                ref_proj,
+                                tract_union[tract],
+                                max(cell_w, cell_h) + 4,
+                            )
+                            n_map += 1
+                        except Exception as exc:
+                            self.log.warning(
+                                "WarpTransform fit failed for foreign tract %s (%r); "
+                                "falling back to the afw Warper for this tract.",
+                                tract,
+                                exc,
+                            )
+                            transform = None
+                        t_map += time.perf_counter() - tm0
+                        tract_transforms[tract] = transform
+                        if transform is not None:
+                            self.log.info(
+                                "rust backend tract %s: rust-maps spacing=%.1f residual=%.2e "
+                                "(dest box %d x %d px at first patch)",
+                                tract,
+                                transform.control_spacing,
+                                transform.max_residual,
+                                dest_box.getWidth(),
+                                dest_box.getHeight(),
+                            )
                 rust_transform = tract_transforms.get(tract)
                 if rust_transform is not None:
                     t0 = time.perf_counter()
                     # The source is passed as a ColorImage so the transform's
                     # tract-pixel source frame sees the patch at its own bbox
                     # (a bare ndarray would be declared at origin (0,0)).
-                    # warp_into renders exactly this patch's dest box (the
-                    # transform's dest_bbox is the tract-wide union box, so
-                    # this is a contained sub-box render; no dense maps and
-                    # no canvas-sized temporaries — the per-patch buffer is
-                    # dest_box-sized, the same profile as the cv2 branch).
+                    # warp_into renders exactly this patch's dest box: for a
+                    # fitted maps transform this is a contained sub-box
+                    # render of the tract-wide union box (D7); for a
+                    # direct-mode TanWarp (T7.3) the dest box is the whole
+                    # render contract (D16 — no fitted footprint exists).
+                    # No dense maps and no canvas-sized temporaries either
+                    # way; the per-patch buffer is dest_box-sized, the same
+                    # profile as the cv2 branch.
                     warped = warp_into(
                         ColorImage(rgb, bbox=Box.from_legacy(patch_bbox)),
                         rust_transform,

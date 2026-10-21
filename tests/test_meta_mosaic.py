@@ -54,6 +54,32 @@ def _make_handle(skymap, tract, patch, value, metadata=None):
     return InMemoryDatasetHandle(inMemoryDataset=image, skymap="test", tract=tract, patch=patch)
 
 
+def _make_hot_handle(skymap, tract, patch, value, sigma=2.5, amp=1.0):
+    """Like `_make_handle`, but with a smooth hot spot (R+G bump, peak
+    white) stamped at the outer-bbox center.
+
+    F2 (T7.3 audit): constant-color patches are translation-blind —
+    every pixel identical, so a shifted warp is indistinguishable
+    anywhere the compared regions overlap. A centered Gaussian anchors
+    the feature position: a backend misaligned by >=1 px moves the peak
+    into/out of compared pixels and fires the atol=5e-3 gate. It is
+    smooth (not a step/hot pixel) so the lanczos4-vs-5 kernel-ringing
+    difference at aligned edges stays near the constant-patch baseline;
+    it sits at the patch center, deep inside the region the
+    backend-agreement mask keeps.
+    """
+    bbox = skymap[tract][patch].getOuterBBox()
+    height, width = bbox.getHeight(), bbox.getWidth()
+    array = np.empty((height, width, 3), dtype=np.float32)
+    array[...] = value
+    ys, xs = np.mgrid[0:height, 0:width]
+    r2 = (xs - (width - 1) / 2.0) ** 2 + (ys - (height - 1) / 2.0) ** 2
+    blob = (amp * np.exp(-r2 / (2.0 * sigma * sigma))).astype(np.float32)
+    array[..., :2] += blob[..., np.newaxis]
+    image = ColorImage(array, bbox=Box.from_legacy(bbox))
+    return InMemoryDatasetHandle(inMemoryDataset=image, skymap="test", tract=tract, patch=patch)
+
+
 def _make_run_task(reference_tract=0, bin_factor=1, crop_mode="full_coverage"):
     config = MetaMosaicConfig()
     config.reference_tract = reference_tract
@@ -1435,3 +1461,297 @@ class TestWarpBackends:
         assert config.warp_backend == "rust"
         with pytest.raises(Exception):
             config.warp_backend = "bogus"
+
+
+class _TanPatch:
+    """PatchInfo wrapper presenting a strict FITS-TAN WCS over the same
+    geometry (everything else delegates to the wrapped PatchInfo)."""
+
+    def __init__(self, info, wcs):
+        self._info = info
+        self._wcs = wcs
+
+    def getWcs(self):
+        return self._wcs
+
+    def __getattr__(self, name):
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self._info, name)
+
+
+class _TanTract:
+    """TractInfo wrapper presenting a strict FITS-TAN WCS to itself and all
+    of its patches (bbox, num_patches, patch geometry delegate through)."""
+
+    def __init__(self, info, wcs):
+        self._info = info
+        self._wcs = wcs
+
+    def getWcs(self):
+        return self._wcs
+
+    def __getitem__(self, patch):
+        return _TanPatch(self._info[patch], self._wcs)
+
+    def __getattr__(self, name):
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self._info, name)
+
+
+class _TanSkymap:
+    """SkyMap wrapper replacing each tract's WCS with the strict FITS TAN
+    rebuilt from its own (pixelOrigin, skyOrigin, CD) triple.
+
+    Runtime audit for T7.3: the DiscreteSkyMap fixture's tract WCS is NOT
+    the plain FITS TAN of that triple (its legacy frame dict is an
+    azimuthal-equidistant-like mapping — measured ~1.2 arcsec gnomonic
+    deviation at the fixture tract bbox corners, ~0 near the center), so
+    ``MetaMosaicTask``'s pure-TAN gate correctly rejects it and every
+    raw-fixture "rust" test above exercises the fit/maps path. A
+    production butler tract WCS is a plain TAN FITS header that afw loads
+    as exactly this reconstruction, so the wrapper hands the task the
+    production-shape WCS over unchanged geometry to exercise direct mode.
+    """
+
+    def __init__(self, skymap):
+        self._skymap = skymap
+        self._cache = {}
+
+    def __getitem__(self, tract):
+        if tract not in self._cache:
+            wcs = self._skymap[tract].getWcs()
+            tan = makeSkyWcs(
+                crpix=wcs.getPixelOrigin(),
+                crval=wcs.getSkyOrigin(),
+                cdMatrix=np.asarray(wcs.getCdMatrix()),
+            )
+            self._cache[tract] = _TanTract(self._skymap[tract], tan)
+        return self._cache[tract]
+
+
+class TestRustDirectMode:
+    """T7.3 (D16) direct per-pixel TAN warp mode: selection ladder and a
+    direct twin of the atol=5e-3 backend battery.
+
+    The raw-fixture ``rust`` tests in `TestWarpBackends` exercise the
+    fit/maps path (the fixture's legacy skymap WCS genuinely fails the
+    pure-FITS-TAN equivalence gate); these tests drive the direct path on
+    production-shape TAN WCS via ``_TanSkymap`` and pin the selection
+    observability: zero fit calls and one "rust-direct" INFO line per
+    foreign tract for pure pairs, the fit/maps ladder for anything else,
+    and a parseable Timings line with map-build n=0 when no tract fits.
+    """
+
+    @staticmethod
+    def _handles(skymap):
+        # F2: the foreign patch carries a centered hot spot (see
+        # `_make_hot_handle`) so the battery is a positional (misalignment-
+        # sensitive) comparison, not just a value one.
+        return [
+            _make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]),  # reference tract: red
+            _make_hot_handle(skymap, 1, 0, [0.0, 0.0, 1.0]),  # foreign: blue + hot spot
+        ]
+
+    @staticmethod
+    def _spy_fit(monkeypatch):
+        """Wrap the module-level ``fit_transform`` spy-style: records
+        successful fits and lets the real implementation run."""
+        from lsst.pipe.tasks.prettyPictureMaker import _meta_mosaic
+
+        fits = []
+        real_fit = _meta_mosaic.fit_transform
+
+        def spy(*args, **kwargs):
+            result = real_fit(*args, **kwargs)
+            fits.append(result)
+            return result
+
+        monkeypatch.setattr(_meta_mosaic, "fit_transform", spy)
+        return fits
+
+    @pytest.mark.parametrize("crop_mode", ["none", "full_coverage"])
+    def test_direct_matches_afw(self, crop_mode):
+        """Direct-mode twin of the backend battery: with production-shape
+        TAN tract WCS the direct per-pixel TAN engine (no fit, no maps)
+        reproduces the afwMath reference to the same 5e-3 tolerance the
+        cv2/rust batteries use. The foreign patch carries a centered hot
+        spot (`_make_hot_handle`) making the uncropped variant a
+        positional check: any >=1 px engine misalignment moves the hot
+        peak into compared pixels (probe-verified: a +2 px src-crpix
+        shift fails this gate). (full_coverage crops the hot spot away
+        from the kept overlap — measured maxG=0 for BOTH backends — so
+        its positional sensitivity is the ordinary blue/red one.)
+        Aligned, measured masked max-diff is 4.8e-5 (kernel-shape
+        differences dominate; the TAN arithmetic itself is engine-
+        verified bit-consistent), so this is a >100x margin."""
+        skymap = _TanSkymap(_make_skymap())
+        afw = TestWarpBackends._run(
+            skymap, "afw", crop_mode, self._handles(skymap)
+        ).outputRGBMosaic
+        rust = TestWarpBackends._run(
+            skymap, "rust", crop_mode, self._handles(skymap)
+        ).outputRGBMosaic
+        assert afw.bbox == rust.bbox
+        a, b = afw.array, rust.array
+        assert np.all(np.isfinite(a)) and np.all(np.isfinite(b))
+        assert np.any(a[..., 2] > 0.5) and np.any(b[..., 2] > 0.5)
+        if crop_mode == "none":
+            # Green exists only at the stamped hot spot (reference red and
+            # foreign blue are both G=0): pins that the positional anchor
+            # is actually in both mosaics (full_coverage crops it away).
+            assert np.any(a[..., 1] > 0.5) and np.any(b[..., 1] > 0.5)
+        good = _backends_agree_mask(skymap, 0, 1, [0], rust.bbox.to_legacy())
+        assert good.mean() > 0.9
+        np.testing.assert_allclose(a[good], b[good], atol=5e-3)
+        diff = np.abs(a - b).max(axis=-1)
+        assert (diff > 5e-3).mean() < 0.05
+
+    def test_direct_selection_zero_fits_and_logs(self, caplog, monkeypatch):
+        """(b)/(d) mode pin: a pure-FITS-TAN pair on every tract selects
+        direct mode — zero ``fit_transform`` calls, one "rust-direct" INFO
+        line per foreign tract (logged at its first patch, so a
+        two-patch tract logs once), no "rust-maps" line at all, and the
+        Timings line stays parseable with map-build n=0 while every
+        foreign patch still counts in decode/warp."""
+        skymap = _TanSkymap(_make_skymap())
+        fits = self._spy_fit(monkeypatch)
+        handles = self._handles(skymap) + [
+            _make_handle(skymap, 1, 1, [0.0, 1.0, 0.0]),  # second patch, same tract
+        ]
+        with caplog.at_level(logging.INFO, logger="lsst.metaMosaic"):
+            TestWarpBackends._run(skymap, "rust", "none", handles)
+        assert fits == []  # pure pair: the fit machinery is never touched
+        messages = [r.getMessage() for r in caplog.records]
+        direct = [m for m in messages if "rust-direct" in m]
+        assert len(direct) == 1
+        assert "tract 1" in direct[0] and "dest box" in direct[0]
+        assert not any("rust-maps" in m for m in messages)
+        line = [m for m in messages if "Timings:" in m][-1]
+        assert re.search(r"decode=[0-9.]+s \(n=3\)", line)
+        assert re.search(r"warp=[0-9.]+s \(n=2\)", line)
+        match = re.search(r"map-build=[0-9.]+s \(n=(\d+)\)", line)
+        assert int(match.group(1)) == 0  # direct tracts contribute no fits
+
+    def test_legacy_skymap_wcs_uses_maps_ladder(self, caplog, monkeypatch):
+        """(c) ladder fallback on a genuinely non-pair-pure WCS: the raw
+        fixture's DiscreteSkyMap tract WCS (legacy equidistant-like frame
+        dict — see `_TanSkymap`) fails the TAN-equivalence check, so the
+        tract must be served by the T6.1 fit/maps path: exactly one
+        successful fit per foreign tract, a "rust-maps" INFO line with
+        spacing/residual figures, and map-build n=1 in Timings."""
+        skymap = _make_skymap()  # NOT _TanSkymap: the legacy WCS fails the gate
+        fits = self._spy_fit(monkeypatch)
+        with caplog.at_level(logging.INFO, logger="lsst.metaMosaic"):
+            TestWarpBackends._run(skymap, "rust", "none", self._handles(skymap))
+        assert len(fits) == 1  # one fit for the foreign tract, cached for reuse
+        messages = [r.getMessage() for r in caplog.records]
+        maps = [m for m in messages if "rust-maps" in m]
+        assert len(maps) == 1
+        assert "tract 1" in maps[0]
+        assert re.search(r"spacing=[0-9.]+ residual=[0-9.eE+-]+", maps[0])
+        assert not any("rust-direct" in m for m in messages)
+        line = [m for m in messages if "Timings:" in m][-1]
+        match = re.search(r"map-build=[0-9.]+s \(n=(\d+)\)", line)
+        assert int(match.group(1)) == 1
+
+    def test_isfits_gate_rejects_non_fits_wcs(self):
+        """The ``isFits`` gate (first line of ``_pure_fits_tan``)
+        short-circuits before any reconstruction sampling. afw's SkyWcs
+        binds ``isFits`` as a read-only pybind property (neither the
+        instance nor the immutable type accepts monkeypatching it), so
+        the gate is pinned with a stub whose other accessors would raise
+        if reached. (Runtime note: ``isFits`` alone is NOT the pure-TAN
+        discriminator — TAN+SIP also answers True, SIP being FITS-standard
+        metadata — hence the equivalence check behind it.)"""
+        from lsst.pipe.tasks.prettyPictureMaker._meta_mosaic import _pure_fits_tan
+
+        class _NonFitsWcs:
+            isFits = False
+
+            def getPixelOrigin(self):  # must not be reached
+                raise AssertionError("isFits gate must short-circuit")
+
+        box = Box2I(Point2I(0, 0), Extent2I(64, 64))
+        assert _pure_fits_tan(_NonFitsWcs(), box) is False
+
+        class _StubTract:
+            def __init__(self, wcs):
+                self.bbox = box
+                self._wcs = wcs
+
+            def getWcs(self):
+                return self._wcs
+
+        ref_wcs = makeSkyWcs(
+            crpix=Point2D(0.0, 0.0),
+            crval=SpherePoint(10.0 * degrees, -30.0 * degrees),
+            cdMatrix=np.array([[-1.0e-4, 0.0], [0.0, 1.0e-4]]),
+        )
+        task = _make_run_task()
+        # Reference side verdict is True; the foreign side's isFits==False
+        # must veto the pair: no TanWarp, caller takes the maps path.
+        assert task._direct_tan_warp(_StubTract(_NonFitsWcs()), _StubTract(ref_wcs), True) is None
+
+    def test_sip_card_rejection_beats_clean_sampling(self):
+        """F1 (audit): a SIP coefficient card in ``getFitsMetadata()``
+        rejects the gate before the numeric probe — sampling cannot prove
+        the absence of polynomial distortion (adversarial A_p_q terms can
+        vanish at every one of the 9 lattice points while bulging
+        mid-cell). The stub delegates its entire numeric TAN surface to a
+        real makeSkyWcs WCS, so the 9-point probe would pass to
+        machine precision: only the card check can reject it. The same
+        stub without the cards must pass, proving the card check — not
+        the probe — does the rejecting."""
+        from lsst.daf.base import PropertyList
+
+        from lsst.pipe.tasks.prettyPictureMaker._meta_mosaic import _pure_fits_tan
+
+        real = makeSkyWcs(
+            crpix=Point2D(0.0, 0.0),
+            crval=SpherePoint(10.0 * degrees, -30.0 * degrees),
+            cdMatrix=np.array([[-1.0e-4, 0.0], [0.0, 1.0e-4]]),
+        )
+
+        class _SipStub:
+            isFits = True
+            poisoned = True
+
+            def __getattr__(self, name):
+                return getattr(real, name)
+
+            def getFitsMetadata(self):
+                ps = PropertyList()
+                ps.set("CTYPE1", "RA---TAN")
+                if self.poisoned:
+                    ps.set("A_ORDER", 2)
+                    ps.set("A_2_0", 1.0e-12)
+                return ps
+
+        box = Box2I(Point2I(0, 0), Extent2I(64, 64))
+        stub = _SipStub()
+        assert _pure_fits_tan(stub, box) is False  # A_2_0 card: exact rejection
+        stub.poisoned = False
+        assert _pure_fits_tan(stub, box) is True  # same WCS, no card: probe passes
+
+    def test_tan_wcs_from_afw_accessors(self):
+        """Pin the accessor mapping the direct engine consumes (runtime
+        audit): ``getPixelOrigin`` the 0-based reference pixel (afw's
+        pixel origin is FITS CRPIX − 1), ``getSkyOrigin`` the tangent
+        point (``getCrval`` does not exist on this stack's SkyWcs),
+        ``getCdMatrix`` the degrees-per-pixel CD matrix as a (2, 2)
+        array."""
+        from lsst.pipe.tasks.prettyPictureMaker._meta_mosaic import _tan_wcs_from_afw
+
+        wcs = makeSkyWcs(
+            crpix=Point2D(20.0, 30.0),
+            crval=SpherePoint(150.0 * degrees, -30.0 * degrees),
+            cdMatrix=np.array([[-1.0e-3, 0.0], [0.0, 1.0e-3]]),
+        )
+        tan = _tan_wcs_from_afw(wcs)
+        # 0-based (FITS CRPIX is 21, 31); afw's own origin round-trip
+        # carries 4e-15 px of double noise, hence approx not equality.
+        assert tuple(tan.crpix) == pytest.approx((20.0, 30.0))
+        assert tuple(tan.crval_deg) == pytest.approx((150.0, -30.0))
+        np.testing.assert_allclose(tan.cd_deg_per_pix, [[-1.0e-3, 0.0], [0.0, 1.0e-3]])
