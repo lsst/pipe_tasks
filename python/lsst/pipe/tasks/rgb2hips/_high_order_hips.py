@@ -22,6 +22,7 @@ from __future__ import annotations
 
 __all__ = ("HighOrderHipsTaskConnections", "HighOrderHipsTaskConfig", "HighOrderHipsTask")
 
+import time
 import numpy as np
 from enum import Enum
 from numpy.typing import NDArray
@@ -52,8 +53,9 @@ from lsst.sphgeom import RangeSet
 
 import cv2
 
-from stellaRGB.warp import WarpTransform, fit_transform, warp_into
+from stellaRGB.warp import DirectWarp, WarpTransform, fit_transform, warp_into
 
+from .._warpDirect import hpx_direct_wcs_from_afw, pure_fits_tan, tan_wcs_from_afw
 from ._utils import _write_hips_image
 from ..prettyPictureMaker import FeatheredMosaicCreator, probe_warp_scale, warp_maps
 
@@ -251,18 +253,26 @@ class HighOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=HighOrderH
     warp_backend = ChoiceField[str](
         doc=(
             "Backend used to resample input images onto the HiPS tile WCS. "
-            "DESIGN NOTE (rust): HiPS tiles are CURVILINEAR, so the "
-            "control-grid ``fit_transform`` of the (image WCS, tile WCS) pair "
-            "correctly returns maps mode (densified control nodes; affine "
-            "mode is taken only when the pair is residual-flat). The engine "
-            "render is fit-verified control-grid maps -- no dense per-pixel "
-            "WCS map build. A caller that already has dense maps can use the "
-            "engine's ``stellaRGB.warp.remap`` directly."
+            "DESIGN NOTE (rust): preferred mode is the DIRECT per-pixel "
+            "engine (T8.6/D18): when the tile WCS is a plain HiPS HPX "
+            "header and the source WCS passes the shared pure-FITS-TAN "
+            "gate (lsst.pipe.tasks._warpDirect), the (tile, source) pair is "
+            "rendered by a closed-form HPX-on-TAN DirectWarp -- zero fits, "
+            "zero coordinate maps. The (image WCS, tile WCS) control-grid "
+            "fit_transform ladder remains as the FALLBACK for anything the "
+            "gate declines (SIP or other distortion, non-TAN sources, "
+            "exotic tile headers): the fit correctly returns maps mode "
+            "(densified control nodes) for the curvilinear pair, and "
+            "fit-verified control-grid maps -- never a dense per-pixel WCS "
+            "map build -- serve those images. Pyramid levels are "
+            "backend-independent (D14)."
         ),
         allowed={
             "afw": "afwMath Warper (default, reference)",
             "cv2": "precomputed-map cv2.remap (Lanczos4)",
-            "rust": "stellaRGB.warp engine via fit-verified transform maps (Lanczos4)",
+            "rust": "stellaRGB.warp engine: direct per-pixel HPX-on-TAN "
+            "warp (DirectWarp) for plain HiPS + pure FITS TAN pairs, "
+            "fit-verified control-grid maps otherwise (Lanczos4)",
         },
         default="afw",
     )
@@ -306,10 +316,19 @@ class HighOrderHipsTask(PipelineTask):
         super().__init__(**kwargs)
         self.warper = Warper.fromConfig(self.config.warp)
 
+        # Per-(image, tile) direct-warp memo for the "rust" backend
+        # (T8.6): DirectWarp when both gates pass, None when either
+        # declines (the None verdict is cached too, so a declined source
+        # is never re-gated on a task retry). DirectWarp holds two
+        # frozen header triples (no maps, cheap); the win is skipping
+        # re-gating (the 9-point probe) on task retry.
+        self._rust_direct_warps: dict[tuple, DirectWarp | None] = {}
+
         # Per-(image, tile) WarpTransform memo for the "rust" backend
-        # (content-keyed; values may be None = failed fit, which also
-        # suppresses per-retry warn spam). Maps-mode transforms hold only
-        # control nodes (cheap); the win is skipping re-fit on task retry.
+        # FALLBACK ladder (content-keyed; values may be None = failed fit,
+        # which also suppresses per-retry warn spam). Maps-mode transforms
+        # hold only control nodes (cheap); the win is skipping re-fit on
+        # task retry.
         self._rust_transforms: dict[tuple, WarpTransform | None] = {}
 
         # Set the base resource path that will be used for all outputs
@@ -348,6 +367,15 @@ class HighOrderHipsTask(PipelineTask):
 
         use_cv2 = self.config.warp_backend == "cv2"
         use_rust = self.config.warp_backend == "rust"
+        # Warp invocation timings (per engine/remap/warpImage call; the
+        # rust direct path performs exactly one warp_into per image, the
+        # per-channel afw/cv2 backends three) and, for the "rust" backend
+        # fallback ladder, the fit clock: "map-build" times control-grid
+        # fits and counts only REAL fits — direct-mode images (T8.6)
+        # perform no fit and contribute nothing, so a full-direct run
+        # reports map-build n=0 (mirrors the MetaMosaicTask Timings line).
+        t_warp = t_map = 0.0
+        n_warp = n_map = 0
 
         self.log.info("Warping input exposures and populating hpx8 super tile.")
         # Need to loop over input arrays then channel
@@ -386,23 +414,80 @@ class HighOrderHipsTask(PipelineTask):
                     # dense footprint box) and reused for all three channels.
                     map_x, map_y = warp_maps(in_wcs, in_box, target_wcs, warped_box)
                 else:
-                    transform = self._rust_tile_transform(
-                        in_wcs, in_box, target_wcs, warped_box, healpix_id
-                    )
-                    if transform is not None:
-                        # One engine render for all three channels (the
-                        # ColorImage frame contract places the source array
-                        # at its own bbox in in_wcs parent coordinates; the
-                        # render is the contained sub-box == the transform's
-                        # dest_bbox).
+                    # T8.6 (D18/D19) mode selection, once per (source, tile)
+                    # class and cached on the task: a plain HiPS HPX tile
+                    # fed by a pure FITS TAN source (the production case:
+                    # post-acalexn warps) renders through the direct
+                    # per-pixel engine — no fit, no maps. Anything the
+                    # shared gate declines (SIP or other distortion,
+                    # non-TAN sources, exotic tile headers) takes the
+                    # T6.2 fit/maps fallback below, unchanged.
+                    direct = self._rust_direct_warp(in_wcs, in_box, target_wcs, healpix_id)
+                    if direct is not None:
+                        # Direct logs per image always; maps self-suppresses
+                        # on cache hits. Intentional: volume bounded by quanta.
+                        self.log.info(
+                            "rust backend tile %s: hpx-direct (dest box %d x %d px)",
+                            healpix_id,
+                            warped_box.getWidth(),
+                            warped_box.getHeight(),
+                        )
+                        # The same bbox/origin plumbing as the maps branch:
+                        # the ColorImage frame contract places the source
+                        # array at its own bbox in in_wcs parent coordinates
+                        # and warp_into renders exactly the footprint box
+                        # the maps path already computed (direct mode has no
+                        # D7 containment rule — the requested box is the
+                        # whole render contract, D16).
+                        t0 = time.perf_counter()
                         rust_warped = warp_scale * warp_into(
                             ColorImage(in_image, bbox=Box.from_legacy(in_box)),
-                            transform,
+                            direct,
                             kernel=_RUST_KERNEL,
                             dest_bbox=Box.from_legacy(warped_box),
                         )
-                    # else: the fit failed (already warned once per image) --
-                    # this image falls through to the afw Warper below.
+                        t_warp += time.perf_counter() - t0
+                        n_warp += 1
+                    else:
+                        n_before = len(self._rust_transforms)
+                        tm0 = time.perf_counter()
+                        transform = self._rust_tile_transform(
+                            in_wcs, in_box, target_wcs, warped_box, healpix_id
+                        )
+                        t_map += time.perf_counter() - tm0
+                        if transform is not None:
+                            # "map-build" ticks only on a REAL fit (the
+                            # per-(image, tile) memo makes a cache hit
+                            # free); the mode line is logged once per class,
+                            # mirroring meta-mosaic's "rust-maps" style.
+                            if len(self._rust_transforms) > n_before:
+                                n_map += 1
+                                self.log.info(
+                                    "rust backend tile %s: rust-maps spacing=%.1f residual=%.2e"
+                                    " (dest box %d x %d px)",
+                                    healpix_id,
+                                    transform.control_spacing,
+                                    transform.max_residual,
+                                    warped_box.getWidth(),
+                                    warped_box.getHeight(),
+                                )
+                            # One engine render for all three channels (the
+                            # ColorImage frame contract places the source
+                            # array at its own bbox in in_wcs parent
+                            # coordinates; the render is the contained
+                            # sub-box == the transform's dest_bbox).
+                            t0 = time.perf_counter()
+                            rust_warped = warp_scale * warp_into(
+                                ColorImage(in_image, bbox=Box.from_legacy(in_box)),
+                                transform,
+                                kernel=_RUST_KERNEL,
+                                dest_bbox=Box.from_legacy(warped_box),
+                            )
+                            t_warp += time.perf_counter() - t0
+                            n_warp += 1
+                        # else: the fit failed (already warned once per
+                        # image) -- this image falls through to the afw
+                        # Warper below.
 
             # Process each color channel separately
             for channel in ColorChannel:
@@ -414,6 +499,7 @@ class HighOrderHipsTask(PipelineTask):
                 if rust_warped is not None:
                     warpped_array = rust_warped[..., channel.value]
                 elif use_cv2:
+                    t0 = time.perf_counter()
                     warpped_array = warp_scale * cv2.remap(
                         np.ascontiguousarray(channel_array),
                         map_x,
@@ -422,10 +508,15 @@ class HighOrderHipsTask(PipelineTask):
                         borderMode=cv2.BORDER_CONSTANT,
                         borderValue=np.nan,
                     )
+                    t_warp += time.perf_counter() - t0
+                    n_warp += 1
                 else:
                     tmp_image.array[:, :] = channel_array
                     # Warp the image to the target WCS
+                    t0 = time.perf_counter()
                     warpped = self.warper.warpImage(target_wcs, tmp_image, in_wcs, maxBBox=exp_bbox)
+                    t_warp += time.perf_counter() - t0
+                    n_warp += 1
                     warpped_array = warpped.array
                     warpped_box_slices = warpped.getBBox().slices
 
@@ -440,6 +531,14 @@ class HighOrderHipsTask(PipelineTask):
                 existing[warpped_box_slices][pre_and_warp] = (
                     warpped_array[pre_and_warp] + existing[warpped_box_slices][pre_and_warp]
                 ) * 0.5
+
+        self.log.info(
+            "Timings: warp=%.1fs (n=%d), map-build=%.1fs (n=%d)",
+            t_warp,
+            n_warp,
+            t_map,
+            n_map,
+        )
 
         # Replace any remaining NaN values with zeros
         output_array_hpx[np.isnan(output_array_hpx)] = 0
@@ -578,6 +677,81 @@ class HighOrderHipsTask(PipelineTask):
             return Box2I()
         return Box2I(Point2I(x0, y0), Point2I(x1, y1))
 
+    def _rust_direct_warp(
+        self,
+        in_wcs: SkyWcs,
+        in_box: Box2I,
+        target_wcs: SkyWcs,
+        healpix_id: int,
+    ) -> DirectWarp | None:
+        """Build (and memoize) the "rust" backend's DIRECT per-pixel warp
+        for one (source image, tile) pair, or None when either side needs
+        the fitted-maps fallback ladder (T8.6, D18/D19).
+
+        The destination side is built by the shared HiPS header gate
+        (:func:`~lsst.pipe.tasks._warpDirect.hpx_direct_wcs_from_afw`:
+        exact ``RA---HPX``/``DEC--HPX`` cards, inert PV2_1=4/PV2_2=3
+        treated as absent, crval dec 0 within construction noise); the
+        source side by the shared pure-FITS-TAN gate probed over
+        ``in_box`` — the post-acalexn production warps qualify. Both
+        present yields a :class:`stellaRGB.warp.DirectWarp`, whose engine
+        render evaluates the HPX-on-TAN coordinate pair per destination
+        pixel in f64: no control-grid fit, no coordinate maps, and (no D7
+        containment rule) no dependence on the footprint box beyond the
+        box actually requested. Any gate decline or constructor
+        exception fails CLOSED to None (the caller's maps ladder is
+        untouched).
+
+        The result (including the None verdict, so a declined source is
+        not re-gated on a task retry) is cached on the task keyed by
+        content (healpix id, source WCS parameters, source box) — one
+        gate pass per (image, tile). Exception: a source whose origin
+        triple answers NaN keys the cache on NaN, which never compares
+        equal to itself, so that (fail-closed) verdict re-gates per
+        image — correct, but correct-but-not-cached.
+
+        Parameters
+        ----------
+        in_wcs : `lsst.afw.geom.SkyWcs`
+            WCS of the source image (parent pixel frame).
+        in_box : `lsst.geom.Box2I`
+            Source bbox in ``in_wcs`` parent coordinates (the box the
+            pure-TAN gate probes).
+        target_wcs : `lsst.afw.geom.SkyWcs`
+            The HiPS tile WCS (this quantum's order-8 tile, oversampled).
+        healpix_id : `int`
+            The order-8 healpix id of the tile (cache key component).
+
+        Returns
+        -------
+        warp : `stellaRGB.warp.DirectWarp` | `None`
+            The direct warp, or None if either side was declined (the
+            caller must serve that image from the maps fallback ladder).
+        """
+        cd = np.asarray(in_wcs.getCdMatrix()).ravel()
+        origin = in_wcs.getPixelOrigin()
+        sky = in_wcs.getSkyOrigin()
+        key = (
+            healpix_id,
+            float(cd[0]), float(cd[1]), float(cd[2]), float(cd[3]),
+            float(origin.getX()), float(origin.getY()),
+            sky.getRa().asDegrees(), sky.getDec().asDegrees(),
+            (in_box.getMinX(), in_box.getMinY(), in_box.getMaxX(), in_box.getMaxY()),
+        )
+        if key not in self._rust_direct_warps:
+            warp = None
+            dest = hpx_direct_wcs_from_afw(target_wcs)
+            if dest is not None and pure_fits_tan(in_wcs, in_box):
+                try:
+                    warp = DirectWarp(dest=dest, src=tan_wcs_from_afw(in_wcs))
+                except Exception:
+                    # Field validation at the engine boundary or a future
+                    # constructor contract rejecting the pair: fail closed
+                    # to the maps ladder like the gates do.
+                    warp = None
+            self._rust_direct_warps[key] = warp
+        return self._rust_direct_warps[key]
+
     def _rust_tile_transform(
         self,
         in_wcs: SkyWcs,
@@ -586,11 +760,14 @@ class HighOrderHipsTask(PipelineTask):
         warped_box: Box2I,
         healpix_id: int,
     ) -> WarpTransform | None:
-        """Fit (and memoize) the "rust" backend transform for one (image,
-        tile) pair.
+        """Fit (and memoize) the "rust" backend FALLBACK transform for one
+        (image, tile) pair.
 
-        HiPS tiles are curvilinear, so the fit will (correctly) return maps
-        mode with densified control nodes; affine mode is taken only for a
+        T8.6: the direct per-pixel engine (:meth:`_rust_direct_warp`) is
+        preferred for plain HiPS tiles fed by pure FITS TAN sources; this
+        ladder serves only what those gates decline. HiPS tiles are
+        curvilinear, so the fit will (correctly) return maps mode with
+        densified control nodes; affine mode is taken only for a
         residual-flat pair. The fit is control-grid only — the dense
         per-pixel WCS map build of the cv2 path never happens here.
 

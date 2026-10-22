@@ -57,8 +57,9 @@ from lsst.pipe.base import (
 from lsst.pipe.base.connectionTypes import Input, Output
 from lsst.skymap import BaseSkyMap
 from stellaRGB.types import ColorImage
-from stellaRGB.warp import TanWarp, TanWcs, WarpTransform, fit_transform, warp_into
+from stellaRGB.warp import TanWarp, WarpTransform, fit_transform, warp_into
 
+from .._warpDirect import pure_fits_tan as _pure_fits_tan, tan_wcs_from_afw as _tan_wcs_from_afw
 from ._utils import FeatheredMosaicCreator, probe_warp_scale, warp_maps
 
 # The "rust" backend's resampling kernel. The afw reference uses lanczos5
@@ -70,104 +71,12 @@ from ._utils import FeatheredMosaicCreator, probe_warp_scale, warp_maps
 # needed.
 _RUST_KERNEL = "lanczos4"
 
-
-def _is_sip_card(name: str) -> bool:
-    """True for FITS SIP metadata cards: the A/B/C/D polynomial order
-    declarations and the A_p_q/B_p_q/C_p_q/D_p_q coefficient cards (A/B
-    forward distortion, C/D its inverse)."""
-    if name in ("A_ORDER", "B_ORDER", "C_ORDER", "D_ORDER"):
-        return True
-    parts = name.split("_")
-    return (
-        len(parts) == 3
-        and parts[0] in ("A", "B", "C", "D")
-        and parts[1].isdigit()
-        and parts[2].isdigit()
-    )
-
-
-def _pure_fits_tan(wcs: SkyWcs, box: Box2I) -> bool:
-    """True when ``wcs`` is accepted as pure FITS TAN for direct mode.
-
-    This is a gate of increasing cost, not a proof:
-
-    1. ``isFits`` (a *property* in this stack, answering "FITS-metadata
-       representable" — TAN+SIP also satisfies it, SIP keywords being
-       FITS-standard metadata; ``hasFitsApproximation()`` is no use, it
-       only reports a factory approximation slot) rejects exotic
-       non-FITS representations outright.
-    2. Exact SIP-card rejection on ``getFitsMetadata()``: any A/B/C/D
-       order card or indexed A_p_q-style coefficient card vetoes the
-       WCS before any sampling. The order to matters: a numeric probe
-       can never PROVE the absence of polynomial distortion — an
-       adversarial SIP polynomial with terms chosen to vanish at every
-       sample point agrees to the probe's tolerance at all of them
-       while reaching 0.05-0.14 px between the samples. The header
-       cards are exact evidence and SIP files must carry them.
-    3. The numeric heuristic last: re-derive the TAN-only WCS from the
-       same three accessors the direct engine consumes (pixelOrigin,
-       skyOrigin, CD) and require pixel->sky agreement at a 9-point
-       lattice over ``box`` (corners, edge midpoints, center) to a
-       microarcsecond. This catches non-pure frame-dict geometries that
-       are not the plain TAN of their own reported triple (e.g. the
-       legacy azimuthal-equidistant-like DiscreteSkyMap tract WCS,
-       measured ~1.2 arcsec off gnomonic at the fixture bbox corners)
-       and NaN-origin distortion variants. A WCS that passes the cards
-       and the lattice is accepted as TAN for rendering purposes;
-       residual risk of distortion hidden between samples exists in
-       principle, mitigated by card 2 removing its realistic source.
-    """
-    if not wcs.isFits:
-        return False
-    try:
-        fits_md = wcs.getFitsMetadata()
-        if any(fits_md.get(name) is not None for name in fits_md.names() if _is_sip_card(name)):
-            return False
-        origin = wcs.getPixelOrigin()
-        sky = wcs.getSkyOrigin()
-        cd = np.asarray(wcs.getCdMatrix())
-        # Distortion-carrying WCSs report isFits==True (SIP keywords are
-        # FITS-standard metadata) yet answer NaN for the origin triple
-        # (no pixel maps exactly to crval under SIP) — reject before
-        # makeSkyWcs chokes on NaN CRPIX. Any failure here means the WCS
-        # is not provably the plain TAN its accessors claim, so the
-        # fitted-maps path (which drives the WCS's own frame dictionary)
-        # must serve it: fail closed.
-        if not (
-            np.isfinite(origin.getX())
-            and np.isfinite(origin.getY())
-            and bool(np.isfinite(cd).all())
-            and np.isfinite(sky.getRa().asRadians())
-            and np.isfinite(sky.getDec().asRadians())
-        ):
-            return False
-        tan = makeSkyWcs(crpix=origin, crval=sky, cdMatrix=cd)
-        cx = (box.getMinX() + box.getMaxX()) / 2.0
-        cy = (box.getMinY() + box.getMaxY()) / 2.0
-        for x in (box.getMinX(), cx, box.getMaxX()):
-            for y in (box.getMinY(), cy, box.getMaxY()):
-                p = Point2D(x, y)
-                # ``not (sep < tol)`` fails closed on NaN separations.
-                if not wcs.pixelToSky(p).separation(tan.pixelToSky(p)).asArcseconds() < 1e-6:
-                    return False
-    except Exception:
-        return False
-    return True
-
-
-def _tan_wcs_from_afw(wcs: SkyWcs) -> TanWcs:
-    """Map a (checked pure-FITS-TAN) afw SkyWcs onto the direct engine's
-    :class:`stellaRGB.warp.TanWcs` field-by-field (D16): ``getPixelOrigin``
-    is the 0-based pixel-center reference pixel (afw's pixel origin is
-    FITS ``CRPIX - 1``), ``getSkyOrigin`` the tangent point (degrees), and
-    ``getCdMatrix`` the degrees-per-pixel CD matrix."""
-    origin = wcs.getPixelOrigin()
-    sky = wcs.getSkyOrigin()
-    return TanWcs(
-        crpix=(origin.getX(), origin.getY()),
-        crval_deg=(sky.getRa().asDegrees(), sky.getDec().asDegrees()),
-        cd_deg_per_pix=np.asarray(wcs.getCdMatrix(), dtype=float),
-    )
+# The pure-FITS-TAN capability gate and TAN builder live in the shared
+# private module ``lsst.pipe.tasks._warpDirect`` (single source of truth
+# for every "rust" direct-mode consumer); they are imported above under
+# their historical ``_meta_mosaic`` names (``_pure_fits_tan``,
+# ``_tan_wcs_from_afw``) so existing callers and test pins resolve
+# unchanged.
 
 
 if TYPE_CHECKING:

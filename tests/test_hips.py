@@ -466,6 +466,322 @@ class ColorHipsWarpBackendTestCase(unittest.TestCase):
             np.testing.assert_array_equal(np.asarray(rust_out), np.asarray(afw_out))
 
 
+class _TanPatchInfo:
+    """Patch-info wrapper reporting the tract's replaced WCS (see
+    _TanSkyMap)."""
+
+    def __init__(self, patch_info, wcs):
+        self._info = patch_info
+        self._wcs = wcs
+
+    def getWcs(self):
+        return self._wcs
+
+    def __getattr__(self, name):
+        return getattr(self._info, name)
+
+
+class _TanTractInfo:
+    """Tract-info wrapper replacing the WCS reported for the tract and
+    every patch in it."""
+
+    def __init__(self, tract_info, wcs):
+        self._info = tract_info
+        self._wcs = wcs
+
+    def getWcs(self):
+        return self._wcs
+
+    def __getitem__(self, patch):
+        return _TanPatchInfo(self._info[patch], self._wcs)
+
+    def __getattr__(self, name):
+        return getattr(self._info, name)
+
+
+class _TanSkyMap:
+    """SkyMap wrapper handing the task production-shape WCSs: each tract's
+    WCS (and its patches' WCSs) is the strict FITS TAN rebuilt from its own
+    (pixelOrigin, skyOrigin, CD) triple.
+
+    Runtime probe for T8.6: the raw DiscreteSkyMap fixture reports
+    CTYPE1/2 = RA---STG/DEC--STG (legacy frame dict), which the shared
+    pure-FITS-TAN gate provably declines -- so every raw-fixture "rust"
+    test above genuinely exercises the fit/maps fallback. A production
+    post-acalexn patch WCS is a plain TAN FITS header afw loads as exactly
+    this reconstruction, which is what drives the direct gate to accept
+    (same wrapper idiom as test_meta_mosaic's _TanSkymap, kept local
+    because rgb2hips only needs the (getWcs, getOuterBBox) surface).
+    """
+
+    def __init__(self, skymap):
+        from lsst.afw.geom import makeSkyWcs
+
+        self._skymap = skymap
+        self._cache = {}
+        self._makeSkyWcs = makeSkyWcs
+
+    def __getitem__(self, tract):
+        if tract not in self._cache:
+            wcs = self._skymap[tract].getWcs()
+            tan = self._makeSkyWcs(
+                crpix=wcs.getPixelOrigin(),
+                crval=wcs.getSkyOrigin(),
+                cdMatrix=np.asarray(wcs.getCdMatrix()),
+            )
+            self._cache[tract] = _TanTractInfo(self._skymap[tract], tan)
+        return self._cache[tract]
+
+
+class ColorHipsRustDirectTestCase(unittest.TestCase):
+    """T8.6 direct per-pixel HPX warp mode for HighOrderHipsTask: the rust
+    backend prefers a closed-form DirectWarp (tile WCS through the shared
+    HiPS-header gate, source through the shared pure-FITS-TAN gate) over
+    the T6.2 fit/maps ladder. Pins: direct-vs-afw parity at the battery's
+    atol with a positional hot spot (F2 lesson: constant plateaus are
+    translation-blind, so non-vacuity is proven by injecting a +2 px source
+    crpix shift and demanding bad pixels), zero fit calls with "hpx-direct"
+    logs and Timings map-build n=0 for a full-direct run, and the untouched
+    maps ladder (fits==1, "rust-maps" line, map-build n=1) for a source
+    carrying real SIP cards."""
+
+    def setUp(self):
+        # Reuse the backend-equivalence harness (config builder, tile-writing
+        # mock, interior mask, healpix-id lookup) without inheriting (and
+        # re-running) its tests.
+        self.harness = ColorHipsWarpBackendTestCase()
+
+    def _make_hot_inputs(self, skymap, healpix_id, tmp):
+        """One tract-0 patch image as run() receives it, carrying a smooth
+        Gaussian hot spot (R+G bump, sigma=15 px, amp=2.0 over the 0.5
+        base).
+
+        The stamp position is self-calibrated, not hardcoded: the
+        single-image backend-agreement mask (the diamond footprint minus
+        its edge/NaN rings and the 150 px dilation band) is eroded by ±7
+        blocks and the blob is placed at the source pixel that lands at
+        the center of the deepest surviving 16x16 output block, so the
+        bump AND its whole shifted-difference halo stay inside the
+        compared region (probed lesson: the patch center itself sits
+        ~127 px from the tile edge -- inside the dilation band -- and the
+        overlapping second patch's ring leaves no room for a deep stamp in
+        the two-image fixture, which is why this battery warps one image).
+        The smooth bump makes the comparison misalignment-sensitive rather
+        than translation-blind (the meta-mosaic F2 lesson)."""
+        import cv2
+        from scipy.ndimage import distance_transform_edt
+        from lsst.afw.geom import makeHpxWcs
+        from lsst.geom import Point2D
+
+        info = skymap[0][0]
+        bbox = info.getOuterBBox()
+        height, width = bbox.getHeight(), bbox.getWidth()
+        flat = [
+            (np.full((height, width, 3), 0.5, dtype=np.float32), info.getWcs(), bbox)
+        ]
+        good = self.harness._interior_mask(flat, healpix_id, tmp)
+        raster = self.harness._run_backend("afw", flat, healpix_id, tmp)
+        inside = good & (raster[..., 0] > 0.05)
+        self.assertGreater(inside.sum(), 1000, "fixture deposits no compared data")
+        eroded = cv2.erode(inside.astype(np.uint8), np.ones((15, 15), np.uint8)).astype(bool)
+        self.assertTrue(eroded.any(), "no deeply interior region in the agreement mask")
+        dist = distance_transform_edt(eroded)
+        row, col = np.unravel_index(np.argmax(dist), dist.shape)
+        # run() flips the super-tile rows before the 16x block sampling:
+        # map the block back to a pre-flip tile pixel.
+        tile_point = Point2D(float(col * 16 + 8), float(4095 - (row * 16 + 8)))
+        target = makeHpxWcs(8, healpix_id, 12, False)
+        src = info.getWcs().skyToPixel(target.pixelToSky(tile_point))
+        cx = src.getX() - bbox.getMinX()
+        cy = src.getY() - bbox.getMinY()
+        self.assertTrue(
+            60 < cx < width - 60 and 60 < cy < height - 60,
+            f"hot spot stamp ({cx:.0f}, {cy:.0f}) not interior to the "
+            f"{width}x{height} patch",
+        )
+        array = flat[0][0]
+        ys, xs = np.mgrid[0:height, 0:width]
+        r2 = (xs - (cx - 0.5)) ** 2 + (ys - (cy - 0.5)) ** 2
+        blob = (2.0 * np.exp(-r2 / (2.0 * 15.0 * 15.0))).astype(np.float32)
+        array[..., :2] += blob[..., np.newaxis]
+        return [(array, info.getWcs(), bbox)]
+
+    def _run_rust_shifted_src(self, inputs, healpix_id, tmp, shift_px=2.0):
+        """Run the rust backend with the shared TAN builder stubbed to
+        inject +shift_px into the SOURCE crpix (patched in the CONSUMER
+        namespace): if direct mode really renders, the hot spot lands
+        shifted; if anything silently fell back to maps, it would not."""
+        from unittest import mock
+
+        from lsst.pipe.tasks import _warpDirect
+        from lsst.pipe.tasks.rgb2hips import _high_order_hips
+        from stellaRGB.warp import TanWcs
+
+        real = _warpDirect.tan_wcs_from_afw
+
+        def shifted(wcs):
+            t = real(wcs)
+            return TanWcs(
+                crpix=(t.crpix[0] + shift_px, t.crpix[1]),
+                crval_deg=t.crval_deg,
+                cd_deg_per_pix=t.cd_deg_per_pix,
+            )
+
+        with mock.patch.object(_high_order_hips, "tan_wcs_from_afw", shifted):
+            return self.harness._run_backend("rust", inputs, healpix_id, tmp)
+
+    def test_high_order_hips_rust_direct_matches_afw_with_hot_spot(self):
+        """Direct-mode twin of the backend battery: with production-shape
+        TAN sources onto the HPX tile the direct engine (no fit, no maps)
+        reproduces the afwMath reference at the same atol=5e-3 on the
+        interior mask; the stamped hot spot must be visible in both (its
+        peak survives the 4096->256 area pyramid, so any >=1 px positional
+        error moves real gradient into compared pixels -- the non-vacuity
+        leg is the sibling test below)."""
+        import tempfile
+
+        skymap = _TanSkyMap(self.harness._make_discrete_skymap())
+        healpix_id = self.harness._healpix_id(skymap)
+        with tempfile.TemporaryDirectory() as tmp:
+            inputs = self._make_hot_inputs(skymap, healpix_id, tmp)
+            a = self.harness._run_backend("afw", inputs, healpix_id, tmp)
+            b = self.harness._run_backend("rust", inputs, healpix_id, tmp)
+            good = self.harness._interior_mask(inputs, healpix_id, tmp)
+        self.assertTrue(np.all(np.isfinite(a)) and np.all(np.isfinite(b)))
+        self.assertGreater(good.mean(), 0.5, "mask must keep most of the tile")
+        # The hot spot is present inside the kept data region of BOTH
+        # backends: green rises well above the data-region median (the
+        # warp's pixel-area scaling puts all values below input scale).
+        data = a[..., 0] > 0.09  # the (scaled) 0.5 plateau is ~0.18
+        self.assertGreater((good & data).sum(), 1000)
+        for arr, name in ((a, "afw"), (b, "rust")):
+            green = arr[good & data][..., 1]
+            self.assertGreater(
+                green.max() - np.median(green), 0.15, f"hot spot lost in {name}"
+            )
+        np.testing.assert_allclose(a[good], b[good], atol=5e-3)
+
+    def test_high_order_hips_rust_direct_hot_spot_detects_shift(self):
+        """F2 non-vacuity pin: with a +2 px source-crpix shift injected into
+        the shared TAN builder, the hot spot is misregistered and the
+        masked comparison MUST breach the 5e-3 battery gate (bad pixels > 0)
+        -- proving the parity test above is positional, not translation-
+        blind, and that the compared pixels really come from the direct
+        engine (a maps-fallback render would be shift-blind at the
+        residual tolerance)."""
+        import tempfile
+
+        skymap = _TanSkyMap(self.harness._make_discrete_skymap())
+        healpix_id = self.harness._healpix_id(skymap)
+        with tempfile.TemporaryDirectory() as tmp:
+            inputs = self._make_hot_inputs(skymap, healpix_id, tmp)
+            a = self.harness._run_backend("afw", inputs, healpix_id, tmp)
+            b = self._run_rust_shifted_src(inputs, healpix_id, tmp)
+            good = self.harness._interior_mask(inputs, healpix_id, tmp)
+        diff = np.abs(a[good] - b[good])
+        self.assertGreater(float(diff.max()), 5e-3, "injected shift went undetected")
+        self.assertGreater(int((diff > 5e-3).sum()), 0, "injected shift went undetected")
+
+    def test_high_order_hips_rust_direct_zero_fits_and_logs(self):
+        """Zero-fit pin: a full-direct run (both sources pure TAN onto the
+        plain HPX tile) never touches the CONSUMER-namespace maps-building
+        symbol, logs one "hpx-direct" INFO line per (source, tile) class
+        with no "rust-maps" line, and reports a parseable Timings line with
+        map-build n=0 while both images still count in warp."""
+        import logging
+        import re
+        import tempfile
+        from unittest import mock
+
+        from lsst.pipe.tasks.rgb2hips import _high_order_hips
+
+        skymap = _TanSkyMap(self.harness._make_discrete_skymap())
+        healpix_id = self.harness._healpix_id(skymap)
+        fits = []
+        real_fit = _high_order_hips.fit_transform
+
+        def spy(*args, **kwargs):
+            transform = real_fit(*args, **kwargs)
+            fits.append(transform)
+            return transform
+
+        with tempfile.TemporaryDirectory() as tmp:
+            # Plain constant-color two-image inputs (the hot spot is only
+            # needed by the positional battery; mode selection and its
+            # observability are WCS-driven).
+            inputs = self.harness._make_inputs(skymap)
+            with mock.patch.object(_high_order_hips, "fit_transform", spy), \
+                    self.assertLogs("lsst.highOrderHipsTask", level=logging.INFO) as cm:
+                self.harness._run_backend("rust", inputs, healpix_id, tmp)
+        self.assertEqual(fits, [], "direct mode must never build maps")
+        direct = [m for m in cm.output if "hpx-direct" in m]
+        self.assertEqual(len(direct), 2, "one hpx-direct line per (image, tile)")
+        self.assertIn("dest box", direct[0])
+        self.assertFalse(any("rust-maps" in m for m in cm.output))
+        line = [m for m in cm.output if "Timings:" in m][-1]
+        self.assertIsNotNone(re.search(r"warp=[0-9.]+s \(n=2\)", line), line)
+        match = re.search(r"map-build=[0-9.]+s \(n=(\d+)\)", line)
+        self.assertIsNotNone(match, line)
+        self.assertEqual(int(match.group(1)), 0)
+
+    def test_high_order_hips_rust_maps_fallback_on_sip_source(self):
+        """Maps-fallback pin: a source carrying real SIP cards (afw
+        makeTanSipWcs -- isFits True, so only the exact card scan can
+        reject it; the probe-pure HPX tile still builds its direct dest) is
+        declined by the shared gate and served by the untouched T6.2 ladder:
+        exactly one fit, one "rust-maps" spacing/residual line, no
+        "hpx-direct" line, Timings map-build n=1."""
+        import logging
+        import re
+        import tempfile
+        from unittest import mock
+
+        from lsst.afw.geom import makeTanSipWcs
+        from lsst.pipe.tasks.rgb2hips import _high_order_hips
+
+        skymap = self.harness._make_discrete_skymap()
+        info = skymap[0][0]
+        bbox = info.getOuterBBox()
+        w = info.getWcs()
+        sip_wcs = makeTanSipWcs(
+            w.getPixelOrigin(),
+            w.getSkyOrigin(),
+            np.asarray(w.getCdMatrix()),
+            np.array([[0.0, 0.0], [0.0, 1.0e-7]]),
+            np.array([[0.0, 0.0], [0.0, -1.0e-7]]),
+        )
+        # Precondition: the SIP cards are really in the header the gate
+        # reads (isFits stays True -- cards are the only discriminator).
+        self.assertTrue(sip_wcs.isFits)
+        inputs = [(np.full((bbox.getHeight(), bbox.getWidth(), 3), 0.5, dtype=np.float32),
+                   sip_wcs, bbox)]
+        healpix_id = self.harness._healpix_id(skymap)
+        fits = []
+        real_fit = _high_order_hips.fit_transform
+
+        def spy(*args, **kwargs):
+            transform = real_fit(*args, **kwargs)
+            fits.append(transform)
+            return transform
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(_high_order_hips, "fit_transform", spy), \
+                    self.assertLogs("lsst.highOrderHipsTask", level=logging.INFO) as cm:
+                out = self.harness._run_backend("rust", inputs, healpix_id, tmp)
+        self.assertEqual(len(fits), 1, "one maps fit for the declined source")
+        self.assertEqual([t.mode for t in fits], ["maps"])
+        maps = [m for m in cm.output if "rust-maps" in m]
+        self.assertEqual(len(maps), 1)
+        self.assertIn("tile", maps[0])
+        self.assertIsNotNone(re.search(r"spacing=[0-9.]+ residual=[0-9.eE+-]+", maps[0]))
+        self.assertFalse(any("hpx-direct" in m for m in cm.output))
+        line = [m for m in cm.output if "Timings:" in m][-1]
+        match = re.search(r"map-build=[0-9.]+s \(n=(\d+)\)", line)
+        self.assertIsNotNone(match, line)
+        self.assertEqual(int(match.group(1)), 1)
+        self.assertTrue(np.all(np.isfinite(out)))
+
+
 class ColorHipsPyramidTestCase(unittest.TestCase):
     """The area-kernel (D10 box-average) pyramid prefilter: exactness,
     engine equivalence on feasible (tile-sized) grids, and the aliasing
