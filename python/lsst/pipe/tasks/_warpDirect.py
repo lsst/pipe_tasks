@@ -25,14 +25,22 @@ MetaMosaicTask` and ``lsst.pipe.tasks.rgb2hips.HighOrderHipsTask`` render a
 destination grid directly from two WCS *header triples* instead of fitting
 coordinate maps — but only when each side's ``lsst.afw.geom.SkyWcs`` is
 provably a plain FITS projection the engine's closed-form registry models.
-This module owns that decision (D16/D18/D19): the pure-FITS-TAN verdict
-(:func:`pure_fits_tan`), the TAN and HPX header-to-``DirectWcs`` builders
-(:func:`tan_wcs_from_afw`, :func:`hpx_direct_wcs_from_afw`), and the SIP-card
-scanner they share. Every gate fails CLOSED: a WCS that cannot be fully read,
-carries distortion cards, or sits outside a modeled regime is declined with
-``False``/``None`` and the caller's fitted-maps ladder (or afw fallback)
-serves it — a direct-mode engine hiccup must never crash a task and a
-direct render must never be entered on a partially-verified transform.
+This module owns the genuine afw glue of that decision (D16/D18/D19): the
+pure-FITS-TAN verdict (:func:`pure_fits_tan`), the TAN header-to-``DirectWcs``
+builder (:func:`tan_wcs_from_afw`), and the HPX builder
+(:func:`hpx_direct_wcs_from_afw`). The FITS *card vocabulary* — the CTYPE
+pair → kind table, the SIP-card scan (quartet + digit patterns), the inert
+``PV2_1=4``/``PV2_2=3`` rule and the CRVAL-dec construction-noise snap —
+lives in :mod:`stellaRGB.warp` (:func:`~stellaRGB.warp.direct_spec_from_cards`,
+:func:`~stellaRGB.warp.sip_cards_present`) so non-pipeline callers get the
+same trap book for free; what stays HERE is pipeline risk defense, not FITS
+knowledge: accessor extraction, the ``isFits``-quirk short-circuit, the
+9-point ``makeSkyWcs`` agreement probe and the TAN-only policy. Every gate
+fails CLOSED: a WCS that cannot be fully read, carries distortion cards, or
+sits outside a modeled regime is declined with ``False``/``None`` and the
+caller's fitted-maps ladder (or afw fallback) serves it — a direct-mode
+engine hiccup must never crash a task and a direct render must never be
+entered on a partially-verified transform.
 """
 
 from __future__ import annotations
@@ -40,52 +48,25 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
+from stellaRGB.warp import DirectWcs, TanWcs, direct_spec_from_cards, sip_cards_present
 
 from lsst.afw.geom import makeSkyWcs
 from lsst.geom import Point2D
-from stellaRGB.warp import DirectWcs, TanWcs
 
 if TYPE_CHECKING:
     from lsst.afw.geom import SkyWcs
     from lsst.geom import Box2I
 
-# The inert H=4/K=3 zone-scheme constants (C&R 2007) that every HiPS /
-# afw ``makeHpxWcs`` header writes as PV2_1/PV2_2. The engine models only
-# that fixed scheme and rejects any non-empty ``pv``, so these two cards —
-# at exactly these values — are treated as ABSENT by the HPX gate; any other
-# PV-family card (or these names at other values) expresses a non-default
-# scheme the engine cannot represent and the WCS is declined.
-_HPX_INERT_PV = {"PV2_1": 4.0, "PV2_2": 3.0}
-
-# Tolerance on the HPX tangent-point declination, degrees. The engine's HPX
-# arm is realized at crval_dec = 0 exactly (the HiPS regime; its Python
-# adapter rejects any other value), and afw's ``makeHpxWcs`` answers a
-# |dec| ~ 1e-15 deg SpherePoint for a header CRVAL2 of exactly 0.0 (internal
-# radian round-trip). Anything within this tolerance is construction noise
-# for a CRVAL2-of-0 header and is snapped to exactly 0.0; anything beyond is
-# a different regime (astropy is degenerate there) and is declined.
-_HPX_CRVAL2_TOL_DEG = 1e-9
-
 
 def _is_sip_card(name: str) -> bool:
-    """True for FITS SIP metadata cards: the A/B/C/D polynomial order
-    declarations, the A_p_q/B_p_q/C_p_q/D_p_q coefficient cards (A/B
-    forward distortion, C/D its inverse), and the A_D1/A_D2/B_D1/B_D2
-    linear-distortion cards of the SIP standard."""
-    if name in ("A_ORDER", "B_ORDER", "C_ORDER", "D_ORDER"):
-        return True
-    # The linear-distortion cards are not index-shaped ("A_D1".split("_")
-    # -> ["A", "D1"] fails the digit test), so they need their own exact
-    # match; lookalikes (A_P1, AP1, a bare D1) are not SIP and stay out.
-    if name in ("A_D1", "A_D2", "B_D1", "B_D2"):
-        return True
-    parts = name.split("_")
-    return (
-        len(parts) == 3
-        and parts[0] in ("A", "B", "C", "D")
-        and parts[1].isdigit()
-        and parts[2].isdigit()
-    )
+    """True for FITS SIP metadata card names. The vocabulary (order
+    declarations, indexed coefficient cards, the A_D1/A_D2/B_D1/B_D2
+    linear quartet and the digit patterns) is single-sourced in
+    :func:`stellaRGB.warp.sip_cards_present` (T8.8 promotion); this
+    per-name wrapper keeps the gate-local name — and the ``None``-value
+    presence filtering stays at the call sites below.
+    """
+    return sip_cards_present({name: 0.0})
 
 
 def pure_fits_tan(wcs: SkyWcs, box: Box2I) -> bool:
@@ -177,86 +158,45 @@ def hpx_direct_wcs_from_afw(wcs: SkyWcs) -> DirectWcs | None:
     (:class:`stellaRGB.warp.DirectWcs` with ``kind="hpx"``), or return
     ``None`` when the WCS is not a plain HiPS HPX header.
 
-    Accepted shape (all exact evidence from ``isFits`` and
-    ``getFitsMetadata()`` plus the origin triple the engine consumes):
-
-    * ``isFits`` True — the same first tier as :func:`pure_fits_tan`: a
-      WCS that is not FITS-representable at all is declined outright,
-      whatever approximation its ``getFitsMetadata()`` may fabricate.
-    * ``CTYPE1``/``CTYPE2`` exactly ``RA---HPX``/``DEC--HPX`` (any case);
-      any other CTYPE — including TAN — is declined (callers probe the TAN
-      side with :func:`pure_fits_tan`, never here).
-    * No SIP cards and no PV-family cards other than the inert H=4/K=3
-      pair ``PV2_1 = 4``/``PV2_2 = 3`` that every HiPS / ``makeHpxWcs``
-      header carries: those are treated as ABSENT (the engine models only
-      that fixed C&R 2007 zone scheme and rejects any non-empty ``pv``,
-      so the builder hands it ``pv=()``); any other PV card, or these at
-      other values, expresses an inexpressible scheme and is declined.
-    * Tangent-point declination 0 (the HiPS regime), within
-      ``_HPX_CRVAL2_TOL_DEG`` of float noise, snapped to exactly ``0.0``
-      (the value the header states and the engine requires); a meaningfully
-      non-zero dec0 is a different regime (astropy is degenerate there)
-      and is declined.
-    * A finite origin triple.
+    Genuine afw glue only (T8.8): the ``isFits`` short-circuit first (a
+    WCS that is not FITS-representable at all is declined outright,
+    whatever approximation its ``getFitsMetadata()`` may fabricate),
+    then the card set and the origin triple the engine consumes are
+    extracted and handed to
+    :func:`stellaRGB.warp.direct_spec_from_cards` — which owns the
+    whole accepted shape (exact ``RA---HPX``/``DEC--HPX`` CTYPE pair,
+    SIP-card rejection, the inert H=4/K=3 ``PV2_1 = 4``/``PV2_2 = 3``
+    pair treated as ABSENT with every other PV card declined, and the
+    CRVAL-dec construction-noise tolerance snapped to exactly ``0.0``).
+    This gate is HPX-only: the classifier accepts every registry kind,
+    so any other kind (TAN included — callers probe the TAN side with
+    :func:`pure_fits_tan`, never here) is filtered back to ``None``.
 
     Fail-closed like :func:`pure_fits_tan`: any unreadable card, accessor
-    exception, or off-shape value returns ``None`` and the caller's maps
-    ladder (or afw fallback) serves the WCS.
+    exception (``direct_spec_from_cards`` raises its normal validation
+    family for a malformed frame triple — e.g. a NaN origin), or
+    declined verdict returns ``None`` and the caller's maps ladder (or
+    afw fallback) serves the WCS.
     """
     if not wcs.isFits:
         return None
     try:
-        fits_md = wcs.getFitsMetadata()
-        cards = {name.upper(): fits_md.get(name) for name in fits_md.names()}
-        ctype1 = cards.get("CTYPE1")
-        ctype2 = cards.get("CTYPE2")
-        if (
-            not isinstance(ctype1, str)
-            or not isinstance(ctype2, str)
-            or ctype1.strip().upper() != "RA---HPX"
-            or ctype2.strip().upper() != "DEC--HPX"
-        ):
-            return None
-        for name, value in cards.items():
-            if _is_sip_card(name):
-                return None
-            if name.startswith("PV"):
-                if name in _HPX_INERT_PV:
-                    # Inert only at exactly its declared constant, and
-                    # only from a genuine numeric card: bool is an int
-                    # subclass but True/False is no zone-scheme constant,
-                    # and a string card ('4') is not the numeric evidence
-                    # this gate's pv contract reads — both fail closed.
-                    if isinstance(value, bool) or not isinstance(value, (int, float)):
-                        return None
-                    if not np.isfinite(float(value)) or float(value) != _HPX_INERT_PV[name]:
-                        return None
-                else:
-                    return None
         origin = wcs.getPixelOrigin()
         sky = wcs.getSkyOrigin()
         cd = np.asarray(wcs.getCdMatrix(), dtype=float)
-        ra_deg = sky.getRa().asDegrees()
-        dec_deg = sky.getDec().asDegrees()
-        if not (
-            np.isfinite(origin.getX())
-            and np.isfinite(origin.getY())
-            and bool(np.isfinite(cd).all())
-            and np.isfinite(ra_deg)
-            and np.isfinite(dec_deg)
-            and abs(dec_deg) <= _HPX_CRVAL2_TOL_DEG
-        ):
-            return None
-        return DirectWcs(
-            kind="hpx",
-            crpix=(origin.getX(), origin.getY()),
-            # Snapped (see the tolerance note above): the header states
-            # CRVAL2 = 0 and the engine arm is realized at exactly that.
-            crval_deg=(ra_deg, 0.0),
-            cd_deg_per_pix=cd,
-            pv=(),
+        spec = direct_spec_from_cards(
+            wcs.getFitsMetadata(),
+            # getPixelOrigin() is afw's 0-based reference pixel (FITS
+            # CRPIX - 1) — pass it through; the -1 belongs to callers
+            # holding raw 1-based header values, not here.
+            (origin.getX(), origin.getY()),
+            (sky.getRa().asDegrees(), sky.getDec().asDegrees()),
+            cd,
         )
     except Exception:
         # Fail closed (D19): a WCS whose cards or origin triple cannot be
         # fully read is not provably a plain HiPS header.
         return None
+    if spec is None or spec.kind != "hpx":
+        return None
+    return spec
