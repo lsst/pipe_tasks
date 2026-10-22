@@ -26,6 +26,7 @@ import numpy as np
 from lsst.geom import Point2I, Box2I, Extent2I
 from lsst.skymap import TractInfo
 from lsst.skymap.patchInfo import PatchInfo
+import lsst.afw.detection as afwDetect
 import lsst.afw.image as afwImage
 import lsst.utils.tests
 from lsst.pipe.tasks.characterizeImage import CharacterizeImageTask, CharacterizeImageConfig
@@ -213,7 +214,14 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         # Initialize the fake source injection task
         skyConfig = SkyObjectsTask.ConfigClass()
         skySourcesTask = SkyObjectsTask(name="skySources", config=skyConfig)
-        schema.addField("merge_peak_sky", type="Flag")
+
+        # Build the Footprint peak schema that the coadd merge step would
+        # provide. The deblender reads the pseudo-source flag from each
+        # Footprint's peak (not the source record) and transfers any extra
+        # peak fields onto the source schema, so `merge_peak_sky` must live on
+        # the peak schema and must not be pre-added to the source schema here.
+        peakSchema = afwDetect.PeakTable.makeMinimalSchema()
+        skyPeakKey = peakSchema.addField("merge_peak_sky", type="Flag")
 
         # Initialize the deconvolution task
         deconvolveConfig = DeconvolveExposureTask.ConfigClass()
@@ -224,7 +232,7 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         scarletConfig.maxIter = 20
         scarletConfig.columnInheritance["merge_peak_sky"] = "merge_peak_sky"
         scarletConfig.processSingles = True
-        deblendTask = ScarletDeblendTask(schema=schema, config=scarletConfig)
+        deblendTask = ScarletDeblendTask(schema=schema, peakSchema=peakSchema, config=scarletConfig)
 
         # We'll customize the configuration of measurement to just run the
         # minimal number of plugins to make setPrimaryFlags work.
@@ -245,12 +253,25 @@ class IsPrimaryTestCase(lsst.utils.tests.TestCase):
         # detect sources
         detectionResult = detectionTask.run(table, coadds["test"])
         catalog = detectionResult.sources
-        # add fake sources
+        # The deblender requires every Footprint's peaks to share the peak
+        # schema passed to it, so rebuild the detected Footprints with the
+        # merge peak schema (their peaks carry no pseudo-source flag).
+        for src in catalog:
+            oldFoot = src.getFootprint()
+            newFoot = afwDetect.Footprint(oldFoot.spans, peakSchema)
+            for peak in oldFoot.peaks:
+                newFoot.addPeak(peak.getFx(), peak.getFy(), peak.getPeakValue())
+            src.setFootprint(newFoot)
+        # add fake sources, flagging the sky peak as the coadd merge step does
+        # in `MergeDetectionsTask.getSkySourceFootprints`
         skySources = skySourcesTask.run(mask=self.exposure.mask, seed=0)
         for foot in skySources[:5]:
             src = catalog.addNew()
-            src.setFootprint(foot)
-            src.set("merge_peak_sky", True)
+            peak = foot.getPeaks()[0]
+            newFoot = afwDetect.Footprint(foot.spans, peakSchema)
+            newFoot.addPeak(peak.getFx(), peak.getFy(), peak.getPeakValue())
+            newFoot.getPeaks()[0].set(skyPeakKey, True)
+            src.setFootprint(newFoot)
         # deconvolve the images
         deconvolved = deconvolveTask.run(coadds["test"], catalog).deconvolved
         mDeconvolved = afwImage.MultibandExposure.fromExposures(["test"], [deconvolved])
