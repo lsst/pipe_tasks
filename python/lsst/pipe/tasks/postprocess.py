@@ -1243,7 +1243,9 @@ class ModelExtendednessColumnAction(ExtendednessColumnActionBase):
     max_reff_compact = pexConfig.Field[float](
         doc="The maximum effective radius in pixels below which an object is"
             " classified as not extended, regardless of other parameter values.",
-        default=0.25,
+        # This used to be 0.25 but was multiplied by 2*ln(2) to compensate
+        # for the bug fixed in DM-56611
+        default=0.34657359028,
     )
     min_n_good_to_shift_flux_ratio = pexConfig.Field[int](
         doc="Minimum number of objects with PSF S/N > good_sn_min and with "
