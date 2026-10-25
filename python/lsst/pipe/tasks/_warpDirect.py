@@ -79,14 +79,27 @@ def pure_fits_tan(wcs: SkyWcs, box: Box2I) -> bool:
        FITS-standard metadata; ``hasFitsApproximation()`` is no use, it
        only reports a factory approximation slot) rejects exotic
        non-FITS representations outright.
-    2. Exact SIP-card rejection on ``getFitsMetadata()``: any A/B/C/D
-       order card or indexed A_p_q-style coefficient card vetoes the
-       WCS before any sampling. The order to matters: a numeric probe
-       can never PROVE the absence of polynomial distortion — an
-       adversarial SIP polynomial with terms chosen to vanish at every
-       sample point agrees to the probe's tolerance at all of them
-       while reaching 0.05-0.14 px between the samples. The header
-       cards are exact evidence and SIP files must carry them.
+    2. Exact SIP-card rejection on ``getFitsMetadata()``: ANY SIP-family
+       card vetoes the WCS before any sampling — A/B/C/D/AP/BP order
+       declarations, indexed A_p_q/AP_p_q-style coefficient cards, and
+       the A_D1/A_D2/B_D1/B_D2 linear quartet (single-sourced from
+       :func:`stellaRGB.warp.sip_cards_present`, whose vocabulary since
+       T8.4 also covers the AP/BP closed-form inverse spelling). The
+       order matters: a numeric probe can never PROVE the absence of
+       polynomial distortion — an adversarial SIP polynomial with terms
+       chosen to vanish at every sample point agrees to the probe's
+       tolerance at all of them while reaching 0.05-0.14 px between the
+       samples. The header cards are exact evidence and SIP files must
+       carry them. NOTE (T8.4): this gate stays stricter than
+       :func:`stellaRGB.warp.direct_spec_from_cards`, which since T8.4
+       selectively accepts a complete A/B + AP/BP closed-form pair as a
+       ``DirectWcs.sip`` layer. The pipeline policy keeps ALL SIP
+       distortion on the fitted-maps path: this gate's contract is the
+       pure-FITS-TAN verdict (the T7.3 bit-identical pin), and no
+       pipe-side battery yet covers a distortion-carrying direct
+       render. Widen condition: a pipe_tasks battery pinning
+       SIP-direct renders against afw/drizzled truth on real SIP
+       exposures — until then, do not relax this veto.
     3. The numeric heuristic last: re-derive the TAN-only WCS from the
         same three accessors the direct engine consumes (pixelOrigin,
         skyOrigin, CD) and require pixel->sky agreement at a 9-point
@@ -161,13 +174,18 @@ def hpx_direct_wcs_from_afw(wcs: SkyWcs) -> DirectWcs | None:
     Genuine afw glue only (T8.8): the ``isFits`` short-circuit first (a
     WCS that is not FITS-representable at all is declined outright,
     whatever approximation its ``getFitsMetadata()`` may fabricate),
+    then an explicit ALL-SIP veto on the card set (the pipe's
+    distortion-free policy, mirroring :func:`pure_fits_tan` — see its
+    NOTE for the widen condition; :func:`direct_spec_from_cards` has
+    since T8.4 *selectively* accepted a closed-form SIP pair, so the
+    pipe must veto explicitly rather than inherit the library policy),
     then the card set and the origin triple the engine consumes are
     extracted and handed to
     :func:`stellaRGB.warp.direct_spec_from_cards` — which owns the
-    whole accepted shape (exact ``RA---HPX``/``DEC--HPX`` CTYPE pair,
-    SIP-card rejection, the inert H=4/K=3 ``PV2_1 = 4``/``PV2_2 = 3``
-    pair treated as ABSENT with every other PV card declined, and the
-    CRVAL-dec construction-noise tolerance snapped to exactly ``0.0``).
+    rest of the accepted shape (exact ``RA---HPX``/``DEC--HPX`` CTYPE
+    pair, the inert H=4/K=3 ``PV2_1 = 4``/``PV2_2 = 3`` pair treated as
+    ABSENT with every other PV card declined, and the CRVAL-dec
+    construction-noise tolerance snapped to exactly ``0.0``).
     This gate is HPX-only: the classifier accepts every registry kind,
     so any other kind (TAN included — callers probe the TAN side with
     :func:`pure_fits_tan`, never here) is filtered back to ``None``.
@@ -181,11 +199,20 @@ def hpx_direct_wcs_from_afw(wcs: SkyWcs) -> DirectWcs | None:
     if not wcs.isFits:
         return None
     try:
+        fits_md = wcs.getFitsMetadata()
+        # Explicit ALL-SIP veto (pipe policy, T8.4): the classifier
+        # selectively accepts a closed-form A/B + AP/BP pair since the
+        # engine grew the SIP layer, and LTP/LPT is a stellaRGB-side
+        # vocabulary afw has never applied — neither may enter the
+        # pipe's direct path until a pipe-side battery covers
+        # distortion-carrying renders (see pure_fits_tan's NOTE).
+        if sip_cards_present(fits_md):
+            return None
         origin = wcs.getPixelOrigin()
         sky = wcs.getSkyOrigin()
         cd = np.asarray(wcs.getCdMatrix(), dtype=float)
         spec = direct_spec_from_cards(
-            wcs.getFitsMetadata(),
+            fits_md,
             # getPixelOrigin() is afw's 0-based reference pixel (FITS
             # CRPIX - 1) — pass it through; the -1 belongs to callers
             # holding raw 1-based header values, not here.

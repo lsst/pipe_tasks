@@ -131,10 +131,24 @@ class TestPureFitsTan:
     def test_sip_card_rejection_beats_clean_sampling(self):
         """A real A_p_q card rejects even though the delegated numeric TAN
         surface would pass the 9-point probe to machine precision; the same
-        stub without the card passes — the card check does the rejecting."""
+        stub without the card passes — the card check does the rejecting.
+        The poisoned set is the COMPLETE closed-form pair (A/B forward plus
+        AP/BP inverse): the very header the stellaRGB gate selectively
+        unlocks into a ``DirectWcs.sip`` layer since T8.4 — pipe policy
+        still keeps ALL SIP distortion on the fitted-maps path."""
         real = _tan_wcs()
         box = Box2I(Point2I(0, 0), Extent2I(64, 64))
-        poisoned = _fits_stub(real, extra={"A_ORDER": 2, "A_2_0": 1.0e-12})
+        complete_pair = {
+            "A_ORDER": 2,
+            "A_2_0": 1.0e-12,
+            "B_ORDER": 2,
+            "B_0_2": 1.0e-12,
+            "AP_ORDER": 2,
+            "AP_2_0": -1.0e-12,
+            "BP_ORDER": 2,
+            "BP_0_2": -1.0e-12,
+        }
+        poisoned = _fits_stub(real, extra=complete_pair)
         assert pure_fits_tan(poisoned, box) is False
         clean = _fits_stub(real)
         assert pure_fits_tan(clean, box) is True
@@ -283,8 +297,11 @@ class TestHpxDirectWcsFromAfw:
             {"PV2_1": True},  # bool: int subclass, never a zone constant
             {"A_ORDER": 2, "A_2_0": 1.0e-12},  # SIP on an HPX header
             {"A_D1": 0.01},  # SIP linear-distortion card on an HPX header
+            # The complete closed-form inverse pair (T8.4's selective
+            # unlock set): pipe still declines it — maps-only policy.
+            {"AP_ORDER": 2, "AP_2_0": -1.0e-12, "BP_ORDER": 2, "BP_0_2": -1.0e-12},
         ],
-        ids=["PV2_1_5", "PV2_2_2", "PV1_1", "PV2_1_str", "PV2_1_bool", "SIP", "A_D1"],
+        ids=["PV2_1_5", "PV2_2_2", "PV1_1", "PV2_1_str", "PV2_1_bool", "SIP", "A_D1", "AP_pair"],
     )
     def test_rejects_exotic_cards(self, extra):
         real = self._hpx_wcs()
