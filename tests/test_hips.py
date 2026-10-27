@@ -245,8 +245,8 @@ class ColorHipsTestCase(unittest.TestCase):
 
 
 class ColorHipsWarpBackendTestCase(unittest.TestCase):
-    """Equivalence of the "afw" (afwMath Warper, reference) and "cv2"
-    (precomputed-map cv2.remap) warp backends of HighOrderHipsTask."""
+    """Equivalence of the "afw" (afwMath Warper, reference) and "rust"
+    (stellaRGB.warp engine) warp backends of HighOrderHipsTask."""
 
     def _make_config(self, backend, base_uri):
         from lsst.pipe.tasks.rgb2hips._high_order_hips import HighOrderHipsTask
@@ -287,7 +287,7 @@ class ColorHipsWarpBackendTestCase(unittest.TestCase):
         config = self._make_config("afw", "/tmp/hips_backend_default_test")
         self.assertEqual(config.warp_backend, "afw")
         allowed = {k for k in type(config).warp_backend.allowed if k is not None}
-        self.assertEqual(allowed, {"afw", "cv2", "rust"})
+        self.assertEqual(allowed, {"afw", "rust"})
 
     def _run_backend(self, backend, inputs, healpix_id, tmp):
         """Run the task on the given inputs with one backend (tile writing
@@ -350,15 +350,14 @@ class ColorHipsWarpBackendTestCase(unittest.TestCase):
         (the returned 256x256 output_hpx) within 5e-3 on all pixels not near
         a warped footprint edge.
 
-        The afw config uses lanczos5 while cv2/rust use Lanczos4 (rust
+        The afw config uses lanczos5 while rust uses Lanczos4 (rust
         renders through fit-verified control-grid maps with residual
         <= 0.05 source px), so the thin ring around each footprint
         (different NaN-kernel bands and kernel truncation) plus its smear
         through the 16x downsampling to 256 is excluded; the interior
         constant plateau must match, and it is the majority of the tile.
-        Measured (this harness): cv2 masked max-diff 5e-3-class, rust masked
-        max-diff 2.4e-6 -- the 5e-3 tolerance is 2000x margin for rust, not
-        a loosening.
+        Measured (this harness): rust masked max-diff 2.4e-6 -- the 5e-3
+        tolerance is 2000x margin for rust, not a loosening.
         """
         import tempfile
 
@@ -385,9 +384,6 @@ class ColorHipsWarpBackendTestCase(unittest.TestCase):
         self.assertGreater(np.median(plateau_a), 0.0)
         # and it covers a comparable area in both backends.
         self.assertLess(abs(plateau_a.size - plateau_b.size) / plateau_a.size, 0.05)
-
-    def test_high_order_hips_cv2_matches_afw(self):
-        self._assert_backend_matches_afw("cv2")
 
     def test_high_order_hips_rust_matches_afw(self):
         self._assert_backend_matches_afw("rust")

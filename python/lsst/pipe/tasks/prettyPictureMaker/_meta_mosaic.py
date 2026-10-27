@@ -60,15 +60,15 @@ from stellaRGB.types import ColorImage
 from stellaRGB.warp import TanWarp, WarpTransform, fit_transform, warp_into
 
 from .._warpDirect import pure_fits_tan as _pure_fits_tan, tan_wcs_from_afw as _tan_wcs_from_afw
-from ._utils import FeatheredMosaicCreator, probe_warp_scale, warp_maps
+from ._utils import FeatheredMosaicCreator
 
 # The "rust" backend's resampling kernel. The afw reference uses lanczos5
 # (MetaMosaicConfig.setDefaults) and the rust engine has no lanczos5; "lanczos4"
-# mirrors the cv2 backend's effective kernel (cv2.INTER_LANCZOS4). The rust
-# engine applies no pixel-area scaling (unlike the afw Warper the cv2 path
-# mirrors with probe_warp_scale); skymap tracts share the reference tract's CD
-# matrix, so the transform's pixel-space Jacobian has |det| = 1 and none is
-# needed.
+# mirrors the kernel (INTER_LANCZOS4-family) of the retired cv2 backend. The
+# rust engine applies no pixel-area scaling (unlike the afw Warper, which the
+# retired cv2 path mirrored with probe_warp_scale); skymap tracts share the
+# reference tract's CD matrix, so the transform's pixel-space Jacobian has
+# |det| = 1 and none is needed.
 _RUST_KERNEL = "lanczos4"
 
 # The pure-FITS-TAN capability gate and TAN builder live in the shared
@@ -153,7 +153,6 @@ class MetaMosaicConfig(PipelineTaskConfig, pipelineConnections=MetaMosaicConnect
         dtype=str,
         allowed={
             "afw": "afwMath Warper (default, reference)",
-            "cv2": "precomputed-map cv2.remap (Lanczos4)",
             "rust": "stellaRGB.warp Rust engine (Lanczos4; direct per-pixel "
             "TAN warp for pure FITS TAN tract pairs (D16), per-tract fitted "
             "WarpTransform otherwise; no dense coordinate maps)",
@@ -179,9 +178,7 @@ class MetaMosaicTask(PipelineTask):
     once onto the box enclosing the virtual patches it overlaps, and each
     cell-sized slice of that warp is added separately. The warp backend is
     ``config.warp_backend``: "afw" uses the afwMath Warper (reference);
-    "cv2" warps with ``cv2.remap`` over per-foreign-tract precomputed
-    coordinate maps (see ``warp_maps``), which is much faster and validated
-    to agree with the afw path; "rust" warps with the ``stellaRGB.warp``
+    "rust" warps with the ``stellaRGB.warp``
     engine: when a foreign tract's WCS pair (reference and tract) is pure
     FITS TAN — the production skymap case — it selects the direct
     per-pixel TAN mode (T7.3, D16: :meth:`_direct_tan_warp`; no fit, no
@@ -407,8 +404,9 @@ class MetaMosaicTask(PipelineTask):
 
         The fit samples the projection pair on a control grid only (the
         ``fit_transform`` adaptive-densification contract) — the anti-pattern
-        this backend exists to eliminate is the dense per-tract coordinate-map
-        build of the "cv2" path (measured ~303 s/tract at production scale).
+        this backend exists to eliminate was the dense per-tract
+        coordinate-map build of the retired "cv2" backend (measured
+        ~303 s/tract at production scale).
         The returned transform is cached per foreign tract and reused by
         every patch of that tract; per-patch rendering happens at the
         patch's own dest box via ``warp_into``'s sub-box support.
@@ -828,20 +826,17 @@ class MetaMosaicTask(PipelineTask):
         self.log.info("Mosaic %d x %d virtual patches (%d x %d px)", ncx, ncy, mosaic_w, mosaic_h)
 
         # Phase timings (wall clock, accumulated over all inputs) and, for the
-        # "cv2" warp backend, the per-foreign-tract coordinate-map cache, or
-        # for the "rust" backend the per-foreign-tract WarpTransform cache,
-        # both built over the union of each tract's claimed cell dest boxes.
+        # "rust" backend, the per-foreign-tract WarpTransform cache, built
+        # over the union of each tract's claimed cell dest boxes.
         # The cache is local to this run(), so it is cleared at the start of
         # every run. For "rust", "map-build" times the control-grid fits
         # (one per foreign tract that needs the maps path; direct-mode
         # tracts (T7.3/D16) perform no fit and contribute nothing to this
-        # column — a run of pure FITS TAN tracts reports map-build n=0),
-        # amortized ~0 vs the cv2 dense-map build;
+        # column — a run of pure FITS TAN tracts reports map-build n=0).
         # warp+feather-accumulate stay separate columns: warp_into times into
         # "warp=", the backend-independent FeatheredMosaicCreator.add_to_image
         # feathered masked-adds (the D12 contract holder) time into
         # "accumulate=" exactly as for the other backends.
-        use_cv2 = self.config.warp_backend == "cv2"
         use_rust = self.config.warp_backend == "rust"
         # Direct-mode gate (T7.3/D16): the reference side is fixed for the
         # whole run, so its accepted-as-TAN verdict is probed once here and
@@ -849,13 +844,12 @@ class MetaMosaicTask(PipelineTask):
         ref_pure_tan = use_rust and _pure_fits_tan(ref_info.getWcs(), ref_info.bbox)
         t_decode = t_warp = t_map = t_add = t_finalize = t_crop = 0.0
         n_decode = n_warp = n_map = n_add = 0
-        tract_maps: dict[int, tuple[NDArray, NDArray, Box2I, Point2I, float]] = {}
         # "rust" per-foreign-tract cache: a direct-mode TanWarp (T7.3/D16),
         # a fitted WarpTransform (maps path), or None — the failed-fit
         # sentinel routing that tract to the afw Warper.
         tract_transforms: dict[int, WarpTransform | TanWarp | None] = {}
         tract_union: dict[int, Box2I] = {}
-        if use_cv2 or use_rust:
+        if use_rust:
             for tract, _, _, _, _, _, dest_box in foreign_records:
                 if tract in tract_union:
                     tract_union[tract].include(dest_box)
@@ -994,52 +988,13 @@ class MetaMosaicTask(PipelineTask):
                     # render contract (D16 — no fitted footprint exists).
                     # No dense maps and no canvas-sized temporaries either
                     # way; the per-patch buffer is dest_box-sized, the same
-                    # profile as the cv2 branch.
+                    # profile as the afw branch.
                     warped = warp_into(
                         ColorImage(rgb, bbox=Box.from_legacy(patch_bbox)),
                         rust_transform,
                         kernel=_RUST_KERNEL,
                         dest_bbox=Box.from_legacy(dest_box),
                     )
-                    t_warp += time.perf_counter() - t0
-                    n_warp += 1
-                elif use_cv2:
-                    if tract not in tract_maps:
-                        tm0 = time.perf_counter()
-                        tract_bbox = skyMap[tract].bbox
-                        union_box = tract_union[tract]
-                        map_x, map_y = warp_maps(patch_wcs, tract_bbox, ref_wcs, union_box)
-                        # Mirror the (kernel-independent) pixel-area scaling
-                        # afwMath's Warper applies so both backends agree.
-                        scale = probe_warp_scale(self.warper, patch_wcs, ref_wcs, patch_bbox)
-                        tract_maps[tract] = (map_x, map_y, union_box, tract_bbox.getBegin(), scale)
-                        t_map += time.perf_counter() - tm0
-                        n_map += 1
-                    map_x, map_y, union_box, tract_origin, scale = tract_maps[tract]
-                    # Slice the cached tract-wide map (dest coordinates over the
-                    # union of the tract's cell boxes) down to this patch's
-                    # dest box, then shift from the tract parent frame into
-                    # this patch's array coordinates (cv2 indexes from the
-                    # source array origin, i.e. patch_bbox.getMin()).
-                    sx0 = dest_box.getMinX() - union_box.getMinX()
-                    sy0 = dest_box.getMinY() - union_box.getMinY()
-                    sx1 = sx0 + dest_box.getWidth()
-                    sy1 = sy0 + dest_box.getHeight()
-                    off_x = patch_bbox.getMinX() - tract_origin.getX()
-                    off_y = patch_bbox.getMinY() - tract_origin.getY()
-                    mx = map_x[sy0:sy1, sx0:sx1] - off_x
-                    my = map_y[sy0:sy1, sx0:sx1] - off_y
-                    t0 = time.perf_counter()
-                    warped = np.empty((dest_box.getHeight(), dest_box.getWidth(), 3), dtype=np.float32)
-                    for channel_index in range(3):
-                        warped[..., channel_index] = scale * cv2.remap(
-                            np.ascontiguousarray(rgb[..., channel_index]),
-                            mx,
-                            my,
-                            cv2.INTER_LANCZOS4,
-                            borderMode=cv2.BORDER_CONSTANT,
-                            borderValue=np.nan,
-                        )
                     t_warp += time.perf_counter() - t0
                     n_warp += 1
                 else:

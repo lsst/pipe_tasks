@@ -1152,7 +1152,7 @@ class TestWarpMaps:
 
 
 def _backends_agree_mask(skymap, ref_tract, tract_id, patches, out_box, margin=10):
-    """Pixels where the "afw" and "cv2" warp backends must agree to full
+    """Pixels where the "afw" and "rust" warp backends must agree to full
     precision.
 
     The two backends use different resampling kernels (lanczos5 vs
@@ -1205,8 +1205,8 @@ def _backends_agree_mask(skymap, ref_tract, tract_id, patches, out_box, margin=1
 
 
 class TestWarpBackends:
-    """End-to-end equivalence of the "afw" (reference) and "cv2"
-    (precomputed-map) warp backends, plus the phase-timing log."""
+    """End-to-end equivalence of the "afw" (reference) and "rust"
+    (stellaRGB.warp engine) warp backends, plus the phase-timing log."""
 
     @staticmethod
     def _run(skymap, backend, crop_mode, handles):
@@ -1225,110 +1225,51 @@ class TestWarpBackends:
             _make_handle(skymap, 1, 0, [0.0, 0.0, 1.0]),  # foreign tract: blue
         ]
 
-    @pytest.mark.parametrize("crop_mode", ["none", "full_coverage"])
-    def test_cv2_matches_afw(self, crop_mode):
-        """cv2.remap (Lanczos4) output agrees with the afwMath reference to
-        5e-3 outside a narrow kernel-ring around the foreign footprint, for
-        both an uncropped and the default-cropped raster (crop/feather
-        interactions included: identical crop boxes, feather weights are
-        backend-independent)."""
-        skymap = _make_skymap()
-        afw = self._run(skymap, "afw", crop_mode, self._standard_handles(skymap)).outputRGBMosaic
-        cv2r = self._run(skymap, "cv2", crop_mode, self._standard_handles(skymap)).outputRGBMosaic
-        assert afw.bbox == cv2r.bbox
-        a, b = afw.array, cv2r.array
-        assert np.all(np.isfinite(a)) and np.all(np.isfinite(b))
-        # The foreign color is present (not silently dropped) in both.
-        assert np.any(a[..., 2] > 0.5) and np.any(b[..., 2] > 0.5)
-        good = _backends_agree_mask(skymap, 0, 1, [0], cv2r.bbox.to_legacy())
-        assert good.mean() > 0.9
-        np.testing.assert_allclose(a[good], b[good], atol=5e-3)
-        # And a strong-agreement majority everywhere (the excluded ring is
-        # only a small band around the warped footprint edges).
-        diff = np.abs(a - b).max(axis=-1)
-        assert (diff > 5e-3).mean() < 0.05
-
     def test_data_extent_bbox_agrees_within_kernel_width(self):
         """data_extent crops to the outermost row/column with any weight; the
-        two backends' warp NaN bands differ by at most a couple of pixels
-        (kernel radius), so their crop boxes must agree within 3 px."""
+        afw and rust backends' warp NaN bands differ by at most a couple of
+        pixels (kernel radius), so their crop boxes must agree within 3 px."""
         skymap = _make_skymap()
         afw = self._run(skymap, "afw", "data_extent", self._standard_handles(skymap))
-        cv2r = self._run(skymap, "cv2", "data_extent", self._standard_handles(skymap))
+        rust = self._run(skymap, "rust", "data_extent", self._standard_handles(skymap))
         ba = afw.outputRGBMosaic.bbox.to_legacy()
-        bb = cv2r.outputRGBMosaic.bbox.to_legacy()
+        bb = rust.outputRGBMosaic.bbox.to_legacy()
         for get in (lambda b: b.getMinX(), lambda b: b.getMaxX(), lambda b: b.getMinY(),
                     lambda b: b.getMaxY()):
             assert abs(get(ba) - get(bb)) <= 3
 
-    def test_nan_hole_black_after_finalize_both_backends(self):
-        """NaN contract: a NaN block in a foreign patch yields zero-weight
-        (black after finalize) pixels for both backends, and the black
-        regions agree up to the kernel ring (the hole exists and is at the
-        same place in both)."""
-        skymap = _make_skymap()
-        ref_bbox = skymap[0][0].getOuterBBox()
-        blue = np.empty((ref_bbox.getHeight(), ref_bbox.getWidth(), 3), dtype=np.float32)
-        blue[...] = [0.0, 0.0, 1.0]
-        blue[:10, :10, :] = np.nan
-        foreign = InMemoryDatasetHandle(
-            inMemoryDataset=ColorImage(blue, bbox=Box.from_legacy(skymap[1][0].getOuterBBox())),
-            skymap="test",
-            tract=1,
-            patch=0,
-        )
-        handles = [_make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]), foreign]
-
-        zeros = {}
-        for backend in ("afw", "cv2"):
-            image = self._run(skymap, backend, "none", handles).outputRGBMosaic
-            array = image.array
-            assert np.all(np.isfinite(array))
-            zeros[backend] = np.all(array == 0.0, axis=-1)
-
-        def dilate(m):
-            return cv2.dilate(m.astype(np.uint8), np.ones((7, 7), np.uint8)).astype(bool)
-        # Both backends blacken the hole (and the empty canvas): non-trivial
-        # amount of black pixels...
-        assert zeros["afw"].sum() > 1000 and zeros["cv2"].sum() > 1000
-        # ... and their black sets agree modulo a 3-pixel kernel ring.
-        assert (zeros["afw"] & ~dilate(zeros["cv2"])).sum() == 0
-        assert (zeros["cv2"] & ~dilate(zeros["afw"])).sum() == 0
-
-    def test_timings_log_and_map_build_cache(self, caplog):
-        """The run always ends with a 'Timings:' line; with the cv2 backend
-        one coordinate map is built per foreign TRACT (two foreign patches of
-        tract 1 share one map build), and the afw backend builds none."""
+    def test_timings_log_afw_backend(self, caplog):
+        """The run always ends with a parseable 'Timings:' line; the afw
+        backend builds no fallback-ladder state (map-build n=0) and counts
+        decode per input handle (3) and warp per foreign patch (2)."""
         skymap = _make_skymap()
         handles = [
             _make_handle(skymap, 0, 0, [1.0, 0.0, 0.0]),
             _make_handle(skymap, 1, 0, [0.0, 0.0, 1.0]),
             _make_handle(skymap, 1, 1, [0.0, 1.0, 0.0]),
         ]
-        for backend, expected_maps in (("cv2", 1), ("afw", 0)):
-            with caplog.at_level(logging.INFO, logger="lsst.metaMosaic"):
-                self._run(skymap, backend, "none", handles)
-            lines = [r.getMessage() for r in caplog.records if "Timings:" in r.getMessage()]
-            assert lines, "no Timings log line emitted"
-            line = lines[-1]
-            match = re.search(r"map-build=[0-9.]+s \(n=(\d+)\)", line)
-            assert match is not None, line
-            assert int(match.group(1)) == expected_maps
-            match = re.search(r"decode=[0-9.]+s \(n=(\d+)\)", line)
-            assert int(match.group(1)) == 3
-            match = re.search(r"warp=[0-9.]+s \(n=(\d+)\)", line)
-            assert int(match.group(1)) == 2
-            assert "accumulate=" in line and "finalize=" in line and "crop=" in line
+        with caplog.at_level(logging.INFO, logger="lsst.metaMosaic"):
+            self._run(skymap, "afw", "none", handles)
+        lines = [r.getMessage() for r in caplog.records if "Timings:" in r.getMessage()]
+        assert lines, "no Timings log line emitted"
+        line = lines[-1]
+        match = re.search(r"map-build=[0-9.]+s \(n=(\d+)\)", line)
+        assert match is not None, line
+        assert int(match.group(1)) == 0
+        match = re.search(r"decode=[0-9.]+s \(n=(\d+)\)", line)
+        assert int(match.group(1)) == 3
+        match = re.search(r"warp=[0-9.]+s \(n=(\d+)\)", line)
+        assert int(match.group(1)) == 2
+        assert "accumulate=" in line and "finalize=" in line and "crop=" in line
 
     @pytest.mark.parametrize("crop_mode", ["none", "full_coverage"])
     def test_rust_matches_afw(self, crop_mode):
         """The "rust" backend (fitted-transform warp_into, Lanczos4) agrees
-        with the afwMath (Lanczos5) reference to 5e-3 outside the same kernel
-        ring the cv2 battery uses, uncropped and default-cropped. The
-        tolerance is carried from the cv2 battery (same kernel family, same
-        flat-color scenes); measured masked max-diff is 1.6e-5 (the fitted
-        transform's verified residual is <=0.05 source px), so this is a 300x
-        margin, not a loosening."""
+        with the afwMath (Lanczos5) reference to 5e-3 outside the kernel
+        ring excluded by _backends_agree_mask, uncropped and
+        default-cropped (same kernel family, flat-color scenes). Measured
+        masked max-diff is 1.6e-5 (the fitted transform's verified residual
+        is <=0.05 source px), so this is a 300x margin, not a loosening."""
         skymap = _make_skymap()
         afw = self._run(skymap, "afw", crop_mode, self._standard_handles(skymap)).outputRGBMosaic
         rust = self._run(skymap, "rust", crop_mode, self._standard_handles(skymap)).outputRGBMosaic
@@ -1345,9 +1286,9 @@ class TestWarpBackends:
     def test_rust_nan_hole_black_after_finalize(self):
         """NaN contract for "rust": a NaN block in a foreign patch yields
         zero-weight (black after finalize) pixels, agreeing with the afw
-        reference up to a 3-pixel kernel ring (same assertion shape as the
-        cv2/afw test; the masked-add contract lives in the shared
-        FeatheredMosaicCreator, so only the warp's NaN footprint differs)."""
+        reference up to a 3-pixel kernel ring (the masked-add contract
+        lives in the shared FeatheredMosaicCreator, so only the warp's NaN
+        footprint differs)."""
         skymap = _make_skymap()
         ref_bbox = skymap[0][0].getOuterBBox()
         blue = np.empty((ref_bbox.getHeight(), ref_bbox.getWidth(), 3), dtype=np.float32)
@@ -1381,8 +1322,8 @@ class TestWarpBackends:
         the parser format with map-build n=2. map-build times the
         control-grid fits: <1.0 s each on this tiny scene (measured ~0.3-0.4
         s; the guard is machine-loose — the structural anti-pattern pin is
-        the spy count and the absence of dense maps, vs the cv2 path's
-        303 s/tract dense map build at production scale)."""
+        the spy count and the absence of dense maps, vs the retired cv2
+        backend's 303 s/tract dense map build at production scale)."""
         from lsst.pipe.tasks.prettyPictureMaker import _meta_mosaic
 
         skymap = _make_skymap(tracts=3)
@@ -1576,7 +1517,7 @@ class TestRustDirectMode:
         """Direct-mode twin of the backend battery: with production-shape
         TAN tract WCS the direct per-pixel TAN engine (no fit, no maps)
         reproduces the afwMath reference to the same 5e-3 tolerance the
-        cv2/rust batteries use. The foreign patch carries a centered hot
+        rust battery uses. The foreign patch carries a centered hot
         spot (`_make_hot_handle`) making the uncropped variant a
         positional check: any >=1 px engine misalignment moves the hot
         peak into compared pixels (probe-verified: a +2 px src-crpix

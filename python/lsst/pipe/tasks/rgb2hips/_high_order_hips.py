@@ -51,20 +51,19 @@ from lsst.resources import ResourcePath
 from collections.abc import Iterable
 from lsst.sphgeom import RangeSet
 
-import cv2
-
 from stellaRGB.warp import DirectWarp, WarpTransform, fit_transform, warp_into
 
 from .._warpDirect import hpx_direct_wcs_from_afw, pure_fits_tan, tan_wcs_from_afw
 from ._utils import _write_hips_image
-from ..prettyPictureMaker import FeatheredMosaicCreator, probe_warp_scale, warp_maps
+from ..prettyPictureMaker import FeatheredMosaicCreator, probe_warp_scale
 
-# The "rust" backend's resampling kernel: mirrors the cv2 backend's effective
-# kernel (cv2.INTER_LANCZOS4; the afw reference is lanczos5 per
-# HighOrderHipsTaskConfig.setDefaults). Unlike the meta-mosaic integration
-# (skymap tracts share the reference CD matrix, |det J| = 1), HiPS tiles have
-# their own pixel scale, so the "rust" branch mirrors afwMath's pixel-area
-# normalization with probe_warp_scale exactly as the cv2 branch does.
+# The "rust" backend's resampling kernel: mirrors the kernel
+# (INTER_LANCZOS4-family) of the retired cv2 backend (the afw reference is
+# lanczos5 per HighOrderHipsTaskConfig.setDefaults). Unlike the meta-mosaic
+# integration (skymap tracts share the reference CD matrix, |det J| = 1),
+# HiPS tiles have their own pixel scale, so the "rust" branch mirrors
+# afwMath's pixel-area normalization with probe_warp_scale exactly as the
+# retired cv2 branch did.
 _RUST_KERNEL = "lanczos4"
 
 
@@ -269,7 +268,6 @@ class HighOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=HighOrderH
         ),
         allowed={
             "afw": "afwMath Warper (default, reference)",
-            "cv2": "precomputed-map cv2.remap (Lanczos4)",
             "rust": "stellaRGB.warp engine: direct per-pixel HPX-on-TAN "
             "warp (DirectWarp) for plain HiPS + pure FITS TAN pairs, "
             "fit-verified control-grid maps otherwise (Lanczos4)",
@@ -365,11 +363,10 @@ class HighOrderHipsTask(PipelineTask):
         output_array_hpx = np.zeros((4096, 4096, 3), dtype=np.float32)
         output_array_hpx[:, :, :] = np.nan
 
-        use_cv2 = self.config.warp_backend == "cv2"
         use_rust = self.config.warp_backend == "rust"
-        # Warp invocation timings (per engine/remap/warpImage call; the
-        # rust direct path performs exactly one warp_into per image, the
-        # per-channel afw/cv2 backends three) and, for the "rust" backend
+        # Warp invocation timings (per engine/warpImage call; the rust
+        # direct path performs exactly one warp_into per image, the
+        # per-channel afw backend three) and, for the "rust" backend
         # fallback ladder, the fit clock: "map-build" times control-grid
         # fits and counts only REAL fits — direct-mode images (T8.6)
         # perform no fit and contribute nothing, so a full-direct run
@@ -394,7 +391,7 @@ class HighOrderHipsTask(PipelineTask):
                     in_image = in_image.astype(np.float32)
 
             rust_warped = None
-            if use_cv2 or use_rust:
+            if use_rust:
                 # Replicate the destination domain afwMath warps onto: the
                 # source footprint in target_wcs coordinates clipped to the
                 # 4096 x 4096 tile, computed conservatively (see
@@ -402,92 +399,87 @@ class HighOrderHipsTask(PipelineTask):
                 warped_box = self._footprint_bbox(in_wcs, in_box, target_wcs, exp_bbox)
                 if warped_box.isEmpty():
                     continue
-                # Both non-afw backends mirror the (kernel-independent)
+                # The "rust" backend mirrors the (kernel-independent)
                 # pixel-area scaling afwMath's Warper applies (the HiPS tile
                 # scale differs materially from the tract scale, unlike the
-                # meta-mosaic |det J| ~ 1 case), and share the footprint box
+                # meta-mosaic |det J| ~ 1 case), and shares the footprint box
                 # so the blend-block slicing is backend-independent.
                 warp_scale = probe_warp_scale(self.warper, in_wcs, target_wcs, in_box)
                 warpped_box_slices = warped_box.slices
-                if use_cv2:
-                    # Coordinate maps are built once per input image (over the
-                    # dense footprint box) and reused for all three channels.
-                    map_x, map_y = warp_maps(in_wcs, in_box, target_wcs, warped_box)
+                # T8.6 (D18/D19) mode selection, once per (source, tile)
+                # class and cached on the task: a plain HiPS HPX tile
+                # fed by a pure FITS TAN source (the production case:
+                # post-acalexn warps) renders through the direct
+                # per-pixel engine — no fit, no maps. Anything the
+                # shared gate declines (SIP or other distortion,
+                # non-TAN sources, exotic tile headers) takes the
+                # T6.2 fit/maps fallback below, unchanged.
+                direct = self._rust_direct_warp(in_wcs, in_box, target_wcs, healpix_id)
+                if direct is not None:
+                    # Direct logs per image always; maps self-suppresses
+                    # on cache hits. Intentional: volume bounded by quanta.
+                    self.log.info(
+                        "rust backend tile %s: hpx-direct (dest box %d x %d px)",
+                        healpix_id,
+                        warped_box.getWidth(),
+                        warped_box.getHeight(),
+                    )
+                    # The same bbox/origin plumbing as the maps branch:
+                    # the ColorImage frame contract places the source
+                    # array at its own bbox in in_wcs parent coordinates
+                    # and warp_into renders exactly the footprint box
+                    # the maps path already computed (direct mode has no
+                    # D7 containment rule — the requested box is the
+                    # whole render contract, D16).
+                    t0 = time.perf_counter()
+                    rust_warped = warp_scale * warp_into(
+                        ColorImage(in_image, bbox=Box.from_legacy(in_box)),
+                        direct,
+                        kernel=_RUST_KERNEL,
+                        dest_bbox=Box.from_legacy(warped_box),
+                    )
+                    t_warp += time.perf_counter() - t0
+                    n_warp += 1
                 else:
-                    # T8.6 (D18/D19) mode selection, once per (source, tile)
-                    # class and cached on the task: a plain HiPS HPX tile
-                    # fed by a pure FITS TAN source (the production case:
-                    # post-acalexn warps) renders through the direct
-                    # per-pixel engine — no fit, no maps. Anything the
-                    # shared gate declines (SIP or other distortion,
-                    # non-TAN sources, exotic tile headers) takes the
-                    # T6.2 fit/maps fallback below, unchanged.
-                    direct = self._rust_direct_warp(in_wcs, in_box, target_wcs, healpix_id)
-                    if direct is not None:
-                        # Direct logs per image always; maps self-suppresses
-                        # on cache hits. Intentional: volume bounded by quanta.
-                        self.log.info(
-                            "rust backend tile %s: hpx-direct (dest box %d x %d px)",
-                            healpix_id,
-                            warped_box.getWidth(),
-                            warped_box.getHeight(),
-                        )
-                        # The same bbox/origin plumbing as the maps branch:
-                        # the ColorImage frame contract places the source
-                        # array at its own bbox in in_wcs parent coordinates
-                        # and warp_into renders exactly the footprint box
-                        # the maps path already computed (direct mode has no
-                        # D7 containment rule — the requested box is the
-                        # whole render contract, D16).
+                    n_before = len(self._rust_transforms)
+                    tm0 = time.perf_counter()
+                    transform = self._rust_tile_transform(
+                        in_wcs, in_box, target_wcs, warped_box, healpix_id
+                    )
+                    t_map += time.perf_counter() - tm0
+                    if transform is not None:
+                        # "map-build" ticks only on a REAL fit (the
+                        # per-(image, tile) memo makes a cache hit
+                        # free); the mode line is logged once per class,
+                        # mirroring meta-mosaic's "rust-maps" style.
+                        if len(self._rust_transforms) > n_before:
+                            n_map += 1
+                            self.log.info(
+                                "rust backend tile %s: rust-maps spacing=%.1f residual=%.2e"
+                                " (dest box %d x %d px)",
+                                healpix_id,
+                                transform.control_spacing,
+                                transform.max_residual,
+                                warped_box.getWidth(),
+                                warped_box.getHeight(),
+                            )
+                        # One engine render for all three channels (the
+                        # ColorImage frame contract places the source
+                        # array at its own bbox in in_wcs parent
+                        # coordinates; the render is the contained
+                        # sub-box == the transform's dest_bbox).
                         t0 = time.perf_counter()
                         rust_warped = warp_scale * warp_into(
                             ColorImage(in_image, bbox=Box.from_legacy(in_box)),
-                            direct,
+                            transform,
                             kernel=_RUST_KERNEL,
                             dest_bbox=Box.from_legacy(warped_box),
                         )
                         t_warp += time.perf_counter() - t0
                         n_warp += 1
-                    else:
-                        n_before = len(self._rust_transforms)
-                        tm0 = time.perf_counter()
-                        transform = self._rust_tile_transform(
-                            in_wcs, in_box, target_wcs, warped_box, healpix_id
-                        )
-                        t_map += time.perf_counter() - tm0
-                        if transform is not None:
-                            # "map-build" ticks only on a REAL fit (the
-                            # per-(image, tile) memo makes a cache hit
-                            # free); the mode line is logged once per class,
-                            # mirroring meta-mosaic's "rust-maps" style.
-                            if len(self._rust_transforms) > n_before:
-                                n_map += 1
-                                self.log.info(
-                                    "rust backend tile %s: rust-maps spacing=%.1f residual=%.2e"
-                                    " (dest box %d x %d px)",
-                                    healpix_id,
-                                    transform.control_spacing,
-                                    transform.max_residual,
-                                    warped_box.getWidth(),
-                                    warped_box.getHeight(),
-                                )
-                            # One engine render for all three channels (the
-                            # ColorImage frame contract places the source
-                            # array at its own bbox in in_wcs parent
-                            # coordinates; the render is the contained
-                            # sub-box == the transform's dest_bbox).
-                            t0 = time.perf_counter()
-                            rust_warped = warp_scale * warp_into(
-                                ColorImage(in_image, bbox=Box.from_legacy(in_box)),
-                                transform,
-                                kernel=_RUST_KERNEL,
-                                dest_bbox=Box.from_legacy(warped_box),
-                            )
-                            t_warp += time.perf_counter() - t0
-                            n_warp += 1
-                        # else: the fit failed (already warned once per
-                        # image) -- this image falls through to the afw
-                        # Warper below.
+                    # else: the fit failed (already warned once per
+                    # image) -- this image falls through to the afw
+                    # Warper below.
 
             # Process each color channel separately
             for channel in ColorChannel:
@@ -498,18 +490,6 @@ class HighOrderHipsTask(PipelineTask):
                 channel_array = in_image[..., channel.value]
                 if rust_warped is not None:
                     warpped_array = rust_warped[..., channel.value]
-                elif use_cv2:
-                    t0 = time.perf_counter()
-                    warpped_array = warp_scale * cv2.remap(
-                        np.ascontiguousarray(channel_array),
-                        map_x,
-                        map_y,
-                        cv2.INTER_LANCZOS4,
-                        borderMode=cv2.BORDER_CONSTANT,
-                        borderValue=np.nan,
-                    )
-                    t_warp += time.perf_counter() - t0
-                    n_warp += 1
                 else:
                     tmp_image.array[:, :] = channel_array
                     # Warp the image to the target WCS
@@ -769,7 +749,8 @@ class HighOrderHipsTask(PipelineTask):
         curvilinear, so the fit will (correctly) return maps mode with
         densified control nodes; affine mode is taken only for a
         residual-flat pair. The fit is control-grid only — the dense
-        per-pixel WCS map build of the cv2 path never happens here.
+        per-pixel WCS map build of the retired cv2 backend never happens
+        here.
 
         The fit source box is grown by 2 px so an affine-mode footprint
         (the corner-image rectangle of the source box, whose fit guard
