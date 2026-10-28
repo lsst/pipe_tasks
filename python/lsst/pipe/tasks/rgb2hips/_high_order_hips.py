@@ -51,7 +51,7 @@ from lsst.resources import ResourcePath
 from collections.abc import Iterable
 from lsst.sphgeom import RangeSet
 
-from stellaRGB.warp import DirectWarp, WarpTransform, fit_transform, warp_into
+from stellaRGB.warp import AstWarp, AstWcs, DirectWarp, WarpTransform, fit_transform, warp_into
 
 from .._warpDirect import hpx_direct_wcs_from_afw, pure_fits_tan, tan_wcs_from_afw
 from ._utils import _write_hips_image
@@ -256,7 +256,7 @@ class HighOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=HighOrderH
             "engine (T8.6/D18): when the tile WCS is a plain HiPS HPX "
             "header and the source WCS passes the shared pure-FITS-TAN "
             "gate (lsst.pipe.tasks._warpDirect), the (tile, source) pair is "
-            "rendered by a closed-form HPX-on-TAN DirectWarp -- zero fits, "
+            "rendered by a direct HPX-on-TAN warp -- zero fits, "
             "zero coordinate maps. The (image WCS, tile WCS) control-grid "
             "fit_transform ladder remains as the FALLBACK for anything the "
             "gate declines (SIP or other distortion, non-TAN sources, "
@@ -269,7 +269,8 @@ class HighOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=HighOrderH
         allowed={
             "afw": "afwMath Warper (default, reference)",
             "rust": "stellaRGB.warp engine: direct per-pixel HPX-on-TAN "
-            "warp (DirectWarp) for plain HiPS + pure FITS TAN pairs, "
+            "warp (raw tile cards through the AST backend) for plain HiPS "
+            "+ pure FITS TAN pairs, "
             "fit-verified control-grid maps otherwise (Lanczos4)",
         },
         default="afw",
@@ -315,12 +316,12 @@ class HighOrderHipsTask(PipelineTask):
         self.warper = Warper.fromConfig(self.config.warp)
 
         # Per-(image, tile) direct-warp memo for the "rust" backend
-        # (T8.6): DirectWarp when both gates pass, None when either
-        # declines (the None verdict is cached too, so a declined source
-        # is never re-gated on a task retry). DirectWarp holds two
-        # frozen header triples (no maps, cheap); the win is skipping
-        # re-gating (the 9-point probe) on task retry.
-        self._rust_direct_warps: dict[tuple, DirectWarp | None] = {}
+        # (T8.6): AstWarp (T10.5 raw-card route) or DirectWarp when both
+        # gates pass, None when either declines (the None verdict is
+        # cached too, so a declined source is never re-gated on a task
+        # retry). Both warp types hold frozen frames (no maps, cheap);
+        # the win is skipping re-gating (the 9-point probe) on task retry.
+        self._rust_direct_warps: dict[tuple, DirectWarp | AstWarp | None] = {}
 
         # Per-(image, tile) WarpTransform memo for the "rust" backend
         # FALLBACK ladder (content-keyed; values may be None = failed fit,
@@ -663,24 +664,28 @@ class HighOrderHipsTask(PipelineTask):
         in_box: Box2I,
         target_wcs: SkyWcs,
         healpix_id: int,
-    ) -> DirectWarp | None:
+    ) -> DirectWarp | AstWarp | None:
         """Build (and memoize) the "rust" backend's DIRECT per-pixel warp
         for one (source image, tile) pair, or None when either side needs
         the fitted-maps fallback ladder (T8.6, D18/D19).
 
         The destination side is built by the shared HiPS header gate
         (:func:`~lsst.pipe.tasks._warpDirect.hpx_direct_wcs_from_afw`:
-        exact ``RA---HPX``/``DEC--HPX`` cards, inert PV2_1=4/PV2_2=3
-        treated as absent, crval dec 0 within construction noise); the
-        source side by the shared pure-FITS-TAN gate probed over
-        ``in_box`` — the post-acalexn production warps qualify. Both
-        present yields a :class:`stellaRGB.warp.DirectWarp`, whose engine
-        render evaluates the HPX-on-TAN coordinate pair per destination
-        pixel in f64: no control-grid fit, no coordinate maps, and (no D7
-        containment rule) no dependence on the footprint box beyond the
-        box actually requested. Any gate decline or constructor
-        exception fails CLOSED to None (the caller's maps ladder is
-        untouched).
+        the plain-HiPS regime screen — exact ``RA---HPX``/``DEC--HPX``
+        cards, inert PV2_1=4/PV2_2=3 treated as absent, crval dec 0
+        within construction noise — plus the engine's AST probe on the
+        tile's own raw cards, T10.5); the source side by the shared
+        pure-FITS-TAN gate probed over ``in_box`` — the post-acalexn
+        production warps qualify. Both present yields a
+        :class:`stellaRGB.warp.AstWarp` rendering the raw tile cards
+        through the AST backend (an ``AstWcs`` dest), or a
+        :class:`stellaRGB.warp.DirectWarp` for a builtin-registry
+        ``DirectWcs`` dest — the engine render evaluates the HPX-on-TAN
+        coordinate pair per destination pixel in f64: no control-grid
+        fit, no coordinate maps, and (no D7 containment rule) no
+        dependence on the footprint box beyond the box actually
+        requested. Any gate decline or constructor exception fails
+        CLOSED to None (the caller's maps ladder is untouched).
 
         The result (including the None verdict, so a declined source is
         not re-gated on a task retry) is cached on the task keyed by
@@ -704,7 +709,7 @@ class HighOrderHipsTask(PipelineTask):
 
         Returns
         -------
-        warp : `stellaRGB.warp.DirectWarp` | `None`
+        warp : `stellaRGB.warp.DirectWarp` | `stellaRGB.warp.AstWarp` | `None`
             The direct warp, or None if either side was declined (the
             caller must serve that image from the maps fallback ladder).
         """
@@ -723,7 +728,15 @@ class HighOrderHipsTask(PipelineTask):
             dest = hpx_direct_wcs_from_afw(target_wcs)
             if dest is not None and pure_fits_tan(in_wcs, in_box):
                 try:
-                    warp = DirectWarp(dest=dest, src=tan_wcs_from_afw(in_wcs))
+                    # Dispatch by spec type (T10.5): the HPX gate now hands
+                    # raw tile cards, so the AST backend renders them; the
+                    # builtin-registry (DirectWcs) pairing stays on the
+                    # closed-form DirectWarp route.
+                    src = tan_wcs_from_afw(in_wcs)
+                    if isinstance(dest, AstWcs):
+                        warp = AstWarp(dest=dest, src=src)
+                    else:
+                        warp = DirectWarp(dest=dest, src=src)
                 except Exception:
                     # Field validation at the engine boundary or a future
                     # constructor contract rejecting the pair: fail closed

@@ -27,10 +27,11 @@ The gate is the single decision point every "rust" direct-mode consumer
 directly on the shared module: the pure-FITS-TAN verdict table (isFits
 short-circuit, exact SIP-card rejection ahead of the numeric probe,
 fail-closed on unreadable accessors) and the HPX builder accept/reject
-table (plain HiPS headers accepted with the inert PV2_1=4/PV2_2=3 cards
-treated as absent; isFits-False, TAN, off-regime-dec, exotic-card —
-non-numeric PV values, SIP coefficient and linear D cards — and
-missing-CTYPE headers all declined for the maps ladder).
+table (plain HiPS headers accepted through the raw-card AST probe with
+the inert PV2_1=4/PV2_2=3 cards treated as absent; isFits-False, TAN,
+off-regime-dec, exotic-card — non-numeric PV values, SIP coefficient and
+linear D cards — and missing-CTYPE headers all declined for the maps
+ladder before the engine is ever asked).
 """
 import numpy as np
 import pytest
@@ -38,7 +39,7 @@ import pytest
 from lsst.afw.geom import makeHpxWcs, makeSkyWcs
 from lsst.daf.base import PropertyList
 from lsst.geom import Box2I, Extent2I, Point2I, Point2D, SpherePoint, degrees
-from stellaRGB.warp import DirectWarp
+from stellaRGB.warp import AstWarp, AstWcs
 
 from lsst.pipe.tasks._warpDirect import (
     _is_sip_card,
@@ -209,8 +210,9 @@ class TestTanWcsFromAfw:
 
 class TestHpxDirectWcsFromAfw:
     """Accept/reject table for the HiPS header builder. The accept row also
-    pins that the engine itself accepts the built DirectWcs (construction
-    of a DirectWarp is the engine-side validation)."""
+    pins that the engine itself accepts the built frame (construction of an
+    AstWarp is the engine-side validation; the HPX route is raw-card —
+    T10.5)."""
 
     @staticmethod
     def _hpx_wcs():
@@ -224,18 +226,29 @@ class TestHpxDirectWcsFromAfw:
         md = wcs.getFitsMetadata()
         assert md.get("PV2_1") == 4.0 and md.get("PV2_2") == 3.0
         built = hpx_direct_wcs_from_afw(wcs)
-        assert built is not None and built.kind == "hpx"
-        assert built.pv == ()
-        # dec snapped to exactly 0.0 (afw answers ~1e-15 deg for a
-        # header CRVAL2 of exactly 0; the engine adapter rejects anything
-        # not exactly 0).
-        assert built.crval_deg[1] == 0.0
-        origin = wcs.getPixelOrigin()
-        assert built.crpix == pytest.approx((origin.getX(), origin.getY()))
-        np.testing.assert_allclose(built.cd_deg_per_pix, np.asarray(wcs.getCdMatrix()))
-        # Engine-side validation: the built spec constructs a DirectWarp
-        # against a TAN source (the rgb2hips production pairing).
-        DirectWarp(dest=built, src=tan_wcs_from_afw(_tan_wcs()))
+        # Raw-card route (T10.5): the verdict is an AST-probed card frame,
+        # not a classified spec — the cards are the afw header verbatim,
+        # so CRPIX stays FITS 1-based (the 0-based getPixelOrigin accessor
+        # and its isFits-quirk mismatch are no longer consulted at all).
+        assert isinstance(built, AstWcs)
+        assert any(card.startswith("CTYPE1  = 'RA---HPX'") for card in built.cards)
+        assert any(card.startswith("CRPIX1  =") for card in built.cards)
+        np.testing.assert_allclose(md.get("CRPIX2"), wcs.getPixelOrigin().getY() + 1.0)
+        # Engine-side validation: the probed raw-card dest constructs an
+        # AstWarp against a TAN source (the rgb2hips production pairing).
+        warp = AstWarp(dest=built, src=tan_wcs_from_afw(_tan_wcs()))
+        assert warp.mode == "direct"
+
+    def test_get_fits_metadata_round_trips_through_the_probe(self):
+        """The raw-card premise (T10.5 probe result): the production tile
+        header passes the engine's AST probe directly — no astropy
+        detour, no value re-basing — with every afw card rendered into the
+        80-column image AST reads."""
+        wcs = self._hpx_wcs()
+        md = wcs.getFitsMetadata()
+        built = AstWcs.from_cards(md)
+        assert len(built.cards) == len(list(md.names()))
+        assert all(len(card) == 80 for card in built.cards)
 
     def test_accepts_lowercase_ctype(self):
         real = self._hpx_wcs()
@@ -272,20 +285,23 @@ class TestHpxDirectWcsFromAfw:
         assert hpx_direct_wcs_from_afw(stub) is None
 
     def test_rejects_nonzero_dec(self):
+        # Card-based stub (T10.5 retarget): the raw-card route reads the
+        # declination off the CRVAL2 card — the frame the engine renders —
+        # so the off-regime value is poisoned there; the skyOrigin accessor
+        # the classifier route consulted is no longer an input.
         real = self._hpx_wcs()
-        stub = _fits_stub(real, sky=SpherePoint(real.getSkyOrigin().getRa(), 0.5 * degrees))
+        stub = _fits_stub(real, extra={"CRVAL2": 0.5})
         assert hpx_direct_wcs_from_afw(stub) is None
 
-    def test_snaps_noise_dec_to_zero(self):
-        """|dec| within construction noise is a CRVAL2=0 header and is
-        accepted with the declination snapped to exactly 0.0 (the value the
-        engine adapter demands)."""
+    def test_accepts_construction_noise_dec(self):
+        """A CRVAL2 within construction noise of the HiPS regime is
+        accepted. Unlike the classifier route there is no snap to exactly
+        0.0 (T10.5): the raw-card route hands the header verbatim, and
+        1e-9 deg is far below render precision — production headers state
+        CRVAL2 = 0.0 exactly (the accept row's header is makeHpxWcs)."""
         real = self._hpx_wcs()
-        ra = real.getSkyOrigin().getRa()
-        stub = _fits_stub(real, sky=SpherePoint(ra, 1.0e-12 * degrees))
-        built = hpx_direct_wcs_from_afw(stub)
-        assert built is not None
-        assert built.crval_deg[1] == 0.0
+        stub = _fits_stub(real, extra={"CRVAL2": 1.0e-12})
+        assert hpx_direct_wcs_from_afw(stub) is not None
 
     @pytest.mark.parametrize(
         "extra",
@@ -308,16 +324,55 @@ class TestHpxDirectWcsFromAfw:
         stub = _fits_stub(real, extra=extra)
         assert hpx_direct_wcs_from_afw(stub) is None
 
+    def test_sip_veto_fires_before_the_probe(self):
+        """Policy ordering (T10.5): the ALL-SIP veto runs BEFORE the AST
+        probe — unlike the old classifier, the AST backend reads SIP from
+        the cards themselves and would happily accept this header, so the
+        pipe's veto must not merely outrank the probe's verdict but
+        suppress the probe call entirely (spy records zero calls)."""
+        real = self._hpx_wcs()
+        stub = _fits_stub(real, extra={"A_ORDER": 2, "A_2_0": 1.0e-12})
+        calls = []
+
+        class _Spy:
+            @classmethod
+            def from_cards(cls, cards):
+                calls.append(cards)
+                raise AssertionError("SIP-poisoned header reached the probe")
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr("lsst.pipe.tasks._warpDirect.AstWcs", _Spy)
+        try:
+            assert hpx_direct_wcs_from_afw(stub) is None
+            assert calls == []
+        finally:
+            monkeypatch.undo()
+
+    def test_probe_decline_fails_closed(self):
+        """(T10.5) A header the regime screen cannot decline but the AST
+        probe can: a zero CD matrix is finite (every card passes the
+        screen) yet the frame cannot round trip — from_cards raises
+        ValueError with AST's reason, and the fail-closed contract
+        swallows it to None so the maps ladder serves the WCS (D19)."""
+        real = self._hpx_wcs()
+        stub = _fits_stub(
+            real, extra={"CD1_1": 0.0, "CD1_2": 0.0, "CD2_1": 0.0, "CD2_2": 0.0}
+        )
+        assert hpx_direct_wcs_from_afw(stub) is None
+
     def test_rejects_broken_accessor(self):
-        """Fail closed (D19): an unreadable origin triple declines the WCS
-        rather than letting the exception escape into the task."""
+        """Fail closed (D19): an unreadable card surface declines the WCS
+        rather than letting the exception escape into the task.
+        (T10.5 retarget: the HPX route's input surface is
+        getFitsMetadata() — the origin accessors it used to read are now
+        only the TAN route's inputs.)"""
         real = self._hpx_wcs()
 
         class _Broken:
             def __getattr__(self, name):
                 return getattr(real, name)
 
-            def getPixelOrigin(self):
+            def getFitsMetadata(self):
                 raise RuntimeError("afw exploded")
 
         assert hpx_direct_wcs_from_afw(_Broken()) is None

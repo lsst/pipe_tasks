@@ -26,21 +26,28 @@ destination grid directly from two WCS *header triples* instead of fitting
 coordinate maps — but only when each side's ``lsst.afw.geom.SkyWcs`` is
 provably a plain FITS projection the engine's closed-form registry models.
 This module owns the genuine afw glue of that decision (D16/D18/D19): the
-pure-FITS-TAN verdict (:func:`pure_fits_tan`), the TAN header-to-``DirectWcs``
+pure-FITS-TAN verdict (:func:`pure_fits_tan`), the TAN header-to-``TanWcs``
 builder (:func:`tan_wcs_from_afw`), and the HPX builder
-(:func:`hpx_direct_wcs_from_afw`). The FITS *card vocabulary* — the CTYPE
-pair → kind table, the SIP-card scan (quartet + digit patterns), the inert
-``PV2_1=4``/``PV2_2=3`` rule and the CRVAL-dec construction-noise snap —
-lives in :mod:`stellaRGB.warp` (:func:`~stellaRGB.warp.direct_spec_from_cards`,
-:func:`~stellaRGB.warp.sip_cards_present`) so non-pipeline callers get the
+(:func:`hpx_direct_wcs_from_afw`). The TAN route stays the builtin
+closed-form triple (``crpix``/``crval``/``CD``, extracted from the afw
+accessors); the HPX route is the raw-card route (T10.5): the tile WCS's own
+``getFitsMetadata()`` card set handed verbatim to
+:class:`stellaRGB.warp.AstWcs`, whose ``from_cards`` runs the engine's
+starlink-ast probe. The FITS *card vocabulary* — the SIP-card scan (quartet
++ digit patterns) — lives in :mod:`stellaRGB.warp`
+(:func:`~stellaRGB.warp.sip_cards_present`) so non-pipeline callers get the
 same trap book for free; what stays HERE is pipeline risk defense, not FITS
 knowledge: accessor extraction, the ``isFits``-quirk short-circuit, the
-9-point ``makeSkyWcs`` agreement probe and the TAN-only policy. Every gate
-fails CLOSED: a WCS that cannot be fully read, carries distortion cards, or
-sits outside a modeled regime is declined with ``False``/``None`` and the
-caller's fitted-maps ladder (or afw fallback) serves it — a direct-mode
-engine hiccup must never crash a task and a direct render must never be
-entered on a partially-verified transform.
+9-point ``makeSkyWcs`` agreement probe, the TAN-only policy and the
+plain-HiPS-header screen :func:`_plain_hips_header` (the AST probe answers
+only "AST can render these cards", so the pipe's own regime vetoes — exact
+HPX CTYPE pair, inert PV pair only, declination on the HiPS regime — are
+stated here, and they are what keeps headers the probe happily reads out of
+the direct path). Every gate fails CLOSED: a WCS that cannot be fully read,
+carries distortion cards, or sits outside a modeled regime is declined with
+``False``/``None`` and the caller's fitted-maps ladder (or afw fallback)
+serves it — a direct-mode engine hiccup must never crash a task and a direct
+render must never be entered on a partially-verified transform.
 """
 
 from __future__ import annotations
@@ -48,7 +55,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from stellaRGB.warp import DirectWcs, TanWcs, direct_spec_from_cards, sip_cards_present
+from stellaRGB.warp import AstWcs, TanWcs, sip_cards_present
 
 from lsst.afw.geom import makeSkyWcs
 from lsst.geom import Point2D
@@ -67,6 +74,98 @@ def _is_sip_card(name: str) -> bool:
     presence filtering stays at the call sites below.
     """
     return sip_cards_present({name: 0.0})
+
+
+# The HPX plain-header regime restated pipe-side for the raw-card route
+# (T10.5). Values mirror the classifier's HPX arm in
+# :mod:`stellaRGB.warp` (``_HPX_INERT_PV`` / ``_HPX_CRVAL2_TOL_DEG``);
+# the AST probe itself is deliberately policy-free — it answers only
+# "AST can render these cards", happily reading non-inert PV values,
+# non-numeric cards and even a missing CTYPE pair — so without this
+# screen the pipe's regime policy would silently widen.
+_HPX_CTYPE_PAIR = ("RA---HPX", "DEC--HPX")
+"""The exact CTYPE1/CTYPE2 pair of a HiPS HPX tile header, matched after
+``strip().upper()`` like the classifier matches it."""
+
+_HPX_INERT_PV = {"PV2_1": 4.0, "PV2_2": 3.0}
+"""The only PV cards the engine's fixed zone scheme models (H=4/K=3),
+treated as absent — any other PV card means an inexpressible zone scheme
+or non-numeric evidence and is declined."""
+
+_HPX_CRVAL2_TOL_DEG = 1e-9
+"""Construction-noise tolerance on the HiPS-regime declination
+(CRVAL2 = 0); mirrors the classifier constant of the same name."""
+
+_HPX_FRAME_CARDS = (
+    "CRPIX1",
+    "CRPIX2",
+    "CRVAL1",
+    "CRVAL2",
+    "CD1_1",
+    "CD1_2",
+    "CD2_1",
+    "CD2_2",
+)
+"""The frame cards the raw-card route consumes; each must be present and
+carry a finite number."""
+
+
+def _hips_numeric_card_value(cards, name):
+    """The value of ``cards[name]`` when it is a real finite number.
+
+    ``bool`` is excluded although it is an ``int`` subclass: a boolean
+    card is never numeric evidence of a zone constant or frame value —
+    this restates the classifier's ``_numeric_card_value`` rule (bool and
+    ``np.bool_`` out, real numeric types in, non-finite out)."""
+    try:
+        value = cards.get(name)
+    except Exception:
+        return None
+    if isinstance(value, (bool, np.bool_)) or not isinstance(
+        value, (int, float, np.integer, np.floating)
+    ):
+        return None
+    out = float(value)
+    return out if np.isfinite(out) else None
+
+
+def _plain_hips_header(cards) -> bool:
+    """True when a ``names()``/``get()`` card set (afw
+    ``getFitsMetadata()``'s result) is a plain HiPS HPX header under the
+    pipe's regime policy — the vetoes the old
+    :func:`stellaRGB.warp.direct_spec_from_cards` call applied for free,
+    restated for the raw-card route (T10.5): the exact HPX CTYPE pair,
+    the inert H=4/K=3 ``PV2_1 = 4``/``PV2_2 = 3`` pair as the only PV
+    cards (non-numeric or off-value PV declined), a finite frame card
+    set, and declination on the HiPS regime within construction noise.
+
+    Fail-closed by construction: any unreadable card or off-regime value
+    answers ``False`` and the maps ladder serves the WCS. Declination is
+    NOT snapped here — the raw-card route hands the header verbatim
+    (``makeHpxWcs`` states ``CRVAL2 = 0`` exactly; within-tolerance
+    noise is far below render precision and stays the header's own)."""
+    try:
+        names = list(cards.names())
+        ctype = []
+        for card in ("CTYPE1", "CTYPE2"):
+            value = cards.get(card)
+            if not isinstance(value, str):
+                return False
+            ctype.append(value.strip().upper())
+        if tuple(ctype) != _HPX_CTYPE_PAIR:
+            return False
+        for name in names:
+            if name.startswith("PV"):
+                inert = _HPX_INERT_PV.get(name)
+                number = _hips_numeric_card_value(cards, name)
+                if inert is None or number is None or number != inert:
+                    return False
+        for card in _HPX_FRAME_CARDS:
+            if _hips_numeric_card_value(cards, card) is None:
+                return False
+        return abs(_hips_numeric_card_value(cards, "CRVAL2")) <= _HPX_CRVAL2_TOL_DEG
+    except Exception:
+        return False
 
 
 def pure_fits_tan(wcs: SkyWcs, box: Box2I) -> bool:
@@ -166,64 +265,64 @@ def tan_wcs_from_afw(wcs: SkyWcs) -> TanWcs:
     )
 
 
-def hpx_direct_wcs_from_afw(wcs: SkyWcs) -> DirectWcs | None:
-    """Map an afw HiPS-tile SkyWcs onto the direct engine's HPX arm
-    (:class:`stellaRGB.warp.DirectWcs` with ``kind="hpx"``), or return
-    ``None`` when the WCS is not a plain HiPS HPX header.
+def hpx_direct_wcs_from_afw(wcs: SkyWcs) -> AstWcs | None:
+    """Map an afw HiPS-tile SkyWcs onto the direct engine's raw-card frame
+    (:class:`stellaRGB.warp.AstWcs`), or return ``None`` when the WCS is
+    not a plain HiPS HPX header.
 
-    Genuine afw glue only (T8.8): the ``isFits`` short-circuit first (a
-    WCS that is not FITS-representable at all is declined outright,
-    whatever approximation its ``getFitsMetadata()`` may fabricate),
-    then an explicit ALL-SIP veto on the card set (the pipe's
-    distortion-free policy, mirroring :func:`pure_fits_tan` — see its
-    NOTE for the widen condition; :func:`direct_spec_from_cards` has
-    since T8.4 *selectively* accepted a closed-form SIP pair, so the
-    pipe must veto explicitly rather than inherit the library policy),
-    then the card set and the origin triple the engine consumes are
-    extracted and handed to
-    :func:`stellaRGB.warp.direct_spec_from_cards` — which owns the
-    rest of the accepted shape (exact ``RA---HPX``/``DEC--HPX`` CTYPE
-    pair, the inert H=4/K=3 ``PV2_1 = 4``/``PV2_2 = 3`` pair treated as
-    ABSENT with every other PV card declined, and the CRVAL-dec
-    construction-noise tolerance snapped to exactly ``0.0``).
-    This gate is HPX-only: the classifier accepts every registry kind,
-    so any other kind (TAN included — callers probe the TAN side with
-    :func:`pure_fits_tan`, never here) is filtered back to ``None``.
+    Raw-card route (T10.5, replacing the T8.8 classifier route): the
+    tile's own ``getFitsMetadata()`` card set is handed to
+    :meth:`stellaRGB.warp.AstWcs.from_cards`, whose AST probe is the
+    engine's own go/no-go (the same fail-closed read + round-trip gate
+    :class:`~stellaRGB.warp.AstWarp` runs at render). No value is
+    re-based and none is re-stated: the cards speak the FITS 1-based
+    convention natively, so the ``getPixelOrigin``/``getSkyOrigin``/
+    ``getCdMatrix`` accessors — and with them the isFits-quirk mismatch
+    between accessor and card reference pixels — leave this route
+    entirely. Because the probe is policy-free (it reads non-inert PV
+    values and even a missing CTYPE pair), the pipe's regime vetoes are
+    restated HERE — the ``isFits`` short-circuit first (a WCS that is
+    not FITS-representable at all is declined outright, whatever
+    approximation its ``getFitsMetadata()`` may fabricate), then the
+    explicit ALL-SIP veto (the pipe's distortion-free policy, mirroring
+    :func:`pure_fits_tan` — see its NOTE for the widen condition; the
+    AST backend reads SIP from the cards themselves, so the pipe must
+    veto explicitly rather than inherit the library's acceptance), then
+    :func:`_plain_hips_header` (exact HPX CTYPE pair, inert PV pair
+    only, HiPS-regime declination). This gate is HPX-only by policy:
+    TAN headers stay on the builtin triple route
+    (:func:`tan_wcs_from_afw`), never here.
 
-    Fail-closed like :func:`pure_fits_tan`: any unreadable card, accessor
-    exception (``direct_spec_from_cards`` raises its normal validation
-    family for a malformed frame triple — e.g. a NaN origin), or
-    declined verdict returns ``None`` and the caller's maps ladder (or
-    afw fallback) serves the WCS.
+    Fail-closed like :func:`pure_fits_tan`: any unreadable card, an
+    accessor exception, or a probe decline (``from_cards`` raises
+    ``ValueError`` with AST's own reason — including frames whose
+    coordinate round trip does not close) returns ``None`` and the
+    caller's maps ladder (or afw fallback) serves the WCS.
     """
     if not wcs.isFits:
         return None
     try:
         fits_md = wcs.getFitsMetadata()
-        # Explicit ALL-SIP veto (pipe policy, T8.4): the classifier
-        # selectively accepts a closed-form A/B + AP/BP pair since the
-        # engine grew the SIP layer, and LTP/LPT is a stellaRGB-side
-        # vocabulary afw has never applied — neither may enter the
-        # pipe's direct path until a pipe-side battery covers
-        # distortion-carrying renders (see pure_fits_tan's NOTE).
+        # Explicit ALL-SIP veto (pipe policy, T8.4) — evaluated BEFORE the
+        # probe: a distortion-carrying header must never reach the direct
+        # path even though the AST backend can read SIP from the cards.
+        # The LTP/LPT vocabulary afw has never applied rides out with it.
         if sip_cards_present(fits_md):
             return None
-        origin = wcs.getPixelOrigin()
-        sky = wcs.getSkyOrigin()
-        cd = np.asarray(wcs.getCdMatrix(), dtype=float)
-        spec = direct_spec_from_cards(
-            fits_md,
-            # getPixelOrigin() is afw's 0-based reference pixel (FITS
-            # CRPIX - 1) — pass it through; the -1 belongs to callers
-            # holding raw 1-based header values, not here.
-            (origin.getX(), origin.getY()),
-            (sky.getRa().asDegrees(), sky.getDec().asDegrees()),
-            cd,
-        )
+        # Regime screen (T10.5): the AST probe answers only "AST can
+        # render these cards"; the pipe's plain-HiPS regime policy is
+        # stated here, so a non-FITS-like header never reaches the probe
+        # and a header the probe would happily read cannot enter the
+        # direct path off-regime.
+        if not _plain_hips_header(fits_md):
+            return None
+        # The AST probe proper: AST's own reader plus the engine's
+        # round-trip gate. A decline raises AST's reason verbatim; the
+        # fail-closed contract (None, not an exception) is the job of the
+        # except below.
+        return AstWcs.from_cards(fits_md)
     except Exception:
-        # Fail closed (D19): a WCS whose cards or origin triple cannot be
-        # fully read is not provably a plain HiPS header.
+        # Fail closed (D19): a WCS whose cards cannot be fully read, or
+        # whose frame AST declines (or cannot round trip), is not
+        # provably a plain HiPS header.
         return None
-    if spec is None or spec.kind != "hpx":
-        return None
-    return spec
