@@ -1396,7 +1396,12 @@ class TestWarpBackends:
         assert int(match.group(1)) == 0
 
     def test_warp_backend_config(self):
+        """Default-pin (T6.3b): the ChoiceField default is "rust" (flipped
+        from "afw" on 2026-10-29, owner election after the acceptance rerun
+        validated the rust path end-to-end); "afw" stays a valid fallback."""
         config = MetaMosaicConfig()
+        assert config.warp_backend == "rust"
+        config.warp_backend = "afw"
         assert config.warp_backend == "afw"
         config.warp_backend = "rust"
         assert config.warp_backend == "rust"

@@ -149,15 +149,18 @@ class MetaMosaicConfig(PipelineTaskConfig, pipelineConnections=MetaMosaicConnect
     )
     warp = ConfigField[Warper.ConfigClass](doc="Warper configuration")
     warp_backend = ChoiceField(
-        doc="Backend used to resample foreign-tract patches onto the reference grid.",
+        doc="Backend used to resample foreign-tract patches onto the "
+        "reference grid. The default is \"rust\" (acceptance-validated "
+        "2026-10-29); \"afw\" remains the supported fallback.",
         dtype=str,
         allowed={
-            "afw": "afwMath Warper (default, reference)",
-            "rust": "stellaRGB.warp Rust engine (Lanczos4; direct per-pixel "
-            "TAN warp for pure FITS TAN tract pairs (D16), per-tract fitted "
-            "WarpTransform otherwise; no dense coordinate maps)",
+            "afw": "afwMath Warper (reference; supported fallback)",
+            "rust": "stellaRGB.warp Rust engine (default; Lanczos4; "
+            "direct per-pixel TAN warp for pure FITS TAN tract pairs (D16), "
+            "per-tract fitted WarpTransform otherwise; no dense coordinate "
+            "maps)",
         },
-        default="afw",
+        default="rust",
     )
 
     def setDefaults(self):
@@ -177,7 +180,9 @@ class MetaMosaicTask(PipelineTask):
     exactly (no resampling). Every foreign-tract patch is decoded once, warped
     once onto the box enclosing the virtual patches it overlaps, and each
     cell-sized slice of that warp is added separately. The warp backend is
-    ``config.warp_backend``: "afw" uses the afwMath Warper (reference);
+    ``config.warp_backend``: the default is "rust" (acceptance-validated
+    2026-10-29; "afw" remains the supported fallback). "afw" uses the
+    afwMath Warper (reference);
     "rust" warps with the ``stellaRGB.warp``
     engine: when a foreign tract's WCS pair (reference and tract) is pure
     FITS TAN — the production skymap case — it selects the direct

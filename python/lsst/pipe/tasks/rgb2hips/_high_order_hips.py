@@ -252,6 +252,8 @@ class HighOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=HighOrderH
     warp_backend = ChoiceField[str](
         doc=(
             "Backend used to resample input images onto the HiPS tile WCS. "
+            "The default is \"rust\" (acceptance-validated 2026-10-29); "
+            "\"afw\" remains the supported fallback. "
             "DESIGN NOTE (rust): preferred mode is the DIRECT per-pixel "
             "engine (T8.6/D18): when the tile WCS is a plain HiPS HPX "
             "header and the source WCS passes the shared pure-FITS-TAN "
@@ -267,13 +269,14 @@ class HighOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=HighOrderH
             "backend-independent (D14)."
         ),
         allowed={
-            "afw": "afwMath Warper (default, reference)",
-            "rust": "stellaRGB.warp engine: direct per-pixel HPX-on-TAN "
+            "afw": "afwMath Warper (reference; supported fallback)",
+            "rust": "stellaRGB.warp engine (default): direct per-pixel "
+            "HPX-on-TAN "
             "warp (raw tile cards through the AST backend) for plain HiPS "
             "+ pure FITS TAN pairs, "
             "fit-verified control-grid maps otherwise (Lanczos4)",
         },
-        default="afw",
+        default="rust",
     )
 
     def setDefaults(self):

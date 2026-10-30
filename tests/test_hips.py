@@ -283,9 +283,16 @@ class ColorHipsWarpBackendTestCase(unittest.TestCase):
             inputs.append((array, info.getWcs(), bbox))
         return inputs
 
-    def test_warp_backend_choicefield_defaults_to_afw(self):
-        config = self._make_config("afw", "/tmp/hips_backend_default_test")
-        self.assertEqual(config.warp_backend, "afw")
+    def test_warp_backend_choicefield_defaults_to_rust(self):
+        """Default-pin (T6.3b): the ChoiceField default is "rust" (flipped
+        from "afw" on 2026-10-29, owner election after the acceptance rerun
+        validated the rust path end-to-end); "afw" stays a valid fallback.
+        (Builds the config directly: the old test's _make_config("afw", ...)
+        overrode the field, so it never actually read the default.)"""
+        from lsst.pipe.tasks.rgb2hips._high_order_hips import HighOrderHipsTask
+
+        config = HighOrderHipsTask.ConfigClass()
+        self.assertEqual(config.warp_backend, "rust")
         allowed = {k for k in type(config).warp_backend.allowed if k is not None}
         self.assertEqual(allowed, {"afw", "rust"})
 
