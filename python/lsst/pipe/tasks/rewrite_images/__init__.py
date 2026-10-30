@@ -21,4 +21,5 @@
 
 from ._rewrite_cell_coadd import *
 from ._rewrite_difference_image import *
+from ._rewrite_lazy_coadd import *
 from ._rewrite_visit_image import *
