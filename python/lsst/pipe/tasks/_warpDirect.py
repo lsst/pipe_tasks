@@ -76,10 +76,11 @@ def _is_sip_card(name: str) -> bool:
     return sip_cards_present({name: 0.0})
 
 
-# The HPX plain-header regime restated pipe-side for the raw-card route
-# (T10.5). Values mirror the classifier's HPX arm in
-# :mod:`stellaRGB.warp` (``_HPX_INERT_PV`` / ``_HPX_CRVAL2_TOL_DEG``);
-# the AST probe itself is deliberately policy-free — it answers only
+# The HPX plain-header regime is pipe-owned policy for the raw-card
+# route (T10.5): stellaRGB's direct classifier is strict TAN and
+# declines HPX outright, so this screen is the sole holder of the
+# regime rules. The AST probe itself is deliberately policy-free — it
+# answers only
 # "AST can render these cards", happily reading non-inert PV values,
 # non-numeric cards and even a missing CTYPE pair — so without this
 # screen the pipe's regime policy would silently widen.
@@ -94,7 +95,7 @@ or non-numeric evidence and is declined."""
 
 _HPX_CRVAL2_TOL_DEG = 1e-9
 """Construction-noise tolerance on the HiPS-regime declination
-(CRVAL2 = 0); mirrors the classifier constant of the same name."""
+(CRVAL2 = 0)."""
 
 _HPX_FRAME_CARDS = (
     "CRPIX1",
