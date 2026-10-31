@@ -26,7 +26,7 @@ destination grid directly from two WCS *header triples* instead of fitting
 coordinate maps — but only when each side's ``lsst.afw.geom.SkyWcs`` is
 provably a plain FITS projection the engine's closed-form registry models.
 This module owns the genuine afw glue of that decision (D16/D18/D19): the
-pure-FITS-TAN verdict (:func:`pure_fits_tan`), the TAN header-to-``TanWcs``
+pure-FITS-TAN verdict (:func:`pure_fits_tan`), the TAN header-to-``DirectWcs``
 builder (:func:`tan_wcs_from_afw`), and the HPX builder
 (:func:`hpx_direct_wcs_from_afw`). The TAN route stays the builtin
 closed-form triple (``crpix``/``crval``/``CD``, extracted from the afw
@@ -55,7 +55,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from stellaRGB.warp import AstWcs, TanWcs, sip_cards_present
+from stellaRGB.warp import AstWcs, DirectWcs, sip_cards_present
 
 from lsst.afw.geom import makeSkyWcs
 from lsst.geom import Point2D
@@ -189,16 +189,16 @@ def pure_fits_tan(wcs: SkyWcs, box: Box2I) -> bool:
        chosen to vanish at every sample point agrees to the probe's
        tolerance at all of them while reaching 0.05-0.14 px between the
        samples. The header cards are exact evidence and SIP files must
-       carry them. NOTE (T8.4): this gate stays stricter than
-       :func:`stellaRGB.warp.direct_spec_from_cards`, which since T8.4
-       selectively accepts a complete A/B + AP/BP closed-form pair as a
-       ``DirectWcs.sip`` layer. The pipeline policy keeps ALL SIP
-       distortion on the fitted-maps path: this gate's contract is the
-       pure-FITS-TAN verdict (the T7.3 bit-identical pin), and no
-       pipe-side battery yet covers a distortion-carrying direct
-       render. Widen condition: a pipe_tasks battery pinning
-       SIP-direct renders against afw/drizzled truth on real SIP
-       exposures — until then, do not relax this veto.
+       carry them. NOTE: stellaRGB's direct classifier has declined ALL
+       SIP-family cards since T10.4 — a complete A/B + AP/BP closed-form
+       pair included (there is no ``DirectWcs.sip`` layer) — so this gate
+       matches upstream policy rather than exceeding it. The pipeline
+       policy keeps ALL SIP distortion on the fitted-maps path: this
+       gate's contract is the pure-FITS-TAN verdict (the T7.3
+       bit-identical pin). Widen condition (upstream and pipe together):
+       a pipe_tasks battery pinning SIP-direct renders against
+       afw/drizzled truth on real SIP exposures — until then, do not
+       relax this veto.
     3. The numeric heuristic last: re-derive the TAN-only WCS from the
         same three accessors the direct engine consumes (pixelOrigin,
         skyOrigin, CD) and require pixel->sky agreement at a 9-point
@@ -250,15 +250,17 @@ def pure_fits_tan(wcs: SkyWcs, box: Box2I) -> bool:
     return True
 
 
-def tan_wcs_from_afw(wcs: SkyWcs) -> TanWcs:
+def tan_wcs_from_afw(wcs: SkyWcs) -> DirectWcs:
     """Map a (checked pure-FITS-TAN) afw SkyWcs onto the direct engine's
-    :class:`stellaRGB.warp.TanWcs` field-by-field (D16): ``getPixelOrigin``
+    :class:`stellaRGB.warp.DirectWcs` field-by-field (D16): ``getPixelOrigin``
     is the 0-based pixel-center reference pixel (afw's pixel origin is
     FITS ``CRPIX - 1``), ``getSkyOrigin`` the tangent point (degrees), and
-    ``getCdMatrix`` the degrees-per-pixel CD matrix."""
+    ``getCdMatrix`` the degrees-per-pixel CD matrix; ``lonpole_deg`` takes its
+    180.0 default (TAN's math is lonpole-invariant, so the built frame is the
+    TAN triple exactly)."""
     origin = wcs.getPixelOrigin()
     sky = wcs.getSkyOrigin()
-    return TanWcs(
+    return DirectWcs(
         crpix=(origin.getX(), origin.getY()),
         crval_deg=(sky.getRa().asDegrees(), sky.getDec().asDegrees()),
         cd_deg_per_pix=np.asarray(wcs.getCdMatrix(), dtype=float),

@@ -57,7 +57,7 @@ from lsst.pipe.base import (
 from lsst.pipe.base.connectionTypes import Input, Output
 from lsst.skymap import BaseSkyMap
 from stellaRGB.types import ColorImage
-from stellaRGB.warp import TanWarp, WarpTransform, fit_transform, warp_into
+from stellaRGB.warp import DirectWarp, WarpTransform, fit_transform, warp_into
 
 from .._warpDirect import pure_fits_tan as _pure_fits_tan, tan_wcs_from_afw as _tan_wcs_from_afw
 from ._utils import FeatheredMosaicCreator
@@ -368,7 +368,7 @@ class MetaMosaicTask(PipelineTask):
         tract_info: TractInfo,
         ref_info: TractInfo,
         ref_pure_tan: bool,
-    ) -> TanWarp | None:
+    ) -> DirectWarp | None:
         """T7.3 (D16): the direct per-pixel TAN warp for a pure-FITS-TAN pair,
         or None when either WCS needs the fitted-maps path.
 
@@ -385,7 +385,7 @@ class MetaMosaicTask(PipelineTask):
         if not (ref_pure_tan and _pure_fits_tan(tract_info.getWcs(), tract_info.bbox)):
             return None
         try:
-            return TanWarp(
+            return DirectWarp(
                 dest=_tan_wcs_from_afw(ref_info.getWcs()),
                 src=_tan_wcs_from_afw(tract_info.getWcs()),
             )
@@ -849,10 +849,10 @@ class MetaMosaicTask(PipelineTask):
         ref_pure_tan = use_rust and _pure_fits_tan(ref_info.getWcs(), ref_info.bbox)
         t_decode = t_warp = t_map = t_add = t_finalize = t_crop = 0.0
         n_decode = n_warp = n_map = n_add = 0
-        # "rust" per-foreign-tract cache: a direct-mode TanWarp (T7.3/D16),
+        # "rust" per-foreign-tract cache: a direct-mode DirectWarp (T7.3/D16),
         # a fitted WarpTransform (maps path), or None — the failed-fit
         # sentinel routing that tract to the afw Warper.
-        tract_transforms: dict[int, WarpTransform | TanWarp | None] = {}
+        tract_transforms: dict[int, WarpTransform | DirectWarp | None] = {}
         tract_union: dict[int, Box2I] = {}
         if use_rust:
             for tract, _, _, _, _, _, dest_box in foreign_records:
@@ -989,7 +989,7 @@ class MetaMosaicTask(PipelineTask):
                     # warp_into renders exactly this patch's dest box: for a
                     # fitted maps transform this is a contained sub-box
                     # render of the tract-wide union box (D7); for a
-                    # direct-mode TanWarp (T7.3) the dest box is the whole
+                    # direct-mode DirectWarp (T7.3) the dest box is the whole
                     # render contract (D16 — no fitted footprint exists).
                     # No dense maps and no canvas-sized temporaries either
                     # way; the per-patch buffer is dest_box-sized, the same

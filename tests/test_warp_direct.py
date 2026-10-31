@@ -39,7 +39,7 @@ import pytest
 from lsst.afw.geom import makeHpxWcs, makeSkyWcs
 from lsst.daf.base import PropertyList
 from lsst.geom import Box2I, Extent2I, Point2I, Point2D, SpherePoint, degrees
-from stellaRGB.warp import AstWarp, AstWcs
+from stellaRGB.warp import AstWarp, AstWcs, DirectWcs
 
 from lsst.pipe.tasks._warpDirect import (
     _is_sip_card,
@@ -134,9 +134,10 @@ class TestPureFitsTan:
         surface would pass the 9-point probe to machine precision; the same
         stub without the card passes — the card check does the rejecting.
         The poisoned set is the COMPLETE closed-form pair (A/B forward plus
-        AP/BP inverse): the very header the stellaRGB gate selectively
-        unlocks into a ``DirectWcs.sip`` layer since T8.4 — pipe policy
-        still keeps ALL SIP distortion on the fitted-maps path."""
+        AP/BP inverse): the historical shape the stellaRGB gate once
+        selectively unlocked (T8.4) — since T10.4 the engine's classifier
+        declines every SIP card, and pipe policy independently keeps ALL
+        SIP distortion on the fitted-maps path."""
         real = _tan_wcs()
         box = Box2I(Point2I(0, 0), Extent2I(64, 64))
         complete_pair = {
@@ -195,7 +196,7 @@ class TestPureFitsTan:
         assert pure_fits_tan(info.getWcs(), info.getOuterBBox()) is False
 
 
-class TestTanWcsFromAfw:
+class TestDirectWcsFromAfw:
     def test_accessor_mapping(self):
         wcs = makeSkyWcs(
             crpix=Point2D(20.0, 30.0),
@@ -206,6 +207,7 @@ class TestTanWcsFromAfw:
         assert tuple(tan.crpix) == pytest.approx((20.0, 30.0))
         assert tuple(tan.crval_deg) == pytest.approx((150.0, -30.0))
         np.testing.assert_allclose(tan.cd_deg_per_pix, [[-1.0e-3, 0.0], [0.0, 1.0e-3]])
+        assert tan.lonpole_deg == 180.0  # default the TAN-direct render path relies on
 
 
 class TestHpxDirectWcsFromAfw:
@@ -237,7 +239,8 @@ class TestHpxDirectWcsFromAfw:
         # Engine-side validation: the probed raw-card dest constructs an
         # AstWarp against a TAN source (the rgb2hips production pairing).
         warp = AstWarp(dest=built, src=tan_wcs_from_afw(_tan_wcs()))
-        assert warp.mode == "direct"
+        assert warp.dest is built
+        assert isinstance(warp.src, DirectWcs)
 
     def test_get_fits_metadata_round_trips_through_the_probe(self):
         """The raw-card premise (T10.5 probe result): the production tile

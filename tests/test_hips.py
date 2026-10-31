@@ -618,13 +618,13 @@ class ColorHipsRustDirectTestCase(unittest.TestCase):
 
         from lsst.pipe.tasks import _warpDirect
         from lsst.pipe.tasks.rgb2hips import _high_order_hips
-        from stellaRGB.warp import TanWcs
+        from stellaRGB.warp import DirectWcs
 
         real = _warpDirect.tan_wcs_from_afw
 
         def shifted(wcs):
             t = real(wcs)
-            return TanWcs(
+            return DirectWcs(
                 crpix=(t.crpix[0] + shift_px, t.crpix[1]),
                 crval_deg=t.crval_deg,
                 cd_deg_per_pix=t.cd_deg_per_pix,

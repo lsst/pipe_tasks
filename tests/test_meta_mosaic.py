@@ -1637,7 +1637,7 @@ class TestRustDirectMode:
         )
         task = _make_run_task()
         # Reference side verdict is True; the foreign side's isFits==False
-        # must veto the pair: no TanWarp, caller takes the maps path.
+        # must veto the pair: no DirectWarp, caller takes the maps path.
         assert task._direct_tan_warp(_StubTract(_NonFitsWcs()), _StubTract(ref_wcs), True) is None
 
     def test_sip_card_rejection_beats_clean_sampling(self):
