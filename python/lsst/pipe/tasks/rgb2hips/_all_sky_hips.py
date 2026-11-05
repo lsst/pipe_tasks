@@ -52,6 +52,7 @@ from lsst.pipe.base.connectionTypes import Input
 
 
 from ._properties import HipsPropertiesConfig, _write_property
+from ._utils import downsample_hips_array
 from ..healSparseMapping import _is_power_of_two
 
 
@@ -99,8 +100,38 @@ class AllSkyHipsTaskConfig(PipelineTaskConfig, pipelineConnections=AllSkyHipsTas
     )
     file_extension = ChoiceField[str](
         doc="Extension for the presisted image.",
-        allowed={"png": "Use the png image extension", "webp": "Use the webp image extension"},
+        allowed={
+            "png": "Use the png image extension",
+            "webp": "Use the webp image extension",
+            "avif": "Use the avif image extension (PQ-encoded HDR tiles; requires is_hdr=True)",
+        },
         default="png",
+    )
+    is_hdr = Field[bool](
+        doc=(
+            "The tree is PQ-encoded HDR delivered as AVIF (must match the "
+            "tile tasks' is_hdr). The Allsky preview is then composited "
+            "from the healpix8 float arrays via the same PQ writer as the "
+            "tiles, never from decoded tiles."
+        ),
+        default=False,
+    )
+    lum_norm = Field[float](
+        doc=(
+            "HDR only: the linear pixel value that encodes to lum_norm "
+            "nits (paper white) under PQ. Default 100.0 (linear 1.0 -> "
+            "100 nits). Should match the tile tasks' lum_norm."
+        ),
+        default=100.0,
+        check=lambda x: x > 0,
+    )
+    clamp_values = Field[float](
+        doc=(
+            "HDR only: optional upper clamp (in linear input units) applied "
+            "before PQ encoding of the Allsky preview. None disables clamping."
+        ),
+        default=None,
+        optional=True,
     )
     properties = ConfigField[HipsPropertiesConfig](
         doc="Configuration for properties file.",
@@ -155,6 +186,16 @@ class AllSkyHipsTaskConfig(PipelineTaskConfig, pipelineConnections=AllSkyHipsTas
     def validate(self):
         if self.shift_order != 9:
             raise ValueError("Shift order must be 9.")
+        if self.is_hdr and self.file_extension != "avif":
+            raise ValueError(
+                f"is_hdr=True requires file_extension='avif' (got '{self.file_extension}'): "
+                "the HDR Allsky preview is written by the PQ-encoded AVIF writer."
+            )
+        if self.file_extension == "avif" and not self.is_hdr:
+            raise ValueError(
+                "file_extension='avif' requires is_hdr=True: the avif path is the PQ-encoded "
+                "HDR writer; no SDR avif encoding is provided."
+            )
         return super().validate()
 
 
@@ -178,10 +219,13 @@ class AllSkyHipsTask(PipelineTask):
         inputRefs: InputQuantizedConnection,
         outputRefs: OutputQuantizedConnection,
     ) -> None:
-        # Extract the healpix8 pixel ids.
+        # Extract the healpix8 pixel ids (and their float arrays, which the
+        # HDR AllSky build composites directly — no tile re-reading).
         hpx8_pixels = []
+        hpx8_data = []
         for ref in inputRefs.input_hips:
             hpx8_pixels.append((ref.dataId["healpix8"]))
+            hpx8_data.append((ref.dataId["healpix8"], butlerQC.get(ref)))
 
         # Scale pixel IDS to higher order (hpx11) that were already produced
         hpx8_rangeset = RangeSet(hpx8_pixels)
@@ -193,10 +237,15 @@ class AllSkyHipsTask(PipelineTask):
 
         low_order_metadata = butlerQC.get(inputRefs.low_order_metadata)
 
-        outputs = self.run(low_order_metadata, hpx11_pixels)
+        outputs = self.run(low_order_metadata, hpx11_pixels, hpx8_data)
         butlerQC.put(outputs, outputRefs)
 
-    def run(self, low_order_metadata: Iterable[TaskMetadata], hpx11_pixels) -> Struct:
+    def run(
+        self,
+        low_order_metadata: Iterable[TaskMetadata],
+        hpx11_pixels,
+        input_hips: Iterable[tuple[int, object]] | None = None,
+    ) -> Struct:
         """Generate all-sky HealPix tiles and metadata.
 
         Parameters
@@ -205,6 +254,10 @@ class AllSkyHipsTask(PipelineTask):
             Low-order metadata from previous processing steps.
         hpx11_pixels : array-like
             Array of HPX11 pixel IDs to process.
+        input_hips : Iterable of [``int``, array-like], optional
+            (healpix8 pixel id, linear float array or deferred handle)
+            pairs from HighOrderHipsTask's butler output. Required when
+            ``config.is_hdr`` (the preview is composited from these).
 
         Returns
         -------
@@ -214,7 +267,10 @@ class AllSkyHipsTask(PipelineTask):
         self._write_properties_and_moc(
             self.config.max_order, hpx11_pixels, self.config.shift_order, self.config.color_ordering
         )
-        self._write_allsky_file(self.config.min_order)
+        if self.config.is_hdr:
+            self._write_allsky_file_hdr(self.config.min_order, input_hips)
+        else:
+            self._write_allsky_file(self.config.min_order)
         return Struct()
 
     def _write_properties_and_moc(self, max_order, pixels, shift_order, band):
@@ -488,4 +544,106 @@ class AllSkyHipsTask(PipelineTask):
         with ResourcePath.temporary_uri(suffix=uri.getExtension()) as temporary_uri:
             allsky_image.save(temporary_uri.ospath)
 
+            uri.transfer_from(temporary_uri, transfer="copy", overwrite=True)
+
+    def _write_allsky_file_hdr(self, allsky_order, input_hips):
+        """Write the Allsky preview for an HDR (AVIF/PQ) tree.
+
+        Unlike the SDR path in ``_write_allsky_file``, this never reads
+        tiles back from disk: the preview is composited from the healpix8
+        linear float arrays HighOrderHipsTask stored in the butler (HDR
+        intact), each area-downsampled into its slot on the HiPS Allsky
+        grid and encoded once through the same PQ writer as the tiles —
+        so the viewer's first-paint background is bit-family-identical to
+        the tiles streamed over it. Grid layout follows IVOA HIPS S4.3.2
+        (tiles left-to-right, order rows).
+
+        Parameters
+        ----------
+        allsky_order : `int`
+            HEALPix order of the preview grid (must be < 8).
+        input_hips : `Iterable` of [``int``, array-like]
+            (healpix8 pixel id, (256, 256, 3) linear float array) pairs,
+            or deferred handles resolving to those arrays.
+
+        Raises
+        ------
+        ValueError
+            If ``allsky_order`` cannot host a healpix8 subdivision of the
+            preview tiles, or no input arrays are provided.
+        """
+        if allsky_order >= 8:
+            raise ValueError(
+                f"min_order={allsky_order} >= 8 leaves no healpix8 float arrays to composite; "
+                "the HDR AllSky preview is built from the order-8 butler arrays."
+            )
+        tile_size = self.config.allsky_tilesize
+        depth = 8 - allsky_order
+        sub_px = tile_size >> depth
+        if sub_px < 1:
+            raise ValueError(
+                f"allsky_tilesize {tile_size} is smaller than one {depth}-level subdivision slot "
+                f"at order {allsky_order}; raise allsky_tilesize or lower min_order."
+            )
+        n_tiles = hpg.nside_to_npixel(hpg.order_to_nside(allsky_order))
+        n_tiles_wide = int(np.floor(np.sqrt(n_tiles)))
+        n_tiles_high = int(np.ceil(n_tiles / n_tiles_wide))
+
+        # Nested-order subdivision template: (row, col) of every order-8
+        # child inside an order-`allsky_order` parent. Same quadrant rule
+        # as the HighOrderHipsTask tile pyramid: ids [b, c, d, e] of a
+        # split pixel lay out as [[b, d], [c, e]].
+        tmp_pixels = np.array([[0]])
+        for _ in range(depth):
+            tmp_array = np.zeros(np.array(tmp_pixels.shape) * 2)
+            for ii in range(tmp_pixels.shape[0]):
+                for jj in range(tmp_pixels.shape[1]):
+                    tmp_array_view = tmp_array[ii * 2 : ii * 2 + 2, jj * 2 : jj * 2 + 2]
+                    tmp_range_set = RangeSet(int(tmp_pixels[ii, jj]))
+                    tmp_array_view[:, :] = (
+                        np.array([x for x in range(*tmp_range_set.scaled(4)[0])], dtype=int)[[0, 2, 1, 3]]
+                    ).reshape(2, 2)
+            tmp_pixels = tmp_array
+        sub_positions = {
+            int(sub_id): (row, col)
+            for row, rowvec in enumerate(tmp_pixels)
+            for col, sub_id in enumerate(rowvec)
+        }
+
+        canvas = np.zeros((n_tiles_high * tile_size, n_tiles_wide * tile_size, 3), dtype=np.float32)
+        filled = 0
+        for pixel_id, data in input_hips:
+            array = data.get() if hasattr(data, "get") else np.asarray(data)
+            # Non-finite and negative pixels (e.g. warp undershoot) map to 0
+            # — PQ cannot represent them.
+            array = np.where(np.isfinite(array), array, 0.0)
+            np.maximum(array, 0.0, out=array)
+            reduced = downsample_hips_array(array, (sub_px, sub_px), "area")
+            ancestor = pixel_id >> (2 * depth)
+            row = ancestor // n_tiles_wide
+            col = ancestor % n_tiles_wide
+            sub_row, sub_col = sub_positions[pixel_id & ((1 << (2 * depth)) - 1)]
+            canvas[
+                row * tile_size + sub_row * sub_px : row * tile_size + (sub_row + 1) * sub_px,
+                col * tile_size + sub_col * sub_px : col * tile_size + (sub_col + 1) * sub_px,
+            ] = reduced
+            filled += 1
+        if filled == 0:
+            raise ValueError(
+                "is_hdr AllSky build received no healpix8 float arrays (input_hips is empty); "
+                "refusing to write an empty preview."
+            )
+
+        uri = self.hips_base_path.join(f"Norder{allsky_order}", forceDirectory=True).join(
+            f"Allsky.{self.config.file_extension}"
+        )
+        from stellaRGB._color_image import ColorImage  # lazy: drags in imagecodecs
+
+        allsky_image = ColorImage(canvas, metadata={"is_hdr": True})
+        with ResourcePath.temporary_uri(suffix=".avif") as temporary_uri:
+            allsky_image.write_array_hdr_avif(
+                temporary_uri.ospath,
+                clamp_values=self.config.clamp_values,
+                lum_norm=self.config.lum_norm,
+            )
             uri.transfer_from(temporary_uri, transfer="copy", overwrite=True)

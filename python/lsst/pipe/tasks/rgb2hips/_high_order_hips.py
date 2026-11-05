@@ -119,7 +119,11 @@ class HighOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=HighOrderH
     )
     file_extension = ChoiceField[str](
         doc="Extension for the presisted image.",
-        allowed={"png": "Use the png image extension", "webp": "Use the webp image extension"},
+        allowed={
+            "png": "Use the png image extension",
+            "webp": "Use the webp image extension",
+            "avif": "Use the avif image extension (PQ-encoded HDR tiles; requires is_hdr=True)",
+        },
         default="png",
     )
     array_type = ChoiceField[str](
@@ -153,6 +157,37 @@ class HighOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=HighOrderH
         },
         default="area",
     )
+    is_hdr = Field[bool](
+        doc=(
+            "Inputs are linear HDR ColorImages (is_hdr metadata) and tiles "
+            "are written PQ-encoded as AVIF (requires file_extension="
+            "\"avif\"). False keeps the SDR pipeline (clip to [0, 1]) "
+            "unchanged. With False, is_hdr inputs are refused outright so "
+            "the HDR signal is never silently destroyed."
+        ),
+        default=False,
+    )
+    lum_norm = Field[float](
+        doc=(
+            "HDR only: the linear pixel value that encodes to lum_norm "
+            "nits (paper white) under the PQ transfer function. The "
+            "default (100.0) means a value of 1.0 corresponds to 100 "
+            "nits. Set this from your stretch's units: it is the linear "
+            "value your pipeline treats as diffuse white."
+        ),
+        default=100.0,
+        check=lambda x: x > 0,
+    )
+    clamp_values = Field[float](
+        doc=(
+            "HDR only: optional upper clamp (in linear input units) applied "
+            "before PQ encoding; values above it are flattened to the "
+            "clamp. None disables clamping (values above PQ's 10000-nit "
+            "range simply encode to maximum white)."
+        ),
+        default=None,
+        optional=True,
+    )
     warp_backend = ChoiceField[str](
         doc=(
             "Backend used to resample input images onto the HiPS tile WCS. "
@@ -182,6 +217,25 @@ class HighOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=HighOrderH
         },
         default="rust",
     )
+
+    def validate(self):
+        if self.is_hdr and self.file_extension != "avif":
+            raise ValueError(
+                f"is_hdr=True requires file_extension='avif' (got '{self.file_extension}'): "
+                "SDR tile formats clip to [0, 1] and would destroy the HDR signal."
+            )
+        if self.file_extension == "avif" and not self.is_hdr:
+            raise ValueError(
+                "file_extension='avif' requires is_hdr=True: the avif path is the PQ-encoded "
+                "HDR writer; no SDR avif encoding is provided."
+            )
+        if self.is_hdr and self.downsample_kernel != "area":
+            raise ValueError(
+                "is_hdr=True requires downsample_kernel='area': lanczos undershoot produces "
+                "negative linear values that PQ cannot encode, and area is the photometrically "
+                "correct reduction for linear data."
+            )
+        return super().validate()
 
     def setDefaults(self):
         self.warp.warpingKernelName = "lanczos5"
@@ -495,6 +549,9 @@ class HighOrderHipsTask(PipelineTask):
                         self.hips_base_path,
                         self.config.file_extension,
                         self.config.array_type,
+                        is_hdr=self.config.is_hdr,
+                        lum_norm=self.config.lum_norm,
+                        clamp_values=self.config.clamp_values,
                     )
 
         # Finally, bin the level 8 hpx to 256x256 (1/4 order 7) to save to the butler.
@@ -793,10 +850,16 @@ class HighOrderHipsTask(PipelineTask):
                 tmp_new_box = Box2I(Point2I(x=0, y=0), Extent2I(x=new_box.getWidth(), y=new_box.getHeight()))
 
                 image = handle.get()
-                if getattr(image, "metadata", None) and image.metadata.get("is_hdr"):
+                if (
+                    getattr(image, "metadata", None)
+                    and image.metadata.get("is_hdr")
+                    and not self.config.is_hdr
+                ):
                     raise ValueError(
-                        "rgb2hips received an is_hdr ColorImage, but HiPS delivery assumes SDR [0, 1] "
-                        "data and would destroy the HDR signal. Deliver an SDR rendering to this task."
+                        "rgb2hips received an is_hdr ColorImage, but this task is configured for "
+                        "SDR delivery (is_hdr=False) and would destroy the HDR signal. Set "
+                        "config is_hdr=True with file_extension='avif' to deliver PQ-encoded HDR "
+                        "tiles, or deliver an SDR rendering to this task."
                     )
                 mosaic_maker.add_to_image(
                     new_array,

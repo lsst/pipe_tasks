@@ -915,3 +915,195 @@ class ColorHipsPyramidTestCase(unittest.TestCase):
         # branches collapsing onto one code path).
         lanczos = downsample_hips_array(src, (32, 32), "lanczos")
         self.assertGreater(float(np.abs(area - lanczos).max()), 1e-3)
+
+
+class ColorHipsHdrAvifTestCase(unittest.TestCase):
+    """HDR AVIF delivery: config pairing, PQ-writer delegation, AllSky
+    float-canvas geometry, and the (now conditional) is_hdr guard."""
+
+    @staticmethod
+    def _allsky_config(base_uri, **overrides):
+        from lsst.pipe.tasks.rgb2hips import AllSkyHipsTaskConfig
+
+        config = AllSkyHipsTaskConfig()
+        config.hips_base_uri = base_uri
+        config.color_ordering = "rgb"
+        config.properties.creator_did_template = "doi:test-{band}"
+        config.properties.obs_title_template = "test {band}"
+        config.properties.obs_description_template = "test {band}"
+        for name, value in overrides.items():
+            setattr(config, name, value)
+        return config
+
+    def test_configs_pair_hdr_with_avif(self):
+        """is_hdr and file_extension='avif' must come as a pair on all
+        three tasks (mismatches raise, including high-order's lanczos-on-
+        HDR veto); lum_norm defaults to 1.0 -> 100 nits."""
+        from lsst.pipe.tasks.rgb2hips import (
+            AllSkyHipsTaskConfig,
+            HighOrderHipsTaskConfig,
+            LowOrderHipsTaskConfig,
+        )
+
+        for config_class in (HighOrderHipsTaskConfig, LowOrderHipsTaskConfig, AllSkyHipsTaskConfig):
+            with self.subTest(config=config_class.__name__):
+                config = config_class()
+                config.hips_base_uri = "/tmp/hips_hdr_avif_config"
+                config.color_ordering = "rgb"
+                if config_class is AllSkyHipsTaskConfig:
+                    config.properties.creator_did_template = "doi:t-{band}"
+                    config.properties.obs_title_template = "t {band}"
+                    config.properties.obs_description_template = "t {band}"
+                self.assertFalse(config.is_hdr)
+                self.assertEqual(config.lum_norm, 100.0)
+                self.assertIsNone(config.clamp_values)
+                # HDR on an SDR format: refused before anything can clip.
+                config.is_hdr = True
+                with self.assertRaises(ValueError):
+                    config.validate()
+                config.file_extension = "avif"
+                if config_class is not AllSkyHipsTaskConfig:
+                    # The HDR kernel veto fires on the low-order default.
+                    config.downsample_kernel = "area"
+                config.validate()  # the avif+is_hdr pairing is accepted
+                if config_class is not AllSkyHipsTaskConfig:
+                    config.downsample_kernel = "lanczos"
+                    with self.assertRaises(ValueError):
+                        config.validate()
+        # The reverse mismatch (avif without is_hdr) is refused too.
+        config = LowOrderHipsTaskConfig()
+        config.hips_base_uri = "/tmp/hips_hdr_avif_config"
+        config.color_ordering = "rgb"
+        config.file_extension = "avif"
+        with self.assertRaises(ValueError):
+            config.validate()
+
+    def test_write_hips_image_hdr_delegates(self):
+        """The HDR writer branch sanitizes (NaN/inf/negatives -> 0), does
+        NOT clip above 1, and hands the array to the stellaRGB PQ writer
+        with lum_norm/clamp_values passed through."""
+        import tempfile
+        from unittest import mock
+
+        from lsst.pipe.tasks.rgb2hips._utils import _write_hips_image
+        from lsst.resources import ResourcePath
+
+        base = ResourcePath(tempfile.mkdtemp(), forceDirectory=True)
+        src = np.array(
+            [[[2.5, 0.5, 0.0], [-3.0, np.nan, 1.0]], [[np.inf, 1.0, 0.25], [0.0, 0.0, 0.0]]],
+            dtype=np.float32,
+        )
+        with mock.patch("stellaRGB._color_image.ColorImage", autospec=True) as ctor:
+            ctor.return_value.write_array_hdr_avif.side_effect = (
+                lambda path, **kw: open(path, "wb").write(b"avif-stub")
+            )
+            _write_hips_image(
+                src, 42, 11, base, "avif", "uint8", is_hdr=True, lum_norm=250.0, clamp_values=12.5
+            )
+
+        ctor.assert_called_once()
+        delivered = ctor.call_args[0][0]
+        self.assertEqual(delivered.shape, src.shape)
+        self.assertTrue(np.all(np.isfinite(delivered)))
+        self.assertTrue(np.all(delivered >= 0.0))
+        # Value above 1 survived: the SDR clip must not run on HDR data.
+        self.assertAlmostEqual(float(delivered[0, 0, 0]), 2.5)
+        ctor.return_value.write_array_hdr_avif.assert_called_once_with(
+            mock.ANY, clamp_values=12.5, lum_norm=250.0
+        )
+        self.assertTrue(base.join("Norder11/Dir0/Npix42.avif").exists())
+
+    def test_allsky_hdr_canvas_geometry(self):
+        """Four order-8 children of the origin order-7 node of one order-3
+        tile land in the [[b, d], [c, e]] quadrant slots of their canvas
+        cells, area-downsampled from the 256x256 butler resolution, and
+        the canvas goes to the PQ writer with the configured lum_norm."""
+        import os
+        import tempfile
+        from unittest import mock
+
+        from lsst.pipe.tasks.rgb2hips import AllSkyHipsTask
+
+        base = tempfile.mkdtemp()
+        task = AllSkyHipsTask(
+            config=self._allsky_config(
+                base, is_hdr=True, file_extension="avif", min_order=3, allsky_tilesize=64
+            )
+        )
+
+        # Order-8 children of the order-7 node 0 inside order-3 pixel 100:
+        # nested ids (100 << 10) + {0,1,2,3} sit at template positions
+        # (0,0), (1,0), (0,1), (1,1) — the [[b, d], [c, e]] rule.
+        ancestor = 100
+        kids = [(ancestor << 10) + k for k in range(4)]
+        values = {kids[0]: 0.1, kids[1]: 0.25, kids[2]: 0.5, kids[3]: 0.75}
+        arrays = [(pid, np.full((256, 256, 3), v, dtype=np.float32)) for pid, v in values.items()]
+        # One NaN and one negative pixel must sanitize to 0, not poison (they
+        # dilute one output cell slightly; checked as median/min below).
+        arrays[0][1][0, 0, 0] = np.nan
+        arrays[0][1][0, 0, 1] = -2.0
+
+        captured = {}
+        with mock.patch("stellaRGB._color_image.ColorImage", autospec=True) as ctor:
+            ctor.return_value.write_array_hdr_avif.side_effect = (
+                lambda path, **kw: captured.update(kwargs=kw) or open(path, "wb").write(b"x")
+            )
+            task._write_allsky_file_hdr(3, arrays)
+
+        canvas = ctor.call_args[0][0]
+        # Order 3: 768 tiles, 27 wide (spec S4.3.2), ceil(768/27) = 29 rows.
+        self.assertEqual(canvas.shape, (29 * 64, 27 * 64, 3))
+        self.assertTrue(np.all(np.isfinite(canvas)))
+        self.assertTrue(np.all(canvas >= 0.0))
+        row, col = ancestor // 27, ancestor % 27
+        sub = 64 >> 5  # one order-8 cell: 2x2 px of the 32x32 subdivision
+        quadrant = {0: (0, 0), 1: (1, 0), 2: (0, 1), 3: (1, 1)}  # [[b, d], [c, e]]
+        for k in range(4):
+            r_sub, c_sub = quadrant[k]
+            block = canvas[
+                row * 64 + r_sub * sub : row * 64 + (r_sub + 1) * sub,
+                col * 64 + c_sub * sub : col * 64 + (c_sub + 1) * sub,
+            ]
+            if k == 0:  # sanitized-probe block: diluted in one output px, not exact.
+                self.assertAlmostEqual(float(np.median(block)), 0.1, places=5)
+                self.assertGreaterEqual(float(block.min()), 0.1 * (128 - 1) / 128 - 1e-6)
+            else:
+                np.testing.assert_allclose(block, values[kids[k]], rtol=1e-6)
+        # Exactly the four 2x2 cells are lit; the rest of the canvas is empty.
+        self.assertEqual(int(np.count_nonzero(canvas)), 4 * 2 * 2 * 3)
+        self.assertEqual(captured["kwargs"]["lum_norm"], 100.0)
+        self.assertIsNone(captured["kwargs"]["clamp_values"])
+        self.assertTrue(os.path.exists(os.path.join(base, "color_rgb", "Norder3", "Allsky.avif")))
+
+    def test_allsky_hdr_refuses_empty_inputs(self):
+        import tempfile
+
+        from lsst.pipe.tasks.rgb2hips import AllSkyHipsTask
+
+        task = AllSkyHipsTask(
+            config=self._allsky_config(
+                tempfile.mkdtemp(), is_hdr=True, file_extension="avif", min_order=7
+            )
+        )
+        with self.assertRaises(ValueError):
+            task._write_allsky_file_hdr(7, [])
+
+    def test_hdr_guard_lifted_when_configured(self):
+        """Mirror of test_high_order_hips_rejects_hdr: with is_hdr=True +
+        avif the assembly proceeds instead of raising."""
+        from lsst.images import ColorImage
+        from lsst.pipe.base import InMemoryDatasetHandle
+        from lsst.pipe.tasks.rgb2hips._high_order_hips import HighOrderHipsTask
+
+        config = HighOrderHipsTask.ConfigClass()
+        config.hips_base_uri = "/tmp/hips_hdr_guard_allowed"
+        config.color_ordering = "gri"
+        config.is_hdr = True
+        config.file_extension = "avif"
+        task = HighOrderHipsTask(config=config)
+        image = ColorImage(np.zeros((16, 16, 3), dtype=np.float32), metadata={"is_hdr": True})
+        handle = InMemoryDatasetHandle(inMemoryDataset=image)
+        bbox = lsst.geom.Box2I(lsst.geom.Point2I(0, 0), lsst.geom.Extent2I(16, 16))
+        # Must not raise: feathering proceeds on the linear data unclipped
+        # (grow=4 leaves the feather ramp inside the 16x16 patch).
+        task._assemble_sub_region({1: [(handle, None, bbox)]}, 4)

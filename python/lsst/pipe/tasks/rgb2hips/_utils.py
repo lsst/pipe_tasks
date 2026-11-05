@@ -213,6 +213,9 @@ def _write_hips_image(
     hips_base_path: ResourcePath,
     file_extension: str,
     output_type: str,
+    is_hdr: bool = False,
+    lum_norm: float = 100.0,
+    clamp_values: float | None = None,
 ) -> None:
     """Write a processed image to disk in the HealPix tile format.
 
@@ -231,15 +234,55 @@ def _write_hips_image(
     hips_base_path : `ResourcePath`
         Base directory path where the HealPix tiles will be stored.
     file_extension : `str`
-        File extension (format) for saving the image ('png' or 'webp').
+        File extension (format) for saving the image ('png', 'webp', or
+        'avif' — the latter only with ``is_hdr=True``).
     output_type : `str`
-        Data type of the output array, which can be:
+        Data type of the output array (SDR PIL path only), which can be:
             - "uint8": 8-bit unsigned integers (0-255)
             - "uint16": 16-bit unsigned integers (0-65535)
             - "half": 16-bit floating-point numbers
             - "float": 32-bit floating-point numbers
+    is_hdr : `bool`, optional
+        When True the source array is linear HDR data (values may exceed
+        1) and is PQ-encoded to AVIF via stellaRGB instead of taking the
+        SDR PIL path. ``file_extension`` must be "avif" (enforced by the
+        tasks' configs). Default False.
+    lum_norm : `float`, optional
+        HDR only: the linear value that encodes to ``lum_norm`` nits
+        (paper white). Default 100.0 (linear 1.0 -> 100 nits).
+    clamp_values : `float`, optional
+        HDR only: upper clamp in linear units applied before PQ encoding.
+        Default None (no clamp).
 
     """
+    # mangle the URI where to write
+    dir_number = _get_dir_number(pixel_id)
+    hips_dir = hips_base_path.join(f"Norder{hpx_level}", forceDirectory=True).join(
+        f"Dir{dir_number}", forceDirectory=True
+    )
+
+    # Create the file URI for saving
+    uri = hips_dir.join(f"Npix{pixel_id}.{file_extension}")
+
+    if is_hdr:
+        # PQ encoding of linear data: values above 1 are signal, so the
+        # SDR [0, 1] clip below would destroy the image. Non-finite and
+        # negative pixels (e.g. lanczos warp undershoot) map to 0 — PQ
+        # cannot represent them.
+        hdr_data = np.where(np.isfinite(image_data), image_data, 0.0)
+        np.maximum(hdr_data, 0.0, out=hdr_data)
+        from stellaRGB._color_image import ColorImage  # lazy: drags in imagecodecs
+
+        hdr_image = ColorImage(hdr_data.astype(np.float32, copy=False), metadata={"is_hdr": True})
+        with ResourcePath.temporary_uri(suffix=".avif") as temporary_uri:
+            hdr_image.write_array_hdr_avif(
+                temporary_uri.ospath,
+                clamp_values=clamp_values,
+                lum_norm=lum_norm,
+            )
+            uri.transfer_from(temporary_uri, transfer="copy", overwrite=True)
+        return
+
     # clip in case any of the warping caused values over 1
     image_data = np.clip(image_data, 0, 1)
     # remap the image_data to the chosen output_type
@@ -252,15 +295,6 @@ def _write_hips_image(
             image_data = image_data.astype(np.float16)
         case "float":
             pass
-
-    # mangle the URI where to write
-    dir_number = _get_dir_number(pixel_id)
-    hips_dir = hips_base_path.join(f"Norder{hpx_level}", forceDirectory=True).join(
-        f"Dir{dir_number}", forceDirectory=True
-    )
-
-    # Create the file URI for saving
-    uri = hips_dir.join(f"Npix{pixel_id}.{file_extension}")
 
     # Convert numpy array to PIL Image and save with appropriate arguments
     im = Image.fromarray(image_data, mode="RGB")

@@ -82,7 +82,11 @@ class LowOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=LowOrderHip
     )
     file_extension = ChoiceField[str](
         doc="Extension for the presisted image",
-        allowed={"png": "Use the png image extension", "webp": "Use the webp image extension"},
+        allowed={
+            "png": "Use the png image extension",
+            "webp": "Use the webp image extension",
+            "avif": "Use the avif image extension (PQ-encoded HDR tiles; requires is_hdr=True)",
+        },
         default="png",
     )
     array_type = ChoiceField[str](
@@ -117,10 +121,53 @@ class LowOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=LowOrderHip
         },
         default="lanczos",
     )
+    is_hdr = Field[bool](
+        doc=(
+            "The healpix8 input arrays carry linear HDR data (values may "
+            "exceed 1) and tiles are written PQ-encoded as AVIF (requires "
+            "file_extension=\"avif\"). Must match the HighOrderHipsTask "
+            "setting that produced rgb_picture_hips8."
+        ),
+        default=False,
+    )
+    lum_norm = Field[float](
+        doc=(
+            "HDR only: the linear pixel value that encodes to lum_norm nits "
+            "(paper white) under PQ. Default 100.0 (linear 1.0 -> 100 "
+            "nits). Should match HighOrderHipsTask.lum_norm."
+        ),
+        default=100.0,
+        check=lambda x: x > 0,
+    )
+    clamp_values = Field[float](
+        doc=(
+            "HDR only: optional upper clamp (in linear input units) applied "
+            "before PQ encoding. None disables clamping."
+        ),
+        default=None,
+        optional=True,
+    )
 
     def validate(self):
         if self.min_order >= 8:
             raise ValueError("The minimum order must be less than 8.")
+        if self.is_hdr and self.file_extension != "avif":
+            raise ValueError(
+                f"is_hdr=True requires file_extension='avif' (got '{self.file_extension}'): "
+                "SDR tile formats clip to [0, 1] and would destroy the HDR signal."
+            )
+        if self.file_extension == "avif" and not self.is_hdr:
+            raise ValueError(
+                "file_extension='avif' requires is_hdr=True: the avif path is the PQ-encoded "
+                "HDR writer; no SDR avif encoding is provided."
+            )
+        if self.is_hdr and self.downsample_kernel != "area":
+            raise ValueError(
+                "is_hdr=True requires downsample_kernel='area': lanczos undershoot produces "
+                "negative linear values that PQ cannot encode, and the cascade compounds "
+                "whatever kernel is chosen once per order."
+            )
+        return super().validate()
 
 
 class LowOrderHipsTask(PipelineTask):
@@ -210,6 +257,9 @@ class LowOrderHipsTask(PipelineTask):
                     self.hips_base_path,
                     self.config.file_extension,
                     self.config.array_type,
+                    is_hdr=self.config.is_hdr,
+                    lum_norm=self.config.lum_norm,
+                    clamp_values=self.config.clamp_values,
                 )
                 size_counter += 1
 
