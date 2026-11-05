@@ -54,7 +54,7 @@ from lsst.sphgeom import RangeSet
 from stellaRGB.warp import AstWarp, AstWcs, DirectWarp, WarpTransform, fit_transform, warp_into
 
 from .._warpDirect import hpx_direct_wcs_from_afw, pure_fits_tan, tan_wcs_from_afw
-from ._utils import _write_hips_image
+from ._utils import _write_hips_image, downsample_hips_array
 from ..prettyPictureMaker import FeatheredMosaicCreator, probe_warp_scale
 
 # The "rust" backend's resampling kernel: mirrors the kernel
@@ -65,123 +65,6 @@ from ..prettyPictureMaker import FeatheredMosaicCreator, probe_warp_scale
 # afwMath's pixel-area normalization with probe_warp_scale exactly as the
 # retired cv2 branch did.
 _RUST_KERNEL = "lanczos4"
-
-
-def _area_downsample(image: NDArray, out_hw: tuple[int, int]) -> NDArray:
-    """Exact box-average downsample via the stellaRGB.warp AREA kernel (D10).
-
-    Strict improvement over the previous ``cv2.resize(..., INTER_LANCZOS4)``
-    pyramid step, which was a defect not a preference: a Lanczos resize has
-    NO prefilter, so any energy above the output Nyquist aliases into the
-    level as ringing; the area kernel is the proper prefilter (exact
-    weighted box mean, verified against ``cv2.resize(INTER_AREA)`` and
-    bit-exact 2x2 box averages in the engine's parity suite).
-
-    Destination pixel ``(y, x)`` is the clip-overlap box mean over the
-    source box ``[fy*y - 0.5, fy*y + fy - 0.5] x [fx*x - 0.5, fx*x + fx -
-    0.5]`` — exactly what the engine's D10 AREA kernel computes for the
-    strided lattice ``map_x = fx*x + (fx-1)/2`` (whose per-axis diff-mean
-    scale is ``fx``): integer factors reduce to uniform weight 1.0 on the
-    ``f`` source pixels (touching taps carry exact 0.0 weight, the engine's
-    support-exempt structure), non-integer (odd-dim) factors get the exact
-    partial-overlap weights — cv2 lanczos has no defined box semantics
-    there at all.
-
-    ENGINE-FEASIBILITY NOTE (why the box mean is evaluated here in numpy,
-    not by calling ``stellaRGB.warp.remap(kernel="area")`` per level): the
-    engine's area tap window is the UNIFORM GLOBAL SPAN of the call
-    ("area is tile-size only" — the whole-table ``AREA_TOP_CAP`` /
-    ``AREA_WEIGHTS_CAP`` prescan). A whole-level 4096->2048 strided remap
-    has per-axis spans of the full source (4098 taps) and trips those caps
-    with ``ValueError``; at factor 8/16 it would fit the caps yet burn
-    ``O(span^2 x dest)`` work (the bench's affine-area hang lesson). The
-    pyramid therefore evaluates the IDENTICAL D10 box mean as a separable
-    integral-image reduction (float64 accumulation, cast last). D10
-    equivalence on grids where the engine call IS feasible (tile-sized)
-    is pinned by ``tests/test_hips.py`` (this helper vs the engine
-    ``remap(kernel="area")`` on the same strided lattice).
-
-    NaN source pixels poison exactly the boxes touching them (matching the
-    engine's D9 contract; ``run()`` zeroes NaN before pyramiding, so
-    production is unaffected).
-
-    Parameters
-    ----------
-    image : `numpy.ndarray`
-        ``(H, W)`` or ``(H, W, 3)`` source array (any float dtype).
-    out_hw : `tuple` of ``int``
-        Output ``(height, width)``; must not exceed the source shape.
-
-    Returns
-    -------
-    downsampled : `numpy.ndarray`
-        Float32 box-averaged array of shape ``out_hw + image.shape[2:]``.
-    """
-    src_h, src_w = image.shape[:2]
-    out_h, out_w = out_hw
-    if out_h > src_h or out_w > src_w or out_h < 1 or out_w < 1:
-        raise ValueError(
-            f"out_hw {out_hw} must be a non-empty downsample of {image.shape[:2]}"
-        )
-    out = np.empty((out_h, out_w) + image.shape[2:], dtype=np.float32)
-
-    def _reduce_axis(plane: NDArray, axis: int, out_len: int) -> NDArray:
-        """Exact D10 clip-overlap box mean along one axis, float64.
-
-        ``plane`` is 2-D; all per-destination-index vectors are broadcast
-        along ``axis`` explicitly (a bare ``(out_len,)`` vector would
-        broadcast against the LAST dimension and silently misalign the
-        axis=0 reduction whenever the grid is square).
-        """
-        n = plane.shape[axis]
-        f = n / out_len
-        pos = np.arange(out_len, dtype=np.float64)
-        lo = f * pos - 0.5
-        hi = lo + f  # == f*pos + f - 0.5, the box edges (see above)
-        # Full pixels are [ceil(lo + 0.5), floor(hi - 0.5)] inclusive; the
-        # touching partials carry the sub-pixel overhang weights (never
-        # reaching outside the array for this lattice: hi <= n - 0.5).
-        first = np.ceil(lo + 0.5).astype(np.intp)
-        last = np.floor(hi - 0.5).astype(np.intp)
-        clean = np.nan_to_num(plane)
-        pref = np.cumsum(clean, axis=axis)
-        nan_pref = np.cumsum(np.isnan(plane), axis=axis)
-
-        def _take(arr: NDArray, idx: NDArray) -> NDArray:
-            return np.take(arr, np.clip(idx, 0, n - 1), axis=axis)
-
-        def _b(vec: NDArray) -> NDArray:
-            return vec[:, None] if axis == 0 else vec[None, :]
-
-        wl = _b((first - 0.5) - lo)  # in [0, 1); partial pixel `first - 1`
-        wr = _b(hi - (last + 0.5))  # in [0, 1); partial pixel `last + 1`
-        has_l = _b(first > 0)
-        has_r = _b(last + 1 < n)
-        # sum of full pixels [first .. last] (empty window => 0):
-        s = _take(pref, last) - np.where(has_l, _take(pref, first - 1), 0.0)
-        s = s + np.where(has_l, wl * _take(clean, first - 1), 0.0)
-        s = s + np.where(has_r, wr * _take(clean, last + 1), 0.0)
-        # NaN poisons exactly the boxes whose window touched a NaN pixel.
-        nan_box = _take(nan_pref, last) - np.where(has_l, _take(nan_pref, first - 1), 0.0)
-        nan_box = nan_box + np.where(
-            has_l & (wl > 0.0),
-            _take(nan_pref, first - 1) - np.where(_b(first > 1), _take(nan_pref, first - 2), 0.0),
-            0.0,
-        ) + np.where(
-            has_r & (wr > 0.0),
-            _take(nan_pref, last + 1) - _take(nan_pref, last),
-            0.0,
-        )
-        result = s / f
-        return np.where(nan_box > 0.0, np.nan, result)
-
-    planes = image if image.ndim == 3 else image[..., None]
-    for ch in range(planes.shape[2]):
-        plane = np.ascontiguousarray(planes[..., ch], dtype=np.float64)
-        reduced = _reduce_axis(plane, axis=1, out_len=out_w)
-        reduced = _reduce_axis(np.ascontiguousarray(reduced), axis=0, out_len=out_h)
-        out[..., ch] = reduced
-    return out if image.ndim == 3 else out[..., 0]
 
 
 class ColorChannel(Enum):
@@ -248,6 +131,27 @@ class HighOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=HighOrderH
             "half": "Use 16 bit float arrays, 1 max",
             "float": "Use 32 bit float arrays, 1 max",
         },
+    )
+    downsample_kernel = ChoiceField[str](
+        doc=(
+            "Kernel for the pyramid resampling (orders 10-8 tiles) and the "
+            "256x256 order-8 butler array. \"area\" (default) is the exact "
+            "box-average prefilter: flux-conserving, alias-free, and "
+            "minimum-variance for white noise, but it smooths faint "
+            "gradients (visible isophote erosion on low-surface-brightness "
+            "edges). \"lanczos\" restores the historical "
+            "cv2.resize(..., INTER_LANCZOS4) step: no prefilter, so it "
+            "keeps edge contrast at the cost of ringing (aliasing) and "
+            "passing ~4-7x more high-frequency noise power at 4-8x "
+            "reduction. Anything feeding measurements should use \"area\"."
+        ),
+        allowed={
+            "area": "Exact box-average prefilter (default): anti-aliased, "
+            "minimum-noise, smooths faint edges",
+            "lanczos": "cv2 INTER_LANCZOS4 (no prefilter): sharper edges, "
+            "passes ringing and high-frequency noise",
+        },
+        default="area",
     )
     warp_backend = ChoiceField[str](
         doc=(
@@ -531,7 +435,9 @@ class HighOrderHipsTask(PipelineTask):
         output_array_hpx = output_array_hpx[::-1, :, :]
 
         # Generate tiles for different HealPix orders using an exact
-        # box-average (area-kernel) prefilter instead of binning or Lanczos.
+        # box-average (area-kernel) prefilter by default instead of binning
+        # or Lanczos (see the downsample_kernel config knob to restore
+        # cv2's INTER_LANCZOS4 for its edge-contrast preservation).
         # This handles how intensities should change as the hips level changes
         # AND anti-aliases: the previous cv2.resize(INTER_LANCZOS4) had no
         # prefilter, so energy above the level Nyquist aliased as ringing
@@ -549,7 +455,9 @@ class HighOrderHipsTask(PipelineTask):
             self.log.info("Generating tiles for hxp level %d", hips_level)
             if zoom:
                 size = 4096 // zoom
-                binned_array = _area_downsample(output_array_hpx, (size, size))
+                binned_array = downsample_hips_array(
+                    output_array_hpx, (size, size), self.config.downsample_kernel
+                )
             else:
                 binned_array = output_array_hpx
             # always create blocks of 512x512 as that is native shift order 9 size
@@ -591,8 +499,8 @@ class HighOrderHipsTask(PipelineTask):
 
         # Finally, bin the level 8 hpx to 256x256 (1/4 order 7) to save to the butler.
         # This makes smaller arrays to load, and saves the binning operation in the joint phase.
-        # Same exact box-average prefilter as the tile pyramid above.
-        zoomed = _area_downsample(output_array_hpx, (256, 256))
+        # Same kernel as the tile pyramid above (see downsample_kernel).
+        zoomed = downsample_hips_array(output_array_hpx, (256, 256), self.config.downsample_kernel)
 
         return Struct(output_hpx=zoomed)
 

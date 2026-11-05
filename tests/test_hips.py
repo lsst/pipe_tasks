@@ -813,7 +813,7 @@ class ColorHipsPyramidTestCase(unittest.TestCase):
         uniform global-span tap window stays bounded), the helper reproduces
         the engine's D10 area kernel bit-exactly (measured maxdiff 0.0 on
         random data; f32 engine vs f64 helper)."""
-        from lsst.pipe.tasks.rgb2hips._high_order_hips import _area_downsample
+        from lsst.pipe.tasks.rgb2hips._utils import _area_downsample
 
         rng = np.random.default_rng(3)
         for shape, out in (((16, 16, 3), (8, 8)), ((32, 32, 3), (16, 16))):
@@ -830,7 +830,7 @@ class ColorHipsPyramidTestCase(unittest.TestCase):
         of ringing (measured). The near-Nyquist sine case is identical:
         helper == exact 2x2 box mean (dev 0.0), legacy dev 0.146. The
         pyramid swap is a strict aliasing improvement (defect fix)."""
-        from lsst.pipe.tasks.rgb2hips._high_order_hips import _area_downsample
+        from lsst.pipe.tasks.rgb2hips._utils import _area_downsample
 
         grid = np.add.outer(np.arange(64), np.arange(64))
         checker = (grid % 2).astype(np.float32)[..., None] * np.ones((1, 1, 3), np.float32)
@@ -853,7 +853,7 @@ class ColorHipsPyramidTestCase(unittest.TestCase):
         within float noise for integer and non-integer (odd-dim) factors --
         cv2 lanczos has no defined box semantics there; the helper matches
         the clip-overlap definition (measured maxdiff <= 1.2e-7)."""
-        from lsst.pipe.tasks.rgb2hips._high_order_hips import _area_downsample
+        from lsst.pipe.tasks.rgb2hips._utils import _area_downsample
 
         rng = np.random.default_rng(1)
         src = rng.random((65, 90, 3)).astype(np.float32)
@@ -868,7 +868,7 @@ class ColorHipsPyramidTestCase(unittest.TestCase):
         """NaN poisons exactly the boxes touching it (the engine's D9
         contract), not the whole row (which a naive integral-image would
         do); a NaN-free grid has no NaNs in any level."""
-        from lsst.pipe.tasks.rgb2hips._high_order_hips import _area_downsample
+        from lsst.pipe.tasks.rgb2hips._utils import _area_downsample
 
         rng = np.random.default_rng(2)
         src = rng.random((16, 16, 3)).astype(np.float32)
@@ -878,3 +878,40 @@ class ColorHipsPyramidTestCase(unittest.TestCase):
         self.assertTrue(np.all(np.isnan(out[0, 0])))
         self.assertEqual(int(nan_boxes.sum()), 1)
         self.assertTrue(np.all(np.isfinite(out[~nan_boxes])))
+
+    def test_downsample_kernel_choicefield_defaults(self):
+        """The downsample_kernel knob exists on both pyramid tasks with each
+        task's historical default (area for the single-pass high-order
+        pyramid, lanczos for the cascaded low-order resampler) and unknown
+        kernels are rejected."""
+        from lsst.pipe.tasks.rgb2hips import HighOrderHipsTaskConfig, LowOrderHipsTaskConfig
+        from lsst.pex.config import FieldValidationError
+
+        high = HighOrderHipsTaskConfig()
+        self.assertEqual(high.downsample_kernel, "area")
+        low = LowOrderHipsTaskConfig()
+        self.assertEqual(low.downsample_kernel, "lanczos")
+        with self.assertRaises(FieldValidationError):
+            high.downsample_kernel = "bogus"
+        with self.assertRaises(FieldValidationError):
+            low.downsample_kernel = "bogus"
+
+    def test_downsample_kernel_dispatch_bit_exact(self):
+        """downsample_hips_array dispatches bit-exactly: "lanczos" is the
+        legacy cv2.resize(INTER_LANCZOS4) call, "area" is _area_downsample
+        (float32 out) -- the kernel choice changes pixels, never plumbing."""
+        from lsst.pipe.tasks.rgb2hips._utils import _area_downsample, downsample_hips_array
+
+        rng = np.random.default_rng(7)
+        src = rng.random((64, 64, 3)).astype(np.float32)
+        np.testing.assert_array_equal(
+            downsample_hips_array(src, (32, 32), "lanczos"),
+            cv2.resize(src, (32, 32), interpolation=cv2.INTER_LANCZOS4),
+        )
+        area = downsample_hips_array(src, (32, 32), "area")
+        np.testing.assert_array_equal(area, _area_downsample(src, (32, 32)))
+        self.assertEqual(area.dtype, np.float32)
+        # The two kernels genuinely differ on structure (guards against both
+        # branches collapsing onto one code path).
+        lanczos = downsample_hips_array(src, (32, 32), "lanczos")
+        self.assertGreater(float(np.abs(area - lanczos).max()), 1e-3)

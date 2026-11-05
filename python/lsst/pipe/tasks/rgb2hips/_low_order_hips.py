@@ -23,7 +23,6 @@ from __future__ import annotations
 __all__ = ("LowOrderHipsTaskConnections", "LowOrderHipsTaskConfig", "LowOrderHipsTask")
 
 import numpy as np
-import cv2
 
 from lsst.daf.butler import DeferredDatasetHandle
 from lsst.pipe.base import (
@@ -44,7 +43,7 @@ from collections.abc import Iterable
 
 from numpy.typing import NDArray
 
-from ._utils import _write_hips_image
+from ._utils import _write_hips_image, downsample_hips_array
 
 
 class LowOrderHipsTaskConnections(PipelineTaskConnections, dimensions=tuple()):
@@ -95,6 +94,28 @@ class LowOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=LowOrderHip
             "half": "Use 16 bit float arrays, 1 max",
             "float": "Use 32 bit float arrays, 1 max",
         },
+    )
+    downsample_kernel = ChoiceField[str](
+        doc=(
+            "Kernel for the level-on-level cascade (order-7 tiles are "
+            "assembled from the children, each order is then resampled to "
+            "256x256 to feed the next order down). NOTE: unlike the "
+            "high-order pyramid (single pass per level from full "
+            "resolution), this cascade compounds the kernel once per order "
+            "step, so its properties (edge erosion for \"area\", ringing "
+            "and noise pass-through for \"lanczos\") accumulate with the "
+            "number of levels. \"lanczos\" (default) preserves the "
+            "historical edge contrast. \"area\" is the exact box-average "
+            "prefilter: flux-conserving, alias-free, minimum-variance for "
+            "white noise, but it smooths faint gradients."
+        ),
+        allowed={
+            "area": "Exact box-average prefilter: anti-aliased, "
+            "minimum-noise, smooths faint edges",
+            "lanczos": "cv2 INTER_LANCZOS4 (no prefilter, default): "
+            "sharper edges, passes ringing and high-frequency noise",
+        },
+        default="lanczos",
     )
 
     def validate(self):
@@ -193,7 +214,9 @@ class LowOrderHipsTask(PipelineTask):
                 size_counter += 1
 
                 # resample the image to a smaller grid and store it for the next order
-                zoomed = cv2.resize(hpx_next_array, (256, 256), interpolation=cv2.INTER_LANCZOS4)
+                zoomed = downsample_hips_array(
+                    hpx_next_array, (256, 256), self.config.downsample_kernel
+                )
 
                 hpx_next_container.append((zoomed, hpx_next_id))
             hpx_container = hpx_next_container
