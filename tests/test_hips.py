@@ -1107,3 +1107,26 @@ class ColorHipsHdrAvifTestCase(unittest.TestCase):
         # Must not raise: feathering proceeds on the linear data unclipped
         # (grow=4 leaves the feather ramp inside the 16x16 patch).
         task._assemble_sub_region({1: [(handle, None, bbox)]}, 4)
+
+    def test_properties_bitpix_follows_encoding(self):
+        """An HDR tree must declare hips_pixel_bitpix=10 (the real PQ AVIF
+        encoder depth, deliberately outside the HiPS-registered values),
+        while the SDR path keeps the hips_bitpix config mapping."""
+        import os
+        import tempfile
+
+        from lsst.pipe.tasks.rgb2hips import AllSkyHipsTask
+
+        def bitpix_value(**overrides):
+            base = tempfile.mkdtemp()
+            task = AllSkyHipsTask(config=self._allsky_config(base, **overrides))
+            task._write_properties_and_moc(11, np.array([0, 1, 2]), task.config.shift_order, "rgb")
+            with open(os.path.join(base, "color_rgb", "properties")) as fh:
+                for line in fh:
+                    key, _, value = line.partition("=")
+                    if key.strip() == "hips_pixel_bitpix":
+                        return value.strip()
+            raise AssertionError("hips_pixel_bitpix missing from properties")
+
+        self.assertEqual(bitpix_value(is_hdr=True, file_extension="avif"), "10")
+        self.assertEqual(bitpix_value(), "8")  # SDR default: hips_bitpix uint8

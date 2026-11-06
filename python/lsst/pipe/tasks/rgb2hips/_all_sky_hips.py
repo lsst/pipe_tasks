@@ -164,7 +164,11 @@ class AllSkyHipsTaskConfig(PipelineTaskConfig, pipelineConnections=AllSkyHipsTas
         default="float32",
     )
     hips_bitpix = ChoiceField[str](
-        doc="The dtype of the hips images",
+        doc=(
+            "The dtype of the hips images (SDR paths only; is_hdr=True "
+            "always declares hips_pixel_bitpix=10 for its PQ-encoded "
+            "AVIF tiles, regardless of this field)."
+        ),
         allowed={
             "float64": "double precision",
             "float32": "single precision",
@@ -373,19 +377,28 @@ class AllSkyHipsTask(PipelineTask):
             case "uint64":
                 bitpix = 64
 
-        match self.config.hips_bitpix:
-            case "float64":
-                hbitpix = -64
-            case "float32":
-                hbitpix = -32
-            case "uint8":
-                hbitpix = 8
-            case "uint16":
-                hbitpix = 16
-            case "uint32":
-                hbitpix = 32
-            case "uint64":
-                hbitpix = 64
+        if self.config.is_hdr:
+            # PQ-encoded AVIF tiles are 10-bit (stellaRGB's fixed encoder
+            # bit depth), so declare what the tree actually delivers.
+            # "10" is not a registered hips_pixel_bitpix value in the HiPS
+            # IVOA note (which predates HDR tiles and assumes 8-bit SDR
+            # png/webp); it is deliberate here, and the config hips_bitpix
+            # field does not apply to the HDR path.
+            hbitpix = 10
+        else:
+            match self.config.hips_bitpix:
+                case "float64":
+                    hbitpix = -64
+                case "float32":
+                    hbitpix = -32
+                case "uint8":
+                    hbitpix = 8
+                case "uint16":
+                    hbitpix = 16
+                case "uint32":
+                    hbitpix = 32
+                case "uint64":
+                    hbitpix = 64
 
         date_iso8601 = datetime.utcnow().isoformat(timespec="seconds") + "Z"
         pixel_scale = hpg.nside_to_resolution(2 ** (max_order + shift_order), units="degrees")
