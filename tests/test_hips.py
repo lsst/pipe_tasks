@@ -951,6 +951,56 @@ class ColorHipsBlendTestCase(unittest.TestCase):
         self.assertGreaterEqual(np.flatnonzero(sliver.any(axis=0))[-1], 254)
         self.assertLess(abs(np.median(raster[sliver]) - level), 0.05 * level)
 
+    def test_assemble_sub_region_reweights_seam(self):
+        """Patch-to-sub-region assembly (the per-tract mosaic that feeds
+        run()) must be the same NaN-reweighted feather blend the
+        meta-mosaic runs: without the weight accumulator the feathering
+        degrades to an unweighted sum whose overlap bands overshoot
+        (w_A + w_B != 1: legacy measured 0.68 for 0.4/0.6 contributors)
+        and whose NaN borders leak into the mosaic instead of being
+        reweighted away. This -- not the tract-to-tract combine -- is
+        where contributor seams actually enter single-tract data."""
+        from lsst.pipe.tasks.rgb2hips._high_order_hips import HighOrderHipsTask
+
+        skymap = self.harness._make_discrete_skymap()
+        task = HighOrderHipsTask(config=self.harness._make_config("afw", "/tmp"))
+
+        class _Handle:
+            """Stand-in for DeferredDatasetHandle delivering a bare array."""
+
+            def __init__(self, array):
+                self.array = array
+                self.metadata = None
+
+            def get(self):
+                return self
+
+        inputs = {0: []}
+        for patch, level in ((0, 0.4), (1, 0.6)):
+            info = skymap[0][patch]
+            bbox = info.getOuterBBox()
+            array = np.full((bbox.getHeight(), bbox.getWidth(), 3), level, dtype=np.float32)
+            # NaN bands facing the overlap (both other-covered, so a
+            # reweighted blend must leave no hole; the legacy unweighted
+            # sum poisons them with NaN permanently).
+            if patch == 0:
+                array[:, -8:] = np.nan
+            else:
+                array[:, :8] = np.nan
+            inputs[0].append((_Handle(array), info.getWcs(), bbox))
+        sub, _, _ = task._assemble_sub_region(
+            inputs, skymap[0][0].getCellInnerDimensions().getX()
+        )[0]
+
+        # The union rectangle is fully covered once NaN reweights away.
+        self.assertTrue(np.all(np.isfinite(sub)), "NaN leaked through the seam")
+        vals = sub[..., 0]
+        # Levels stay inside the contributors' range: no overshoot band.
+        self.assertLessEqual(vals.max(), 0.6 + 0.01, "overlap band overshoots")
+        self.assertGreaterEqual(vals.min(), 0.4 - 0.01, "seam dips below plateaus")
+        # The overlap genuinely blends (strictly intermediate values exist).
+        self.assertTrue(np.any((vals > 0.41) & (vals < 0.59)), "no crossfade band")
+
 
 class ColorHipsPyramidTestCase(unittest.TestCase):
     """The area-kernel (D10 box-average) pyramid prefilter: exactness,

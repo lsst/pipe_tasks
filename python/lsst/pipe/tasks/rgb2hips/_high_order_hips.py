@@ -965,6 +965,12 @@ class HighOrderHipsTask(PipelineTask):
                 new_box.include(bbox)
             # allocate tmp array
             new_array = np.zeros((new_box.getHeight(), new_box.getWidth(), 3), dtype=np.float32)
+            # Feather-weighted accumulation with the NaN-reweight contract
+            # (as MetaMosaicTask runs it): without the weight accumulator
+            # add_to_image's feathering is an unweighted sum, so overlap
+            # bands overshoot (w_A + w_B != 1) and patch NaN borders leak
+            # NaN into the seam instead of being reweighted away.
+            weight = np.zeros(new_array.shape[:2], dtype=np.float32)
             for handle, skyWcs, box in iterable:
                 # Make a new box of the same size, but with the origin centered
                 # on the lowest corner were there is data.
@@ -999,7 +1005,11 @@ class HighOrderHipsTask(PipelineTask):
                     Box.from_legacy(tmp_new_box),
                     Box.from_legacy(tmpBox),
                     reverse=False,
+                    weight=weight,
                 )
+            # Normalize the weighted sum (pixels no patch covered validly stay
+            # NaN, the empty-sky marker the warp path already honors).
+            FeatheredMosaicCreator.finalize(new_array, weight)
             # skywcs is the same for all patches in a tract, share the appending here
             boxes.append((new_array, skyWcs, new_box))
         return boxes
