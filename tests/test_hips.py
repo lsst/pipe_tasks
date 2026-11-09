@@ -785,6 +785,173 @@ class ColorHipsRustDirectTestCase(unittest.TestCase):
         self.assertTrue(np.all(np.isfinite(out)))
 
 
+class ColorHipsBlendTestCase(unittest.TestCase):
+    """The per-tile combine of HighOrderHipsTask: feather-weighted
+    accumulation through the shared FeatheredMosaicCreator masked-add /
+    NaN-reweight contract (what MetaMosaicTask runs), replacing the legacy
+    first-valid-wins + unweighted 50/50 blend whose un-feathered hard edges
+    left a rectangular grid of brightness steps on every contributor
+    boundary of the rendered tile."""
+
+    def setUp(self):
+        # Reuse the warp-backend harness (config builder, tile-writing
+        # mock, input builders) without inheriting (and re-running) its tests.
+        self.harness = ColorHipsWarpBackendTestCase()
+
+    def _make_wide_skymap(self):
+        """The harness two-tract skymap widened to 8-cell-inner patches
+        (pitch 800 px, outer 1040 px at the 0.2 "/px tract scale; the tile
+        pixel is ~0.6x the tract one, so the union spans ~3000 of the
+        order-8 tile's 4096 px): the contributor seam (2*cellBorder worth,
+        ~400 tile px of overlap, of it) and both contributor rims land
+        well inside the tile -- away from the feather ramp's span and from
+        the edge rule at the tile border."""
+        config = lsst.skymap.DiscreteSkyMap.ConfigClass()
+        tract_builder = config.tractBuilder["cells"]
+        tract_builder.cellInnerDimensions = [100, 100]
+        tract_builder.cellBorder = 20
+        tract_builder.numCellsPerPatchInner = 8
+        tract_builder.numCellsInPatchBorder = 1
+        config.tractBuilder.name = "cells"
+        config.raList = [10.0, 10.05]
+        config.decList = [-30.0, -30.0]
+        config.radiusList = [0.2, 0.2]
+        return lsst.skymap.DiscreteSkyMap(config)
+
+    def _make_level_inputs(self, skymap, levels):
+        """Constant-color patch images, as run() receives them:
+        (ndarray, SkyWcs, Box2I), one entry per (patch, level) pair."""
+        inputs = []
+        for patch, level in levels:
+            info = skymap[0][patch]
+            bbox = info.getOuterBBox()
+            array = np.full((bbox.getHeight(), bbox.getWidth(), 3), level, dtype=np.float32)
+            inputs.append((array, info.getWcs(), bbox))
+        return inputs
+
+    def _union_healpix_id(self, skymap):
+        """The order-8 tile containing the midpoint of the two patch
+        centers, so the patch union sits near the tile center."""
+        centers = [
+            skymap[0][patch].getWcs().pixelToSky(skymap[0][patch].getOuterBBox().getCenter())
+            for patch in (0, 1)
+        ]
+        ra = sum(c.getRa().asDegrees() for c in centers) / 2.0
+        dec = sum(c.getDec().asDegrees() for c in centers) / 2.0
+        return hpg.angle_to_pixel(256, ra, dec, nest=True)
+
+    def test_contributor_seams_do_not_survive_combine(self):
+        """Two contributors at different constant levels composite into a
+        continuous raster: the maximum adjacent-pixel step inside the data
+        interior must stay under a quarter of the plateau difference. The
+        legacy blend produced a step of the full plateau difference at each
+        edge of its unweighted 50/50 overlap band (ratio ~1.0 measured);
+        feather-weighted accumulation spreads the same transition over ~30
+        output columns (ratio ~0.03). No pixel may overshoot beyond the two
+        contributor plateaus either."""
+        import tempfile
+
+        skymap = self._make_wide_skymap()
+        inputs = self._make_level_inputs(skymap, ((0, 0.4), (1, 0.6)))
+        healpix_id = self._union_healpix_id(skymap)
+        with tempfile.TemporaryDirectory() as tmp:
+            raster = self.harness._run_backend("rust", inputs, healpix_id, tmp)[..., 0]
+
+        self.assertTrue(np.all(np.isfinite(raster)))
+        # Empty-sky pixels are exactly 0 (finalize() NaN -> 0); any
+        # positive value is contributor data.
+        data = raster > 1e-3
+        # Erode the union rim (its 0 -> plateau step is the data boundary,
+        # not a seam) with margin over the feather transition
+        # (2*feather_grow tile px = 16 output rows) and the warp's NaN ring.
+        interior = cv2.erode(data.astype(np.uint8), np.ones((35, 35), np.uint8)).astype(bool)
+        vals = raster[interior]
+        self.assertGreater(vals.size, 1000, "eroded away the whole data interior")
+        mid = (vals.min() + vals.max()) / 2.0
+        p_lo = np.median(vals[vals < mid])
+        p_hi = np.median(vals[vals > mid])
+        plateau_diff = p_hi - p_lo
+        self.assertGreater(
+            plateau_diff, 0.2 * p_hi, "the two contributor plateaus did not separate"
+        )
+        self.assertGreaterEqual(vals.min(), p_lo - 0.02 * plateau_diff)
+        self.assertLessEqual(vals.max(), p_hi + 0.02 * plateau_diff)
+        horiz = np.abs(np.diff(raster, axis=1))
+        ok_h = interior[:, :-1] & interior[:, 1:]
+        vert = np.abs(np.diff(raster, axis=0))
+        ok_v = interior[:-1, :] & interior[1:, :]
+        max_step = max(horiz[ok_h].max(), vert[ok_v].max())
+        self.assertLess(max_step, 0.25 * plateau_diff)
+
+    def test_all_nan_contributor_is_skipped(self):
+        """A contributor whose warp has no valid pixels is a no-op: it must
+        deposit neither data nor weight, leaving the raster bit-identical
+        to running without it (and finite everywhere)."""
+        import tempfile
+
+        skymap = self.harness._make_discrete_skymap()
+        inputs = self.harness._make_inputs(skymap)
+        only_good = [inputs[0]]
+        with_nan = [
+            inputs[0],
+            (np.full_like(inputs[1][0], np.nan), inputs[1][1], inputs[1][2]),
+        ]
+        healpix_id = self.harness._healpix_id(skymap)
+        with tempfile.TemporaryDirectory() as tmp:
+            a = self.harness._run_backend("rust", only_good, healpix_id, tmp)
+            b = self.harness._run_backend("rust", with_nan, healpix_id, tmp)
+        self.assertTrue(np.all(np.isfinite(b)))
+        np.testing.assert_array_equal(a, b)
+        self.assertGreater(a.max(), 0.0, "the surviving contributor deposited no data")
+
+    def test_thin_contributor_clamps_feather_ramp(self):
+        """A contributor clipped to a ~100 tile px sliver is thinner than
+        the feather ramp (2*feather_grow = 256 px): the ramp must clamp to
+        the footprint instead of outgrowing the feather masks (unclamped,
+        the mask build raises a broadcast error), the sliver must keep its
+        constant level, and its edge truncated by the tile border must not
+        ramp down (that data continues into the adjacent order-8 quantum).
+        The shifted-bbox placement keeps the source WCS untouched: the box
+        is where the image lives in that WCS' parent frame."""
+        import tempfile
+
+        from lsst.afw.geom import makeHpxWcs
+
+        skymap = self.harness._make_discrete_skymap()
+        healpix_id = self.harness._healpix_id(skymap)
+        array, in_wcs, in_box = self.harness._make_inputs(skymap)[0]
+
+        target = makeHpxWcs(8, healpix_id, 12, False)
+
+        def tile_x(src_x):
+            sky = in_wcs.pixelToSky(lsst.geom.Point2D(src_x, in_box.getCenterY()))
+            return target.skyToPixel(sky).getX()
+
+        w_tile = abs(tile_x(in_box.getMaxX()) - tile_x(in_box.getMinX()))
+        inset = 100  # tile px of the patch left inside the tile's +x border
+        dx_src = ((4096.0 - inset) - tile_x(in_box.getMinX())) * in_box.getWidth() / w_tile
+        sliver_box = lsst.geom.Box2I(
+            lsst.geom.Point2I(in_box.getMinX() + int(round(dx_src)), in_box.getMinY()),
+            in_box.getDimensions(),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raster = self.harness._run_backend(
+                "rust", [(array, in_wcs, sliver_box)], healpix_id, tmp
+            )[..., 0]
+
+        self.assertTrue(np.all(np.isfinite(raster)))
+        level = raster.max()
+        self.assertGreater(level, 0.0, "the sliver deposited no data")
+        sliver = raster > 0.5 * level
+        self.assertGreater(sliver.sum(), 100, "the sliver plateau collapsed")
+        # The plateau reaches the tile border at full level (clipped edges
+        # keep weight; a ramp here would fall below the 0.5*level threshold
+        # before column 254).
+        self.assertGreaterEqual(np.flatnonzero(sliver.any(axis=0))[-1], 254)
+        self.assertLess(abs(np.median(raster[sliver]) - level), 0.05 * level)
+
+
 class ColorHipsPyramidTestCase(unittest.TestCase):
     """The area-kernel (D10 box-average) pyramid prefilter: exactness,
     engine equivalence on feasible (tile-sized) grids, and the aliasing

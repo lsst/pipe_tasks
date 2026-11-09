@@ -23,6 +23,7 @@ from __future__ import annotations
 __all__ = ("HighOrderHipsTaskConnections", "HighOrderHipsTaskConfig", "HighOrderHipsTask")
 
 import time
+import cv2
 import numpy as np
 from enum import Enum
 from numpy.typing import NDArray
@@ -156,6 +157,24 @@ class HighOrderHipsTaskConfig(PipelineTaskConfig, pipelineConnections=HighOrderH
             "passes ringing and high-frequency noise",
         },
         default="area",
+    )
+    feather_grow = Field[int](
+        doc=(
+            "Half-width (px) of the feather ramps applied where a contributor's "
+            "warped data shows a boundary inside the order-8 tile: the blend "
+            "weight ramps linearly to full over 2*feather_grow px on the "
+            "4096x4096 tile grid, following the distance to the contributor's "
+            "actual valid-pixel boundary (the warp rotates it, so it is not "
+            "the footprint box edge). Contributors are composited by "
+            "feather-weighted accumulation (shared FeatheredMosaicCreator "
+            "contract with the meta-mosaic): boundaries where a neighbor takes "
+            "over blend across the ramp, boundaries truncated by the tile "
+            "border do not feather (that data continues into the adjacent "
+            "quantum), and NaN pixels contribute neither data nor weight. 0 "
+            "disables feathering (plain weighted accumulation)."
+        ),
+        default=128,
+        check=lambda x: x >= 0,
     )
     is_hdr = Field[bool](
         doc=(
@@ -322,8 +341,15 @@ class HighOrderHipsTask(PipelineTask):
         # construct a bounding box that holds the warping results for each channel
         exp_bbox = Box2I(corner=Point2I(0, 0), dimensions=Extent2I(2**12, 2**12))
 
+        # Feather-weighted accumulation of the contributors (the same
+        # masked-add/NaN-reweight contract MetaMosaicTask runs through
+        # FeatheredMosaicCreator), replacing the legacy first-valid-wins +
+        # unweighted 50/50 blend whose un-feathered hard edges made every
+        # contributor boundary visible in the tile.
         output_array_hpx = np.zeros((4096, 4096, 3), dtype=np.float32)
-        output_array_hpx[:, :, :] = np.nan
+        weight_accum = np.zeros((4096, 4096), dtype=np.float32)
+        featherer = FeatheredMosaicCreator(self.config.feather_grow, bin_factor=1)
+        tile_box = Box.from_legacy(exp_bbox)
 
         use_rust = self.config.warp_backend == "rust"
         # Warp invocation timings (per engine/warpImage call; the rust
@@ -364,10 +390,10 @@ class HighOrderHipsTask(PipelineTask):
                 # The "rust" backend mirrors the (kernel-independent)
                 # pixel-area scaling afwMath's Warper applies (the HiPS tile
                 # scale differs materially from the tract scale, unlike the
-                # meta-mosaic |det J| ~ 1 case), and shares the footprint box
-                # so the blend-block slicing is backend-independent.
+                # meta-mosaic |det J| ~ 1 case), and reports the same
+                # footprint box as the afw path, so the feathered add below
+                # is backend-independent.
                 warp_scale = probe_warp_scale(self.warper, in_wcs, target_wcs, in_box)
-                warpped_box_slices = warped_box.slices
                 # T8.6 (D18/D19) mode selection, once per (source, tile)
                 # class and cached on the task: a plain HiPS HPX tile
                 # fed by a pure FITS TAN source (the production case:
@@ -443,36 +469,30 @@ class HighOrderHipsTask(PipelineTask):
                     # image) -- this image falls through to the afw
                     # Warper below.
 
-            # Process each color channel separately
-            for channel in ColorChannel:
-                # existing data
-                existing = output_array_hpx[..., channel.value]
-
-                # construct an Exposure object from one channel in the array
-                channel_array = in_image[..., channel.value]
-                if rust_warped is not None:
-                    warpped_array = rust_warped[..., channel.value]
-                else:
-                    tmp_image.array[:, :] = channel_array
+            # Composite the whole RGB warp in one feather-weighted add: the
+            # blend contract is per-pixel across channels (a pixel counts as
+            # valid only when all its channels are finite), so it cannot run
+            # per channel like the legacy blend did.
+            if rust_warped is not None:
+                warped_rgb = rust_warped
+            else:
+                warped_channels = []
+                for channel in ColorChannel:
+                    # construct an Exposure object from one channel in the array
+                    tmp_image.array[:, :] = in_image[..., channel.value]
                     # Warp the image to the target WCS
                     t0 = time.perf_counter()
                     warpped = self.warper.warpImage(target_wcs, tmp_image, in_wcs, maxBBox=exp_bbox)
                     t_warp += time.perf_counter() - t0
                     n_warp += 1
-                    warpped_array = warpped.array
-                    warpped_box_slices = warpped.getBBox().slices
-
-                # Update the output array with valid (non-NaN) values
-                are_warpped = np.isfinite(warpped_array)
-                # where this existing array is not nan, there is already data
-                pre_populated = np.isfinite(existing[warpped_box_slices])
-                new_info = np.logical_not(pre_populated)
-                new_and_warp = np.logical_and(new_info, are_warpped)
-                pre_and_warp = np.logical_and(pre_populated, are_warpped)
-                existing[warpped_box_slices][new_and_warp] = warpped_array[new_and_warp]
-                existing[warpped_box_slices][pre_and_warp] = (
-                    warpped_array[pre_and_warp] + existing[warpped_box_slices][pre_and_warp]
-                ) * 0.5
+                    warped_channels.append(warpped.array)
+                # All channels share one destination domain (same source box,
+                # WCS and kernel), so the last one describes the footprint.
+                warped_rgb = np.stack(warped_channels, axis=-1)
+                warped_box = warpped.getBBox()
+            self._feather_accumulate(
+                featherer, output_array_hpx, weight_accum, warped_rgb, warped_box, tile_box
+            )
 
         self.log.info(
             "Timings: warp=%.1fs (n=%d), map-build=%.1fs (n=%d)",
@@ -482,7 +502,10 @@ class HighOrderHipsTask(PipelineTask):
             n_map,
         )
 
-        # Replace any remaining NaN values with zeros
+        # Normalize the weighted sum: pixels with any finite contributor get
+        # their NaN-reweighted blend value; pixels no contributor reached come
+        # back NaN from finalize() and are zeroed as the empty-sky marker.
+        FeatheredMosaicCreator.finalize(output_array_hpx, weight_accum)
         output_array_hpx[np.isnan(output_array_hpx)] = 0
 
         # Flip the y-axis to match HealPix indexing
@@ -560,6 +583,115 @@ class HighOrderHipsTask(PipelineTask):
         zoomed = downsample_hips_array(output_array_hpx, (256, 256), self.config.downsample_kernel)
 
         return Struct(output_hpx=zoomed)
+
+    def _feather_accumulate(
+        self,
+        featherer: FeatheredMosaicCreator,
+        mosaic: NDArray,
+        weight: NDArray,
+        warped_rgb: NDArray,
+        warped_box: Box2I,
+        tile_box: Box,
+    ) -> None:
+        """Feather-weight one warped contributor into the tile accumulator.
+
+        The placement is the tight box of the pixels valid in every channel
+        (the warp's NaN border is cropped, and invalid pixels then contribute
+        neither data nor weight -- the masked-add/NaN-reweight contract
+        `FeatheredMosaicCreator` holds for the meta-mosaic). Each pixel's
+        blend weight is its perpendicular distance to the nearest *data*
+        boundary, ramped to full over ``2 * feather_grow`` px: the warp
+        rotates the contributor, so its boundary runs diagonally inside the
+        tight box and the featherer's array-edge ramps alone would not hug
+        the seam. Edges landing exactly on the tile border are excluded from
+        the boundary set -- that data continues into the adjacent order-8
+        quantum and must not ramp down inside this tile (the meta-mosaic
+        edge rule, read against ``tile_box``).
+
+        Parameters
+        ----------
+        featherer : `FeatheredMosaicCreator`
+            Shared feathering instance. Its ``featherings`` mask slots are
+            pre-populated here with the distance-ramp map (the featherer's
+            own per-shape array-edge cache is not usable: every warped
+            footprint has a different data boundary).
+        mosaic : `numpy.ndarray` (H, W, 3)
+            Weighted-sum accumulator, modified in place.
+        weight : `numpy.ndarray` (H, W)
+            Per-pixel weight accumulator, modified in place (zero-initialized
+            by the caller).
+        warped_rgb : `numpy.ndarray` (h, w, 3)
+            The contributor's warp result covering ``warped_box``.
+        warped_box : `lsst.geom.Box2I`
+            Destination box of ``warped_rgb`` in tile coordinates (already
+            clipped to the tile by the warp path).
+        tile_box : `lsst.images.Box`
+            The full 4096x4096 tile box (feather edge-rule reference).
+        """
+        valid = np.isfinite(warped_rgb).all(axis=-1)
+        rows = np.flatnonzero(valid.any(axis=1))
+        cols = np.flatnonzero(valid.any(axis=0))
+        if rows.size == 0 or cols.size == 0:
+            return
+        y0, y1 = int(rows[0]), int(rows[-1]) + 1
+        x0, x1 = int(cols[0]), int(cols[-1]) + 1
+        patch = warped_rgb[y0:y1, x0:x1]
+        inner = valid[y0:y1, x0:x1]
+        data_box = Box.from_legacy(
+            Box2I(
+                Point2I(warped_box.getMinX() + x0, warped_box.getMinY() + y0),
+                Extent2I(x1 - x0, y1 - y0),
+            )
+        )
+        # Tile-edge rule (the meta-mosaic's): an edge where the placement is
+        # inset from the tile has a data boundary at the array edge; an edge
+        # landing exactly on the tile border is truncated -- the data
+        # continues into the adjacent order-8 quantum there.
+        gates = tuple(
+            int(edge)
+            for edge in (
+                data_box.y.start != tile_box.y.start,
+                data_box.y.stop != tile_box.y.stop,
+                data_box.x.start != tile_box.x.start,
+                data_box.x.stop != tile_box.x.stop,
+            )
+        )
+        ones = np.ones(patch.shape[:2], dtype=np.float32)
+        span = 2 * self.config.feather_grow
+        ramp = ones
+        if span > 0:
+            # Per-pixel blend weight: perpendicular distance to the nearest
+            # data boundary, ramped to full over 2*feather_grow px (the same
+            # span as FeatheredMosaicCreator's own edge ramps). The warp
+            # rotates the contributor, so its boundary runs diagonally
+            # *inside* the tight bounding box and array-edge ramps alone
+            # would not hug the seam. Gated sides pad the valid mask with
+            # False, making the array edge count as a boundary there;
+            # tile-clipped sides are unpadded, so data reads as continuing
+            # past them (no ramp at the tile border).
+            padded = np.pad(
+                inner, ((gates[0], gates[1]), (gates[2], gates[3])), constant_values=False
+            )
+            dist = cv2.distanceTransform(padded.astype(np.uint8), cv2.DIST_L2, cv2.DIST_MASK_5)
+            dist = dist[gates[0]: gates[0] + patch.shape[0], gates[2]: gates[2] + patch.shape[1]]
+            dist /= span  # in place: no full-size temporaries next to the accumulators
+            np.clip(dist, 0.0, 1.0, out=dist)
+            ramp = dist  # already float32
+        # The featherer multiplies one mask per edge whose placement differs
+        # from its reference box; passing the tile expanded by 1 px makes
+        # every edge differ, so the single ramp below is applied exactly
+        # once -- its per-edge gating is already baked in via the padding.
+        ref_box = Box.from_legacy(
+            Box2I(
+                Point2I(tile_box.x.start - 1, tile_box.y.start - 1),
+                Extent2I(
+                    tile_box.x.stop - tile_box.x.start + 2,
+                    tile_box.y.stop - tile_box.y.start + 2,
+                ),
+            )
+        )
+        featherer.featherings = [ramp, ones, ones, ones]
+        featherer.add_to_image(mosaic, patch, ref_box, data_box, reverse=False, weight=weight)
 
     def _footprint_bbox(
         self, src_wcs: SkyWcs, src_box: Box2I, dest_wcs: SkyWcs, max_box: Box2I, samples: int = 64
