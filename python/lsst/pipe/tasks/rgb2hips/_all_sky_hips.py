@@ -595,8 +595,9 @@ class AllSkyHipsTask(PipelineTask):
         sub_px = tile_size >> depth
         if sub_px < 1:
             raise ValueError(
-                f"allsky_tilesize {tile_size} is smaller than one {depth}-level subdivision slot "
-                f"at order {allsky_order}; raise allsky_tilesize or lower min_order."
+                f"allsky_tilesize {tile_size} cannot give each order-8 child a pixel at "
+                f"min_order={allsky_order}: {depth} subdivision levels need "
+                f"allsky_tilesize >= {1 << depth}; raise allsky_tilesize or raise min_order."
             )
         n_tiles = hpg.nside_to_npixel(hpg.order_to_nside(allsky_order))
         n_tiles_wide = int(np.floor(np.sqrt(n_tiles)))
