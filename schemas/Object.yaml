@@ -114,6 +114,14 @@ funcs:
         functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_PsfFlux_instFluxErr
+    gaapPsfApCorr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: ext_gaap_GaapFlux_1_15x_PsfFlux_apCorr
+    gaapPsfApCorrErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: ext_gaap_GaapFlux_1_15x_PsfFlux_apCorrErr
     # 0.7 arcsec sigma GAaP flux
     gaap0p7Flux:
         functor: SinglePrecisionFloatColumn
@@ -123,6 +131,14 @@ funcs:
         functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_0_7_instFluxErr
+    gaap0p7ApCorr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: ext_gaap_GaapFlux_1_15x_0_7_apCorr
+    gaap0p7ApCorrErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: ext_gaap_GaapFlux_1_15x_0_7_apCorrErr
     # 1.0 arcsec sigma GAaP flux
     gaap1p0Flux:
         functor: SinglePrecisionFloatColumn
@@ -132,6 +148,14 @@ funcs:
         functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_1_0_instFluxErr
+    gaap1p0ApCorr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: ext_gaap_GaapFlux_1_15x_1_0_apCorr
+    gaap1p0ApCorrErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: ext_gaap_GaapFlux_1_15x_1_0_apCorrErr
     # Taking Shape from meas
     # These pixel-coordinate versions are deprecated following RFC-1081.
     ixx:
@@ -306,6 +330,14 @@ funcs:
         functor: SinglePrecisionFloatColumn
         dataset: meas  # or forced_src?
         args: ext_photometryKron_KronFlux_instFluxErr
+    kronApCorr:
+        functor: SinglePrecisionFloatColumn
+        dataset: meas  # or forced_src?
+        args: ext_photometryKron_KronFlux_apCorr
+    kronApCorrErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: meas  # or forced_src?
+        args: ext_photometryKron_KronFlux_apCorrErr
     # kronRad50: Need to compute DM-16313
     # kronRad50Err: Need to compute DM-16313
     # kronRad90: Need to compute DM-16313
