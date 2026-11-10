@@ -82,6 +82,14 @@ funcs:
         functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: slot_PsfFlux_instFluxErr
+    psf_apCorr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: slot_PsfFlux_apCorr
+    psf_apCorrErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: slot_PsfFlux_apCorrErr
     free_psfFlux:
         functor: SinglePrecisionFloatColumn
         dataset: meas
@@ -94,6 +102,14 @@ funcs:
         functor: Column
         dataset: meas
         args: slot_PsfFlux_flag
+    free_psf_apCorr:
+        functor: SinglePrecisionFloatColumn
+        dataset: meas
+        args: slot_PsfFlux_apCorr
+    free_psf_apCorrErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: meas
+        args: slot_PsfFlux_apCorrErr
     # DM-22243: Replace these with g, r, i, z, y and the blessed fluxes to use for colors
     # Need a new name like "gModelColorFlux", "gMatchedApertureGalaxyFlux", or
     # "gMatchedApertureFlux", "gStdFlux"
@@ -114,6 +130,14 @@ funcs:
         functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_PsfFlux_instFluxErr
+    gaapPsf_apCorr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: ext_gaap_GaapFlux_1_15x_PsfFlux_apCorr
+    gaapPsf_apCorrErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: ext_gaap_GaapFlux_1_15x_PsfFlux_apCorrErr
     # 0.7 arcsec sigma GAaP flux
     gaap0p7Flux:
         functor: SinglePrecisionFloatColumn
@@ -123,6 +147,14 @@ funcs:
         functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_0_7_instFluxErr
+    gaap0p7_apCorr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: ext_gaap_GaapFlux_1_15x_0_7_apCorr
+    gaap0p7_apCorrErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: ext_gaap_GaapFlux_1_15x_0_7_apCorrErr
     # 1.0 arcsec sigma GAaP flux
     gaap1p0Flux:
         functor: SinglePrecisionFloatColumn
@@ -132,6 +164,14 @@ funcs:
         functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: ext_gaap_GaapFlux_1_15x_1_0_instFluxErr
+    gaap1p0_apCorr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: ext_gaap_GaapFlux_1_15x_1_0_apCorr
+    gaap1p0_apCorrErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: ext_gaap_GaapFlux_1_15x_1_0_apCorrErr
     # Taking Shape from meas
     # These pixel-coordinate versions are deprecated following RFC-1081.
     ixx:
@@ -306,6 +346,14 @@ funcs:
         functor: SinglePrecisionFloatColumn
         dataset: meas  # or forced_src?
         args: ext_photometryKron_KronFlux_instFluxErr
+    kron_apCorr:
+        functor: SinglePrecisionFloatColumn
+        dataset: meas  # or forced_src?
+        args: ext_photometryKron_KronFlux_apCorr
+    kron_apCorrErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: meas  # or forced_src?
+        args: ext_photometryKron_KronFlux_apCorrErr
     # kronRad50: Need to compute DM-16313
     # kronRad50Err: Need to compute DM-16313
     # kronRad90: Need to compute DM-16313
@@ -556,6 +604,14 @@ funcs:
         functor: SinglePrecisionFloatColumn
         dataset: forced_src
         args: modelfit_CModel_fracDev
+    cModel_apCorr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: modelfit_CModel_apCorr
+    cModel_apCorrErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: forced_src
+        args: modelfit_CModel_apCorrErr
     free_cModelFlux: # to dm-naming things
         functor: SinglePrecisionFloatColumn
         dataset: meas
@@ -576,6 +632,14 @@ funcs:
         functor: SinglePrecisionFloatColumn
         dataset: meas
         args: modelfit_CModel_fracDev
+    free_cModel_apCorr:
+        functor: SinglePrecisionFloatColumn
+        dataset: meas
+        args: modelfit_CModel_apCorr
+    free_cModel_apCorrErr:
+        functor: SinglePrecisionFloatColumn
+        dataset: meas
+        args: modelfit_CModel_apCorrErr
     free_cModel_devFlux:
         functor: SinglePrecisionFloatColumn
         dataset: meas
