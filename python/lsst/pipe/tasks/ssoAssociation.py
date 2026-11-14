@@ -328,9 +328,10 @@ class SolarSystemAssociationTask(pipeBase.Task):
             ssSourceData['MPCORB_created_at'] = 0
             ssSourceData['MPCORB_updated_at'] = 0
             ssSourceData['MPCORB_fitting_datetime'] = 0
-            for c in ['MPCORB_created_at', 'MPCORB_updated_at', 'MPCORB_fitting_datetime',
-                      'MPCORB_u_param']:
+            for c in ['MPCORB_created_at', 'MPCORB_updated_at', 'MPCORB_fitting_datetime']:
                 ssSourceData[c] = ssSourceData[c].astype(np.float64).astype(np.int64)
+            # u_param may be null; keep it as float so nulls stay NaN.
+            ssSourceData['MPCORB_u_param'] = ssSourceData['MPCORB_u_param'].astype(np.float64)
             ssSourceData['MPCORB_orbit_type_int'] = -1  # TODO: DM-54214. Mixed string and nan types.
             ssSourceData['MPCORB_orbit_type_int'] = ssSourceData['MPCORB_orbit_type_int'].astype(np.int64)
         ssSourceData['ssObjectId'] = Column(data=ssObjectIds, dtype=int)
