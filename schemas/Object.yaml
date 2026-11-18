@@ -813,6 +813,208 @@ funcs:
         functor: Column
         args: TwoGaussianPsf_no_inputs_flag
         dataset: psfs_multiprofit
+    # MultiProFit multiband single gaussian object model fit parameters
+    gaussian_ra:
+        functor: Column
+        args: cen_ra
+        dataset: Gaussian_multiprofit
+    gaussian_dec:
+        functor: Column
+        args: cen_dec
+        dataset: Gaussian_multiprofit
+    gaussian_sigma_x:
+        functor: SinglePrecisionFloatColumn
+        args: sigma_x
+        dataset: Gaussian_multiprofit
+    gaussian_sigma_y:
+        functor: SinglePrecisionFloatColumn
+        args: sigma_y
+        dataset: Gaussian_multiprofit
+    gaussian_rho:
+        functor: SinglePrecisionFloatColumn
+        args: rho
+        dataset: Gaussian_multiprofit
+    gaussian_sigma_major:
+        functor: SemimajorAxisFromCorrelation
+        dataset: Gaussian_multiprofit
+        args:
+            - sigma_x
+            - sigma_y
+            - rho
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    gaussian_sigma_minor:
+        functor: SemiminorAxisFromCorrelation
+        dataset: Gaussian_multiprofit
+        args:
+            - sigma_x
+            - sigma_y
+            - rho
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    gaussian_theta:
+        functor: PositionAngleFromCorrelation
+        dataset: Gaussian_multiprofit
+        args:
+            - sigma_x
+            - sigma_y
+            - rho
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    g_gaussianFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - g_Flux
+            - g
+        dataset: Gaussian_multiprofit
+    i_gaussianFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - i_Flux
+            - i
+        dataset: Gaussian_multiprofit
+    r_gaussianFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - r_Flux
+            - r
+        dataset: Gaussian_multiprofit
+    u_gaussianFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - u_Flux
+            - u
+        dataset: Gaussian_multiprofit
+    y_gaussianFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - y_Flux
+            - y
+        dataset: Gaussian_multiprofit
+    z_gaussianFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - z_Flux
+            - z
+        dataset: Gaussian_multiprofit
+    N540_gaussianFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N540_Flux
+            - N540
+        dataset: Gaussian_multiprofit
+    N708_gaussianFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N708_Flux
+            - N708
+        dataset: Gaussian_multiprofit
+    gaussian_raErr:
+        functor: SinglePrecisionFloatColumn
+        args: cen_raErr
+        dataset: Gaussian_multiprofit
+    gaussian_decErr:
+        functor: SinglePrecisionFloatColumn
+        args: cen_decErr
+        dataset: Gaussian_multiprofit
+    gaussian_ra_dec_Cov:
+        functor: SinglePrecisionFloatColumn
+        args: cen_ra_dec_Cov
+        dataset: Gaussian_multiprofit
+    gaussian_sigma_xErr:
+        functor: SinglePrecisionFloatColumn
+        args: sigma_xErr
+        dataset: Gaussian_multiprofit
+    gaussian_sigma_yErr:
+        functor: SinglePrecisionFloatColumn
+        args: sigma_yErr
+        dataset: Gaussian_multiprofit
+    gaussian_rhoErr:
+        functor: SinglePrecisionFloatColumn
+        args: rhoErr
+        dataset: Gaussian_multiprofit
+    g_gaussianFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - g_FluxErr
+            - g
+        dataset: Gaussian_multiprofit
+    i_gaussianFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - i_FluxErr
+            - i
+        dataset: Gaussian_multiprofit
+    r_gaussianFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - r_FluxErr
+            - r
+        dataset: Gaussian_multiprofit
+    u_gaussianFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - u_FluxErr
+            - u
+        dataset: Gaussian_multiprofit
+    y_gaussianFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - y_FluxErr
+            - y
+        dataset: Gaussian_multiprofit
+    z_gaussianFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - z_FluxErr
+            - z
+        dataset: Gaussian_multiprofit
+    N540_gaussianFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N540_FluxErr
+            - N540
+        dataset: Gaussian_multiprofit
+    N708_gaussianFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N708_FluxErr
+            - N708
+        dataset: Gaussian_multiprofit
+    gaussian_n_eval_jac:
+        functor: Column
+        args: n_eval_jac
+        dataset: Gaussian_multiprofit
+    gaussian_n_iter:
+        functor: Column
+        args: n_iter
+        dataset: Gaussian_multiprofit
+    gaussian_chi2_reduced:
+        functor: SinglePrecisionFloatColumn
+        args: chisq_reduced
+        dataset: Gaussian_multiprofit
+    gaussian_delta_lnL_fit_linear:
+        functor: SinglePrecisionFloatColumn
+        args: delta_lnL_fit_linear
+        dataset: Gaussian_multiprofit
+#    gaussian_delta_lnL_fit_ps:
+#        functor: SinglePrecisionFloatColumn
+#        args: delta_lnL_fit_ps
+#        dataset: Gaussian_multiprofit
+    gaussian_unknown_flag:
+        functor: Column
+        args: unknown_flag
+        dataset: Gaussian_multiprofit
+    gaussian_no_data_flag:
+        functor: Column
+        args: no_data_flag
+        dataset: Gaussian_multiprofit
     # MultiProFit multiband single exponential object model fit parameters
     exponential_ra:
         functor: Column
@@ -1217,6 +1419,349 @@ funcs:
         functor: Column
         args: no_data_flag
         dataset: Sersic_multiprofit
+    # MultiProFit multiband single expdev object model fit parameters
+    expdev_ra:
+        functor: Column
+        args: cen_ra
+        dataset: ExpDeV_multiprofit
+    expdev_dec:
+        functor: Column
+        args: cen_dec
+        dataset: ExpDeV_multiprofit
+    expdev_exp_reff_x:
+        functor: SinglePrecisionFloatColumn
+        args: exp_reff_x
+        dataset: ExpDeV_multiprofit
+    expdev_exp_reff_y:
+        functor: SinglePrecisionFloatColumn
+        args: exp_reff_y
+        dataset: ExpDeV_multiprofit
+    expdev_exp_rho:
+        functor: SinglePrecisionFloatColumn
+        args: exp_rho
+        dataset: ExpDeV_multiprofit
+    expdev_exp_reff_major:
+        functor: SemimajorAxisFromCorrelation
+        dataset: ExpDeV_multiprofit
+        args:
+            - exp_reff_x
+            - exp_reff_y
+            - exp_rho
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    expdev_exp_reff_minor:
+        functor: SemiminorAxisFromCorrelation
+        dataset: ExpDeV_multiprofit
+        args:
+            - exp_reff_x
+            - exp_reff_y
+            - exp_rho
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    expdev_exp_theta:
+        functor: PositionAngleFromCorrelation
+        dataset: ExpDeV_multiprofit
+        args:
+            - exp_reff_x
+            - exp_reff_y
+            - exp_rho
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    g_expdev_expFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - g_expFlux
+            - g
+        dataset: ExpDeV_multiprofit
+    i_expdev_expFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - i_expFlux
+            - i
+        dataset: ExpDeV_multiprofit
+    r_expdev_expFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - r_expFlux
+            - r
+        dataset: ExpDeV_multiprofit
+    u_expdev_expFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - u_expFlux
+            - u
+        dataset: ExpDeV_multiprofit
+    y_expdev_expFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - y_expFlux
+            - y
+        dataset: ExpDeV_multiprofit
+    z_expdev_expFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - z_expFlux
+            - z
+        dataset: ExpDeV_multiprofit
+    N540_expdev_expFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N540_expFlux
+            - N540
+        dataset: ExpDeV_multiprofit
+    N708_expdev_expFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N708_expFlux
+            - N708
+        dataset: ExpDeV_multiprofit
+    expdev_dev_reff_x:
+        functor: SinglePrecisionFloatColumn
+        args: deV_reff_x
+        dataset: ExpDeV_multiprofit
+    expdev_dev_reff_y:
+        functor: SinglePrecisionFloatColumn
+        args: deV_reff_y
+        dataset: ExpDeV_multiprofit
+    expdev_dev_rho:
+        functor: SinglePrecisionFloatColumn
+        args: deV_rho
+        dataset: ExpDeV_multiprofit
+    expdev_dev_reff_major:
+        functor: SemimajorAxisFromCorrelation
+        dataset: ExpDeV_multiprofit
+        args:
+            - deV_reff_x
+            - deV_reff_y
+            - deV_rho
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    expdev_dev_reff_minor:
+        functor: SemiminorAxisFromCorrelation
+        dataset: ExpDeV_multiprofit
+        args:
+            - deV_reff_x
+            - deV_reff_y
+            - deV_rho
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    expdev_dev_theta:
+        functor: PositionAngleFromCorrelation
+        dataset: ExpDeV_multiprofit
+        args:
+            - deV_reff_x
+            - deV_reff_y
+            - deV_rho
+            - base_LocalWcs_CDMatrix_1_1
+            - base_LocalWcs_CDMatrix_1_2
+            - base_LocalWcs_CDMatrix_2_1
+            - base_LocalWcs_CDMatrix_2_2
+    g_expdev_devFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - g_deVFlux
+            - g
+        dataset: ExpDeV_multiprofit
+    i_expdev_devFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - i_deVFlux
+            - i
+        dataset: ExpDeV_multiprofit
+    r_expdev_devFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - r_deVFlux
+            - r
+        dataset: ExpDeV_multiprofit
+    u_expdev_devFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - u_deVFlux
+            - u
+        dataset: ExpDeV_multiprofit
+    y_expdev_devFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - y_deVFlux
+            - y
+        dataset: ExpDeV_multiprofit
+    z_expdev_devFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - z_deVFlux
+            - z
+        dataset: ExpDeV_multiprofit
+    N540_expdev_devFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N540_deVFlux
+            - N540
+        dataset: ExpDeV_multiprofit
+    N708_expdev_devFlux:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N708_deVFlux
+            - N708
+        dataset: ExpDeV_multiprofit
+    expdev_raErr:
+        functor: SinglePrecisionFloatColumn
+        args: cen_raErr
+        dataset: ExpDeV_multiprofit
+    expdev_decErr:
+        functor: SinglePrecisionFloatColumn
+        args: cen_decErr
+        dataset: ExpDeV_multiprofit
+    expdev_ra_dec_Cov:
+        functor: SinglePrecisionFloatColumn
+        args: cen_ra_dec_Cov
+        dataset: ExpDeV_multiprofit
+    expdev_exp_reff_xErr:
+        functor: SinglePrecisionFloatColumn
+        args: exp_reff_xErr
+        dataset: ExpDeV_multiprofit
+    expdev_exp_reff_yErr:
+        functor: SinglePrecisionFloatColumn
+        args: exp_reff_yErr
+        dataset: ExpDeV_multiprofit
+    expdev_exp_rhoErr:
+        functor: SinglePrecisionFloatColumn
+        args: exp_rhoErr
+        dataset: ExpDeV_multiprofit
+    g_expdev_expFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - g_expFluxErr
+            - g
+        dataset: ExpDeV_multiprofit
+    i_expdev_expFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - i_expFluxErr
+            - i
+        dataset: ExpDeV_multiprofit
+    r_expdev_expFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - r_expFluxErr
+            - r
+        dataset: ExpDeV_multiprofit
+    u_expdev_expFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - u_expFluxErr
+            - u
+        dataset: ExpDeV_multiprofit
+    y_expdev_expFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - y_expFluxErr
+            - y
+        dataset: ExpDeV_multiprofit
+    z_expdev_expFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - z_expFluxErr
+            - z
+        dataset: ExpDeV_multiprofit
+    N540_expdev_expFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N540_expFluxErr
+            - N540
+        dataset: ExpDeV_multiprofit
+    N708_expdev_expFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N708_expFluxErr
+            - N708
+        dataset: ExpDeV_multiprofit
+    expdev_dev_reff_xErr:
+        functor: SinglePrecisionFloatColumn
+        args: deV_reff_xErr
+        dataset: ExpDeV_multiprofit
+    expdev_dev_reff_yErr:
+        functor: SinglePrecisionFloatColumn
+        args: deV_reff_yErr
+        dataset: ExpDeV_multiprofit
+    expdev_dev_rhoErr:
+        functor: SinglePrecisionFloatColumn
+        args: deV_rhoErr
+        dataset: ExpDeV_multiprofit
+    g_expdev_devFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - g_deVFluxErr
+            - g
+        dataset: ExpDeV_multiprofit
+    i_expdev_devFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - i_deVFluxErr
+            - i
+        dataset: ExpDeV_multiprofit
+    r_expdev_devFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - r_deVFluxErr
+            - r
+        dataset: ExpDeV_multiprofit
+    u_expdev_devFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - u_deVFluxErr
+            - u
+        dataset: ExpDeV_multiprofit
+    y_expdev_devFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - y_deVFluxErr
+            - y
+        dataset: ExpDeV_multiprofit
+    z_expdev_devFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - z_deVFluxErr
+            - z
+        dataset: ExpDeV_multiprofit
+    N540_expdev_devFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N540_deVFluxErr
+            - N540
+        dataset: ExpDeV_multiprofit
+    N708_expdev_devFluxErr:
+        functor: MultibandSinglePrecisionFloatColumn
+        args:
+            - N708_deVFluxErr
+            - N708
+        dataset: ExpDeV_multiprofit
+    expdev_n_eval_jac:
+        functor: Column
+        args: n_eval_jac
+        dataset: ExpDeV_multiprofit
+    expdev_n_iter:
+        functor: Column
+        args: n_iter
+        dataset: ExpDeV_multiprofit
+    expdev_chi2_reduced:
+        functor: SinglePrecisionFloatColumn
+        args: chisq_reduced
+        dataset: ExpDeV_multiprofit
+    expdev_delta_lnL_fit_linear:
+        functor: SinglePrecisionFloatColumn
+        args: delta_lnL_fit_linear
+        dataset: ExpDeV_multiprofit
     shape_xx:
         functor: SinglePrecisionFloatColumn
         args: slot_Shape_xx

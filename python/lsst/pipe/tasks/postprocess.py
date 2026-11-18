@@ -816,6 +816,13 @@ class TransformObjectCatalogConnections(pipeBase.PipelineTaskConnections,
         name="{coaddName}Coadd_ref",
         deferLoad=True,
     )
+    inputCatalogGaussianMultiprofit = connectionTypes.Input(
+        doc="Catalog of multiband Gaussian fits.",
+        dimensions=("tract", "patch", "skymap"),
+        storageClass="ArrowAstropy",
+        name="object_gauss_multiprofit",
+        deferLoad=True,
+    )
     inputCatalogExpMultiprofit = connectionTypes.Input(
         doc="Catalog of multiband Exponential fits.",
         dimensions=("tract", "patch", "skymap"),
@@ -828,6 +835,13 @@ class TransformObjectCatalogConnections(pipeBase.PipelineTaskConnections,
         dimensions=("tract", "patch", "skymap"),
         storageClass="ArrowAstropy",
         name="{coaddName}Coadd_Sersic_multiprofit",
+        deferLoad=True,
+    )
+    inputCatalogExpDeVMultiprofit = connectionTypes.Input(
+        doc="Catalog of multiband ExpDeV fits.",
+        dimensions=("tract", "patch", "skymap"),
+        storageClass="ArrowAstropy",
+        name="object_expdev_multiprofit",
         deferLoad=True,
     )
     inputCatalogEpoch = connectionTypes.Input(
@@ -925,7 +939,9 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
     ConfigClass = TransformObjectCatalogConfig
 
     # ref must go first because other datasets may need columns from it
-    datasets_multiband = ("ref", "epoch", "Exp_multiprofit", "Sersic_multiprofit")
+    datasets_multiband = (
+        "ref", "epoch", "Gaussian_multiprofit", "Exp_multiprofit", "Sersic_multiprofit", "ExpDeV_multiprofit",
+    )
 
     def runQuantum(self, butlerQC, inputRefs, outputRefs):
         inputs = butlerQC.get(inputRefs)
@@ -936,8 +952,10 @@ class TransformObjectCatalogTask(TransformCatalogBaseTask):
                           dataId=dict(outputRefs.outputCatalog.dataId.mapping),
                           handle_ref=inputs["inputCatalogRef"],
                           handle_epoch=inputs["inputCatalogEpoch"],
+                          handle_Gaussian_multiprofit=inputs["inputCatalogGaussianMultiprofit"],
                           handle_Exp_multiprofit=inputs["inputCatalogExpMultiprofit"],
                           handle_Sersic_multiprofit=inputs["inputCatalogSersicMultiprofit"],
+                          handle_ExpDeV_multiprofit=inputs["inputCatalogExpDeVMultiprofit"],
                           )
         butlerQC.put(result, outputRefs)
 
