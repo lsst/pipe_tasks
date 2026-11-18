@@ -142,4 +142,4 @@ class FeatheredMosaicCreator:
 
         patch = mixer * patch
 
-        image[*box.slices] += patch[::-1, :, :] if reverse else patch
+        image[*box.slices] += patch[::-1, ...] if reverse else patch
