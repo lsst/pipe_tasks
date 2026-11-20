@@ -187,6 +187,12 @@ class DiffractionSpikeMaskTask(Task):
         filterLabel = exposure.getFilter()
         region = getRegion(exposure, lsst.sphgeom.Angle.fromDegrees(self.config.angleMargin/3600.))
         refCat = self.refObjLoader.loadRegion(region, filterLabel.bandLabel).refCat
+        mask = exposure.mask
+        mask.addMaskPlane(self.config.spikeMask)
+        if not np.all(np.isfinite(self.angles)):
+            self.log.warning("Diffraction spike angle is not finite; check the boresight rotation and"
+                             " parallactic angles. Not masking diffraction spikes.")
+            return afwTable.SimpleCatalog(refCat.schema)
 
         # Mask any sources with known or estimated magnitudes for the current
         # filter, including sources off of the image which may have diffraction
@@ -197,13 +203,11 @@ class DiffractionSpikeMaskTask(Task):
 
         nBright = np.count_nonzero(bright)
 
-        mask = exposure.mask
-        mask.addMaskPlane(self.config.spikeMask)
         if nBright > 0:
             xvals, yvals = exposure.wcs.skyToPixelArray(refCat[bright][self.config.raKey],
                                                         refCat[bright][self.config.decKey])
-            spikeCandidates = self.selectSources(xvals, yvals, radii, mask)
-            nSpike = len(spikeCandidates)
+            spikeCandidates = self.selectSources(xvals, yvals, radii[bright], mask)
+            nSpike = np.count_nonzero(spikeCandidates)
         else:
             nSpike = 0
         if nSpike > 0:
@@ -214,7 +218,13 @@ class DiffractionSpikeMaskTask(Task):
                              radii[bright][spikeCandidates],
                              mask)
         else:
-            self.log.info("No bright stars found in the reference catalog; not masking diffraction spikes.")
+            if nBright == 0:
+                self.log.info("Not masking diffraction spikes; no bright stars found in the reference "
+                              "catalog.")
+            else:
+                self.log.info("None of the %d stars brighter than magnitude %f are saturated on the image"
+                              " or have spikes reaching it; not masking diffraction spikes.", nBright,
+                              self.config.magnitudeThreshold)
             return afwTable.SimpleCatalog(refCat.schema)
 
         return refCat[bright][spikeCandidates].copy(deep=True)
