@@ -22,13 +22,17 @@
 import os
 import glob
 import unittest
+import unittest.mock
 
+import astropy.units as u
 import numpy as np
 
 import lsst.afw.image as afwImage
+import lsst.afw.table as afwTable
 import lsst.geom as geom
 from lsst.meas.algorithms.testUtils import MockReferenceObjectLoaderFromFiles
 import lsst.meas.base.tests
+from lsst.pipe.base import Struct
 from lsst.pipe.tasks.diffractionSpikeMask import DiffractionSpikeMaskTask, DiffractionSpikeMaskConfig
 from lsst.pipe.tasks.colorterms import Colorterm, ColortermDict, ColortermLibrary
 import lsst.utils.tests
@@ -139,6 +143,95 @@ class DiffractionSpikeMaskTest(lsst.utils.tests.TestCase):
         exposure.mask.getPlaneBitMask(config.spikeMask)
         # The images should not be modified
         self.assertImagesEqual(self.exposure.image, exposure.image)
+
+    def _makeLoader(self, stars):
+        """Make a reference catalog loader that returns the given stars.
+
+        Parameters
+        ----------
+        stars : `list` [`tuple`]
+            ``(x, y, magnitude)`` of each star, with ``x`` and ``y`` in pixels
+            of ``self.exposure``.
+
+        Returns
+        -------
+        refObjLoader : `unittest.mock.Mock`
+            Loader whose ``loadRegion`` returns a catalog of ``stars``.
+        refCat : `lsst.afw.table.SimpleCatalog`
+            The catalog of ``stars``.
+        """
+        schema = afwTable.SimpleTable.makeMinimalSchema()
+        fluxKey = schema.addField("i_flux", type="D", units="nJy")
+        fluxErrKey = schema.addField("i_fluxErr", type="D", units="nJy")
+        refCat = afwTable.SimpleCatalog(schema)
+        for x, y, mag in stars:
+            record = refCat.addNew()
+            record.setCoord(self.exposure.wcs.pixelToSky(x, y))
+            record.set(fluxKey, (mag*u.ABmag).to_value(u.nJy))
+            record.set(fluxErrKey, 1.0)
+        refObjLoader = unittest.mock.Mock()
+        refObjLoader.loadRegion.return_value = Struct(refCat=refCat)
+        return refObjLoader, refCat
+
+    def test_spikeRadiiMatchBrightStars(self):
+        """Faint stars listed ahead of the bright stars in the reference
+        catalog must not change which bright stars are selected.
+        """
+        config = DiffractionSpikeMaskConfig()
+        ySize = self.bbox.getHeight()
+        # Faint stars (spike radius ~25 pixels), followed by a bright star on
+        # the image with no saturated pixels, and a bright star 150 pixels off
+        # the image (spike radius ~400 pixels).
+        stars = [(500, 500*i, 20) for i in range(5)]
+        stars += [(1000, ySize/2, 10), (-150, ySize/2, 10)]
+        refObjLoader, refCat = self._makeLoader(stars)
+        task = DiffractionSpikeMaskTask(refObjLoader, config=config)
+        exposure = self.exposure.clone()
+        with self.assertLogs(task.log.name, level="INFO") as logs:
+            spikeCat = task.run(exposure=exposure)
+        self.assertEqual(len(spikeCat), 1)
+        self.assertEqual(spikeCat[0].getId(), refCat[-1].getId())
+        self.assertIn("Calculating mask for 1 stars", "\n".join(logs.output))
+        spikeMaskBit = exposure.mask.getPlaneBitMask(config.spikeMask)
+        self.assertGreater(np.count_nonzero(exposure.mask.array & spikeMaskBit), 0)
+
+    def test_noSpikeCandidates(self):
+        """Bright stars that are neither saturated nor close to the image
+        should not be masked, and the log should say why.
+        """
+        config = DiffractionSpikeMaskConfig()
+        ySize = self.bbox.getHeight()
+        stars = [(1000, ySize/2, 10), (-1000, ySize/2, 10)]
+        refObjLoader, _ = self._makeLoader(stars)
+        task = DiffractionSpikeMaskTask(refObjLoader, config=config)
+        exposure = self.exposure.clone()
+        with self.assertLogs(task.log.name, level="INFO") as logs:
+            spikeCat = task.run(exposure=exposure)
+        self.assertEqual(len(spikeCat), 0)
+        self.assertIn("None of the 2 stars", "\n".join(logs.output))
+        self.assertMasksEqual(exposure.mask, self.exposure.mask)
+
+    def test_nanSpikeAngle(self):
+        """A NaN rotation angle should skip masking instead of raising."""
+        config = DiffractionSpikeMaskConfig()
+        stars = [(1000, self.bbox.getHeight()/2, 10)]
+        refObjLoader, _ = self._makeLoader(stars)
+        task = DiffractionSpikeMaskTask(refObjLoader, config=config)
+        exposure = self.exposure.clone()
+        visitInfo = exposure.visitInfo
+        exposure.info.setVisitInfo(afwImage.VisitInfo(
+            id=visitInfo.id, date=visitInfo.date, era=visitInfo.era,
+            boresightRaDec=visitInfo.boresightRaDec, boresightAzAlt=visitInfo.boresightAzAlt,
+            boresightRotAngle=geom.Angle(np.nan), rotType=visitInfo.rotType,
+            observatory=visitInfo.observatory,
+        ))
+        exposure.mask.array |= exposure.mask.getPlaneBitMask(config.saturatedMaskPlane)
+        baseMask = exposure.mask.clone()
+        with self.assertLogs(task.log.name, level="WARNING") as logs:
+            spikeCat = task.run(exposure=exposure)
+        self.assertEqual(len(spikeCat), 0)
+        self.assertIn("not finite", "\n".join(logs.output))
+        self.assertMasksEqual(exposure.mask, baseMask)
 
     def test_maskSources(self):
         """Verify that sources on and off the image are masked correctly."""
